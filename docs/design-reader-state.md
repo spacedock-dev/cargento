@@ -1,15 +1,15 @@
 # What reader state survives a redraw
 
 `renderNext` replaces the whole of `#app` on every revision and on a bare interval. Anything the
-reader put into that DOM — an open panel, a half-typed sentence, keyboard focus — dies with the
-nodes unless the page holds it somewhere else and puts it back.
+reader put into that DOM (an open panel, a half-typed sentence, keyboard focus) dies with the nodes
+unless the page holds it somewhere else and puts it back.
 
 This file is the single inventory of that state: one row per thing a reader can leave behind, what
 happens to it across a redraw, and where the code does it. It exists because the rule was previously
 distributed across comment blocks in `next-chrome.js` and `next-controls.js`, one per lane, with
-nowhere to check whether a lane was missing. Three defects reached readers in that gap — a
-disclosure that closed itself, keyboard focus discarded on every refresh, a sentence lost mid-typing
-— and each was found separately, after shipping.
+nowhere to check whether a lane was missing. Three defects reached readers in that gap: a
+disclosure that closed itself, keyboard focus discarded on every refresh, and a sentence lost
+mid-typing. Each was found separately, after shipping.
 
 For where these files sit and which way their dependencies run, see
 [the module map](design-runtime-architecture.md). For the page's own design rationale, see
@@ -35,7 +35,7 @@ than a boolean, so unlike a disclosure key it cannot be rebuilt from anything, a
 off the element that still holds it. `renderNext` reads it first and assigns second.
 
 **Key the snapshot, not the node.** Every restored row above is addressed by a key the render emits
-again — a disclosure key, a section name, a session id, a control's own key. A reference held across
+again: a disclosure key, a section name, a session id, a control's own key. A reference held across
 a render points at a node that no longer exists, and a restore that follows one lands nowhere or, in
 the caret's case, on the wrong element.
 
@@ -43,7 +43,7 @@ Three per-row decisions do not follow from either rule and are recorded here rat
 code, which cites this file instead:
 
 - **A restored lane is held per tab, not in `localStorage`.** The two preferences that do reach
-  browser storage are answers a reader gave deliberately — a consent, a guardrail added on purpose.
+  browser storage are answers a reader gave deliberately: a consent, a guardrail added on purpose.
   A panel opened to read once and a half-typed sentence are not decisions, so reviving either in a
   new tab hours later is a different feature from surviving a render.
 - **A draft's caret offset travels with the draft.** Restoring the text without the offset is a
@@ -52,10 +52,10 @@ code, which cites this file instead:
   it reaches the node that actually holds the draft rather than whichever node existed when the
   snapshot was taken.
 - **A sent draft is cleared from the live node as well as from the state.** Every sender clears and
-  then calls `renderNext`, whose first statement reads the element the reader just submitted from —
-  still in the DOM, still holding the text — and writes it back over the cleared value. Measured
-  before the fix: the sent sentence stayed in the box for the life of the tab and a second send
-  recorded it twice.
+  then calls `renderNext`, whose first statement reads the element the reader just submitted from.
+  That element is still in the DOM and still holding the text, so it writes it back over the cleared
+  value. Measured before the fix: the sent sentence stayed in the box for the life of the tab and a
+  second send recorded it twice.
 
 ## Document scroll
 
@@ -89,9 +89,9 @@ paragraph cannot go quietly stale.
 
 ## Text selection
 
-**Deliberately not managed.** A selection made across rendered text is destroyed by the redraw —
-measured in Chrome, a `Range` over a project name returned `"trio/app"` before the render and `""`
-after it — and the page does nothing about it.
+**Deliberately not managed.** A selection made across rendered text is destroyed by the redraw.
+Measured in Chrome, a `Range` over a project name returned `"trio/app"` before the render and `""`
+after it, and the page does nothing about it.
 
 Not managed rather than not yet done, for three reasons:
 
