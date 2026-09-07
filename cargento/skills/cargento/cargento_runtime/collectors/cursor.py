@@ -49,9 +49,11 @@ def usage(
 
     Unlike the other harnesses the figures are money against a monthly billing
     cycle rather than a rolling window, which is why the entry fills `month`.
+    The window still gates the reading: the cache reader withholds an entry older
+    than the dashboard's activity window, because a spend figure from a previous
+    billing cycle is as wrong as a reset quota percentage.
     """
-    del config, now, window_hours
-    return runtime_quota.cached_entries(state, "cursor")
+    return runtime_quota.cached_entries(config, state, "cursor", now, window_hours)
 
 
 _CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")

@@ -466,13 +466,14 @@ function nextCapacityView(payload){
 }
 
 function nextCapacityProjectSpread(payload, harness){
-  /* How long this harness's sessions in its busiest project have actually run,
-     from the state transitions the history store already keeps. This is A6's
-     shape-match, keyed on project and duration rather than on a prompt: sizing
-     an unstarted task from its text was the issue's original mechanism and the
-     part the board itself called the part nobody does well. A project's own
-     past durations are a measurement, and publishing the spread with its count
-     refuses to claim the next session will match.
+  /* How long this harness's sessions have actually run in the project that
+     consumed the most measured working time, from the state transitions the
+     history store already keeps. This is A6's shape-match, keyed on project and
+     duration rather than on a prompt: sizing an unstarted task from its text
+     was the issue's original mechanism and the part the board itself called the
+     part nobody does well. A project's own past durations are a measurement,
+     and publishing the spread with its count refuses to claim the next session
+     will match.
 
      Scoped to one harness because the sentence above it is about one harness's
      budget, and a median drawn from another vendor's sessions invites a
@@ -519,9 +520,23 @@ function nextCapacityProjectSpread(payload, harness){
       unmeasured.set(session.project, (unmeasured.get(session.project) || 0) + 1);
     }
   }
+  /* Selected on the SUM of a project's measured intervals, not on how many it
+     has. This line sits under "The remaining N% buys ..." and exists to help
+     the reader judge whether a project's typical session fits the budget left,
+     so the project that consumed the most measured time is the one that
+     answers it -- and a sum is a measurement where a tally of sessions is not.
+     Counting was the first rule here, and it named a project of three short
+     sessions over one that had run for hours.
+
+     The two-session floor stays on the SELECTED project rather than filtering
+     the candidates, so a project that leads on the strength of one session
+     publishes nothing at all. A range of one is the figure this line must
+     never print, and the runner-up is not an answer to which project worked
+     most. */
   let best = null;
   for(const [project, list] of byProject){
-    if(best == null || list.length > best.list.length) best = {project, list};
+    const worked = list.reduce((total, span) => total + span, 0);
+    if(best == null || worked > best.worked) best = {project, list, worked};
   }
   if(best == null || best.list.length < 2) return "";
   const sorted = [...best.list].sort((a, b) => a - b);

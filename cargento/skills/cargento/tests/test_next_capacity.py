@@ -689,6 +689,89 @@ console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}
         self.assertIn("10m to 30m", out["html"])
         self.assertIn("median <b>20m</b>", out["html"])
 
+    def test_the_named_project_is_the_one_that_worked_most(self) -> None:
+        # Selection used to be `list.length`, the count of sessions with a
+        # closed interval, so a project of many short sessions outranked one
+        # that had run for hours and the sentence named a project the reader
+        # would not have picked to answer the question above it.
+        #
+        # Four candidates, each of which wins under a different rule, because a
+        # fixture that only beat the count rule left a `Math.max` mutation
+        # green: seen-most leads on both counts, one-spike on the longest
+        # single session, high-mean on the mean, and worked-most only on the
+        # sum. Measured minutes below.
+        #
+        #                measured   sum   longest   mean   observed
+        #   seen-most        5       25       5       5        5
+        #   one-spike        2       45      40      22.5      2
+        #   high-mean        2       70      35      35        2
+        #   worked-most      3       80      35      26.7       4
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+let anchor = 200000;
+const worked = (sid, project, minutes) => {
+  anchor -= 10000;
+  return [
+    {harness: "claude", sid, project, state: "working", last_activity: g - anchor},
+    {harness: "claude", sid, project, state: "idle", last_activity: g - anchor + minutes * 60}
+  ];
+};
+nextData.history = [
+  ...worked("a1", "seen-most", 5), ...worked("a2", "seen-most", 5),
+  ...worked("a3", "seen-most", 5), ...worked("a4", "seen-most", 5),
+  ...worked("a5", "seen-most", 5),
+  ...worked("b1", "one-spike", 40), ...worked("b2", "one-spike", 5),
+  ...worked("c1", "high-mean", 35), ...worked("c2", "high-mean", 35),
+  ...worked("d1", "worked-most", 25), ...worked("d2", "worked-most", 35),
+  ...worked("d3", "worked-most", 20),
+  {harness: "claude", sid: "d4", project: "worked-most", state: "working", last_activity: g - 300}
+];
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
+""",
+            storage_prelude({}),
+        )
+        html = out["html"]
+        self.assertIn("<b>worked-most</b>", html)
+        self.assertNotIn("seen-most", html)
+        self.assertNotIn("one-spike", html)
+        self.assertNotIn("high-mean", html)
+        self.assertIn("20m to 35m", html)
+        self.assertIn("median <b>25m</b>", html)
+        self.assertIn("from 3 observed", html)
+        # Selecting on measured time makes the unmeasured aside carry more, not
+        # less: the project named is now the one with the most time behind it,
+        # so what was never timed is the reader's only handle on how complete
+        # that is.
+        self.assertIn("1 more session has no closed working interval", html)
+        self.assertIn("and is not in that figure", html)
+
+    def test_the_project_that_worked_most_still_needs_two_measured_sessions(self) -> None:
+        # The suppression is on the selected project rather than on the field of
+        # candidates, so a project holding the most measured time on the
+        # strength of one session publishes nothing at all -- not a range of
+        # one, and not a fallback to some other project's range. A range of one
+        # is the thing this line must never print, and the runner-up is not the
+        # answer to "which project worked most" either.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+nextData.history = [
+  {harness: "claude", sid: "a", project: "one-long", state: "working", last_activity: g - 7200},
+  {harness: "claude", sid: "a", project: "one-long", state: "idle", last_activity: g - 3600},
+  {harness: "claude", sid: "b", project: "two-short", state: "working", last_activity: g - 900},
+  {harness: "claude", sid: "b", project: "two-short", state: "idle", last_activity: g - 600},
+  {harness: "claude", sid: "c", project: "two-short", state: "working", last_activity: g - 500},
+  {harness: "claude", sid: "c", project: "two-short", state: "idle", last_activity: g - 200}
+];
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
+""",
+            storage_prelude({}),
+        )
+        self.assertEqual("", out["html"])
+
     def test_the_disclosure_and_strip_reach_the_rendered_sessions_view(self) -> None:
         # The mount, not the builders. Every other test here calls the builder
         # directly, and the surface this replaces disappeared precisely because

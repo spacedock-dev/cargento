@@ -1008,6 +1008,82 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertNotIn("PermissionError", failure_html)
         self.assertNotIn("/Users/private/transcript.jsonl", failure_html)
 
+    def _capability_rows(self) -> list[dict[str, Any]]:
+        """Four discovered rows: plain, qualified, capability-off, and failed."""
+        return [
+            {
+                "key": "claude",
+                "label": "Claude Code",
+                "discovered": True,
+                "reports_needs_input": True,
+                "reports_needs_input_when": None,
+                "reports_rate": True,
+                "error": None,
+            },
+            {
+                "key": "codex",
+                "label": "Codex",
+                "discovered": True,
+                "reports_needs_input": True,
+                "reports_needs_input_when": "where approvals are enabled",
+                "reports_rate": True,
+                "error": None,
+            },
+            {
+                "key": "antigravity",
+                "label": "AGY",
+                "discovered": True,
+                "reports_needs_input": False,
+                "reports_needs_input_when": "where a caveat would be noise",
+                "reports_rate": True,
+                "error": None,
+            },
+            {
+                "key": "broken",
+                "label": "Broken",
+                "discovered": True,
+                "reports_needs_input": True,
+                "reports_needs_input_when": "where a caveat would be noise",
+                "reports_rate": True,
+                "error": "PermissionError: /Users/private/transcript.jsonl",
+            },
+        ]
+
+    def test_a_gate_capability_carries_its_condition_only_where_it_reports(self) -> None:
+        # A harness can have a gate mechanism and still be unable to fire it:
+        # Codex's is a permission hook, and an operator running with approvals
+        # off never reaches it, so the row has to say what the capability
+        # depends on or its silence reads as the all-clear.
+        #
+        # Only on a row that reports. A caveat on "unknown" or "failed"
+        # qualifies a capability the line has already said is absent, so it
+        # would be noise on the two rows the reader needs least noise on.
+        html = self.render({"harnesses": self._capability_rows(), "sessions": [], "asks": []})
+
+        self.assertIn(
+            "Codex</strong> \u00b7 needs-input reporting, where approvals are enabled \u00b7",
+            html,
+        )
+        self.assertIn("Claude Code</strong> \u00b7 needs-input reporting \u00b7", html)
+        self.assertIn("AGY</strong> \u00b7 needs-input reporting unknown \u00b7", html)
+        self.assertIn("Broken</strong> \u00b7 needs-input reporting failed \u00b7", html)
+        self.assertNotIn("where a caveat would be noise", html)
+        # The condition qualifies the capability; it does not withdraw it. The
+        # mechanism exists, so the count that says how much of the board can
+        # report a gate at all is the same with the caveat as without it.
+        self.assertIn("Gates: 2/4 reporting \u00b7 1 unknown \u00b7 1 failed", html)
+
+    def test_the_gate_condition_is_escaped_like_the_label_beside_it(self) -> None:
+        # A registry constant today, and reaching HTML regardless. Escaped on
+        # the same rule as the harness label two spans over rather than on a
+        # reading of where today's value comes from.
+        rows = self._capability_rows()
+        rows[1]["reports_needs_input_when"] = 'where <b>approvals</b> are "on"'
+        html = self.render({"harnesses": rows, "sessions": [], "asks": []})
+
+        self.assertIn("where &lt;b&gt;approvals&lt;/b&gt; are", html)
+        self.assertNotIn("<b>approvals</b>", html)
+
     def test_exact_request_and_empty_copy_respect_capability_and_payload_window(self) -> None:
         ask_disabled_html = self.render({"sessions": [], "asks": []})
         ask_enabled_html = self.render({"ask": True, "sessions": [], "asks": []})
