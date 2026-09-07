@@ -66,14 +66,55 @@ function nextFocusRowControl(app, key){
   return false;
 }
 
+// Every focusable control that names itself, swept through ONE fixed selector
+// and matched on its dataset. This replaced a growing per-control allowlist:
+// the render had been found to discard reader state four times, and each fix
+// added a lane of its own. A fifth was due for the <details> summaries, whose
+// focus #288 knowingly left unrestored. This lane is what restores them, so the
+// disclosure handler's older reason for declining to re-render is now stale and
+// says so in place. The identity is never interpolated into a selector, which is
+// what the hostile-key test in test_next_chrome.py exists to prove.
+function nextFocusKey(app, active){
+  for(const target of app.querySelectorAll("[data-next-focus]")){
+    const key = String(target.dataset && target.dataset.nextFocus || "");
+    if(!key) continue;
+    const inside = target === active ||
+      (typeof target.contains === "function" && target.contains(active));
+    if(inside) return key;
+  }
+  return "";
+}
+
+function nextFocusNamed(app, key){
+  for(const target of app.querySelectorAll("[data-next-focus]")){
+    if(String(target.dataset && target.dataset.nextFocus || "") !== key) continue;
+    if(typeof target.focus !== "function") return false;
+    target.focus();
+    // A draft input carries an offset as well as an identity. The lane's other
+    // two elements are `<summary>`, where there is nothing to place, so this is
+    // a no-op for them.
+    nextControlsApplyCaret(target);
+    return true;
+  }
+  return false;
+}
+
 function nextCaptureFocus(){
   const app = document.getElementById("app");
   const active = document.activeElement;
   if(!app || !active || typeof app.querySelectorAll !== "function") return null;
+  // Returned INSTEAD of the container branches rather than alongside them, which
+  // is the difference from `control` below. Measured: none of the four elements
+  // this lane names sits inside a `[data-next-session]` or a
+  // `[data-next-subject-key]`, so there is no container answer to fall back to
+  // and nothing is lost by returning early. `control` is carried because a row
+  // control genuinely is inside a row, and its row can end.
+  const named = nextFocusKey(app, active);
   // Carried alongside whichever container the reader was in rather than instead
   // of it, so a control whose row has ended still falls back to the row's own
   // restoration (DRC-4396).
   const control = nextRowControlKey(app, active);
+  if(named) return control ? {named, control} : {named};
   for(const session of app.querySelectorAll("[data-next-session]")){
     if(typeof session.contains !== "function" || !session.contains(active)) continue;
     const sid = String(session.dataset && session.dataset.nextSession || "");
@@ -102,6 +143,7 @@ function nextRestoreFocus(snapshot, model){
   // which is where a keyboard reader on a RAISE was being dropped on every
   // revision — and the live lane raises one whenever anything on the machine
   // moves (DRC-4396).
+  if(snapshot.named && nextFocusNamed(app, snapshot.named)) return;
   if(snapshot.control && nextFocusRowControl(app, snapshot.control)) return;
   if(snapshot.session){
     for(const session of app.querySelectorAll("[data-next-session]")){
@@ -549,6 +591,10 @@ function nextHistoryResetNotice(){
 function renderNext(focus = nextCaptureFocus()){
   const app = document.getElementById("app");
   if(!app) return;
+  // Before the assignment below discards the DOM. A draft is a string rather
+  // than a boolean, so unlike the disclosure and section sets it cannot be
+  // rebuilt from a key: it has to be read off the element that still holds it.
+  nextControlsCaptureDrafts();
   const counts = nextCounts();
   document.title = nextDocumentTitle();
   const gateLabel = counts.gates === 1 ? "reported block" : "reported blocks";
@@ -632,8 +678,11 @@ document.addEventListener("click", event => {
       /* Deliberately not prevented and deliberately not re-rendered. The
          browser's own toggle is what the reader sees, and it runs after this
          handler; recording the flip only teaches the next render what to
-         re-emit. Re-rendering here instead would replace the summary under a
-         keyboard reader's focus, which nothing restores. */
+         re-emit. The older reason, that a re-render would replace the summary
+         under a keyboard reader's focus with nothing to restore it, no longer
+         holds: both summaries now carry a `data-next-focus` and the generic
+         lane restores them. What stands is that re-rendering here would fight
+         the browser's own toggle for no gain. */
       if(nextOpenDisclosures.has(key)) nextOpenDisclosures.delete(key);
       else nextOpenDisclosures.add(key);
     }

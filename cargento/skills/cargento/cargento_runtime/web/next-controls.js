@@ -36,9 +36,71 @@ function nextControlsProjectState(project){
       adding: false,
       rules: nextControlsReadRules(project),
       steers: [],
+      // What the reader has typed and not yet sent. Held here and NOT in
+      // localStorage, unlike `rules` beside it: a rule was added on purpose and
+      // a half-typed sentence is not a decision, so reviving one in a new tab
+      // hours later is a different feature from surviving a render.
+      drafts: {steer: "", guardrail: ""},
+      // Where the caret was, per draft. Restoring the text without the offset
+      // is a worse failure than losing both: the reader carries on typing at
+      // the start of their own sentence and cannot see why.
+      carets: {steer: null, guardrail: null},
     });
   }
   return nextControlsProjects.get(project);
+}
+
+// Read back what the reader typed, before the render that is about to discard
+// it. One fixed selector, and the kind and project come from the dataset rather
+// than from a selector built out of them.
+function nextControlsCaptureDrafts(){
+  const app = document.getElementById("app");
+  if(!app || typeof app.querySelectorAll !== "function") return;
+  for(const input of app.querySelectorAll("[data-next-draft]")){
+    const dataset = input && input.dataset || {};
+    const kind = String(dataset.nextDraft || "");
+    const project = String(dataset.nextControlsProject || "");
+    if(!project || (kind !== "steer" && kind !== "guardrail")) continue;
+    const state = nextControlsProjectState(project);
+    state.drafts[kind] = String(input.value || "");
+    state.carets[kind] = typeof input.selectionStart === "number"
+      ? [input.selectionStart, typeof input.selectionEnd === "number"
+        ? input.selectionEnd : input.selectionStart]
+      : null;
+  }
+}
+
+// Called by the focus lane once it has landed on the element, so the offset is
+// applied to the node that actually holds the draft rather than to whichever
+// node existed when the snapshot was taken.
+function nextControlsApplyCaret(element){
+  const dataset = element && element.dataset || {};
+  const kind = String(dataset.nextDraft || "");
+  const project = String(dataset.nextControlsProject || "");
+  if(!project || (kind !== "steer" && kind !== "guardrail")) return;
+  if(typeof element.setSelectionRange !== "function") return;
+  const caret = nextControlsProjectState(project).carets[kind];
+  if(!caret) return;
+  const limit = String(element.value || "").length;
+  element.setSelectionRange(Math.min(caret[0], limit), Math.min(caret[1], limit));
+}
+
+function nextControlsDraft(project, kind){
+  const drafts = nextControlsProjectState(project).drafts || {};
+  return String(drafts[kind] || "");
+}
+
+function nextControlsClearDraft(project, kind, element){
+  const state = nextControlsProjectState(project);
+  state.drafts[kind] = "";
+  state.carets[kind] = null;
+  // The live node too, and this is the whole of the fix rather than a tidy-up.
+  // Every caller clears and then calls renderNext, whose FIRST statement is
+  // nextControlsCaptureDrafts: that reads the node the reader just submitted
+  // from, which is still in the DOM still holding the text, and writes it back
+  // over the line above. Measured: the sent sentence stayed in the box for the
+  // life of the tab and a second send recorded it twice.
+  if(element && typeof element.value === "string") element.value = "";
 }
 
 function nextControlsStoreRules(project, state){
@@ -61,7 +123,10 @@ function nextProjectSteer(project, state){
     '<header><span>STEER · LOCAL ONLY</span></header>' +
     `<form data-next-steer-form data-next-controls-project="${esc(project)}">` +
     '<label><span class="next-visually-hidden">Steer draft</span>' +
-    '<input name="steer" maxlength="500" placeholder="Tell this project what to do next"></label>' +
+    '<input name="steer" maxlength="500" placeholder="Tell this project what to do next" ' +
+    `data-next-draft="steer" data-next-controls-project="${esc(project)}" ` +
+    `data-next-focus="steer-draft:${esc(project)}" ` +
+    `value="${esc(nextControlsDraft(project, "steer"))}"></label>` +
     '<button type="submit">send ⏎</button></form>' + history + '</section>';
 }
 
@@ -85,6 +150,8 @@ function nextProjectGuardrailAdd(project, state){
     return '<label class="next-guardrail-add-input">' +
       '<span class="next-visually-hidden">New local guardrail</span>' +
       `<input data-next-guardrail-input data-next-controls-project="${esc(project)}" ` +
+      `data-next-draft="guardrail" data-next-focus="guardrail-draft:${esc(project)}" ` +
+      `value="${esc(nextControlsDraft(project, "guardrail"))}" ` +
       'maxlength="500" placeholder="Type a local guardrail">' +
       '<small>Enter to add · Esc to cancel</small></label>';
   }
@@ -130,6 +197,10 @@ function nextControlsHandleKeydown(event){
   }else{
     nextControlsProjectState(project).adding = false;
   }
+  // Added or abandoned, the box is finished with, on BOTH branches. Without this,
+  // reopening the add control prefills it with the rule the reader just
+  // committed, and one Enter then writes that rule to localStorage a second time.
+  nextControlsClearDraft(project, "guardrail", input);
   renderNext();
   return true;
 }
@@ -145,6 +216,9 @@ document.addEventListener("submit", event => {
   const state = nextControlsProjectState(project);
   state.steers.push({text});
   state.steers = state.steers.slice(-NEXT_STEER_RECORD_LIMIT);
+  // The receipt below now carries the sentence. Leaving it in the box too would
+  // show it twice and re-send it on the next submit.
+  nextControlsClearDraft(project, "steer", input);
   renderNext();
 });
 
