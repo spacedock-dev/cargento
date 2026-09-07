@@ -2177,3 +2177,149 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
 
         self.assertIn("Ends: 0 observed", visible)
         self.assertNotIn("undefined", visible)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class HealthyBoardBriefTest(NextPageJsHarness):
+    """What the brief says when every session is healthy (DRC-4452).
+
+    Not the empty payload, which already stands down: this is the board with
+    sessions on it and nothing to report, which is what a machine looks like
+    when the product is working.
+    """
+
+    BRIEF = re.compile(r'<div class="next-attention-brief">([\s\S]*?)<div class="next-attention-c')
+
+    def brief(self, sessions: str, asks: str = "[]") -> str:
+        html = self._run_page_js(
+            f"""
+__els.app = {{innerHTML: ""}};
+nextData = {{generated: 10000, window_hours: 24, ask: true,
+  sessions: {sessions}, asks: {asks}}};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {{view: "attention", project: null, session: null}};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        match = self.BRIEF.search(html)
+        if match is None:  # pragma: no cover — the assertion below reports it
+            raise AssertionError(f"no attention brief in {html}")
+        return match.group(1)
+
+    ONE_IDLE = """[
+  {harness: "claude", sid: "solo", project: "quiet/repo", state: "idle",
+   last_activity: 9000}
+]"""
+
+    def test_a_healthy_board_says_the_queues_were_checked_instead_of_seven_zeros(self) -> None:
+        # Measured at HEAD, this payload rendered ten numerals, seven of them
+        # zero, to say one session is quiet: `0 subjects across 0 of 1 session:
+        # 0 need you · 0 at risk · 0 close the loop · 0 coming next · The other
+        # 1 session: 0 moving · 1 quiet`.
+        brief = self.brief(self.ONE_IDLE)
+
+        self.assertEqual(
+            '<p><span class="next-attention-brief-label">OBSERVED NOW</span>'
+            "All four queues checked and empty · 1 session quiet</p>",
+            brief,
+        )
+
+    def test_the_healthy_line_still_says_the_queues_were_checked(self) -> None:
+        # The reachability criterion, and why plain standing-down was rejected:
+        # measured, the four category sections return "" on a healthy board, so
+        # the only heading left on screen is NO PUBLISHED EXCEPTION and nothing
+        # else would tell the reader the queues had been looked at.
+        html = self._run_page_js(
+            f"""
+__els.app = {{innerHTML: ""}};
+nextData = {{generated: 10000, window_hours: 24, ask: true,
+  sessions: {self.ONE_IDLE}, asks: []}};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {{view: "attention", project: null, session: null}};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("All four queues checked and empty", html)
+        self.assertIn("NO PUBLISHED EXCEPTION (1)", html)
+        for heading in ("NEEDS YOU NOW", "AT RISK", "CLOSE THE LOOP", "COMING NEXT"):
+            self.assertNotIn(f"{heading} (", html)
+
+    def test_the_healthy_line_names_each_state_over_its_own_sessions(self) -> None:
+        # Two states, so the tail is a list rather than one phrase, and each
+        # entry carries the unit. Zero-count states stay out: a line that opens
+        # by saying nothing needs you has no business printing a zero.
+        brief = self.brief(
+            """[
+  {harness: "claude", sid: "a", project: "one/repo", state: "working",
+   last_activity: 9900},
+  {harness: "claude", sid: "b", project: "two/repo", state: "working",
+   last_activity: 9800},
+  {harness: "claude", sid: "c", project: "three/repo", state: "idle",
+   last_activity: 9000}
+]"""
+        )
+
+        self.assertIn(
+            "All four queues checked and empty · 2 sessions moving · 1 session quiet", brief
+        )
+        self.assertNotIn("0 ", brief)
+
+    def test_a_board_with_one_subject_still_shows_all_four_categories(self) -> None:
+        # The half that already held and must be preserved rather than added:
+        # a reader looking at a board that DOES have a subject needs the three
+        # zeros beside it, because that is how they see the other queues were
+        # checked. The standdown is a second condition beside the empty-payload
+        # one, not a widening of it.
+        brief = self.brief(
+            """[
+  {harness: "claude", sid: "gate", project: "gate/repo", state: "needs_input",
+   last_activity: 9900, blocked_since: 9800}
+]"""
+        )
+
+        self.assertIn(
+            "1 subject across 1 of 1 session: "
+            "1 need you · 0 at risk · 0 close the loop · 0 coming next",
+            brief,
+        )
+
+    def test_the_four_the_line_claims_is_the_number_of_categories_rendered(self) -> None:
+        # A universal claim over a set, which is the shape that has blocked a
+        # merge here before over an unnamed third carve-out. The word is bound
+        # to the sections the view actually asks for, not to a count someone
+        # wrote down: add a fifth category and this fails.
+        out = self._run_page_js(
+            """
+console.log(JSON.stringify(nextAttentionView.toString()));
+"""
+        )
+        assert isinstance(out, str)
+        sections = re.findall(r'nextAttentionSectionHtml\("([a-z]+)"', out)
+
+        self.assertEqual(["needs", "risk", "close", "next"], sections)
+        self.assertIn("All four queues", self.brief(self.ONE_IDLE))
+
+    def test_an_empty_payload_still_gets_no_brief_at_all(self) -> None:
+        # The neighbouring standdown, kept: with no sessions the notice already
+        # says there is nothing, and a line about four empty queues would
+        # compete with it.
+        html = self._run_page_js(
+            """
+__els.app = {innerHTML: ""};
+nextData = {generated: 10000, window_hours: 6, sessions: [], asks: []};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "attention", project: null, session: null};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("No sessions in this 6h payload", html)
+        self.assertNotIn("OBSERVED NOW", html)
+        self.assertNotIn("queues checked", html)
