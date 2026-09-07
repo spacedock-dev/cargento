@@ -172,10 +172,10 @@ all hijacked, and trailing forms did not.
 Every non-absolute PATH element is dropped, and the resolution refuses a relative answer as well.
 Both ends, not either: the first version of this dropped a named pair, the empty element and `.`,
 which reads like the whole property and was not. Measured 2026-09-07, a bare `relbin` survived that
-filter, and then the two directories parted company — the resolver validated a `git` under the
+filter, and then the two directories parted company: the resolver validated a `git` under the
 dashboard's own working directory while the child resolved the same relative string against the
-directory being probed, which is session-supplied. What was published was seven changed entries for
-a directory that is not a repository at all. So the filter now drops anything a resolver would
+directory being probed, which is session-supplied. It published seven changed entries for a
+directory that is not a repository at all. So the filter now drops anything a resolver would
 resolve against a working directory, and the resolution returns nothing for an answer that is not
 absolute even if it is ever handed a PATH from somewhere other than that filter. A PATH left with no
 absolute element publishes no reading at all rather than falling back to the ambient one.
@@ -314,9 +314,9 @@ would put one subprocess in the user's repository per turn for the life of the s
 
 The cadence is not a bound on how many probes run at once, and that took a second gate. One edge per
 session at most once each still allowed 240 live probes per harness and 960 across the four event
-sources, because the event budget refills for the whole of a probe's ten seconds — each one a real
-`git status` in a real repository. So a session already being probed is refused a second probe, and
-the process holds at most 32 in flight across every harness. The accepted cost is that a refused
+sources, because the event budget refills for the whole of a probe's ten seconds, and each one is a
+real `git status` in a real repository. So a session already being probed is refused a second probe,
+and the process holds at most 32 in flight across every harness. The accepted cost is that a refused
 probe leaves the reading the first one produced in place, which can be up to ten seconds old and
 stays until another session end arrives.
 
