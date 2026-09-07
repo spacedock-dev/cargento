@@ -549,10 +549,10 @@ which is itself one of the states question three has to render rather than hide.
 
 | Authority | Harness rows spending it | What Cargento reads | There when |
 |---|---|---|---|
-| Anthropic | Claude Code, and any harness signed in to the same subscription | percent of a 5 hour and a 7 day rolling window (Q-2) | the store exists and the disclosure has been answered |
+| Anthropic | Claude Code, and any harness signed in to the same subscription | percent of a 5 hour and a 7 day rolling window (Q-2) | the store exists, the disclosure has been answered, and the last fetch landed inside `window_hours` |
 | OpenAI | Codex | percent per window, classified by the window's own length (Q-1) | Codex left a snapshot inside `window_hours` |
 | Google | Antigravity | percent per named bucket, the worse of two model families (Q-7) | the user pointed the status line at `/api/usage` and the harness ran inside `window_hours` |
-| Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads and the disclosure has been answered |
+| Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads, the disclosure has been answered, and the last fetch landed inside `window_hours` |
 | GitHub | Copilot CLI | AI Units consumed, with the entitlement nowhere on the machine (Q-6) | a usage row landed inside `window_hours` |
 | Factory | Droid | nothing: on the account measured, `GET /api/billing/limits` carries no window, and the store holds a per-session credit count | never yet; an account on token-rate-limits billing would publish three windows nobody here has captured |
 
@@ -628,11 +628,19 @@ wrong percentage looks wrong; "you have room on Codex" looks like good news.
 
 This is the finding that shapes what the surface has to say, and it falls out of the table above
 rather than out of any policy. Anthropic and Cursor are fetched, so they report while their harness
-sits idle. OpenAI, Google and GitHub are read from what their harness wrote or pushed, and all three
-drop out once the newest reading is older than `window_hours`, 24 hours by default: `codex.usage`
-tests the snapshot's freshness, `quota.receipt_entries` tests the receipt's, and Copilot's sum only
-counts rows inside the window. Usage is also read only for a discovered harness, so a harness that
+sits idle: what refreshes them is a dashboard poll rather than harness activity. OpenAI, Google and
+GitHub are read from what their harness wrote or pushed, so for those three it is the harness going
+quiet that ages the figure out. Usage is also read only for a discovered harness, so a harness that
 has never run publishes nothing at all.
+
+Every authority drops out once its newest reading is older than `window_hours`, 24 hours by default.
+`codex.usage` tests the snapshot's freshness, `quota.receipt_entries` tests the receipt's,
+`quota.cached_entries` tests the fetched entry's, and Copilot's sum only counts rows inside the
+window. The gate is quiet on the fetched two rather than absent, which is why it was missing until
+DRC-4402: while the poll runs a fetched reading is minutes old and can never reach the window, so
+the gate bites only where the poll has stopped — the disclosure answered and then switched off, or a
+vendor that stopped answering — and until then the cache republished a reading of any age as
+current.
 
 Put that beside A4's example. The harness at 95% is the one being used, which is the one that
 certainly reports. The harness at 10% is the one not being used, which is the one whose figure most

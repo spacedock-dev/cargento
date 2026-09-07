@@ -453,9 +453,12 @@ def usage(
     only publishes whatever that thread last cached. The registry wires it in
     only when the fetch feature is enabled, so `--no-usage` leaves the Claude
     row with no provider at all.
+
+    The window is passed through because the cache reader gates on it: a reading
+    older than the dashboard's own activity window is withheld, the same rule the
+    Codex disk reader applies to its snapshot.
     """
-    del config, now, window_hours
-    return runtime_quota.cached_entries(state, "claude")
+    return runtime_quota.cached_entries(config, state, "claude", now, window_hours)
 
 
 def collect(

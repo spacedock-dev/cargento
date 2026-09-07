@@ -931,9 +931,13 @@ def observe_windows(
     Called once per collection, over the entries as published. `recent` appears
     on a window exactly when two or more distinct readings support it; a window
     with one reading, a stale one, or one that just reset carries none, and the
-    page reads that absence as "not measured" rather than as a pace of zero. The
-    entry's own `asOf` already says how old the reading is, so nothing here has
-    to restate it.
+    page reads that absence as "not measured" rather than as a pace of zero.
+
+    Nothing here re-checks how old the reading is because nothing stale reaches
+    it: the two cache readers, `cached_entries` and `receipt_entries`, gate on
+    the activity window before publishing, and the Codex disk reader gates its
+    own snapshot. Publishing `asOf` is not that gate — it is a figure for the
+    page, and no reader compares it to now.
     """
     for entry in entries:
         harness = entry.get("harness")
@@ -975,15 +979,58 @@ def _detached(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [copy.deepcopy(entry) for entry in entries]
 
 
-def cached_entries(state: RuntimeState, vendor: str) -> list[dict[str, Any]]:
-    """One vendor's last fetch, copied so a caller cannot mutate the cache.
+def _within_window(
+    config: RuntimeConfig,
+    now: float,
+    entry: dict[str, Any],
+    window_hours: float,
+) -> bool:
+    """Whether an entry's own reading time is inside the activity window.
+
+    Measured on `asOf` rather than on the cache's `ts`, which stamps the last
+    *attempt*: `asOf` is the field the page renders the reading's age from, and a
+    gate resting on a different stamp than the one shown is how the two come to
+    disagree.
+
+    A stamp that is missing, non-numeric or non-finite fails the gate. That entry
+    is the worse case, not the safer one: nothing downstream can date it either —
+    `observe_windows` skips it, so it carries no pace and no age — so publishing
+    it would put a bare percentage on the page with nothing to say how old it is.
+    """
+    at = _finite(entry.get("asOf"))
+    return at is not None and sessions.is_fresh(config, now, at, window_hours * 3600)
+
+
+def cached_entries(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    vendor: str,
+    now: float,
+    window_hours: float,
+) -> list[dict[str, Any]]:
+    """One vendor's last fetch, still current, copied so the cache is safe.
 
     The vendor is required rather than defaulted: a wrong default would quietly
     publish another vendor's numbers under this harness's name.
+
+    The freshness gate is here rather than in each collector because this is the
+    function that owns the cache. Both fetch-backed rows read it, so one gate
+    fixes both, and a third fetch-backed provider inherits the rule instead of
+    being the next one to forget it — which is how this defect arose, with one
+    of the two collectors gating and the other not. `records.iso_epoch` states
+    the same preference for the same reason: a rule every reader has to remember
+    separately is a rule some reader will not.
+
+    A stale entry is withheld, not evicted. The published result is identical
+    either way — `observe_windows` runs over the published list, so dropping is
+    already enough to keep an old reading out of the pace ring — and leaving the
+    cache alone keeps it a faithful record of what the last fetch actually
+    returned, which is what the poll floor beside it is stamped against.
     """
     with state.usage_fetch_lock:
         cached = state.usage_fetch_cache.get(vendor)
-        return _detached(cached["entries"]) if cached else []
+        entries = _detached(cached["entries"]) if cached else []
+    return [entry for entry in entries if _within_window(config, now, entry, window_hours)]
 
 
 # The status-line payload names its windows rather than describing them by

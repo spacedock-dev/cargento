@@ -25,7 +25,9 @@ from typing import TYPE_CHECKING, Any, Self
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, diagnostics, quota, sessions
+from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.collectors import codex as codex_collector
+from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -40,6 +42,15 @@ if TYPE_CHECKING:
 # could never be mistaken for a real one.
 TOKEN = "usage-test-access-token"  # noqa: S105 — deliberately fake; asserted ABSENT from outputs
 NOW = 1_700_000_000.0
+
+# The two rows whose only route to a number is the fetch cache. Kept as one
+# mapping so a freshness assertion cannot be written for one and forgotten
+# for the other -- which is how the two collectors came to disagree.
+_USAGE_PROVIDERS = {"claude": claude_collector.usage, "cursor": cursor_collector.usage}
+
+# A sentinel distinct from every JSON value, so "no `asOf` at all" is a case
+# the same table can carry alongside the malformed ones.
+_MISSING = object()
 
 
 def _http_error(code: int, msg: str) -> urllib.error.HTTPError:
@@ -819,7 +830,7 @@ class FetchLifecycleTest(unittest.TestCase):
             diagnostic_sink=diagnostics_log.append,
         )
         self.assertEqual([], diagnostics_log)
-        cached = quota.cached_entries(state, "claude")
+        cached = quota.cached_entries(config, state, "claude", NOW, 24.0)
         self.assertEqual("ok", cached[0]["state"])
 
         _fetch_claude(
@@ -830,19 +841,22 @@ class FetchLifecycleTest(unittest.TestCase):
             runner=_keychain_runner(_credentials()),
             diagnostic_sink=diagnostics_log.append,
         )
-        self.assertEqual([], quota.cached_entries(state, "claude"))
+        self.assertEqual([], quota.cached_entries(config, state, "claude", NOW, 24.0))
         self.assertTrue(any("URLError" in line for line in diagnostics_log))
         self.assertFalse(any(TOKEN in line for line in diagnostics_log))
 
     def test_cached_entries_returns_copies(self) -> None:
-        _, state = self._darwin()
+        config, state = self._darwin()
         with state.usage_fetch_lock:
+            # `asOf` is here so the freshness gate lets the entry through. This
+            # test is about detachment from the cache, and an entry the gate
+            # withholds would assert nothing about it.
             state.usage_fetch_cache["claude"] = {
                 "ts": NOW,
-                "entries": [{"harness": "claude", "state": "ok"}],
+                "entries": [{"harness": "claude", "state": "ok", "asOf": NOW}],
             }
-        quota.cached_entries(state, "claude")[0]["state"] = "mangled"
-        self.assertEqual("ok", quota.cached_entries(state, "claude")[0]["state"])
+        quota.cached_entries(config, state, "claude", NOW, 24.0)[0]["state"] = "mangled"
+        self.assertEqual("ok", quota.cached_entries(config, state, "claude", NOW, 24.0)[0]["state"])
 
     def test_request_fetch_holds_every_gate_of_the_polling_posture(self) -> None:
         clock_now = [NOW]
@@ -1017,6 +1031,106 @@ class FetchLifecycleTest(unittest.TestCase):
         quota._spawn_thread(probe)
         self.assertTrue(done.wait(timeout=5))
         self.assertEqual([True], seen)
+
+
+class CachedEntryFreshnessTest(unittest.TestCase):
+    """The cache is a reading, not a fact: past the window it stops publishing.
+
+    Both fetch-backed rows read `cached_entries`, and neither has any other
+    route to a number, so this is where their staleness behaviour is pinned.
+    The threshold is the collection's own `window_hours`, the same one the Codex
+    disk reader uses, because the question is identical for both: a figure older
+    than the window describes quota windows that have themselves reset.
+    """
+
+    WINDOW_HOURS = 24.0
+    WINDOW_SEC = 24 * 3600
+
+    def _seeded(self, vendor: str, as_of: Any) -> tuple[RuntimeConfig, RuntimeState]:
+        config = _config()
+        state = _state(config)
+        entry: dict[str, Any] = {"harness": vendor, "state": "ok", "fiveH": {"pct": 42}}
+        if as_of is not _MISSING:
+            entry["asOf"] = as_of
+        with state.usage_fetch_lock:
+            # `ts` is deliberately current: the fetch stamp arms the poll floor
+            # and says when the attempt happened, and pinning it fresh proves
+            # the gate reads the entry's own reading time rather than that.
+            state.usage_fetch_cache[vendor] = {"ts": NOW, "entries": [entry]}
+        return config, state
+
+    def _published(self, vendor: str, as_of: Any) -> list[dict[str, Any]]:
+        config, state = self._seeded(vendor, as_of)
+        return _USAGE_PROVIDERS[vendor](config, state, NOW, self.WINDOW_HOURS)
+
+    def test_a_reading_inside_the_window_still_publishes(self) -> None:
+        for vendor in _USAGE_PROVIDERS:
+            with self.subTest(vendor=vendor):
+                (entry,) = self._published(vendor, NOW - 3600)
+                self.assertEqual(vendor, entry["harness"])
+                self.assertEqual(42, entry["fiveH"]["pct"])
+
+    def test_a_reading_past_the_window_publishes_nothing(self) -> None:
+        for vendor in _USAGE_PROVIDERS:
+            with self.subTest(vendor=vendor):
+                self.assertEqual([], self._published(vendor, NOW - 7 * 86400))
+
+    def test_the_window_edge_publishes_and_one_second_past_it_does_not(self) -> None:
+        # `sessions.is_fresh` compares `age <= window_sec`, so the boundary
+        # itself is inside. Codex inherits the same inclusive edge from the same
+        # primitive; asserting it here stops a later `<` making the two disagree.
+        for vendor in _USAGE_PROVIDERS:
+            with self.subTest(vendor=vendor):
+                self.assertTrue(self._published(vendor, NOW - self.WINDOW_SEC))
+                self.assertEqual([], self._published(vendor, NOW - self.WINDOW_SEC - 1))
+
+    def test_a_narrower_window_withholds_what_a_wider_one_publishes(self) -> None:
+        # The threshold travels with the collection rather than being a constant,
+        # so `--window 1` must move it. One reading, two windows, two answers.
+        for vendor, provider in _USAGE_PROVIDERS.items():
+            with self.subTest(vendor=vendor):
+                config, state = self._seeded(vendor, NOW - 6 * 3600)
+                self.assertTrue(provider(config, state, NOW, 24.0))
+                self.assertEqual([], provider(config, state, NOW, 1.0))
+
+    def test_an_unusable_stamp_publishes_nothing(self) -> None:
+        # A reading whose age cannot be computed is the case that would otherwise
+        # publish forever, which is worse than the stale number: nothing on the
+        # page or in the pace ring would ever say how old it is.
+        unusable = (
+            _MISSING,
+            None,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            10**400,
+            "1700000000",
+            NOW + 3600,  # a stamp ahead of the collection clock past the skew allowance
+        )
+        for vendor in _USAGE_PROVIDERS:
+            for value in unusable:
+                with self.subTest(vendor=vendor, asOf=value):
+                    self.assertEqual([], self._published(vendor, value))
+
+    def test_a_stamp_inside_the_future_skew_allowance_still_publishes(self) -> None:
+        # `sessions.age` clamps a small overshoot rather than rejecting it, and
+        # the gate must not be stricter than the primitive it delegates to.
+        config = _config()
+        for vendor in _USAGE_PROVIDERS:
+            with self.subTest(vendor=vendor):
+                self.assertTrue(self._published(vendor, NOW + config.future_skew_tolerance_sec))
+
+    def test_the_codex_provider_never_reaches_this_cache(self) -> None:
+        # Codex gates its own disk snapshot. Proving it does not read the cache
+        # is what shows the new gate cannot double-apply to it.
+        config = _config()
+        state = _state(config)
+        with mock.patch.object(
+            quota,
+            "cached_entries",
+            side_effect=AssertionError("the Codex reader must not read the fetch cache"),
+        ):
+            self.assertEqual([], codex_collector.usage(config, state, NOW, self.WINDOW_HOURS))
 
 
 class CursorFetchTest(unittest.TestCase):
