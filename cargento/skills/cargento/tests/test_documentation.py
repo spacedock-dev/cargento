@@ -1760,8 +1760,13 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 self.assertTrue((self.ROOT / path).is_file())
 
     def test_every_lane_the_render_captures_or_restores_has_a_row(self) -> None:
-        # Derived from `renderNext` rather than listed here, so a lane added to
-        # it fails this instead of quietly joining the set nothing describes.
+        # Derived from `renderNext` rather than listed here, but only over the
+        # lanes whose names carry `Capture` or `Restore`. Measured: a
+        # `nextKeepScrollOffset()` or a `nextTooltipAttr()` added to the body
+        # leaves this green, and `nextTooltipAttr` is the shape of DRC-4410,
+        # one of the three defects the document was written for. Lanes outside
+        # that convention are named by hand in the table and held by the test
+        # below instead.
         chrome = (self.WEB / "next-chrome.js").read_text(encoding="utf-8")
         body = chrome[chrome.index("function renderNext(") :]
         body = body[: body.index("\nfunction ")]
@@ -1770,6 +1775,18 @@ class ReaderStateInventoryTest(unittest.TestCase):
         for lane in lanes:
             with self.subTest(lane=lane):
                 self.assertIn(lane, self.DOC)
+
+    def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
+        # The test above derives only `Capture`/`Restore` names, so these two
+        # survive a redraw with nothing deriving their rows. Renaming either
+        # would otherwise leave the table citing a symbol that is gone.
+        for name, lane in (
+            ("next-controls.js", "nextControlsProjectState"),
+            ("next-workstream.js", "nextWorkstreamCollapsed"),
+        ):
+            with self.subTest(lane=lane):
+                self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
+                self.assertIn(f"`{lane}", self.DOC)
 
     def test_both_split_out_lanes_carry_a_verdict_and_a_reason(self) -> None:
         rows = self.rows()
@@ -1795,11 +1812,25 @@ class ReaderStateInventoryTest(unittest.TestCase):
     def test_the_document_is_the_only_scroll_container_the_stylesheet_allows(self) -> None:
         # The scroll row's guarantee is the browser's clamp, and it is about the
         # DOCUMENT. One `overflow:auto` pane and a replaced node starts at zero
-        # with no clamp to save it, so the stylesheet's three forms are the
+        # with no clamp to save it, so the stylesheet's two forms are the
         # precondition the row rests on.
+        #
+        # Read over the whole declaration value and case-folded, because a bare
+        # `[a-z-]+` run after the colon let `overflow: auto`, `overflow:AUTO`,
+        # `overflow:hidden auto` and `overflow-y: scroll` through — all four
+        # measured. The lookbehind is what keeps `text-overflow:ellipsis` out;
+        # without it the expected set carried an `overflow:ellipsis` that is
+        # not an overflow declaration at all.
         styles = (self.WEB / "styles.css").read_text(encoding="utf-8")
-        forms = sorted(set(re.findall(r"overflow[a-z-]*:[a-z-]+", styles)))
-        self.assertEqual(["overflow-wrap:anywhere", "overflow:ellipsis", "overflow:hidden"], forms)
+        forms = sorted(
+            {
+                f"{prop.lower()}:{' '.join(value.split()).lower()}"
+                for prop, value in re.findall(
+                    r"(?<![a-z-])(overflow(?:-[a-z]+)?)\s*:\s*([^;}]+)", styles, re.IGNORECASE
+                )
+            }
+        )
+        self.assertEqual(["overflow-wrap:anywhere", "overflow:hidden"], forms)
         for form in forms:
             with self.subTest(form=form):
                 self.assertIn(f"`{form}`", self.DOC)
