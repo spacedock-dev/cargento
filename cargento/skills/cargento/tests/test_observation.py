@@ -1700,6 +1700,45 @@ class ApplicationOverlayTest(unittest.TestCase):
         self.assertEqual(support.SERVER_STARTED - 200, row["ended_at"])
         self.assertIsNone(row["finished_at"], "an end is not a stop")
 
+    def test_an_observed_terminal_reaches_the_row_so_a_raise_can_be_offered(self) -> None:
+        # The seam `ended_at` above is tested across and `focusable` was not.
+        # Deleting the one line in `aggregate.py` that copies it onto the row
+        # left the whole suite green, because every `OverlaySource` stub here
+        # returns False and `sessions.py` already defaults the field to False,
+        # so the stubs agreed with the mutant. What shipped in that state was a
+        # board where no RAISE renders on any row and the coverage line says so
+        # in well-chosen words: a confident absence over a working feature.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                # True for this row alone, so the assertion cannot pass off a
+                # blanket default the way a stub returning True everywhere would.
+                return (harness, sid) == ("claude", PREFIX)
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        # The stub answers True for this one key and False for anything else, so
+        # a True on the row cannot have come from a blanket default: it can only
+        # have crossed the seam. That makes the positive assertion sufficient on
+        # its own, and the fixture seeds a single session anyway.
+        self.assertIs(True, self._row(self._collect_with(Source()))["focusable"])
+
     def test_a_row_with_no_observed_end_publishes_none_rather_than_a_verdict(self) -> None:
         # The session that predates this server run, which has no mark at all.
         # None means not observed; it must never read as "did not end", because

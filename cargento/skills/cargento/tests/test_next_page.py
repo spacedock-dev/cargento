@@ -524,8 +524,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
             ),
             "next-chrome.js": (
-                29_577,
-                "494ec7adcba8f7cb5f55a8a9e89ed79036ecc592676d98fa6653a3cbfe20e26f",
+                30_164,
+                "71be7713a6a3ea3e9a4ead8a22b5f2a38a2bf5840f0fe1f945f1f35fdf54771d",
             ),
             "next-capacity.js": (
                 30_472,
@@ -587,9 +587,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(407_198, len(assembled))
+        self.assertEqual(407_785, len(assembled))
         self.assertEqual(
-            "cc8c957d9e4dfdec0602adc506122484d7069d2043ba66ce5886e76ba6c5b8d6",
+            "e495b37603bad61ab97b8e08416cfcb7060d986e3db0069e4d4bf3d9a3f0e035",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -652,9 +652,15 @@ console.log(JSON.stringify({
             '__els.app = {innerHTML: ""};\n',
         )
 
+        # All three top-level routes, because this assertion pinned the literal
+        # two-link nav and was one of the two places that held Attention off the
+        # header while the router, the title and the `a` shortcut all knew it
+        # (DRC-4421). Kept as a literal rather than loosened: it is the mounted
+        # bundle's own markup, and the order is part of what a reader learns.
         self.assertIn(
             '<nav aria-label="Primary"><a href="#n=projects">Projects</a>'
-            '<a href="#n=sessions" aria-current="page">Sessions</a></nav>',
+            '<a href="#n=sessions" aria-current="page">Sessions</a>'
+            '<a href="#n=attention">Attention</a></nav>',
             out,
         )
         self.assertNotIn('class="next-breadcrumb" aria-label="Breadcrumb"', out)

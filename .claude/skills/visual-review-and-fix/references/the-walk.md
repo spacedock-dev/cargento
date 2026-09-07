@@ -24,6 +24,22 @@ Three top-level views, and the fragment is the address:
 
 `p` and `s` reach the other two. Fragment changes alone do not reload the document.
 
+**Walk the routes before you walk the stages, with the mouse only.** From each top-level view, check
+that every other one is offered and that the one you are standing on is marked. Put the keyboard
+down to do it: a shortcut nothing advertises is not a way a reader finds a screen.
+
+This is the reachability check, and it is distinct from the disclosure check further down. A path
+existing is not a path a reader can find, and the two questions have different answers: Attention
+shipped as a whole view with no entry in the header, reachable only by typing a fragment, pressing a
+key nothing mentions, or clicking a status chip that exists only while a block is reported. A first
+pass here confirmed a path existed and stopped, which was the wrong question. The operator found it
+by opening the board and looking at the header.
+
+Two tests were pinning it in place, both by naming the two views they knew about, so the suite
+reported the gap as correct. Derive a nav assertion from the router's own view set rather than from a
+list you type, and assert the current one is marked on **every** view, which is the assertion a test
+that never navigates to a view cannot make about it.
+
 ## P1. Which of my agents are running?
 
 > every session on this machine, across ten harnesses, on one screen, with what is active now kept
@@ -126,7 +142,11 @@ on an ended session.
 
 - A session that went quiet without reporting. It must render exactly as one waiting at its prompt,
   because those two are indistinguishable and the board may not guess.
-- An ended session. It leaves Active now and is promoted in Safe to close rather than dropped.
+- An ended session. It leaves Active now and is promoted into `CLOSE THE LOOP` rather than
+  dropped. That heading is read off the page, not off a document: the shipped skill body calls
+  the same section "Safe to close", which appears nowhere on screen (DRC-4421). This file said
+  "Safe to close" too, having been written from a milestone record instead of from the board,
+  which is the mistake the skill's own step 3 exists to prevent.
 - A harness with no event adapter, and a run under `--no-events`. An absent end is not evidence of
   anything and the row must say so.
 - A session whose git state was not measured, against one measured clean, against one dirty. Three

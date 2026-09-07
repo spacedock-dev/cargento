@@ -420,9 +420,17 @@ function nextBreadcrumb(){
 }
 
 function nextPrimaryNavigation(){
+  /* Every member of `NEXT_TOP_LEVEL_VIEWS` gets an entry. Attention was absent
+     here while the router, the document title and the `a` shortcut all knew
+     about it, so it was a whole screen a reader could reach only by typing a
+     fragment, pressing a key nothing advertises, or clicking the reported-blocks
+     chip, which exists only while a block is reported. NUI-16 decided which
+     route leads, not which routes are findable. Appended rather than placed
+     first so the two entries a reader has already learned keep their positions. */
   const links = [
     ["projects", "Projects"],
     ["sessions", "Sessions"],
+    ["attention", "Attention"],
   ].map(([view, label]) => {
     const current = nextRoute.view === view ? ' aria-current="page"' : "";
     return `<a href="#n=${view}"${current}>${label}</a>`;
