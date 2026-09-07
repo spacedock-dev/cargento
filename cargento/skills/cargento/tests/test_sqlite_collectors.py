@@ -52,27 +52,315 @@ class SqliteCollectorTest(RuntimeTestCase):
         rows: list[tuple[Any, ...]],
         *,
         with_archived: bool = True,
+        with_model: bool = True,
+        models: dict[str, Any] | None = None,
         messages: list[tuple[Any, ...]] | None = None,
+        parts: list[tuple[Any, ...]] | None = None,
+        session_message_rows: list[tuple[Any, ...]] | None = None,
     ) -> None:
-        archived = ", time_archived INTEGER" if with_archived else ""
+        """A store built to the schema OpenCode 1.18.20 actually creates.
+
+        Measured on 2026-09-07 against `/opt/homebrew/bin/opencode` 1.18.20:
+        `opencode db` ran the migrations and `opencode import` wrote a session,
+        and `session_message` came back empty while `message` and `part` held
+        the rows. This helper used to create `session_message (session_id, type,
+        time_created, data)` and put the only user row in it, which is a schema
+        no OpenCode build writes: the shipped query ran green against it and
+        published nothing at all against a real store. `session_message` is
+        still created here, and still left empty by default, because the real
+        store creates it too — a fixture that omitted it would not be able to
+        tell an empty table from a missing one.
+        """
+        columns = [
+            "id TEXT",
+            "parent_id TEXT",
+            "directory TEXT",
+            "title TEXT",
+            "time_updated INTEGER",
+        ]
+        if with_archived:
+            columns.append("time_archived INTEGER")
+        if with_model:
+            columns.append("model TEXT")
         con = sqlite3.connect(path)
-        con.execute(
-            "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT,"
-            f" title TEXT, time_updated INTEGER{archived})"
-        )
-        placeholders = ", ".join("?" * (6 if with_archived else 5))
+        con.execute(f"CREATE TABLE session ({', '.join(columns)})")
+        prepared = [(*row, (models or {}).get(row[0])) for row in rows] if with_model else rows
+        placeholders = ", ".join("?" * len(columns))
         con.executemany(
             f"INSERT INTO session VALUES ({placeholders})",  # noqa: S608 — literal "?" only
-            rows,
+            prepared,
         )
         con.execute(
-            "CREATE TABLE session_message (session_id TEXT, type TEXT,"
-            " time_created INTEGER, data TEXT)"
+            "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT,"
+            " time_created INTEGER, time_updated INTEGER, data TEXT)"
+        )
+        con.execute(
+            "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT,"
+            " time_created INTEGER, time_updated INTEGER, data TEXT)"
+        )
+        con.execute(
+            "CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT,"
+            " seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT)"
         )
         if messages:
-            con.executemany("INSERT INTO session_message VALUES (?, ?, ?, ?)", messages)
+            con.executemany("INSERT INTO message VALUES (?, ?, ?, ?, ?)", messages)
+        if parts:
+            con.executemany("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)", parts)
+        if session_message_rows:
+            con.executemany(
+                "INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)",
+                session_message_rows,
+            )
         con.commit()
         con.close()
+
+    @staticmethod
+    def _opencode_turn(
+        sid: str,
+        millis: int,
+        prompt: str,
+        *,
+        suffix: str = "",
+        model: str | None = None,
+    ) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
+        """One user turn and its reply, in the measured `message`/`part` shape."""
+        user, assistant = f"m_u{suffix}", f"m_a{suffix}"
+        info: dict[str, Any] = {"role": "assistant", "agent": "build"}
+        if model is not None:
+            info["modelID"] = model
+        messages = [
+            (user, sid, millis, millis, json.dumps({"role": "user", "agent": "build"})),
+            (assistant, sid, millis + 1_000, millis + 1_000, json.dumps(info)),
+        ]
+        parts = [
+            (
+                f"p_u{suffix}",
+                user,
+                sid,
+                millis,
+                millis,
+                json.dumps({"type": "text", "text": prompt}),
+            ),
+            (
+                f"p_a{suffix}",
+                assistant,
+                sid,
+                millis + 1_000,
+                millis + 1_000,
+                json.dumps({"type": "text", "text": "on it"}),
+            ),
+        ]
+        return messages, parts
+
+    def test_a_store_with_message_and_part_rows_publishes_a_prompt_and_a_turn(self) -> None:
+        # The defect DRC-4427 was filed for. The shipped read went to
+        # `session_message`, which OpenCode 1.18.20 creates and never fills, so
+        # a session that had taken a turn published `last_prompt: ""` and
+        # `turn: null` with no store error anywhere. Reproduced end to end on a
+        # store built by `opencode db` plus `opencode import` before this test
+        # was written, and this is that store's shape.
+        now = time.time()
+        millis = int(now * 1000)
+        messages, parts = self._opencode_turn("s1", millis - 40_000, "measure the empty table")
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=messages,
+                parts=parts,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("measure the empty table", rows[0]["last_prompt"])
+        self.assertIsNotNone(rows[0]["turn"])
+        self.assertEqual({}, dict(state.store_errors))
+
+    def test_the_role_comes_from_message_data_and_not_from_a_type_column(self) -> None:
+        # `message` has no `type` column at all — the role is inside `data`.
+        # Mutation-checked: reading `m["type"]` raises IndexError against this
+        # store, and reading a `type` KEY out of `data` publishes nothing.
+        now = time.time()
+        millis = int(now * 1000)
+        messages, parts = self._opencode_turn("s1", millis - 40_000, "the role is inside data")
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=messages,
+                parts=parts,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+                con = sqlite3.connect(Path(tmp) / "opencode.db")
+                try:
+                    names = [c[1] for c in con.execute("PRAGMA table_info(message)")]
+                finally:
+                    con.close()
+
+        self.assertNotIn("type", names)
+        self.assertEqual("the role is inside data", rows[0]["last_prompt"])
+
+    def test_the_newest_user_message_supplies_the_prompt(self) -> None:
+        # Mutation-checked: taking the oldest user message publishes "first".
+        now = time.time()
+        millis = int(now * 1000)
+        old_m, old_p = self._opencode_turn("s1", millis - 90_000, "first", suffix="1")
+        new_m, new_p = self._opencode_turn("s1", millis - 20_000, "second", suffix="2")
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=old_m + new_m,
+                parts=old_p + new_p,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual("second", rows[0]["last_prompt"])
+
+    def test_a_non_text_part_is_not_published_as_the_prompt(self) -> None:
+        # A user message carries file and agent-mention parts beside the typed
+        # text. Admitting those would publish an attached filename as the
+        # prompt. Mutation-checked: dropping the type filter publishes the path.
+        now = time.time()
+        millis = int(now * 1000)
+        messages, parts = self._opencode_turn("s1", millis - 40_000, "read this")
+        parts.insert(
+            0,
+            (
+                "p_file",
+                "m_u",
+                "s1",
+                millis - 40_000,
+                millis - 40_000,
+                json.dumps({"type": "file", "filename": "/etc/passwd", "text": "/etc/passwd"}),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=messages,
+                parts=parts,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual("read this", rows[0]["last_prompt"])
+
+    def test_rows_in_the_table_1_18_20_leaves_empty_are_not_the_prompt(self) -> None:
+        # `session_message` is what the shipped read went to. Nothing measured
+        # fills it, so a store that holds only those rows publishes no prompt
+        # rather than a prompt read out of a table no build writes.
+        now = time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                session_message_rows=[
+                    (
+                        "sm1",
+                        "s1",
+                        "user",
+                        1,
+                        millis - 40_000,
+                        millis - 40_000,
+                        json.dumps({"text": "control prompt via session_message"}),
+                    )
+                ],
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual("", rows[0]["last_prompt"])
+
+    def test_the_session_row_supplies_the_model(self) -> None:
+        # DRC-4436. 1.18.20's `session` table has a `model` column, which its
+        # own `Session.setAgentModel` fills on every prompt with
+        # `{"id", "providerID", "variant"}`. The row published None before.
+        now = time.time()
+        millis = int(now * 1000)
+        messages, parts = self._opencode_turn("s1", millis - 40_000, "which model")
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                models={
+                    "s1": json.dumps(
+                        {
+                            "id": "claude-sonnet-4-5",
+                            "providerID": "anthropic",
+                            "variant": "default",
+                        }
+                    )
+                },
+                messages=messages,
+                parts=parts,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual("claude-sonnet-4-5", rows[0]["model"])
+
+    def test_the_model_falls_back_to_the_newest_assistant_message(self) -> None:
+        # `session.model` is optional in OpenCode's own session schema, so a row
+        # can carry none while its transcript still names what ran: `modelID` on
+        # an assistant message was measured populated on a real 1.18.20 store.
+        # Not measured: a session row that actually carries NULL. A store built
+        # by `opencode db` plus `opencode import` fills the column, so the NULL
+        # arm here rests on the schema rather than on an observation.
+        now = time.time()
+        millis = int(now * 1000)
+        old_m, old_p = self._opencode_turn(
+            "s1", millis - 90_000, "first", suffix="1", model="gpt-5-codex"
+        )
+        new_m, new_p = self._opencode_turn(
+            "s1", millis - 20_000, "second", suffix="2", model="claude-sonnet-4-5"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=old_m + new_m,
+                parts=old_p + new_p,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual("claude-sonnet-4-5", rows[0]["model"])
+
+    def test_a_store_without_the_model_column_still_reads(self) -> None:
+        # The widest select wants `model`; an older store may not have it, and
+        # must not read as empty. Mutation-checked: dropping the middle rung of
+        # the select ladder loses `time_archived` on this store, which then
+        # ghosts an archived session as working.
+        now = time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [
+                    ("live", None, "/w/live", "Live", millis, None),
+                    ("filed", None, "/w/filed", "Filed", millis, millis),
+                ],
+                with_model=False,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(["live"], [row["sid"] for row in rows])
+        self.assertIsNone(rows[0]["model"])
 
     def test_an_archived_session_does_not_ghost_as_working(self) -> None:
         # Archiving bumps time_updated, so an archived session would otherwise
@@ -129,8 +417,8 @@ class SqliteCollectorTest(RuntimeTestCase):
 
         self.assertEqual(1, len(rows), "a child must not become its own row")
         # DRC-4117 grew each element into an object. `model` is present and
-        # None: OpenCode records no model, and that is a different fact from
-        # "this child runs whatever its parent runs".
+        # None: this child's own `session` row records none, and that is a
+        # different fact from "this child runs whatever its parent runs".
         self.assertEqual(
             [
                 {
@@ -144,6 +432,31 @@ class SqliteCollectorTest(RuntimeTestCase):
             rows[0]["subagents"],
         )
         self.assertEqual("working", rows[0]["state"])
+
+    def test_a_subagent_names_the_model_on_its_own_session_row(self) -> None:
+        # A child session keeps its own row, so the model is read from that row
+        # rather than inherited. Mutation-checked: attributing the parent's
+        # model downwards publishes "claude-sonnet-4-5" on the child.
+        now = time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [
+                    ("parent", None, "/w/proj", "Parent", millis, None),
+                    ("kid", "parent", "/w/proj", "researcher", millis, None),
+                ],
+                models={
+                    "parent": json.dumps({"id": "claude-sonnet-4-5", "providerID": "anthropic"}),
+                    "kid": json.dumps({"id": "claude-haiku-4-5", "providerID": "anthropic"}),
+                },
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual("claude-sonnet-4-5", rows[0]["model"])
+        self.assertEqual("claude-haiku-4-5", rows[0]["subagents"][0]["model"])
 
     def test_a_broken_session_query_is_recorded_as_a_store_error(self) -> None:
         # Collectors swallow their failures, so a corrupt store reads as an idle

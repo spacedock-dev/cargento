@@ -39,6 +39,23 @@ GIT = shutil.which("git")
 # into a second copy of the probe and make the hazard test pass by agreement.
 WITHOUT_NO_OPTIONAL_LOCKS = ("git", "-c", "core.fsmonitor=", "status", "--porcelain")
 WITHOUT_FSMONITOR_OFF = ("git", "--no-optional-locks", "status", "--porcelain")
+# The shipped argv minus the one flag, plus an explicit `core.hooksPath` naming
+# the repository's own default. Without that second part the control inherits a
+# global override on hosts that set one, its four hooks land outside the sandbox
+# the test inspects, and the test skips with a message saying git-lfs installed
+# nothing — which would be false, and would leave the flag unguarded there.
+WITHOUT_HOOKS_PATH_OFF = (
+    "git",
+    "-c",
+    "core.fsmonitor=",
+    "-c",
+    "core.hooksPath=.git/hooks",
+    "--no-optional-locks",
+    "status",
+    "--porcelain",
+)
+
+LFS = shutil.which("git-lfs")
 
 
 def _run(*argv: str, cwd: Path) -> None:
@@ -55,6 +72,71 @@ def _fresh(parent: Path, name: str, *, fsmonitor_log: Path | None = None) -> Pat
     root = parent / name
     root.mkdir(parents=True)
     return _repo(root, fsmonitor_log=fsmonitor_log)
+
+
+def _filtered(parent: Path, name: str) -> Path:
+    """A repository whose committed attributes route a tracked path through LFS.
+
+    The precondition is not the attribute on its own — that arm installs nothing,
+    measured. It is a tracked path matching a filter attribute whose content git
+    must hash, so `blob.bin` is committed raw first and then rewritten at the
+    SAME SIZE, which leaves the stat racy and forces the clean filter to run.
+
+    Every git call here carries its own `core.hooksPath`, pointed inside the
+    temporary directory. Building the repository runs the same filter driver
+    through `add` and `commit`, and the driver installs hooks wherever git says
+    they belong: on a host whose global config sets `core.hooksPath`, that is a
+    directory shared with the operator's real repositories. Without this the
+    fixture writes four executables into it and the test then SKIPS, because the
+    control's hooks never land in the sandbox it inspects — so the escape and the
+    unguarded flag would both be hidden behind a passing suite. The suite has no
+    `GIT_CONFIG_GLOBAL` isolation, and it must not have any here: the global
+    config is where the git-lfs driver itself comes from, and removing it would
+    disarm the mechanism this test exists to observe.
+    """
+    root = parent / name
+    root.mkdir(parents=True)
+    sandbox = root / "sandbox-hooks"
+    sandbox.mkdir()
+
+    def git(*argv: str) -> None:
+        _run("git", "-c", f"core.hooksPath={sandbox}", *argv, cwd=root)
+
+    git("init", "-q")
+    git("config", "user.email", "probe@example.invalid")
+    git("config", "user.name", "Probe")
+    (root / "blob.bin").write_bytes(b"A" * 64)
+    git("add", "blob.bin")
+    git("commit", "-q", "-m", "raw blob")
+    (root / ".gitattributes").write_text("*.bin filter=lfs\n")
+    git("add", ".gitattributes")
+    git("commit", "-q", "-m", "attributes")
+    (root / "blob.bin").write_bytes(b"B" * 64)
+    return root
+
+
+def _installed_hooks(root: Path) -> list[str]:
+    """Hook names in the repository, ignoring git's own `.sample` templates."""
+    hooks = root / ".git" / "hooks"
+    if not hooks.is_dir():
+        return []
+    return sorted(p.name for p in hooks.iterdir() if not p.name.endswith(".sample"))
+
+
+def _clear_hooks(root: Path) -> None:
+    """Empty the hook directory, so what is found afterwards has one cause.
+
+    Building the repository runs `git add` and `git commit` through the same
+    filter driver, and the driver installs its hooks there too. Without this the
+    test reads hooks the SETUP wrote and attributes them to the probe, which is
+    how it passes with the flag removed and fails with it present.
+    """
+    hooks = root / ".git" / "hooks"
+    if not hooks.is_dir():
+        return
+    for path in hooks.iterdir():
+        if not path.name.endswith(".sample"):
+            path.unlink()
 
 
 def _repo(root: Path, *, fsmonitor_log: Path | None = None) -> Path:
@@ -86,17 +168,25 @@ def _repo(root: Path, *, fsmonitor_log: Path | None = None) -> Path:
 
 @unittest.skipIf(GIT is None, "git is not on PATH")
 class GitProbeContractTest(unittest.TestCase):
-    """AC1 and AC2: one argv, and a probe that neither writes nor executes."""
+    """AC1 and AC2: one argv, and the three hazards its flags disarm.
+
+    "Neither writes nor executes" is no longer the whole claim. The probe does not
+    write the index and does not run the repository's fsmonitor script, and since
+    2026-09-07 it installs no hook either; a filter driver named by the inspected
+    repository's own `.git/config` can still run. SECURITY.md owns that residual.
+    """
 
     def test_the_probe_is_exactly_the_one_bounded_command(self) -> None:
-        # Bound 1 of DEC-3, as amended: this literal, or there is no probe. Both
-        # flags are independently load-bearing (see the two tests below), so this
-        # asserts the whole argv rather than membership of either flag.
+        # Bound 1 of DEC-3, as amended: this literal, or there is no probe. All
+        # three flags are independently load-bearing (see the three tests below),
+        # so this asserts the whole argv rather than membership of any one flag.
         self.assertEqual(
             (
                 "git",
                 "-c",
                 "core.fsmonitor=",
+                "-c",
+                "core.hooksPath=/dev/null",
                 "--no-optional-locks",
                 "status",
                 "--porcelain",
@@ -144,6 +234,31 @@ class GitProbeContractTest(unittest.TestCase):
             git_status.probe(str(root), timeout_sec=10.0)
             self.assertFalse(log.exists(), "the repository's fsmonitor script ran")
 
+    @unittest.skipIf(LFS is None, "git-lfs is not on PATH")
+    def test_the_probe_does_not_install_a_hook_in_the_repository(self) -> None:
+        # `-c core.hooksPath=/dev/null` is what stops this. Without it, hashing a
+        # tracked path whose committed attributes name a filter driver lets that
+        # driver install its own hooks: measured 2026-09-07 at git 2.55.0 with
+        # git-lfs 3.8.0, four files at mode 0755 — post-checkout, post-commit,
+        # post-merge and pre-push — written inside a repository the probe was
+        # only meant to read. `.git/index` was untouched in both arms, so neither
+        # existing flag sees this and neither existing test could have caught it.
+        with tempfile.TemporaryDirectory() as tmp:
+            control = _filtered(Path(tmp), "control")
+            _clear_hooks(control)
+            subprocess.run(WITHOUT_HOOKS_PATH_OFF, cwd=control, check=False, capture_output=True)
+            if not _installed_hooks(control):
+                # The driver installed nothing even with the flag removed, so an
+                # empty directory below would prove nothing about the flag. A
+                # git-lfs that does not install hooks from the clean filter, or
+                # one whose global config names no filter driver, reaches this.
+                self.skipTest("git-lfs installed no hook without -c core.hooksPath=")
+            root = _filtered(Path(tmp), "probed")
+            _clear_hooks(root)
+            self.assertEqual([], _installed_hooks(root), "the clear did not take")
+            git_status.probe(str(root), timeout_sec=10.0)
+            self.assertEqual([], _installed_hooks(root), "a hook was installed in the repository")
+
 
 @unittest.skipIf(GIT is None, "git is not on PATH")
 class SingleInvocationTest(unittest.TestCase):
@@ -175,7 +290,8 @@ class SingleInvocationTest(unittest.TestCase):
 
 # `_repo` runs `git init` with `check=True`, so without this guard these two
 # ERROR rather than skip where git is absent, which AC2 forbids in as many words.
-# Measured with PATH pointed at a shim: 2 errors, 5 skips.
+# Measured with PATH pointed at a shim: 2 errors, 6 skips. The sixth arrived
+# with the hook test, which skips on a host with no git-lfs.
 @unittest.skipIf(GIT is None, "git is not on PATH")
 class GitProbeReadingTest(unittest.TestCase):
     """What the two published scalars actually mean."""
@@ -212,7 +328,7 @@ class GitProbeCallSiteTest(unittest.TestCase):
     """What `probe()` actually hands `runner` — the argv constant proves nothing about it.
 
     Undecorated on purpose: this needs no git, and the pin must hold on a host
-    where the two behavioural tests above skip. Measured before it existed:
+    where the three behavioural tests above skip. Measured before it existed:
     stripping BOTH flags from the `runner(...)` call left
     `test_the_probe_is_exactly_the_one_bounded_command` green, because that test
     reads the constant and nothing read the call.

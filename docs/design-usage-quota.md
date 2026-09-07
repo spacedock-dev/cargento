@@ -676,8 +676,9 @@ and only Pi populates them, because Pi is the one harness where the answer is no
 harness name. Pi's values come from the assistant message that spent the tokens, or from a newer
 `model_change`, and they carry the vendor's own unmapped id. D-5 in
 [design-session-identity.md](design-session-identity.md) owns that decision and its rejected
-alternatives. Goose and OpenCode read neither field, and whether their stores record one has not
-been measured: neither harness is installed here, and this document's standing rule is that a
+alternatives. OpenCode now reads `model` off its session row, measured on 1.18.20 (Q-11 below
+carries the reading), but not `provider`. Goose reads neither, and whether its store records one has
+not been measured: the harness is not installed here, and this document's standing rule is that a
 payload gets captured before a parser gets written.
 
 So attribution for every passthrough harness, measured against a live store, is a precondition for
@@ -707,9 +708,9 @@ recommendation assembled out of one reading and one silence.
 
 ## Q-11: Every row names the model it runs on, and a row that cannot read one says so
 
-DRC-4117 promotes `model` from one harness's field to a slot on every session card. Six of the ten
+DRC-4117 promotes `model` from one harness's field to a slot on every session card. Seven of the ten
 harnesses fill it, each out of bytes its collector already reads, so the whole reading costs no new
-file, no new query and no new connection. Four fill nothing, and that is the case the design is
+file, no new query and no new connection. Three fill nothing, and that is the case the design is
 built around.
 
 | Harness | Session model | Subagent model |
@@ -720,7 +721,8 @@ built around.
 | Antigravity | `gen_metadata.data`, protobuf field 1 then field 21, read as a 64-byte tail on the connection `_session_info` already opens. | The child's own conversation store, the same read. Each subagent owns a store, so each is measured rather than inherited. |
 | Pi | The newest active-branch entry that carries one: an assistant message, or a `model_change` switched to and not yet spent. D-5 in [design-session-identity.md](design-session-identity.md) owns that reading. | Pi publishes no subagents. |
 | Cursor | `providerOptions.cursor.modelName` inside the newest message blob, reached through the root blob's child list, both reads bounded by `substr` inside SQLite. | The child's own store, the same read. Each Cursor subagent keeps one, so each is measured rather than inherited. |
-| Gemini, Goose, OpenCode, Droid | Not read. Whether these stores record a model has not been measured, and this document's standing rule is that a payload gets captured before a parser gets written. | Gemini, Goose and OpenCode publish a child element with `model` at null. Droid publishes no subagents. |
+| OpenCode | The `id` inside `session.model`, a JSON object 1.18.20 rewrites on every prompt, off the session row the collector already selected. That column is optional in OpenCode's own session schema, so a row can carry none while its transcript still names what ran: the reading then falls back to the newest assistant message's own `modelID`, measured populated in the `message` read that DRC-4427 added. A row that actually carries none has not been observed, so that arm rests on the schema rather than on a measurement. | The child's own `session` row, the same read. Each OpenCode subagent is a session, so each is measured rather than inherited. |
+| Gemini, Goose, Droid | Not read. Whether these stores record a model has not been measured, and this document's standing rule is that a payload gets captured before a parser gets written. | Gemini and Goose publish a child element with `model` at null. Droid publishes no subagents. |
 
 Nothing here is inferred. Not from a plan name, not from a token count, not from a timestamp join,
 not from which quota bucket moved. A guessed model renders in the same type as a measured one, and

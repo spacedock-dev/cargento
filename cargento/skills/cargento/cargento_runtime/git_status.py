@@ -5,19 +5,39 @@ user chose, and `SECURITY.md`'s "Repository git reads (the end-of-session probe)
 section is the contract it implements. The bounds are DEC-3's ruling (Linear
 DRC-4122) as amended, not this module's preferences.
 
-Why the argv is a constant and not built per call: both flags are independently
-load-bearing, and each disarms exactly one hazard the ruling measured. Re-measured
-2026-08-28 at git 2.55.0 across four fresh repositories, one probe each, from an
-identical racy-clean state:
+Why the argv is a constant and not built per call: all three flags are
+independently load-bearing, and each disarms exactly one hazard that was measured.
+The first two were re-measured 2026-08-28 at git 2.55.0 across four fresh
+repositories, one probe each, from an identical racy-clean state; the third was
+measured 2026-09-07 at git 2.55.0 with git-lfs 3.8.0:
 
 - without `--no-optional-locks`, git rewrites `.git/index` to resolve a racy stat,
   which breaks the read-only posture the product states for everything it touches;
 - without `-c core.fsmonitor=`, a `core.fsmonitor` script named by the inspected
-  repository's own config executes under Cargento's identity.
+  repository's own config executes under Cargento's identity;
+- without `-c core.hooksPath=/dev/null`, hashing a tracked path whose COMMITTED
+  attributes name a filter driver lets that driver install its own hooks: four
+  files at mode 0755 — post-checkout, post-commit, post-merge, pre-push — written
+  inside a repository the probe was only meant to read. `.git/index` was untouched
+  in that arm, so neither of the other two flags sees it.
 
-Neither flag disarms the other's hazard, so neither may be dropped and there is no
-fallback to a plain `git status`. `tests/test_git_status.py` asserts both against
-real repositories, because these are properties of git rather than of this file.
+Neither of the first two disarms the other's hazard, the third disarms one they
+both miss, so none may be dropped and there is no fallback to a plain
+`git status`. `tests/test_git_status.py` asserts all three against real
+repositories, because these are properties of git rather than of this file.
+
+What the third flag does NOT close, measured the same day: the filter driver still
+RUNS. A repository whose `.git/config` names a clean filter had that command
+executed by one probe. Only the hook installation is suppressed, because git-lfs
+asks git where hooks belong and is answered with a path it cannot write. Arbitrary
+filter execution needs `.git/config` rather than committed content, which is the
+threat model `SECURITY.md` already accepts for `core.fsmonitor`, and that section
+states the residual rather than this comment restating it.
+
+`/dev/null` as a hooks path is measured on darwin only. It is a path git cannot
+find a hook under on any supported platform, but the suppression itself was
+observed here, and `tests/test_git_status.py` skips where the mechanism cannot be
+armed rather than passing vacuously.
 
 What leaves this module is `GitStatus` or `None`, and `None` means not probed
 rather than clean. Porcelain names paths; those pathnames are counted and dropped
@@ -40,6 +60,8 @@ GIT_STATUS_ARGV: Final[tuple[str, ...]] = (
     "git",
     "-c",
     "core.fsmonitor=",
+    "-c",
+    "core.hooksPath=/dev/null",
     "--no-optional-locks",
     "status",
     "--porcelain",

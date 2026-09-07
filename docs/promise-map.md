@@ -158,9 +158,13 @@ carries them. An absent mark means no end was observed, never that a session is 
 the harnesses with no adapter, a session that predates this server process, and a run under
 `--no-events` alike. The session-end mark also lapses one row window after the row it belongs to.
 A quiet session is published as idle with nothing elapsed behind it: there is no duration threshold,
-so going quiet is a state here and not a reading. The git probe runs one bounded, read-only,
-non-executing command as a session ends and publishes two numbers, whether the tree is dirty and how
-many porcelain entries changed. It never publishes a pathname, and `--no-git` turns it off entirely.
+so going quiet is a state here and not a reading. The git probe runs one bounded command as a
+session ends and publishes two numbers, whether the tree is dirty and how many porcelain entries
+changed. Cargento runs no program of its own there, though a repository can carry a committed
+attribute that makes git invoke a filter driver you already have installed, git-lfs being the common
+one, and that driver may then write inside the repository. It is a residual
+[SECURITY.md](../SECURITY.md#the-residual-a-filter-driver-can-still-run-and-can-still-write) states
+in full. It never publishes a pathname, and `--no-git` turns it off entirely.
 Telling a session that died from one that finished is not shipped yet.
 
 ## What we do not promise yet
