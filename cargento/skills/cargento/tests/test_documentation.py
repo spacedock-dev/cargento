@@ -734,6 +734,30 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
             self.FLAT,
         )
 
+    def test_the_contract_states_how_the_probe_is_spawned(self) -> None:
+        # Two properties that are not visible in the argv the section prints, so
+        # a reader checking the argv alone would conclude neither is enforced.
+        # Both were measured falsifiable before the fix: a relative PATH element
+        # supplied the binary from the session's own directory, and an inherited
+        # GIT_DIR published another repository's reading for a clean one.
+        self.assertIn("The executable is resolved, not looked up by the child.", self.FLAT)
+        self.assertIn(
+            "The child's environment is scrubbed of `GIT_DIR` and `GIT_WORK_TREE`.", self.FLAT
+        )
+        # The rule that both the register and its verifier stated wrongly, in
+        # opposite directions. Stated here so the document carries the correction.
+        self.assertIn("The rule is order rather than position", self.FLAT)
+        # And the violation clause has to name them, or they are documented
+        # behaviour rather than boundaries.
+        self.assertIn("an executable taken from anywhere but the resolved absolute path", self.FLAT)
+        self.assertIn("a reading published about any directory but the one it names", self.FLAT)
+
+    def test_the_scrubbed_names_are_the_ones_the_runtime_drops(self) -> None:
+        # Derived rather than a second literal list: a name added to the code and
+        # not to the section, or the reverse, fails here.
+        for name in git_status.DETACHING_ENV:
+            self.assertIn(f"`{name}`", self.SECURITY)
+
     def test_the_documented_command_names_the_hooks_path_flag_in_words(self) -> None:
         # The sibling above derives its expectation from GIT_STATUS_ARGV, so a
         # flag dropped from BOTH sides passes it. This literal is the half that
