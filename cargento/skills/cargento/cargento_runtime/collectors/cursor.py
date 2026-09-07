@@ -388,8 +388,14 @@ def _blobs_table_missing(con: sqlite3_types.Connection) -> bool:
     return bool(row) and not row[0]
 
 
-def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, str, str, str]:
-    """(session name, workspace, root blob id, parent agent id, subagent type).
+def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, str, str, str, bool]:
+    """(session name, workspace, root blob id, parent agent id, subagent type, parsed).
+
+    ``parsed`` is whether any row decoded to a JSON object at all, and it is
+    the only thing that separates a `meta` table this build does not
+    recognise from one a brand-new chat has not filled in yet. Without it the
+    two produce the same all-empty reading and the caller cannot disclose one
+    without slandering the other.
 
     Every value here is untrusted JSON from disk, and each is taken on its own
     terms: a row that fails to parse, or parses to something other than an
@@ -404,6 +410,7 @@ def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, st
     root_id = ""
     parent_id = ""
     type_name = ""
+    parsed = False
     cwd_by_key: dict[str, str] = {}
     if sibling_cwd:
         cwd_by_key[_SIBLING_CWD_KEY] = sibling_cwd
@@ -426,6 +433,7 @@ def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, st
                 continue
             if not isinstance(d, dict):
                 continue
+            parsed = True
             if not title:
                 # Untyped JSON from disk: a non-string name must not
                 # AttributeError the whole Cursor collector. Take the first
@@ -502,7 +510,7 @@ def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, st
             # satisfies this is the row the edge would be on.
             break
     cwd = next((cwd_by_key[k] for k in _CWD_KEY_RANKING if k in cwd_by_key), "")
-    return title, cwd, root_id, parent_id, type_name
+    return title, cwd, root_id, parent_id, type_name, parsed
 
 
 def _model_key(db: str) -> str:
@@ -514,6 +522,13 @@ def _model_key(db: str) -> str:
     lives in `state.py` and widening it is a change to a module this collector
     does not own; folding them together is a tidy-up, not a behaviour change.
     A NUL is used as the separator because a store path cannot contain one.
+
+    Its second slot was unused (`""`) and now carries this store's unread
+    readings as comma-joined text. A fifth key would have been the tidier
+    layout and is the wrong trade: the memo is all-or-nothing on four keys, and
+    the disclosure has to be memoized with the empty reading it is about, or a
+    schema this build does not recognise discloses once and then goes quiet for
+    the store's whole mtime.
     """
     return db + "\x00model"
 
@@ -547,7 +562,7 @@ def _pending_key(db: str) -> str:
 
 def _cached(
     state: RuntimeState, db: str, mtime: float, *, locked: bool = False
-) -> tuple[str | None, str, str | None, str, str, float | None] | None:
+) -> tuple[str | None, str, str | None, str, str, float | None, str] | None:
     """One store's memoized readings, or None when any of the four is stale.
 
     All or nothing on purpose. The four entries are one memo split across four
@@ -574,6 +589,7 @@ def _cached(
         sub_hit[1] or "",
         sub_hit[2],
         None if pend_hit[1] is None else float(pend_hit[1]),
+        model_hit[2],
     )
 
 
@@ -582,8 +598,14 @@ def _meta(
     state: RuntimeState,
     db: str,
     mtime: float,
-) -> tuple[str | None, str, str | None, str, str, float | None]:
-    """(name, workspace, model, parent agent id, subagent type, gate stamp) for one store.
+) -> tuple[str | None, str, str | None, str, str, float | None, str]:
+    """(name, workspace, model, parent id, subagent type, gate stamp, unread) for one store.
+
+    ``unread`` is comma-joined text naming the readings this store opened and
+    did not yield, for `sessions.base_session`'s `source_gaps`. Three facts used
+    to collapse onto one all-empty tuple here — the open failed, the `meta`
+    query raised, and the query returned rows none of which decoded to an object
+    — and only the caller's row was left to carry any of them, wordlessly.
 
     The first two come from the meta table: hex-encoded UTF-8 JSON (some
     versions store plain JSON; value may be NULL or non-text). mode=ro (not
@@ -611,7 +633,11 @@ def _meta(
     try:
         con = runtime_io.open_sqlite_read_only(db, state)
     except runtime_io.sqlite_module.Error:
-        return None, "", None, "", "", None
+        # The one arm that discloses nothing, and deliberately: the store never
+        # opened, so there is no source for a row to say it half-read. `collect`
+        # still publishes the row, because a store that will not open is exactly
+        # the one whose absence from the board would be the bigger lie.
+        return None, "", None, "", "", None, ""
     failed = False
     try:
         try:
@@ -621,12 +647,23 @@ def _meta(
         except runtime_io.sqlite_module.Error as exc:
             runtime_io.record_store_error(state, db, exc)
             rows, failed = [], True
-        title, cwd, root_id, parent_id, type_name = _meta_fields(rows, _sibling_cwd(config, db))
+        unread: set[str] = set()
+        title, cwd, root_id, parent_id, type_name, parsed = _meta_fields(
+            rows, _sibling_cwd(config, db)
+        )
+        # Rows came back and not one of them was a JSON object: this build does
+        # not recognise the store's `meta` shape. An EMPTY `rows` is the other
+        # answer and stays silent — a chat whose first message has not landed
+        # has nothing to recognise yet, and disclosing there would print on
+        # every new session forever.
+        if rows and not parsed:
+            unread.add(sessions.UNREAD_IDENTITY)
         if root_id:
             try:
                 model = _model(config, con, root_id)
             except runtime_io.sqlite_module.Error:
                 model = None
+                unread.add(sessions.UNREAD_MODEL)
         # Fails on its own like the model read, and for the sharper version of
         # the same reason: a store on a schema with no `blobs` table has no gate
         # to report, and routing that through the store-error boundary would
@@ -648,16 +685,22 @@ def _meta(
             # 29.4 hours on. Cached, that `None` hides the gate for the whole
             # life of the wait and heals only when the human answers.
             gate_settled = _blobs_table_missing(con)
+            if not gate_settled:
+                unread.add(sessions.UNREAD_BLOCK)
     finally:
         con.close()
+    unread_text = ",".join(sorted(unread))
     if failed:
-        # Transient: do not cache values the query never returned.
-        return None, "", None, "", "", None
+        # Transient: do not cache values the query never returned. The row keeps
+        # the disclosure even so — the reader is looking at a card with no
+        # title, no workspace, no model and no gate, and "we could not read it"
+        # is the only true thing left to say about it.
+        return None, "", None, "", "", None, sessions.UNREAD_IDENTITY
     if not gate_settled:
         # The readings that did return are still published; only the memo is
         # withheld, so the next refresh re-reads the store rather than serving
         # a gate reading that was never taken.
-        return title, cwd, model, parent_id, type_name, pending
+        return title, cwd, model, parent_id, type_name, pending, unread_text
     with state.cache_lock:
         cached = _cached(state, db, mtime, locked=True)
         if cached is not None:
@@ -671,7 +714,7 @@ def _meta(
         runtime_state.bounded_put(
             state.cursor_metadata_cache,
             _model_key(db),
-            (mtime, model, ""),
+            (mtime, model, unread_text),
             limit=config.max_cache_entries,
         )
         runtime_state.bounded_put(
@@ -686,7 +729,7 @@ def _meta(
             (mtime, None if pending is None else repr(pending), ""),
             limit=config.max_cache_entries,
         )
-        return title, cwd, model, parent_id, type_name, pending
+        return title, cwd, model, parent_id, type_name, pending, unread_text
 
 
 class _Chat(NamedTuple):
@@ -705,6 +748,7 @@ class _Chat(NamedTuple):
     parent_id: str
     type_name: str
     pending_since: float | None
+    unread: str
 
 
 def collect(
@@ -741,7 +785,9 @@ def collect(
             mtime = max(mtime, os.path.getmtime(db + "-wal"))
         if not (sessions.is_fresh(config, now, mtime, window_hours * 3600) or show_all):
             continue
-        title, cwd, model, parent_id, type_name, pending_since = _meta(config, state, db, mtime)
+        title, cwd, model, parent_id, type_name, pending_since, unread = _meta(
+            config, state, db, mtime
+        )
         chats.append(
             _Chat(
                 sid,
@@ -752,6 +798,7 @@ def collect(
                 parent_id,
                 type_name,
                 pending_since,
+                unread,
             )
         )
 
@@ -884,6 +931,10 @@ def collect(
                 # `typeName` — `cursor-guide` on the live store — rather than the
                 # child's own `name`, which is the literal "New Agent" there.
                 "subagents": subagents,
+                # This store's own unread readings, never a folded child's: a
+                # child that would not read costs the parent a pill, and saying
+                # the parent's source went dark would name the wrong source.
+                "source_gaps": [part for part in chat.unread.split(",") if part],
             }
         )
         out.append(s)

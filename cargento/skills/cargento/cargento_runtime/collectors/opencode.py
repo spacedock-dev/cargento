@@ -91,7 +91,7 @@ def _session_rows(
     return None
 
 
-def _prompt_from_parts(con: Any, config: RuntimeConfig, message_id: Any) -> str:
+def _prompt_from_parts(con: Any, config: RuntimeConfig, message_id: Any, gaps: set[str]) -> str:
     """The text of one user message, out of its `part` rows.
 
     Bounded by ``sql_message_limit`` even though these are parts rather than
@@ -110,6 +110,7 @@ def _prompt_from_parts(con: Any, config: RuntimeConfig, message_id: Any) -> str:
             (message_id, config.sql_message_limit),
         ).fetchall()
     except sqlite3.Error:
+        gaps.add(sessions.UNREAD_HISTORY)
         return ""
     texts = []
     for row in rows:
@@ -190,6 +191,7 @@ def collect(
 
                 turn = None
                 last_prompt = ""
+                gaps: set[str] = set()
                 # Read off the session row, so an idle session outside the
                 # window still names its model; the message fallback below needs
                 # the transcript read and is therefore gated with it.
@@ -237,10 +239,13 @@ def collect(
                                     or from_message
                                 )
                     except sqlite3.Error:
-                        pass
+                        # The turn, the prompt and the model fallback all ride
+                        # this one read, so the row that survives it is thinner
+                        # than a quiet session's and looks identical to one.
+                        gaps.add(sessions.UNREAD_HISTORY)
                     model = model or from_message
                     if newest_user is not None:
-                        last_prompt = _prompt_from_parts(con, config, newest_user)
+                        last_prompt = _prompt_from_parts(con, config, newest_user, gaps)
                     turn = turns.turn_progress(
                         turns.turns_from_events(events), session_state, now, config
                     )
@@ -269,6 +274,7 @@ def collect(
                         "last_activity": last_activity,
                         "turn": turn,
                         "subagents": subagents,
+                        "source_gaps": sorted(gaps),
                     }
                 )
                 out.append(s)

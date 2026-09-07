@@ -622,3 +622,134 @@ class NextSessionsSessionEndTest(NextPageJsHarness):
 
         self.assertIn("Recently observed is not proof", html)
         self.assertIn("ENDED reported their own end", html)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsUnreadSourceTest(NextPageJsHarness):
+    """DRC-4447: a store the collector read and matched nothing in must say so.
+
+    Both arms, because the issue was filed about one of them. A row whose store
+    would not read renders as a session at its prompt when its mtime is stale
+    and as one *generating* when its mtime is fresh, and the second is the worse
+    of the two: it is a positive claim about work nobody observed.
+    """
+
+    HARNESSES = (
+        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+        '{key: "antigravity", label: "Antigravity", reports_needs_input: false},'
+        '{key: "copilot", label: "Copilot", reports_needs_input: true}],'
+    )
+
+    def view(self, sessions: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{sessions}]}};\n"
+            "console.log(JSON.stringify(nextSessionsView()));"
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def detail(self, session: str, project: str, harness: str, sid: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{session}]}};\n"
+            "console.log(JSON.stringify(nextSessionView("
+            f'"{project}", "{harness}", "{sid}")));'
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    STALE = (
+        '{sid: "agy-stale", harness: "antigravity", project: "trio/app", state: "idle",'
+        ' active: true, title: null, state_detail: "awaiting your message",'
+        " last_activity: 6400, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+        ' source_gaps: ["message history", "token accounting"]}'
+    )
+    FRESH = (
+        '{sid: "agy-fresh", harness: "antigravity", project: "trio/app", state: "working",'
+        ' active: true, title: null, state_detail: "generating…",'
+        " last_activity: 9990, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+        ' source_gaps: ["message history", "token accounting"]}'
+    )
+    QUIET = (
+        '{sid: "agy-quiet", harness: "antigravity", project: "trio/app", state: "idle",'
+        ' active: true, title: null, state_detail: "awaiting your message",'
+        " last_activity: 6400, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+        " source_gaps: []}"
+    )
+    COPILOT = (
+        '{sid: "cop-1", harness: "copilot", project: "trio/other", state: "idle",'
+        ' active: true, title: "Refactor the parser", state_detail: "awaiting your message",'
+        " last_activity: 6400, consumption: null, model: null, tasks: [], subagents: [],"
+        ' source_gaps: ["token accounting"]}'
+    )
+
+    def row(self, html: str, sid: str) -> str:
+        match = re.search(
+            rf'<article[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</article>', html
+        )
+        if match is None:
+            raise AssertionError(f"no operation row for {sid!r} in {html}")
+        return match.group(0)
+
+    def test_a_stale_row_whose_store_told_us_nothing_names_the_missing_readings(self) -> None:
+        row = self.row(self.view(self.STALE), "agy-stale")
+
+        self.assertIn("Source not fully read: message history, token accounting", row)
+
+    def test_the_same_store_read_reads_as_working_and_still_says_it(self) -> None:
+        # The arm the issue's blank-row framing left out. "generating…" is a
+        # claim, and it must not stand beside an unqualified silence.
+        row = self.row(self.view(self.FRESH), "agy-fresh")
+
+        self.assertIn("generating…", row)
+        self.assertIn("Source not fully read: message history, token accounting", row)
+
+    def test_a_session_that_has_genuinely_done_nothing_says_nothing_extra(self) -> None:
+        # The whole point of the disclosure is that it is not on every quiet row.
+        # A quiet row's history NOW cell is the em dash it has always been, and
+        # the disclosed row above differs from this one by the sentence alone.
+        row = self.row(self.view(self.QUIET), "agy-quiet")
+
+        self.assertIn("<small>NOW</small><strong>—</strong>", row)
+        self.assertNotIn("Source not fully read", row)
+
+    def test_a_second_harnesss_unread_store_uses_the_same_sentence(self) -> None:
+        # Harness-agnostic by construction: five collectors report through one
+        # published field, so the page has one sentence rather than five.
+        row = self.row(self.view(self.COPILOT), "cop-1")
+
+        self.assertIn("Source not fully read: token accounting", row)
+        self.assertIn("Refactor the parser", row)
+
+    def test_the_disclosure_explains_itself_without_leaving_the_row(self) -> None:
+        row = self.row(self.view(self.STALE), "agy-stale")
+
+        self.assertIn("Cargento opened this session&#39;s store", row)
+        self.assertIn("missing here rather than empty", row)
+
+    def test_the_session_page_repeats_what_the_row_disclosed(self) -> None:
+        # A reader who clicks through must not land on a page that has quietly
+        # dropped the qualifier and gone back to asserting the state alone.
+        html = self.detail(self.STALE, "trio/app", "antigravity", "agy-stale")
+
+        self.assertIn("Antigravity · awaiting your message", html)
+        self.assertIn("source not fully read: message history, token accounting", html)
+
+    def test_the_session_page_of_a_quiet_row_adds_nothing(self) -> None:
+        html = self.detail(self.QUIET, "trio/app", "antigravity", "agy-quiet")
+
+        self.assertIn("Antigravity · awaiting your message", html)
+        self.assertNotIn("not fully read", html)
+
+    def test_a_row_carrying_junk_where_the_gap_names_go_renders_none_of_it(self) -> None:
+        # `source_gaps` is a published field, and the page treats every payload
+        # value as untrusted: a non-array, and a non-string member, are both
+        # nothing rather than a rendered surprise.
+        junk = self.QUIET.replace("source_gaps: []", 'source_gaps: "message history"').replace(
+            'sid: "agy-quiet"', 'sid: "agy-junk"'
+        )
+        member = self.QUIET.replace("source_gaps: []", 'source_gaps: [{}, 7, null, "  "]').replace(
+            'sid: "agy-quiet"', 'sid: "agy-member"'
+        )
+
+        self.assertNotIn("not fully read", self.row(self.view(junk), "agy-junk"))
+        self.assertNotIn("not fully read", self.row(self.view(member), "agy-member"))

@@ -200,12 +200,16 @@ fourth alert rather than needs-input state. On macOS the server can deliver nati
 through `osascript`, even with no dashboard tab open. Gate alerts have a 60-second per-session
 cooldown and a 15-second lane-wide floor; questions have their own 15-second floor. Linux and
 Windows have no native backend in this release; with a dashboard tab open, the page can deliver
-browser notifications after permission is granted. The dashboard shows every published item in
+browser notifications after permission is granted, for a session that starts waiting on the human
+and for one that was working and has gone quiet. The dashboard shows every published item in
 Attention on all platforms.
 
 Native alerts fire on the transition into needs-input, not on every refresh. Questions notify on
-arrival. Idle nudges (`idle_prompt`) can notify without marking the session blocked. Notification
-delivery is best effort; the dashboard's observed state remains the source to inspect.
+arrival. Idle nudges (`idle_prompt`) can notify without marking the session blocked. The browser's
+quiet nudge is close to that but not the same event: it has no hook to read, so it fires when the
+row stops looking busy, which is a turn whose writes have paused for as long as the working
+threshold. Its wording says the session has gone quiet rather than that it is waiting on you.
+Notification delivery is best effort; the dashboard's observed state remains the source to inspect.
 
 1. **Transcript detection** — an open `AskUserQuestion` or `ExitPlanMode` flips the session to Needs input on the next collection, *when the record has reached disk*. Claude Code buffers it and may not write it until the gate is answered, so treat this as an opportunistic early signal rather than a source to rely on (an open dashboard tab is what drives collections, so keep one open). When the record is there, the row shows the question itself, or a plan's first line, rather than the tool's name; when it is not, the row still says a question is open but cannot say which. Both readings are normal for the same session. There is also a window of up to 90 seconds after a turn starts where a live event overlay reports Working and the question does not show at all, even though it was parsed.
 2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication, completion and computer-use status notifications do neither; permission prompts, MCP elicitation dialogs and a worker's permission or network request create Needs-input state. A type not on either list is treated as actionable, so a notification kind added upstream surfaces rather than disappearing. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
@@ -388,6 +392,12 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 - **Spacedock evidence** is bounded and freshness-gated. Stage, entity, and delegation readings are
   omitted when the workflow definition or measured window cannot support them. A missing strip is
   not a claim that no workflow exists.
+- **"Source not fully read"** on a row means Cargento opened that session's store and could not read
+  every part of it, and it names which readings are missing. What the row still shows was read
+  normally; the named readings are absent rather than zero, which matters most for a token rate,
+  where nothing else separates a missing measurement from a measured zero. The five harnesses whose
+  store is a database can report it: Antigravity, Copilot, Cursor, Goose, and OpenCode. A row
+  without the line is not a promise that everything read, only that nothing reported otherwise.
 
 ## Stop
 

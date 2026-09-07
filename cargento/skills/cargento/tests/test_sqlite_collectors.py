@@ -695,14 +695,14 @@ class SqliteCollectorTest(RuntimeTestCase):
 
             with mock.patch.object(runtime_io, "open_sqlite_read_only", counting_open):
                 self.assertEqual(
-                    ("Some title", str(workspace), "vega", "", "", None),
+                    ("Some title", str(workspace), "vega", "", "", None, ""),
                     cursor_collector._meta(config, state, db, mtime),
                 )
                 self.assertEqual([], opens, "a memo hit reopened the store")
 
                 # A changed mtime invalidates the memo, so the store is read.
                 self.assertEqual(
-                    ("Some title", str(workspace), "vega", "", "", None),
+                    ("Some title", str(workspace), "vega", "", "", None, ""),
                     cursor_collector._meta(config, state, db, mtime + 1),
                 )
                 self.assertEqual([db], opens)
@@ -1835,6 +1835,166 @@ class SqliteCollectorTest(RuntimeTestCase):
         )
         self.assertEqual(100, s["rate_per_min"])  # 1000 tokens / 10 min window
 
+    def test_goose_names_the_message_table_and_the_ledger_it_could_not_read(self) -> None:
+        # DRC-4447. Both reads are swallowed per row, and the ledger's is the
+        # sharper loss: `rate_per_min` stays 0, which renders exactly like a
+        # measured zero. Neither reaches `state.store_errors`, and even if it
+        # did, only `--diagnose` reads that.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "sessions.db"
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE sessions (id TEXT, description TEXT,"
+                " working_dir TEXT, updated_at TEXT, session_type TEXT,"
+                " parent_session_id TEXT, archived_at TEXT)"
+            )
+            con.execute(
+                "INSERT INTO sessions VALUES ('g1', 'Fix flaky tests', '/w/p', ?,"
+                " NULL, NULL, NULL)",
+                (stamp,),
+            )
+            con.commit()  # no `messages`, no `usage_ledger`
+            con.close()
+            with store_patch(GOOSE_DB=str(db)):
+                config, state = runtime()
+                rows = goose_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(["message history", "token accounting"], rows[0]["source_gaps"])
+        # The good fields survive, which is the reason this is not a store error.
+        self.assertEqual("Fix flaky tests", rows[0]["title"])
+        self.assertEqual("w/p", rows[0]["project"])
+        self.assertEqual(0, rows[0]["rate_per_min"])
+
+    def test_goose_says_nothing_extra_where_both_tables_read(self) -> None:
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "sessions.db"
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE sessions (id TEXT, description TEXT,"
+                " working_dir TEXT, updated_at TEXT, session_type TEXT,"
+                " parent_session_id TEXT, archived_at TEXT)"
+            )
+            con.execute(
+                "INSERT INTO sessions VALUES ('g1', 'Fix flaky tests', '/w/p', ?,"
+                " NULL, NULL, NULL)",
+                (stamp,),
+            )
+            con.execute(
+                "CREATE TABLE messages (session_id TEXT, role TEXT,"
+                " created_timestamp INTEGER, content_json TEXT)"
+            )
+            con.execute(
+                "CREATE TABLE usage_ledger (session_id TEXT,"
+                " created_timestamp INTEGER, output_tokens INTEGER)"
+            )
+            con.commit()
+            con.close()
+            with store_patch(GOOSE_DB=str(db)):
+                config, state = runtime()
+                rows = goose_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+
+    def test_opencode_names_the_message_history_it_could_not_read(self) -> None:
+        # The `session` table reads and the `message` table does not, so the row
+        # is published with no prompt, no turn and no model fallback — thinner
+        # than a quiet session's row and, before this, indistinguishable from it.
+        now = time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            self._opencode_db(db, [("s1", None, "/w/proj", "Work", millis, None)])
+            con = sqlite3.connect(db)
+            con.execute("DROP TABLE message")
+            con.commit()
+            con.close()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(["message history"], rows[0]["source_gaps"])
+        self.assertEqual("Work", rows[0]["title"], "the good fields must survive")
+        self.assertEqual("w/proj", rows[0]["project"])
+
+    def test_opencode_says_nothing_extra_where_the_message_table_reads(self) -> None:
+        now = time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            messages, parts = self._opencode_turn("s1", millis, "add retries")
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=messages,
+                parts=parts,
+            )
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+        self.assertEqual("add retries", rows[0]["last_prompt"])
+
+    def test_cursor_names_a_meta_table_whose_rows_it_does_not_recognise(self) -> None:
+        # The case DRC-4447 was filed about, and the one that memoizes its own
+        # empty reading: the query succeeds, no row decodes to an object, and
+        # the card publishes title None, project "cursor" and Idle for the whole
+        # life of the store's mtime. The memo therefore has to carry the
+        # disclosure too, or the row discloses once and then goes quiet.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "chats" / "hash1" / "sess-junk" / "store.db"
+            db.parent.mkdir(parents=True)
+            con = sqlite3.connect(str(db))
+            con.execute("CREATE TABLE meta (value BLOB)")
+            con.execute("INSERT INTO meta VALUES (?)", ("not json at all",))
+            con.commit()
+            con.close()
+            first = self._collect_cursor(root)
+            second = self._collect_cursor(root)  # served from the memo
+
+        self.assertEqual(["session metadata"], first[0]["source_gaps"])
+        self.assertEqual(
+            ["session metadata"],
+            second[0]["source_gaps"],
+            "the memo dropped the disclosure and kept the empty reading",
+        )
+        self.assertIsNone(first[0]["title"])
+
+    def test_cursor_says_nothing_extra_for_a_meta_table_with_no_rows_yet(self) -> None:
+        # The reading that must stay silent. A chat whose first message has not
+        # landed has nothing to recognise, so disclosing there would print on
+        # every new Cursor session forever.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(root, "sess-new", [])
+            rows = self._collect_cursor(root)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+
+    def test_cursor_says_nothing_extra_for_a_store_it_reads_whole(self) -> None:
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat([self._cursor_message("gpt-5.6")])
+            self._cursor_store(
+                root, "sess-ok", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            rows = self._collect_cursor(root)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+        self.assertEqual("gpt-5.6", rows[0]["model"])
+
 
 class SqliteDiagnosticTest(unittest.TestCase):
     NOW = 1_700_000_000.0
@@ -1895,8 +2055,11 @@ class SqliteDiagnosticTest(unittest.TestCase):
             config, state = runtime()
             with state.cache_lock:
                 state.store_errors.clear()
+            # The seventh element is the disclosure that reaches the row. It is
+            # the only thing left to say about a card with no title, no
+            # workspace, no model and no gate.
             self.assertEqual(
-                (None, "", None, "", "", None),
+                (None, "", None, "", "", None, "session metadata"),
                 cursor_collector._meta(config, state, str(cursor), 1.0),
             )
             self.assertIn(str(cursor), state.store_errors)

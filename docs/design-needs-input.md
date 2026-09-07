@@ -858,3 +858,49 @@ which an end satisfies immediately.
 - **Reading an absent end as "still running".** The most tempting inference on the page and the one
   the capture forbids: only a SIGKILL is silent, but that is one of four causes of an absence, and
   the coverage note says so rather than counting them as live.
+
+## N-13: the browser has no idle hook, so its nudge fires on the polled edge
+
+A reader with the tab open on Linux or Windows got no notification when a session fell quiet. The
+two lanes are exclusive by design (`notifications.native_notifier` returns `osascript` on darwin
+and `""` everywhere else, and `next-notify.js` fires only when `/api/data` publishes the empty
+string), so on those platforms nothing raised anything for a working-to-idle transition. The macOS
+lane did: `notification_disposition` returns `(needs_input=False, popup=True)` for
+`IDLE_NOTIFICATION_TYPES`, and `handle_payload`'s five gates never ask whether the transition is
+idle.
+
+**The issue asked for a new `/api/data` field and did not need one.** Measured against the
+assembled bundle at the time: the payload already carries `native_notify` and per-session `state`
+and `active`, and `nextNotifyState` already holds each session's previous state. Driving a
+working-to-idle transition with `native_notify:""` and permission granted, the page observed working,
+then idle, and raised nothing, while the same fixture's working-to-needs-input raised one
+`Notification`. The single test stopping it was a `state !== "needs_input"` comparison. So this is a
+web-only change and the field is not part of it.
+
+**The trigger is not the same event, and the page says so rather than pretending.** The native lane
+fires off Claude's own `idle_prompt` hook. The browser has no hook, so the edge it can see is
+`state` moving from `working` to `idle`, which is the row crossing `working_threshold_sec` with no
+new activity. Those coincide often and not always: a turn whose writes pause for ninety seconds
+crosses the threshold without the harness declaring anything.
+
+The near-parity reading is shipped deliberately, and the disclosure is in the sentence:
+
+- The quiet nudge's title is `<harness> has gone quiet`, which is what was observed. It does **not**
+  reuse the gate lane's `waiting_title` (`<harness> is waiting on you`), because that is a claim
+  about intent, and nothing on this path measured intent. The two share the session's tag, so a row
+  that goes quiet and then asks a question replaces its own banner instead of stacking a second.
+- The edge is `working` to `idle` and nothing else. `needs_input` to `idle` also lands on idle and
+  raises nothing, because the reader answered the question and was standing there when it cleared.
+  A row seen idle for the first time raises nothing either, because there is no previous state
+  to have moved from.
+
+### Rejected
+
+- **Exact parity through the notification `kind`.** `handle_payload` computes `kind` and drops it
+  for the idle types, so recovering it means publishing a new field and threading it to the page:
+  the field this issue was refuted for asking for, bought back for a distinction the reader cannot
+  act on differently.
+- **Reusing `waiting_title` for both edges.** One sentence for two facts, and the stronger of the
+  two is the wrong one: a turn that stopped is not a request. The gate lane's wording exists because
+  the native notifier and the browser both render it and they drifted once; that argument is about
+  one fact rendered twice, not about collapsing two.

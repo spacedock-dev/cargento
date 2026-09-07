@@ -38,6 +38,34 @@ function nextSessionCollision(session, counts){
     `${count} sessions share this label</span>`;
 }
 
+/* The readings a row's collector could not take from a store it opened, as the
+   page's own sentence. `source_gaps` is an untrusted published array, so a
+   non-array and a non-string member are both nothing.
+
+   NOT a `<details>`, and that is the decision worth recording: a disclosure the
+   reader has to open is one they can leave shut, and this qualifies a claim
+   ("generating…", "awaiting your message") that is already on screen beside it.
+   It also adds no row to docs/design-reader-state.md, because there is nothing
+   for a redraw to throw away. */
+function nextSessionGapNames(session){
+  const gaps = session && session.source_gaps;
+  if(!Array.isArray(gaps)) return [];
+  return gaps
+    .filter(name => typeof name === "string" && name.trim())
+    .map(name => name.trim());
+}
+
+const NEXT_UNREAD_SOURCE_NOTE = "Cargento opened this session's store and could not read " +
+  "every part of it. What it names is missing here rather than empty; the rest of the row " +
+  "was read normally.";
+
+function nextSessionUnread(session){
+  const names = nextSessionGapNames(session);
+  if(!names.length) return "";
+  return `<span class="next-operation-unread" title="${esc(NEXT_UNREAD_SOURCE_NOTE)}">` +
+    `Source not fully read: ${esc(names.join(", "))}</span>`;
+}
+
 function nextOperationsAsks(rows){
   if(!nextData || nextData.ask !== true) return [];
   const identities = new Set(rows.map(nextSessionKey));
@@ -199,7 +227,12 @@ function nextOperationsIdentity(session, labels, collisions, route, history = fa
     `aria-label="Open session ${esc(title)}"><strong>${dot}${esc(title)}</strong></a>` +
     nextSessionCopyControl(session) +
     (history ? "" : nextOperationsAssignment(session)) +
-    nextSessionCollision(session, collisions) + "</span>";
+    nextSessionCollision(session, collisions) +
+    /* In the identity cell rather than in one column's slot, and on the history
+       row as well as the live one: the fact is about the whole row's source, and
+       the two lanes are the row's two arms — a store that would not read renders
+       here as quiet and there as working. */
+    nextSessionUnread(session) + "</span>";
 }
 
 function nextOperationsEndedNow(endedAt){

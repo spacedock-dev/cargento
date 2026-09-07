@@ -60,6 +60,77 @@ console.log(JSON.stringify(out));
         self.assertEqual(2, out["refired"])
         self.assertEqual(0, out["primed"])
 
+    def test_a_browser_nudge_lands_when_a_working_session_falls_quiet(self) -> None:
+        # The transition the native lane already popups for on macOS, through
+        # Claude's own `idle_prompt`. A reader on Linux or Windows has no native
+        # backend, so before this the working→idle edge raised nothing at all and
+        # they had to keep looking at the tab.
+        out = self._run_page_js(
+            """
+const working = {
+  harness:"claude", sid:"12345678", project:"proj", state:"working",
+  state_detail:"generating…", active:true
+};
+const quiet = {...working, state:"idle", state_detail:"awaiting your message"};
+const blocked = {...working, state:"needs_input", state_detail:"open question"};
+const payload = (sessions, native) => ({
+  native_notify:native, harnesses:[{key:"claude", label:"Claude Code"}], sessions,
+  asks:[], ask:true
+});
+const reset = permission => {
+  __notifications = []; __notifyPermission = permission;
+  nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+};
+const out = {};
+
+reset("granted");
+nextSyncNotifications(payload([working], ""));
+out.nothingForWorking = __notifications.length;
+nextSyncNotifications(payload([quiet], ""));
+out.fired = __notifications.length;
+out.title = __notifications[0] && __notifications[0].title;
+out.body = __notifications[0] && __notifications[0].body;
+out.tag = __notifications[0] && __notifications[0].tag;
+nextSyncNotifications(payload([quiet], ""));
+out.noRepeat = __notifications.length;
+
+reset("granted");
+nextSyncNotifications(payload([working], "osascript"));
+nextSyncNotifications(payload([quiet], "osascript"));
+out.nativeOwnsIt = __notifications.length;
+
+// A first sighting of an idle session is not a transition anyone watched.
+reset("granted");
+nextSyncNotifications(payload([quiet], ""));
+nextSyncNotifications(payload([quiet], ""));
+out.firstSighting = __notifications.length;
+
+// An answered question is not a nudge: the reader has just been there.
+reset("granted");
+nextSyncNotifications(payload([blocked], ""));
+const afterGate = __notifications.length;
+nextSyncNotifications(payload([quiet], ""));
+out.gateToQuiet = __notifications.length - afterGate;
+
+reset("granted");
+nextSyncNotifications(payload([working], ""));
+nextSyncNotifications(payload([{...quiet, active:false}], ""));
+out.inactive = __notifications.length;
+console.log(JSON.stringify(out));
+"""
+        )
+
+        self.assertEqual(0, out["nothingForWorking"])
+        self.assertEqual(1, out["fired"])
+        self.assertEqual("Claude Code has gone quiet", out["title"])
+        self.assertEqual("[proj] awaiting your message", out["body"])
+        self.assertEqual("claude:12345678", out["tag"])
+        self.assertEqual(1, out["noRepeat"])
+        self.assertEqual(0, out["nativeOwnsIt"])
+        self.assertEqual(0, out["firstSighting"])
+        self.assertEqual(0, out["gateToQuiet"])
+        self.assertEqual(0, out["inactive"])
+
     def test_browser_notifications_cover_arriving_asks_once(self) -> None:
         out = self._run_page_js(
             """

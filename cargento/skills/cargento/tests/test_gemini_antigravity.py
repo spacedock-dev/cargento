@@ -349,6 +349,42 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         self.assertEqual("recce/bridge", sessions[0]["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("show my assigned issues", sessions[0]["title"])
         self.assertEqual("working", sessions[0]["state"])
+        # DRC-4447. The fixture store is deliberately not a database, which is
+        # the same reading a real store on an unrecognised schema gives, and the
+        # empty activity snapshot behind it is what makes this row read as
+        # working with a rate of zero. The title and the workspace above come
+        # from the CLI log rather than the store and are unaffected.
+        self.assertEqual(["message history", "token accounting"], sessions[0]["source_gaps"])
+        self.assertEqual(0, sessions[0]["rate_per_min"])
+
+    def test_an_antigravity_store_that_reads_leaves_the_row_saying_nothing_extra(self) -> None:
+        # The other half of the pair, and the reason the disclosure is not
+        # furniture: a store whose `steps` table reads discloses nothing, even
+        # when it holds no steps.
+        now = time.time()
+        session_id = "aaaa1111-a01e-46f8-9286-60493c4c0e7e"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            conversations = root / "conversations"
+            logs = root / "log"
+            conversations.mkdir(parents=True)
+            logs.mkdir()
+            db = conversations / f"{session_id}.db"
+            write_antigravity_metadata(db, protobuf_bytes_field(6, session_id.encode()))
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE steps (idx INTEGER, step_type TEXT, metadata BLOB)")
+            con.commit()
+            con.close()
+            (logs / "cli-1.log").write_text(
+                "workspaceDirs=[/work/acme/proj] "
+                f"appDataDir={root} cascadeManager=true\n"
+                f"Created conversation {session_id}\n"
+            )
+            with store_patch(ANTIGRAVITY_CLI_DIR=str(root)):
+                config, state = runtime()
+                sessions = agy_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in sessions])
 
     def test_antigravity_cache_primary_workspace_beats_added_directories(self) -> None:
         now = time.time()

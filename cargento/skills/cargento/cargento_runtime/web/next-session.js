@@ -160,6 +160,12 @@ function nextSessionMeta(session){
     const started = nextDurationSince(session.started_at);
     if(started != null) parts.push(`session started ${started} ago`);
   }
+  /* Last, and unconditional. Every clause above is a reading; this one says
+     which readings are absent, so it qualifies the whole line rather than any
+     one of them. The row already carries it, but a reader who clicked through
+     from a disclosed row must not arrive at a page that asserts the state alone. */
+  const gaps = nextSessionGapNames(session);
+  if(gaps.length) parts.push(`source not fully read: ${gaps.join(", ")}`);
   return parts.join(" · ");
 }
 
