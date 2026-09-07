@@ -88,9 +88,9 @@ mass rename; they do not indicate a second bundle.
 | `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, validation and data-URL embedding of packaged fonts, and byte-preserving assembly of the one canonical page. |
 | `web/index.html` | The two-slot shell for canonical styles and script. |
 | `web/styles.css` | The light-root palette, system dark override, responsive layout, live-dot pulse, and reduced-motion override. |
-| `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, and fragment route grammar. It is first in `APP_PARTS`. |
+| `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, the fragment route grammar, the three row controls (copy the session id, copy the re-entry command, raise the terminal), and the expiring map that lets a control's state outlive the render that replaces it. It is first in `APP_PARTS`. |
 | `web/next-attention.js` | Attention evidence, stable ordering, coverage gaps, risk groups, and answerable questions. |
-| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh and history-reset notices, delegated controls, document title, and keyboard shortcuts. |
+| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh and history-reset notices, delegated controls and the sweep that writes each answer onto the controls now in the document rather than only the node the click found, document title, and keyboard shortcuts. |
 | `web/next-capacity.js` | The quota-fetch disclosure and its stored answer, and the capacity strip: each window's budget against its own clock, the pace that implies, what the remaining budget buys, and a project's observed session spread. |
 | `web/next-sessions.js` | Active and recent session-operation tables with exact detail routes. |
 | `web/next-projects.js` | Project overview, measured task progress, current state, and explicit withholding. |

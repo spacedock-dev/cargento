@@ -4,7 +4,7 @@ import json
 import re
 import shutil
 import unittest
-from typing import Any
+from typing import Any, ClassVar
 
 from .next_harness import NEXT_STYLES, NextPageJsHarness
 
@@ -392,7 +392,17 @@ console.log(JSON.stringify({{
             "async () => ({ok: false, status: 429, json: async () => ({})})"
         )
         self.assertEqual("throttled", throttled["state"])
-        self.assertIn("already in flight", throttled["status"])
+        # The wording must be true of both arms the server refuses on, and the
+        # in-flight one is the arm it is nearly never. `claim_focus` refuses when
+        # `_focus_inflight` is set OR when the last raise was inside
+        # `focus_floor_sec`, and `release_focus` clears only the first, so a raise
+        # that completes still holds the floor for a second afterwards. The page's
+        # own `nextRaiseInFlight` suppresses a same-tab repeat before it reaches
+        # the wire, so the in-flight arm needs two tabs clicking within about the
+        # length of one raise; the floor is what a double-click hits (DRC-4390).
+        self.assertNotIn("in flight", throttled["status"])
+        self.assertIn("too recent", throttled["status"])
+        self.assertIn("Try again", throttled["status"])
 
         for impl in (
             "async () => ({ok: false, status: 503, json: async () => ({})})",
@@ -419,11 +429,13 @@ __fetchImpl = () => new Promise(() => {});
 const target = __raiseTarget();
 __fire("click", {target, preventDefault(){}, stopPropagation(){}});
 await __settle();
-__fire("click", {target: __raiseTarget(), preventDefault(){}, stopPropagation(){}});
+const second = __raiseTarget();
+__fire("click", {target: second, preventDefault(){}, stopPropagation(){}});
 await __settle();
 console.log(JSON.stringify({
   calls: __raiseCalls().length, status: __raiseStatus.textContent,
-  state: target.dataset.nextRaiseState || null
+  state: target.dataset.nextRaiseState || null,
+  secondState: second.dataset.nextRaiseState || null
 }));
 """,
             self.RAISE_PRELUDE,
@@ -432,7 +444,548 @@ console.log(JSON.stringify({
 
         self.assertEqual(1, out["calls"])
         self.assertEqual("sending", out["state"])
-        self.assertEqual("Raise requested", out["status"])
+        # The second click is refused and says so. Silence there was indistinguishable
+        # from a dead button, and the control the reader clicked is on the page and
+        # marked unavailable — unlike the no-capability arm below it, where nothing
+        # rendered and there is nothing to explain (DRC-4390).
+        self.assertEqual("throttled", out["secondState"])
+        self.assertIn("too recent", out["status"])
+
+    # Two waiting rows, both reporting a terminal Cargento can reach. Two is the
+    # smallest board on which the page-level fact is observable at all: with one
+    # row, painting the row that was clicked and painting the page are the same
+    # picture.
+    RAISABLE_ROWS: ClassVar[dict[str, Any]] = {
+        "generated": 10_000,
+        "harnesses": [{"key": "claude", "label": "Claude Code"}],
+        "sessions": [
+            {
+                "harness": "claude",
+                "sid": "sid-published",
+                "project": "alpha/repo",
+                "state": "needs_input",
+                "blocked_since": 9_400,
+                "title": "Waiting on you",
+                "focusable": True,
+            },
+            {
+                "harness": "claude",
+                "sid": "sid-elsewhere",
+                "project": "beta/repo",
+                "state": "needs_input",
+                "blocked_since": 9_300,
+                "title": "Also waiting",
+                "focusable": True,
+            },
+        ],
+        "asks": [],
+    }
+
+    # The raise lane's stubs plus a live `#app` that answers the sweep. The two
+    # recording controls stand in for the buttons already in the document when the
+    # click lands, which is the arm a re-render cannot show. They carry the two
+    # rows' own datasets because the sweep reads them, exactly as the render does.
+    LIVE_RAISE_PRELUDE = """
+const __liveRaises = [
+  {dataset: {nextRaiseSession: "sid-published", nextRaiseHarness: "claude"}, attrs: {}},
+  {dataset: {nextRaiseSession: "sid-elsewhere", nextRaiseHarness: "claude"}, attrs: {}}
+].map(control => Object.assign(control, {
+  setAttribute(name, value){ this.attrs[name] = String(value); },
+  removeAttribute(name){ delete this.attrs[name]; }
+}));
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    return selector === "[data-next-raise-session]" ? __liveRaises : [];
+  },
+  querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+const __swept = () => __liveRaises.map(control => control.attrs["aria-disabled"] || null);
+const __sweptState = () =>
+  __liveRaises.map(control => control.attrs["data-next-raise-state"] || null);
+// One render, applied to the live controls. `renderNext` replaces `#app`
+// wholesale, so whatever the render paints is what the document now carries —
+// and the node the click handler is still holding is no longer among them.
+const __renderLive = () => {
+  const html = nextAttentionView(nextAttentionModel(nextData));
+  for(const control of __liveRaises){
+    const button = html.split("<button").find(part => part.includes(
+      `data-next-raise-session="${control.dataset.nextRaiseSession}"`)) || "";
+    const state = /data-next-raise-state="([^"]*)"/.exec(button);
+    if(state) control.attrs["data-next-raise-state"] = state[1];
+    else delete control.attrs["data-next-raise-state"];
+    if(button.includes('aria-disabled="true"')) control.attrs["aria-disabled"] = "true";
+    else delete control.attrs["aria-disabled"];
+  }
+  return html;
+};
+"""
+
+    def test_a_raise_in_flight_reads_unavailable_on_every_row_not_just_the_clicked_one(
+        self,
+    ) -> None:
+        # The condition is the daemon's, not the row's: one `_focus_inflight` and one
+        # `_focus_last_at` for the whole process, and one module-level flag for the
+        # whole page. Painting the clicked row alone attributes a page-wide refusal to
+        # whichever row was clicked while every other RAISE is equally unavailable and
+        # says nothing (DRC-4390).
+        out = self._run_page_js(
+            f"""
+nextData = JSON.parse({json.dumps(json.dumps(self.RAISABLE_ROWS))});
+let __release = null;
+__fetchImpl = () => new Promise(resolve => {{ __release = resolve; }});
+__fire("click", {{target: __raiseTarget(), preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+const busy = nextAttentionView(nextAttentionModel(nextData));
+const sweptBusy = __swept();
+__release({{ok: true, status: 200, json: async () => ({{focused: true}})}});
+await __settle();
+await __settle();
+await __settle();
+const free = nextAttentionView(nextAttentionModel(nextData));
+console.log(JSON.stringify({{
+  rows: (busy.match(/data-next-raise-session/g) || []).length,
+  busyDisabled: (busy.match(/aria-disabled="true"/g) || []).length,
+  freeDisabled: (free.match(/aria-disabled="true"/g) || []).length,
+  sweptBusy, sweptFree: __swept(), status: __raiseStatus.textContent
+}}));
+""",
+            self.RAISE_PRELUDE + self.LIVE_RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        # Both rows draw a RAISE, and while one is in flight both read unavailable —
+        # in the document the click found, and in every render that follows.
+        self.assertEqual(2, out["rows"])
+        self.assertEqual(2, out["busyDisabled"])
+        self.assertEqual(["true", "true"], out["sweptBusy"])
+        # And it lifts. A flag never cleared would leave the board permanently
+        # unavailable after one raise, which is worse than the defect it fixes.
+        self.assertEqual(0, out["freeDisabled"])
+        self.assertEqual([None, None], out["sweptFree"])
+        self.assertIn("Raise sent", out["status"])
+
+    def test_a_render_landing_mid_raise_leaves_the_live_row_on_the_terminal_state(
+        self,
+    ) -> None:
+        # The node the click is holding is not reliably the node the reader is
+        # looking at. `renderNext` replaces `#app` wholesale, so a render landing
+        # while the request is on the wire orphans it, and writing the answer to that
+        # node alone left the live row painting `sending` — cursor:progress and the
+        # warn border — until the next render, up to NEXT_FALLBACK_POLL_MS later,
+        # while the live region beside it already said SENT. A cue that contradicts
+        # the announcement is worse than the missing cue this lane started from,
+        # and mid-action is the case DRC-4392 exists for.
+        out = self._run_page_js(
+            f"""
+nextData = JSON.parse({json.dumps(json.dumps(self.RAISABLE_ROWS))});
+let __release = null;
+__fetchImpl = () => new Promise(resolve => {{ __release = resolve; }});
+const detached = __raiseTarget();
+__fire("click", {{target: detached, preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+__renderLive();
+const mid = __sweptState();
+__release({{ok: true, status: 200, json: async () => ({{focused: true}})}});
+await __settle();
+await __settle();
+await __settle();
+console.log(JSON.stringify({{
+  mid, live: __sweptState(), busy: __swept(),
+  detached: detached.dataset.nextRaiseState || null,
+  status: __raiseStatus.textContent,
+  nextRender: (__renderLive().match(/data-next-raise-state="sent"/g) || []).length
+}}));
+""",
+            self.RAISE_PRELUDE + self.LIVE_RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        # The render did repaint the raising row from the map, and only that row.
+        self.assertEqual(["sending", None], out["mid"])
+        # And the answer reaches the row that is on the page, not only the orphan
+        # the handler is still holding: both say the same thing at the same time.
+        self.assertEqual(["sent", None], out["live"])
+        self.assertEqual("sent", out["detached"])
+        self.assertIn("Raise sent", out["status"])
+        self.assertEqual([None, None], out["busy"])
+        # The next render agrees with what the row already says rather than being
+        # the first thing to say it.
+        self.assertEqual(1, out["nextRender"])
+
+    def test_a_render_landing_mid_copy_leaves_the_live_control_confirmed(self) -> None:
+        # The identical orphaning on a far narrower window: the clipboard write is
+        # awaited, and a render landing inside that await takes the control the click
+        # found. Same mechanism, same answer — and the confirmation still belongs to
+        # one control, so the command sibling beside it says nothing.
+        out = self._run_page_js(
+            """
+const detached = {
+  dataset: {nextCopySession: "sid-published", nextCopyHarness: "claude"},
+  closest(selector){ return selector.includes("data-next-copy") ? this : null; }
+};
+__fire("click", {target: detached, preventDefault(){}, stopPropagation(){}});
+await __settle();
+const mid = __sweptCopy();
+__releaseCopy();
+await __settle();
+await __settle();
+console.log(JSON.stringify({
+  mid, live: __sweptCopy(), detached: detached.dataset.nextCopyState || null,
+  status: __copyStatus.textContent
+}));
+""",
+            """
+let __releaseCopy = null;
+const navigator = {clipboard: {
+  writeText(){ return new Promise(resolve => { __releaseCopy = resolve; }); }
+}};
+let __copyStatusText = "";
+const __copyStatus = {
+  setAttribute(){},
+  set textContent(value){ __copyStatusText = String(value); },
+  get textContent(){ return __copyStatusText; }
+};
+document.createElement = () => __copyStatus;
+const __liveCopies = [
+  {dataset: {nextCopySession: "sid-published", nextCopyHarness: "claude"}, attrs: {}},
+  {dataset: {
+    nextCopyCommand: "claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5",
+    nextCopySession: "sid-published", nextCopyHarness: "claude"
+  }, attrs: {}}
+].map(control => Object.assign(control, {
+  setAttribute(name, value){ this.attrs[name] = String(value); },
+  removeAttribute(name){ delete this.attrs[name]; }
+}));
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    return selector === "[data-next-copy-session]" ? __liveCopies : [];
+  },
+  querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+const __sweptCopy = () =>
+  __liveCopies.map(control => control.attrs["data-next-copy-state"] || null);
+""",
+        )
+        assert isinstance(out, dict)
+
+        # Nothing is claimed while the write is still outstanding.
+        self.assertEqual([None, None], out["mid"])
+        self.assertEqual(["copied", None], out["live"])
+        self.assertEqual("copied", out["detached"])
+        self.assertIn("Copied session ID", out["status"])
+
+    def test_the_second_click_is_refused_whichever_row_it_lands_on(self) -> None:
+        # AC1 is a second row, not a second click on the first. The refusal is the
+        # page's one flag over the daemon's one floor, so row B is refused while row
+        # A is on the wire, and each row says its own answer rather than sharing one.
+        # A real DOM also hands the same node back for a double-click, which two
+        # fabricated targets cannot show: the row's own `sending` is overwritten by
+        # its own refusal, and the request is still sent exactly once.
+        out = self._run_page_js(
+            f"""
+nextData = JSON.parse({json.dumps(json.dumps(self.RAISABLE_ROWS))});
+__fetchImpl = () => new Promise(() => {{}});
+const rowA = __raiseTarget();
+const rowB = Object.assign(__raiseTarget(), {{
+  dataset: {{nextRaiseSession: "sid-elsewhere", nextRaiseHarness: "claude"}}
+}});
+__fire("click", {{target: rowA, preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+const sending = {{state: rowA.dataset.nextRaiseState, status: __raiseStatus.textContent}};
+__fire("click", {{target: rowB, preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+const other = {{
+  calls: __raiseCalls().length, a: rowA.dataset.nextRaiseState,
+  b: rowB.dataset.nextRaiseState, status: __raiseStatus.textContent,
+  live: __sweptState()
+}};
+__fire("click", {{target: rowA, preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+console.log(JSON.stringify({{
+  sending, other, sameRow: rowA.dataset.nextRaiseState,
+  sameRowCalls: __raiseCalls().length, sameRowLive: __sweptState()
+}}));
+""",
+            self.RAISE_PRELUDE + self.LIVE_RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        # The accepted click is acknowledged. `nextRaiseState`'s guard is
+        # `if(status && message)`, so an empty announcement here is silence for a
+        # reader who has only the live region.
+        self.assertEqual("sending", out["sending"]["state"])
+        self.assertEqual("Raise requested", out["sending"]["status"])
+        # Row B is refused, and says so on row B.
+        self.assertEqual(1, out["other"]["calls"])
+        self.assertEqual("throttled", out["other"]["b"])
+        self.assertEqual("sending", out["other"]["a"])
+        self.assertIn("too recent", out["other"]["status"])
+        self.assertEqual(["sending", "throttled"], out["other"]["live"])
+        # And the same row clicked twice overwrites its own cue rather than keeping
+        # a `sending` the page has just refused to act on.
+        self.assertEqual("throttled", out["sameRow"])
+        self.assertEqual(1, out["sameRowCalls"])
+        self.assertEqual(["throttled", "throttled"], out["sameRowLive"])
+
+    def test_the_raised_row_keeps_saying_so_across_a_render_and_then_stops(self) -> None:
+        # `renderNext` replaces `#app` wholesale on every revision and on a bare 20 s
+        # interval, so the cue used to die of a clock rather than of anything the
+        # reader did — and asymmetrically, since the live region is a sibling of
+        # `#app` and survived. The cue is re-emitted from a stamped module map, and
+        # the stamp is why: a row that read SENT for the rest of the run would still
+        # say so after the session it names had ended (DRC-4392).
+        out = self._run_page_js(
+            f"""
+nextData = JSON.parse({json.dumps(json.dumps(self.RAISABLE_ROWS))});
+__fetchImpl = async () => ({{ok: true, status: 200, json: async () => ({{focused: true}})}});
+__fire("click", {{target: __raiseTarget(), preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+await __settle();
+await __settle();
+const immediate = nextAttentionView(nextAttentionModel(nextData));
+__setNow(1029);
+const fresh = nextAttentionView(nextAttentionModel(nextData));
+__setNow(1030);
+const boundary = nextAttentionView(nextAttentionModel(nextData));
+__setNow(1031);
+const stale = nextAttentionView(nextAttentionModel(nextData));
+console.log(JSON.stringify({{
+  ttl: NEXT_CONTROL_STATE_TTL_MS, poll: NEXT_FALLBACK_POLL_MS,
+  immediate: (immediate.match(/data-next-raise-state="sent"/g) || []).length,
+  fresh: (fresh.match(/data-next-raise-state="sent"/g) || []).length,
+  boundary: (boundary.match(/data-next-raise-state=/g) || []).length,
+  stale: (stale.match(/data-next-raise-state=/g) || []).length,
+  held: nextControlStates.size
+}}));
+""",
+            self.RAISE_PRELUDE + self.LIVE_RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        # Longer than the idle render, read off the constant the render loop actually
+        # uses rather than off a literal, so the cue's life is not decided by when the
+        # next render happens to land.
+        self.assertGreater(out["ttl"], out["poll"])
+        self.assertEqual(1, out["immediate"])
+        self.assertEqual(1, out["fresh"])
+        # The TTL is a deadline, not a grace period: at exactly it, the cue is gone.
+        # Which side of the boundary the operator sits on is a millisecond either
+        # way, and pinning it is what stops the comparison drifting silently.
+        self.assertEqual(0, out["boundary"])
+        self.assertEqual(0, out["stale"])
+        # Read, found stale, dropped. A map that only ever grew would be the
+        # unbounded one this codebase does not ship.
+        self.assertEqual(0, out["held"])
+
+    # One session, and a click whose dataset is read off the control the page
+    # actually renders. Writing that dataset by hand made the click key and the
+    # render key agree by construction of the test, and their agreement is the
+    # thing under test: drop an attribute from the control and the two stop
+    # matching, so every control in the lane renders with no cue at all.
+    COPY_CLICK_HELPERS = """
+const session = {
+  harness: "claude", sid: "sid-published",
+  resume_id: "27d10654-1cb5-481e-8194-6ce868b91bb5"
+};
+const datasetOf = html => {
+  const dataset = {};
+  for(const [, name, value] of html.matchAll(/ data-next-([a-z-]+)="([^"]*)"/g)){
+    dataset["next" + name.replace(/(^|-)([a-z])/g, (_, lead, c) => c.toUpperCase())] = value;
+  }
+  return dataset;
+};
+const click = dataset => __fire("click", {
+  target: {dataset, closest(selector){
+    return selector.includes("data-next-copy") ? {dataset} : null;
+  }},
+  preventDefault(){}, stopPropagation(){}
+});
+"""
+
+    # An `#app` that answers the handler's lookups and sweeps nothing, so a test
+    # reads the cue off the controls the render emits rather than off the DOM.
+    COPY_STATUS_STUBS = """
+let __copyStatusText = "";
+const __copyStatus = {
+  setAttribute(){},
+  set textContent(value){ __copyStatusText = String(value); },
+  get textContent(){ return __copyStatusText; }
+};
+document.createElement = () => __copyStatus;
+__els.app = {
+  innerHTML: "", querySelectorAll(){ return []; }, querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+"""
+
+    def test_both_copy_controls_keep_their_confirmation_and_do_not_share_it(self) -> None:
+        # The identical defect sat on the two siblings the issue never named. Fixing
+        # the raise alone would leave three controls in one lane behaving two ways.
+        # They share the lane and the live region, not the cue: copying the session id
+        # is not proof the re-entry command was copied.
+        out = self._run_page_js(
+            self.COPY_CLICK_HELPERS
+            + """
+const rendered = {id: nextSessionCopyControl(session), cmd: nextSessionResumeControl(session)};
+click(datasetOf(rendered.id));
+await __settle();
+const idOnly = {id: nextSessionCopyControl(session), cmd: nextSessionResumeControl(session)};
+click(datasetOf(rendered.cmd));
+await __settle();
+const both = {id: nextSessionCopyControl(session), cmd: nextSessionResumeControl(session)};
+__setNow(1031);
+const stale = {id: nextSessionCopyControl(session), cmd: nextSessionResumeControl(session)};
+console.log(JSON.stringify({rendered, idOnly, both, stale}));
+""",
+            "const navigator = {clipboard: {writeText(){ return Promise.resolve(); }}};\n"
+            + self.COPY_STATUS_STUBS,
+        )
+        assert isinstance(out, dict)
+
+        # Both halves of the key ride the control. Neither is pinned anywhere else,
+        # and without the harness the click key and the render key cannot match.
+        for name in ("id", "cmd"):
+            with self.subTest(control=name):
+                self.assertIn('data-next-copy-session="sid-published"', out["rendered"][name])
+                self.assertIn('data-next-copy-harness="claude"', out["rendered"][name])
+        copied = 'data-next-copy-state="copied"'
+        self.assertIn(copied, out["idOnly"]["id"])
+        self.assertNotIn(copied, out["idOnly"]["cmd"])
+        self.assertIn(copied, out["both"]["id"])
+        self.assertIn(copied, out["both"]["cmd"])
+        self.assertNotIn(copied, out["stale"]["id"])
+        self.assertNotIn(copied, out["stale"]["cmd"])
+
+    def test_a_copy_that_failed_says_so_across_a_render_too(self) -> None:
+        # Both halves of the cue outlive the render, not only the good one. A context
+        # with no `navigator.clipboard` is the one where the reader most needs it to
+        # stay put — plain HTTP is how this page is served, and the fallback there is
+        # to read the value off the control by hand, so a render that dropped the cue
+        # would leave nothing saying why the click did nothing.
+        out = self._run_page_js(
+            self.COPY_CLICK_HELPERS
+            + """
+click(datasetOf(nextSessionResumeControl(session)));
+await __settle();
+console.log(JSON.stringify({
+  cmd: nextSessionResumeControl(session), id: nextSessionCopyControl(session),
+  status: __copyStatus.textContent
+}));
+""",
+            "const navigator = {};\n" + self.COPY_STATUS_STUBS,
+        )
+        assert isinstance(out, dict)
+
+        self.assertIn('data-next-copy-state="failed"', out["cmd"])
+        self.assertNotIn("data-next-copy-state", out["id"])
+        self.assertIn("could not be copied", out["status"])
+
+    def test_a_cue_belongs_to_one_harness_and_one_sid(self) -> None:
+        # Session ids are unique per harness and nowhere else, and every other
+        # session-keyed structure on this page keys on both (`nextSessionKey`). A
+        # cue keyed on the bare sid would paint a Codex row because a Claude row
+        # was raised.
+        out = self._run_page_js(
+            """
+nextRememberControlState(nextControlStateKey("raise", "claude", "shared"), "sent");
+const row = harness => nextSessionRaiseControl({harness, sid: "shared", focusable: true});
+console.log(JSON.stringify({claude: row("claude"), codex: row("codex")}));
+""",
+            self.RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        self.assertIn('data-next-raise-state="sent"', out["claude"])
+        self.assertNotIn("data-next-raise-state", out["codex"])
+
+    def test_the_control_state_map_retires_its_oldest_rather_than_growing(self) -> None:
+        # Every other module-level map here either refuses at a cap or retires on a
+        # clock. A reader can click for as long as the tab is open, so this one does
+        # both: the clock drops what is stale and the cap drops what is oldest.
+        out = self._run_page_js(
+            """
+const key = index => nextControlStateKey("copy", "claude", `sid-${index}`);
+const overflow = NEXT_CONTROL_STATE_LIMIT + 8;
+for(let index = 0; index < overflow; index += 1){
+  nextRememberControlState(key(index), "copied");
+}
+const held = {
+  size: nextControlStates.size, limit: NEXT_CONTROL_STATE_LIMIT,
+  oldest: nextControlState(key(0)), newest: nextControlState(key(overflow - 1))
+};
+// Touched again, then crowded by one. Oldest means least recently written, not
+// first ever written, so the re-touched entry must outlive the one behind it.
+nextRememberControlState(key(8), "copied");
+nextRememberControlState(key(overflow), "copied");
+console.log(JSON.stringify(Object.assign(held, {
+  retouched: nextControlState(key(8)), behindIt: nextControlState(key(9))
+})));
+""",
+            self.RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(out["limit"], out["size"])
+        self.assertEqual("", out["oldest"])
+        self.assertEqual("copied", out["newest"])
+        self.assertEqual("copied", out["retouched"])
+        self.assertEqual("", out["behindIt"])
+
+    def test_a_refused_raise_and_an_unavailable_one_do_not_wear_the_same_look(self) -> None:
+        # `throttled` shared one rule with `declined` and `failed`, which drew a
+        # refusal that means "try again" as the two answers that mean "nothing more
+        # to do from here". And a control unavailable because the page is busy is not
+        # a control whose own raise came back refused (DRC-4390).
+        answered = re.search(
+            r'\.next-session-raise\[data-next-raise-state="declined"\],'
+            r'\.next-session-raise\[data-next-raise-state="failed"\]\{([^}]*)\}',
+            NEXT_STYLES,
+        )
+        throttled = re.search(
+            r'\.next-session-raise\[data-next-raise-state="throttled"\]\{([^}]*)\}',
+            NEXT_STYLES,
+        )
+        busy = re.search(
+            r'\.next-session-raise\[aria-disabled="true"\]\{([^}]*)\}',
+            NEXT_STYLES,
+        )
+        sending = re.search(
+            r'\.next-session-raise\[data-next-raise-state="sending"\]\{([^}]*)\}',
+            NEXT_STYLES,
+        )
+        for name, rule in (
+            ("answered", answered),
+            ("throttled", throttled),
+            ("busy", busy),
+            ("sending", sending),
+        ):
+            with self.subTest(rule=name):
+                self.assertIsNotNone(rule)
+        assert answered is not None
+        assert throttled is not None
+        assert busy is not None
+        assert sending is not None
+        self.assertNotEqual(answered.group(1), throttled.group(1))
+        self.assertNotEqual(answered.group(1), busy.group(1))
+        self.assertNotEqual(throttled.group(1), busy.group(1))
+        # Not colour alone: the cursor says the control will not act, for a reader
+        # who cannot see the border change.
+        self.assertIn("cursor:not-allowed", busy.group(1))
+        # What each body has to say, not merely that the three differ. Reverting
+        # `throttled` to the answered look left all three `assertNotEqual`s standing.
+        # "Try again in a moment" is the warn line; the answered pair is the quiet
+        # one, and a raise underway is the only state that says work is happening.
+        self.assertIn("border-color:var(--warn)", throttled.group(1))
+        self.assertIn("border-color:var(--line2)", answered.group(1))
+        self.assertIn("cursor:progress", sending.group(1))
+        self.assertIn("border-color:var(--warn)", sending.group(1))
+        # Same specificity, so the later rule wins: the row that is actually raising
+        # keeps `sending` rather than reading as one of the rows waiting on it.
+        self.assertLess(NEXT_STYLES.index(busy.group(0)), NEXT_STYLES.index(sending.group(0)))
 
     def test_the_irreversible_control_has_its_own_look_and_a_focus_ring(self) -> None:
         # `.next-session-copy` has no `:focus-visible` rule, which DRC-4381 left
