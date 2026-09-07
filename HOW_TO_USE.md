@@ -360,6 +360,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-spacedock` | Reading Spacedock workflow state out of a project |
 | `--no-git` | The end-of-session git probe. No git command runs inside any repository |
 | `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
+| `--no-focus` | Raising a session's terminal. No focus command runs, no terminal identity is recorded, and the page is offered no raise control. `--no-events` turns it off as well |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 

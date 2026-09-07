@@ -541,6 +541,37 @@ The token the command is built from comes off a filename in a store the harness 
 untrusted like every other reading here. The grammar that guards it, and the `-`-leading token that
 grammar exists to refuse, are in [SECURITY.md](../SECURITY.md).
 
+### A control's answer outlives the render, and it is not a server fact
+
+`renderNext` replaces the whole of `#app` on every revision event, and the live lane fires one of
+those about as often as anything happens on the machine. A state written onto the node the click
+found therefore dies with the next render, which is how both row controls shipped: the colour cue
+for copied, sent, declined, throttled and failed was lost, while the screen-reader announcement
+survived because the live region sits outside `#app` and is held in a module variable.
+
+The obvious fix, and the one the issue asking for this proposed, is to carry the state in the model
+so a render re-emits it. That was rejected, and the reason is worth keeping. None of these states is
+a server fact. A copy succeeded or failed in one browser's clipboard, and a raise was accepted from
+one tab. The server has no way to know either, and the payload is shared by every viewer, so one
+reader's confirmation would paint the same row for everyone else looking at it.
+
+So the state lives in the page, in a map keyed by lane, harness and session id. Three bounds make
+that safe to hold. It caps at 32 entries and evicts the least recently written, because the key
+space is one entry per control per session and a long-lived tab would otherwise accumulate them for
+sessions that ended hours ago. Each entry expires after 30 seconds, which is above the 20 second
+fallback poll, so a cue always survives at least one full render cycle rather than having its life
+decided by when the next payload happens to arrive. And the expiry exists at all because a cue with
+no clock behind it paints a row that has since changed hands.
+
+Two things follow from the same reasoning. The refusal of a second raise is page-wide rather than
+per-row, because one raise is in flight for the whole page: a per-row cue would tell the reader that
+only the row they clicked second is unavailable, which is false about every other row. And the map
+is consulted by a sweep over the controls in the document rather than only the node the click found.
+Writing to that node alone left a completed raise painting the working look for up to a poll cycle
+while the live region beside it already said the raise was sent. Two channels of one page
+contradicting each other is worse than a cue that was merely missing, which is what the same case
+produced before any of this.
+
 ## What this does not decide
 
 Promotion does not create durable event, turn, or UI history. History-backed regions remain

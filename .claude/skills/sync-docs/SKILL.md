@@ -199,10 +199,34 @@ H=cargento/skills/cargento/cargento_runtime/http_api.py
 L=cargento/skills/cargento/cargento_runtime/lifecycle.py
 I=cargento/skills/cargento/cargento_runtime/cli.py
 
-# HTTP routes the server actually serves, and who owns the listener. The
-# pattern matches the local `path` too: do_POST binds it once and compares that,
-# so an `urlparse(...)`-only pattern silently missed both POST routes.
-grep -oE '\b(url\.path|path) [!=]= "/[^"]*"' "$H" | grep -oE '"/[^"]*"' | sort -u
+# HTTP routes the server actually serves, split by method, and who owns the
+# listener. Read by AST over the three functions that dispatch, because no
+# single grep survives this file: GET compares `url.path` in `_get_api` (not in
+# `do_GET`, which only owns "/"), one GET and one POST route are prefix matches
+# rather than comparisons, and `do_POST` dispatches through a DICT LITERAL. A
+# comparison-only pattern therefore reports the GET routes and silently finds
+# NONE of the nine POST ones, which is how SECURITY.md's "nine POST routes"
+# came to be unverifiable from this block. Cross-check the count: SECURITY.md
+# states it, and states how many of them carry a capability.
+python3 - "$H" <<'ROUTES'
+import ast
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+lines = source.splitlines()
+owners = {"do_GET": "GET", "_get_api": "GET", "do_POST": "POST"}
+found: dict[str, set[str]] = {"GET": set(), "POST": set()}
+for node in ast.walk(ast.parse(source)):
+    if isinstance(node, ast.FunctionDef) and node.name in owners:
+        body = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+        found[owners[node.name]].update(re.findall(r'"(/(?:api/)?[a-z/<>-]*)"', body))
+for method, routes in found.items():
+    print(f"{method}: {len(routes)}")
+    for route in sorted(routes):
+        print("   ", route)
+ROUTES
 grep -nE '^(class CargentoHTTPServer|class _RequestHandler)|^def (normalize_host|reuse_address_allowed|bind_error_message)' "$H"
 # CLI flags and their defaults. These live in cli.build_parser now, not in the
 # launcher: `server.py` is seven lines and greps of it silently find nothing.
