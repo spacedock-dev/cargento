@@ -152,8 +152,9 @@ on an ended session.
 - A session whose git state was not measured, against one measured clean, against one dirty. Three
   readings, three sentences.
 
-**The limit:** the probe runs one bounded, read-only, non-executing command and publishes two
-numbers, never a pathname.
+**The limit:** the probe runs one bounded command and publishes two numbers, never a pathname. It
+is not read-only and not non-executing: DEC-11 retracted both adjectives, because a committed filter
+attribute can make git invoke a driver that writes inside the repository.
 
 ## If a promise is wrong
 
