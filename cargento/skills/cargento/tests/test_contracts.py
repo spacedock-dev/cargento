@@ -28,6 +28,7 @@ from cargento_runtime.collectors import gemini as gemini_collector
 from .fixtures import (
     CURSOR_MODEL,
     HARNESSES,
+    OPENCODE_MODEL,
     STORE_CONSTANTS,
     build_cursor,
     build_opencode,
@@ -2024,8 +2025,8 @@ class HarnessContractTest(HarnessContractTestCase):
             " model failed a check above and never reached the tally",
         )
         # At least one fixture must reach the read branch, or the shape assertions
-        # above are dead code dressed as a cross-harness contract. Cursor is the
-        # one that carries a model end to end today; the assertion is a floor, not
+        # above are dead code dressed as a cross-harness contract. Cursor and
+        # OpenCode carry a model end to end today; the assertion is a floor, not
         # a pin, so a fixture gaining a model strengthens it instead of failing.
         self.assertIn(
             "cursor",
@@ -2041,6 +2042,15 @@ class HarnessContractTest(HarnessContractTestCase):
         # honest "not read", so without this the whole read could rot unseen.
         data = self.collect(build_cursor, when=self.NOW)
         self.assertEqual(CURSOR_MODEL, self.sessions_for(data, "cursor")[0]["model"])
+
+    def test_an_opencode_store_reports_the_model_on_its_session_row(self) -> None:
+        # DRC-4436. OpenCode 1.18.20 keeps the model as a JSON object in
+        # `session.model` — `{"id", "providerID", "variant"}` — so the published
+        # value is that object's `id` and not the column verbatim. The contract
+        # above would accept a raw `'{"id": ...}'` string as an honest reading,
+        # which is what this pins against.
+        data = self.collect(build_opencode, when=self.NOW)
+        self.assertEqual(OPENCODE_MODEL, self.sessions_for(data, "opencode")[0]["model"])
 
 
 class SubagentElementContractTest(unittest.TestCase):
