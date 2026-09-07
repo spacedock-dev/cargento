@@ -78,8 +78,7 @@ quiet still listed rather than dropped, session detail that leads with current a
 session is running on, and desktop notifications on a state change.
 
 Where it stops: Cargento reads a tool call's name and whether it failed, never what it contained.
-That boundary is a decision rather than a gap, and lifting it is an open question
-([DEC-5](https://linear.app/recce/issue/DRC-4182/dec-5-decision-may-cargento-read-what-a-tool-call-actually-did)).
+That boundary is a decision rather than a gap, and DEC-5 settled it on 2026-09-02.
 An ETA is an estimate, and it says so.
 
 ### P3. Is anything waiting on me?
@@ -145,8 +144,8 @@ can see nothing.
 
 ### P5. Did anything die quietly?
 
-**We promise:** nothing finishes invisibly. Work that finished and was never read is flagged,
-sessions that went quiet go stale, and a session that ends leaving uncommitted changes says so.
+**We promise:** nothing finishes invisibly. Work that finished and was never read is flagged, and a
+session that ends leaving uncommitted changes says so.
 
 Backed by the finished-and-unread flag, the mark that separates a turn that stopped from a session
 still waiting on a reply that never came, the mark that a session is over so it stops reading as one
@@ -174,9 +173,12 @@ than a research project.
 
 Walking away from the desk is the promise this map most wants to make and cannot yet. It needs a
 session that is genuinely wedged to be told apart from one that is merely quiet, and it needs
-Cargento to reach you somewhere other than a browser tab you are not looking at. The second half is
-blocked on whether session state may leave the machine, which is an owner's call rather than an
-engineering task.
+Cargento to reach you somewhere other than a browser tab you are not looking at. The first half
+reaches Claude only: the turn's failure total and the turn where nothing succeeded are published,
+and the other nine harnesses record tool failure in no shape this can read. The second half is a
+build rather than a call now. DEC-4 ruled on 2026-09-02 that Cargento may post a count to an
+endpoint you supply, and [SECURITY.md](../SECURITY.md) writes that boundary down before the code
+lands.
 
 Gate coverage on the remaining six harnesses is a per-harness measurement job, not a design
 question. Today the board is honest about the gap, which is the right behaviour and not the same as

@@ -9,7 +9,7 @@ import re
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from cargento_runtime import cli, focus, git_status, history
+from cargento_runtime import claude_data, cli, focus, git_status, history
 from cargento_runtime import config as runtime_config
 from cargento_runtime import events as runtime_events
 
@@ -1016,6 +1016,297 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
         # signed-in harness instead.
         self.assertIn("never a Cargento credential", self.FLAT)
         self.assertIn("adds no endpoint to the list in Usage quota reads", self.FLAT)
+
+
+class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
+    """DEC-4's section is a contract for a pathway nothing uses yet.
+
+    The sibling of `LightHarnessUsageContractDocumentationTest` below the same
+    reasoning: there is no shipped code to bind prose to, so what is bound is the
+    emptiness, plus the two claims about the runtime the section makes in passing.
+    Those two are the ones worth a test, because both are claims that something
+    does *not* exist, and DEC-4's own wording offered a third payload count that
+    nothing measures.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
+        self.assertIn(
+            "## Off-machine nudges (reaching the operator away from the desk)", self.SECURITY
+        )
+
+    def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
+        self.assertIn("No shipped feature posts to an endpoint the operator supplies", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.FLAT)
+        # argparse prints usage to stderr before exiting, and that banner in a
+        # passing run reads like a failure to anyone watching the suite.
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--no-reach"])
+
+    def test_the_payload_omits_the_count_no_threshold_backs(self) -> None:
+        # The section says `config.py` holds no idle duration threshold, which is
+        # why the payload carries two counts and not DEC-4's three. The one
+        # `idle` field there is the overlay's dwell, a render delay rather than a
+        # staleness reading, so a genuine threshold arriving fails this and sends
+        # whoever added it back to the section.
+        fields = {
+            name
+            for name in re.findall(
+                r"^    ([a-z_]+): ",
+                (SERVER_PATH.parent / "cargento_runtime" / "config.py").read_text(encoding="utf-8"),
+                re.MULTILINE,
+            )
+            if "idle" in name
+        }
+        self.assertEqual({"overlay_idle_dwell_sec"}, fields)
+        self.assertIn("holds no idle duration threshold", self.FLAT)
+
+    def test_the_url_is_held_to_the_credential_rules_the_quota_section_sets(self) -> None:
+        self.assertIn("The URL is a credential", self.FLAT)
+        self.assertIn("never printed by `--diagnose`", self.FLAT)
+
+
+class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
+    """C6's section is a contract for a pathway nothing uses yet, plus an allowlist.
+
+    The allowlist half is the load-bearing one and it is why this class is not
+    just three emptiness assertions. The issue that filed the section wanted it to
+    say the runtime never parses a tool call's input; that is false at HEAD in
+    three expressions, and shipping it would have made the security contract
+    narrower than the code. So the section names the reads instead, and this binds
+    the naming to the reads: a fourth input read fails here until whoever adds it
+    amends the section.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+    RUNTIME = SERVER_PATH.parent / "cargento_runtime"
+
+    def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
+        self.assertIn(
+            "## Irreversible actions (hook-side destructive-shape matching)", self.SECURITY
+        )
+
+    def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
+        self.assertIn("No shipped adapter matches a command shape", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.FLAT)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--no-irreversible"])
+
+    def test_the_allowlist_names_every_input_read_the_package_makes(self) -> None:
+        # Counted rather than listed, because the failure this guards against is
+        # a *new* read nobody wrote into the section. Both spellings are here
+        # because Codex writes its plan under `arguments` in one shape and
+        # `input` in the other, and the section names both.
+        found = {
+            path.name: len(re.findall(r'\.get\("(?:input|arguments)"\)', text))
+            for path in sorted(self.RUNTIME.rglob("*.py"))
+            if (text := path.read_text(encoding="utf-8"))
+            and re.search(r'\.get\("(?:input|arguments)"\)', text)
+        }
+        self.assertEqual({"claude_data.py": 1, "transcripts.py": 2}, found)
+        self.assertIn("three expressions in `cargento_runtime` reach an input payload", self.FLAT)
+        for named in ("`claude_data.input_summary`", "`transcripts.codex_plan`"):
+            with self.subTest(read=named):
+                self.assertIn(named, self.FLAT)
+
+    def test_the_named_read_is_bounded_to_the_cap_the_section_states(self) -> None:
+        config = make_config()
+        self.assertIn(
+            f"bounded at `config.input_summary_cap_chars`, {config.input_summary_cap_chars}"
+            " characters",
+            self.FLAT,
+        )
+
+    def test_the_two_input_tools_the_section_names_are_the_pair_the_code_gates_on(self) -> None:
+        named = {
+            match
+            for match in re.findall(r"`([A-Za-z]+)` carries", self.FLAT)
+            if match in claude_data.INPUT_TOOLS
+        }
+        self.assertEqual(set(claude_data.INPUT_TOOLS), named)
+
+    def test_the_envelope_paragraph_is_amended_rather_than_outgrown(self) -> None:
+        # The conflict this resolves. The envelope paragraph says the prompt, the
+        # tool name, the tool input and the tool output are all dropped in the hook
+        # and never put on a socket. DEC-5's shape posts the tool name, so one of
+        # those four has to come back, and the amendment says which and why rather
+        # than letting a future commit discover it. The sentence itself stays
+        # intact because it is true until that commit lands, and the width is
+        # already fenced by `EventEnvelopeEnumerationTest`.
+        self.assertIn(
+            "the prompt, the tool name, the tool input and the tool output are dropped in the hook",
+            self.FLAT,
+        )
+        self.assertIn("Irreversible actions above is where that is settled", self.FLAT)
+        self.assertIn("it would stop the tool name being dropped", self.FLAT)
+        # The three that stay dropped, said in both places, so neither can widen alone.
+        for place in (
+            "The prompt, the tool input and the tool output would stay dropped",
+            "are the three that stay dropped",
+        ):
+            with self.subTest(clause=place):
+                self.assertIn(place, self.FLAT)
+
+    def test_the_posted_fields_are_the_shape_dec_5_allowed(self) -> None:
+        # DEC-5 allowed an identifier, the tool name and a timestamp. An earlier
+        # draft of this section dropped the tool name to protect the envelope
+        # invariant, which narrowed the ruling instead of amending the invariant,
+        # and a security contract narrower than its own decision is the defect
+        # #289 spent a PR undoing in the other direction.
+        self.assertIn(
+            "an identifier for a shape from the named set, the tool name, and a timestamp",
+            self.FLAT,
+        )
+        self.assertIn("which is the shape DEC-5 allowed", self.FLAT)
+
+    def test_the_reason_the_tool_name_may_come_back_is_a_field_that_is_published(self) -> None:
+        # The section's justification is that the snapshot already serves a failing
+        # tool's name, so the envelope was dropping a value the board publishes.
+        # Bound to the producer rather than to the page: the page's own byte pins
+        # belong to another surface, and `loop_signal` is where the field is put
+        # into the snapshot. If the signal stops carrying it the justification is
+        # gone and this says so.
+        source = (self.RUNTIME / "turns.py").read_text(encoding="utf-8")
+        self.assertIn('"tool": scan.get("err_tool")', source)
+        self.assertIn("a failing tool's name reaches the page through the loop signal", self.FLAT)
+
+    def test_the_gating_hook_rule_matches_what_the_antigravity_script_measured(self) -> None:
+        # An earlier draft said the hooks stay incapable of blocking work because
+        # `agy_hook.py` prints `{}`. That is backwards: `agy_hook.py`'s own
+        # measured header records that an empty object at `PreToolUse` is a DENY,
+        # so the safety property is the refusal to register there. A security
+        # section that got this the wrong way round would read as reassurance
+        # while describing the failure mode.
+        source = (SERVER_PATH.parent / "agy_hook.py").read_text(encoding="utf-8")
+        self.assertIn("an EMPTY object is a DENY", source)
+        self.assertIn("Never register `PreToolUse` here", source)
+        self.assertIn("an empty object there is a deny rather than an abstention", self.FLAT)
+        self.assertIn("the hook is never registered there rather than", self.FLAT)
+
+    def test_the_history_store_question_is_answered_rather_than_deferred(self) -> None:
+        self.assertIn(
+            "A field the live board does not publish is not a field history may keep", self.FLAT
+        )
+
+
+class HandOffRequestContractDocumentationTest(unittest.TestCase):
+    """DEC-2's section is a contract for a verb nothing sends yet.
+
+    Three of its clauses are checkable now and are the ones checked: the parser
+    has no off switch, the read location it needs is absent from the documented
+    store roots, and the facts it took from a harness's documentation are labelled
+    as documented. That last one has a rule behind it rather than a preference:
+    desk research here got the field, the unit or the rendering wrong five times
+    out of five, so an unmeasured figure presented as measured is the defect.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
+        self.assertIn("## Hand-off requests (one verb into a session)", self.SECURITY)
+
+    def test_the_verb_is_documented_as_unsent_and_the_parser_agrees(self) -> None:
+        self.assertIn("No shipped feature sends anything into a session", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.FLAT)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--no-handoff"])
+
+    def test_the_three_unshipped_switches_are_the_only_no_flags_missing(self) -> None:
+        # One oracle for all three sections. The parser's `--no-*` set is read off
+        # its source the way `EventEnvelopeEnumerationTest` reads `config.py`, so
+        # a fourth documented-but-unshipped flag cannot hide behind a passing
+        # `SystemExit` assertion, and shipping one of these three fails the
+        # section that calls it unshipped.
+        shipped = set(
+            re.findall(
+                r'"(--no-[a-z-]+)"',
+                (SERVER_PATH.parent / "cargento_runtime" / "cli.py").read_text(encoding="utf-8"),
+            )
+        )
+        self.assertEqual(
+            {
+                "--no-spacedock",
+                "--no-usage",
+                "--no-git",
+                "--no-focus",
+                "--no-history",
+                "--no-dismiss",
+                "--no-ask",
+                "--no-events",
+            },
+            shipped,
+        )
+        for documented in ("--no-handoff", "--no-reach", "--no-irreversible", "--no-harness-usage"):
+            with self.subTest(flag=documented):
+                self.assertNotIn(documented, shipped)
+                self.assertIn(f"`{documented}`", self.FLAT)
+
+    def test_the_socket_read_is_absent_from_the_documented_store_roots(self) -> None:
+        # Scope makes a read outside the documented store paths a security bug
+        # "however the path was derived", so the section says this read is one
+        # until `config.py` names its location. The three roots it names are
+        # asserted against the resolver: a fourth Claude root arriving makes the
+        # section's sentence stale, and this is what says so.
+        roots = {
+            key
+            for key in runtime_config.resolve_store_roots(
+                platform_name="darwin", environ={}, home="/HOME"
+            )
+            if key.startswith("claude")
+        }
+        self.assertEqual({"claude.projects", "claude.tasks", "claude.teams"}, roots)
+        for named in sorted(roots):
+            with self.subTest(root=named):
+                self.assertIn(f"`{named}`", self.FLAT)
+        self.assertIn("and no fourth", self.FLAT)
+
+    def test_every_fact_taken_from_a_harness_document_is_labelled_as_such(self) -> None:
+        # The four items DEC-2's groundwork took from Claude Code's documentation
+        # rather than from a measurement. Each has to sit inside the labelled
+        # block, so the label cannot be dropped while the facts stay.
+        block = self.FLAT[
+            self.FLAT.index("Four facts are documented, not measured") : self.FLAT.index(
+                "The build that lands E7 measures all four first"
+            )
+        ]
+        for fact in ("`crossSessionInbound`", "`dialogExpiry`", "counts toward usage", "cc-socks"):
+            with self.subTest(fact=fact):
+                self.assertIn(fact, block)
+
+    def test_the_token_rule_covers_the_path_and_not_only_the_value(self) -> None:
+        # The token is documented as part of the socket's filename, so a redaction
+        # that covers the value and prints the path leaks it. The section has to
+        # say both halves.
+        self.assertIn("Neither is any path that contains it", self.FLAT)
+
+    def test_the_ask_lane_direction_claims_are_true_after_this_section_lands(self) -> None:
+        # The two sentences this section falsifies if they stand unamended. Both
+        # were absolute and are now scoped to what ships, which is the amendment
+        # #289 spent a whole PR establishing as the right direction.
+        self.assertNotIn("The direction is the invariant. Cargento never reaches into", self.FLAT)
+        self.assertIn("The direction is the invariant for everything shipped", self.FLAT)
+        self.assertIn("Cargento reaches into no session today", self.FLAT)
+        self.assertIn("One other direction is written down and unbuilt", self.FLAT)
+        # The one clause DEC-2 confirmed rather than lifted stays exactly as it was.
+        self.assertIn("the tool cannot answer a native permission prompt", self.FLAT)
+
+    def test_the_scope_invariant_counts_the_outbound_kinds_it_now_enumerates(self) -> None:
+        # Nothing pinned this count before, and a third documented pathway
+        # falsifies both the old number and the closing clause (DRC-4434).
+        self.assertNotIn("Two kinds of outbound request are in scope", self.FLAT)
+        self.assertIn(
+            "Three kinds of outbound request are in scope, one shipped and two written down",
+            self.FLAT,
+        )
+        readme = (self.ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("for all three", re.sub(r"\s+", " ", readme))
 
 
 class FocusCommandContractDocumentationTest(unittest.TestCase):

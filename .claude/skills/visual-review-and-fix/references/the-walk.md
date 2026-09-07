@@ -131,11 +131,11 @@ runs out, which is not the order by percentage.
 
 ## P5. Did anything die quietly?
 
-> nothing finishes invisibly. Work that finished and was never read is flagged, sessions that went
-> quiet go stale, and a session that ends leaving uncommitted changes says so.
+> nothing finishes invisibly. Work that finished and was never read is flagged, and a session that
+> ends leaving uncommitted changes says so.
 
-**On screen:** the finished-and-unread flag, the stale reading, the ENDED marker, and the git state
-on an ended session.
+**On screen:** the finished-and-unread flag, the ENDED marker, and the git state on an ended
+session.
 
 **Force these absences:**
 
