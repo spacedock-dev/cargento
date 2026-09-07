@@ -191,25 +191,65 @@ def build_copilot(root: Path, when: float, sid: str, title: str) -> dict[str, st
     return {"COPILOT_DIR": str(root)}
 
 
+# The model an OpenCode store reports. The store holds it as the `id` inside a
+# JSON object in `session.model` — the shape 1.18.20's own
+# `Session.setAgentModel` writes — so this is the published value, not the
+# column verbatim.
+OPENCODE_MODEL = "claude-sonnet-4-5"
+
+
 def build_opencode(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    # The schema OpenCode 1.18.20 actually creates, measured on 2026-09-07: a
+    # store built by `opencode db` plus `opencode import` had `session_message`
+    # empty and the rows in `message` and `part`. `message` has no `type`
+    # column — the role is inside `data` — and the prompt text is inside
+    # `part.data`. This fixture used to create `session_message (session_id,
+    # type, time_created, data)` and put the only user row there, a schema no
+    # OpenCode build writes, so the read that went to it passed here and
+    # published nothing at all against a real store. `session_message` is
+    # created and left empty because the real store creates it too.
+    millis = int(when * 1000)
     _sqlite(
         root / "opencode.db",
         [
             (
-                "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT, title TEXT, time_updated INTEGER, time_archived INTEGER)",
+                "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT, title TEXT, time_updated INTEGER, time_archived INTEGER, model TEXT)",
                 (),
             ),
             (
-                "INSERT INTO session VALUES (?, NULL, '/w/proj', ?, ?, NULL)",
-                (sid, title, int(when * 1000)),
+                "INSERT INTO session VALUES (?, NULL, '/w/proj', ?, ?, NULL, ?)",
+                (
+                    sid,
+                    title,
+                    millis,
+                    json.dumps(
+                        {
+                            "id": OPENCODE_MODEL,
+                            "providerID": "anthropic",
+                            "variant": "default",
+                        }
+                    ),
+                ),
             ),
             (
-                "CREATE TABLE session_message (session_id TEXT, type TEXT, time_created INTEGER, data TEXT)",
+                "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)",
                 (),
             ),
             (
-                "INSERT INTO session_message VALUES (?, 'user', ?, ?)",
-                (sid, int(when * 1000), json.dumps({"text": title})),
+                "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)",
+                (),
+            ),
+            (
+                "CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT)",
+                (),
+            ),
+            (
+                "INSERT INTO message VALUES ('msg_user', ?, ?, ?, ?)",
+                (sid, millis, millis, json.dumps({"role": "user", "agent": "build"})),
+            ),
+            (
+                "INSERT INTO part VALUES ('prt_user', 'msg_user', ?, ?, ?, ?)",
+                (sid, millis, millis, json.dumps({"type": "text", "text": title})),
             ),
         ],
         when,
