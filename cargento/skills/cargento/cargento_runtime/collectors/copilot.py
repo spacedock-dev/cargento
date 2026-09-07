@@ -110,7 +110,9 @@ class _Ledger(NamedTuple):
     newest: float
 
 
-def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
+def _usage_rows(
+    config: RuntimeConfig, state: RuntimeState, gaps: set[str] | None = None
+) -> list[Any] | None:
     """The newest billing rows the session store holds, or None if it holds none.
 
     ``session_id`` is selected because the join is measured: on a live store the
@@ -153,6 +155,16 @@ def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
         ).fetchall()
     except Exception:  # noqa: BLE001 — schema drift is a miss, never an error
         runtime_io.record_store_error(state, database, RuntimeError("no assistant_usage_events"))
+        # The store opened and its billing table was not there. `_read_ledger`'s
+        # own comment accepts what that costs — "it degrades to 'no model
+        # reported', which is never wrong, only incomplete" — and this is the
+        # channel that makes the incompleteness visible instead of accepted in
+        # silence. Of the earlier returns only the missing file is excluded,
+        # because it is not a store that read as empty. An UNOPENABLE one lands
+        # here rather than there: the open is lazy, so a 512-zero-byte
+        # session-store.db raises at this SELECT and does disclose. Measured.
+        if gaps is not None:
+            gaps.add(sessions.UNREAD_TOKENS)
         return None
     finally:
         connection.close()
@@ -185,6 +197,7 @@ def _read_ledger(
     state: RuntimeState,
     now: float,
     window_hours: float,
+    gaps: set[str] | None = None,
 ) -> _Ledger | None:
     """Copilot's consumption over the window, or None when it cannot be measured.
 
@@ -243,7 +256,7 @@ def _read_ledger(
     real staleness risk: the two calls are the same refresh but not the same
     instant, and a cache is the thing that would let them drift apart.
     """
-    rows = _usage_rows(config, state)
+    rows = _usage_rows(config, state, gaps)
     if rows is None:
         return None
     window_sec = window_hours * 3600
@@ -451,7 +464,11 @@ def collect(
     # Read once for the whole collection, not once per row: every session's
     # figure is a slice of the very ledger the harness tile sums, so the two
     # cannot end up describing different windows of the same store.
-    ledger = _read_ledger(config, state, now, window_hours)
+    # One set for the whole collection, for the reason the ledger itself is read
+    # once: an unreadable billing table is a fact about the store, so it belongs
+    # on every row that store feeds rather than on whichever row read it first.
+    ledger_gaps: set[str] = set()
+    ledger = _read_ledger(config, state, now, window_hours, ledger_gaps)
 
     out: list[Session] = []
     for sid, (mtime, fp) in files.items():
@@ -561,6 +578,7 @@ def collect(
                     config,
                 ),
                 "subagents": subagents,
+                "source_gaps": sorted(ledger_gaps),
             }
         )
         out.append(s)

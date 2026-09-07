@@ -321,7 +321,11 @@ def _step_info(metadata: Any) -> dict[str, Any]:
 
 
 def _step_activity(
-    config: RuntimeConfig, state: RuntimeState, path: str, now: float
+    config: RuntimeConfig,
+    state: RuntimeState,
+    path: str,
+    now: float,
+    gaps: set[str] | None = None,
 ) -> dict[str, Any]:
     """Read live rate, turn boundaries, and current action from a store.
 
@@ -362,6 +366,13 @@ def _step_activity(
     if rows is None:
         if read_error:
             runtime_io.record_store_error(state, path, read_error)
+        # Both rungs of the ladder are spent, so the empty snapshot below is
+        # about to be published as a real reading: rate zero and no turn, which
+        # the page cannot tell from a session that has genuinely done nothing.
+        # The two readings the snapshot loses are named separately because the
+        # reader compares them against different things on the row.
+        if gaps is not None:
+            gaps.update((sessions.UNREAD_HISTORY, sessions.UNREAD_TOKENS))
         return result
 
     events = []
@@ -647,8 +658,9 @@ def collect(
         active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
+        gaps: set[str] = set()
         activity: dict[str, Any] = (
-            _step_activity(config, state, db, now)
+            _step_activity(config, state, db, now, gaps)
             if active
             else {"rate_per_min": 0, "turns": None, "last_tool_action": ""}
         )
@@ -704,6 +716,11 @@ def collect(
                 "rate_per_min": activity["rate_per_min"],
                 "turn": turns.turn_progress(activity["turns"], session_state, now, config),
                 "subagents": subagents,
+                # This row's own store only. A subagent store that would not read
+                # costs the parent a slice of its rate and nothing else, and
+                # attributing a child's unread store to the parent's row would
+                # say the wrong thing about which source went dark.
+                "source_gaps": sorted(gaps),
             }
         )
         out.append(session)

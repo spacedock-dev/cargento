@@ -748,6 +748,7 @@ class CargentoServerTest(RuntimeTestCase):
             "subagents",
             "tasks",
             "spacedock",
+            "source_gaps",
         }
     )
 

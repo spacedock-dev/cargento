@@ -245,6 +245,62 @@ class CopilotCollectorTest(RuntimeTestCase):
         self.assertFalse(sessions[0]["active"], "fixture must be outside the window")
         self.assertEqual("w/p", sessions[0]["project"])
 
+    def test_a_billing_table_this_build_does_not_know_is_named_on_every_row(self) -> None:
+        # DRC-4447. `_read_ledger`'s own comment accepts what a schema miss
+        # costs — "no model reported, which is never wrong, only incomplete" —
+        # and the reader was never told. `consumption` and `model` are still the
+        # honest None they were; what is new is that the row says why.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", "aaaabbbb-1111", iso, "live work")
+            con = sqlite3.connect(root / "session-store.db")
+            con.execute("CREATE TABLE sessions (id TEXT)")  # no assistant_usage_events
+            con.commit()
+            con.close()
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                rows = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual([runtime_sessions.UNREAD_TOKENS], rows[0]["source_gaps"])
+        self.assertIsNone(rows[0]["consumption"], "the good fields must not change")
+        self.assertIsNone(rows[0]["model"])
+        self.assertEqual("live work", rows[0]["last_prompt"])
+
+    def test_a_billing_table_that_reads_leaves_the_row_saying_nothing_extra(self) -> None:
+        # The other half of the pair: a store that reads must not disclose, or
+        # the sentence is furniture on every Copilot row forever.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", "aaaabbbb-2222", iso, "live work")
+            write_ledger(root, [("aaaabbbb-2222", 2_000_000_000, now - 60)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                rows = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+        self.assertEqual("2.00 AIU", rows[0]["consumption"])
+
+    def test_a_store_that_is_absent_rather_than_unreadable_discloses_nothing(self) -> None:
+        # The distinction the disclosure rests on. No `session-store.db` at all
+        # is not a source that half-read, so the row must stay silent about it
+        # even though `consumption` is None on both paths.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", "aaaabbbb-3333", iso, "live work")
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                rows = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+        self.assertIsNone(rows[0]["consumption"])
+
 
 class CopilotUsageTest(RuntimeTestCase):
     """Copilot's consumption tile: real spend, no limit, windowed on row time."""

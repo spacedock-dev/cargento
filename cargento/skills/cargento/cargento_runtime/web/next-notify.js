@@ -54,18 +54,57 @@ function nextNotifyAsks(payload, fresh){
   }
 }
 
+/* The two transitions worth interrupting a reader for, and the sentence each
+   one earns. A gate is a request; a session falling quiet is not, so the two do
+   not share a title — "is waiting on you" over a turn that merely stopped is a
+   claim about intent that nothing here measured.
+
+   They share the session's tag on purpose: a row that goes quiet and then asks
+   a question should replace its own banner rather than stack a second one.
+
+   WHAT THE QUIET NUDGE CAN AND CANNOT SEE. The native lane fires this off
+   Claude's own `idle_prompt` hook event. The browser has no hook, only polled
+   `state`, so this fires on the working→idle edge — which is the moment the row
+   crosses `working_threshold_sec` without new activity, not the moment the
+   harness declares itself idle. That makes it near-parity and not parity, and
+   the simpler reading is taken deliberately: exact parity needs the
+   notification `kind`, which `notifications.handle_payload` drops for the idle
+   types, so buying it means a new published field for a nudge that is already
+   right about the thing the reader cares about. The title says "has gone
+   quiet", which is exactly what was observed, rather than borrowing the gate's
+   stronger sentence. */
+function nextNotifyEdge(session, previous){
+  /* Ahead of the `active` gate deliberately, and it must stay there: the idle
+     overlay publishes `active:false` alongside `state:"idle"`, so gating this
+     edge on `active` refuses the one transition it exists to report — on the
+     default install, since both shipped hook manifests declare `Stop`.
+     `previous === "working"` is the liveness check instead. Reordering these
+     two to match the branch below reintroduces that: design-needs-input.md N-13.
+
+     Only from `working`. An answered question also lands on idle, and the reader
+     was standing right there when it did. An idle row seen for the first time
+     is not a transition either — `previous` is undefined then. */
+  if(session.state === "idle" && previous === "working"){
+    return {title: "has gone quiet", detail: "awaiting your message"};
+  }
+  if(session.active !== true) return null;
+  if(session.state === "needs_input" && previous !== "needs_input"){
+    return {title: "is waiting on you", detail: "needs your input"};
+  }
+  return null;
+}
+
 function nextSyncNotifications(payload){
   const seen = new Map();
   const fire = nextBrowserNotifyOwns(payload) && nextNotifyPermission() === "granted";
   for(const session of nextPayloadSessions(payload)){
     const key = `${session.harness}:${session.sid}`;
+    const edge = nextNotifyEdge(session, nextNotifyState.get(key));
     seen.set(key, session.state);
-    if(!fire || !nextNotifyPrimed) continue;
-    if(!session.active || session.state !== "needs_input") continue;
-    if(nextNotifyState.get(key) === "needs_input") continue;
+    if(!fire || !nextNotifyPrimed || !edge) continue;
     try{
-      new Notification(`${nextNotifyHarnessLabel(payload, session.harness)} is waiting on you`, {
-        body: `[${session.project}] ${session.state_detail || "needs your input"}`,
+      new Notification(`${nextNotifyHarnessLabel(payload, session.harness)} ${edge.title}`, {
+        body: `[${session.project}] ${session.state_detail || edge.detail}`,
         tag: key,
       });
     }catch(_error){

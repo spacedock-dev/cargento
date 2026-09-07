@@ -239,6 +239,18 @@ MODEL_CAP_CHARS = 40
 TOOL_NAME_CAP_CHARS = 60
 
 
+# The readings a collector may disclose it could not take from a store that
+# opened. Named constants and not literals at each site: this text reaches the
+# screen verbatim, and five collectors spelling the same reading five ways would
+# render as five different facts. Each is phrased to complete the page's
+# sentence, "Source not fully read: …".
+UNREAD_BLOCK: Final = "block state"
+UNREAD_HISTORY: Final = "message history"
+UNREAD_IDENTITY: Final = "session metadata"
+UNREAD_MODEL: Final = "model"
+UNREAD_TOKENS: Final = "token accounting"
+
+
 # The shape a session id must have before it may be published as `resume_id`.
 #
 # It is a grammar rather than an escaper because of where the value ends up: the
@@ -488,6 +500,30 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "subagents": [],
         "tasks": [],
         "spacedock": None,
+        # The readings this row's collector could not take from a store it
+        # opened, by name, from the `UNREAD_*` vocabulary above. Empty is "no
+        # unread reading reported" and never "the store held nothing".
+        #
+        # It exists because the fourth state of a store read — opened, and
+        # nothing in it recognised — was silent on every surface. The good
+        # fields survive that, which is the whole reason it cannot be routed
+        # through `io.record_store_error`: that would withdraw a title and a
+        # workspace that were correct, and `cursor.py`'s `_meta` records the
+        # measurement behind refusing to. Nor does the error record help, because
+        # it reaches no reader: `state.store_errors` is read only by
+        # `diagnostics.diagnose`, appears in no `/api/data` key, and is named
+        # nowhere under `web/`. So a published field is the only way this fact
+        # reaches a screen, whichever way the error boundary is drawn.
+        #
+        # The reader's version of the problem is sharper than a missing value:
+        # a row whose store told us nothing renders as a session at its prompt
+        # when its mtime is stale, and as one *generating* when its mtime is
+        # fresh. Both are confident claims over an absence.
+        #
+        # A list of names rather than a boolean, because "something could not be
+        # read" is not actionable and because a bare False would then mean both
+        # "nothing failed" and "this collector never looks".
+        "source_gaps": [],
     }
 
 

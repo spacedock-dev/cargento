@@ -120,6 +120,7 @@ def _collect_db(
             turn = None
             last_prompt = ""
             rate = 0
+            gaps: set[str] = set()
             if active:
                 events = []
                 try:
@@ -139,7 +140,7 @@ def _collect_db(
                         if is_prompt:
                             last_prompt = records.extract_text(content) or last_prompt
                 except runtime_io.sqlite_module.Error:
-                    pass
+                    gaps.add(sessions.UNREAD_HISTORY)
                 try:
                     # Token accounting lives in usage_ledger, NOT messages.tokens
                     # (goose never writes that column).
@@ -160,7 +161,10 @@ def _collect_db(
                     )
                     rate = round(recent / (config.rate_window_sec / 60))
                 except runtime_io.sqlite_module.Error:
-                    pass
+                    # `rate` stays 0, which reads on the page exactly like a
+                    # measured zero. That collapse is the whole reason this row
+                    # discloses instead of only swallowing.
+                    gaps.add(sessions.UNREAD_TOKENS)
                 turn = turns.turn_progress(
                     turns.turns_from_events(events), session_state, now, config
                 )
@@ -187,6 +191,7 @@ def _collect_db(
                     "rate_per_min": rate,
                     "turn": turn,
                     "subagents": subagents,
+                    "source_gaps": sorted(gaps),
                 }
             )
             out.append(s)
