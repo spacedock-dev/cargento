@@ -1745,10 +1745,15 @@ class ReaderStateInventoryTest(unittest.TestCase):
         return found
 
     def test_the_document_the_render_cites_is_the_one_that_exists(self) -> None:
+        # The capture group keeps the `docs/` prefix outside the quoted string
+        # deliberately. The quality gate derives its "this docs file is code"
+        # list by grepping whole quoted `docs/...md` paths out of these test
+        # modules, so a pattern written as one such string would join that list
+        # as an entry no real file can ever equal.
         cited: set[str] = set()
         for name in ("next-chrome.js", "next-controls.js"):
             body = (self.WEB / name).read_text(encoding="utf-8")
-            cited.update(re.findall(r"docs/design-[a-z-]+\.md", body))
+            cited.update(f"docs/{stem}" for stem in re.findall(r"docs/(design-[a-z-]+\.md)", body))
         self.assertIn(self.DOC_NAME, cited)
         for path in sorted(cited):
             with self.subTest(cited=path):
