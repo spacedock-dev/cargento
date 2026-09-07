@@ -1995,6 +1995,81 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual([[]], [row["source_gaps"] for row in rows])
         self.assertEqual("gpt-5.6", rows[0]["model"])
 
+    def test_opencode_names_the_history_when_only_the_part_table_is_gone(self) -> None:
+        # The narrower half of the same read, and the one the `message`-dropped
+        # arm above cannot reach: `message` reads, so the turn and the model
+        # fallback both land, and only `_prompt_from_parts` fails. The row then
+        # looks exactly like a session that has taken no turn yet.
+        now = time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            messages, parts = self._opencode_turn("s1", millis, "add retries")
+            self._opencode_db(
+                db,
+                [("s1", None, "/w/proj", "Work", millis, None)],
+                messages=messages,
+                parts=parts,
+            )
+            con = sqlite3.connect(db)
+            con.execute("DROP TABLE part")
+            con.commit()
+            con.close()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(["message history"], rows[0]["source_gaps"])
+        self.assertEqual("", rows[0]["last_prompt"])
+        self.assertEqual("Work", rows[0]["title"], "the good fields must survive")
+
+    def test_cursor_names_the_model_it_could_not_read_from_a_store_with_no_blobs(self) -> None:
+        # A `meta` row that names a root blob on a schema that has no `blobs`
+        # table. The model read fails and is disclosed; the GATE read fails too
+        # and is deliberately not, because `_blobs_table_missing` makes that one
+        # a reading rather than a miss. Pins "model", which nothing else does.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, _ = self._cursor_chat([self._cursor_message("gpt-5.6")])
+            # blobs=None omits the table entirely, which is the older schema.
+            self._cursor_store(
+                root, "sess-noblobs", [{"name": "no blobs", "latestRootBlobId": root_id}]
+            )
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(["model"], rows[0]["source_gaps"])
+        self.assertEqual("no blobs", rows[0]["title"], "the good fields must survive")
+        self.assertIsNone(rows[0]["model"])
+
+    def test_cursor_names_the_block_state_when_the_blobs_table_has_no_data(self) -> None:
+        # A `blobs` table that exists on a shape this build cannot query. That
+        # is the one gate failure `_blobs_table_missing` refuses to call a
+        # reading — the table is there, so a gate could be in it — and the only
+        # place the "block state" wording is pinned.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "chats" / "hash1" / "sess-oddblobs" / "store.db"
+            db.parent.mkdir(parents=True)
+            con = sqlite3.connect(str(db))
+            con.execute("CREATE TABLE meta (value BLOB)")
+            con.execute(
+                "INSERT INTO meta VALUES (?)",
+                (json.dumps({"name": "Ship it"}).encode().hex(),),
+            )
+            # Present, and with no `data` column for `_pending_since` to read.
+            con.execute("CREATE TABLE blobs (other INTEGER)")
+            con.commit()
+            con.close()
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(["block state"], rows[0]["source_gaps"])
+        self.assertEqual("Ship it", rows[0]["title"], "the good fields must survive")
+
 
 class SqliteDiagnosticTest(unittest.TestCase):
     NOW = 1_700_000_000.0

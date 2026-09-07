@@ -391,11 +391,19 @@ def _blobs_table_missing(con: sqlite3_types.Connection) -> bool:
 def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, str, str, str, bool]:
     """(session name, workspace, root blob id, parent agent id, subagent type, parsed).
 
-    ``parsed`` is whether any row decoded to a JSON object at all, and it is
-    the only thing that separates a `meta` table this build does not
-    recognise from one a brand-new chat has not filled in yet. Without it the
-    two produce the same all-empty reading and the caller cannot disclose one
+    ``parsed`` is whether any row decoded to a JSON object at all. That is the
+    cut it makes — "no row decoded to a JSON object" against everything else —
+    and it is what separates a `meta` table holding rows this build cannot
+    decode from one a brand-new chat has not filled in yet. Without it the two
+    produce the same all-empty reading and the caller cannot disclose one
     without slandering the other.
+
+    It does not separate "unrecognised" from "not yet filled in", which is a
+    finer cut than one boolean can carry. A `meta` row that decodes to an
+    object whose keys this build does not know sets ``parsed`` and stays
+    silent: measured, renamed keys publish `source_gaps []` with title None and
+    state working, which is the fourth-state row
+    `docs/design-unread-sources.md` U-1 describes and this does not close.
 
     Every value here is untrusted JSON from disk, and each is taken on its own
     terms: a row that fails to parse, or parses to something other than an

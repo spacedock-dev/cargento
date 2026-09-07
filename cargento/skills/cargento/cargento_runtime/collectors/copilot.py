@@ -159,8 +159,10 @@ def _usage_rows(
         # own comment accepts what that costs — "it degrades to 'no model
         # reported', which is never wrong, only incomplete" — and this is the
         # channel that makes the incompleteness visible instead of accepted in
-        # silence. Only this branch reports: the earlier returns are a missing
-        # file and an unopenable one, which are not stores that read as empty.
+        # silence. Of the earlier returns only the missing file is excluded,
+        # because it is not a store that read as empty. An UNOPENABLE one lands
+        # here rather than there: the open is lazy, so a 512-zero-byte
+        # session-store.db raises at this SELECT and does disclose. Measured.
         if gaps is not None:
             gaps.add(sessions.UNREAD_TOKENS)
         return None

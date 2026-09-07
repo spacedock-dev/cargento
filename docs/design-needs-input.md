@@ -878,10 +878,30 @@ then idle, and raised nothing, while the same fixture's working-to-needs-input r
 web-only change and the field is not part of it.
 
 **The trigger is not the same event, and the page says so rather than pretending.** The native lane
-fires off Claude's own `idle_prompt` hook. The browser has no hook, so the edge it can see is
-`state` moving from `working` to `idle`, which is the row crossing `working_threshold_sec` with no
-new activity. Those coincide often and not always: a turn whose writes pause for ninety seconds
-crosses the threshold without the harness declaring anything.
+fires off Claude's own `idle_prompt` hook. The browser has no hook of its own, so the edge it can
+see is `state` moving from `working` to `idle` on the published row, and a row reaches `idle` two
+ways, which is why the wording has to cover both. Where a harness's lifecycle hooks are installed,
+its `Stop` becomes a `turn_stopped` event and `events.overlay_for` returns an idle overlay
+`overlay_idle_dwell_sec` (3 s) later, so the row turns over within one poll of the real turn end.
+Everywhere else the row turns over on the collector's own reading, once writes have paused for
+`working_threshold_sec` (90 s). The two coincide often and not always: a turn whose writes pause for
+ninety seconds crosses the threshold without the harness declaring anything.
+
+**The `active` gate is ordered below the quiet branch, and that ordering is load-bearing.** The idle
+overlay patches `active: False` alongside `state: "idle"`, and `active` is in `events.PATCHABLE`, so
+`_apply_overlays` writes it onto the collected row. A `nextNotifyEdge` that tested
+`session.active !== true` first therefore refused precisely the transition the nudge exists to
+report, and refused it on the **default** install, since `cargento/hooks/hooks.json` and
+`cargento/hooks/codex-hooks.json` both declare `Stop`. Worse, the edge was then spent for good:
+the suppressed render still recorded `idle` in `nextNotifyState`, so a later idle row with
+`active: true` raised nothing either. Measured: the instrumented arm went 0 to 1 once the quiet
+branch moved above the gate, with no double-fire when the overlay later retires.
+
+`previous === "working"` is the liveness check the gate would otherwise have supplied, and it is
+sufficient rather than merely cheaper: the working overlay and every collector's working state both
+carry `active: true`, so a row cannot be seen `working` at one render without having been live at
+it. A dead or ended row cannot nudge without having just been observed working. The gate still
+guards the needs-input branch, whose overlay sets `active: True`.
 
 The near-parity reading is shipped deliberately, and the disclosure is in the sentence:
 
@@ -904,3 +924,7 @@ The near-parity reading is shipped deliberately, and the disclosure is in the se
   two is the wrong one: a turn that stopped is not a request. The gate lane's wording exists because
   the native notifier and the browser both render it and they drifted once; that argument is about
   one fact rendered twice, not about collapsing two.
+- **Gating both edges on `active`, for symmetry.** It reads tidier and it is the bug above: the one
+  edge whose own overlay clears `active` is the one edge that must not be gated on it. Anyone
+  reordering those two branches to match the needs-input branch reintroduces it, which is why
+  `next-notify.js` carries a comment at the site rather than leaving the order to look arbitrary.

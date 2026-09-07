@@ -49,13 +49,13 @@ unread reading reported" and never "the store held nothing". The page renders it
 both, because those are the two arms above, and repeats it on the session page's meta line.
 
 Five collectors open SQLite: `antigravity.py`, `copilot.py`, `cursor.py`, `goose.py` and
-`opencode.py`. The other six read files. All five report through this one field, which is what makes
+`opencode.py`. The other five read files. All five report through this one field, which is what makes
 the sentence one sentence rather than five.
 
 | Collector | What it discloses | What it does not |
 |---|---|---|
 | `antigravity.py` | Both rungs of the `steps` ladder spent: message history and token accounting | A subagent store's own failure, which costs the parent a slice of its rate and is not the parent's source |
-| `copilot.py` | `assistant_usage_events` absent, on every row the store feeds: token accounting | A missing or unopenable `session-store.db`, which is not a store that half-read |
+| `copilot.py` | `assistant_usage_events` absent, on every row the store feeds: token accounting | A missing `session-store.db`, which is not a store that half-read. An unopenable one does disclose: the open is lazy, so the failure lands at the `SELECT` |
 | `cursor.py` | The `meta` query raised, the `meta` rows decoded to no object, the model read raised, the gate read did not settle | An open that failed, since there is then no source to have half-read |
 | `goose.py` | `messages` raised, `usage_ledger` raised | The per-message JSON parse, which loses one message rather than a reading |
 | `opencode.py` | The `message` read raised, the `part` read raised | An empty `session` table, which the select ladder cannot tell from a healthy empty store |
@@ -88,7 +88,11 @@ not landed has nothing to recognise yet, and disclosing there would print on eve
 session forever.
 That distinction needs a discriminator: three facts used to collapse onto one all-empty tuple out of
 `_meta` (the open failed, the query raised, the query returned rows none of which parsed), so
-`_meta_fields` now reports whether any row decoded to an object at all.
+`_meta_fields` now reports whether any row decoded to an object at all. What `parsed` separates is
+"no row decoded to a JSON object" from everything else, not "unrecognised" from "not yet filled
+in", which is a finer cut than it can make. A `meta` table whose rows *do* decode to objects but
+carry keys this build does not recognise stays silent: measured, renamed keys publish
+`source_gaps []` with title null and state working, which is U-1's fourth-state row still open.
 
 **A memoized empty reading needs a memoized disclosure.** `_meta` is memoized by mtime across four
 cache keys, all-or-nothing, and the "recognised nothing" case is on the memoized path, so a

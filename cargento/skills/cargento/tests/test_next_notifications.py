@@ -112,10 +112,23 @@ const afterGate = __notifications.length;
 nextSyncNotifications(payload([quiet], ""));
 out.gateToQuiet = __notifications.length - afterGate;
 
+// The instrumented shape, and the one a default install actually takes: a
+// `turn_stopped` overlay publishes state idle with state_detail null and
+// active FALSE, and both shipped hook manifests declare `Stop`. This is also
+// the only arm that exercises edge.detail, since state_detail is null here.
 reset("granted");
 nextSyncNotifications(payload([working], ""));
+nextSyncNotifications(payload([{...quiet, state_detail:null, active:false}], ""));
+out.instrumented = __notifications.length;
+out.instrumentedTitle = __notifications[0] && __notifications[0].title;
+out.instrumentedBody = __notifications[0] && __notifications[0].body;
+
+// An inactive row still needs a `working` sighting first: a first sighting of
+// an idle, inactive row is nobody's transition.
+reset("granted");
 nextSyncNotifications(payload([{...quiet, active:false}], ""));
-out.inactive = __notifications.length;
+nextSyncNotifications(payload([{...quiet, active:false}], ""));
+out.inactiveFirstSighting = __notifications.length;
 console.log(JSON.stringify(out));
 """
         )
@@ -129,7 +142,11 @@ console.log(JSON.stringify(out));
         self.assertEqual(0, out["nativeOwnsIt"])
         self.assertEqual(0, out["firstSighting"])
         self.assertEqual(0, out["gateToQuiet"])
-        self.assertEqual(0, out["inactive"])
+        self.assertEqual(1, out["instrumented"])
+        self.assertEqual("Claude Code has gone quiet", out["instrumentedTitle"])
+        # From edge.detail, not state_detail: the idle overlay patch nulls it.
+        self.assertEqual("[proj] awaiting your message", out["instrumentedBody"])
+        self.assertEqual(0, out["inactiveFirstSighting"])
 
     def test_browser_notifications_cover_arriving_asks_once(self) -> None:
         out = self._run_page_js(

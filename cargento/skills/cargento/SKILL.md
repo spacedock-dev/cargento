@@ -206,9 +206,12 @@ Attention on all platforms.
 
 Native alerts fire on the transition into needs-input, not on every refresh. Questions notify on
 arrival. Idle nudges (`idle_prompt`) can notify without marking the session blocked. The browser's
-quiet nudge is close to that but not the same event: it has no hook to read, so it fires when the
-row stops looking busy, which is a turn whose writes have paused for as long as the working
-threshold. Its wording says the session has gone quiet rather than that it is waiting on you.
+quiet nudge is close to that but not the same event: it has no hook of its own, so it fires on the
+published row ceasing to look busy, and a row reaches that two ways. Where the harness's lifecycle
+hooks are installed its own turn-stop reaches the row within a few seconds; everywhere else the row
+turns over only once its writes have paused for as long as the working threshold. Its wording says
+the session has gone quiet rather than that it is waiting on you, which is the honest reading of
+either path.
 Notification delivery is best effort; the dashboard's observed state remains the source to inspect.
 
 1. **Transcript detection** — an open `AskUserQuestion` or `ExitPlanMode` flips the session to Needs input on the next collection, *when the record has reached disk*. Claude Code buffers it and may not write it until the gate is answered, so treat this as an opportunistic early signal rather than a source to rely on (an open dashboard tab is what drives collections, so keep one open). When the record is there, the row shows the question itself, or a plan's first line, rather than the tool's name; when it is not, the row still says a question is open but cannot say which. Both readings are normal for the same session. There is also a window of up to 90 seconds after a turn starts where a live event overlay reports Working and the question does not show at all, even though it was parsed.

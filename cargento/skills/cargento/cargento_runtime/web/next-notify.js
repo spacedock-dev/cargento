@@ -74,15 +74,22 @@ function nextNotifyAsks(payload, fresh){
    quiet", which is exactly what was observed, rather than borrowing the gate's
    stronger sentence. */
 function nextNotifyEdge(session, previous){
-  if(session.active !== true) return null;
-  if(session.state === "needs_input" && previous !== "needs_input"){
-    return {title: "is waiting on you", detail: "needs your input"};
-  }
-  /* Only from `working`. An answered question also lands on idle, and the reader
+  /* Ahead of the `active` gate deliberately, and it must stay there: the idle
+     overlay publishes `active:false` alongside `state:"idle"`, so gating this
+     edge on `active` refuses the one transition it exists to report — on the
+     default install, since both shipped hook manifests declare `Stop`.
+     `previous === "working"` is the liveness check instead. Reordering these
+     two to match the branch below reintroduces that: design-needs-input.md N-13.
+
+     Only from `working`. An answered question also lands on idle, and the reader
      was standing right there when it did. An idle row seen for the first time
      is not a transition either — `previous` is undefined then. */
   if(session.state === "idle" && previous === "working"){
     return {title: "has gone quiet", detail: "awaiting your message"};
+  }
+  if(session.active !== true) return null;
+  if(session.state === "needs_input" && previous !== "needs_input"){
+    return {title: "is waiting on you", detail: "needs your input"};
   }
   return null;
 }
