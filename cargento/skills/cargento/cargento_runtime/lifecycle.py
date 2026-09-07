@@ -323,7 +323,7 @@ def render_status(status: dict[str, Any]) -> str:
 def stop_instance(config: RuntimeConfig, port: int) -> tuple[str, int]:
     """Ask the instance on `port` to stop. Returns (message, exit code).
 
-    Over HTTP, the same route the page's stop button uses — one implementation
+    Over HTTP, the same route any other local client uses — one implementation
     of stopping, and no per-platform signal semantics to reconcile. A server
     wedged badly enough not to serve cannot be stopped this way; SKILL.md keeps
     the platform kill commands for that.

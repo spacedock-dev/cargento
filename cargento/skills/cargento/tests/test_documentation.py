@@ -1119,6 +1119,33 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
         self.assertIn("There is nothing to authenticate with on seven of them", self.FLAT)
         self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
 
+    def test_the_documented_framing_header_is_the_one_the_server_sends(self) -> None:
+        # The paragraph sits in Known and accepted, beside the capability count
+        # this class already pins, and it is bound here because its motivation
+        # is this section's: the served document carries the focus capability,
+        # so a framed board is a raise one lured click away.
+        self.assertIn("carries `Content-Security-Policy: frame-ancestors 'none'`", self.FLAT)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        send = source[source.index("    def _send(") : source.index("    def _health(")]
+        # The whole value, not a substring. `frame-ancestors` has no fallback to
+        # `default-src`, so it is the only directive that can ride here without
+        # restricting the page; a second one in this policy blanks a board built
+        # from one inline script, one inline style and nine `data:` font URIs.
+        self.assertIn(
+            'self.send_header("Content-Security-Policy", "frame-ancestors \'none\'")',
+            send,
+        )
+        # And the carve-out the document commits to. If the stream ever routes
+        # through `_send`, the prose below is what goes stale, not the code.
+        self.assertIn(
+            "`/api/stream` writes its own headers and an event stream has nothing to click",
+            self.FLAT,
+        )
+        stream = source[source.index("def _stream_forever(") : source.index("def _emit(")]
+        self.assertNotIn("self._send(", stream)
+
     def test_the_response_the_contract_promises_is_the_one_the_route_sends(self) -> None:
         self.assertIn("The response is a single boolean saying whether a focus happened", self.FLAT)
         source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(

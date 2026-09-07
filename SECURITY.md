@@ -1021,6 +1021,30 @@ matters more on a shared Linux host than on a personal laptop. Please report a *
 that do exist. The absence of per-user isolation is documented here rather than treated as a new
 finding.
 
+A browser will not frame the board, and the header that stops it is narrower than it looks. Every
+response the server composes carries `Content-Security-Policy: frame-ancestors 'none'`, with the two
+exceptions named below, because the request gate does not close framing on its own: every port on
+this machine is the same site, so a page served from another local port frames the board under a
+`same-site` label that never reaches the cross-site check, and a frame navigation carries no `Origin`
+for the check below it. That is worth closing because the served document holds the focus capability,
+so a framed board is one lured click from raising a terminal, and `/api/data` names which rows would
+answer. The attack it stops is blind: the framer cannot read the frame, since a fetch from another
+local port carries an `Origin` and is refused, and no `Access-Control-Allow-Origin` is ever sent, so
+the framer must guess that a question is outstanding and where its control landed.
+
+What the header does not buy is the local-process exposure above. A local process the attacker
+controls can open a socket to the port carrying no `Origin` and no `Sec-Fetch` headers at all, pass
+every check, and answer or raise directly. `frame-ancestors` is not a defense against that attacker
+and does not narrow what this section already accepts. The one case it does defend is a loopback page
+whose process the attacker does not control: a stored cross-site scripting flaw, or an
+HTML-rendering endpoint, in some other local development server the operator already runs. It is
+delivered as a header rather than in the document because CSP ignores `frame-ancestors` in a
+`<meta http-equiv>`, and it is the only directive in that policy because `frame-ancestors` has no
+fallback to `default-src`, so it restricts framing and nothing else. Two responses are outside it,
+deliberately: `/api/stream` writes its own headers and an event stream has nothing to click, and a
+`send_error` body is the standard library's error template, which carries no control and no
+capability.
+
 Event ingress is the exception, and it is narrow. `POST /api/events/<harness>` requires a per-run
 capability, because a general lifecycle overlay is more powerful than the side state `/api/notify`
 sets: a forged `session_ended` can suppress a permission alert, and a looped `turn_started` can mask
