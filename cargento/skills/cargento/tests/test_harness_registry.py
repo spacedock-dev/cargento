@@ -22,12 +22,96 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import event_hook
+from cargento_runtime import events as runtime_events
 
-from .support import REGISTRY, STORE_KEYS, RuntimeTestCase, collect, store_patch
+from .support import REGISTRY, SERVER_PATH, STORE_KEYS, RuntimeTestCase, collect, store_patch
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
+
+# Where the shipped adapters live: beside the launcher at the skill's top level,
+# not under `cargento_runtime/`. Passed to the derivation below rather than read
+# inside it, so a test can point it at a synthetic adapter.
+ADAPTER_DIR = SERVER_PATH.parent
+
+
+def _non_docstring_constants(tree: ast.AST) -> set[str]:
+    """Every string constant in a parsed module except its docstrings.
+
+    Split out of `_writes_a_wait` because the adapter read below needs the same
+    exclusion for the same reason: a module that only *discusses* an event must
+    not be read as mapping one.
+    """
+    docstrings = {
+        node.body[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    return {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node not in docstrings
+    }
+
+
+def _module_string(tree: ast.Module, name: str) -> str | None:
+    """The value of a module-level `name = "<literal>"` assignment, or None."""
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
+            continue
+        if not isinstance(node.value.value, str):
+            continue
+        if any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+            return node.value.value
+    return None
+
+
+def _adapter_gate_harnesses(adapter_dir: Path) -> set[str]:
+    """Every harness an adapter maps a gate for AND the server will admit.
+
+    Two tables, and only one of them is authoritative for admission. An adapter's
+    own event map says what it *sends*; `events.IDENTITY_NORMALIZERS` says what
+    the server *accepts*, and `events.parse` refuses any harness absent from it
+    outright. A gate reaches the board only where both hold, so the flag is
+    demanded on the intersection rather than on either table alone. That this
+    read one table while the server read the other is DRC-4440, and A-2 in
+    `docs/design-adapter-packaging.md` is where the two were first told apart.
+
+    The send half is read from two shapes, because the adapters have two.
+    `event_hook.py` serves every hook-shaped harness from one file and keys them
+    by harness in `EVENTS_BY_HARNESS`; every other adapter serves exactly one
+    harness, names it in a module-level `HARNESS`, and carries a map of its own.
+    Antigravity's two are the second shape, and reading only the first is what
+    made this refuse a truthful declaration for a harness the server admits. The
+    fix could not be an `EVENTS_BY_HARNESS` row for it: A-1 forbids one for a
+    harness that never invokes `event_hook.py`, because that satisfies this
+    oracle while making its guarantee false.
+
+    Parsed rather than grepped, for `_writes_a_wait`'s reason on a second file: a
+    text read of `statusline_hook.py` finds `input_requested` in the paragraph
+    explaining why it is NOT mapped, and would take the decline for the mapping.
+
+    Where it stops: this reads Python source. A-1 permits an adapter written in
+    JavaScript, and a gate mapped in one would be invisible here. Recorded as a
+    limit rather than papered over, on the same rule as `_writes_a_wait`'s.
+    """
+    sends = {
+        harness
+        for harness, table in event_hook.EVENTS_BY_HARNESS.items()
+        if "input_requested" in table.values()
+    }
+    for path in sorted(adapter_dir.glob("*_hook.py")):
+        if path.name == "event_hook.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        harness = _module_string(tree, "HARNESS")
+        if harness is not None and "input_requested" in _non_docstring_constants(tree):
+            sends.add(harness)
+    return {harness for harness in sends if harness in runtime_events.IDENTITY_NORMALIZERS}
 
 
 def _writes_a_wait(collect_fn: Callable[..., Any]) -> bool:
@@ -55,18 +139,7 @@ def _writes_a_wait(collect_fn: Callable[..., Any]) -> bool:
     module = inspect.getmodule(collect_fn)
     assert module is not None
     tree = ast.parse(inspect.getsource(module))
-    docstrings = {
-        node.body[0].value
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.body
-        and isinstance(node.body[0], ast.Expr)
-        and isinstance(node.body[0].value, ast.Constant)
-    }
-    if any(
-        isinstance(node, ast.Constant) and node.value == "needs_input" and node not in docstrings
-        for node in ast.walk(tree)
-    ):
+    if "needs_input" in _non_docstring_constants(tree):
         return True
     return any(
         value == "needs_input"
@@ -162,6 +235,84 @@ class WaitDerivationReachTest(unittest.TestCase):
         self.assertFalse(_writes_a_wait(module.collect))
 
 
+class AdapterGateDerivationReachTest(unittest.TestCase):
+    """What `_adapter_gate_harnesses` admits, and the three things it refuses.
+
+    Against synthetic adapters rather than the shipped ones, because the shipped
+    ones cannot exercise the widening: no adapter outside `EVENTS_BY_HARNESS`
+    maps `input_requested` today, which is how the defect sat here unnoticed. The
+    last test is the shipped read, and it is the one holding the false-positive
+    direction against the real files.
+    """
+
+    def _adapters(self, name: str, source: str) -> Path:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        directory = Path(tmp.name)
+        (directory / name).write_text(source, encoding="utf-8")
+        return directory
+
+    def test_a_gate_from_an_adapter_outside_the_hook_table_is_admitted(self) -> None:
+        # DRC-4440's falsifier. Antigravity is admitted by `events.py` and ships
+        # two adapters, neither hook-shaped and neither keyed in
+        # `EVENTS_BY_HARNESS`, so a gate mapped in one was refused here while the
+        # server would have accepted the envelope. Measured before the fix: a
+        # truthful `"tool_use": "input_requested"` row in
+        # `statusline_hook.AGENT_STATES` plus `reports_needs_input=True` on the
+        # Antigravity spec turned three assertions in this file red, and one of
+        # them was the derived oracle that exists to DEMAND the flag.
+        self.assertNotIn("antigravity", event_hook.EVENTS_BY_HARNESS)
+        adapters = self._adapters(
+            "agy_hook.py",
+            'HARNESS = "antigravity"\n\nSTATES = {"tool_use": "input_requested"}\n',
+        )
+        self.assertIn("antigravity", _adapter_gate_harnesses(adapters))
+
+    def test_a_declaration_with_no_adapter_behind_it_is_still_refused(self) -> None:
+        # The direction the widening must not break. Widening what counts as an
+        # adapter is only safe while a flag with nothing behind it still fails:
+        # Goose ships no adapter of any shape, Gemini's maps every event but this
+        # one, and neither collector names the state. Both must stay out of the
+        # derived set, and the oracle below must stay red for a spec set claiming
+        # either.
+        adapters = self._adapters(
+            "goose_hook.py",
+            'HARNESS = "goose"\n\nEVENTS = {"Start": "turn_started"}\n',
+        )
+        derived = _adapter_gate_harnesses(adapters)
+        by_collector = {spec.key for spec in REGISTRY if _writes_a_wait(spec.collect)}
+        declared = {spec.key for spec in REGISTRY if spec.reports_needs_input}
+        for harness in ("goose", "gemini"):
+            with self.subTest(harness=harness):
+                self.assertNotIn(harness, derived)
+                self.assertNotEqual(by_collector | derived, declared | {harness})
+
+    def test_an_adapter_the_server_will_not_admit_is_not_a_route(self) -> None:
+        # The mirror direction, which `docs/design-adapter-packaging.md` A-2 used
+        # to describe as the reachable one. A gate an adapter maps for a harness
+        # `events.py` refuses never reaches a row, so declaring the flag would be
+        # a promise the board cannot keep -- the same error as the lying chip,
+        # arriving from the other table.
+        self.assertNotIn("droid", runtime_events.IDENTITY_NORMALIZERS)
+        adapters = self._adapters(
+            "droid_hook.py",
+            'HARNESS = "droid"\n\nEVENTS = {"Ask": "input_requested"}\n',
+        )
+        self.assertNotIn("droid", _adapter_gate_harnesses(adapters))
+
+    def test_the_shipped_adapters_map_a_gate_for_exactly_two_harnesses(self) -> None:
+        # The false-positive direction against the real files, and why the read is
+        # parsed rather than grepped. `statusline_hook.py` spends a paragraph on
+        # why `tool_use` is NOT mapped -- the status line is a repeating render,
+        # so an `input_requested` posted from there would be cleared by the next
+        # push, and sending it needs a precedence rule in the overlay reducer
+        # rather than a row in that table. Its source therefore carries
+        # `input_requested` in a comment while `AGENT_STATES` maps only `working`
+        # and `idle`, and a text search would take the decline for the mapping
+        # and demand a flag Antigravity cannot honour.
+        self.assertEqual({"claude", "codex"}, _adapter_gate_harnesses(ADAPTER_DIR))
+
+
 class HarnessGateCoverageTest(RuntimeTestCase):
     """`reports_needs_input`: the declaration, its derivation, its prose, its wire."""
 
@@ -193,17 +344,25 @@ class HarnessGateCoverageTest(RuntimeTestCase):
         #
         # So derive the truth instead of restating it. A gate reaches the board by
         # exactly two routes: a collector that sets the state itself, or an adapter
-        # that maps `input_requested`, which is whatever `EVENTS_BY_HARNESS` says
-        # today. A collector that names the state in its own module, by literal or
-        # by imported constant, and an adapter that maps it, are both demanded to
-        # declare the flag here rather than shipping a lying chip.
+        # that maps `input_requested` for a harness the server admits. A collector
+        # that names the state in its own module, by literal or by imported
+        # constant, and an adapter that maps it, are both demanded to declare the
+        # flag here rather than shipping a lying chip.
         #
-        # What this does not cover, said plainly rather than guessed at: a
-        # collector that reaches the state through a helper in another module names
-        # it nowhere a read of one module can find, and following a call across
-        # modules is not something a heuristic here should pretend to do. It is
-        # left uncovered on the same rule the deleted frontend pin below was
-        # deleted under. Every collector today uses the bare literal.
+        # The adapter half used to read `EVENTS_BY_HARNESS` alone, which is one of
+        # the adapter shapes and not the table the server admits on. Antigravity's
+        # two adapters sit outside it, so a truthful mapping there was refused
+        # here -- DRC-4440. `_adapter_gate_harnesses` reads both shapes now and
+        # intersects them with what `events.py` will accept.
+        #
+        # What this does not cover, said plainly rather than guessed at, and now
+        # two things rather than one. A collector that reaches the state through a
+        # helper in another module names it nowhere a read of one module can find,
+        # and following a call across modules is not something a heuristic here
+        # should pretend to do; every collector today uses the bare literal. And
+        # both halves read Python, while A-1 in `docs/design-adapter-packaging.md`
+        # permits a JavaScript adapter. Both are left uncovered on the same rule
+        # the deleted frontend pin below was deleted under.
         #
         # The collector half used to be the literal `{"claude"}`, because Claude's
         # was the only collector that produced a wait. Copilot's now does too, from
@@ -218,11 +377,7 @@ class HarnessGateCoverageTest(RuntimeTestCase):
         # it, which is the direction that matters: the derivation demanded the
         # declaration rather than being widened to agree with one.
         by_collector = {spec.key for spec in REGISTRY if _writes_a_wait(spec.collect)}
-        by_adapter = {
-            harness
-            for harness, table in event_hook.EVENTS_BY_HARNESS.items()
-            if "input_requested" in table.values()
-        }
+        by_adapter = _adapter_gate_harnesses(ADAPTER_DIR)
         self.assertEqual(
             by_collector | by_adapter,
             {spec.key for spec in REGISTRY if spec.reports_needs_input},

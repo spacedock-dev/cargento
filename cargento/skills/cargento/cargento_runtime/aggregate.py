@@ -235,9 +235,12 @@ class HarnessSpec:
     That is the inversion this field exists to prevent, shipped by the field
     itself. `tests/test_harness_registry.py` derives the expected set instead of
     listing it: every collector module is parsed for the state it actually
-    writes, unioned with whatever `EVENTS_BY_HARNESS` maps `input_requested`
-    for, because a hand-set bool beside a hand-written literal pinned the bug
-    green. The same file holds the count in the sentence above to the registry,
+    writes, unioned with every harness whose adapter maps `input_requested` and
+    which `events.IDENTITY_NORMALIZERS` will admit, because a hand-set bool
+    beside a hand-written literal pinned the bug green. That union used to read
+    `EVENTS_BY_HARNESS` alone, which is one adapter shape and not the table the
+    server admits on, so it refused a truthful declaration for Antigravity
+    (DRC-4440). The same file holds the count in the sentence above to the registry,
     since nothing else does and it has been wrong twice. Not `test_next_page.py`,
     where this pointer sent a reader from 8d2585c, which deleted the file that
     actually held these four, until DRC-4378 restored them.
@@ -820,12 +823,23 @@ class Application:
     def _mark_unreachable_by_events(self, out_sessions: list[Session]) -> None:
         """Disclose the rows no event can ever reach, before any overlay lands.
 
-        Six of the ten harnesses have no entry in the event vocabulary, so
-        `events.parse` refuses their envelopes outright and their rows are read
-        off disk and nothing else. Their idle rows therefore cannot say whether a
-        turn ended, and without this an unmarked row would mean either "did not
-        finish" or "cannot be seen from here" — the same collapse the retired
-        `stale` gloss was admitting to (DRC-4035 D4).
+        Six of the ten harnesses are absent from `events.IDENTITY_NORMALIZERS`,
+        so `events.parse` refuses their envelopes outright and their rows are read
+        off disk and nothing else. That table by name and not "the event
+        vocabulary", which is `EVENTS_BY_HARNESS` and holds three: six is right
+        for the table this tests and wrong for the other one.
+
+        Their idle rows therefore cannot say whether a turn ended, and without
+        this an unmarked row would mean either "did not finish" or "cannot be seen
+        from here" — the same collapse the retired `stale` gloss was admitting to.
+        Both halves are N-9 in `docs/design-needs-input.md` (DRC-4035): its
+        **Marking on the stop itself** rejection is where the gloss was measured
+        out, and its **Letting a collector infer completion** rejection is what
+        this method implements — a guessed completion renders identically to a
+        measured one, so the six disclose `scan-only` instead. The document and
+        not the commits behind it, because the reason N-9 exists is that a commit
+        message and a comment held the measurement and neither is where a reader
+        looks.
 
         A property of the harness, not of this process, so it is stated whether or
         not a coordinator is attached. Written before `_apply_overlays` on
