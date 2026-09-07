@@ -9,9 +9,10 @@ import re
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from cargento_runtime import claude_data, cli, focus, git_status, history
+from cargento_runtime import aggregate, claude_data, cli, focus, git_status, history
 from cargento_runtime import config as runtime_config
 from cargento_runtime import events as runtime_events
+from cargento_runtime import transcripts as runtime_transcripts
 
 from .support import (
     SERVER_PATH,
@@ -693,6 +694,90 @@ class EventEnvelopeEnumerationTest(unittest.TestCase):
         )
 
 
+class PublishedTextCarrierEnumerationTest(unittest.TestCase):
+    """The published-prompt-text list, held to the fields the sweep actually redacts.
+
+    The list read as exhaustive and was not. It named five things — a session
+    title, "the line beneath it", `last_prompt`, the observer goal and a Codex
+    title — while `aggregate` redacts seven raw carriers, four of them nested in
+    `tasks` and `subagents`, and `aggregate`'s own table comment records that
+    `state_detail` and `subagents[].name` were each forgotten once already. So
+    the count in prose was a claim about a set that nothing read.
+
+    "The line beneath it" is gone from all three copies for the reason
+    `EventEnvelopeEnumerationTest` gives for not glossing the acquisition
+    marker: a prose alias is a name no test can check. It resolved to
+    `state_detail`, and the phrase was defined nowhere in the repository.
+
+    Keyed on `_RAW_ROW_TEXT` and `_RAW_NESTED_TEXT` rather than on the producing
+    sites, which #295 already pinned in
+    `IrreversibleActionsContractDocumentationTest`. Nested keys are compared as
+    `field[].key`, the spelling the prose uses, so a key that moves between the
+    two lists cannot satisfy the other one's entry.
+
+    All three copies are checked because they had already drifted apart, and one
+    of them is in `docs/design-credential-redaction.md`, outside SECURITY.md
+    entirely: a fix that lands in one place leaves the other two contradicting
+    it, which is worse than the original understatement.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # The canonical copy, sliced, so the history section's copy cannot satisfy an
+    # assertion made about this one.
+    SECTION = _flat_section(SECURITY, "## Published text (credential redaction)")
+    HISTORY = _flat_section(SECURITY, "## Local history (the session history store)")
+    DESIGN: ClassVar[str] = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "docs/design-credential-redaction.md").read_text(encoding="utf-8"),
+    )
+    NUMBER_WORDS: ClassVar[dict[int, str]] = {
+        5: "five",
+        6: "six",
+        7: "seven",
+        8: "eight",
+        9: "nine",
+        10: "ten",
+    }
+    # Terminated on a period FOLLOWED BY A SPACE, because `tasks[].subject`
+    # carries a period of its own and a bare `\.` stops inside the first entry.
+    CLAUSE: ClassVar[str] = r"the carriers that reach the page raw are these (\w+): (.*?)\. "
+
+    @classmethod
+    def carriers(cls) -> set[str]:
+        return set(aggregate._RAW_ROW_TEXT) | {
+            f"{field}[].{key}" for field, keys in aggregate._RAW_NESTED_TEXT for key in keys
+        }
+
+    def test_the_named_carriers_are_exactly_the_fields_the_sweep_redacts(self) -> None:
+        match = re.search(self.CLAUSE, self.SECTION)
+        assert match is not None, "SECURITY.md no longer enumerates the raw carriers"
+        self.assertEqual(self.NUMBER_WORDS[len(self.carriers())], match.group(1))
+        self.assertEqual(
+            self.carriers(),
+            set(re.findall(r"`([A-Za-z_]+(?:\[\]\.[A-Za-z_]+)?)`", match.group(2))),
+        )
+
+    def test_all_three_copies_of_the_list_name_the_same_carriers(self) -> None:
+        canonical = re.search(self.CLAUSE, self.SECTION)
+        assert canonical is not None
+        for name, copy in (("Local history", self.HISTORY), ("the design doc", self.DESIGN)):
+            with self.subTest(copy=name):
+                found = re.search(self.CLAUSE, copy)
+                assert found is not None, f"{name} no longer enumerates the raw carriers"
+                self.assertEqual(canonical.group(0), found.group(0))
+
+    def test_no_copy_still_glosses_a_carrier_as_the_line_beneath_it(self) -> None:
+        for name, copy in (
+            ("Published text", self.SECTION),
+            ("Local history", self.HISTORY),
+            ("the design doc", self.DESIGN),
+        ):
+            with self.subTest(copy=name):
+                self.assertNotIn("the line beneath it", copy)
+
+
 class GitProbeContractDocumentationTest(unittest.TestCase):
     """SECURITY.md's git-probe section is a contract, so the code must still meet it.
 
@@ -1249,6 +1334,45 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
             f"bounded at `config.input_summary_cap_chars`, {config.input_summary_cap_chars}"
             " characters",
             self.FLAT,
+        )
+
+    def test_the_codex_plan_read_is_bounded_to_the_caps_the_section_states(self) -> None:
+        # The section promises that each named read "reduces what it read to a
+        # bounded summary at parse time". The Claude bullet honoured that with a
+        # number the test above reads out of the live config; the Codex bullet
+        # stated no bound at all, and neither constant behind it appeared in any
+        # Markdown file in the repository, so raising either would have widened
+        # what this section implicitly promises with nothing in CI noticing.
+        #
+        # Read out of `transcripts` rather than typed here, and asserted against
+        # this section alone: 160 is also `input_summary_cap_chars`, so an
+        # assertion over the whole document would pass on the Claude bullet's
+        # copy of the same number.
+        self.assertIn(
+            f"bounded at `transcripts.CODEX_PLAN_MAX_STEPS` steps,"
+            f" {runtime_transcripts.CODEX_PLAN_MAX_STEPS},",
+            self.SECTION,
+        )
+        self.assertIn(
+            f"bounded at `transcripts.CODEX_PLAN_STEP_CAP_CHARS`,"
+            f" {runtime_transcripts.CODEX_PLAN_STEP_CAP_CHARS} characters",
+            self.SECTION,
+        )
+
+    def test_the_promise_map_states_the_step_bound_it_now_quotes(self) -> None:
+        # `docs/promise-map.md` said "a plan title and a question are the two
+        # that reach the board", which is true of Claude and undercounts Codex:
+        # the whole plan reaches the board, every step and status, as a task
+        # list. Saying so puts a second copy of the step bound in a document
+        # AGENTS.md makes canonical for the user-facing promise, so it is bound
+        # here rather than left to drift against the first.
+        promise_map = re.sub(
+            r"\s+", " ", (self.ROOT / "docs/promise-map.md").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            f"up to {runtime_transcripts.CODEX_PLAN_MAX_STEPS} plan steps"
+            " with their statuses from Codex",
+            promise_map,
         )
 
     def test_the_two_input_tools_the_section_names_are_the_pair_the_code_gates_on(self) -> None:
