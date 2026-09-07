@@ -122,6 +122,47 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("did not publish an assignment", html)
         self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
+    def test_the_source_coverage_the_reader_opened_is_still_open_after_a_render(self) -> None:
+        # `renderNext` assigns the app's whole innerHTML, so the open state the
+        # browser keeps on a `<details>` node dies with the node: the panel
+        # closed itself under the reader on the next revision, or within 20
+        # seconds on the bare interval (DRC-4410). The page has to own it.
+        out = self.render(
+            """
+Object.assign(nextData.sessions[0], {state: "working", tasks: [], subagents: []});
+nextData.asks = [];
+const summary = () => __fire("click", {
+  target: {closest(candidate){
+    return candidate === "[data-next-disclosure]"
+      ? {dataset: {nextDisclosure: "session-source-coverage"}}
+      : null;
+  }},
+  preventDefault(){}, stopPropagation(){}
+});
+renderNext();
+const closed = __els.app.innerHTML;
+summary();
+renderNext();
+const opened = __els.app.innerHTML;
+renderNext();
+const survived = __els.app.innerHTML;
+summary();
+renderNext();
+const reclosed = __els.app.innerHTML;
+console.log(JSON.stringify({closed, opened, survived, reclosed}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        tag = '<details class="next-session-source-coverage"'
+        for html in (out["closed"], out["reclosed"]):
+            self.assertIn(f"{tag}>", html)
+            self.assertNotIn(f"{tag} open", html)
+        for html in (out["opened"], out["survived"]):
+            self.assertIn(f"{tag} open>", html)
+            self.assertIn("SOURCE COVERAGE", html)
+        self.assertEqual(out["closed"], out["reclosed"])
+
     def test_current_activity_leads_identity_without_a_redundant_session_label(self) -> None:
         html = self.render()
         assert isinstance(html, str)
@@ -390,8 +431,10 @@ console.log(JSON.stringify(variants));
         self.assertNotIn("consecutive", out["barren"])
         self.assertIn("5 tool calls failed this turn and none succeeded", out["barrenSplit"])
 
-        # A payload from before this shipped carries neither field, and must
-        # still read as the run it is rather than losing its sentence.
+        # Two producers reach this shape now: a payload from before DRC-4021, and
+        # a turn the scanner could not finish, which withholds both readings
+        # (turns.py). Rendering them alike is deliberate; either way the run it
+        # did see is the sentence to keep.
         self.assertIn("4 tool calls in a row came back as errors", out["legacy"])
         self.assertIn("4 tool calls in a row came back as errors", out["totalNotBigger"])
 
