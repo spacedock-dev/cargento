@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import unittest
+from typing import Any
 
 from .next_harness import NextPageJsHarness, storage_prelude
 
@@ -699,3 +700,271 @@ location.hash = "";
         )
         self.assertIsNone(out["before"])
         self.assertEqual("declined", out["after"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CapacityBudgetEndsTest(NextPageJsHarness):
+    """BUDGET ENDS carries the time in every shape the column has.
+
+    DEC-12 leaves the budget-vs-reset reading to the reader, and the branch that
+    returned "lasts, ~N% spare" INSTEAD of the instant took the comparison away
+    from them: one observed render showed `12:15` on the Claude 5-hour row
+    beside a verdict on the two weekly rows, in the same column, so nothing in
+    the column could be read against anything else in it.
+    """
+
+    def _ends(self, script: str) -> dict[str, Any]:
+        out = self._run_page_js(PAYLOAD + script, storage_prelude({}))
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_budget_that_outlasts_its_window_still_prints_its_end_time(self) -> None:
+        out = self._ends(
+            """
+const rows = nextCapacityRows(nextData);
+const row = rows.find(entry => entry.harness === "codex" && entry.slot === "week");
+console.log(JSON.stringify({
+  clock: nextCapacityClock(row.endsAt, nextData.generated),
+  html: nextCapacityEnds(row, nextData.generated)
+}));
+"""
+        )
+        # The quantity, not a verdict about it. Asserted as the clock string the
+        # row's own `endsAt` formats to, so a branch that drops the time fails
+        # here whatever it prints instead.
+        self.assertTrue(out["clock"])
+        self.assertIn(out["clock"], out["html"])
+        # And the spare survives beside it rather than in place of it.
+        self.assertIn("spare", out["html"])
+
+    def test_a_budget_that_runs_out_first_prints_the_time_and_no_spare(self) -> None:
+        out = self._ends(
+            """
+const rows = nextCapacityRows(nextData);
+const row = rows.find(entry => entry.harness === "claude" && entry.slot === "fiveH");
+console.log(JSON.stringify({
+  clock: nextCapacityClock(row.endsAt, nextData.generated),
+  html: nextCapacityEnds(row, nextData.generated)
+}));
+"""
+        )
+        self.assertTrue(out["clock"])
+        self.assertIn(out["clock"], out["html"])
+        # No spare to state: the budget is gone before the window turns over.
+        self.assertNotIn("spare", out["html"])
+
+    def test_the_two_readings_are_both_legible_in_one_column(self) -> None:
+        # The failure was comparative, so this is the test that reproduces it:
+        # every projected row in one render must carry a clock, or the column is
+        # a mix of quantities and verdicts again.
+        out = self._ends(
+            """
+const rows = nextCapacityRows(nextData);
+console.log(JSON.stringify({cells: rows.map(row => ({
+  clock: nextCapacityClock(row.endsAt, nextData.generated),
+  html: nextCapacityEnds(row, nextData.generated)
+}))}));
+"""
+        )
+        cells = out["cells"]
+        self.assertEqual(3, len(cells))
+        for index, cell in enumerate(cells):
+            with self.subTest(row=index):
+                self.assertTrue(cell["clock"])
+                self.assertIn(cell["clock"], cell["html"])
+
+    def test_a_spent_budget_and_an_untimed_window_keep_their_own_words(self) -> None:
+        # The two branches the ruling left alone, held here so a change to the
+        # projected branch cannot quietly reach them.
+        out = self._ends(
+            """
+nextData.usage = [
+  {harness: "claude", state: "ok", asOf: nextData.generated,
+   fiveH: {pct: 100, windowSec: 18000, resetAt: nextData.generated + 3600}},
+  {harness: "codex", state: "ok", asOf: nextData.generated,
+   month: {pct: 41, resetAt: nextData.generated + 86400}}
+];
+const rows = nextCapacityRows(nextData);
+console.log(JSON.stringify({
+  spent: nextCapacityEnds(rows.find(row => row.pct === 100), nextData.generated),
+  untimed: nextCapacityEnds(rows.find(row => row.pct === 41), nextData.generated)
+}));
+"""
+        )
+        self.assertIn("already spent", out["spent"])
+        self.assertNotIn("spare", out["spent"])
+        self.assertIn("not projected", out["untimed"])
+        self.assertNotIn("spare", out["untimed"])
+
+    def test_a_thin_basis_qualifies_the_time_and_the_spare_together(self) -> None:
+        out = self._ends(
+            """
+nextData.usage = [{harness: "claude", state: "ok", asOf: nextData.generated,
+  fiveH: {pct: 2, windowSec: 18000, resetAt: nextData.generated + 17100}}];
+const rows = nextCapacityRows(nextData);
+console.log(JSON.stringify({
+  clock: nextCapacityClock(rows[0].endsAt, nextData.generated),
+  html: nextCapacityEnds(rows[0], nextData.generated)
+}));
+"""
+        )
+        self.assertTrue(out["clock"])
+        self.assertIn(out["clock"], out["html"])
+        self.assertIn("spare", out["html"])
+        self.assertIn("<em>on ", out["html"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CapacityModelSubLimitsTest(NextPageJsHarness):
+    """Per-model limits, visible as what they are: fractions of the weekly window.
+
+    The payload carries a label and a percentage and nothing else — no
+    `windowSec`, no `resetAt`, no `recent` — so the sub-line states a level and
+    names the absence of the clock rather than borrowing the weekly row's.
+    """
+
+    # The weekly row is given a level and a reset that place it inside the
+    # strip's first three rows, so the mount test below reaches a sub-line
+    # rather than one folded behind the "and N more" disclosure.
+    MODELS = """
+nextData.usage[0].week = {pct: 90, windowSec: 604800,
+  resetAt: nextData.generated + 423360};
+nextData.usage[0].models = [{label: "Fable", pct: 0}, {label: "Opus 5", pct: 47}];
+"""
+
+    def _row(self, script: str) -> dict[str, Any]:
+        out = self._run_page_js(PAYLOAD + script, storage_prelude({}))
+        assert isinstance(out, dict)
+        return out
+
+    def test_the_weekly_row_carries_every_model_label_and_level(self) -> None:
+        out = self._row(
+            self.MODELS
+            + """
+const rows = nextCapacityRows(nextData);
+const week = rows.find(row => row.harness === "claude" && row.slot === "week");
+console.log(JSON.stringify({html: nextCapacityRow(week, nextData.generated)}));
+"""
+        )
+        html = out["html"]
+        # Label bound to level, asserted as the pair: a bare "0%" is a substring
+        # of the weekly row's own figures and would pass on the wrong number.
+        self.assertIn("<b>Opus 5</b> 47%", html)
+        # A measured zero is evidence, not an absence: it prints as 0%.
+        self.assertIn("<b>Fable</b> 0%", html)
+
+    def test_the_sub_line_claims_no_clock_pace_or_projected_end(self) -> None:
+        out = self._row(
+            self.MODELS
+            + """
+const rows = nextCapacityRows(nextData);
+const week = rows.find(row => row.harness === "claude" && row.slot === "week");
+console.log(JSON.stringify({
+  html: nextCapacityRow(week, nextData.generated),
+  models: week.models
+}));
+"""
+        )
+        html = out["html"]
+        # Named, in the panel's own words for an absence, rather than left to be
+        # inferred from a blank cell.
+        self.assertIn("publish no clock", html)
+        # And nothing derived: the shaped rows carry a label and a level only.
+        for model in out["models"]:
+            with self.subTest(label=model["label"]):
+                self.assertEqual({"label", "pct"}, set(model))
+
+    def test_a_harness_with_no_models_renders_no_sub_line(self) -> None:
+        # The base payload's Codex weekly window publishes no `models` at all.
+        out = self._row(
+            """
+const rows = nextCapacityRows(nextData);
+const week = rows.find(row => row.harness === "codex" && row.slot === "week");
+console.log(JSON.stringify({html: nextCapacityRow(week, nextData.generated)}));
+"""
+        )
+        # No container, empty or otherwise. An empty one reads as a fault.
+        self.assertNotIn("next-capacity-models", out["html"])
+        self.assertNotIn("publish no clock", out["html"])
+
+    def test_the_sub_line_belongs_to_the_weekly_row_only(self) -> None:
+        # They are sub-limits OF the weekly window, so hanging them under the
+        # five-hour row would make them a fraction of the wrong figure.
+        out = self._row(
+            self.MODELS
+            + """
+const rows = nextCapacityRows(nextData);
+const five = rows.find(row => row.harness === "claude" && row.slot === "fiveH");
+console.log(JSON.stringify({
+  html: nextCapacityRow(five, nextData.generated),
+  models: five.models
+}));
+"""
+        )
+        self.assertEqual([], out["models"])
+        self.assertNotIn("next-capacity-models", out["html"])
+
+    def test_a_hostile_label_is_escaped_and_bounded(self) -> None:
+        out = self._row(
+            """
+nextData.usage[0].week = {pct: 61, windowSec: 604800,
+  resetAt: nextData.generated + 302400};
+nextData.usage[0].models = [
+  {label: "<img src=x onerror=alert(1)>", pct: 3},
+  {label: "\\"'&<>", pct: 4},
+  {label: "L".repeat(400), pct: 5}
+];
+const rows = nextCapacityRows(nextData);
+const week = rows.find(row => row.harness === "claude" && row.slot === "week");
+console.log(JSON.stringify({
+  html: nextCapacityRow(week, nextData.generated),
+  labels: week.models.map(model => model.label.length)
+}));
+"""
+        )
+        html = out["html"]
+        self.assertNotIn("<img", html)
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;</b> 3%", html)
+        self.assertNotIn("onerror=alert(1)>", html)
+        self.assertIn("&quot;&#39;&amp;&lt;&gt;</b> 4%", html)
+        # Bounded before it is escaped, so the cap counts the vendor's
+        # characters rather than an entity expansion of them.
+        self.assertEqual([28, 5, 40], out["labels"])
+
+    def test_unusable_and_surplus_model_rows_are_refused(self) -> None:
+        out = self._row(
+            """
+nextData.usage[0].week = {pct: 61, windowSec: 604800,
+  resetAt: nextData.generated + 302400};
+nextData.usage[0].models = [
+  {label: "kept", pct: 1},
+  {label: "", pct: 2},
+  {label: "   ", pct: 3},
+  {label: 7, pct: 4},
+  {label: "no level"},
+  {label: "fractional", pct: 1.5},
+  {label: "textual", pct: "9"},
+  null,
+  ["kept"],
+  ...Array.from({length: 20}, (_value, index) => ({label: `m${index}`, pct: index}))
+];
+const rows = nextCapacityRows(nextData);
+const week = rows.find(row => row.harness === "claude" && row.slot === "week");
+console.log(JSON.stringify({labels: week.models.map(model => model.label)}));
+"""
+        )
+        # Eight is the producer's own cap, re-applied here because the page
+        # bounds what it prints whatever produced it.
+        self.assertEqual(["kept", "m0", "m1", "m2", "m3", "m4", "m5", "m6"], out["labels"])
+
+    def test_the_sub_line_reaches_the_rendered_strip(self) -> None:
+        # The builders above are unit-level; this is the one that proves the
+        # sub-line is actually served.
+        out = self._row(
+            self.MODELS
+            + """
+console.log(JSON.stringify({html: nextCapacityView(nextData)}));
+"""
+        )
+        self.assertIn("next-capacity-models", out["html"])
+        self.assertIn("Opus 5", out["html"])
