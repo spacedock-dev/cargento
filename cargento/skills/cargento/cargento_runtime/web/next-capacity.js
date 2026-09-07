@@ -38,6 +38,54 @@ const NEXT_CAPACITY_INITIAL_ROWS = 3;
    figure the reader can weigh for themselves. */
 const NEXT_CAPACITY_THIN_BASIS = 0.1;
 
+/* Mirrors of `quota.MAX_SCOPED_LIMITS` and `quota.MODEL_LABEL_CAP_CHARS`,
+   re-applied here rather than trusted: `usage` reaches the page as untrusted
+   collector output, and every other published figure on this surface is
+   re-validated at the boundary too. */
+const NEXT_CAPACITY_MODEL_ROWS = 8;
+const NEXT_CAPACITY_MODEL_LABEL_CHARS = 40;
+
+function nextCapacityModels(raw){
+  /* Per-model sub-limits as a label and a level, and deliberately nothing
+     else. `quota._scoped_limits` publishes them with no `windowSec`, no
+     `resetAt` and no `recent`, so every figure the rest of this file derives —
+     elapsed, the tick, `paceRatio`, `endsAt` — is undefined for them, and
+     borrowing the weekly row's clock would compose the reading DEC-12 refuses.
+     A row with no usable label is dropped rather than published under a
+     placeholder, on `_scoped_limit`'s reasoning: an unnamed bar beneath the
+     weekly one reads as a second weekly figure disagreeing with the first. */
+  if(!Array.isArray(raw)) return [];
+  const models = [];
+  for(const entry of raw){
+    if(!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    /* An integer level, so a measured 0 is kept and a string or a fraction is
+       refused rather than coerced into a percentage nobody published. */
+    if(!Number.isInteger(entry.pct)) continue;
+    const label = typeof entry.label === "string"
+      ? entry.label.trim().slice(0, NEXT_CAPACITY_MODEL_LABEL_CHARS)
+      : "";
+    if(!label) continue;
+    models.push({label, pct: entry.pct});
+    if(models.length >= NEXT_CAPACITY_MODEL_ROWS) break;
+  }
+  return models;
+}
+
+function nextCapacityModelLine(row){
+  /* A sub-line under the row it is a fraction OF, never a row of its own.
+     Nothing here is keyed by the label: the container hangs off the row's
+     `harness:slot`, which is what the row above already keys on, so a hostile
+     label cannot reach a selector or collide with another row's key. */
+  if(!row.models || !row.models.length) return "";
+  return '<div class="next-capacity-models" data-next-capacity-models=' +
+    `"${esc(row.harness)}:${esc(row.slot)}">` +
+    "<small>WITHIN THIS WEEKLY BUDGET</small>" +
+    row.models.map(model => '<span class="next-capacity-model">' +
+      `<b>${esc(model.label)}</b> ${model.pct}%</span>`).join("") +
+    "<i>Per-model sub-limits &middot; these publish no clock, so no pace and " +
+    "no projected end</i></div>";
+}
+
 function nextCapacityDuration(seconds){
   /* `nextFormatDuration` answers null for anything it cannot format, and no
      sentence on this surface may print that. Callers guard the value first, so
@@ -195,6 +243,10 @@ function nextCapacityWindow(entry, slot, generated){
     endsAt: windowMinutesLeft == null ? null : generated + windowMinutesLeft * 60,
     recentMinutesLeft: minutesAt(recentPacePerMin),
     left,
+    /* Only on the weekly row, because that is the window they are sub-limits
+       of. Hanging them under `fiveH` would make them a fraction of a figure
+       they were never measured against. */
+    models: slot === "week" ? nextCapacityModels(entry.models) : [],
   };
 }
 
@@ -280,11 +332,21 @@ function nextCapacityEnds(row, generated){
   const basis = row.thinBasis
     ? ` <em>on ${esc(nextCapacityDuration(row.elapsed * row.windowSec))}</em>`
     : "";
-  if(row.remainingSec != null && row.windowMinutesLeft * 60 >= row.remainingSec) {
-    const spare = Math.round(row.left - row.windowPacePerMin * (row.remainingSec / 60));
-    return `<span class="next-capacity-slack">lasts, ~${Math.max(0, spare)}% spare</span>${basis}`;
-  }
-  return `${esc(nextCapacityClock(row.endsAt, generated))}${basis}`;
+  /* The instant, in every projected shape. Where the budget outlasts the
+     window this branch used to return the spare INSTEAD of the time, and that
+     is the one place the column stopped being a quantity: observed in one
+     render, `claude:fiveH` showed 12:15 while both weekly rows showed
+     "lasts, ~N% spare", so the reader could not compare the budget's end with
+     the reset that DEC-12 leaves them to adjudicate. The spare is worth saying
+     — it is what the window turns over with — but as an annotation on the
+     time, never as a replacement for it. */
+  const spare = row.remainingSec != null && row.windowMinutesLeft * 60 >= row.remainingSec
+    ? Math.max(0, Math.round(row.left - row.windowPacePerMin * (row.remainingSec / 60)))
+    : null;
+  const slack = spare == null
+    ? ""
+    : ` <span class="next-capacity-slack">&middot; ~${spare}% spare at reset</span>`;
+  return `${esc(nextCapacityClock(row.endsAt, generated))}${basis}${slack}`;
 }
 
 function nextCapacityRow(row, generated){
@@ -307,15 +369,27 @@ function nextCapacityRow(row, generated){
     '<div class="next-capacity-ends"><small>BUDGET ENDS</small>' +
     `${nextCapacityEnds(row, generated)}</div>` +
     `<div class="next-capacity-resets"><small>RESETS</small>${resets}</div>` +
-    "</div>";
+    "</div>" +
+    /* Outside the row element, not inside it: the row is a six-column grid and
+       a nested block becomes a seventh cell. */
+    nextCapacityModelLine(row);
 }
 
-function nextCapacityProspect(row, workingCount, projectSpread){
+function nextCapacityProspect(row, projectSpread){
   /* What the remaining budget buys, in the unit the decision is made in. Two
      measured paces rather than one fitted rate with a synthetic band: both ends
      are observations, and where they disagree that disagreement IS the
      uncertainty. Where only one is measured, one is stated and the other is
-     named as absent. */
+     named as absent.
+
+     No concurrency beside it. "Measured while N agents were working" counted
+     every working session on the machine, read at render, and stood as the
+     provenance of one vendor's historical window average: observed reading 3 on
+     the CODEX WEEKLY row while the three were Claude, Antigravity and Codex.
+     Scoping the count to the row's harness fixes the vendor and not the clock —
+     a count read now cannot describe a span already averaged — so the claim is
+     withdrawn rather than narrowed, on the same rule as the recent pace below
+     (DRC-4396). */
   const parts = [];
   if(row.windowMinutesLeft != null){
     parts.push(`<b>${esc(nextCapacityDuration(row.windowMinutesLeft * 60))}</b> at this window's ` +
@@ -330,9 +404,6 @@ function nextCapacityProspect(row, workingCount, projectSpread){
   const resets = row.remainingSec == null
     ? ""
     : ` Resets in <b>${esc(nextCapacityDuration(Math.max(0, row.remainingSec)))}</b>.`;
-  const measuredWith = workingCount > 0
-    ? ` Measured while ${workingCount} ${workingCount === 1 ? "agent was" : "agents were"} working.`
-    : "";
   const spread = projectSpread ? `<p>${projectSpread}</p>` : "";
   /* Three states, because two of them are evidence and only one is absence.
      Keying the caption on the derived minutes collapsed a measured zero into
@@ -351,7 +422,7 @@ function nextCapacityProspect(row, workingCount, projectSpread){
     `&middot; ${esc(NEXT_CAPACITY_SLOT_LABELS[row.slot] || row.slot)}</span></p>` +
     `<p>The remaining ${row.left}% buys ${parts.join(", or ")}.${resets}</p>` +
     spread +
-    `<small>${esc(measuredWith.trim())}</small>${stale}` +
+    stale +
     "</div>";
 }
 
@@ -375,7 +446,6 @@ function nextCapacityView(payload){
       `${rest} more ${rest === 1 ? "window" : "windows"}` +
       `${untimed ? `, ${untimed} of them not timed` : ""}</i></div>`
     : "";
-  const working = nextCapacityWorkingCount();
   const generated = nextNumber(payload && payload.generated);
   /* Scoped to the harness whose budget the paragraph is about. Drawn across
      every harness it invited a division nobody measured: "the budget buys 50
@@ -390,14 +460,9 @@ function nextCapacityView(payload){
     '<span>BUDGET AGAINST CLOCK</span><span>PACE</span><span>BUDGET ENDS</span>' +
     '<span>RESETS</span></div>' +
     shown.map(row => nextCapacityRow(row, generated)).join("") + more +
-    nextCapacityProspect(shown[0], working, spread) +
+    nextCapacityProspect(shown[0], spread) +
     "</section>" +
     nextUsageSwitch(payload);
-}
-
-function nextCapacityWorkingCount(){
-  const rows = nextRows();
-  return rows.filter(session => session && session.state === "working").length;
 }
 
 function nextCapacityProjectSpread(payload, harness){
@@ -468,7 +533,7 @@ function nextCapacityProjectSpread(payload, harness){
   const held = unmeasured.get(best.project) || 0;
   const aside = held
     ? ` ${held} more ${held === 1 ? "session has" : "sessions have"} no closed working interval ` +
-      "in the retained window and is not in that figure."
+      `in the retained window and ${held === 1 ? "is" : "are"} not in that figure.`
     : "";
   return `Sessions in <b>${esc(best.project)}</b> have worked ` +
     `${esc(nextCapacityDuration(sorted[0]))} to ` +
