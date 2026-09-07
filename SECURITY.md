@@ -167,8 +167,18 @@ prints; what runs is an absolute path resolved once against a PATH the probe con
 real `git` supplied the binary instead, and it resolved from the session's own directory, which is
 the one directory whose contents must not be trusted to supply a program. The rule is order rather
 than position: a leading `.`, a leading empty element, an interior empty element and an interior `.`
-all hijacked, and trailing forms did not. Empty and relative elements are now dropped rather than
-reordered, and a PATH holding nothing else publishes no reading at all rather than falling back.
+all hijacked, and trailing forms did not.
+
+Every non-absolute PATH element is dropped, and the resolution refuses a relative answer as well.
+Both ends, not either: the first version of this dropped a named pair, the empty element and `.`,
+which reads like the whole property and was not. Measured 2026-09-07, a bare `relbin` survived that
+filter, and then the two directories parted company: the resolver validated a `git` under the
+dashboard's own working directory while the child resolved the same relative string against the
+directory being probed, which is session-supplied. It published seven changed entries for a
+directory that is not a repository at all. So the filter now drops anything a resolver would
+resolve against a working directory, and the resolution returns nothing for an answer that is not
+absolute even if it is ever handed a PATH from somewhere other than that filter. A PATH left with no
+absolute element publishes no reading at all rather than falling back to the ambient one.
 
 **The child's environment is scrubbed of `GIT_DIR` and `GIT_WORK_TREE`.** Either one points git at a
 different repository entirely. Measured the same day: a probe of a clean repository published a
@@ -301,6 +311,22 @@ Porcelain output names paths. Those pathnames are matching hints and are never e
 The cadence is one-shot, on the `session_ended` edge. Never a poll, never on demand, and never on a
 turn stop: the completion stamp written when a turn stops is a different edge, and probing there
 would put one subprocess in the user's repository per turn for the life of the session.
+
+The cadence is not a bound on how many probes run at once, and that took a second gate. One edge per
+session at most once each still allowed 240 live probes per harness and 960 across the four event
+sources, because the event budget refills for the whole of a probe's ten seconds, and each one is a
+real `git status` in a real repository. So a session already being probed is refused a second probe,
+and the process holds at most 32 in flight across every harness.
+
+The two gates cost different things, and only one of them costs a stale reading. A session refused
+because its own probe is already running keeps the reading that probe produces, which can be up to
+ten seconds old and stays until another session end arrives. A session refused by the ceiling
+publishes no reading at all: no first probe ran for it, releasing a slot re-dispatches nothing, and a
+session sends `session_ended` once
+([`docs/design-needs-input.md`](docs/design-needs-input.md#n-12-a-session-that-ended-and-one-waiting-for-you-both-said-idle)
+N-12), so that row stays null for the life of the process. Measured with the ceiling set to 2 and
+four distinct ends: with every in-flight probe drained, the two probed sessions read
+`dirty=True, changed=5`, both refused ones read null, and the dispatch count stayed at 2.
 
 The off switch is `--no-git`. The probe is on by default and that flag turns it off. It mirrors
 `--no-spacedock` at every one of that flag's sites, including the branch that forwards flags to a

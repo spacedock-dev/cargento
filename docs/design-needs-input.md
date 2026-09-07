@@ -640,6 +640,21 @@ constant and requires the prose to agree, because otherwise the two can only mat
   `self._git` is keyed on `SessionKey`, and N-12's measurement is that the prompt after a `/clear`
   goes to a NEW session id, so the clear's end lands on one key and the exit's on another. The
   rejection stands on the first reason alone.*
+- **An arrival-order guard on the reading**, mirroring either the `max` that keeps the completion
+  mark from being pulled backwards by a redelivered stop or the `arrival_seq` comparison that makes
+  the overlay ledger idempotent. Reproduced first, with the probe and the thread spawner injected:
+  two overlapping session ends for one key, a slow probe answering 111 entries and a fast one
+  answering 222, published 222 and then 111 as each returned. The guard is still the wrong fix.
+  Those two neighbours hold values the event itself carried, so the event's order is what decides
+  which is newer; a reading is an observation whose freshness is the moment the probe finished, so
+  last completion wins is correct and an arrival-order guard would let the LATER-arriving event pin
+  an older reading of the tree. The direction is worth stating, because the guard sounds protective
+  read the other way round: the mirror is last-writer-wins sorted by `arrival_seq`
+  (`events.py:630`), so a max-seq guard keeps the seq-2 event's answer, and in the reproduction
+  above that is the fast probe, which finished first and so observed the tree earlier. What the
+  overlap earned instead is a gate on the dispatch: the second probe no longer runs. The accepted
+  cost of that is stated where the gate lives, and it is the same refuse-rather-than-evict trade the
+  maps beside it already make.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
