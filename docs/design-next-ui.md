@@ -546,6 +546,10 @@ grammar exists to refuse, are in [SECURITY.md](../SECURITY.md).
 
 ### A control's answer outlives the render, and it is not a server fact
 
+One row of a longer inventory. [What reader state survives a redraw](design-reader-state.md) is the
+owner of that list and of the two rules every row follows; this section keeps only the reasoning
+specific to a control cue, including the alternative that was rejected.
+
 `renderNext` replaces the whole of `#app` on every revision event, and the live lane fires one of
 those about as often as anything happens on the machine. A state written onto the node the click
 found therefore dies with the next render, which is how both row controls shipped: the colour cue

@@ -10,13 +10,9 @@ let nextSessionRaiseStatusElement = null;
 let nextRaiseInFlight = false;
 const nextAttentionExpandedSections = new Set();
 
-/* Which disclosures the reader has opened. `renderNext` replaces the app's
-   whole innerHTML on every revision and on a bare interval, so the open state a
-   `<details>` holds for itself dies with the node -- a panel opened to read
-   closed under the reader seconds later (DRC-4410). Kept per tab and dropped on
-   reload, like the expansion set above, rather than in `localStorage`: the two
-   stored preferences there are answers a reader gave deliberately, and a panel
-   opened to read once is not one of those.
+/* Which disclosures the reader has opened, one row of the inventory in
+   docs/design-reader-state.md -- which is where the rule for what outlives a
+   redraw lives, and why each lane holds a key rather than a node (DRC-4410).
 
    The list is closed, so an attribute the page never wrote cannot grow the
    set -- the same guard the section keys beside it get. */
@@ -31,10 +27,10 @@ function nextDisclosureAttr(key, open){
   return open && typeof open.has === "function" && open.has(key) ? " open" : "";
 }
 
-// The row's own controls, keyed the way the control-state map keys them, so a
-// snapshot outlives the node being replaced for the same reason the cue does.
-// The selector and the key function are the same pair the render and the stamp
-// use; a third spelling would agree until one of them changed.
+// The row's own controls, keyed the way the control-state map keys them
+// (docs/design-reader-state.md). The selector and the key function are the same
+// pair the render and the stamp use; a third spelling would agree until one of
+// them changed.
 const NEXT_ROW_CONTROL_LANES = [
   ["[data-next-raise-session]", "nextRaiseSession", nextRaiseStateKey],
   ["[data-next-copy-session]", "nextCopySession", nextCopyStateKey],
@@ -591,9 +587,9 @@ function nextHistoryResetNotice(){
 function renderNext(focus = nextCaptureFocus()){
   const app = document.getElementById("app");
   if(!app) return;
-  // Before the assignment below discards the DOM. A draft is a string rather
-  // than a boolean, so unlike the disclosure and section sets it cannot be
-  // rebuilt from a key: it has to be read off the element that still holds it.
+  // Before the assignment below discards the DOM, which is the ordering rule in
+  // docs/design-reader-state.md and the reason a draft is read first: it is the
+  // one lane that cannot be rebuilt from a key.
   nextControlsCaptureDrafts();
   const counts = nextCounts();
   document.title = nextDocumentTitle();

@@ -1867,3 +1867,119 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
         for echoed in ("target", "tty", "pane", "socket", "reason"):
             with self.subTest(field=echoed):
                 self.assertNotIn(f'"{echoed}":', handler)
+
+
+class ReaderStateInventoryTest(unittest.TestCase):
+    """`docs/design-reader-state.md` against the render it describes (DRC-4446).
+
+    The rule for what outlives a redraw used to live in per-lane comment blocks,
+    which is how three lanes shipped without one and were each found separately
+    after the fact. A comment citation cannot be checked; these are the checks
+    the document bought.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    WEB = SERVER_PATH.parent / "cargento_runtime" / "web"
+    DOC_NAME = "docs/design-reader-state.md"
+    DOC = (SERVER_PATH.parents[3] / DOC_NAME).read_text(encoding="utf-8")
+
+    def rows(self) -> dict[str, tuple[str, str]]:
+        """The inventory table, keyed by its first cell."""
+        found = {}
+        for line in self.DOC.splitlines():
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) != 3 or cells[1] in {"Across a redraw", "---"}:
+                continue
+            found[cells[0]] = (cells[1], cells[2])
+        return found
+
+    def test_the_document_the_render_cites_is_the_one_that_exists(self) -> None:
+        # The capture group keeps the `docs/` prefix outside the quoted string
+        # deliberately. The quality gate derives its "this docs file is code"
+        # list by grepping whole quoted `docs/...md` paths out of these test
+        # modules, so a pattern written as one such string would join that list
+        # as an entry no real file can ever equal.
+        cited: set[str] = set()
+        for name in ("next-chrome.js", "next-controls.js"):
+            body = (self.WEB / name).read_text(encoding="utf-8")
+            cited.update(f"docs/{stem}" for stem in re.findall(r"docs/(design-[a-z-]+\.md)", body))
+        self.assertIn(self.DOC_NAME, cited)
+        for path in sorted(cited):
+            with self.subTest(cited=path):
+                self.assertTrue((self.ROOT / path).is_file())
+
+    def test_every_lane_the_render_captures_or_restores_has_a_row(self) -> None:
+        # Derived from `renderNext` rather than listed here, but only over the
+        # lanes whose names carry `Capture` or `Restore`. Measured: a
+        # `nextKeepScrollOffset()` or a `nextTooltipAttr()` added to the body
+        # leaves this green, and `nextTooltipAttr` is the shape of DRC-4410,
+        # one of the three defects the document was written for. Lanes outside
+        # that convention are named by hand in the table and held by the test
+        # below instead.
+        chrome = (self.WEB / "next-chrome.js").read_text(encoding="utf-8")
+        body = chrome[chrome.index("function renderNext(") :]
+        body = body[: body.index("\nfunction ")]
+        lanes = sorted(set(re.findall(r"\b(next[A-Za-z]*(?:Capture|Restore)[A-Za-z]*)\(", body)))
+        self.assertTrue(lanes)
+        for lane in lanes:
+            with self.subTest(lane=lane):
+                self.assertIn(lane, self.DOC)
+
+    def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
+        # The test above derives only `Capture`/`Restore` names, so these two
+        # survive a redraw with nothing deriving their rows. Renaming either
+        # would otherwise leave the table citing a symbol that is gone.
+        for name, lane in (
+            ("next-controls.js", "nextControlsProjectState"),
+            ("next-workstream.js", "nextWorkstreamCollapsed"),
+        ):
+            with self.subTest(lane=lane):
+                self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
+                self.assertIn(f"`{lane}", self.DOC)
+
+    def test_both_split_out_lanes_carry_a_verdict_and_a_reason(self) -> None:
+        rows = self.rows()
+        for lane in ("The document scroll offset", "A text selection over rendered text"):
+            with self.subTest(lane=lane):
+                self.assertIn(lane, rows)
+                verdict, where = rows[lane]
+                self.assertTrue(verdict)
+                self.assertIn("#", where)
+
+    def test_the_unmanaged_selection_row_is_still_true_of_the_bundle(self) -> None:
+        # The row says nothing restores a selection. The moment something does,
+        # the row is wrong, and this is what says so.
+        hits = [
+            f"{path.name}:{match.group(0)}"
+            for path in sorted(self.WEB.glob("*.js"))
+            for match in re.finditer(
+                r"getSelection|createRange|getRangeAt", path.read_text("utf-8")
+            )
+        ]
+        self.assertEqual([], hits)
+
+    def test_the_document_is_the_only_scroll_container_the_stylesheet_allows(self) -> None:
+        # The scroll row's guarantee is the browser's clamp, and it is about the
+        # DOCUMENT. One `overflow:auto` pane and a replaced node starts at zero
+        # with no clamp to save it, so the stylesheet's two forms are the
+        # precondition the row rests on.
+        #
+        # Read over the whole declaration value and case-folded, because a bare
+        # `[a-z-]+` run after the colon let `overflow: auto`, `overflow:AUTO`,
+        # `overflow:hidden auto` and `overflow-y: scroll` through — all four
+        # measured. The lookbehind is what keeps `text-overflow:ellipsis` out;
+        # without it the expected set carried an `overflow:ellipsis` that is
+        # not an overflow declaration at all.
+        styles = (self.WEB / "styles.css").read_text(encoding="utf-8")
+        forms = sorted(
+            {
+                f"{prop.lower()}:{' '.join(value.split()).lower()}"
+                for prop, value in re.findall(
+                    r"(?<![a-z-])(overflow(?:-[a-z]+)?)\s*:\s*([^;}]+)", styles, re.IGNORECASE
+                )
+            }
+        )
+        self.assertEqual(["overflow-wrap:anywhere", "overflow:hidden"], forms)
+        for form in forms:
+            with self.subTest(form=form):
+                self.assertIn(f"`{form}`", self.DOC)
