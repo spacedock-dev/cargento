@@ -736,8 +736,10 @@ class Observation:
 
         None is the whole of the disclosure and it covers every cause: a harness
         whose adapter maps no session-end event, `--no-git`, a directory that is not
-        a repository, an event with no `cwd`, git absent from PATH, a probe that
-        timed out, and a session observed working or waiting since the end that
+        a repository, an event with no `cwd`, git absent from PATH or resolving to a
+        relative path, a probe that timed out, a probe refused because one was
+        already in flight for this session or the process was at its ceiling, and a
+        session observed working or waiting since the end that
         produced the reading — `_mark_finished` retires the reading there, with the
         stop mark it belongs to. `acquisition` cannot see any of them — it separates
         adapter-less harnesses from the rest, and Codex and Antigravity have adapters
