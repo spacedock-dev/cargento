@@ -38,34 +38,51 @@ console.log(JSON.stringify({route, fragment: nextFragmentForRoute(route)}));
         self.assertEqual({"view": "attention", "project": None, "session": None}, out["route"])
         self.assertEqual("#n=attention", out["fragment"])
 
-    def test_primary_routes_are_native_links_with_current_page(self) -> None:
+    def test_every_top_level_route_is_reachable_from_the_primary_nav(self) -> None:
+        # The view list is read off `NEXT_TOP_LEVEL_VIEWS` rather than written
+        # here, because the version of this test that named its two views
+        # enforced the defect: it asserted exactly two nav links while the
+        # router had three, so Attention was a whole screen with no link to it
+        # and nothing marked current when you were standing on it. A fourth
+        # view now cannot be added without a link to it.
         out = self._run_page_js(
             """
 nextData = {summary: {working: 0, needs_input: 0}, sessions: [], asks: []};
-        const views = ["projects", "sessions"];
+const views = [...NEXT_TOP_LEVEL_VIEWS];
 const rendered = views.map(view => {
   navigateNext({view, project: null, session: null});
   return {view, title: document.title, html: __els.app.innerHTML};
 });
-console.log(JSON.stringify(rendered));
+console.log(JSON.stringify({views, rendered}));
 """,
             '__els.app = {innerHTML: ""};\n',
         )
-        assert isinstance(out, list)
+        views = out["views"]
+        self.assertIn("attention", views)
 
-        for rendered, title in zip(
-            out,
-            ["Cargento — Projects", "Cargento — Sessions"],
-            strict=True,
-        ):
+        titles = {
+            "attention": "Cargento \u2014 Attention",
+            "projects": "Cargento \u2014 Projects",
+            "sessions": "Cargento \u2014 Sessions",
+        }
+        for rendered in out["rendered"]:
+            view = rendered["view"]
             html = rendered["html"]
-            self.assertEqual(title, rendered["title"])
-            self.assertIn('<nav aria-label="Primary"', html)
-            self.assertIn('href="#n=projects"', html)
-            self.assertIn('href="#n=sessions"', html)
-            self.assertEqual(2, html.count('<a href="#n='))
-            self.assertEqual(1, html.count('aria-current="page"'))
-            self.assertEqual(1, html.count("<h1"))
+            with self.subTest(view=view):
+                self.assertEqual(titles[view], rendered["title"])
+                self.assertIn('<nav aria-label="Primary"', html)
+                # Every top-level view is offered from every top-level view, so
+                # no screen is a dead end you can only leave by guessing a
+                # fragment or knowing a keyboard shortcut.
+                for offered in views:
+                    self.assertIn(f'href="#n={offered}"', html)
+                self.assertEqual(len(views), html.count('<a href="#n='))
+                # And the one you are standing on is the one marked. This is the
+                # assertion the old test could not make for Attention, because
+                # it never navigated there.
+                self.assertEqual(1, html.count('aria-current="page"'))
+                self.assertIn(f'href="#n={view}" aria-current="page"', html)
+                self.assertEqual(1, html.count("<h1"))
             self.assertLess(html.index('href="#n=projects"'), html.index('href="#n=sessions"'))
 
     def test_every_next_actionable_control_shares_the_44_pixel_target_contract(self) -> None:

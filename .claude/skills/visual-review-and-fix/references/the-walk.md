@@ -126,7 +126,11 @@ on an ended session.
 
 - A session that went quiet without reporting. It must render exactly as one waiting at its prompt,
   because those two are indistinguishable and the board may not guess.
-- An ended session. It leaves Active now and is promoted in Safe to close rather than dropped.
+- An ended session. It leaves Active now and is promoted into `CLOSE THE LOOP` rather than
+  dropped. That heading is read off the page, not off a document: the shipped skill body calls
+  the same section "Safe to close", which appears nowhere on screen (DRC-4421). This file said
+  "Safe to close" too, having been written from a milestone record instead of from the board,
+  which is the mistake the skill's own step 3 exists to prevent.
 - A harness with no event adapter, and a run under `--no-events`. An absent end is not evidence of
   anything and the row must say so.
 - A session whose git state was not measured, against one measured clean, against one dirty. Three
