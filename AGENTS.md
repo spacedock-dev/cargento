@@ -96,7 +96,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/roadmap-burndown/README.md` | The Spacedock workflow the roadmap burndown runs on: its stages, gates, and the measured rules each one earned. Machinery rather than prose — entity state lives on an orphan branch and is gitignored. |
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus closed harness vocabularies such as `notification_type` and `reply`, each earned one at a time on the reasoning the captures README gives; never a value a person or a model wrote. |
-| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `visibility-2x2`, `burndown`, `cargento-release`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `visibility-2x2`, `burndown`, `cargento-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 
