@@ -689,8 +689,8 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
 
     def test_the_documented_command_is_the_argv_the_probe_builds(self) -> None:
         # The contract prints the command as an indented code block. If either side
-        # gains or loses a flag, this fails — which is the point, because both
-        # flags are independently load-bearing and neither may be dropped quietly.
+        # gains or loses a flag, this fails — which is the point, because all three
+        # flags are independently load-bearing and none may be dropped quietly.
         self.assertIn(
             "    " + " ".join(git_status.GIT_STATUS_ARGV) + "\n",
             self.SECURITY,
@@ -706,9 +706,70 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
             "Repository git reads (the end-of-session probe),",
             self.FLAT,
         )
+        # Amended 2026-09-07 (DEC-11). The old wording said the probe "neither
+        # writes there nor executes anything the repository supplies", and a
+        # reproduction falsified both halves: four hooks at mode 0755 written by
+        # one probe, and a filter driver executed. `core.hooksPath=/dev/null`
+        # closed the hook write and nothing else. A probe on a FRESH CLONE, with
+        # an empty local filter config, still ran git-lfs and still added a file
+        # under `.git/lfs/objects/`, so no unqualified "writes nothing" survives.
         self.assertIn(
-            "The git probe runs inside a repository the user chose rather than a harness store, "
-            "and it neither writes there nor executes anything the repository supplies.",
+            "The git probe runs inside a repository the user chose rather than a harness store. "
+            "Git writes nothing there on the probe's behalf, and Cargento runs no program of its "
+            "own;",
+            self.FLAT,
+        )
+        self.assertNotIn("It writes nothing there", self.FLAT)
+        # Not a bare assertNotIn: the focus section QUOTES the retracted wording
+        # on purpose, to record what DEC-11 retracted and why. So this asserts
+        # over everything BEFORE that section. Splitting at "## Project reads"
+        # instead left "## Repository git reads" unguarded, which is the one
+        # section where the claim would actually be restored.
+        asserted = self.FLAT.split("### What the command can still cause")[0]
+        self.assertNotIn("neither writes there nor executes anything", asserted)
+        # And where it does survive, it is marked as history rather than standing.
+        self.assertIn(
+            "The git probe's contract used to carry the stronger claim, that it \"neither writes "
+            'there nor executes anything the repository supplies", and DEC-11 retracted it',
+            self.FLAT,
+        )
+
+    def test_the_documented_command_names_the_hooks_path_flag_in_words(self) -> None:
+        # The sibling above derives its expectation from GIT_STATUS_ARGV, so a
+        # flag dropped from BOTH sides passes it. This literal is the half that
+        # cannot agree with a wrong constant, and it exists for this flag in
+        # particular because the section's own claim was falsified once without it.
+        self.assertIn(
+            "git -c core.fsmonitor= -c core.hooksPath=/dev/null --no-optional-locks status "
+            "--porcelain",
+            self.FLAT,
+        )
+
+    def test_the_section_states_the_residual_rather_than_implying_none(self) -> None:
+        # A section that lists three flags and stops reads as a closed boundary.
+        # The filter driver still runs AND still writes; no argv closes either,
+        # so the document says so.
+        self.assertIn(
+            "### The residual: a filter driver can still run, and can still write",
+            self.SECURITY,
+        )
+        self.assertIn(
+            "The third flag suppresses the hook installation and neither the invocation nor what "
+            "the driver does once running.",
+            self.FLAT,
+        )
+        # The bound the first version of this section got wrong, and the reason
+        # DEC-11's ruling says the two hazards must not be blurred. The git-lfs
+        # half IS clone-portable; only an attacker-chosen driver command needs
+        # the inspected repository's own config.
+        self.assertIn("So this is clone-portable", self.FLAT)
+        self.assertNotIn("so a clone does not carry it", self.FLAT)
+        # And the trigger is not a modified file: a racy-clean tree reaches it.
+        self.assertIn("it does not require a modified file", self.FLAT)
+        # And the violation clause has to be true of shipped behaviour, or it is
+        # a document admitting a bug it declines to name.
+        self.assertIn(
+            "any write inside the user's repository that Cargento's own argv could have prevented.",
             self.FLAT,
         )
 

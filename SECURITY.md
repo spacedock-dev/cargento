@@ -64,8 +64,11 @@ The posture rests on two invariants:
    than raised at the request. Published text records what that redaction covers. What the route
    reads is covered by Project reads below: the transcript, and the same two kinds of frontmatter a
    stage strip reads, under the same guards and the same `--no-spacedock` switch.
-   The git probe runs inside a repository the user chose rather than a harness store, and it neither
-   writes there nor executes anything the repository supplies. The focus command writes nothing
+   The git probe runs inside a repository the user chose rather than a harness store. Git writes
+   nothing there on the probe's behalf, and Cargento runs no program of its own; a filter driver the
+   operator has configured globally, git-lfs being the common one, can still be invoked by a
+   committed attribute and may then write where it likes, which the git-reads section below states
+   in full. The focus command writes nothing
    anywhere, reads nothing back, and touches no harness store; `POST /api/focus`, the ninth POST
    route, is the one that mutates nothing at all. The server also keeps its own history
    of what it observed under `~/.cargento`, written as it observes rather than in answer to a
@@ -145,20 +148,68 @@ the board can show that a session stopped with work still in the tree.
 
 The probe is exactly this command, or there is no probe:
 
-    git -c core.fsmonitor= --no-optional-locks status --porcelain
+    git -c core.fsmonitor= -c core.hooksPath=/dev/null --no-optional-locks status --porcelain
 
 The mechanism is subprocess execution rather than a file open. That is what separates this feature from
-every other read Cargento performs, and both flags are load-bearing. Measured 2026-08-28 at git
-2.55.0 across four fresh repositories, one probe each, from an identical racy-clean state:
+every other read Cargento performs, and all three flags are load-bearing. The first two were measured
+2026-08-28 at git 2.55.0 across four fresh repositories, one probe each, from an identical racy-clean
+state; the third was measured 2026-09-07 at git 2.55.0 with git-lfs 3.8.0:
 
 - Without `--no-optional-locks`, the probe writes `.git/index`. The write is git resolving a racy
   stat, not a per-invocation habit, and a repository a live session is editing is the normal case
   for it rather than a corner case.
 - Without `-c core.fsmonitor=`, a `core.fsmonitor` script configured in the repository is executed
   under Cargento's identity. A repository can carry that setting in from wherever it was cloned.
+- Without `-c core.hooksPath=/dev/null`, a filter driver installs its own hooks inside the
+  repository. Hashing a tracked path whose committed attributes name a driver invokes it, and
+  git-lfs then asks git where hooks belong and writes there: four files at mode 0755, named
+  `post-checkout`, `post-commit`, `post-merge` and `pre-push`. `.git/index` was untouched in that arm,
+  so neither other flag sees it, and this one closes it by answering with a path git cannot write.
 
-Each flag disarms one of those hazards and neither disarms the other's, so neither may be dropped.
-There is no fallback to a plain `git status`.
+Each flag disarms a hazard the others do not, so none may be dropped. There is no fallback to a
+plain `git status`.
+
+### The residual: a filter driver can still run, and can still write
+
+The third flag suppresses the hook installation and neither the invocation nor what the driver does
+once running. Two separate residuals, and the first is reachable by a clone.
+
+**A committed attribute alone reaches the operator's own driver.** Measured 2026-09-07: a fresh
+`git clone` of a repository whose only unusual artifact is a committed `.gitattributes` saying
+`*.bin filter=lfs`, with `git config --local --get-regexp '^filter\.'` returning nothing at all,
+ran `git-lfs filter-process` on one probe and gained
+`.git/lfs/objects/d5/3e/d53eda7a…` inside the repository. The flag was present. The driver was
+never carried by the clone: it comes from the global config that `git lfs install` writes, which
+most machines with git-lfs already have. So this is clone-portable, and the write is driver-caused
+rather than git writing on the probe's behalf.
+
+**An arbitrary, attacker-chosen driver command needs `.git/config`.** A repository with
+`*.x filter=pwn` committed and `filter.pwn.clean` set in its own `.git/config` had that command
+executed by one probe, with the flag present. That half is not clone-portable, and there the
+comparison with `core.fsmonitor` holds: both need the inspected repository's own config to name a
+program. The comparison does **not** extend to the git-lfs case above, where committed content plus
+a ubiquitous global install is the whole precondition. The two are kept apart here because blurring
+them is what made the first version of this section wrong.
+
+The trigger is a tracked path matching a filter attribute whose content git must hash, and **it does
+not require a modified file.** A tree git itself reports clean invoked the driver on each of three
+consecutive probes, because the racy-clean state that makes git hash the path is exactly what
+`--no-optional-locks` declines to clear. So this recurs rather than happening once. What genuinely
+reaches nothing is a repository with no matching tracked path: the attribute on its own, with
+nothing it applies to, installed and ran nothing, measured.
+
+No flag closes it, and this was looked for rather than assumed. `--attr-source` and
+`GIT_ATTR_SOURCE` pointed at the empty tree do suppress the driver, and on a real git-lfs
+repository they then report a merely-touched pointer file as modified, so the answer stops being
+true. Clearing the driver with `-c filter.lfs.clean= -c filter.lfs.process=` makes git fail the
+command outright, which publishes nothing. `diff-files`, `diff-index` and `ls-files -m` each invoke
+the driver anyway, and the first two also call a touched LFS file modified. `status --porcelain`
+has to hash the path to answer at all, and hashing is what runs the driver, so this is stated
+rather than fixed.
+
+`/dev/null` as a hooks path is measured on darwin. It names a location git can find no hook under on
+any supported platform, and `tests/test_git_status.py` skips rather than passes where the mechanism
+cannot be armed, so the Linux and Windows arms are unmeasured rather than verified.
 
 What is published, per session, is two fields and nothing else:
 
@@ -189,9 +240,14 @@ respawned daemon, so a restart cannot re-enable a probe the user disabled. With 
 git command runs at all, and both fields stay `null`.
 
 A violation of any boundary in this section is a security bug: a git command other than the one
-above, either flag dropped, a read of file contents or diffs or branch state, a pathname reaching a
-response, a probe on any edge but session end, a probe while the feature is off, or any write inside
-the user's repository.
+above, any of the three flags dropped, a read of file contents or diffs or branch state, a pathname
+reaching a response, a probe on any edge but session end, a probe while the feature is off, or any
+write inside the user's repository that Cargento's own argv could have prevented.
+
+That last clause is narrower than it was, and the narrowing is the residual above rather than a
+relaxation. A filter driver the inspected repository configured for itself may write where it
+likes, and no argv Cargento can pass stops it; what the argv must prevent, and now does, is git
+writing on the probe's behalf.
 
 ## Reaching a session's terminal (the focus command)
 
@@ -433,12 +489,13 @@ invisible. Only the third moves anything.
 ### What the command can still cause
 
 This section does not claim the command executes nothing but itself, and the reason is recorded
-rather than assumed. The git probe's contract carries the stronger claim, that it "neither writes
-there nor executes anything the repository supplies", and DEC-11 exists because a reproduction
-falsified it: a repository declaring an LFS filter attribute caused a hook to be installed, through
-a path the probe's two flags were never written against. The general lesson is the one this feature
-most needs. A bounded command can still cause a program to run through a path its bounds never
-contemplated.
+rather than assumed. The git probe's contract used to carry the stronger claim, that it "neither
+writes there nor executes anything the repository supplies", and DEC-11 retracted it because a
+reproduction falsified both halves: hashing a tracked path whose committed attributes named a filter
+driver installed four hooks inside the repository and ran the driver, through a path the probe's two
+flags were never written against. A third flag now closes the write; the invocation is stated as a
+residual, because no flag closes it. The general lesson is the one this feature most needs. A
+bounded command can still cause a program to run through a path its bounds never contemplated.
 
 So the honest statement is narrower. A multiplexer and a window manager are programs the operator
 configured, and what they do when asked to raise a window is theirs. That is the same trust already
