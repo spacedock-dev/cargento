@@ -194,7 +194,9 @@ A behavioural test here:
 - **Drives the assembled bundle**, not a function in isolation. The page is one canonical artifact
   and the reader meets it whole.
 - **Is named as a sentence about a person.** `test_a_stale_capability_names_the_restart_and_the_remedy`
-  reads as a claim someone can check. `test_403_branch` does not.
+  reads as a claim someone can check. `test_403_branch` does not. This is the house style rather than
+  a new ask: 82% of the suite's 2,180 test names already carry an article or a pronoun, and six of
+  them are terse enough to be four tokens or fewer. Match what is there.
 - **Asserts the rendered text**, not the shape of the data behind it.
 - **Covers the absence**, because that is where this product fails.
 
