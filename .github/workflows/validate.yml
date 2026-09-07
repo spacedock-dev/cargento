@@ -48,5 +48,12 @@ jobs:
         run: python3 -m unittest scripts/tests/test_bump_version.py
       - name: Check version-field parity across all owned locations
         run: python3 scripts/bump_version.py --current
+      # The backstop for a prose-only PR, not a duplicate of quality-gate.yml's
+      # copy of this command: that workflow skips this suite whenever every
+      # changed path is prose its detector cannot measure, so here it is the
+      # only run. Deleting it as redundant would let a prose edit that breaks a
+      # test merge green. Measured on `docs/captures/README.md`, still prose to
+      # the detector and still read by test_documentation.py: one stranded table
+      # row gave detector `code=false`, validator exit 0, and this suite red.
       - name: Run dashboard tests
         run: python3 -m unittest discover -s cargento/skills/cargento/tests -t .

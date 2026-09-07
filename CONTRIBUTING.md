@@ -67,9 +67,12 @@ same directories through the relative symlinks under `.agents/skills/`.
 Those seven jobs run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself
 always runs and always reports, so a prose-only PR is never left waiting on a check that never
-arrives. `SKILL.md` and any file under `docs/` that a test opens by name count as code here,
-not as prose, and `validate` runs on every PR regardless: it is the check that resolves the
-Markdown links and heading anchors. Among the workflow files only `quality-gate.yml` itself
+arrives. `SKILL.md`, `SECURITY.md`, `README.md` and any file under `docs/` that a test opens by
+name count as code here, not as prose, because `test_documentation.py` reads every one of them.
+`validate` runs on every PR regardless. It resolves the Markdown links and heading anchors, and it
+also runs the dashboard suite, which on a PR the detector called prose is the only place that suite
+runs. Do not delete that step as a duplicate of the gate's copy. Among the workflow files only
+`quality-gate.yml` itself
 counts as code, since the others cannot change what those jobs measure and each already
 reports its own status.
 

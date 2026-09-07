@@ -133,15 +133,20 @@ git commit -s -m "feat(skill): add new capability to cargento"
 its own copy — divergent copies are how the gate drifts. Run it locally before opening any PR; do
 not rely on CI to surface failures:
 
-**One documented short path.** If the diff touches *only* prose — `README.md`, `HOW_TO_USE.md`,
-`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `SECURITY.md`,
-`CODE_OF_CONDUCT.md`, `.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` that no test
-opens by literal path — then `python3 scripts/validate_plugins.py` is the check that matters and
-the suite cannot be affected. CI applies the same rule (see Quality Gate), so the two agree by
-construction rather than by memory. **`SKILL.md` is not prose for this purpose**:
-`tests/test_documentation.py` asserts its `~/...` paths against `config.resolve_store_roots`.
-Neither is any `docs/` file a test reads — the CI detector derives that set by grepping the tests,
-so it cannot go stale.
+**One documented short path.** If the diff touches *only* prose — `HOW_TO_USE.md`, `AGENTS.md`,
+`CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `CODE_OF_CONDUCT.md`,
+`.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` that no test opens by literal path —
+then the five measurable quality-gate jobs skip. CI applies the same rule (see Quality Gate), so
+the two agree by construction rather than by memory. Five skipped runners is all the short path
+buys: **run the suite locally anyway**, because `validate.yml` is unfiltered by design and runs the
+same `unittest discover` on every PR. `validate_plugins.py` is not what catches a prose edit that
+breaks an assertion — measured, one stranded row in `docs/captures/README.md`, which the detector
+does call prose, left the validator at exit 0 and turned that suite red. **`SKILL.md` is not prose
+for this purpose**: `tests/test_documentation.py` asserts its `~/...` paths against
+`config.resolve_store_roots`. Neither are `SECURITY.md` and `README.md`, which that same module
+opens by literal path — both sat on this list until someone read the tests. Nor is any `docs/` file
+a test reads: the CI detector derives *that* set by grepping the tests, so it cannot go stale,
+while the root documents above are named by hand and a new one has to be caught by a person.
 
 ```bash
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
@@ -325,7 +330,10 @@ full gate — and the aggregator accepts `skipped` only when the detector said `
 job skipped because an upstream dependency died still fails the gate. `validate` and
 `version-guard` are deliberately unfiltered for the same required-check reason, and `validate` is
 in any case the check a prose change most needs: it resolves every relative Markdown link and
-heading anchor.
+heading anchor, and it runs the dashboard suite. That second step is **not** a duplicate of the
+gate's copy — it is the only run of the suite on a PR the detector called prose, so deleting it as
+redundant would let a prose edit that breaks a test merge green. `validate.yml` says the same thing
+at the step itself.
 
 ## Code Comments
 

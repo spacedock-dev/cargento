@@ -769,6 +769,17 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # The rule that both the register and its verifier stated wrongly, in
         # opposite directions. Stated here so the document carries the correction.
         self.assertIn("The rule is order rather than position", self.FLAT)
+        # DRC-4454. The section used to say "Empty and relative elements are now
+        # dropped rather than reordered", and the code dropped a named pair — the
+        # empty element and `.` — so a bare `relbin` survived and supplied the
+        # binary from the directory being probed. The replacement names both ends
+        # of the guard, because one end has already been wrong once.
+        self.assertIn(
+            "Every non-absolute PATH element is dropped, and the resolution refuses a relative "
+            "answer as well.",
+            self.FLAT,
+        )
+        self.assertNotIn("Empty and relative elements are now dropped", self.FLAT)
         # And the violation clause has to name them, or they are documented
         # behaviour rather than boundaries.
         self.assertIn("an executable taken from anywhere but the resolved absolute path", self.FLAT)
@@ -781,6 +792,20 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
             self.FLAT,
         )
         self.assertNotIn("a reading published about any directory but the one it names", self.FLAT)
+
+    def test_the_contract_states_the_bound_on_probes_in_flight(self) -> None:
+        # DRC-4443. Derived from the runtime rather than written twice: the
+        # ceiling moving in code and not in the section, or the reverse, fails
+        # here. The cadence sentence beside it is not this claim — one edge per
+        # session, at most once each, still allowed 960 live probes.
+        ceiling = make_config().git_probe_max_inflight
+        self.assertIn(f"at most {ceiling} in flight across every harness", self.FLAT)
+        self.assertIn("a session already being probed is refused a second probe", self.FLAT)
+        # The two gates refuse for different reasons and cost different things.
+        # The section said only the per-key cost, which is a stale reading; a
+        # ceiling refusal has no first probe to fall back on, so the row is null
+        # rather than stale, and N-12's one end per session makes that permanent.
+        self.assertIn("A session refused by the ceiling publishes no reading at all", self.FLAT)
 
     def test_the_scrubbed_names_are_the_ones_the_runtime_drops(self) -> None:
         # Derived rather than a second literal list: a name added to the code and

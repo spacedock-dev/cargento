@@ -227,6 +227,18 @@ class RuntimeConfig:
     # probe already runs off the event thread, so a slow repository costs a late
     # reading rather than a stalled ingress.
     git_probe_timeout_sec: float
+    # How many probes may be in flight at once, across every harness. One per
+    # session key is enforced separately and is the cheaper half; this is the
+    # global ceiling, and it exists because the per-key gate does not bound a
+    # caller that varies the session id. Measured: the event budget alone allows
+    # 40 burst plus 20/s for the probe's whole 10 s life, so 240 live probe
+    # threads per harness and 960 across the four normalizers. 32 is well above
+    # any observed number of sessions ending inside one timeout window — the
+    # board's own row lists run in the low tens across ten harnesses, and
+    # simultaneous ends are rarer than that — and a refused probe costs one row
+    # the two scalars it would have published, which is the disclosure `None`
+    # already carries for every other refusal on this path.
+    git_probe_max_inflight: int
     # The focus command's three bounds. The timeout is well under the git
     # probe's because a tmux command answers over a UNIX socket rather than by
     # walking a tree, and this one runs on the request thread the reader is
@@ -618,6 +630,7 @@ def build_runtime_config(
         usage_poll_floor_sec=300,
         usage_fetch_timeout_sec=10,
         git_probe_timeout_sec=10.0,
+        git_probe_max_inflight=32,
         focus_timeout_sec=2.0,
         focus_floor_sec=1.0,
         focus_body_cap_bytes=1_024,

@@ -82,23 +82,26 @@ GIT_STATUS_ARGV: Final[tuple[str, ...]] = (
 # `isdir` gate below does not help.
 DETACHING_ENV: Final = ("GIT_DIR", "GIT_WORK_TREE")
 
-# Relative and empty elements are dropped rather than reordered. An empty element
-# means "the current directory" to the resolver, and the current directory during
-# a probe is the session's own, which is exactly the directory whose contents
-# must not be trusted to supply a program.
-_UNTRUSTED_PATH_ELEMENTS: Final = frozenset({"", "."})
-
 
 def probe_environment(environ: Mapping[str, str]) -> dict[str, str]:
     """The child's environment: the caller's, minus what detaches the reading.
 
     Kept public and separate so a test can assert the scrub without spawning
     anything, and so the two names above have exactly one place that drops them.
+
+    Every non-absolute PATH element goes, not a named list of them. The named
+    list is what this was, and it was wrong: `{"", "."}` reads like the whole of
+    the property but a bare `relbin`, `./bin`, `..` and `sub/bin` all survived it
+    (DRC-4454, measured 2026-09-07). Any element the resolver would resolve
+    against a working directory is untrusted, because the working directory
+    during a probe is the session's own and the child's is the directory being
+    probed — which is how one relative element let the probed directory supply
+    the program.
     """
     scrubbed = {key: value for key, value in environ.items() if key not in DETACHING_ENV}
     path = scrubbed.get("PATH", "")
     if path:
-        kept = [part for part in path.split(os.pathsep) if part not in _UNTRUSTED_PATH_ELEMENTS]
+        kept = [part for part in path.split(os.pathsep) if os.path.isabs(part)]
         scrubbed["PATH"] = os.pathsep.join(kept)
     return scrubbed
 
@@ -109,8 +112,17 @@ def _executable(environ: Mapping[str, str]) -> str | None:
     None means the same published thing as every other refusal in this module:
     not probed. `shutil.which` is given the scrubbed PATH explicitly rather than
     reading the ambient one, because the ambient one is what the hijack uses.
+
+    The absoluteness check is here AS WELL AS in the scrub, and the duplication is
+    the point rather than an oversight: the scrub is one filter and that filter has
+    already been wrong once, so a future change to it cannot reopen the hijack
+    while this end refuses too. This is also the end that holds if `which` is ever
+    handed a PATH from anywhere but `probe_environment`.
     """
-    return shutil.which("git", path=environ.get("PATH"))
+    resolved = shutil.which("git", path=environ.get("PATH"))
+    if resolved is None or not os.path.isabs(resolved):
+        return None
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -153,6 +165,15 @@ def probe(
         result = runner(
             # The fixed argv above, with argv[0] replaced by the resolved absolute
             # path: no shell, no interpolation, nothing from the payload.
+            #
+            # The child's OUTPUT is not capped, and that is deferred rather than
+            # overlooked: `subprocess.run` reads to EOF and takes no size limit, so
+            # a cap means `Popen` plus a bounded read loop, and seven tests inject
+            # through this `runner=` seam — two of them pinning `env`, `stdin` and
+            # `timeout` as keyword arguments, so a rewrite has to preserve the
+            # kwarg surface and not only the argv. What bounds the output today is
+            # `timeout_sec` on how long git has to produce it, and `_reading`
+            # counting one line at a time rather than materialising every line.
             (resolved, *GIT_STATUS_ARGV[1:]),
             cwd=cwd,
             capture_output=True,
@@ -183,5 +204,22 @@ def _reading(stdout: object) -> GitStatus:
         raw = b""
     # One entry per line. Counted rather than parsed, because the parse would have
     # to hold pathnames and nothing published needs them.
-    entries = sum(1 for line in raw.split(b"\n") if line.strip())
+    #
+    # One line at a time rather than `raw.split(b"\n")`: re-measured with
+    # tracemalloc at N=20000 on Python 3.12.13, the split allocates a flat ~41 B
+    # per entry ON TOP OF each line's own bytes — 1.69 MB beside an 880 KB output
+    # at a 43-byte porcelain line, and 1.20x to 5.07x the output as path length
+    # falls from 204 characters to 9, so there is no single multiple to quote.
+    # This loop's own peak is one line (271 B in that arm), and pathnames still
+    # reach nothing but `strip`.
+    entries = 0
+    start = 0
+    size = len(raw)
+    while start < size:
+        stop = raw.find(b"\n", start)
+        if stop < 0:
+            stop = size
+        if raw[start:stop].strip():
+            entries += 1
+        start = stop + 1
     return GitStatus(dirty=entries > 0, changed=entries)
