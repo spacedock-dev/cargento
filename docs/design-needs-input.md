@@ -647,10 +647,14 @@ constant and requires the prose to agree, because otherwise the two can only mat
   answering 222, published 222 and then 111 as each returned. The guard is still the wrong fix.
   Those two neighbours hold values the event itself carried, so the event's order is what decides
   which is newer; a reading is an observation whose freshness is the moment the probe finished, so
-  last completion wins is correct and an arrival-order guard would let an earlier-arriving event pin
-  an older reading of the tree. What the overlap earned instead is a gate on the dispatch: the
-  second probe no longer runs. The accepted cost of that is stated where the gate lives, and it is
-  the same refuse-rather-than-evict trade the maps beside it already make.
+  last completion wins is correct and an arrival-order guard would let the LATER-arriving event pin
+  an older reading of the tree. The direction is worth stating, because the guard sounds protective
+  read the other way round: the mirror is last-writer-wins sorted by `arrival_seq`
+  (`events.py:630`), so a max-seq guard keeps the seq-2 event's answer, and in the reproduction
+  above that is the fast probe, which finished first and so observed the tree earlier. What the
+  overlap earned instead is a gate on the dispatch: the second probe no longer runs. The accepted
+  cost of that is stated where the gate lives, and it is the same refuse-rather-than-evict trade the
+  maps beside it already make.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this and rendered nowhere until now. A test holds the

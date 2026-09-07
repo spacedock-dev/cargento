@@ -157,8 +157,14 @@ def _spawn_thread(run: Callable[[], None]) -> None:
 
     What bounds it is `Observation._git_inflight`, claimed under the lock before
     a dispatch and released in a `finally` — `quota`'s `usage_fetch_inflight`
-    pattern, which this class already reuses for the focus command. A pool would
-    bound the threads and not the subprocesses, which is the expensive half.
+    pattern, which this class already reuses for the focus command. A pool is
+    still not it, and the reason is refuse rather than queue: a pool bounds the
+    subprocesses too (measured, `ThreadPoolExecutor(max_workers=4)` over 40
+    tasks each spawning one subprocess peaked at 4 concurrent, because a queued
+    task holds no subprocess), but it bounds them by making probes wait, and its
+    queue is itself unbounded. A probe that waits behind thirty others answers
+    about a tree that has moved on. The in-flight set refuses instead, which is
+    the same trade as the maps beside it.
     """
     threading.Thread(target=run, name="cargento-git-probe", daemon=True).start()
 
