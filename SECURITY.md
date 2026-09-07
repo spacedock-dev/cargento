@@ -232,6 +232,49 @@ rather than fixed.
 any supported platform, and `tests/test_git_status.py` skips rather than passes where the mechanism
 cannot be armed, so the Linux and Windows arms are unmeasured rather than verified.
 
+### The residual: the reading is about the repository, not about the directory
+
+`git status` answers about the repository containing the directory it runs in, because git walks
+upward from that directory until it finds one. The probe passes the session's own working directory
+as cwd and passes nothing that bounds the walk, so the walk is what decides which repository gets
+measured. That is one behaviour with two outcomes, and only one of them is what a reader wants.
+
+The common outcome is the right one, and it is why the feature is useful at all. A session working
+in `repo/src/components` gets `repo`'s reading, which is the answer to whether that session left
+work behind. Measured 2026-09-07 against this tree: a probe at a dirty repository's root and a probe
+three levels inside it published an identical `dirty=True, changed=3`, while a directory with no
+repository above it published `null`.
+
+The wrong outcome is a `$HOME` that is itself a repository. A session working somewhere under such a
+`$HOME`, in no project repository of its own, gets `$HOME`'s reading, and its row then reports a
+dirty tree that has nothing to do with that session. Anyone who keeps dotfiles as a repository
+checked out at `$HOME` can reach this. It is not reachable on the machine these measurements were
+taken on, where `git -C "$HOME" rev-parse --show-toplevel` finds no repository at all, and that is a
+fact about one machine rather than a property of the design.
+
+Decided 2026-09-07, and recorded rather than fixed (DRC-4442). Three measurements settled it, and
+the first is the one to read before proposing anything here:
+
+- The confinement this was originally filed with does not work. `GIT_CEILING_DIRECTORIES` set to the
+  probed directory changed nothing in either arm: the probe three levels inside the repository still
+  published the parent's `dirty=True, changed=3`, identical to the same probe with no ceiling set.
+  Only a ceiling at the probed directory's parent changes the outcome, and that publishes `null` for
+  any session not sitting exactly at a repository root. So this is not a fix that was weighed and
+  declined on cost. It was measured not to do the thing it was proposed to do.
+- Confining the walk costs a reading people rely on. Of 48 recorded session directories still
+  present on the machine measured, 30 sat at a repository root, 10 inside a repository below its
+  root, and 8 in no repository at all. A parent ceiling would blank one in four of the
+  repository-backed ones, and `null` means not probed, so such a row could not even say why.
+- The targeted alternative reopens DEC-3. Refusing only when the resolved repository root is `$HOME`
+  keeps the subdirectory case and closes the dotfiles case, but learning that root needs a second git
+  command, and this section's first bound is that the probe is exactly the one command above or there
+  is no probe.
+
+So the trade was a common correct reading against a hazard nobody here can currently reach, and the
+ruling keeps the reading. What it costs a reader is written down rather than left to be discovered: a
+git reading names a session's directory and is about that directory's repository, and those are the
+same thing right up until `$HOME` is one.
+
 What is published, per session, is two fields and nothing else:
 
     {dirty: bool | None, changed: int | None}
@@ -264,13 +307,17 @@ A violation of any boundary in this section is a security bug: a git command oth
 above, any of the three flags dropped, a read of file contents or diffs or branch state, a pathname
 reaching a response, a probe on any edge but session end, a probe while the feature is off, an
 executable taken from anywhere but the resolved absolute path, a reading published about any
-directory but the one it names, or any write inside the user's repository that Cargento's own argv
-could have prevented.
+repository but the one containing the directory it names, or any write inside the user's repository
+that Cargento's own argv could have prevented.
 
-That last clause is narrower than it was, and the narrowing is the residual above rather than a
-relaxation. A filter driver the inspected repository configured for itself may write where it
+Two of those clauses are narrower than they read, and both narrowings are the residuals above rather
+than relaxations. A filter driver the inspected repository configured for itself may write where it
 likes, and no argv Cargento can pass stops it; what the argv must prevent, and now does, is git
-writing on the probe's behalf.
+writing on the probe's behalf. And the reading clause says repository rather than directory on
+purpose: the containing repository is what git answers about, which is the correct answer for a
+session in a subdirectory and the wrong one for a session under a `$HOME` that is a repository.
+Writing that clause about the directory would make a documented security bug of the subdirectory
+case, which is the common one and the one people rely on.
 
 ## Reaching a session's terminal (the focus command)
 

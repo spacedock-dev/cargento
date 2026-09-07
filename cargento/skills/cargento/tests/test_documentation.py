@@ -686,6 +686,7 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
     # Whitespace-collapsed, so a reflow that changes no words does not fail these.
     # The command assertion below deliberately reads the raw text instead.
     FLAT = re.sub(r"\s+", " ", SECURITY)
+    RUNTIME = SERVER_PATH.parent / "cargento_runtime"
 
     def test_the_documented_command_is_the_argv_the_probe_builds(self) -> None:
         # The contract prints the command as an indented code block. If either side
@@ -750,7 +751,15 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # And the violation clause has to name them, or they are documented
         # behaviour rather than boundaries.
         self.assertIn("an executable taken from anywhere but the resolved absolute path", self.FLAT)
-        self.assertIn("a reading published about any directory but the one it names", self.FLAT)
+        # Repository rather than directory, and the word is load-bearing. Git
+        # answers about the repository containing the cwd, so a clause written
+        # about the directory would make a documented security bug of the
+        # subdirectory case, which is the common one (DRC-4442 R11).
+        self.assertIn(
+            "a reading published about any repository but the one containing the directory it names",
+            self.FLAT,
+        )
+        self.assertNotIn("a reading published about any directory but the one it names", self.FLAT)
 
     def test_the_scrubbed_names_are_the_ones_the_runtime_drops(self) -> None:
         # Derived rather than a second literal list: a name added to the code and
@@ -796,6 +805,50 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
             "any write inside the user's repository that Cargento's own argv could have prevented.",
             self.FLAT,
         )
+
+    def test_the_section_states_the_upward_walk_residual_and_why_it_stands(self) -> None:
+        # DRC-4442 R11, decided 2026-09-07 as accept-and-document. Two things this
+        # has to keep saying, and each one is a mistake somebody would otherwise
+        # make again.
+        #
+        # First, the hazard is not claimed impossible. It is unreachable on the
+        # machine that was measured, where $HOME is not a repository, and a
+        # dotfiles checkout at $HOME reaches it. "Cannot happen" would be the
+        # confident-wrong-answer-in-an-absence failure this project keeps hitting.
+        #
+        # Second, GIT_CEILING_DIRECTORIES is recorded as measured-not-to-work
+        # rather than as a fix declined on cost. Both arms published the parent's
+        # reading with the ceiling set to the probed cwd, identical to no ceiling,
+        # so a reader who thinks it was merely too expensive will re-propose it.
+        self.assertIn(
+            "### The residual: the reading is about the repository, not about the directory",
+            self.SECURITY,
+        )
+        self.assertIn("git walks upward from that directory until it finds one", self.FLAT)
+        self.assertIn(
+            "It is not reachable on the machine these measurements were taken on", self.FLAT
+        )
+        self.assertIn("changed nothing in either arm", self.FLAT)
+        self.assertIn("measured not to do the thing it was proposed to do", self.FLAT)
+        # Never a claim of impossibility, however phrased. Scoped to this residual
+        # rather than to the whole file: a legitimate "is impossible" elsewhere in
+        # the document is not this defect, and a whole-file ban would fail on it.
+        block = self.FLAT[
+            self.FLAT.index("The residual: the reading is about the repository") : self.FLAT.index(
+                "What is published, per session"
+            )
+        ]
+        for overclaim in ("cannot happen", "is impossible", "cannot occur", "never happens"):
+            with self.subTest(overclaim=overclaim):
+                self.assertNotIn(overclaim, block.lower())
+
+    def test_the_probe_bounds_the_walk_by_nothing_which_is_what_the_residual_says(self) -> None:
+        # The residual rests on there being no ceiling in the code. If one ever
+        # arrives, the section describes a system that no longer exists, and the
+        # census and the trade in it stop being the reason for anything.
+        source = (self.RUNTIME / "git_status.py").read_text(encoding="utf-8")
+        self.assertNotIn("GIT_CEILING_DIRECTORIES", source)
+        self.assertIn("passes nothing that bounds the walk", self.FLAT)
 
     def test_the_plan_document_died_with_its_promotion(self) -> None:
         # Leaving it in place states the contract in two places and lets them drift.
