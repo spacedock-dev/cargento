@@ -518,7 +518,8 @@ def collect(
             # `tool.execution_start` it gates, so every gate opens well inside the
             # working window and a Working row here would be the whole defect.
             # Claude's collector resolves the same conflict the same way, for the
-            # same reason (docs/design-needs-input.md N-2).
+            # same reason:
+            # [N-2](docs/design-needs-input.md#n-2).
             session_state = "needs_input"
             blocked_since = gate.at or mtime
             waited = sessions.fmt_duration(sessions.age(config, now, blocked_since))

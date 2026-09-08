@@ -239,8 +239,9 @@ def _epoch(raw: Any) -> float | None:
     The string branch defers to `records.iso_epoch`, so an offset-less stamp is
     read as UTC here exactly as it is everywhere else. It matters most on this
     path: a `resets_at` misread by the server's own UTC offset moves every reset
-    countdown and, since A5 landed, the burn projection that fires off it. The
-    live capture records all four `resets_at` fields arriving with an explicit
+    countdown and the budget-versus-clock reading described in
+    [Q-12](docs/design-usage-quota.md#q-12).
+    The live capture records all four `resets_at` fields arriving with an explicit
     `+00:00`, so the naive branch is a guard rather than the normal case.
 
     Both branches end at the same plausibility bound, because both feed
@@ -289,7 +290,8 @@ def _percent(raw: Any) -> int | None:
     whether 63.5 is 63 or 64, which the page would show as two bars at different
     heights for the same figure.
 
-    Both sides are measured on that scale (see design-usage-quota.md Q-2), so
+    Both sides are measured on that scale (see
+    [Q-2](docs/design-usage-quota.md#q-2)), so
     the round is a round and never a conversion. A fraction read as a percent
     would publish 1 for a window at 90, and a band reading almost-empty while
     the allowance is nearly gone is the failure this module exists to avoid.

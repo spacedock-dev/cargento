@@ -50,7 +50,8 @@ def runtime_environ(home: str | None = None) -> dict[str, str]:
 
     The one place the environment is read. Everything downstream takes the
     result as an argument, which is what lets the whole runtime be exercised
-    for another platform on any runner (design decision D-4).
+    for another platform on any runner (design decision
+    [D-4](docs/design-cross-platform.md#d-4)).
     """
     environ = dict(os.environ)
     resolved_home = os.path.expanduser("~") if home is None else home
@@ -187,8 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "do not keep a local history of what this server observed for this "
             "run: nothing is written and an existing store is not read back, so "
-            "the board opens with no memory of earlier sessions. The off switch "
-            "DEC-6's contract made part of the store"
+            "the board opens with no memory of earlier sessions."
         ),
     )
     parser.add_argument(
@@ -500,8 +500,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if args.daemon and config.os_name == "nt":
-        # No fork on Windows: re-spawn, then wait to be sure (D-2). This branch
-        # returns before any bind, so the parent never holds the port it handed
+        # No fork on Windows: re-spawn, then wait to be sure
+        # ([D-2](docs/design-daemon.md#d-2)).
+        # This branch returns before any bind, so the parent never holds the port it handed
         # over, and never constructs a server at all — the spawned foreground
         # child owns the bind and therefore owns reporting a bind failure.
         message, code = lifecycle.await_spawned(

@@ -6,6 +6,8 @@ to [design-runtime-architecture.md](design-runtime-architecture.md); this docume
 to publish that state on the row, the two branches that were rejected, how far the disclosure
 reaches per collector, and (since U-5) what a raise inside a collector costs.
 
+<a id="u-1"></a>
+
 ## U-1: there were four states and the page rendered three
 
 A collector's read of a SQLite store lands in one of four places, and only the first three had a
@@ -39,6 +41,8 @@ grep for it under `cargento_runtime/web/` returns nothing.
 
 So "route the fourth state through the store-error boundary" is not a fix that reaches a screen. It
 relocates the silence.
+
+<a id="u-3"></a>
 
 ## U-3: the disclosure is a published per-row field, for all five SQLite collectors
 
@@ -88,6 +92,8 @@ false, one field over from the DRC-4101 shape `events.py` names.
   sentence qualifies a claim that is already on screen beside it. It also adds no row to
   [design-reader-state.md](design-reader-state.md), because a redraw has nothing to throw away.
 
+<a id="u-4"></a>
+
 ## U-4: two readings a disclosure must not claim
 
 **An empty store is not an unread one.** `cursor.py` reports the `meta` rows decoding to no object,
@@ -109,6 +115,8 @@ mtime, which is precisely as long as the wrong row is on screen. The gap text ri
 of the model cache key, which was unused (`""`). A fifth key would have been the tidier layout and
 is the wrong trade: `state.cursor_metadata_cache`'s value type lives in a module the collector does
 not own, and the disclosure has to travel with the reading it is about.
+
+<a id="u-5"></a>
 
 ## U-5: a raise costs the smallest unit it invalidates, and rows already read survive
 

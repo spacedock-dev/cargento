@@ -105,7 +105,8 @@ def native_notifier(platform_name: str) -> str:
 
     Pure in ``platform_name`` so both branches run on every CI runner and mypy
     checks them all, rather than treating the non-host branch as unreachable
-    (design decision D-4 in docs/design-cross-platform.md).
+    (design decision
+    [D-4](docs/design-cross-platform.md#d-4)).
 
     The page reads this through ``/api/data`` to decide whether to raise its
     own browser notification. Exactly one layer notifies for a given

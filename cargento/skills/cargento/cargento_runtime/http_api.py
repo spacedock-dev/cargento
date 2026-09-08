@@ -118,7 +118,9 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         self.observation = observation
         # Instance attribute, set before the bind that reads it: the class
         # default would be sampled from the host os.name at import, which is
-        # the ambient read D-4 exists to stop.
+        # the ambient read
+        # [D-4](docs/design-cross-platform.md#d-4)
+        # exists to stop.
         self.allow_reuse_address = reuse_address_allowed(application.config.os_name)
         # The bind host from the constructor address, read by _local_ok to
         # decide whether a non-loopback Host header is the operator's opt-in
@@ -431,7 +433,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         """Stop the server: `--stop` and any local client land here.
 
         Not the page: the dashboard's stop control was removed during the UI
-        promotion (D-7 in `docs/design-daemon.md`), so nothing the board serves
+        promotion
+        ([D-7](docs/design-daemon.md#d-7)),
+        so nothing the board serves
         posts to this route.
 
         Answer first, then stop. `socketserver.shutdown()` blocks until the

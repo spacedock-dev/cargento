@@ -97,8 +97,8 @@ def _subtract_dismissed(
     `assign_display_ids`, so the id widths describe the rows actually on screen.
 
     A count and not a filtered flag, because a dismissal silences an alert
-    through `maybe_popup`'s own gate rather than by hiding the row from it (D-3
-    in docs/design-dismissals.md).
+    through `maybe_popup`'s own gate rather than by hiding the row from it. See
+    [D-3](docs/design-dismissals.md#d-3).
     """
     kept = [
         session
@@ -143,7 +143,8 @@ class OverlaySource(Protocol):
     `drop_counters` is neither: it is read only when a dispute is recorded, and
     it is here because an envelope that arrived and was dropped leaves no overlay
     to find. Without it a record cannot separate that from one never posted,
-    which is two of the four readings in docs/design-needs-input.md (N-5).
+    which is two of the four readings in
+    [N-5](docs/design-needs-input.md#n-5).
 
     `finished_at` is separate from `overlays_for` because it deliberately
     outlives the ledger: `session_ended` retires a session's overlays, and a
@@ -186,8 +187,9 @@ class HarnessSpec:
     """One supported harness: how to discover its store and how to read it.
 
     ``usage`` is the optional quota reader. Most harnesses have none: the
-    survey behind DEC-1 found Codex alone writing quota to disk, and every
-    other vendor keeping it behind an authenticated API. The field is where
+    survey behind [DEC-1](docs/design-usage-quota.md#design-the-usage-quota-surface) found Codex
+    alone writing quota to disk, and every other vendor keeping it behind an authenticated API.
+    The field is where
     a quota source plugs in without widening the ``Collector`` contract.
 
     ``usage_is_fetch`` marks a provider whose numbers come from the network
@@ -208,7 +210,8 @@ class HarnessSpec:
     wrong costs more. Six of the ten cannot observe a gate at all, and their
     silence is byte-identical to the silence of one that can when nothing is
     waiting: no row, no count, no band. So a quiet board cannot say whether
-    nothing is waiting or nothing could have told you, and B2's own note is that
+    nothing is waiting or nothing could have told you, and the
+    [gate inventory](docs/design-needs-input.md#n-1) notes that
     a reader assumes the former because everything else here is harness-agnostic.
     A `reports_rate` false row renders a dash; this one has nothing to draw a
     dash on, which is why the disclosure has to be per harness rather than per
@@ -296,7 +299,8 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             # Three paths, more than any other row: the bundled hook, an
             # actionable Notification POST, and a pending input tool in the
             # transcript. Codex, Copilot and Cursor have one apiece; the
-            # remaining six are tracked per harness under B2.
+            # remaining six are tracked per harness in
+            # [gate inventory](docs/design-needs-input.md#n-1).
             reports_needs_input=True,
             usage=claude.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
@@ -731,7 +735,7 @@ class Application:
         if notice is not None:
             # Which reset this run opened with, so the header can name it. A
             # corruption reset may be the user's disk; a version reset is ours,
-            # and one message for both hides the difference (D1).
+            # and one message for both hides the difference.
             fields["history_reset"] = notice
         return fields
 
@@ -777,7 +781,7 @@ class Application:
         """Raise the native popup for every row that has just started waiting.
 
         Here rather than in a collector, and that is the amendment DRC-4192
-        made to R-5 in docs/design-runtime-architecture.md. The one-layer rule —
+        made to [R-5](docs/design-runtime-architecture.md#r-5). The one-layer rule —
         the server notifies where `native_notifier` names a backend, the browser
         where it does not — rested on the server firing for whatever the browser
         stood down for. It fired for Claude alone, because `maybe_popup` had one
@@ -832,12 +836,12 @@ class Application:
         Their idle rows therefore cannot say whether a turn ended, and without
         this an unmarked row would mean either "did not finish" or "cannot be seen
         from here" — the same collapse the retired `stale` gloss was admitting to.
-        Both halves are N-9 in `docs/design-needs-input.md` (DRC-4035): its
+        Both halves are [N-9](docs/design-needs-input.md#n-9) (DRC-4035): its
         **Marking on the stop itself** rejection is where the gloss was measured
         out, and its **Letting a collector infer completion** rejection is what
         this method implements — a guessed completion renders identically to a
         measured one, so the six disclose `scan-only` instead. The document and
-        not the commits behind it, because the reason N-9 exists is that a commit
+        not the commits behind it, because the reason that decision exists is that a commit
         message and a comment held the measurement and neither is where a reader
         looks.
 
@@ -944,7 +948,8 @@ class Application:
 
         Only that direction. A collector Idle row an overlay promotes to Working
         is the ordinary path and says nothing, so counting it would bury the case
-        this exists to find. See docs/design-needs-input.md (N-6).
+        this exists to find. See
+        [N-6](docs/design-needs-input.md#n-6).
 
         One record per episode, not per collection. A disagreement stands until
         something changes it, and collections run at the memo floor, so recording
@@ -1001,8 +1006,10 @@ class Application:
                 # build whose constant has since moved.
                 "activity_grace_sec": self.config.overlay_wait_activity_grace_sec,
                 "overlays": runtime_events.overlay_rows(overlays, now=now),
-                # Reading 3 against reading 4 in N-5, an envelope dropped versus
-                # never posted, is a counter comparison. The live counters are
+                # Reading 3 against reading 4 in
+                # [N-5](docs/design-needs-input.md#n-5),
+                # an envelope dropped versus never posted, is a counter comparison. The live
+                # counters are
                 # cumulative, so a record read tomorrow can only bracket itself
                 # against its neighbours if it carries its own copy.
                 "drop_counters": counters,

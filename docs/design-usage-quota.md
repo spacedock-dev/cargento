@@ -148,6 +148,8 @@ travelling towards nothing, the same missing denominator this whole section is a
 a forecast. Q-9 fits its slope on a published percentage and projects when that percentage reaches
 100, and it reads no `used` figure at all.
 
+<a id="q-2"></a>
+
 ## Q-2: The response fields Cargento reads
 
 From `GET https://api.anthropic.com/api/oauth/usage` (with `anthropic-beta: oauth-2025-04-20`), two
@@ -272,6 +274,8 @@ Guessing a path would mean reading some other file and calling it a credential, 
 reader reports no credential source and Cursor stays out of the band. Installing the CLI on the
 other two platforms is what unblocks them.
 
+<a id="q-12"></a>
+
 ## Q-12: budget against clock, and why there is still no verdict
 
 A9 asked for one safe-to-start light and was cancelled: every quota producer signals failure as an
@@ -363,6 +367,8 @@ Attention now raises **Quota pressure** only from the current published percenta
 percent. It states the reported percentage and scope, and does not predict exhaustion or compare it
 with reset time. The server payload remains the evidence boundary; durable quota history would be a
 separate storage decision rather than another browser buffer.
+
+<a id="q-3"></a>
 
 ## Q-3: Consent rides on the poll
 

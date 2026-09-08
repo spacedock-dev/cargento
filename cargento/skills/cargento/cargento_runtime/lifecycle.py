@@ -595,7 +595,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     if args.no_ask:
         argv.append("--no-ask")
     if args.no_history:
-        # DEC-6's off switch. Read off the namespace directly, like every branch
+        # [DEC-6](SECURITY.md#local-history-the-session-history-store)'s off switch. Read off
+        # the namespace directly, like every branch
         # above, so a flag added to the parser and forgotten here raises rather
         # than silently re-enabling a store the user disabled: the two exact-set
         # assertions in `test_lifecycle` are blind to an omitted branch, and the

@@ -83,7 +83,7 @@ function nextNotifyEdge(session, previous){
      edge on `active` refuses the one transition it exists to report — on the
      default install, since both shipped hook manifests declare `Stop`.
      `previous === "working"` is the liveness check instead. Reordering these
-     two to match the branch below reintroduces that: design-needs-input.md N-13.
+     two to match the branch below reintroduces that: [N-13](docs/design-needs-input.md#n-13).
 
      Only from `working`. An answered question also lands on idle, and the reader
      was standing right there when it did. An idle row seen for the first time

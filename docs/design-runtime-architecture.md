@@ -191,6 +191,8 @@ ledger.
 `C:\plugin\state`, a different string in `--status` output and in the dirname contract lifecycle
 relies on.
 
+<a id="r-5"></a>
+
 ## R-5: The registry is data, and no collector notifies
 
 `aggregate.default_harnesses()` returns ten `HarnessSpec` rows in display order, which is also

@@ -88,6 +88,8 @@ session, and it is checked against the `stat` before the file is opened, so stal
 read. The window arrives as an argument rather than being read from a clock inside the parser, per
 D-4 in [`design-cross-platform.md`](design-cross-platform.md).
 
+<a id="s-5"></a>
+
 ## S-5: On Pi, the boot envelope is its own classifier
 
 Claude answers "is this a first officer?" before reading anything: the `agentSetting` sits in the
@@ -111,6 +113,8 @@ Rejected: inventing a Pi-side marker, which needs Spacedock to write something P
 today and strands every existing session. Rejected: hoisting classification above the collectors,
 which buys nothing while each harness answers the question from a different field, and moves
 harness knowledge into a module whose whole point is not having any.
+
+<a id="s-6"></a>
 
 ## S-6: The boot envelope has a third provenance shape, and it is Codex's
 

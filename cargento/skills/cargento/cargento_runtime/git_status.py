@@ -2,7 +2,8 @@
 
 This is the only place in the runtime that runs a program inside a directory the
 user chose, and `SECURITY.md`'s "Repository git reads (the end-of-session probe)"
-section is the contract it implements. The bounds are DEC-3's ruling (Linear
+section is the contract it implements. The bounds are
+[DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe)'s ruling (Linear
 DRC-4122) as amended, not this module's preferences.
 
 Why the argv is a constant and not built per call: all three flags are
@@ -55,7 +56,8 @@ from typing import TYPE_CHECKING, Any, Final
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-# Bound 1 of DEC-3, as amended. A tuple rather than a list so a caller cannot
+# Bound 1 of [DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe), as amended. A
+# tuple rather than a list so a caller cannot
 # append to the argv it was handed.
 #
 # `GIT_STATUS_ARGV[0]` stays the bare name because it is what the contract prints

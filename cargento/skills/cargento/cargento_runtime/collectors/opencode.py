@@ -169,7 +169,8 @@ def collect(
                 # rule and same reason as `collectors/goose.py`: this body is a
                 # straight-line build, so an exception in it does not say which
                 # published field is wrong and the row is the smallest unit it
-                # invalidates. docs/design-unread-sources.md, U-5.
+                # invalidates.
+                # [U-5](docs/design-unread-sources.md#u-5).
                 try:
                     agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                     activity_sources = (upd, *(m for _, m, _ in agents))

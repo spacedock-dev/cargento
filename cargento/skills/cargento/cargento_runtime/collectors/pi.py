@@ -453,7 +453,9 @@ def session_spacedock(
     finding one classifies the session, and its paths feed ``session_workflows``.
     That is weaker than Claude's launch-time declaration, because tool output is
     whatever a tool printed, so a session that merely echoed an envelope is
-    badged too. See S-5 in ``docs/design-spacedock.md`` for why that trade was
+    badged too. See
+    [S-5](docs/design-spacedock.md#s-5) for why
+    that trade was
     taken and which downstream guards carry it.
     """
     boot = runtime_spacedock.transcript_boot(config, state, path)
