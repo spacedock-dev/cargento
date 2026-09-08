@@ -100,6 +100,9 @@ function nextCapacityDuration(seconds){
    consulted first, so a change made in another tab continues to win. */
 let nextUsageConsentMemo = null;
 
+// Held by window identity for the life of the tab; see [reader state](docs/design-reader-state.md#the-inventory).
+let nextCapacitySelectedKey = "";
+
 function nextUsageConsent(){
   /* Three states, not two. `null` is unanswered, and it is the state the
      disclosure exists for; a missing entry must never read as granted. */
@@ -165,7 +168,9 @@ function nextUsageSwitch(payload){
   return '<p class="next-usage-switch">' +
     `<span>Vendor quota fetch: <strong>${granted ? "on" : "off"}</strong></span>` +
     `<button type="button" data-next-usage-answer="${granted ? "declined" : "granted"}">` +
-    `Turn ${granted ? "off" : "on"}</button></p>`;
+    `Turn ${granted ? "off" : "on"}</button>` +
+    (granted ? "" : '<span class="next-usage-lapse">Windows above are the last cached read and will lapse.</span>') +
+    "</p>";
 }
 
 function nextCapacityHarnessLabel(harness){
@@ -298,9 +303,9 @@ function nextCapacityClock(stamp, generated){
 }
 
 function nextCapacityFill(row){
-  if(row.paceRatio == null) return "";
+  if(row.paceRatio == null) return " unknown";
   if(row.paceRatio >= 1.5) return " crit";
-  if(row.paceRatio > 1) return " warn";
+  if(row.paceRatio >= 1) return " warn";
   return "";
 }
 
@@ -349,7 +354,8 @@ function nextCapacityEnds(row, generated){
   return `${esc(nextCapacityClock(row.endsAt, generated))}${basis}${slack}`;
 }
 
-function nextCapacityRow(row, generated){
+function nextCapacityRow(row, generated, selected = false){
+  const key = `${row.harness}:${row.slot}`;
   const slotLabel = NEXT_CAPACITY_SLOT_LABELS[row.slot] || row.slot;
   const length = row.windowSec == null ? "no stated length" : nextCapacityDuration(row.windowSec);
   const pace = row.paceRatio == null
@@ -358,11 +364,16 @@ function nextCapacityRow(row, generated){
   const resets = row.remainingSec == null
     ? '<span class="next-capacity-absent">none published</span>'
     : esc(nextCapacityDuration(Math.max(0, row.remainingSec)));
+  const usedInk = row.pct >= 80 ? " high" : (row.pct >= 50 ? " mid" : "");
   return '<div class="next-capacity-row" data-next-capacity-row=' +
-    `"${esc(row.harness)}:${esc(row.slot)}">` +
-    `<div class="next-capacity-window"><b>${esc(nextCapacityHarnessLabel(row.harness))}</b>` +
-    `<i>${esc(slotLabel)} &middot; ${esc(length)}</i></div>` +
-    `<div class="next-capacity-pct"><small>USED</small>${row.pct}%</div>` +
+    `"${esc(row.harness)}:${esc(row.slot)}" data-next-capacity-pick="${esc(key)}">` +
+    '<div class="next-capacity-window">' +
+    `<button type="button" data-next-capacity-pick="${esc(key)}" ` +
+    `data-next-focus="capacity:${esc(key)}" aria-pressed="${selected}" ` +
+    `aria-label="Read ${esc(nextCapacityHarnessLabel(row.harness))} ${esc(slotLabel)} window">` +
+    `<b>${esc(nextCapacityHarnessLabel(row.harness))}</b>` +
+    `<i>${esc(slotLabel)} &middot; ${esc(length)}</i></button></div>` +
+    `<div class="next-capacity-pct${usedInk}"><small>USED</small>${row.pct}%</div>` +
     nextCapacityBar(row) +
     `<div class="next-capacity-pace${row.paceRatio != null && row.paceRatio > 1 ? " hot" : ""}">` +
     `<small>PACE</small>${pace}</div>` +
@@ -430,17 +441,21 @@ function nextCapacityView(payload){
   const disclosure = nextUsageDisclosure(payload);
   const rows = nextCapacityRows(payload);
   if(!rows.length){
+    nextCapacitySelectedKey = "";
     /* No panel, no placeholder. A machine whose harnesses publish no window has
        nothing withheld from it, and an empty strip reads as a fault. The
        disclosure can still stand alone: it is the reason there is no row yet. */
     return disclosure + nextUsageSwitch(payload);
   }
+  const selected = rows.find(row => `${row.harness}:${row.slot}` === nextCapacitySelectedKey) || rows[0];
   const shown = rows.slice(0, NEXT_CAPACITY_INITIAL_ROWS);
+  if(!shown.includes(selected)) shown[shown.length - 1] = selected;
+  nextCapacitySelectedKey = `${selected.harness}:${selected.slot}`;
   const rest = rows.length - shown.length;
   /* Over the withheld rows only, which is what the sentence beside it claims.
      Counting across every row described the hidden ones with a total that
      included the visible ones. */
-  const untimed = rows.slice(shown.length).filter(row => row.windowMinutesLeft == null).length;
+  const untimed = rows.filter(row => !shown.includes(row) && row.windowMinutesLeft == null).length;
   const more = rest > 0
     ? '<div class="next-capacity-row next-capacity-more"><i>' +
       `${rest} more ${rest === 1 ? "window" : "windows"}` +
@@ -451,7 +466,7 @@ function nextCapacityView(payload){
      every harness it invited a division nobody measured: "the budget buys 50
      minutes" beside a median computed from a different vendor's sessions reads
      as one arithmetic when it is two unrelated ones. */
-  const spread = nextCapacityProjectSpread(payload, shown[0].harness);
+  const spread = nextCapacityProjectSpread(payload, selected.harness);
   return disclosure +
     '<section class="next-capacity" data-next-capacity aria-label="Capacity">' +
     /* Decorative: every cell below carries its own label, which is what keeps
@@ -459,8 +474,8 @@ function nextCapacityView(payload){
     '<div class="next-capacity-head" aria-hidden="true"><span>WINDOW</span><span>USED</span>' +
     '<span>BUDGET AGAINST CLOCK</span><span>PACE</span><span>BUDGET ENDS</span>' +
     '<span>RESETS</span></div>' +
-    shown.map(row => nextCapacityRow(row, generated)).join("") + more +
-    nextCapacityProspect(shown[0], spread) +
+    shown.map(row => nextCapacityRow(row, generated, row === selected)).join("") + more +
+    nextCapacityProspect(selected, spread) +
     "</section>" +
     nextUsageSwitch(payload);
 }
@@ -561,6 +576,18 @@ function nextUsageAnswerTarget(event){
     ? event.target.closest("[data-next-usage-answer]")
     : null;
 }
+
+document.addEventListener("click", event => {
+  const target = event.target && event.target.closest
+    ? event.target.closest("[data-next-capacity-pick]") : null;
+  if(!target) return;
+  const key = String(target.dataset.nextCapacityPick || "");
+  if(!nextCapacityRows(nextData)
+    .some(row => `${row.harness}:${row.slot}` === key)) return;
+  event.preventDefault();
+  nextCapacitySelectedKey = key;
+  renderNext();
+});
 
 document.addEventListener("click", event => {
   const target = nextUsageAnswerTarget(event);

@@ -121,7 +121,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             "active": "4",
             "working": "2",
             "requests": "1",
-            "reported-blocks": "2",
+            "reported-blocks": "6",
         }
         for name, value in expected.items():
             with self.subTest(fact=name):
@@ -134,6 +134,55 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("99", html, "summary aggregates replaced the exact-row population")
         self.assertNotIn("Ignore me", html, "an ask outside the payload entered fleet facts")
 
+    def test_every_counter_has_its_denominator_note_and_counts_the_session_fixture(self) -> None:
+        out = self.render("""
+const before = JSON.stringify(nextData);
+nextData.asks.push({id: "same-owner", session_id: "gate-z", question: "Another question?"});
+const input = JSON.stringify(nextData);
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML, unchanged: input === JSON.stringify(nextData), before}));
+""")
+        assert isinstance(out, dict)
+        self.assertTrue(out["unchanged"])
+        # Seven exact sessions: two gates, two working, three quiet. Six have
+        # a block reporter. Two questions on one owner still count one session.
+        expected = [
+            ("active", 4, "7 recently observed"),
+            ("working", 2, "2 waiting on you"),
+            ("requests", 1, "1 of 7 sessions carry an exact request"),
+            ("reported-blocks", 6, "6 of 7 sessions report block state"),
+        ]
+        for key, value, note in expected:
+            counter = (
+                out["html"].split(f'data-next-fleet-fact="{key}"', 1)[1].split("</section>", 1)[0]
+            )
+            self.assertIn(f"<strong>{value}</strong>", counter)
+            self.assertIn(f"<small>{note}</small>", counter)
+
+    def test_end_and_quiet_tags_belong_only_to_the_states_that_earn_them(self) -> None:
+        out = self.render("""
+nextData.sessions.find(s => s.sid === "work-z").ended_at = 9900;
+nextData.sessions.find(s => s.sid === "work-z").dirty = true;
+nextData.sessions.find(s => s.sid === "work-z").changed = 3;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        for sid in ("gate-z", "gate-a", "work-a"):
+            row = self.session_row(out, sid)
+            self.assertNotIn(">ENDED</span>", row)
+            self.assertNotIn(">QUIET</span>", row)
+        ended = self.session_row(out, "work-z")
+        self.assertIn(">ENDED</span>", ended)
+        self.assertNotIn(">QUIET</span>", ended)
+        self.assertIn("Session ended with uncommitted work", ended)
+        self.assertIn("3 changed entries", ended)
+        for sid in ("idle-old", "idle-mid", "idle-new"):
+            row = self.session_row(out, sid)
+            self.assertIn(">QUIET</span>", row)
+            self.assertNotIn(">ENDED</span>", row)
+            self.assertNotIn("running", row.lower())
+
     def test_active_now_and_recent_history_use_only_explicit_active_evidence(self) -> None:
         html = self.render()
         assert isinstance(html, str)
@@ -141,7 +190,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         history = self.operation_group(html, "history")
 
         self.assertIn("Active now", active)
-        self.assertIn("Working, needs-input, or exact request.", active)
+        self.assertIn("working, waiting on you, or an exact request", active)
         for sid in ("gate-z", "gate-a", "work-a", "work-z"):
             self.assertIn(f'data-next-session="{sid}"', active)
             self.assertNotIn(f'data-next-session="{sid}"', history)
@@ -175,7 +224,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
             html,
         )
         self.assertEqual("2", requests.group(1) if requests else None)
-        self.assertEqual("3", blocks.group(1) if blocks else None)
+        self.assertEqual("6", blocks.group(1) if blocks else None)
         self.assertIn('data-next-session="idle-mid"', self.operation_group(html, "active"))
         blocked = self.fact(self.session_row(html, "idle-mid"), "blocked")
         self.assertIn("BLOCKED · CAPTAIN", blocked)
@@ -280,6 +329,23 @@ console.log(JSON.stringify(__els.app.innerHTML));
             html.index('data-next-session="idle-mid"'), html.index('data-next-session="idle-old"')
         )
 
+    def test_a_session_with_no_published_state_remains_reachable_without_a_state_claim(
+        self,
+    ) -> None:
+        html = self.render("""
+nextData.sessions.push({sid: "state-absent", harness: "codex", project: "unread/repo",
+  title: "State was not published", tasks: [], subagents: []});
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(html, str)
+        row = self.session_row(html, "state-absent")
+        self.assertIn("State was not published", row)
+        self.assertIn("Activity not published", row)
+        self.assertNotIn(">ENDED</span>", row)
+        self.assertNotIn(">QUIET</span>", row)
+        self.assertNotIn("running", row.lower())
+
     def test_each_row_exposes_copyable_exact_identity_and_four_command_facts(self) -> None:
         html = self.render()
         assert isinstance(html, str)
@@ -290,7 +356,11 @@ console.log(JSON.stringify(__els.app.innerHTML));
                 self.assertIn(f'aria-label="Copy session ID {sid}"', row)
                 self.assertIn(f'title="{sid}"', row)
                 self.assertNotIn(f'<span class="next-operation-sid">{sid}</span>', row)
-                for fact in ("where", "now", "next", "blocked"):
+                for fact in (
+                    ("where", "now")
+                    if sid.startswith("idle-")
+                    else ("where", "now", "next", "blocked")
+                ):
                     self.fact(row, fact)
 
     def test_where_calls_the_project_value_a_label_and_refuses_exact_location(self) -> None:
@@ -342,10 +412,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
         no_report = self.fact(self.session_row(html, "work-a"), "blocked")
         unknown = self.fact(self.session_row(html, "idle-old"), "blocked")
 
-        self.assertIn("Reported", reported)
+        self.assertIn("Waiting on you", reported)
         self.assertIn("Approve release?", reported)
         self.assertIn("No reported block", no_report)
-        self.assertIn("Unknown", unknown)
         self.assertIn("Harness does not report blocks", unknown)
         self.assertNotIn("No reported block", unknown)
 
@@ -356,10 +425,10 @@ console.log(JSON.stringify(__els.app.innerHTML));
         work = self.session_row(html, "work-z")
 
         for row in (gate, work):
-            self.assertIn("2 sessions share this label", row)
+            self.assertIn("2 sessions share this display label", row)
             self.assertIn("Same label is not proof of the same directory", row)
             self.assertIn("sibling worktrees read alike", row)
-        self.assertEqual(2, html.count("2 sessions share this label"))
+        self.assertEqual(2, html.count("2 sessions share this display label"))
 
     def test_rows_use_a_native_route_link_sibling_to_the_copy_button(self) -> None:
         html = self.render()
@@ -404,11 +473,10 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("idle/mid", row)
         self.assertNotIn("Historical assignment", row)
         self.assertNotIn("next-operation-assignment", row)
-        for fact in ("now", "next", "blocked"):
-            fact_html = self.fact(row, fact)
-            self.assertIn("<strong>—</strong>", fact_html)
-            self.assertNotIn("Not published", fact_html)
-            self.assertNotIn("Unknown", fact_html)
+        self.assertIn("Activity not published", self.fact(row, "now"))
+        self.assertIn(">QUIET</span>", row)
+        for fact in ("next", "blocked"):
+            self.assertNotIn(f'data-next-operation-fact="{fact}"', row)
 
     def test_zero_session_inventory_keeps_the_board_and_bounded_empty_sentence(self) -> None:
         html = self.render(
@@ -423,7 +491,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn('<section class="next-operations"', html)
         self.assertIn("<h1>Session operations</h1>", html)
         self.assertIn("No exact session has active evidence right now.", html)
-        self.assertIn("No recent-history rows in this 24h payload.", html)
+        self.assertIn("No recent-history rows in this payload.", html)
         self.assertIn('<a href="#n=sessions" aria-current="page">Sessions</a>', html)
         self.assertNotIn("data-next-session=", html)
 
@@ -489,7 +557,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         self.assertIn(
             '.next-operation-row[data-next-operation-history="true"] '
-            '.next-operation-fact[data-next-operation-fact="now"]{display:none}',
+            '.next-operation-fact[data-next-operation-fact="now"]{display:block;grid-column:1/-1}',
             NEXT_STYLES,
         )
 
@@ -557,10 +625,8 @@ class NextSessionsSessionEndTest(NextPageJsHarness):
         self.assertIn("Session reported its own end", html)
         self.assertIn("ended 10m ago", html)
 
-    def test_a_row_with_no_observed_end_keeps_the_em_dash_it_had(self) -> None:
-        # The history row's "—" is what an unread session has always shown, and
-        # it must stay that: an absent end is not evidence the session is alive,
-        # so the page may say nothing rather than say "still running".
+    def test_a_row_with_no_observed_end_never_claims_it_ended(self) -> None:
+        # An absent end cannot distinguish a live process from a SIGKILL.
         html = self.view(self.QUIET)
 
         self.assertNotIn("NOW · ENDED", html)
@@ -705,11 +771,10 @@ class NextSessionsUnreadSourceTest(NextPageJsHarness):
 
     def test_a_session_that_has_genuinely_done_nothing_says_nothing_extra(self) -> None:
         # The whole point of the disclosure is that it is not on every quiet row.
-        # A quiet row's history NOW cell is the em dash it has always been, and
-        # the disclosed row above differs from this one by the sentence alone.
+        # The activity absence and the unread-source note are separate claims.
         row = self.row(self.view(self.QUIET), "agy-quiet")
 
-        self.assertIn("<small>NOW</small><strong>—</strong>", row)
+        self.assertIn("awaiting your message", row)
         self.assertNotIn("Source not fully read", row)
 
     def test_a_second_harnesss_unread_store_uses_the_same_sentence(self) -> None:
@@ -821,26 +886,25 @@ class NextSessionsScanOnlyTest(NextPageJsHarness):
 
         self.assertIn("Read by scanning: no turn end can be observed here", row)
 
-    def test_an_event_backed_idle_row_keeps_the_em_dash_and_adds_nothing(self) -> None:
+    def test_an_event_backed_idle_row_names_absent_activity_without_a_scan_note(self) -> None:
         # The other half of the distinction. Without this the sentence could be
         # on every idle row, which is Idle restated rather than qualified.
         row = self.row(self.view(self.EVENTED), "claude-1")
 
-        self.assertIn("<small>NOW</small><strong>—</strong>", row)
+        self.assertIn("Activity not published", row)
         self.assertNotIn("Read by scanning", row)
 
     def test_the_sentence_is_the_only_thing_the_two_idle_rows_differ_by(self) -> None:
-        # The measured before-state, pinned so it cannot come back. Both rows are
-        # idle with no stop published, so all three of their reading cells are the
-        # em dash on either side of the fix, and the note is the whole difference.
-        cells = r'<span class="next-operation-fact"[\s\S]*$'
+        # Scan provenance qualifies the source; it cannot change the activity reading.
+        cells = r'<span class="next-operation-fact[^"]*"[\s\S]*$'
         scanned = re.search(cells, self.row(self.view(self.SCANNED), "goose-1"))
         evented = re.search(cells, self.row(self.view(self.EVENTED), "claude-1"))
         assert scanned is not None
         assert evented is not None
 
         self.assertEqual(scanned.group(0), evented.group(0))
-        self.assertEqual(3, scanned.group(0).count("<strong>—</strong>"))
+        self.assertIn("Activity not published", scanned.group(0))
+        self.assertNotIn("<strong>—</strong>", scanned.group(0))
 
     def test_the_sentence_explains_itself_without_leaving_the_row(self) -> None:
         # Not a `<details>`, on #302's ground: it qualifies a claim already on

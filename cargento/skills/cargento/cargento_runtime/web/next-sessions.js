@@ -153,19 +153,12 @@ function nextOperationsFleetFact(kind, label, value, note = ""){
     `<strong>${value}</strong>${detail}</section>`;
 }
 
-function nextOperationsFleet(rows, asks, harnesses){
-  const active = rows.filter(session => nextOperationsIsActive(session, asks)).length;
-  const working = rows.filter(session => session.state === "working").length;
-  const blocks = rows.filter(session => nextOperationsIsBlocked(session, asks)).length;
-  const covered = rows.filter(session =>
-    nextOperationsReportsBlocks(session, harnesses) || nextOperationsAskFor(session, asks)).length;
-  const coverage = `${covered} of ${rows.length} sessions report block state`;
+function nextOperationsFleet(model){
+  const keys = ["active", "working", "requests", "reported-blocks"];
   return '<section class="next-operations-fleet" aria-label="Fleet facts">' +
-    nextOperationsFleetFact("active", "ACTIVE NOW", active, `${rows.length} recently observed`) +
-    nextOperationsFleetFact("working", "WORKING", working) +
-    nextOperationsFleetFact("requests", "EXACT REQUESTS", asks.length) +
-    nextOperationsFleetFact("reported-blocks", "REPORTED BLOCKS", blocks, coverage) +
-    "</section>";
+    model.counters.map((counter, index) => nextOperationsFleetFact(
+      keys[index], esc(counter.label), esc(counter.value), counter.noteText,
+    )).join("") + "</section>";
 }
 
 function nextOperationsTask(session, status){
@@ -307,10 +300,10 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses, history
     now + next + blocked + "</article>";
 }
 
-function nextOperationsColumns(){
+function nextOperationsColumns(history = false){
   return '<div class="next-operations-columns" aria-hidden="true">' +
-    '<span>SESSION</span><span>WHERE</span><span>NOW</span><span>NEXT</span>' +
-    '<span>BLOCKED</span></div>';
+    '<span>SESSION</span><span>WHERE</span><span>NOW</span>' +
+    (history ? '<span>STATE</span>' : '<span>NEXT</span><span>BLOCKED</span>') + '</div>';
 }
 
 function nextOperationsGroup(kind, title, description, sessions, renderer, empty){
@@ -318,44 +311,87 @@ function nextOperationsGroup(kind, title, description, sessions, renderer, empty
   const body = rows || `<p class="next-sessions-empty">${esc(empty)}</p>`;
   return `<section class="next-operation-group next-operation-group--${kind}" ` +
     `data-next-operation-group="${kind}"><header><h2>${title}</h2>` +
-    `<p>${description}</p></header>${nextOperationsColumns()}` +
+    `<p>${description}</p></header>${nextOperationsColumns(kind === "history")}` +
     `<div class="next-operation-rows">${body}</div></section>`;
 }
 
+function nextOperationsObservedFact(kind, label, text, known, note = "", tone = ""){
+  return nextOperationsFact(kind, label, text, note, known ? tone : "unknown");
+}
+
+function nextOperationsObservedIdentity(session, source, labels, route, history){
+  const dot = session.isWorking && session.tone !== "unknown"
+    ? nextStatusDot("working", "next-operation-live-glyph") : "";
+  const titleClass = session.titleKnown ? "" : ' class="next-operation-title--unknown"';
+  const collision = session.sharedLabelKnown
+    ? `<span class="next-operation-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +
+      `${esc(session.sharedLabelText)}</span>` : "";
+  return '<span class="next-operation-identity">' +
+    '<small class="next-operation-local-label">SESSION</small>' +
+    `<span class="next-operation-harness">${esc(labels.get(session.harness) || session.harness)}</span>` +
+    `<a class="next-operation-route" href="#n=${esc(route)}" data-next-route="${esc(route)}" ` +
+    `aria-label="Open session ${esc(session.titleText)}"><strong${titleClass}>${dot}${esc(session.titleText)}</strong></a>` +
+    nextSessionCopyControl(session) +
+    (history ? "" : nextOperationsAssignment(source)) + collision +
+    nextSessionScanOnly(source) + nextSessionUnread(source) + "</span>";
+}
+
+function nextOperationsObservedRow(session, source, labels, asks, history){
+  const route = nextRouteToken({view: "session", project: session.project,
+    harness: session.harness, session: session.sid});
+  const identity = nextOperationsObservedIdentity(session, source, labels, route, history);
+  const where = nextOperationsObservedFact("where", "WHERE · PROJECT LABEL", session.whereText,
+    session.whereKnown, session.project);
+  const since = session.isEnded ? nextDurationSince(nextSessionEndedAt(source)) : "";
+  const now = nextOperationsObservedFact("now",
+    session.isEnded ? "NOW · ENDED" : `NOW · ${session.state.replaceAll("_", " ").toUpperCase()}`,
+    session.nowText, session.nowKnown, since ? `ended ${since} ago` : "");
+  const outcome = session.outcomeKnown
+    ? `<span class="next-operation-outcome next-operation-outcome--${esc(session.tone)}">` +
+      `${esc(session.outcomeGlyph)} ${esc(session.outcomeText)}` +
+      `<span class="next-operation-outcome${session.gitKnown ? "" : " next-operation-outcome--unknown"}">` +
+      `${esc(session.gitText)}</span></span>` : "";
+  const stateTag = session.isEnded ? "ENDED" : (session.isQuiet ? "QUIET" : "");
+  const tag = stateTag ? `<span class="next-operation-state">${stateTag}</span>` : "";
+  let facts;
+  if(history){
+    facts = `<div class="next-operation-history-now">${now}${outcome}</div>` + tag;
+  }else{
+    const ask = nextOperationsAskFor(source, asks);
+    const responsibility = ask ? ` · ${nextAskResponsibility(nextData, ask)}` : "";
+    facts = now +
+      nextOperationsObservedFact("next", "NEXT", session.nextText, session.nextKnown) +
+      nextOperationsObservedFact("blocked", `BLOCKED${responsibility}`,
+        session.blockText, session.blockKnown, session.blockNote,
+        session.isNeeds || session.askKnown ? "blocked" : "clear") +
+      (stateTag || outcome ? `<div class="next-operation-end-note">${tag}${outcome}</div>` : "");
+  }
+  return `<article class="next-operation-row next-operation-row--${esc(session.tone)}" ` +
+    `data-next-harness="${esc(session.harness)}" data-next-session="${esc(session.sid)}"` +
+    (history ? ' data-next-operation-history="true"' : "") + ">" +
+    identity + where + facts + "</article>";
+}
+
 function nextSessionsView(){
-  const rows = nextRows();
-  const asks = nextOperationsAsks(rows);
-  const harnesses = nextOperationsHarnesses();
-  const blocks = nextSessionBlocks();
+  const model = nextObserved(nextData);
+  const sources = new Map(nextRows().map(session => [nextSessionKey(session), session]));
+  const asks = nextOperationsAsks(nextRows());
   const labels = nextHarnessLabels();
-  const collisions = nextSessionCollisionCounts();
-  const ordered = [...blocks.gates, ...blocks.working, ...blocks.idle, ...blocks.other];
-  const active = ordered.filter(session => nextOperationsIsActive(session, asks));
-  const history = ordered.filter(session => !nextOperationsIsActive(session, asks));
-  const renderActive = session =>
-    nextOperationsRow(session, labels, collisions, asks, harnesses, false);
-  const renderHistory = session =>
-    nextOperationsRow(session, labels, collisions, asks, harnesses, true);
-  const windowHours = nextNumber(nextData && nextData.window_hours);
-  const window = windowHours == null ? "current payload" : `${windowHours}h payload`;
+  const renderRow = (session, history) => nextOperationsObservedRow(
+    session, sources.get(nextSessionKey(session)), labels, asks, history,
+  );
   return '<section class="next-operations" data-next-view-body="sessions">' +
     '<header class="next-operations-header"><span>COMMAND SURFACE</span>' +
     '<h1>Session operations</h1>' +
     '<p>Active evidence leads. Every recently observed session remains reachable.</p></header>' +
-    nextOperationsFleet(rows, asks, harnesses) +
-    // Directly beneath the fleet counts, because "what is my fleet doing" and
-    // "how long can it keep doing it" are one look. Its own strip rather than a
-    // fifth count: a projection is not a count, and the fleet grid collapses
-    // two-by-two on narrow screens with exactly four cells.
-    nextCapacityView(nextData) +
+    nextOperationsFleet(model) + nextCapacityView(nextData) +
     nextOperationsGroup(
-      "active", "Active now",
-      "Working, needs-input, or exact request.",
-      active, renderActive, "No exact session has active evidence right now.",
+      "active", "Active now", "working, waiting on you, or an exact request",
+      model.active, session => renderRow(session, false), "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
       "history", "Recent history",
       "Recently observed is not proof the harness process is still open or closed; " +
         "rows marked ENDED reported their own end.",
-      history, renderHistory, `No recent-history rows in this ${window}.`,
+      model.history, session => renderRow(session, true), "No recent-history rows in this payload.",
     ) + "</section>";
 }
