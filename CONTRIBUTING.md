@@ -67,9 +67,12 @@ same directories through the relative symlinks under `.agents/skills/`.
 Those seven jobs run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself
 always runs and always reports, so a prose-only PR is never left waiting on a check that never
-arrives. `SKILL.md` and any file under `docs/` that a test opens by name count as code here,
-not as prose, and `validate` runs on every PR regardless: it is the check that resolves the
-Markdown links and heading anchors. Among the workflow files only `quality-gate.yml` itself
+arrives. `SKILL.md`, `SECURITY.md`, `README.md` and any file under `docs/` that a test opens by
+name count as code here, not as prose, because `test_documentation.py` reads every one of them.
+`validate` runs on every PR regardless. It resolves the Markdown links and heading anchors, and it
+also runs the dashboard suite, which on a PR the detector called prose is the only place that suite
+runs. Do not delete that step as a duplicate of the gate's copy. Among the workflow files only
+`quality-gate.yml` itself
 counts as code, since the others cannot change what those jobs measure and each already
 reports its own status.
 
@@ -138,6 +141,13 @@ more than one:
 - Documentation-matches-code. Store paths, relocation variables, the Python floor and the loopback
   address documented in `SKILL.md` are asserted against the implementation, so doc drift fails the
   build. Documenting a path the code does not support is therefore a test failure.
+
+Derive a test class from `support.RuntimeTestCase` unless there is a reason not to. It patches the
+native notifier, and the suite refuses a notification spawn outright, so a test that reaches
+`notifications.notify_mac` for real fails with an `AssertionError` from `support.py` naming the argv
+it tried to send. Four unit tests used to send audible macOS banners about sessions that never
+existed, which is what the refusal is there to stop. The three classes that need the composition to
+run and only the process suppressed call `support.short_circuit_native_notifications` instead.
 
 Before trusting a new contract, mutation-check it: break the behaviour deliberately and confirm the
 targeted test actually fails. This is the only way to tell a test from a decoration, and skipping it

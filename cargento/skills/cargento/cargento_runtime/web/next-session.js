@@ -76,10 +76,12 @@ function nextSessionNowFact(session){
   return task ? String(task.subject).trim() : "";
 }
 
-function nextSessionSourceCoverage(owner, next, asks){
+function nextSessionSourceCoverage(owner, next, asks, openDisclosures){
   if(asks.length || next) return "";
-  return '<details class="next-session-source-coverage">' +
-    '<summary>SOURCE COVERAGE</summary>' +
+  return '<details class="next-session-source-coverage"' +
+    `${nextDisclosureAttr("session-source-coverage", openDisclosures)}>` +
+    '<summary data-next-disclosure="session-source-coverage" ' +
+    'data-next-focus="session-source-coverage">SOURCE COVERAGE</summary>' +
     `<p>${esc(owner)} did not publish a next action.</p></details>`;
 }
 
@@ -87,13 +89,16 @@ function nextSessionCommandFact(kind, label, body){
   return `<section data-next-session-command-fact="${kind}"><h2>${label}</h2>${body}</section>`;
 }
 
-function nextSessionCommandSurface(session, asks, identity){
+function nextSessionCommandSurface(session, asks, identity, openDisclosures){
   const owner = nextSessionSourceOwner(session);
   const assignment = nextSessionInstruction(session, "asked");
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
   const state = nextSessionDetailState(session.state);
   const current = nextSessionNowFact(session) || String(session.state_detail || "").trim();
-  const executionText = [state && state.label, current]
+  /* An observed end replaces the state word rather than sitting beside it: for a
+     session that is over, "idle" is the misreading this field exists to end. */
+  const ended = nextSessionEndedAt(session);
+  const executionText = [ended == null ? state && state.label : "session ended", current]
     .filter(Boolean).join(" · ") || "Activity unavailable";
   const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
   const next = asks.length ? null : nextSessionNextFact(session, []);
@@ -122,7 +127,7 @@ function nextSessionCommandSurface(session, asks, identity){
     '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
     `<strong>${esc(executionText)}</strong>${contextLine}` +
     nextSessionSubagents(session) + `</section>${identity}` + factBlock +
-    nextSessionSourceCoverage(owner, next, asks) + "</div>";
+    nextSessionSourceCoverage(owner, next, asks, openDisclosures) + "</div>";
 }
 
 function nextSessionTitle(session, asks){
@@ -138,6 +143,11 @@ function nextSessionMeta(session){
   const harness = nextSessionRegistryLabel(session);
   if(harness) parts.push(harness);
   if(session.state_detail) parts.push(String(session.state_detail));
+  /* Outside the state chain below, on purpose. An end is a fact about the
+     session id; `state` is a reading of file recency that a session which ended
+     seconds ago can still make say "working". */
+  const ended = nextDurationSince(nextSessionEndedAt(session));
+  if(ended != null) parts.push(`ended ${ended} ago`);
   if(session.state === "needs_input"){
     const blocked = nextDurationSince(session.blocked_since);
     if(blocked != null) parts.push(`blocked ${blocked}`);
@@ -150,6 +160,16 @@ function nextSessionMeta(session){
     const started = nextDurationSince(session.started_at);
     if(started != null) parts.push(`session started ${started} ago`);
   }
+  /* These last two are unconditional, and both for the reason the first one
+     gives: every clause above is a reading, and these say what the readings
+     cannot cover, so they qualify the whole line rather than any one of them.
+     The row already carries both, but a reader who clicked through from a
+     disclosed row must not arrive at a page that asserts the state alone. */
+  if(nextSessionIsScanOnly(session)){
+    parts.push("read by scanning: no turn end can be observed here");
+  }
+  const gaps = nextSessionGapNames(session);
+  if(gaps.length) parts.push(`source not fully read: ${gaps.join(", ")}`);
   return parts.join(" · ");
 }
 
@@ -192,11 +212,24 @@ function nextSessionLoopNote(loop){
   if(!loop || typeof loop !== "object" || Array.isArray(loop)) return "";
   const errors = nextNumber(loop.errors);
   if(errors == null || !Number.isInteger(errors) || errors <= 0) return "";
-  const calls = errors === 1 ? "tool call" : "tool calls";
   const rawTool = typeof loop.tool === "string" ? loop.tool.trim() : "";
   const tool = rawTool ? ` (most recently ${nextSessionHumanTool(rawTool)})` : "";
-  return `${errors} ${calls} in a row came back as errors${tool}. ` +
-    "Check the agent is working the problem rather than repeating the failure.";
+  const failures = nextNumber(loop.failures);
+  const total = failures != null && Number.isInteger(failures) && failures > errors
+    ? failures
+    : errors;
+  const calls = total === 1 ? "tool call" : "tool calls";
+  const advice = "Check the agent is working the problem rather than repeating the failure.";
+  // Three readings of one turn, and each sentence says which one fired. Saying
+  // "in a row" about a total would be false the moment a success split it,
+  // which is the whole reason the total exists (DRC-4021).
+  if(loop.barren === true){
+    return `${total} ${calls} failed this turn and none succeeded${tool}. ${advice}`;
+  }
+  if(total > errors){
+    return `${total} ${calls} failed this turn, ${errors} of them consecutive${tool}. ${advice}`;
+  }
+  return `${errors} ${calls} in a row came back as errors${tool}. ${advice}`;
 }
 
 function nextSessionHealth(session){
@@ -248,17 +281,50 @@ function nextSessionTasks(session){
 function nextSessionSubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
+  /* Every number in the heading counts DIRECT children, so the leading clause
+     agrees with the row's state line above it: `working_detail` counts that
+     same population and a grandchild is deliberately not in it. Counting every
+     live element made one row read "running 1 subagent" beside a
+     "3 RUNNING SUBAGENTS" heading; leaving the TOTAL wide while narrowing the
+     running clause then made an idle teammate holding a live worker read
+     "2 SUBAGENTS · NONE RUNNING" above a row a screen reader announces as
+     running. A worker beneath a teammate is a third population and gets its
+     own clause rather than being folded into either count. */
+  const direct = subagents.filter(subagent => !(subagent && subagent.parent));
+  const running = direct.filter(nextSubagentIsLive).length;
+  const beneath = subagents.filter(
+    subagent => subagent && subagent.parent && nextSubagentIsLive(subagent),
+  ).length;
   const rows = subagents.map((subagent, index) => {
     const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null
       ? ""
       : `<span class="next-session-subagent-elapsed">${elapsed}</span>`;
-    return `<div class="next-session-subagent next-live" data-next-session-subagent="${index}">` +
-      `${nextStatusDot("running", "next-session-subagent-glyph")}` +
-      `<strong class="next-session-subagent-name">${esc(subagent && subagent.name || "subagent")}</strong>` +
+    const live = nextSubagentIsLive(subagent);
+    /* Nested inside the name cell rather than given a grid column of its own, so
+       attribution costs one CSS rule instead of a new column every breakpoint
+       has to agree about. */
+    const parent = subagent && subagent.parent
+      ? `<span class="next-session-subagent-parent"> · ${esc(subagent.parent)}</span>`
+      : "";
+    return `<div class="next-session-subagent${live ? " next-live" : ""}" ` +
+      `data-next-session-subagent="${index}">` +
+      `${nextStatusDot(live ? "running" : "idle", "next-session-subagent-glyph", live)}` +
+      '<strong class="next-session-subagent-name">' +
+      `${esc(subagent && subagent.name || "subagent")}${parent}</strong>` +
       `${measured}</div>`;
   }).join("");
-  const label = subagents.length === 1 ? "1 RUNNING SUBAGENT" : `${subagents.length} RUNNING SUBAGENTS`;
+  /* The heading has to survive the state this feature creates: a finished board
+     still inside the display window, every element inactive. Guarding the whole
+     block on `running` would hide the list, which is the vanishing act
+     DRC-4344 exists to stop, so the heading tells the truth instead and the
+     rows stay. */
+  const label = (running === 0
+    ? `${direct.length} SUBAGENT${direct.length === 1 ? "" : "S"} · NONE RUNNING`
+    : running === 1 ? "1 RUNNING SUBAGENT" : `${running} RUNNING SUBAGENTS`) +
+    (beneath === 0
+      ? ""
+      : ` · ${beneath} WORKER${beneath === 1 ? "" : "S"} RUNNING BENEATH`);
   return '<div class="next-session-current-subagents" data-next-session-subagents>' +
     `<span>${label}</span>${rows}</div>`;
 }
@@ -289,7 +355,7 @@ function nextSessionDetailState(state){
   return null;
 }
 
-function nextSessionView(project, harness, sid){
+function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const session = nextSessionFind(project, harness, sid);
   if(!session){
     return '<section class="next-session-detail-empty" ' +
@@ -310,7 +376,8 @@ function nextSessionView(project, harness, sid){
     `<h1>${esc(title)}</h1>${nextSessionCopyControl(session)}${metaLine}</header>`;
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr}>` +
-    nextSessionCommandSurface(session, asks, identity) + nextSessionHealth(session) +
+    nextSessionCommandSurface(session, asks, identity, openDisclosures) +
+    nextSessionHealth(session) +
     nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionFooter(session) + "</article>";
 }

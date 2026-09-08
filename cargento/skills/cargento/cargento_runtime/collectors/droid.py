@@ -52,7 +52,7 @@ def collect(
             state_detail = sessions.working_detail(info, [])
 
         cwd = str(meta.get("cwd") or "")
-        project = sessions.project_from_cwd(config, cwd) or sessions.project_label(
+        project = sessions.project_from_cwd(config, cwd) or sessions.bounded_project_label(
             config, os.path.basename(os.path.dirname(fp))
         )
         s = sessions.base_session("droid", sid, project)

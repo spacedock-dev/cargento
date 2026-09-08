@@ -8,6 +8,72 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextNotificationBehaviorTest(NextPageJsHarness):
+    def test_repeated_quiet_crossings_wait_ten_minutes_without_delaying_questions(self) -> None:
+        out = self._run_page_js(
+            """
+let now = 0;
+Date.now = () => now;
+__notifyPermission = "granted";
+const row = (state, sid = "s1", harness = "claude") => ({
+  harness, sid, project: "repo", state, active: state !== "idle"
+});
+const send = (seconds, sessions, asks = []) => {
+  now = seconds * 1000;
+  nextSyncNotifications({native_notify: "", sessions, ask: true, asks,
+    harnesses: [{key: "claude", label: "Claude"}]});
+  return __notifications.length;
+};
+const counts = [];
+counts.push(send(0, [row("working")]));
+counts.push(send(0, [row("idle")]));
+counts.push(send(100, [row("working")]));
+counts.push(send(200, [row("idle")]));
+counts.push(send(300, [row("working")]));
+counts.push(send(400, [row("idle")]));
+counts.push(send(599, [row("working")]));
+counts.push(send(599.999, [row("idle")]));
+counts.push(send(600, [row("idle")])); // Suppressed edges still update observed state.
+counts.push(send(600, [row("working")]));
+counts.push(send(600, [row("idle")])); // Inclusive boundary after a new crossing.
+send(601, [row("working")]);
+send(602, [row("needs_input")], [{id: "ask", question: "Ship?", harness: "claude"}]);
+const questions = __notifications.slice(2).map(n => n.title);
+send(603, [row("working"), row("working", "s2"), row("working", "s1", "codex")]);
+send(604, [row("idle"), row("idle", "s2"), row("idle", "s1", "codex")]);
+const separate = __notifications.slice(4).map(n => n.tag);
+send(605, []);
+send(606, [row("working")]);
+send(607, [row("idle")]);
+console.log(JSON.stringify({counts, questions, separate, final: __notifications.length}));
+"""
+        )
+        self.assertEqual([0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2], out["counts"])
+        self.assertEqual(["Claude is waiting on you", "Claude is asking you"], out["questions"])
+        self.assertEqual(["claude:s2", "codex:s1"], out["separate"])
+        self.assertEqual(6, out["final"])
+
+    def test_an_unissued_quiet_nudge_does_not_start_the_repeat_floor(self) -> None:
+        out = self._run_page_js(
+            """
+Date.now = () => 1000000;
+const send = (state, native = "") => nextSyncNotifications({native_notify: native,
+  sessions: [{harness: "claude", sid: "unissued", state, active: state !== "idle"}], asks: []});
+__notifyPermission = "denied";
+send("working"); send("idle");
+__notifyPermission = "granted";
+send("working", "osascript"); send("idle", "osascript");
+const realNotification = Notification;
+Notification = function(){ throw new Error("permission revoked"); };
+Notification.permission = "granted";
+send("working"); send("idle");
+Notification = realNotification;
+send("working"); send("idle");
+send("working"); send("idle");
+console.log(JSON.stringify(__notifications.map(n => n.title)));
+"""
+        )
+        self.assertEqual(["claude has gone quiet"], out)
+
     def test_browser_notifications_cover_gate_transitions_the_server_missed(self) -> None:
         out = self._run_page_js(
             """
@@ -23,6 +89,7 @@ const payload = (sessions, native) => ({
 const reset = permission => {
   __notifications = []; __notifyPermission = permission;
   nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+  nextQuietNudgedAt.clear();
 };
 const out = {};
 
@@ -60,6 +127,95 @@ console.log(JSON.stringify(out));
         self.assertEqual(2, out["refired"])
         self.assertEqual(0, out["primed"])
 
+    def test_a_browser_nudge_lands_when_a_working_session_falls_quiet(self) -> None:
+        # The transition the native lane already popups for on macOS, through
+        # Claude's own `idle_prompt`. A reader on Linux or Windows has no native
+        # backend, so before this the working→idle edge raised nothing at all and
+        # they had to keep looking at the tab.
+        out = self._run_page_js(
+            """
+const working = {
+  harness:"claude", sid:"12345678", project:"proj", state:"working",
+  state_detail:"generating…", active:true
+};
+const quiet = {...working, state:"idle", state_detail:"awaiting your message"};
+const blocked = {...working, state:"needs_input", state_detail:"open question"};
+const payload = (sessions, native) => ({
+  native_notify:native, harnesses:[{key:"claude", label:"Claude Code"}], sessions,
+  asks:[], ask:true
+});
+const reset = permission => {
+  __notifications = []; __notifyPermission = permission;
+  nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+  nextQuietNudgedAt.clear();
+};
+const out = {};
+
+reset("granted");
+nextSyncNotifications(payload([working], ""));
+out.nothingForWorking = __notifications.length;
+nextSyncNotifications(payload([quiet], ""));
+out.fired = __notifications.length;
+out.title = __notifications[0] && __notifications[0].title;
+out.body = __notifications[0] && __notifications[0].body;
+out.tag = __notifications[0] && __notifications[0].tag;
+nextSyncNotifications(payload([quiet], ""));
+out.noRepeat = __notifications.length;
+
+reset("granted");
+nextSyncNotifications(payload([working], "osascript"));
+nextSyncNotifications(payload([quiet], "osascript"));
+out.nativeOwnsIt = __notifications.length;
+
+// A first sighting of an idle session is not a transition anyone watched.
+reset("granted");
+nextSyncNotifications(payload([quiet], ""));
+nextSyncNotifications(payload([quiet], ""));
+out.firstSighting = __notifications.length;
+
+// An answered question is not a nudge: the reader has just been there.
+reset("granted");
+nextSyncNotifications(payload([blocked], ""));
+const afterGate = __notifications.length;
+nextSyncNotifications(payload([quiet], ""));
+out.gateToQuiet = __notifications.length - afterGate;
+
+// The instrumented shape, and the one a default install actually takes: a
+// `turn_stopped` overlay publishes state idle with state_detail null and
+// active FALSE, and both shipped hook manifests declare `Stop`. This is also
+// the only arm that exercises edge.detail, since state_detail is null here.
+reset("granted");
+nextSyncNotifications(payload([working], ""));
+nextSyncNotifications(payload([{...quiet, state_detail:null, active:false}], ""));
+out.instrumented = __notifications.length;
+out.instrumentedTitle = __notifications[0] && __notifications[0].title;
+out.instrumentedBody = __notifications[0] && __notifications[0].body;
+
+// An inactive row still needs a `working` sighting first: a first sighting of
+// an idle, inactive row is nobody's transition.
+reset("granted");
+nextSyncNotifications(payload([{...quiet, active:false}], ""));
+nextSyncNotifications(payload([{...quiet, active:false}], ""));
+out.inactiveFirstSighting = __notifications.length;
+console.log(JSON.stringify(out));
+"""
+        )
+
+        self.assertEqual(0, out["nothingForWorking"])
+        self.assertEqual(1, out["fired"])
+        self.assertEqual("Claude Code has gone quiet", out["title"])
+        self.assertEqual("[proj] awaiting your message", out["body"])
+        self.assertEqual("claude:12345678", out["tag"])
+        self.assertEqual(1, out["noRepeat"])
+        self.assertEqual(0, out["nativeOwnsIt"])
+        self.assertEqual(0, out["firstSighting"])
+        self.assertEqual(0, out["gateToQuiet"])
+        self.assertEqual(1, out["instrumented"])
+        self.assertEqual("Claude Code has gone quiet", out["instrumentedTitle"])
+        # From edge.detail, not state_detail: the idle overlay patch nulls it.
+        self.assertEqual("[proj] awaiting your message", out["instrumentedBody"])
+        self.assertEqual(0, out["inactiveFirstSighting"])
+
     def test_browser_notifications_cover_arriving_asks_once(self) -> None:
         out = self._run_page_js(
             """
@@ -73,6 +229,7 @@ const payload = (asks, native) => ({
 const reset = permission => {
   __notifications = []; __notifyPermission = permission;
   nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+  nextQuietNudgedAt.clear();
 };
 const out = {};
 

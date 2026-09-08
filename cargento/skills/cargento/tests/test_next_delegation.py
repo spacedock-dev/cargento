@@ -502,6 +502,171 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("data-next-delegation-trend", block)
         self.assertIn("+50", block)
 
+    RESET = """
+nextWorkstreamGroups = [];
+nextWorkstreamEntryCount = 0;
+nextWorkstreamPreviousSessions = new Map();
+nextWorkstreamSeenAsks = new Map();
+nextWorkstreamLastGenerated = null;
+nextWorkstreamObservedSince = null;
+"""
+
+    def test_a_seeded_window_reports_a_figure_past_the_live_six_hour_ceiling(self) -> None:
+        html = self.run_fixture(
+            self.RESET
+            + """
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1000000,
+  history: [
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "working", last_activity: 740800},
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "needs_input", last_activity: 748000},
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "idle", last_activity: 751600}
+  ],
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        # Two hours delegated against one gated hour, all of it more than six
+        # hours before this tab opened. Under the live ceiling every one of those
+        # intervals falls outside the range, so the panel withholds; against the
+        # store's own window it is a figure.
+        self.assertNotIn("no figure yet", block)
+        self.assertIn("67%", block)
+        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertIn("1 human turn", block)
+
+    def test_without_a_stored_history_the_same_tab_still_withholds(self) -> None:
+        html = self.run_fixture(
+            self.RESET
+            + """
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1000000,
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        self.assertIn("no figure yet", block)
+        self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
+
+    def test_a_withheld_figure_over_a_seeded_window_names_that_window(self) -> None:
+        # The third hardcoded caption. A seeded window with nothing countable in
+        # it still knows how far back it reaches, and printing `SINCE THIS TAB
+        # OPENED` over a fortnight of store is the panel lying about its own
+        # provenance while withholding.
+        html = self.run_fixture(
+            self.RESET
+            + """
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1000000,
+  history: [{
+    harness: "claude", sid: "session-one", project: "alpha/repo",
+    state: "idle", last_activity: 740800
+  }],
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        self.assertIn("no figure yet", block)
+        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertNotIn("SINCE THIS TAB OPENED", block)
+
+    def test_a_session_left_working_in_its_last_record_is_not_counted_to_now(self) -> None:
+        out = self.run_fixture(
+            self.RESET
+            + """
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1000000,
+  history: [
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "idle", last_activity: 740800},
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "working", last_activity: 982800}
+  ],
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+const metric = nextDelegationMetric(nextWorkstreamProjectWindow("alpha/repo"));
+console.log(JSON.stringify({
+  delegatedSec: metric.delegatedSec,
+  totalSec: metric.totalSec,
+  html: __els.app.innerHTML
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        # Nothing observed the end of that `working` span: the server stopped
+        # while the session ran, and the store records what changed rather than
+        # when it stopped. Holding the last record to this tab's first payload
+        # would count 4h47m of a closed laptop as time an agent worked — an
+        # upward bias, which is the direction NUI-11 says never to invent in.
+        self.assertEqual(0, out["delegatedSec"])
+        self.assertEqual(0, out["totalSec"])
+        self.assertIn("no figure yet", self.delegation_block(out["html"]))
+
+    def test_a_seeded_span_with_no_rate_does_not_dilute_the_measured_one(self) -> None:
+        html = self.run_fixture(
+            self.RESET
+            + """
+const busy = {...__delegationPayload.sessions[0], state: "working", rate_per_min: 100};
+nextObserveWorkstream({
+  ...__delegationPayload,
+  generated: 990000,
+  history: [
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "working", last_activity: 740800},
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "needs_input", last_activity: 982800}
+  ],
+  sessions: [busy]
+});
+const live = {...__delegationPayload, generated: 1000000, sessions: [busy]};
+nextObserveWorkstream(live);
+nextData = live;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        # The store keeps no token rate, so 69 of the window's 72 hours can only
+        # be counted as delegated time. Dividing the measured area by the whole
+        # delegated span instead of the span that was measured turns 100 into 4 —
+        # a floor that is true and useless, and reads as a broken figure.
+        self.assertIn("≥100 tok/m while delegated", block)
+        self.assertIn("100%", block)
+
 
 if __name__ == "__main__":
     unittest.main()

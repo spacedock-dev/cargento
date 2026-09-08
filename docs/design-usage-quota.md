@@ -148,6 +148,8 @@ travelling towards nothing, the same missing denominator this whole section is a
 a forecast. Q-9 fits its slope on a published percentage and projects when that percentage reaches
 100, and it reads no `used` figure at all.
 
+<a id="q-2"></a>
+
 ## Q-2: The response fields Cargento reads
 
 From `GET https://api.anthropic.com/api/oauth/usage` (with `anthropic-beta: oauth-2025-04-20`), two
@@ -272,6 +274,89 @@ Guessing a path would mean reading some other file and calling it a credential, 
 reader reports no credential source and Cursor stays out of the band. Installing the CLI on the
 other two platforms is what unblocks them.
 
+<a id="q-12"></a>
+
+## Q-12: budget against clock, and why there is still no verdict
+
+A9 asked for one safe-to-start light and was cancelled: every quota producer signals failure as an
+empty list, so a composed light reads "safe" exactly when Cargento can see nothing. A5 fitted a burn
+projection and produced five false greens across three review rounds, every one inside the binary
+race verdict and not one in the numbers; the fitted rate and its band survived a 4,000-case
+randomised sweep. Q-9 then retired the client-side projection along with the browser buffer it
+sampled into. So the third attempt at this promise had to answer the same question without
+composing a verdict, and DEC-12 settled how: publish two quantities and let the reader compare them.
+
+**The reading is budget against clock, on one axis.** A window publishes how much of its allowance
+is spent. With its own length and its reset stamp it also says how much of its *time* is spent:
+`elapsed = (windowSec - (resetAt - now)) / windowSec`. Both halves arrive in one response from one
+vendor, so the bar draws the level as fill and the clock as a tick, and the distance between them is
+the whole reading. Nothing adjudicates it. The budget's end time and the window's reset time sit in
+adjacent columns and the reader decides which matters.
+
+The case that justifies the surface is an inversion no single harness can show. A five-hour window
+34% spent with 12% of its time gone runs dry about three hours before it resets. A weekly window 88%
+spent with 91% gone finishes the period with room to spare. **The lowest number is the one to act on
+and the highest is the one to ignore**, and any ranking on level alone gets both wrong. Rows are
+therefore ordered by when the budget ends, earliest first; rows that cannot be timed sort last, by
+level, and say so.
+
+### The window's own length is published, because it cannot be inferred
+
+`windowSec` is a field rather than a constant in the page, and the reason is Codex. Codex names no
+windows, only durations, and its collector files anything under a day into the `fiveH` slot
+(`collectors/codex.py`). A plan whose primary window is 180 minutes therefore publishes as `fiveH`,
+and a page assuming five hours would draw the tick at 60% of the bar with the window fully spent.
+The length is read where the vendor states it and constant where the vendor states only a name:
+
+| Producer | Where the length comes from |
+|---|---|
+| Codex | `window_minutes`, the vendor's own figure, per window |
+| Claude | `quota.SLOT_WINDOW_SEC`, since the response names `five_hour` and `seven_day` and carries no length |
+| Antigravity | the same table, since the status line names `-5h` and `-weekly` |
+| Cursor | nothing. It publishes `billingCycleEnd` and no start, and cycles run 28 to 31 days |
+
+A window with no published length gets no tick, no elapsed figure and no projection. It renders the
+percentage it does have and states that it publishes no clock. That is the shape every absence takes
+here: it removes a claim rather than adding a reassuring one.
+
+### Recent pace is a second measurement, not a fitted curve
+
+The window's average pace needs no stored state at all, being `pct / elapsed`. A *recent* pace needs
+successive readings, and `quota.observe_windows` keeps a bounded ring of them per vendor window in
+memory, holding values `/api/data` already serves. No file, no endpoint, dropped with the process,
+so it widens no boundary in SECURITY.md and is strictly better than the browser buffer Q-9 retired:
+one server-side series, shared by every tab, surviving a reload.
+
+Three refusals in that ring each exist because admitting them publishes a reassuring number:
+
+- **A stamp that has not advanced is not a new reading.** Codex's `asOf` is the epoch of the newest
+  snapshot on disk, so it stands still between that harness's turns while the page polls every few
+  seconds. Counting those repeats divides an unchanged level by a growing span and calls the result
+  calm. The same stamp can also regress, because the snapshot is chosen as the newest of a bounded
+  set of rollout tails and a file with a newer mtime can displace the one that held it.
+- **A level that has fallen is a window that reset.** Subtracting across a reset gives a negative
+  pace, and clamping one would report zero, so the ring restarts rather than measuring through it.
+- **One reading is not a measurement.** Fewer than two distinct readings publishes no `recent` at
+  all, and the page says "not measured" rather than "0 per minute".
+
+The ring is keyed per vendor and per slot rather than shared, because `POST /api/usage` has no rate
+limit: a harness pushing receipts in a loop would otherwise evict the fetched Claude samples the
+pace exists to read.
+
+Where both paces are measured the prospective line states both, and their disagreement is the
+uncertainty. That is deliberately not a ± band on one number: both ends are observations.
+
+### The attention trigger keeps its level test and gains a pace test
+
+Q-9 left Attention raising quota only from a published level at or above 70 percent. That rule
+raises the 88% window that is fine and stays silent on the 34% one that is not, so a second trigger
+fires when the projected end falls before the reset. It is held behind two floors, and the first
+value tried was wrong: a quarter of the window elapsed excluded the exact case the trigger exists
+for, since 12% of five hours is 36 real minutes and 34 real points. A tenth of the window is the
+time floor, and ten points of budget is the second, bounding integer rounding rather than time: at
+two points, one point of rounding is half the ratio. The level trigger is unchanged, because it is
+proven and it catches what pace cannot see.
+
 ## Q-9: promotion retired the client-side burn projection
 
 The legacy page sampled quota levels in browser memory and fitted a burn projection. That reading
@@ -283,12 +368,28 @@ percent. It states the reported percentage and scope, and does not predict exhau
 with reset time. The server payload remains the evidence boundary; durable quota history would be a
 separate storage decision rather than another browser buffer.
 
+<a id="q-3"></a>
+
 ## Q-3: Consent rides on the poll
 
 The fetch trigger lives in `/api/data` handling, not in collection, and fires only for requests
-carrying `usage=1`. The page sends that parameter exactly when the usage switch is on and the
+carrying `usage=1`. The page is to send that parameter exactly when the usage switch is on and the
 first-run disclosure banner has been answered. Three contract clauses fall out of this placement
 rather than being scheduled or checked:
+
+**The page half of that handshake went missing and came back, and the sequence is worth keeping.**
+Measured on 2026-09-04: no JavaScript in `web/` read the `usage_fetch` capability flag, so there was
+no banner, no configure switch and no stored answer, and no page request carried `usage=1`. The
+promotion to the next UI had dropped the disclosure and nothing failed, because no test bound the
+prose to the page and the fetch consequently never fired at all. The three clauses below were true,
+but vacuously: they described a mechanism nothing exercised.
+
+Both halves were restored together, disclosure first (DRC-4376) and the parameter second
+(DRC-4352), because the other order would have started reading a credential with no disclosure in
+front of it. `nextUsageConsent` in `web/next-capacity.js` is the gate, and it answers three states
+rather than two: `granted`, `declined`, and unanswered, where an unreadable or unrecognised stored
+value counts as unanswered. `tests/test_next_capacity.py` binds each of them to the URL the page
+actually builds.
 
 1. "No polling while no dashboard page is connected": no request, no fetch.
 2. "Disclosed before it acts": on first run the banner is up, no poll carries consent yet, and
@@ -367,6 +468,21 @@ band entirely, because a sign-in is wrong advice when the harness session may be
 surfaces in diagnostics as a fixed category word plus an exception type name; no value read from a
 credential source or a response is ever interpolated.
 
+Droid has no token Cargento may read, and DEC-10 (DRC-4333) settled what it sends instead. The
+Droid CLI keeps a 44-byte encryption key in the macOS Keychain, service `Factory CLI`, account
+`auth-encryption-key-security-cli`, and the session token encrypted with it in
+`~/.factory/auth.v2.loginkeychain`, beside a refresh lock the CLI takes when it rotates the session.
+Reading that would mean decrypting another program's store to lift a credential it refreshes
+itself, and the never-refresh rule above has nothing to bound in that arrangement, so it is
+rejected below. The vendor documents one other route, an API key the user creates and the CLI
+accepts through `FACTORY_API_KEY` on the same bearer header. When the reader ships it takes that
+variable from Cargento's own process environment, presents it to one endpoint as a bearer token,
+and does nothing else with it: not written, not logged, not served, not exchanged. A missing
+variable keeps Droid out of the band with no sign-in advice, since the harness may be signed in and
+working normally without it. Whether the limits endpoint accepts a key is unmeasured until an
+account with windows runs the capture, and SECURITY.md names the endpoint and the variable in the
+same PR as the reader.
+
 ## Q-7: A harness can hand its quota over, so nothing needs fetching
 
 Antigravity keeps no quota on disk and its stored credential is not usable as a bearer token, so
@@ -439,25 +555,35 @@ which is itself one of the states question three has to render rather than hide.
 
 | Authority | Harness rows spending it | What Cargento reads | There when |
 |---|---|---|---|
-| Anthropic | Claude Code, and any harness signed in to the same subscription | percent of a 5 hour and a 7 day rolling window (Q-2) | the store exists and the disclosure has been answered |
+| Anthropic | Claude Code, and any harness signed in to the same subscription | percent of a 5 hour and a 7 day rolling window (Q-2) | the store exists, the disclosure has been answered, and the last fetch landed inside `window_hours` |
 | OpenAI | Codex | percent per window, classified by the window's own length (Q-1) | Codex left a snapshot inside `window_hours` |
 | Google | Antigravity | percent per named bucket, the worse of two model families (Q-7) | the user pointed the status line at `/api/usage` and the harness ran inside `window_hours` |
-| Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads and the disclosure has been answered |
+| Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads, the disclosure has been answered, and the last fetch landed inside `window_hours` |
 | GitHub | Copilot CLI | AI Units consumed, with the entitlement nowhere on the machine (Q-6) | a usage row landed inside `window_hours` |
-| Factory | Droid | nothing | never, so far as anything here knows |
+| Factory | Droid | nothing: on the account measured, `GET /api/billing/limits` carries no window, and the store holds a per-session credit count | never yet; an account on token-rate-limits billing would publish three windows nobody here has captured |
 
 Two rows in that table are absences of different kinds, and a comparison that treats them alike gets
 question one wrong. GitHub publishes a numerator and no denominator, which is a measured fact:
 `entitlement` and `allowance` appear in no file under `~/.copilot`, and Q-6 is the record of
-looking. Factory publishes nothing that anyone here has looked for. Droid is not installed on the
-machine this work was done against, so its store has never been read, and "Factory keeps no local
-quota" is not a finding but the absence of one. Every field this document treats as measured
-(Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's `limits[]`) came from a live store or a
-live response. The Antigravity attempt below is the reason to hold even a searched-for absence
-loosely: its local forensics were thorough, and the number it concluded was out of reach ships
-today, arriving by the pushed path in Q-7 instead. An absence found by looking can still be
-overturned by a route nobody enumerated, so an absence nobody has looked for is worth nothing at
-all, and Factory stays unmeasured in writing rather than written down as empty.
+looking. Factory was looked at on 2026-09-02, on the account signed in on the machine this work was
+done against, and the record is
+[`captures/droid/billing-limits-0.210.0-macos.jsonl`](captures/droid/billing-limits-0.210.0-macos.jsonl).
+Droid's `/limits` command is `GET https://api.factory.ai/api/billing/limits`, and on that account
+it answered with four top-level fields and no `limits` object, because `usesTokenRateLimitsBilling`
+is false there; Droid's own panel then said it was unable to fetch credit limits. So for that
+account the vendor publishes no window, which is a finding and not the absence of one, and Cargento
+can show nothing the CLI cannot. Individual plans are metered differently, three independent rolling
+windows of Factory Standard Credits at 5 hours, 7 days and 30 days, and the CLI is written against
+`limits.standard.fiveHour`, `weekly` and `monthly`, each with a `usedPercent`; that shape is read in
+the binary and has never been run here, so no parser is written against it. The store holds a
+per-session `<session-id>.settings.json` whose `tokenUsage` object carries token counts and a
+`factoryCredits` figure, a numerator in Copilot's shape, read by hand and not yet captured. Every
+field this document treats as measured (Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's
+`limits[]`) came from a live store or a live response. The Antigravity attempt below is the reason
+to hold even a searched-for absence loosely: its local forensics were thorough, and the number it
+concluded was out of reach ships today, arriving by the pushed path in Q-7 instead. An absence found
+by looking can still be overturned by a route nobody enumerated, so the windowed route stays
+unmeasured in writing rather than written down as empty.
 
 Anthropic's row also says something the other rows do not, and it decides the unit of comparison.
 That percentage is the account's, not Claude Code's: SECURITY.md names the authority as "Claude
@@ -508,11 +634,19 @@ wrong percentage looks wrong; "you have room on Codex" looks like good news.
 
 This is the finding that shapes what the surface has to say, and it falls out of the table above
 rather than out of any policy. Anthropic and Cursor are fetched, so they report while their harness
-sits idle. OpenAI, Google and GitHub are read from what their harness wrote or pushed, and all three
-drop out once the newest reading is older than `window_hours`, 24 hours by default: `codex.usage`
-tests the snapshot's freshness, `quota.receipt_entries` tests the receipt's, and Copilot's sum only
-counts rows inside the window. Usage is also read only for a discovered harness, so a harness that
+sits idle: what refreshes them is a dashboard poll rather than harness activity. OpenAI, Google and
+GitHub are read from what their harness wrote or pushed, so for those three it is the harness going
+quiet that ages the figure out. Usage is also read only for a discovered harness, so a harness that
 has never run publishes nothing at all.
+
+Every authority drops out once its newest reading is older than `window_hours`, 24 hours by default.
+`codex.usage` tests the snapshot's freshness, `quota.receipt_entries` tests the receipt's,
+`quota.cached_entries` tests the fetched entry's, and Copilot's sum only counts rows inside the
+window. The gate is quiet on the fetched two rather than absent, which is why it was missing until
+DRC-4402: while the poll runs a fetched reading is minutes old and can never reach the window, so
+the gate bites only where the poll has stopped (the disclosure answered and then switched off, or
+a vendor that stopped answering), and until then the cache republished a reading of any age as
+current.
 
 Put that beside A4's example. The harness at 95% is the one being used, which is the one that
 certainly reports. The harness at 10% is the one not being used, which is the one whose figure most
@@ -548,8 +682,9 @@ and only Pi populates them, because Pi is the one harness where the answer is no
 harness name. Pi's values come from the assistant message that spent the tokens, or from a newer
 `model_change`, and they carry the vendor's own unmapped id. D-5 in
 [design-session-identity.md](design-session-identity.md) owns that decision and its rejected
-alternatives. Goose and OpenCode read neither field, and whether their stores record one has not
-been measured: neither harness is installed here, and this document's standing rule is that a
+alternatives. OpenCode now reads `model` off its session row, measured on 1.18.20 (Q-11 below
+carries the reading), but not `provider`. Goose reads neither, and whether its store records one has
+not been measured: the harness is not installed here, and this document's standing rule is that a
 payload gets captured before a parser gets written.
 
 So attribution for every passthrough harness, measured against a live store, is a precondition for
@@ -579,9 +714,9 @@ recommendation assembled out of one reading and one silence.
 
 ## Q-11: Every row names the model it runs on, and a row that cannot read one says so
 
-DRC-4117 promotes `model` from one harness's field to a slot on every session card. Six of the ten
+DRC-4117 promotes `model` from one harness's field to a slot on every session card. Seven of the ten
 harnesses fill it, each out of bytes its collector already reads, so the whole reading costs no new
-file, no new query and no new connection. Four fill nothing, and that is the case the design is
+file, no new query and no new connection. Three fill nothing, and that is the case the design is
 built around.
 
 | Harness | Session model | Subagent model |
@@ -592,7 +727,8 @@ built around.
 | Antigravity | `gen_metadata.data`, protobuf field 1 then field 21, read as a 64-byte tail on the connection `_session_info` already opens. | The child's own conversation store, the same read. Each subagent owns a store, so each is measured rather than inherited. |
 | Pi | The newest active-branch entry that carries one: an assistant message, or a `model_change` switched to and not yet spent. D-5 in [design-session-identity.md](design-session-identity.md) owns that reading. | Pi publishes no subagents. |
 | Cursor | `providerOptions.cursor.modelName` inside the newest message blob, reached through the root blob's child list, both reads bounded by `substr` inside SQLite. | The child's own store, the same read. Each Cursor subagent keeps one, so each is measured rather than inherited. |
-| Gemini, Goose, OpenCode, Droid | Not read. Whether these stores record a model has not been measured, and this document's standing rule is that a payload gets captured before a parser gets written. | Gemini, Goose and OpenCode publish a child element with `model` at null. Droid publishes no subagents. |
+| OpenCode | The `id` inside `session.model`, a JSON object 1.18.20 rewrites on every prompt, off the session row the collector already selected. That column is optional in OpenCode's own session schema, so a row can carry none while its transcript still names what ran: the reading then falls back to the newest assistant message's own `modelID`, measured populated in the `message` read that DRC-4427 added. A row that actually carries none has not been observed, so that arm rests on the schema rather than on a measurement. | The child's own `session` row, the same read. Each OpenCode subagent is a session, so each is measured rather than inherited. |
+| Gemini, Goose, Droid | Not read. Whether these stores record a model has not been measured, and this document's standing rule is that a payload gets captured before a parser gets written. | Gemini and Goose publish a child element with `model` at null. Droid publishes no subagents. |
 
 Nothing here is inferred. Not from a plan name, not from a token count, not from a timestamp join,
 not from which quota bucket moved. A guessed model renders in the same type as a measured one, and
@@ -727,6 +863,18 @@ it. Those rows degrade to the dash, which is the honest reading, but it is a wid
 the per-row rule above.
 
 ## Rejected alternatives worth keeping rejected
+
+### Decrypting Droid's login store
+
+The Droid CLI's stored session is an encrypted file whose key sits in the Keychain, so the token is
+one `security find-generic-password` away from being readable in principle: fetch the key, read the
+file, reproduce the CLI's decryption. It is not done, for two reasons that do not weaken with a
+cleverer implementation. The store belongs to another program and its format is that program's to
+change without notice, so a reader here would break silently on the next Droid release and, worse,
+could read the wrong bytes and present them as a credential. And the session it protects is one the
+CLI rotates under a refresh lock, so Cargento would be lifting a value out from under a process that
+is about to replace it, which is the race the never-refresh rule exists to stay out of. The API key
+route in Q-5 costs the user one key and has neither problem.
 
 ### Refreshing a lapsed token
 

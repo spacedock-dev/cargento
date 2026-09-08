@@ -21,19 +21,24 @@ from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
     HOOK_PATH,
+    REFUSED_NOTIFICATIONS,
     REGISTRY,
     RuntimeTestCase,
     collect,
     collect_claude,
     config_patch,
     dashboard_hook,
+    forbid_native_notifications,
+    is_native_notification,
     make_config,
     make_runtime,
     make_server,
+    notifier_binaries,
     notify_handler,
     poll_fast,
     runtime,
     serve_until_closed,
+    short_circuit_native_notifications,
     state_of,
     store_patch,
 )
@@ -1319,6 +1324,66 @@ class NativeNotifierTest(unittest.TestCase):
             self.assertEqual("", collect(24, False)["native_notify"])
 
 
+class NoNativeNotificationTest(RuntimeTestCase):
+    """The refusal that keeps a unit run off the operator's own notification centre.
+
+    DRC-4431: `test_observation` and `test_http_api` between them sent four real
+    banners, three of them byte-identical — so anyone reproducing this has to
+    count SPAWNS, not banners, because macOS coalesces identical alerts into one
+    visible notification while still playing every sound.
+    """
+
+    def test_the_refusal_is_already_in_force(self) -> None:
+        # False means the package import installed it, which is the only way it
+        # covers a test module that never thought about notifications.
+        self.assertFalse(
+            forbid_native_notifications(),
+            "importing the tests package must install the notification refusal",
+        )
+
+    def test_the_argv_notify_mac_composes_is_refused(self) -> None:
+        script = 'display notification "m" with title "t" sound name "Glass"'
+        shapes: tuple[Any, ...] = (
+            ["/usr/bin/osascript", "-e", script],
+            # Neither shape matched the argv[0] equality this replaces: a bare
+            # name resolved off PATH, and a string argv for shell=True.
+            ["osascript", "-e", script],
+            f"/usr/bin/osascript -e '{script}'",
+        )
+        for argv in shapes:
+            with self.subTest(argv=argv):
+                before = len(REFUSED_NOTIFICATIONS)
+                with self.assertRaises(AssertionError):
+                    subprocess.run(argv, check=False)
+                self.assertEqual(before + 1, len(REFUSED_NOTIFICATIONS))
+
+    def test_an_unrelated_spawn_still_runs(self) -> None:
+        # test_lifecycle subprocesses server.py --diagnose; a blanket subprocess
+        # ban would take the suite with it.
+        #
+        # `sys.executable` rather than a shell utility: this class runs on the
+        # windows-latest leg of `platform-tests` too, and an earlier `/bin/echo`
+        # here failed there with WinError 2 while passing on both POSIX legs.
+        done = subprocess.run(
+            [sys.executable, "-c", "print('ok')"], capture_output=True, text=True, check=True
+        )
+        self.assertEqual("ok", done.stdout.strip())
+
+    def test_the_refusal_widens_with_a_future_backend(self) -> None:
+        # Backend-agnostic by construction: the refused set is read off
+        # `native_notifier`, so the Linux backend in
+        # docs/plans/native-notifications.md arrives already covered.
+        self.assertEqual(frozenset({"osascript"}), notifier_binaries())
+        self.assertFalse(is_native_notification(["/usr/bin/notify-send", "hi"]))
+        with mock.patch.object(
+            notifications,
+            "native_notifier",
+            lambda name: "notify-send" if name == "linux" else "",
+        ):
+            self.assertEqual(frozenset({"notify-send"}), notifier_binaries())
+            self.assertTrue(is_native_notification(["/usr/bin/notify-send", "hi"]))
+
+
 class GlobUnderTest(unittest.TestCase):
     HOSTILE = "A [Contractor]"
 
@@ -1353,23 +1418,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().snapshot.clear()
         # Route-shape tests run the notification code but do not assert native
         # delivery, so keep its osascript process off the host.
-        original_run = subprocess.run
-
-        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
-            command = args[0] if args else kwargs.get("args")
-            if (
-                isinstance(command, (list, tuple))
-                and command
-                and command[0] == "/usr/bin/osascript"
-            ):
-                return subprocess.CompletedProcess(command, 0)
-            return original_run(*args, **kwargs)
-
-        notify_patcher = mock.patch.object(
-            subprocess, "run", side_effect=run_without_native_delivery
-        )
-        notify_patcher.start()
-        self.addCleanup(notify_patcher.stop)
+        short_circuit_native_notifications(self)
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:
@@ -1754,9 +1803,19 @@ class _StubOverlays:
         del harness, sid
         return 0.0
 
+    def ended_at(self, harness: str, sid: str) -> float:
+        """No end observed: this stub answers only about stops."""
+        del harness, sid
+        return 0.0
+
     def git_for(self, harness: str, sid: str) -> None:
         """Never probed: this stub has no repository behind it."""
         del harness, sid
+
+    def focusable(self, harness: str, sid: str) -> bool:
+        """No terminal identity: this stub observed no session start."""
+        del harness, sid
+        return False
 
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         self.noted = set(keys)

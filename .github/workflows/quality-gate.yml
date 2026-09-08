@@ -44,8 +44,8 @@ jobs:
         run: |
           set -euo pipefail
           # FAILS OPEN, deliberately. Anything this cannot compute runs the full
-          # gate. A wrong "false" silently skips the only check that would have
-          # caught a regression; a wrong "true" costs one runner. Those are not
+          # gate. A wrong "false" skips measurable jobs that could catch a
+          # regression; a wrong "true" costs runners. Those are not
           # symmetric, so every unknown resolves to true.
           emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "code=$1"; exit 0; }
 
@@ -57,24 +57,44 @@ jobs:
           FILES=$(git diff --name-only "$BASE" "$HEAD_SHA" 2>/dev/null || true)
           [ -n "$FILES" ] || emit true
 
-          # The deny list is DERIVED, not hand-written: any docs file a test
-          # opens by literal path is code as far as this gate is concerned.
-          # Hand-maintaining it is how the filter would go stale the first time
-          # someone asserts against a new design doc.
+          # Effective deny list, from three sources. The literal scan is not
+          # dependency analysis, so review new reads (and the root allowlist) by
+          # hand. validate.yml's unfiltered suite remains the backstop.
+          # 1. Whole double-quoted docs paths in the tests.
           ASSERTED=$(grep -rhoE '"docs/[^"]+\.md"' cargento/skills/cargento/tests/*.py \
                      | tr -d '"' | sort -u || true)
+          # 2. DocumentedCaptureFiguresTest builds this path from CAPTURES.
+          ASSERTED=$(printf '%s\n' "$ASSERTED" 'docs/captures/README.md' | sort -u)
+          # 3. Every document the decision-citation checker resolves a heading
+          # anchor in. Derived from the runtime's own citation links rather than
+          # listed, because that IS the checker's dependency set: it reads each
+          # linked target and requires the exact fragment to exist, so renaming
+          # a heading in any of them turns test_documentation red. Nine such
+          # documents were reachable and absent from this list when the checker
+          # landed, which is DRC-4462's defect one layer up, so deriving it is
+          # the only form that cannot go stale as citations move.
+          CITED=$(grep -rhoE '\(docs/[^)]+\.md#' \
+                    cargento/skills/cargento/cargento_runtime/ 2>/dev/null \
+                  | sed 's/^(//; s/#$//' | sort -u || true)
+          ASSERTED=$(printf '%s\n%s\n' "$ASSERTED" "$CITED" | grep . | sort -u)
+          printf 'Effective docs deny list:\n%s\n' "$ASSERTED"
 
           # `case` globs match `/`, unlike pathname expansion, so `docs/*.md`
           # already covers `docs/plans/x.md` at any depth — a second
           # `docs/*/*.md` alternative is dead and actionlint (SC2222) says so.
           #
-          # Prose that no test reads and no linter parses. SKILL.md is NOT here:
-          # tests/test_documentation.py asserts its store paths against
-          # config.resolve_store_roots.
+          # Prose that no test reads and no linter parses. Three root documents
+          # are NOT here, because tests/test_documentation.py opens all three by
+          # literal path: SKILL.md (its store paths against
+          # config.resolve_store_roots), SECURITY.md (whole sections pinned
+          # sentence by sentence, as the contract the code must still meet), and
+          # README.md (one clause read off the file to keep it agreeing with
+          # SECURITY.md's scope count). Listing any of them here wrongly skips
+          # the measurable jobs; validate.yml still runs that module unfiltered.
           is_prose() {
             case "$1" in
-              README.md|HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
-              COMPATIBILITY.md|SECURITY.md|CODE_OF_CONDUCT.md) return 0 ;;
+              HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
+              COMPATIBILITY.md|CODE_OF_CONDUCT.md) return 0 ;;
               .github/PULL_REQUEST_TEMPLATE.md|.github/ISSUE_TEMPLATE/*) return 0 ;;
               # THIS file is code: it is the gate, and the only honest way to
               # know the gate still works is to run it. Every other workflow is
@@ -189,7 +209,10 @@ jobs:
             scripts.tests.test_bench_collect \
             scripts.tests.test_capture_hook \
             scripts.tests.test_bench_event_latency \
-            scripts.tests.test_derive_prompt_shapes
+            scripts.tests.test_derive_prompt_shapes \
+            scripts.tests.test_capture_team_registry \
+            scripts.tests.test_capture_terminal_identity \
+            scripts.tests.test_capture_focus_raise
 
   test:
     name: Tests + coverage threshold
@@ -223,7 +246,10 @@ jobs:
             scripts.tests.test_bench_collect \
             scripts.tests.test_capture_hook \
             scripts.tests.test_bench_event_latency \
-            scripts.tests.test_derive_prompt_shapes
+            scripts.tests.test_derive_prompt_shapes \
+            scripts.tests.test_capture_team_registry \
+            scripts.tests.test_capture_terminal_identity \
+            scripts.tests.test_capture_focus_raise
 
       # No `coverage report` here. It reads `fail_under` from pyproject and
       # exits non-zero, and it ran BEFORE the label check below, so a PR
@@ -360,6 +386,8 @@ jobs:
           python -m unittest scripts.tests.test_validate_plugins
           scripts.tests.test_bump_version scripts.tests.test_lint_embedded
           scripts.tests.test_bench_collect scripts.tests.test_capture_hook
+          scripts.tests.test_capture_terminal_identity
+          scripts.tests.test_capture_focus_raise
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

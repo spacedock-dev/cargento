@@ -266,6 +266,7 @@ function nextCockpitAttentionCoverage(group, observation){
 function nextCockpitRecoveryChildren(group){
   const active = group.sessions.filter(session => session.state === "working")
     .flatMap(session => projectDelegationLanes(session, {label:nextCockpitStableKey(group)}))
+    .filter(lane => lane.active !== false)
     .map(lane => ({worker:lane.worker,lifecycle:"active",assignment:lane.assignment,
       assignmentSource:lane.source,sourceSession:lane.parentSession,workItemId:lane.workItemId}));
   const returned = group.sessions.flatMap(session =>
@@ -478,7 +479,7 @@ function nextCockpitRecoveryActive(group){
   const activeSessions = group.sessions.filter(session => session.state === "working");
   const exactAssignments = activeSessions.flatMap(session =>
     projectDelegationLanes(session, {label:nextCockpitStableKey(group)}))
-    .filter(lane => lane.assignment !== "assignment unavailable" &&
+    .filter(lane => lane.active !== false && lane.assignment !== "assignment unavailable" &&
       /(?:exact|structured)/i.test(String(lane.source || "")));
   if(!activeSessions.length && !exactAssignments.length){
     return "No active sessions or exact assignments observed";
@@ -605,7 +606,7 @@ function nextCockpitRecoveryBriefing(group, focus, observation, commandAttention
   const activeSessions = group.sessions.filter(session => session.state === "working");
   const assignments = activeSessions.flatMap(session =>
     projectDelegationLanes(session, {label:nextCockpitStableKey(group)}))
-    .filter(lane => lane.assignment !== "assignment unavailable" &&
+    .filter(lane => lane.active !== false && lane.assignment !== "assignment unavailable" &&
       /(?:exact|structured)/i.test(String(lane.source || "")));
   const returnedAge = children.latestReturn && (children.latestReturn.age
     ? `${children.latestReturn.age} ago${children.latestReturn.ageSec >= NEXT_PROJECT_STALLED_SEC

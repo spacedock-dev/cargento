@@ -321,7 +321,11 @@ def _step_info(metadata: Any) -> dict[str, Any]:
 
 
 def _step_activity(
-    config: RuntimeConfig, state: RuntimeState, path: str, now: float
+    config: RuntimeConfig,
+    state: RuntimeState,
+    path: str,
+    now: float,
+    gaps: set[str] | None = None,
 ) -> dict[str, Any]:
     """Read live rate, turn boundaries, and current action from a store.
 
@@ -338,6 +342,8 @@ def _step_activity(
         "last_tool_action": "",
     }
     if not runtime_io.sqlite_available():
+        if gaps is not None:
+            gaps.update((sessions.UNREAD_HISTORY, sessions.UNREAD_TOKENS))
         return result
     query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
@@ -362,6 +368,13 @@ def _step_activity(
     if rows is None:
         if read_error:
             runtime_io.record_store_error(state, path, read_error)
+        # Both rungs of the ladder are spent, so the empty snapshot below is
+        # about to be published as a real reading: rate zero and no turn, which
+        # the page cannot tell from a session that has genuinely done nothing.
+        # The two readings the snapshot loses are named separately because the
+        # reader compares them against different things on the row.
+        if gaps is not None:
+            gaps.update((sessions.UNREAD_HISTORY, sessions.UNREAD_TOKENS))
         return result
 
     events = []
@@ -440,26 +453,28 @@ _MODEL_TAIL_BYTES = 64
 _MODEL_FIELD_TAG = b"\xaa\x01"  # field 21, wire type 2
 
 
-def _model_tail(con: Any) -> Any:
-    """Last ``_MODEL_TAIL_BYTES`` of the newest ``gen_metadata`` blob, or nothing.
+def _model_tail(con: Any) -> tuple[bool, bytes | None]:
+    """Read outcome and last ``_MODEL_TAIL_BYTES`` of the newest generation.
 
     Rides the caller's already-open connection and fails on its own terms: a
     store on a schema without ``gen_metadata``, one with no generations yet, and
     one whose newest row holds no readable blob all withdraw the model and
-    nothing else. The caller's parent-identity read is untouched.
+    nothing else. Only a successful empty query returns ``(True, None)``;
+    conflating it with a failed read would badge every unanswered session.
+    The caller's parent-identity read is untouched.
     """
     try:
         row = con.execute(_MODEL_ROW_QUERY).fetchone()
         if not row:
-            return None
+            return True, None
         blob = con.blobopen("gen_metadata", "data", row[0], readonly=True)
     except runtime_io.sqlite_module.Error:
-        return None
+        return False, None
     try:
         blob.seek(max(0, len(blob) - _MODEL_TAIL_BYTES))
-        return blob.read(_MODEL_TAIL_BYTES)
+        return True, blob.read(_MODEL_TAIL_BYTES)
     except (runtime_io.sqlite_module.Error, OSError, ValueError):
-        return None
+        return False, None
     finally:
         blob.close()
 
@@ -491,7 +506,12 @@ def _session_info(
     sid: str,
 ) -> dict[str, Any]:
     """Extract parent conversation ID, subagent label, and model from a store."""
-    info: dict[str, Any] = {"parent_id": None, "subagent_label": None, "model": None}
+    info: dict[str, Any] = {
+        "parent_id": None,
+        "subagent_label": None,
+        "model": None,
+        "model_unread": True,
+    }
     if not runtime_io.sqlite_available():
         return info
     query = "SELECT data FROM trajectory_metadata_blob WHERE id='main'"
@@ -506,21 +526,21 @@ def _session_info(
             # The model rides this connection rather than opening a second one,
             # and it fails on its own: a store on a schema without
             # `gen_metadata` still reports its parent.
-            tail = _model_tail(con)
+            model_read = _model_tail(con)
         except runtime_io.sqlite_module.Error as exc:
             return False, None, None, exc
         else:
-            return True, row, tail, None
+            return True, row, model_read, None
         finally:
             con.close()
 
-    readable, row, tail, read_error = read_store(runtime_io.sqlite_ro_uri(path))
+    readable, row, model_read, read_error = read_store(runtime_io.sqlite_ro_uri(path))
     if not readable and _wal_has_data(path):
         if read_error:
             runtime_io.record_store_error(state, path, read_error)
         return info
     if not readable:
-        readable, row, tail, fallback_error = read_store(
+        readable, row, model_read, fallback_error = read_store(
             runtime_io.sqlite_ro_uri(path, immutable=True)
         )
         if _wal_has_data(path):
@@ -535,7 +555,9 @@ def _session_info(
     # session that never got a reply, not a store error. Set it before the
     # identity row is examined, so a missing `main` row withdraws only the
     # parent it feeds.
+    model_readable, tail = model_read
     info["model"] = _model_from_tail(tail)
+    info["model_unread"] = not model_readable or (tail is not None and info["model"] is None)
     if not row or not row[0]:
         return info
     data = row[0]
@@ -605,6 +627,7 @@ def collect(
     # subagent with no read the collector was not already doing. A sid missing
     # from this map was never inspected, which is the same "not read" its None is.
     models: dict[str, str | None] = {}
+    unread_models: set[str] = set()
     while pending:
         sid = pending.pop()
         if sid in inspected:
@@ -612,6 +635,8 @@ def collect(
         inspected.add(sid)
         info = _session_info(config, state, db_paths[sid], sid)
         models[sid] = info.get("model")
+        if info.get("model_unread"):
+            unread_models.add(sid)
         parent = info.get("parent_id")
         if parent and parent != sid:
             subagent_sids.add(sid)
@@ -647,8 +672,11 @@ def collect(
         active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
+        gaps: set[str] = set()
+        if sid in unread_models:
+            gaps.add(sessions.UNREAD_MODEL)
         activity: dict[str, Any] = (
-            _step_activity(config, state, db, now)
+            _step_activity(config, state, db, now, gaps)
             if active
             else {"rate_per_min": 0, "turns": None, "last_tool_action": ""}
         )
@@ -663,7 +691,13 @@ def collect(
         # neighbour's reading is missing. The page decides where a child's model
         # is worth showing, and it needs both readings to decide.
         subagents: list[dict[str, Any]] = [
-            {"name": label, "model": models.get(agent_sid), "started_at": None}
+            {
+                "name": label,
+                "model": models.get(agent_sid),
+                "started_at": None,
+                "active": None,
+                "parent": None,
+            }
             for agent_sid, label, agent_mtime in agents
             if sessions.is_fresh(config, now, agent_mtime, config.working_threshold_sec)
         ]
@@ -699,6 +733,11 @@ def collect(
                 "rate_per_min": activity["rate_per_min"],
                 "turn": turns.turn_progress(activity["turns"], session_state, now, config),
                 "subagents": subagents,
+                # This row's own store only. A subagent store that would not read
+                # costs the parent a slice of its rate and nothing else, and
+                # attributing a child's unread store to the parent's row would
+                # say the wrong thing about which source went dark.
+                "source_gaps": sorted(gaps),
             }
         )
         out.append(session)

@@ -150,7 +150,9 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         self.interaction_prototype = interaction_prototype
         # Instance attribute, set before the bind that reads it: the class
         # default would be sampled from the host os.name at import, which is
-        # the ambient read D-4 exists to stop.
+        # the ambient read
+        # [D-4](docs/design-cross-platform.md#d-4)
+        # exists to stop.
         self.allow_reuse_address = reuse_address_allowed(application.config.os_name)
         # The bind host from the constructor address, read by _local_ok to
         # decide whether a non-loopback Host header is the operator's opt-in
@@ -380,6 +382,35 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self.headers.get("Sec-Fetch-Dest") or ""
         ).lower() == "document"
 
+    def _is_frame_navigation(self) -> bool:
+        """Whether a browser is navigating a FRAME to us rather than a tab.
+
+        The routes that hold a socket open refuse this, and the reason is the
+        browser's connection pool rather than this server's own budget. Measured
+        2026-09-07, Chrome, eight frames on `/api/stream` from a page on another
+        loopback port: the frames took SIX sockets, not eight, because a browser
+        caps concurrent HTTP/1.1 connections per origin at six, so the eight-slot
+        stream budget was never drained and a seventh client still got a 200.
+        What the six frames did drain was Chrome's own pool for that origin, and
+        the board then would not load AT ALL in the same browser -- the
+        navigation sat pending and committed the instant the frames were removed.
+        `stream_max_clients` being above the browser's six is why the budget was
+        never the vulnerable resource; see the note in `config`.
+
+        So this buys exactly one thing: the framed request is refused before it
+        can hold a socket, instead of holding one for as long as the framer likes.
+        It is worth what `frame-ancestors` is worth and no more, since a local
+        process the attacker controls sends no `Sec-Fetch` headers at all and a
+        `curl` caller sends none either. SECURITY.md's disclaimer paragraph owns
+        that reasoning.
+
+        Every port on this machine is the same site, so `Sec-Fetch-Site` reads
+        `same-site` for a frame from another local port and never reaches the
+        cross-site check, and a frame navigation carries no `Origin` for the
+        check below it. `Sec-Fetch-Dest` is the header that distinguishes it.
+        """
+        return (self.headers.get("Sec-Fetch-Dest") or "").lower() in {"iframe", "frame"}
+
     def _send(
         self,
         body: bytes,
@@ -392,6 +423,19 @@ class _RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        # `frame-ancestors` and nothing else, and the single directive is the
+        # decision rather than an unfinished policy. It is not a fetch directive
+        # and has no fallback to `default-src`, so alone it restricts framing and
+        # nothing on the page. A second directive is not free: this document is
+        # one inline `<script>`, one inline `<style>` and nine `data:` font URIs,
+        # so a `default-src 'self'` added beside it serves a blank board.
+        # A header rather than a `<meta http-equiv>` because CSP ignores
+        # `frame-ancestors` delivered that way, which is also what keeps the
+        # frontend byte pins untouched. No `X-Frame-Options: DENY` beside it:
+        # `frame-ancestors` wins wherever both are present, and a browser old
+        # enough to read only XFO cannot run this page. What the header does and
+        # does not buy is in SECURITY.md's Known and accepted section.
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         for name, value in (headers or {}).items():
             self.send_header(name, value)
         self.end_headers()
@@ -423,7 +467,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
 
     def _shutdown(self) -> None:
-        """Stop the server: the page's stop button and --stop both land here.
+        """Stop the server: `--stop` and any local client land here.
+
+        Not the page: the dashboard's stop control was removed during the UI
+        promotion
+        ([D-7](docs/design-daemon.md#d-7)),
+        so nothing the board serves
+        posts to this route.
 
         Answer first, then stop. `socketserver.shutdown()` blocks until the
         accept loop notices the request and exits, which can take up to one
@@ -555,6 +605,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(400)
             return
         self.send_response(101)
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         self.send_header("Upgrade", "websocket")
         self.send_header("Connection", "Upgrade")
         self.send_header("Sec-WebSocket-Accept", accept)
@@ -631,11 +682,24 @@ class _RequestHandler(BaseHTTPRequestHandler):
         show_all = query.get("all", ["0"])[0] == "1"
         # `usage=1` is the page's consent to the quota fetch riding along
         # on its poll: the page sends it only with the feature switched on
-        # and the first-run disclosure already shown. The fetch is a
+        # and the first-run disclosure already answered. The fetch is a
         # background side effect behind its own floor and in-flight gates;
         # this request is answered from whatever is already cached. A bare
         # request without the parameter never triggers network traffic.
-        if query.get("usage", ["0"])[0] == "1":
+        #
+        # Never on a document navigation, and that is a security check rather
+        # than a tidy-up. `_local_ok` deliberately forgives a cross-site
+        # navigation because the initiating page cannot READ a cross-origin
+        # document, so serving one exfiltrates nothing. A side effect is the
+        # case that reasoning does not cover: an attacker page that gets the
+        # browser to open `http://127.0.0.1:4553/api/data?usage=1` in a tab
+        # reads nothing back and still makes Cargento read a harness
+        # credential out of the Keychain and send it to the vendor, with the
+        # disclosure never shown. The page's own poll goes through `fetch`, so
+        # it reports `Sec-Fetch-Dest: empty` and is unaffected, and a `curl`
+        # caller sends no fetch metadata at all. The body is still served on
+        # the navigation; only the side effect is refused.
+        if query.get("usage", ["0"])[0] == "1" and not self._is_document_navigation():
             self.server.application.request_usage_fetch()
         revision, body = self.server.application.collect_json(show_all=show_all)
         # The cursor rides in a header rather than the body, so the
@@ -727,9 +791,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         Strictly same-origin. `do_GET` relaxes its check for document
         navigations so a link to the dashboard works, and a long-lived data
         stream is not a document navigation, so re-checking here with the
-        strict form is what keeps that relaxation off this route.
+        strict form is what keeps that relaxation off this route. A FRAME
+        navigation is refused on top of that: it holds a socket the browser
+        will not then give the real board. See `_is_frame_navigation`.
         """
-        if not self._local_ok():
+        if not self._local_ok() or self._is_frame_navigation():
             self.send_error(403)
             return
         application = self.server.application
@@ -829,7 +895,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         takes, with nothing to join it at shutdown; docs/design-ask-lane.md
         records why that was rejected in favour of a repeated short poll.
         """
-        if not self._local_ok():
+        if not self._local_ok() or self._is_frame_navigation():
             self.send_error(403)
             return
         application = self.server.application
@@ -1002,6 +1068,79 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "application/json",
         )
 
+    def _focus(self) -> None:
+        """Raise the terminal one session is running in. Answers one boolean.
+
+        The check order differs from `/api/events/<harness>` deliberately, and
+        the difference is the whole security property. That route 404s an unknown
+        harness BEFORE consulting the capability, because a harness name is
+        public and an unsupported one is not an authentication oracle. **A
+        session id is not public.** So here the capability comes first, then the
+        rate ceiling, then the session lookup — getting it backwards would turn
+        this route into an oracle for which sessions exist.
+
+        The ceiling is claimed AFTER the body is read rather than before it, and
+        that ordering is load-bearing too: `_read_body` is a blocking read with
+        no socket timeout, so claiming the one-slot gate first let a peer that
+        sent a `Content-Length` and then nothing hold focus shut for as long as
+        it kept the socket open. Reading first takes no process-wide state on a
+        request that may never finish, and the gate still precedes the raise,
+        which is what "a repeated or looped request cannot repeat the raise"
+        actually asks for. Nothing about the body distinguishes one session from
+        another, so moving it ahead of the ceiling adds no oracle.
+
+        The body names a session and a harness and never a target: the target
+        comes from an authenticated event, and nothing in this body reaches an
+        argv position. The answer is a single boolean, so an unknown session, a
+        session with no terminal, a declined lookup and a failed command are all
+        the same answer to a caller.
+        """
+        application = self.server.application
+        config = application.config
+        coordinator = self.server.observation
+        if coordinator is None or not config.focus_enabled:
+            # 503 rather than 404, for `/api/dismiss`'s reason: under `--no-focus`
+            # or `--no-events` the route exists and the feature does not, and a
+            # 404 would read as a build too old to have it. It leaks nothing
+            # about sessions, being a run-wide fact.
+            self._reject(503)
+            return
+        if not coordinator.focus_authorized(self.headers.get("X-Cargento-Capability")):
+            self._reject(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.focus_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not coordinator.claim_focus():
+            # The floor and the in-flight gate together: a repeated or looped
+            # request cannot repeat the raise.
+            self._reject(429)
+            return
+        try:
+            target = (
+                coordinator.focus_target(harness, sid)
+                if isinstance(harness, str) and isinstance(sid, str)
+                else None
+            )
+            focused = target is not None and coordinator.raise_focus(target)
+        finally:
+            coordinator.release_focus()
+        self._send(
+            json.dumps({"focused": focused}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
     def do_POST(self) -> None:
         self._body_consumed = 0
         if not self._local_ok():
@@ -1022,6 +1161,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._shutdown,
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
+            "/api/focus": self._focus,
             "/api/ask": self._ask,
             "/api/ask/withdraw": self._withdraw,
             "/api/answer": self._answer,

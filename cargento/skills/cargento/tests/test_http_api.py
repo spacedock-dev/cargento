@@ -11,7 +11,6 @@ import json
 import os
 import shutil
 import socket
-import subprocess
 import sys
 import tempfile
 import threading
@@ -37,8 +36,10 @@ from .support import (
     make_server,
     poll_fast,
     serve_until_closed,
+    short_circuit_native_notifications,
     state_of,
     store_patch,
+    without_focus_meta,
 )
 
 
@@ -150,6 +151,54 @@ class CargentoServerTest(RuntimeTestCase):
                 403,
                 "framed by another site",
             ),
+            # Served, and that is the hole the `frame-ancestors` header covers
+            # rather than this gate: every port on this machine is the *same
+            # site*, so a page on another local port frames the board with a
+            # `same-site` label that never reaches the cross-site branch, and a
+            # frame navigation carries no `Origin` for the check below it. The
+            # request is answered; the browser is what refuses to render it.
+            (
+                "GET",
+                "/",
+                {
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                200,
+                "framed from another local port",
+            ),
+            # The two routes that hold a socket open refuse the same framed
+            # request `/` above is answered on, and the resource being defended
+            # is the BROWSER's connection pool rather than this server's budget.
+            # Measured 2026-09-07 in Chrome: eight frames on `/api/stream` took
+            # six sockets, not eight, because a browser caps HTTP/1.1
+            # connections per origin at six -- so the eight-slot stream budget
+            # was never drained and a seventh client still got a 200. What those
+            # six frames did drain was Chrome's own pool, and the real board then
+            # would not load at all until they were removed.
+            (
+                "GET",
+                "/api/stream",
+                {
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                403,
+                "a frame may not hold a stream socket",
+            ),
+            (
+                "GET",
+                "/api/ask/nothing-here",
+                {
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                403,
+                "a frame may not hold the ask long poll",
+            ),
             (
                 "GET",
                 "/api/data",
@@ -179,6 +228,48 @@ class CargentoServerTest(RuntimeTestCase):
                     conn.request(method, path, body=body, headers=headers)
                     response = conn.getresponse()
                     self.assertEqual(expected, response.status)
+                    response.read()
+                    conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_every_sent_response_forbids_being_framed(self) -> None:
+        # The request gate cannot close this: the case above is answered 200,
+        # and the served document carries the focus capability, so a framed
+        # board is one lured click from raising a terminal. The header is the
+        # whole defense, and it has to be a header — CSP ignores
+        # `frame-ancestors` delivered in a `<meta http-equiv>`, and no version
+        # of `X-Frame-Options` was ever honoured in one.
+        httpd = make_server()
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
+        thread.start()
+        try:
+            # A POST among them, and that is the case this loop was missing.
+            # The header is unconditional today, but wrapping the `send_header`
+            # in `if self.command == "GET":` was applied in a scratch copy and
+            # the whole suite stayed green while every POST reply -- answer,
+            # notify, ask, focus, events, shutdown -- lost it over the socket.
+            for method, path, body in (
+                ("GET", "/", None),
+                ("GET", "/api/data", None),
+                ("POST", "/api/notify", b"{}"),
+            ):
+                with self.subTest(path=path, method=method):
+                    conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                    conn.request(method, path, body=body, headers={"Sec-Fetch-Site": "same-origin"})
+                    response = conn.getresponse()
+                    self.assertEqual(200, response.status)
+                    # Equality, not a substring: `frame-ancestors` has no
+                    # fallback to `default-src`, so it is the one directive that
+                    # can ride here without restricting anything else. A second
+                    # one added to this policy blanks the page, and this is what
+                    # says so before it ships.
+                    self.assertEqual(
+                        "frame-ancestors 'none'",
+                        response.getheader("Content-Security-Policy"),
+                    )
                     response.read()
                     conn.close()
         finally:
@@ -1623,8 +1714,14 @@ class HostAndSocketTest(unittest.TestCase):
             thread.join(timeout=2)
 
 
-class ReviewFixTest(unittest.TestCase):
-    """Regressions found by the adversarial review passes on PR #7."""
+class ReviewFixTest(RuntimeTestCase):
+    """Regressions found by the adversarial review passes on PR #7.
+
+    `RuntimeTestCase` rather than a bare `TestCase`, because the origin cases
+    below POST to `/api/notify`, whose accepted requests run the real notifier:
+    the one that passed sent an audible banner to the machine running the suite
+    (DRC-4431).
+    """
 
     NOW = 1_700_000_000.0
 
@@ -2229,23 +2326,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
-        original_run = subprocess.run
-
-        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
-            command = args[0] if args else kwargs.get("args")
-            if (
-                isinstance(command, (list, tuple))
-                and command
-                and command[0] == "/usr/bin/osascript"
-            ):
-                return subprocess.CompletedProcess(command, 0)
-            return original_run(*args, **kwargs)
-
-        notify_patcher = mock.patch.object(
-            subprocess, "run", side_effect=run_without_native_delivery
-        )
-        notify_patcher.start()
-        self.addCleanup(notify_patcher.stop)
+        short_circuit_native_notifications(self)
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:
@@ -2392,7 +2473,16 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # regression to 0.0.0.0 cannot pass merely because this test chose 127.
         serve("--port", "4553")
         self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
-        self.assertEqual([PAGE_BYTES], captured_pages)
+        # The assembled page plus this run's focus capability, which `cli.main`
+        # injects between `load_frontend_page()` and this constructor. Compared
+        # against the assembly rather than against a pinned byte count, so the
+        # subject stays the bind address and the page identity: `test_next_page`
+        # owns the digests, and a second pin here would red this module on any
+        # frontend edit.
+        self.assertEqual(1, len(captured_pages))
+        served = captured_pages[0]
+        self.assertEqual(PAGE_BYTES, without_focus_meta(served))
+        self.assertIn(b'<meta name="cargento-focus" content="', served)
 
         # And the other direction, through the same launcher: `--host` has to
         # reach the bind tuple. Nothing pinned that, so reverting cli.py's
@@ -2402,6 +2492,17 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         captured_pages.clear()
         serve("--port", "4553", "--host", "0.0.0.0")
         self.assertEqual([("0.0.0.0", 4553)], captured_addresses)
+
+        # And with the feature off there is no secret in the served bytes at all,
+        # which is the whole of "the control does not render".
+        captured_addresses.clear()
+        captured_pages.clear()
+        serve("--port", "4553", "--no-focus")
+        self.assertEqual([PAGE_BYTES], captured_pages)
+        captured_addresses.clear()
+        captured_pages.clear()
+        serve("--port", "4553", "--no-events")
+        self.assertEqual([PAGE_BYTES], captured_pages)
 
         httpd = make_server()
         thread = serve_until_closed(httpd)

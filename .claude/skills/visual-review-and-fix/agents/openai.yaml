@@ -1,0 +1,4 @@
+interface:
+  display_name: "Visual Review and Fix"
+  short_description: "Walk the Cargento board as its reader"
+  default_prompt: "Use $visual-review-and-fix to walk the board as its reader before and after building a change."

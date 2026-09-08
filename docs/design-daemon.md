@@ -55,6 +55,8 @@ writes from C and uncaught tracebacks land there too, not just Python-level prin
 No `chdir("/")`. It is conventional, it buys nothing for a loopback dashboard that resolves every
 store path from `HOME`, and it would silently change how any relative path in the process resolves.
 
+<a id="d-2"></a>
+
 ## D-2: Windows re-spawns instead of forking, and waits to be sure
 
 There is no `fork`, so the parent starts a fresh copy of itself with
@@ -215,6 +217,8 @@ The exposure is worth stating plainly rather than leaving implicit. Any local pr
 the port could already read every session on the machine through `/api/data`. It can now also stop
 the server, a smaller capability than the one already granted, gated by the same trust boundary and
 the same `_local_ok()` checks. `SECURITY.md` says so rather than leaving a reader to work it out.
+
+<a id="d-7"></a>
 
 ## D-7: The retired button armed before it fired, and the stopped page was not the stalled page
 

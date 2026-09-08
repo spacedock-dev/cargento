@@ -81,6 +81,38 @@ def _generation_blob(
 
 
 class GeminiAntigravityCollectorTest(RuntimeTestCase):
+    def test_a_chat_without_a_cwd_caps_its_project_directory_label(self) -> None:
+        # DR-15. The cwd-less fallback is bound to `bounded_project_label`, and
+        # nothing here saw that: no existing fixture drives the fallback with a
+        # directory deeper than two segments, so reverting the bind to
+        # `project_label` left the whole suite green.
+        now = time.time()
+        sid = "cccccccc-dddd-eeee-ffff-000000000000"
+        home = "/Users/cl"
+        encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / "gemini-tmp"
+            chats = legacy / encoded / "chats"
+            chats.mkdir(parents=True)
+            # No `directories`, so `project_from_cwd` returns "" and the encoded
+            # directory name is the only label left.
+            (chats / f"session-{sid}.jsonl").write_text(
+                json.dumps({"sessionId": sid, "kind": "main"}) + "\n",
+                encoding="utf-8",
+            )
+            os.utime(chats / f"session-{sid}.jsonl", (now - 30, now - 30))
+            empty = Path(tmp) / "no-antigravity"
+            empty.mkdir()
+            with (
+                store_patch(GEMINI_TMP=str(legacy), ANTIGRAVITY_CLI_DIR=str(empty)),
+                config_patch(home=home),
+            ):
+                config, state = runtime()
+                rows = gemini_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("spacedock-subspace", rows[0]["project"])
+
     def test_the_legacy_gemini_row_still_reads_its_own_store_alone(self) -> None:
         # Gemini CLI lost its consumer tiers, not its enterprise and API-key
         # ones, so this store is historical on some machines and live on others.
@@ -317,6 +349,45 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         self.assertEqual("recce/bridge", sessions[0]["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("show my assigned issues", sessions[0]["title"])
         self.assertEqual("working", sessions[0]["state"])
+        # DRC-4447. The fixture store is deliberately not a database, which is
+        # the same reading a real store on an unrecognised schema gives, and the
+        # empty activity snapshot behind it is what makes this row read as
+        # working with a rate of zero. The title and the workspace above come
+        # from the CLI log rather than the store and are unaffected.
+        self.assertEqual(
+            ["message history", "model", "token accounting"], sessions[0]["source_gaps"]
+        )
+        self.assertEqual(0, sessions[0]["rate_per_min"])
+
+    def test_an_antigravity_store_that_reads_leaves_the_row_saying_nothing_extra(self) -> None:
+        # The other half of the pair, and the reason the disclosure is not
+        # furniture: a store whose `steps` table reads discloses nothing, even
+        # when it holds no steps.
+        now = time.time()
+        session_id = "aaaa1111-a01e-46f8-9286-60493c4c0e7e"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            conversations = root / "conversations"
+            logs = root / "log"
+            conversations.mkdir(parents=True)
+            logs.mkdir()
+            db = conversations / f"{session_id}.db"
+            write_antigravity_metadata(db, protobuf_bytes_field(6, session_id.encode()))
+            _write_antigravity_generations(db, [])
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE steps (idx INTEGER, step_type TEXT, metadata BLOB)")
+            con.commit()
+            con.close()
+            (logs / "cli-1.log").write_text(
+                "workspaceDirs=[/work/acme/proj] "
+                f"appDataDir={root} cascadeManager=true\n"
+                f"Created conversation {session_id}\n"
+            )
+            with store_patch(ANTIGRAVITY_CLI_DIR=str(root)):
+                config, state = runtime()
+                sessions = agy_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in sessions])
 
     def test_antigravity_cache_primary_workspace_beats_added_directories(self) -> None:
         now = time.time()
@@ -602,7 +673,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(sessions))
         self.assertEqual(parent_sid, sessions[0]["sid"])
         self.assertEqual(
-            [{"name": "Research Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Research Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 
@@ -683,7 +762,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual([root_sid], [session["sid"] for session in sessions])
         self.assertEqual(
-            [{"name": "Nested Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Nested Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
         self.assertEqual("working", sessions[0]["state"])
@@ -752,7 +839,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(
-            [{"name": "Fresh Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Fresh Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
@@ -863,7 +958,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(
-            [{"name": "subagent 22222222", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "subagent 22222222",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 
@@ -1127,6 +1230,8 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                     "name": "Research Auditor",
                     "model": "Gemini 3.1 Pro (Low)",
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
             ],
             sessions[0]["subagents"],
@@ -1160,7 +1265,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
         self.assertEqual(
-            [{"name": "Research Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Research Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 
@@ -1289,7 +1402,9 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             config, state = runtime()
             info = agy_collector._session_info(config, state, str(database), "session")
 
-        self.assertEqual({"parent_id": None, "subagent_label": None, "model": None}, info)
+        self.assertEqual(
+            {"parent_id": None, "subagent_label": None, "model": None, "model_unread": True}, info
+        )
         self.assertEqual(1, connect.call_count)
         connection.close.assert_called_once_with()
 
@@ -1335,7 +1450,9 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             config, state = runtime()
             info = agy_collector._session_info(config, state, "/tmp/session.db", "session")
 
-        self.assertEqual({"parent_id": None, "subagent_label": None, "model": None}, info)
+        self.assertEqual(
+            {"parent_id": None, "subagent_label": None, "model": None, "model_unread": True}, info
+        )
         self.assertEqual(2, connect.call_count)
         plain.close.assert_called_once_with()
         immutable.close.assert_called_once_with()

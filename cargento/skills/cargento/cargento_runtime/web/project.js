@@ -513,7 +513,7 @@ function projectDelegationLanes(sess, group){
     const stage = agent.workflow_stage || fallback.workflow_stage || "";
     const workflowBinding = agent.workflow_binding || fallback.workflow_binding || "";
     const workItemId = agent.work_item_id || fallback.work_item_id || "";
-    return {entity, stage, workflowBinding, workItemId,
+    return {entity, stage, workflowBinding, workItemId,active:agent.active,
       parentSession:sessKey(sess),
       observerSid:agent.observer_sid || fallback.observer_sid || "",
       worker:agent.name || fallback.name || "Ensign",

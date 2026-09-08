@@ -45,9 +45,14 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
         │   ├── events.py           # the untrusted event envelope and its overlay reducer
+        │   ├── focus.py            # the focus command: one socket case, or no raise
         │   ├── git_status.py       # the end-of-session git probe: one command, two scalars
+        │   ├── history.py          # the local history of what was observed, a leaf over config
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
+        │   ├── interaction_prototype.py # optional registered-session terminal output
+        │   ├── project_context.py   # prototype project evidence and semantic projections
+        │   ├── semantic_history.py  # prototype semantic event history
         │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown
@@ -88,12 +93,15 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
 | `SECURITY.md` | Security invariants, accepted exposures, and private reporting. |
 | `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
+| `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. What a release note, the README lede and the Linear project all restate rather than reinvent. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
+| `docs/design-reader-state.md` | **Canonical** rule for what survives a redraw: one row per thing a reader can leave in the DOM, whether `renderNext` puts it back, and — for the two it does not manage — why. The code cites it instead of repeating it. |
+| [docs/design-adapter-packaging.md](docs/design-adapter-packaging.md) | **Canonical** adapter admission and packaging contract: identity normalizers, hook-shaped mappings, and implementation-language boundaries. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/roadmap-burndown/README.md` | The Spacedock workflow the roadmap burndown runs on: its stages, gates, and the measured rules each one earned. Machinery rather than prose — entity state lives on an orphan branch and is gitignored. |
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus closed harness vocabularies such as `notification_type` and `reply`, each earned one at a time on the reasoning the captures README gives; never a value a person or a model wrote. |
-| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `visibility-2x2`, `burndown`, `cargento-release`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `sync-project`, `visibility-2x2`, `burndown`, `cargento-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 
@@ -103,9 +111,19 @@ the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fa
 owns `CARGENTO_RUNTIME_FILES`, the inventory of every file the shipped dashboard needs at runtime;
 `--runtime-files <plugin root>` checks an installed copy without the repository around it.
 
+There is no blanket orphan-document gate. The documentation graph has no agreed scope or entry
+roots, and an inbound-link count alone would not establish reachability from a reader's entry point.
+
 Invoke the `sync-docs` skill before opening a PR (see Pre-PR Checks) so doc updates ride in the PR
 that changes the code. Claude Code discovers it under `.claude/skills/`; Codex discovers the same
 canonical directory through `.agents/skills/`.
+
+The Linear surfaces are a separate subject with a separate failure mode, and `sync-project` owns
+them: the project overview, the milestone descriptions and the shape of an issue. Repository docs go
+stale, so `sync-docs` diffs them against the code. Tracker descriptions accrete instead, because
+every burndown leaves behind a paragraph that was true when written and nothing removes one. Run
+`sync-docs` first, since the promise wording is canonical in `docs/promise-map.md` and the tracker
+copies it.
 
 ## Commit Conventions
 
@@ -129,15 +147,32 @@ git commit -s -m "feat(skill): add new capability to cargento"
 its own copy — divergent copies are how the gate drifts. Run it locally before opening any PR; do
 not rely on CI to surface failures:
 
-**One documented short path.** If the diff touches *only* prose — `README.md`, `HOW_TO_USE.md`,
-`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `SECURITY.md`,
-`CODE_OF_CONDUCT.md`, `.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` that no test
-opens by literal path — then `python3 scripts/validate_plugins.py` is the check that matters and
-the suite cannot be affected. CI applies the same rule (see Quality Gate), so the two agree by
-construction rather than by memory. **`SKILL.md` is not prose for this purpose**:
-`tests/test_documentation.py` asserts its `~/...` paths against `config.resolve_store_roots`.
-Neither is any `docs/` file a test reads — the CI detector derives that set by grepping the tests,
-so it cannot go stale.
+**One documented short path.** If the diff touches *only* prose — `HOW_TO_USE.md`, `AGENTS.md`,
+`CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `CODE_OF_CONDUCT.md`,
+`.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` outside the effective deny list below —
+then the five measurable quality-gate jobs skip. CI applies the same rule (see Quality Gate), so
+the two agree by construction rather than by memory. Five skipped runners is all the short path
+buys: **run the suite locally anyway**, because `validate.yml` is unfiltered by design and runs the
+same `unittest discover` on every PR. `validate_plugins.py` is not what catches a prose edit that
+breaks an assertion — measured, one stranded row in `docs/captures/README.md`, which the detector
+then called prose, left the validator at exit 0 and turned that suite red. **`SKILL.md` is not prose
+for this purpose**: `tests/test_documentation.py` asserts its `~/...` paths against
+`config.resolve_store_roots`. Neither are `SECURITY.md` and `README.md`, which that same module
+opens by literal path — both sat on this list until someone read the tests. The effective docs deny
+list has three sources: whole double-quoted paths found in dashboard tests, reviewed exceptions for
+known composed paths (currently `docs/captures/README.md`), and every document the runtime cites a
+heading anchor in, derived from the citation links themselves. That third source is derived rather
+than listed because it *is* the citation checker's dependency set: the checker resolves each linked
+target and requires the exact fragment, so renaming a heading in any of those documents turns
+`test_documentation` red. Nine such documents were reachable and absent from the list on the commit
+that introduced the checker, which is the same misclassification one layer up, so a hand-maintained
+copy would have gone stale on the very change that created it.
+
+The literal scan is still not dependency analysis, and the first two sources do not discover every
+way a test can read a document. Review new document dependencies against the list, and review the
+root-document prose allowlist by hand. The unfiltered validate suite remains the backstop for
+misclassification; the detector's job is to request all five measurable jobs with `code=true` for
+these dependencies.
 
 ```bash
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
@@ -147,18 +182,34 @@ mypy
 python3 scripts/lint_embedded.py   # needs node; add --allow-missing-node to degrade
 python3 scripts/validate_plugins.py
 python3 scripts/bump_version.py --current   # version-field parity across all owned locations
-# `--current` proves the five fields AGREE; `version-guard` additionally proves they have not
-# MOVED since the merge base. Check that half yourself — nothing local does:
+# `--current` proves the three version fields AGREE; `version-guard` additionally proves they
+# have not MOVED since the merge base. Check that half yourself — nothing local does. No
+# `*marketplace.json` pathspec: the one marketplace file left carries no `version` key at all.
 git diff "$(git merge-base origin/main HEAD)"..HEAD \
-  -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
+  -- '*plugin.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 coverage erase
 coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
 coverage run -a -m unittest \
   scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
   scripts.tests.test_lint_embedded scripts.tests.test_bench_collect \
   scripts.tests.test_capture_hook scripts.tests.test_bench_event_latency \
-  scripts.tests.test_derive_prompt_shapes
+  scripts.tests.test_derive_prompt_shapes scripts.tests.test_capture_team_registry \
+  scripts.tests.test_capture_terminal_identity \
+  scripts.tests.test_capture_focus_raise
 coverage report   # enforces the fail_under threshold from pyproject.toml
+# Those last two modules exercise AppleScript against Terminal.app, and this
+# suite now sends nothing. It used to: measured on a macOS desk with Terminal
+# open, `test_capture_terminal_identity` sent 91 `tell application "Terminal"`
+# events and `test_capture_focus_raise` sent 2, none of it disclosed anywhere.
+# Both are read-only property reads that select nothing, activate nothing and
+# open no window, but they are still automation of someone else's application.
+# Two switches hold it shut, with different audiences: the test module sets
+# `CARGENTO_NO_TERMINAL_QUERY=1` on every recorder subprocess it starts, which a
+# real capture never sets, so what an operator records is unchanged; and the one
+# test that talks to a live Terminal on purpose is behind
+# `CARGENTO_ALLOW_APPLE_EVENTS=1` and skips without it. CI never sets that flag,
+# so the live read runs on an operator's desk or nowhere, and the static shape
+# test beside it is what still guards those scripts in CI.
 # Native validators, if the CLIs are installed (they are not available on stock runners):
 claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
@@ -192,17 +243,24 @@ another worktree is mid-flight. `git worktree list` answers it.
 produced errors that look like regressions and are not:
 
 - `test_http_api` fails on loopback port binds, because two servers want the same port.
-- `test_page.FrontendAssetContractTest` and `test_lifecycle.InstalledContractCharacterizationTest`
-  hit `subprocess.TimeoutExpired` on `server.py --diagnose`, which is a real subprocess racing for
-  CPU rather than a broken launcher.
+- `test_lifecycle.InstalledContractCharacterizationTest` hits `subprocess.TimeoutExpired` on
+  `server.py --diagnose`, which is a real subprocess racing for CPU rather than a broken launcher.
+  It is today the only class in the dashboard suite that subprocesses that command. A second name
+  stood here, `test_page.FrontendAssetContractTest`, and was measured: it existed when this bullet
+  was written and `8d2585c` (#247) deleted the whole module as collateral when the next UI replaced
+  the old one. Its `--diagnose` coverage was not carried forward, so the name is removed rather than
+  repointed. Do not substitute a plausible successor: the sibling that looks closest asserts against
+  a live server, where the deleted one asserted against none with the web assets unlinked.
 - `test_quota` times out on socket reads.
 
 Run the full suite **once**, and confirm any failure in those modules by running that module alone
 before believing it. Report both results rather than the convenient one. A load average above about
 10 makes this near-certain.
 
-**Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes and
-digests plus the assembled page. Two branches that both change a web asset produce a conflict where
+**Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
+and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
+holds the same size and digest pair, and `tests/test_focus.py` holds a digest of the assembled page
+too. Recompute all three. Recomputing only the first leaves CI red on the other two. Two branches that both change a web asset produce a conflict where
 **each side is correct for a tree that no longer exists**, so a textual resolution ships a number
 wrong for both. Recompute from the assets. If only one side changed the page the existing figures
 may still be right, but prove that by running the oracles rather than reasoning about it.
@@ -298,7 +356,10 @@ full gate — and the aggregator accepts `skipped` only when the detector said `
 job skipped because an upstream dependency died still fails the gate. `validate` and
 `version-guard` are deliberately unfiltered for the same required-check reason, and `validate` is
 in any case the check a prose change most needs: it resolves every relative Markdown link and
-heading anchor.
+heading anchor, and it runs the dashboard suite. That second step is **not** a duplicate of the
+gate's copy — it is the only run of the suite on a PR the detector called prose, so deleting it as
+redundant would let a prose edit that breaks a test merge green. `validate.yml` says the same thing
+at the step itself.
 
 ## Code Comments
 
@@ -314,7 +375,35 @@ Do not write one to restate the line below it, to summarize a function its name 
 
 Length follows the decision, not the code. A one-line change can deserve two lines of why; it rarely deserves six. If the explanation runs longer than the code it explains, the reason is durable enough for `docs/design-*.md`, and the comment shrinks to a reference.
 
-Nothing in CI checks this. It is a review standard, like the voice standard the `sync-docs` skill holds the prose docs to.
+The citation syntax is checked by `RuntimeDecisionCitationsTest` in `test_documentation.py`.
+It reads `.py`, `.js`, `.css` and `.html` recursively under `cargento_runtime`, without importing
+those files or using the network. The finite local-label grammar is `D1`, `D-1`, `DEC-1`, `AC1`,
+`AC-1`, `DR-1`, `N-1`, `NUI-1`, `Q-1`, `R-1`, `S-1` and `U-1`, with decimal digits in place of
+`1` and exact token boundaries (no adjoining word character or hyphen). Each retained active label
+must be the entire link text of a same-line link, such as
+`[D-4](docs/design-cross-platform.md#d-4)`, without whitespace
+inside the target. Paths are repository-relative, confined to root Markdown or Markdown below
+`docs/`, and include an exact heading fragment or explicit HTML anchor. The checker uses
+`scripts.validate_plugins.heading_slugs`; keep long links intact on their own line when needed.
+
+Intentionally absent historical records may use this per-occurrence form:
+
+```text
+decision-history: DR-8 | 4de75d29 | repaired grouping bug; the bound now lives in sessions
+```
+
+The marker exempts only the label immediately after `decision-history:`. It requires a lowercase
+hex commit (7–40 characters) or an ISO date (`YYYY-MM-DD`), and a nonempty reason after the second
+` | `. A history marker never exempts another label on the same line. If the old ruling still
+justifies current behavior, cite the current contract too, or replace the shorthand with that
+contract. Remove unnecessary labels instead of inventing archival headings to preserve them.
+
+This is a lexical reachability check, not a semantic review: a link to an existing but wrong owner
+passes. Reviewers must check that the ruling supports the sentence and that a history claim is true.
+Bare tracker keys such as `DRC-4396`, roadmap identifiers such as `A5` and `B2`, lint/encoding tokens,
+and new label families are outside its grammar. It neither queries trackers nor requires globally
+unique labels, and has no line-number allowlist. The rest of this comment standard remains a review
+obligation, like the prose voice standard in `sync-docs`.
 
 ## Versioning and Releases
 

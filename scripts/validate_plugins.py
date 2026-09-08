@@ -158,7 +158,9 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/sessions.py",
     "skills/cargento/cargento_runtime/snapshot.py",
     "skills/cargento/cargento_runtime/events.py",
+    "skills/cargento/cargento_runtime/focus.py",
     "skills/cargento/cargento_runtime/git_status.py",
+    "skills/cargento/cargento_runtime/history.py",
     "skills/cargento/cargento_runtime/claude_data.py",
     "skills/cargento/cargento_runtime/dismissals.py",
     "skills/cargento/cargento_runtime/notifications.py",
@@ -192,6 +194,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/next-notify.js",
     "skills/cargento/cargento_runtime/web/next-cockpit-compat.js",
     "skills/cargento/cargento_runtime/web/project.js",
+    "skills/cargento/cargento_runtime/web/next-capacity.js",
     "skills/cargento/cargento_runtime/web/next-chrome.js",
     "skills/cargento/cargento_runtime/web/next-sessions.js",
     "skills/cargento/cargento_runtime/web/next-projects.js",
@@ -1252,6 +1255,67 @@ def validate_repo_docs(validation: Validation) -> None:
                 validation.error(path, f"contains {literal!r}; {guidance}")
 
 
+def validate_promise_parity(validation: Validation) -> None:
+    """Hold the two in-repo copies of each user-facing promise to each other.
+
+    The same five sentences live in `docs/promise-map.md`, in the Visibility 2x2
+    board's `items.json`, and in the Linear project overview. Nothing checked
+    them, and one drifted far enough to promise a burn-rate projection the
+    project had decided three times not to build, plus a per-session cost figure
+    that has never been rendered.
+
+    Not a byte comparison, and the exception is exactly one character: the map's
+    sentence continues from its promise lead-in and opens lowercase, while the
+    board renders it standing alone and opens with a capital. Keyed by the P
+    number against column order rather than by set membership, because the board
+    numbers its promises positionally, so reordering the columns would otherwise
+    renumber every promise silently.
+
+    Two copies is all this can bind. The third is in Linear, out of reach of any
+    check here, and reading it is a person's job.
+    """
+    map_path = ROOT / "docs/promise-map.md"
+    board_path = ROOT / "docs/visibility-2x2/items.json"
+    if not map_path.is_file() or not board_path.is_file():
+        validation.error(map_path, "the promise map and the board must both exist")
+        return
+    promises = {
+        match.group(1): " ".join(match.group(2).split())
+        for match in re.finditer(
+            r"^### (P\d)\..*?\n\n\*\*We promise:\*\* (.*?)\n\n",
+            map_path.read_text(encoding="utf-8"),
+            re.DOTALL | re.MULTILINE,
+        )
+    }
+    board = load_json(board_path, validation)
+    if board is None:
+        return
+    columns = board.get("columns") if isinstance(board, dict) else None
+    if not isinstance(columns, list):
+        validation.error(board_path, "the board must carry a columns list")
+        return
+    if len(columns) != len(promises):
+        validation.error(
+            board_path,
+            f"{len(columns)} board columns against {len(promises)} promises in the map",
+        )
+        return
+    for index, column in enumerate(columns, start=1):
+        key = f"P{index}"
+        expected = promises.get(key)
+        if expected is None:
+            validation.error(map_path, f"the map has no {key} promise")
+            continue
+        found = column.get("promise") if isinstance(column, dict) else None
+        if found != expected[:1].upper() + expected[1:]:
+            validation.error(
+                board_path,
+                f"{key} disagrees with the promise map; the map is canonical. "
+                "A board editing session writes this file through its own save "
+                "endpoint, so that is the likely cause",
+            )
+
+
 def validate_repository_skills(validation: Validation) -> None:
     """Repository skills stay canonical for Claude and aliased for Codex.
 
@@ -1393,6 +1457,7 @@ def main() -> int:
     validate_readme(skill_names, validation)
     validate_repository_skills(validation)
     validate_repo_docs(validation)
+    validate_promise_parity(validation)
 
     catalog_text = "\n".join(catalog_lines) + "\n"
     catalog_token_estimate = approx_token_count(catalog_text)

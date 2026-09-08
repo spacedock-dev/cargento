@@ -110,7 +110,9 @@ class _Ledger(NamedTuple):
     newest: float
 
 
-def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
+def _usage_rows(
+    config: RuntimeConfig, state: RuntimeState, gaps: set[str] | None = None
+) -> list[Any] | None:
     """The newest billing rows the session store holds, or None if it holds none.
 
     ``session_id`` is selected because the join is measured: on a live store the
@@ -143,7 +145,8 @@ def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
         return None
     try:
         connection = runtime_io.open_sqlite_read_only(database, state)
-    except Exception:  # noqa: BLE001 — a broken store must not fail the harness
+    except Exception as exc:  # noqa: BLE001 — a broken store must not fail the harness
+        runtime_io.record_store_error(state, database, exc)
         return None
     try:
         rows: list[Any] = connection.execute(
@@ -151,8 +154,13 @@ def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
             "FROM assistant_usage_events ORDER BY id DESC LIMIT ?",
             (_USAGE_ROW_CAP + 1,),
         ).fetchall()
-    except Exception:  # noqa: BLE001 — schema drift is a miss, never an error
-        runtime_io.record_store_error(state, database, RuntimeError("no assistant_usage_events"))
+    except Exception as exc:  # noqa: BLE001 — a usage failure must not cost session identity
+        runtime_io.record_store_error(state, database, exc)
+        # This reading is separable from session identity:
+        # [U-5](docs/design-unread-sources.md#u-5).
+        # Corrupt files can open lazily and fail here; permission refusals fail at open.
+        if gaps is not None:
+            gaps.add(sessions.UNREAD_TOKENS)
         return None
     finally:
         connection.close()
@@ -185,6 +193,7 @@ def _read_ledger(
     state: RuntimeState,
     now: float,
     window_hours: float,
+    gaps: set[str] | None = None,
 ) -> _Ledger | None:
     """Copilot's consumption over the window, or None when it cannot be measured.
 
@@ -243,7 +252,7 @@ def _read_ledger(
     real staleness risk: the two calls are the same refresh but not the same
     instant, and a cache is the thing that would let them drift apart.
     """
-    rows = _usage_rows(config, state)
+    rows = _usage_rows(config, state, gaps)
     if rows is None:
         return None
     window_sec = window_hours * 3600
@@ -451,7 +460,11 @@ def collect(
     # Read once for the whole collection, not once per row: every session's
     # figure is a slice of the very ledger the harness tile sums, so the two
     # cannot end up describing different windows of the same store.
-    ledger = _read_ledger(config, state, now, window_hours)
+    # One set for the whole collection, for the reason the ledger itself is read
+    # once: an unreadable billing table is a fact about the store, so it belongs
+    # on every row that store feeds rather than on whichever row read it first.
+    ledger_gaps: set[str] = set()
+    ledger = _read_ledger(config, state, now, window_hours, ledger_gaps)
 
     out: list[Session] = []
     for sid, (mtime, fp) in files.items():
@@ -490,6 +503,8 @@ def collect(
                     "name": pending.get("name") or "subagent",
                     "model": _row_model(pending.get("model")),
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
                 for pending in (info or {}).get("pending_agents", {}).values()
             ]
@@ -499,7 +514,8 @@ def collect(
             # `tool.execution_start` it gates, so every gate opens well inside the
             # working window and a Working row here would be the whole defect.
             # Claude's collector resolves the same conflict the same way, for the
-            # same reason (docs/design-needs-input.md N-2).
+            # same reason:
+            # [N-2](docs/design-needs-input.md#n-2).
             session_state = "needs_input"
             blocked_since = gate.at or mtime
             waited = sessions.fmt_duration(sessions.age(config, now, blocked_since))
@@ -560,6 +576,7 @@ def collect(
                     config,
                 ),
                 "subagents": subagents,
+                "source_gaps": sorted(ledger_gaps),
             }
         )
         out.append(s)

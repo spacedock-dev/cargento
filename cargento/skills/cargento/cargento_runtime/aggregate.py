@@ -14,7 +14,7 @@ from . import io as runtime_io
 from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from .config import RuntimeConfig
     from .events import Overlay
@@ -97,8 +97,8 @@ def _subtract_dismissed(
     `assign_display_ids`, so the id widths describe the rows actually on screen.
 
     A count and not a filtered flag, because a dismissal silences an alert
-    through `maybe_popup`'s own gate rather than by hiding the row from it (D-3
-    in docs/design-dismissals.md).
+    through `maybe_popup`'s own gate rather than by hiding the row from it. See
+    [D-3](docs/design-dismissals.md#d-3).
     """
     kept = [
         session
@@ -113,6 +113,24 @@ def _subtract_dismissed(
     return kept, len(out_sessions) - len(kept)
 
 
+class HistoryLane(Protocol):
+    """The local history store, as the collection reaches it.
+
+    Declared here rather than imported for the reason `OverlaySource` is: the
+    dependency would otherwise run outward from the module that owns collection
+    toward one that owns a file. `history` is a leaf over `config` alone, and it
+    stays one.
+
+    Injected at assembly rather than reached through `overlays`, because that
+    source is None forever under `--no-events` and history's only off switch is
+    `--no-history`.
+    """
+
+    def record(self, rows: Iterable[Mapping[str, Any]], *, now: float) -> list[dict[str, Any]]: ...
+
+    def notice(self) -> str | None: ...
+
+
 class OverlaySource(Protocol):
     """The narrow view of the coordinator that a collection needs.
 
@@ -125,18 +143,27 @@ class OverlaySource(Protocol):
     `drop_counters` is neither: it is read only when a dispute is recorded, and
     it is here because an envelope that arrived and was dropped leaves no overlay
     to find. Without it a record cannot separate that from one never posted,
-    which is two of the four readings in docs/design-needs-input.md (N-5).
+    which is two of the four readings in
+    [N-5](docs/design-needs-input.md#n-5).
 
     `finished_at` is separate from `overlays_for` because it deliberately
     outlives the ledger: `session_ended` retires a session's overlays, and a
     `claude -p` run that finished and exited is exactly the row the mark is for.
+
+    `ended_at` outlives it for the stronger version of that reason: the event
+    that sets it is the event that pops the ledger, so it could never have lived
+    there at all.
     """
 
     def overlays_for(self, harness: str, sid: str) -> list[Overlay]: ...
 
     def finished_at(self, harness: str, sid: str) -> float: ...
 
+    def ended_at(self, harness: str, sid: str) -> float: ...
+
     def git_for(self, harness: str, sid: str) -> GitStatus | None: ...
+
+    def focusable(self, harness: str, sid: str) -> bool: ...
 
     def note_rows(self, keys: set[tuple[str, str]]) -> None: ...
 
@@ -160,8 +187,9 @@ class HarnessSpec:
     """One supported harness: how to discover its store and how to read it.
 
     ``usage`` is the optional quota reader. Most harnesses have none: the
-    survey behind DEC-1 found Codex alone writing quota to disk, and every
-    other vendor keeping it behind an authenticated API. The field is where
+    survey behind [DEC-1](docs/design-usage-quota.md#design-the-usage-quota-surface) found Codex
+    alone writing quota to disk, and every other vendor keeping it behind an authenticated API.
+    The field is where
     a quota source plugs in without widening the ``Collector`` contract.
 
     ``usage_is_fetch`` marks a provider whose numbers come from the network
@@ -182,11 +210,25 @@ class HarnessSpec:
     wrong costs more. Six of the ten cannot observe a gate at all, and their
     silence is byte-identical to the silence of one that can when nothing is
     waiting: no row, no count, no band. So a quiet board cannot say whether
-    nothing is waiting or nothing could have told you, and B2's own note is that
+    nothing is waiting or nothing could have told you, and the
+    [gate inventory](docs/design-needs-input.md#n-1) notes that
     a reader assumes the former because everything else here is harness-agnostic.
     A `reports_rate` false row renders a dash; this one has nothing to draw a
     dash on, which is why the disclosure has to be per harness rather than per
     row.
+
+    ``reports_needs_input_when`` qualifies that capability on a row whose
+    mechanism can be switched off, and Codex is the one such row: its gate
+    arrives through a permission hook, so an operator running with approvals
+    disabled has a harness that reports a gate in principle and never will in
+    practice. That is the all-clear reading the flag above exists to prevent,
+    reaching the reader as silence rather than as a chip. Declared here rather
+    than read off the harness's own config, which was tried and ruled out:
+    `approval_policy` is overridable per invocation and per project, so a global
+    read cannot say whether a given session will ask, and being wrong publishes
+    "no gate observable here" over a session sitting at a prompt. It stays None
+    everywhere else, because a condition is a property of a mechanism and the
+    other mechanisms have none.
 
     It answers "can a gate on this harness reach the board", by ANY path -- not
     "can this collector detect one". The distinction is the whole of what the
@@ -194,12 +236,17 @@ class HarnessSpec:
     overlay and has no collector detection at all, so a flag meaning the second
     thing labelled Codex blind on the same screen where a Codex gate was red.
     That is the inversion this field exists to prevent, shipped by the field
-    itself. `tests/test_next_page.py` derives the expected set instead of listing it:
-    every collector module is parsed for the state it actually writes, unioned
-    with whatever `EVENTS_BY_HARNESS` maps `input_requested` for, because a
-    hand-set bool beside a hand-written literal pinned the bug green. The same
-    test holds the count in the sentence above to the registry, since nothing
-    else does and it has been wrong twice.
+    itself. `tests/test_harness_registry.py` derives the expected set instead of
+    listing it: every collector module is parsed for the state it actually
+    writes, unioned with every harness whose adapter maps `input_requested` and
+    which `events.IDENTITY_NORMALIZERS` will admit, because a hand-set bool
+    beside a hand-written literal pinned the bug green. That union used to read
+    `EVENTS_BY_HARNESS` alone, which is one adapter shape and not the table the
+    server admits on, so it refused a truthful declaration for Antigravity
+    (DRC-4440). The same file holds the count in the sentence above to the registry,
+    since nothing else does and it has been wrong twice. Not `test_next_page.py`,
+    where this pointer sent a reader from 8d2585c, which deleted the file that
+    actually held these four, until DRC-4378 restored them.
     """
 
     key: str
@@ -208,6 +255,7 @@ class HarnessSpec:
     collect: Collector
     reports_rate: bool = False
     reports_needs_input: bool = False
+    reports_needs_input_when: str | None = None
     usage: UsageProvider | None = None
     usage_is_fetch: bool = False
 
@@ -251,7 +299,8 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             # Three paths, more than any other row: the bundled hook, an
             # actionable Notification POST, and a pending input tool in the
             # transcript. Codex, Copilot and Cursor have one apiece; the
-            # remaining six are tracked per harness under B2.
+            # remaining six are tracked per harness in
+            # [gate inventory](docs/design-needs-input.md#n-1).
             reports_needs_input=True,
             usage=claude.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
@@ -265,8 +314,12 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             # Through the event overlay, not the collector: its bundled
             # `PermissionRequest` hook maps to `input_requested`. Measured on
             # 0.149.0 -- the hook fires with the prompt open, and a hook that
-            # prints nothing lets that prompt reach the human.
+            # prints nothing lets that prompt reach the human. A hook on a
+            # prompt that never opens never fires, so the same measurement
+            # bounds the capability: it holds where the operator asks to be
+            # asked, and nowhere else.
             reports_needs_input=True,
+            reports_needs_input_when="where approvals are enabled",
             usage=codex.usage,
         ),
         HarnessSpec("pi", "Pi", pi.discover, pi.collect, reports_rate=True),
@@ -358,9 +411,15 @@ _RAW_ROW_TEXT: Final = (
 # there, the same string this sweep redacts when that session is a parent row,
 # and goose, codex and claude slice theirs out of the record with no `safe_text`
 # in the way.
+#
+# `parent` is the same string as `name` one key over: DRC-4344 added it from the
+# same `agentName` slice and did not add it here, so one key came back redacted
+# and the other raw. That is the third field on this element left out on a
+# second reading, after `state_detail` and `name`, which is the whole argument
+# for the table.
 _RAW_NESTED_TEXT: Final = (
     ("tasks", ("subject", "activeForm")),
-    ("subagents", ("name",)),
+    ("subagents", ("name", "parent")),
 )
 
 
@@ -369,6 +428,34 @@ def _redact_in_place(holder: dict[str, Any], keys: tuple[str, ...]) -> None:
         value = holder.get(key)
         if isinstance(value, str) and value:
             holder[key] = records.redact_secrets(value)
+
+
+def _harness_row(spec: HarnessSpec, *, found: bool) -> dict[str, Any]:
+    """One harness's published row, before its collector has run.
+
+    Lifted out of `collect` rather than inlined there: the coverage fields are
+    properties of the store rather than of this pass, so they read better beside
+    the spec than in the middle of a loop that is also collecting sessions,
+    quota and overlays.
+    """
+    return {
+        "key": spec.key,
+        "label": spec.label,
+        "discovered": found,
+        # Whether a `rate_per_min` from this harness is a measurement at all.
+        # Stated per harness because it is a property of the store; the matching
+        # session field is null when the answer is no.
+        "reports_rate": spec.reports_rate,
+        # Whether this harness can report a gate at all, for the same reason
+        # `reports_rate` is here: the page cannot derive it, and the absence of a
+        # needs-input row is not evidence of quiet.
+        "reports_needs_input": spec.reports_needs_input,
+        # What that capability depends on, where it depends on anything. Null on
+        # every row whose gate mechanism cannot be turned off, which is all but
+        # one; the page cannot derive either half.
+        "reports_needs_input_when": spec.reports_needs_input_when,
+        "error": None,
+    }
 
 
 def _redact_published_text(rows: list[Session]) -> list[Session]:
@@ -449,6 +536,10 @@ class Application:
         # scan-only behaviour that shipped before events existed, which is what
         # makes the rollback switch a one-line assembly change.
         self.overlays = overlays
+        # Attached after construction, exactly as `overlays` above is, and for
+        # the same reason: the assembly point owns which services exist. None
+        # means no lane, which is the behaviour that shipped before history did.
+        self.history_lane: HistoryLane | None = None
 
     def harness_label(self, key: str) -> str:
         """The registry's display label for a harness key, or "" for anything else.
@@ -464,6 +555,30 @@ class Application:
         what a harness is called.
         """
         return next((spec.label for spec in self.harnesses if spec.key == key), "")
+
+    def _usage_for(
+        self,
+        spec: HarnessSpec,
+        now: float,
+        window_hours: float,
+    ) -> list[dict[str, Any]]:
+        """One harness's quota entries, or none if reading them failed.
+
+        Its own method so the failure boundary is stated once and reads as a
+        boundary: a broken quota read is a diagnostic and never a harness error,
+        because the session rows for that harness have already collected and one
+        unreadable tile must not repaint the whole strip red.
+        """
+        if spec.usage is None:
+            return []
+        try:
+            return list(spec.usage(self.config, self.state, now, window_hours))
+        except Exception as e:  # noqa: BLE001 — same boundary as the collector above
+            runtime_io.diag(
+                f"[{spec.key}] usage error: {type(e).__name__}: {e}",
+                self.diagnostic_sink,
+            )
+            return []
 
     def collect(self, *, show_all: bool) -> Collection:
         config, state = self.config, self.state
@@ -485,20 +600,7 @@ class Application:
                 found = bool(spec.discover(config, state))
             except OSError:
                 found = False
-            harness: dict[str, Any] = {
-                "key": spec.key,
-                "label": spec.label,
-                "discovered": found,
-                # Whether a `rate_per_min` from this harness is a measurement at
-                # all. Stated per harness because it is a property of the store;
-                # the matching session field is null when the answer is no.
-                "reports_rate": spec.reports_rate,
-                # Whether this harness can report a gate at all, for the same
-                # reason `reports_rate` is here: the page cannot derive it, and
-                # the absence of a needs-input row is not evidence of quiet.
-                "reports_needs_input": spec.reports_needs_input,
-                "error": None,
-            }
+            harness = _harness_row(spec, found=found)
             harnesses.append(harness)
             if not found:
                 continue
@@ -519,13 +621,13 @@ class Application:
             # not repaint the whole strip red.
             usage_supported = True
             usage_fetch_active = usage_fetch_active or spec.usage_is_fetch
-            try:
-                usage.extend(spec.usage(config, state, now, window_hours))
-            except Exception as e:  # noqa: BLE001 — same boundary as the collector above
-                runtime_io.diag(
-                    f"[{spec.key}] usage error: {type(e).__name__}: {e}",
-                    self.diagnostic_sink,
-                )
+            usage.extend(self._usage_for(spec, now, window_hours))
+
+        # After every producer has reported and before anything is published, so
+        # one collection records at most one reading per window and the page sees
+        # the same annotation whichever vendor filled the cache. In-memory only:
+        # every value it keeps is one this payload already carries.
+        quota.observe_windows(config, state, usage)
 
         out_sessions = _redact_published_text(sessions.dedupe_sessions(out_sessions))
         _hide_unmeasured_rates(out_sessions, self.harnesses)
@@ -535,7 +637,7 @@ class Application:
         # which an overlay does change: patching after the sort would leave a row
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
-        self._apply_overlays(out_sessions, now=now)
+        history_fields = self._apply_overlays(out_sessions, now=now)
         # After the overlays, which is load-bearing: a wait only an event knows
         # about is a wait, and reading the collector's state is what left the
         # overlay lane silent on every harness.
@@ -546,6 +648,12 @@ class Application:
         # observable changes if these two lines swap — measured, not assumed.
         # The order is kept because it is the one that stays correct if the gate
         # ever stops consulting the store.
+        # Recorded from the patched rows, so what the store keeps is what the
+        # board published rather than what a collector guessed, which is the
+        # whole of the provenance rule. Before the subtraction deliberately: a
+        # dismissal hides an alert, and an observation that happened still
+        # happened — subtracting first would punch gaps in the history of any
+        # session the reader ever cleared.
         self._notify_waits(out_sessions, generations)
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         sessions.assign_display_ids(config, out_sessions)
@@ -592,7 +700,7 @@ class Application:
             collection["dismiss"] = True
         # Folded in rather than branched on here: `collect` sits on ruff's
         # complexity and statement caps, and an inline `if` puts it over both.
-        collection.update(self._ask_cards(now))
+        collection.update({**self._ask_cards(now), **history_fields})
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"
@@ -605,6 +713,37 @@ class Application:
             # a disk-read provider or with the fetch disabled.
             collection["usage_fetch"] = True
         return collection
+
+    def _history_fields(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
+        """Record this collection's transitions, and the payload keys they earn.
+
+        Both halves here because the recording has to see the rows before the
+        dismissal subtraction while the keys are added at payload assembly, and
+        splitting them would put the ordering constraint in two places.
+        """
+        if self.history_lane is None:
+            # One shape for both ways of not recording. The key is present
+            # exactly when the store is on and a lane is attached, which is the
+            # keying `dismiss` already uses: absent means the page draws
+            # nothing, rather than an empty series a consumer has to tell apart
+            # from a board on which nothing has happened yet. No lane is
+            # `--diagnose`, and off is `--no-history`.
+            return {}
+        fields: dict[str, Any] = {}
+        observed = self.history_lane.record(out_sessions, now=now)
+        if self.config.history_enabled:
+            # The observations this run has on record, oldest first. A payload
+            # field rather than a row field: it is a series about sessions, not
+            # a property of one, and adding it to the row would put it in every
+            # consumer's declared field set for the sake of two panels.
+            fields["history"] = observed
+        notice = self.history_lane.notice()
+        if notice is not None:
+            # Which reset this run opened with, so the header can name it. A
+            # corruption reset may be the user's disk; a version reset is ours,
+            # and one message for both hides the difference.
+            fields["history_reset"] = notice
+        return fields
 
     def _ask_cards(self, now: float) -> dict[str, Any]:
         """The ask capability flag and its cards, or nothing at all.
@@ -648,7 +787,7 @@ class Application:
         """Raise the native popup for every row that has just started waiting.
 
         Here rather than in a collector, and that is the amendment DRC-4192
-        made to R-5 in docs/design-runtime-architecture.md. The one-layer rule —
+        made to [R-5](docs/design-runtime-architecture.md#r-5). The one-layer rule —
         the server notifies where `native_notifier` names a backend, the browser
         where it does not — rested on the server firing for whatever the browser
         stood down for. It fired for Claude alone, because `maybe_popup` had one
@@ -694,12 +833,28 @@ class Application:
     def _mark_unreachable_by_events(self, out_sessions: list[Session]) -> None:
         """Disclose the rows no event can ever reach, before any overlay lands.
 
-        Six of the ten harnesses have no entry in the event vocabulary, so
-        `events.parse` refuses their envelopes outright and their rows are read
-        off disk and nothing else. Their idle rows therefore cannot say whether a
-        turn ended, and without this an unmarked row would mean either "did not
-        finish" or "cannot be seen from here" — the same collapse the retired
-        `stale` gloss was admitting to (DRC-4035 D4).
+        Six of the ten harnesses are absent from `events.IDENTITY_NORMALIZERS`,
+        so `events.parse` refuses their envelopes outright and their rows are read
+        off disk and nothing else. That table by name and not "the event
+        vocabulary", which is `EVENTS_BY_HARNESS` and holds three: six is right
+        for the table this tests and wrong for the other one.
+
+        Their idle rows therefore cannot say whether a turn ended, and without
+        this an unmarked row would mean either "did not finish" or "cannot be seen
+        from here" — the same collapse the retired `stale` gloss was admitting to.
+        Both halves are [N-9](docs/design-needs-input.md#n-9) (DRC-4035): its
+        **Marking on the stop itself** rejection is where the gloss was measured
+        out, and its **Letting a collector infer completion** rejection is what
+        this method implements — a guessed completion renders identically to a
+        measured one, so the six disclose `scan-only` instead. The document and
+        not the commits behind it, because the reason that decision exists is that a commit
+        message and a comment held the measurement and neither is where a reader
+        looks.
+
+        Where the disclosure lands is `docs/design-scan-only-rows.md`. From
+        39eb6fd (2026-08-21) to DRC-4473 it reached no pixel, which made both
+        halves above true of the payload and false of the screen; the page now
+        prints it on the row and on the session page.
 
         A property of the harness, not of this process, so it is stated whether or
         not a coordinator is attached. Written before `_apply_overlays` on
@@ -710,7 +865,7 @@ class Application:
             if str(session["harness"]) not in runtime_events.IDENTITY_NORMALIZERS:
                 session["acquisition"] = runtime_events.ACQUISITION_SCAN
 
-    def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> None:
+    def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Patch collected rows from the live overlay ledger, if one is attached.
 
         The row list is walked, not the ledger: an overlay can only ever reach a
@@ -718,16 +873,32 @@ class Application:
         creates or removes a row. `note_rows` then reports the full key set back,
         which is what lets an unmatched overlay wait or expire rather than
         silently doing nothing forever.
+
+        This is also the pass at which the row set becomes final — states
+        patched, nothing yet subtracted — which is the only point the history may
+        be recorded from. It returns the payload keys that recording earns rather
+        than storing them on the instance, so `collect` gains no statement (it
+        sits on ruff's statement cap) and no state to get stale.
         """
         source = self.overlays
         if source is None:
-            return
+            # No ledger to patch from, but the history still records: `overlays`
+            # is None forever under --no-events, and a store that went quiet on
+            # that flag would be an off switch with a second, undocumented name.
+            return self._history_fields(out_sessions, now=now)
         for session in out_sessions:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
             finished_at = source.finished_at(harness, sid)
+            ended_at = source.ended_at(harness, sid)
             git = source.git_for(harness, sid)
-            if overlays or finished_at or git is not None:
+            # Written straight onto the row rather than reduced through the
+            # patch: a target is not a display claim that an overlay could
+            # dispute, and it must not become one — `PATCHABLE` is the set an
+            # untrusted event may write, and the focus contract forbids echoing
+            # a target through any of it.
+            session["focusable"] = source.focusable(harness, sid)
+            if overlays or finished_at or ended_at or git is not None:
                 patch = runtime_events.reduce_overlays(
                     overlays,
                     now=now,
@@ -746,6 +917,11 @@ class Application:
                     # mark passes the same activity guard the idle overlay does
                     # even though it outlives the ledger that overlay lives in.
                     finished_at=finished_at,
+                    # Reduced rather than written onto the row for the same
+                    # reason, and it is a distinct argument rather than a reading
+                    # of the one above because a turn stopping and a session id
+                    # ending are different facts about a row (DRC-4036).
+                    ended_at=ended_at,
                     # Reduced rather than written onto the row for the reason the
                     # mark above is: a reading taken at a session end must still
                     # lose to any overlay saying the session is alive again.
@@ -764,6 +940,7 @@ class Application:
         with self.state.dispute_lock:
             for key in [k for k in self.state.dispute_episodes if k not in collected]:
                 del self.state.dispute_episodes[key]
+        return self._history_fields(out_sessions, now=now)
 
     def _note_dispute(
         self,
@@ -777,7 +954,8 @@ class Application:
 
         Only that direction. A collector Idle row an overlay promotes to Working
         is the ordinary path and says nothing, so counting it would bury the case
-        this exists to find. See docs/design-needs-input.md (N-6).
+        this exists to find. See
+        [N-6](docs/design-needs-input.md#n-6).
 
         One record per episode, not per collection. A disagreement stands until
         something changes it, and collections run at the memo floor, so recording
@@ -834,8 +1012,10 @@ class Application:
                 # build whose constant has since moved.
                 "activity_grace_sec": self.config.overlay_wait_activity_grace_sec,
                 "overlays": runtime_events.overlay_rows(overlays, now=now),
-                # Reading 3 against reading 4 in N-5, an envelope dropped versus
-                # never posted, is a counter comparison. The live counters are
+                # Reading 3 against reading 4 in
+                # [N-5](docs/design-needs-input.md#n-5),
+                # an envelope dropped versus never posted, is a counter comparison. The live
+                # counters are
                 # cumulative, so a record read tomorrow can only bracket itself
                 # against its neighbours if it carries its own copy.
                 "drop_counters": counters,

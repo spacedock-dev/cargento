@@ -99,6 +99,15 @@ class RuntimeState:
     turn_scan: dict[str, Any] = field(default_factory=dict)
     agent_class_cache: dict[str, tuple[bool, str, str]] = field(default_factory=dict)
     spacedock_role_cache: dict[str, str] = field(default_factory=dict)
+    # path -> ((mtime_ns, size), the start stamp or None). It joined the two
+    # above when DRC-4344 widened the published roster past the freshness gate:
+    # the roster then re-read a head per child and per grandchild on every
+    # collection, measured at 170 reads a pass for a roster 91% inactive.
+    # Stat-keyed rather than path-keyed, unlike `agent_class_cache` beside it,
+    # because a start stamp is fixed only once the file HAS one -- a teammate
+    # parked before its first turn has none, and that null is exactly the answer
+    # worth remembering. Path-keying forced the null to be recomputed forever.
+    agent_start_cache: dict[str, tuple[tuple[int, int], float | None]] = field(default_factory=dict)
     spacedock_boot_cache: dict[str, tuple[list[dict[str, Any]], int]] = field(default_factory=dict)
     spacedock_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = field(
         default_factory=dict
@@ -122,6 +131,14 @@ class RuntimeState:
     # way and guarded by the same lock: one cache, two ways to fill it. In
     # memory only, so Cargento's two written paths are unchanged.
     usage_receipts: dict[str, UsageFetchEntry] = field(default_factory=dict)
+    # Successive quota readings per vendor window, keyed "<harness>:<slot>", for
+    # the recent-pace figure. One ring per key rather than one shared ring, and
+    # that is the load-bearing part: `POST /api/usage` has no rate limit, so a
+    # harness pushing receipts in a loop would evict the fetched Claude samples
+    # the pace exists to read. Each ring is created with its bound on first
+    # append, where `config` is in scope. Guarded by `usage_fetch_lock`, the same
+    # lock the two caches these are derived from already use.
+    usage_samples: dict[str, deque[tuple[float, int]]] = field(default_factory=dict)
     # State disputes: an overlay overruling a collector that had found a wait.
     # A running total that never resets, so a machine can report "this happened
     # 40 times" long after the ring has turned over, plus the ring itself. The

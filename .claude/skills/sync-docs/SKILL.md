@@ -46,6 +46,7 @@ diff-and-reconcile pass, not a rewrite.
 | `COMPATIBILITY.md` | **Canonical** cross-harness and cross-platform contract: the per-runtime surface matrix, the per-OS capability matrix, the platform caveats, the native per-runtime validators, and **the Python floor** (with the list of every other place it is restated). Carries the sync marker. | Matrices and their footnotes. *Why* a row reads the way it does belongs in `docs/design-*.md`. |
 | `SECURITY.md` | Security posture: the invariants, the known-and-accepted exposures, and private reporting. Covers the whole shipped surface — `server.py` **and** `notify_hook.py`. | Anything that weakens an invariant is a security bug and belongs here. Keep the contact address equal to the one in `CODE_OF_CONDUCT.md`; nothing checks it. |
 | `cargento/skills/cargento/SKILL.md` | **Canonical** product surface: per-harness data sources, session states, start/stop, notifications, options, interpretation notes, common mistakes. | A *shipped, validated artifact* — see the constraints below. It is installed without the repository, so it must never contain a repo-relative link or repo process. |
+| `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. The "How work links to a promise" section is the only place the promise IDs and the move taxonomy are defined; every other file links to it. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, the inward-only dependency rule, top-level import identity, and the config/state/application split. | Other design docs link here for the module map instead of restating it. The import allowlist it describes is asserted by a test. |
 | `docs/design-*.md` | The durable *why/how* per area — decisions that outlive the build, **including alternatives that were tried and rejected and the reason why**. | A decision earns a place here if re-deriving it would cost a day, or if a maintainer would otherwise re-attempt something already proven wrong. |
 | `docs/plans/*.md` | **Transient** plans for *unshipped* work only. | Once the work ships, fold the durable *what* into the owning doc and the durable *why* into `docs/design-*.md`, then **delete the plan file.** |
@@ -95,7 +96,7 @@ the rule survives the tool going missing.
 In scope, and the exact set check (e) greps:
 
 ```
-README.md  HOW_TO_USE.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/design-*.md  docs/plans/*.md
+README.md  HOW_TO_USE.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/promise-map.md  docs/design-*.md  docs/plans/*.md
 ```
 
 Out of scope, deliberately: `AGENTS.md` and `CLAUDE.md` (agent contracts loaded verbatim as
@@ -198,10 +199,34 @@ H=cargento/skills/cargento/cargento_runtime/http_api.py
 L=cargento/skills/cargento/cargento_runtime/lifecycle.py
 I=cargento/skills/cargento/cargento_runtime/cli.py
 
-# HTTP routes the server actually serves, and who owns the listener. The
-# pattern matches the local `path` too: do_POST binds it once and compares that,
-# so an `urlparse(...)`-only pattern silently missed both POST routes.
-grep -oE '\b(url\.path|path) [!=]= "/[^"]*"' "$H" | grep -oE '"/[^"]*"' | sort -u
+# HTTP routes the server actually serves, split by method, and who owns the
+# listener. Read by AST over the three functions that dispatch, because no
+# single grep survives this file: GET compares `url.path` in `_get_api` (not in
+# `do_GET`, which only owns "/"), one GET and one POST route are prefix matches
+# rather than comparisons, and `do_POST` dispatches through a DICT LITERAL. A
+# comparison-only pattern therefore reports the GET routes and silently finds
+# NONE of the nine POST ones, which is how SECURITY.md's "nine POST routes"
+# came to be unverifiable from this block. Cross-check the count: SECURITY.md
+# states it, and states how many of them carry a capability.
+python3 - "$H" <<'ROUTES'
+import ast
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+lines = source.splitlines()
+owners = {"do_GET": "GET", "_get_api": "GET", "do_POST": "POST"}
+found: dict[str, set[str]] = {"GET": set(), "POST": set()}
+for node in ast.walk(ast.parse(source)):
+    if isinstance(node, ast.FunctionDef) and node.name in owners:
+        body = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+        found[owners[node.name]].update(re.findall(r'"(/(?:api/)?[a-z/<>-]*)"', body))
+for method, routes in found.items():
+    print(f"{method}: {len(routes)}")
+    for route in sorted(routes):
+        print("   ", route)
+ROUTES
 grep -nE '^(class CargentoHTTPServer|class _RequestHandler)|^def (normalize_host|reuse_address_allowed|bind_error_message)' "$H"
 # CLI flags and their defaults. These live in cli.build_parser now, not in the
 # launcher: `server.py` is seven lines and greps of it silently find nothing.
@@ -244,6 +269,7 @@ grep -nE 'target-version|python_version|fail_under' pyproject.toml
 grep -nE 'WEB_DIR|load_frontend' scripts/lint_embedded.py
 grep -o '{{CARGENTO_STYLES}}\|{{CARGENTO_APP}}' "$W/index.html" | sort | uniq -c
 python3 - "$W" <<'PY'
+import base64
 import hashlib
 import importlib.util
 import sys
@@ -254,12 +280,23 @@ spec = importlib.util.spec_from_file_location("cargento_web_page", web / "page.p
 assert spec and spec.loader
 page_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(page_mod)
-font_names = [name for name, _slot in page_mod.FONT_ASSETS]
-for name in ("index.html", "styles.css", *page_mod.APP_PARTS, *font_names):
+# APP_PARTS first: test_next_page compares the tuple by equality, so a new part
+# fails there as well as on its own size, and the order is part of the claim.
+print("APP_PARTS =", page_mod.APP_PARTS)
+for name in (*page_mod.APP_PARTS, "styles.css"):
     payload = (web / name).read_bytes()
+    print(name, len(payload), hashlib.sha256(payload).hexdigest())
+# Fonts are pinned DECODED, not as the .b64 file on disk. Printing the raw bytes
+# here produced plausible figures that fail the test: the oracle joins the .b64
+# lines and base64-decodes before measuring, so the two differ by about a third.
+for name, _slot in page_mod.FONT_ASSETS:
+    encoded = "".join((web / name).read_text(encoding="ascii").splitlines())
+    payload = base64.b64decode(encoded, validate=True)
     print(name, len(payload), hashlib.sha256(payload).hexdigest())
 page = page_mod.load_page()
 print("assembled page", len(page), hashlib.sha256(page).hexdigest())
+print("NOTE: the assembled figures are pinned TWICE, in tests/test_next_page.py")
+print("      and tests/test_next_flag.py. Update both.")
 PY
 # The real CI command surface
 grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|lint_embedded|validate_plugins'
@@ -313,38 +350,22 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 6. **Update the pointers.** Keep the `AGENTS.md` architecture tree and doc map, and `README.md`'s
    links, current. `CLAUDE.md` imports `AGENTS.md`, so those edits propagate — but check that no
    Claude-only bullet has become universally true (move it up) or obsolete (delete it).
-7. **Reconcile the tracker, and shrink it.** If the work is tracked in Linear, the same
-   ownership rule applies there: one surface owns a subject and the others link to it. The failure
-   mode is the opposite of doc drift — nothing goes stale, the overview just accretes, because every
-   burndown leaves a paragraph behind and no single paragraph looks like too much.
+7. **Hand the tracker to `sync-project`.** The Linear project overview, the milestone descriptions
+   and the shape of an issue are that skill's subject, not this one's. Invoke it in the same pass,
+   after this one, because a promise sentence is canonical in `docs/promise-map.md` and the tracker
+   copies it: reconcile the source first, then the copies.
 
-   | Linear surface | Owns | Never |
-   |---|---|---|
-   | **Project overview** | Derived counts, in one "As of" block. The sequencing rule. Decision **status**. The score and label legend. | Per-item status, estimates, staleness, what shipped, what it taught. |
-   | **Milestone description** | The group's narrative: what shipped, what it changed for the rest of the group, what the group waits on. | Anything about one item that its own issue could carry. |
-   | **Issue body** | That item's scope, score, and its dated staleness notes. | Another item's status. |
-   | **Issue comment** | Validation findings, build post-mortems, corrections to the body, cross-issue consequences. | Anything the body should have said instead. |
-   | **Labels** | Release row, journey stage, origin. They *are* the record. | Restating a label's content in prose. |
+   This split exists because the two surfaces fail in opposite directions. Repository docs go
+   **stale**, so this skill diffs them against the code. Tracker descriptions **accrete**, because
+   every burndown leaves behind a paragraph that was true when written and nothing ever removes one.
+   A skill that diffs for staleness will not catch a page that is entirely accurate and four times
+   too long. Measured 2026-09-08: this step's own rules were followed and the overview still reached
+   about 25,000 characters, of which three lines were current state.
 
-   Four tests, applied to every line of the overview:
-
-   - **Would this change what someone does next?** If not, cut it. A closed defect with no bearing
-     on remaining work belongs to its own ticket and nowhere else.
-   - **Is it about one item?** Issue. **About a group?** Milestone. **A number?** The "As of" block,
-     exactly once.
-   - **Is it a lesson rather than a state?** Comment it on the issue that taught it. An overview is
-     read to decide what to do next, not to learn what went wrong last time.
-   - **Did the overview grow after a burndown?** Then something is in the wrong place. Closing work
-     should make it shorter.
-
-   Refresh the counts whenever an issue is closed, cancelled, re-scoped or re-gated, and take the
-   figures from a fresh query rather than by adjusting the previous block's numbers. Check the
-   blocking relations while there: a closed issue still holding a `blocks` edge reads as a live gate
-   to everyone.
-
-   Corrections are the one thing to keep rather than tidy. A wrong mechanism in a closed issue still
-   misleads whoever reads it next, so record the correction as a comment instead of editing the
-   mistake away.
+   One thing stays here, because it is about this repository rather than about Linear: the promise
+   wording is duplicated verbatim in `docs/promise-map.md`, in `docs/visibility-2x2/items.json`, and
+   in the Linear project description. Change one and change all three. `sync-project` owns the third
+   copy; make sure the first two agree before handing over.
 
 8. **Bring the tone back to the standard.** The prose docs are written for humans, and the fastest
    way for that to rot is an agent topping them up in model-default voice one sync at a time. Apply
@@ -408,7 +429,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    #    The per-file loop keeps the filename in the output; piping every doc through one sed
    #    would report a line number with nothing to open.
    if for f in $(git ls-files -- README.md HOW_TO_USE.md CONTRIBUTING.md COMPATIBILITY.md \
-        SECURITY.md 'docs/design-*.md' 'docs/plans/*.md'); do
+        SECURITY.md docs/promise-map.md 'docs/design-*.md' 'docs/plans/*.md'); do
         sed 's/`[^`]*`//g' "$f" | grep -n '—\|–\|[“”‘’]' | sed "s|^|$f:|"
       done | grep .; then
      echo "TONE DRIFT: reapply Voice and tone to the files listed above"

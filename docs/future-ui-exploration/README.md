@@ -9,15 +9,20 @@ stages:
   defaults:
     worktree: false
     concurrency: 1
+    model: sonnet
   states:
     - name: framing
       initial: true
       gate: true
+      model: fable
     - name: reconnaissance
+      model: sonnet
     - name: prototyping
+      model: opus
     - name: crucible
       fresh: true
       gate: true
+      model: opus
       feedback-to: prototyping
     - name: accepted
       terminal: true
@@ -63,12 +68,14 @@ Every experiment has YAML frontmatter with the following fields.
 
 ## Stages
 
+**Model routing.** Each stage names the model its ensign runs on, so the First Officer's own model is not inherited by every worker. `framing` is where the design judgment lives and runs on Fable. `reconnaissance` surveys and runs on Sonnet. `prototyping` and `crucible` build and test the artifacts and run on Opus. A model change between stages forces a fresh dispatch at that boundary; `crucible` is already `fresh: true`. Values come from Spacedock's Claude-host enum (`sonnet`, `opus`, `haiku`, `fable`); other hosts ignore the field.
+
 ### `framing`
 
 The experiment is in framing while the crew turns the underlying ask into a bold, falsifiable design bet without assuming the current dashboard structure should survive.
 
 - Inputs include the 2026-08-27 project-cockpit debrief, the current `?next=true` UI, captain direction, available design records, and known source limitations.
-- Outputs include a concise bet, the user questions it should answer, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
+- Outputs include a concise bet, which of the five questions in [the promise map](../promise-map.md#how-work-links-to-a-promise) it answers by ID and which move the bet would be, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
 - A good frame attacks the information or interaction model, names what should lead, and permits a materially different UI.
 - A bad frame treats the work as incremental cleanup, preserves existing regions by default, or defines success as visual preference.
 - The gate shows the bet, why it could improve comprehension, what it risks, how it will be falsified, and what the three harnesses must exercise.
@@ -99,7 +106,7 @@ The experiment is in crucible while fresh reviewers try to disprove that the can
 - Outputs include independent reviews of visual hierarchy, information architecture, command truth, cross-harness comprehension, session detail, accessibility, and adversarial states. They also include reproduced material findings, a disposition for every finding, and a recommendation to revise, reframe, or accept.
 - Good crucible review uses fresh reviewers, exercises each material claim where it can fail, implements accepted findings before another review, and resolves disagreement with reproduced evidence.
 - Bad crucible review becomes attached to the prior design, ranks unsupported findings by confidence, optimizes style after command truth is complete, or claims convergence because tests are green.
-- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
+- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility. It also shows the promise the bet serves, in the promise map's words. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
 
 ### `accepted`
 
@@ -124,6 +131,30 @@ The [Session Operations Board visual walkthrough](presentations/future-ui-sessio
 - A fresh antagonistic review follows every accepted correction. Each round begins from the prior accepted checkpoint. Concurrent product edits are forbidden, while independent read-only lenses may run in parallel.
 - Screenshots establish hierarchy, live APIs and source establish semantic claims, adversarial fixtures test missing or conflicting data, and focused tests protect behavior. A prose assertion cannot prove runtime comprehension.
 - Check sibling worktrees before trusting failures. Run the full suite once and serialize it. Retry known load-sensitive modules alone before classifying a failure as a regression.
+
+## Captain's standing directives
+
+Given 2026-09-03, in the captain's own words where quoted. They bind the first officer's conduct in
+this workflow and override the defaults above wherever the two differ.
+
+- **When waiting on the captain, be extremely clear, concise and to the point.** A decision request
+  is one short block: what is waiting, the recommended answer, and what saying yes does. It is never
+  buried in a status report, never restated across several messages, and never mixed with things
+  that are not waiting. "It is way too easy for these to get lost."
+- **Gate approval approves everything discussed.** When the captain approves a gate, every
+  recommendation and disposition the first officer put in that presentation is approved with it —
+  finding dispositions, filings, follow-ups. Only what the captain asks to revise needs amending.
+  Do not re-ask.
+- **Small findings are fixed in the PR in flight, not filed.** A one-clause wording fix, a wrong
+  count, a stale citation: integrate it into the PR being worked, or the next one already open,
+  rather than opening a Linear issue for it. Only a finding that needs its own cycle — a contract
+  decision, a design question, work with its own acceptance criteria — becomes a Linear issue. This
+  narrows the "never promote a deferred finding" rule to findings large enough to be their own
+  cycle; a small fix is not a promotion, it is a fix.
+- **Do not wait for "yes, that's fine."** Reversible follow-through — filing the issues a review
+  produced, folding small fixes into a PR, dispatching the next stage the captain already directed —
+  happens without a confirmation round. Ask only for choices that are hard to reverse or genuinely
+  the captain's to make. "I want to get things done."
 
 ## Workflow state
 
@@ -153,6 +184,10 @@ pr:
 ## Design bet
 
 A bold, falsifiable claim about how Cargento can make cross-harness and session state easier to understand.
+
+## User questions
+
+Which of the promise map's five questions this bet answers, by ID, and which move it would be.
 
 ## Baseline and command risk
 

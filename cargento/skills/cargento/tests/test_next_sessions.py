@@ -500,3 +500,399 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsSessionEndTest(NextPageJsHarness):
+    """DRC-4036: the operations row must separate over from waiting for you."""
+
+    def view(self, session: str, extra: str = "") -> str:
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    (
+                        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+                        '{key: "claude", label: "Claude Code", reports_needs_input: true}],'
+                        f"{extra} sessions: [{session}]}};"
+                    ),
+                    "console.log(JSON.stringify(nextSessionsView()));",
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    ENDED = (
+        '{sid: "e1", harness: "claude", project: "a/b", state: "idle", active: false,'
+        ' title: "Ended run", last_activity: 9000, finished_at: 9350, ended_at: 9400,'
+        " tasks: [], subagents: []}"
+    )
+    QUIET = (
+        '{sid: "q1", harness: "claude", project: "a/b", state: "idle", active: false,'
+        ' title: "Quiet run", last_activity: 9000, finished_at: 9350,'
+        " tasks: [], subagents: []}"
+    )
+    # The shape that actually ships. `session_ended` pops the whole overlay
+    # ledger, so it publishes no `state` of its own and the collector's word
+    # stands; the capture puts the end 0.565–5.581s after the last transcript
+    # write, well inside `working_threshold_sec` (90). So `working` beside a
+    # stamped end is the row for roughly the minute and a half after every
+    # ordinary end — the common case, not an edge one.
+    WORKING_ENDED = (
+        '{sid: "w1", harness: "claude", project: "a/b", state: "working", active: false,'
+        ' title: "Just ended", state_detail: "Editing files…",'
+        " last_activity: 9990, ended_at: 9400, tasks: [], subagents: []}"
+    )
+
+    def group(self, html: str, kind: str) -> str:
+        """The one operations group's markup, so membership is asserted not implied."""
+        opened = html.split(f'data-next-operation-group="{kind}"', 1)
+        self.assertEqual(2, len(opened), f"no {kind} group rendered")
+        return opened[1].split("</section>", 1)[0]
+
+    def test_an_ended_row_says_it_ended_and_how_long_ago(self) -> None:
+        html = self.view(self.ENDED)
+
+        self.assertIn("NOW · ENDED", html)
+        self.assertIn("Session reported its own end", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_a_row_with_no_observed_end_keeps_the_em_dash_it_had(self) -> None:
+        # The history row's "—" is what an unread session has always shown, and
+        # it must stay that: an absent end is not evidence the session is alive,
+        # so the page may say nothing rather than say "still running".
+        html = self.view(self.QUIET)
+
+        self.assertNotIn("NOW · ENDED", html)
+        self.assertNotIn("Session reported its own end", html)
+
+    def test_an_ended_session_leaves_active_now_even_while_the_scan_says_working(self) -> None:
+        html = self.view(self.WORKING_ENDED)
+
+        self.assertNotIn("w1", self.group(html, "active"))
+        self.assertIn("w1", self.group(html, "history"))
+
+    def test_an_ended_session_never_renders_the_working_state_word(self) -> None:
+        # The caveat below teaches that an unmarked row reported no end, so a
+        # row that DID report one may not sit unmarked reading NOW · WORKING.
+        html = self.view(self.WORKING_ENDED)
+
+        self.assertNotIn("NOW · WORKING", html)
+        self.assertIn("NOW · ENDED", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_the_fleet_no_longer_counts_an_ended_session_as_active_now(self) -> None:
+        html = self.view(self.WORKING_ENDED)
+        strip = html.split('data-next-fleet-fact="active"', 1)[1].split("</section>", 1)[0]
+
+        self.assertIn("<strong>0</strong>", strip)
+
+    def test_an_outstanding_request_keeps_an_ended_row_active_and_still_marks_it(self) -> None:
+        # The one path that reaches the NOW cell with an end stamped. An exact
+        # request is a published fact with its own lifecycle rather than a
+        # reading of recency, so it still holds the row in Active now — but the
+        # end still owns the NOW cell, because the two answer different
+        # questions and only one of them was observed rather than inferred.
+        html = self.view(
+            self.WORKING_ENDED,
+            ' ask: true, asks: [{session_id: "w1", harness: "claude", question: "Which branch?"}],',
+        )
+
+        self.assertIn("w1", self.group(html, "active"))
+        self.assertIn("NOW · ENDED", html)
+        self.assertNotIn("NOW · WORKING", html)
+
+    def test_a_working_session_with_no_end_still_leads_active_now(self) -> None:
+        # The end is what moves the row, and only the end: an ordinary working
+        # session must keep the lane whose whole job is "what is still running".
+        working = self.WORKING_ENDED.replace(" ended_at: 9400,", "").replace(
+            'sid: "w1"', 'sid: "w2"'
+        )
+        html = self.view(working)
+
+        self.assertIn("w2", self.group(html, "active"))
+        self.assertIn("NOW · WORKING", html)
+        self.assertNotIn("NOW · ENDED", html)
+
+    def test_the_recent_history_caveat_is_qualified_where_an_end_was_observed(self) -> None:
+        # The old sentence was unqualified — "Recently observed is not proof the
+        # harness process is still open or closed" — which was true before any
+        # row could report its own end, and understates the rows that now can.
+        html = self.view(self.ENDED)
+
+        self.assertIn("Recently observed is not proof", html)
+        self.assertIn("ENDED reported their own end", html)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsUnreadSourceTest(NextPageJsHarness):
+    """DRC-4447: a store the collector read and matched nothing in must say so.
+
+    Both arms, because the issue was filed about one of them. A row whose store
+    would not read renders as a session at its prompt when its mtime is stale
+    and as one *generating* when its mtime is fresh, and the second is the worse
+    of the two: it is a positive claim about work nobody observed.
+    """
+
+    HARNESSES = (
+        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+        '{key: "antigravity", label: "Antigravity", reports_needs_input: false},'
+        '{key: "copilot", label: "Copilot", reports_needs_input: true}],'
+    )
+
+    def view(self, sessions: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{sessions}]}};\n"
+            "console.log(JSON.stringify(nextSessionsView()));"
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def detail(self, session: str, project: str, harness: str, sid: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{session}]}};\n"
+            "console.log(JSON.stringify(nextSessionView("
+            f'"{project}", "{harness}", "{sid}")));'
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    STALE = (
+        '{sid: "agy-stale", harness: "antigravity", project: "trio/app", state: "idle",'
+        ' active: true, title: null, state_detail: "awaiting your message",'
+        " last_activity: 6400, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+        ' source_gaps: ["message history", "token accounting"]}'
+    )
+    FRESH = (
+        '{sid: "agy-fresh", harness: "antigravity", project: "trio/app", state: "working",'
+        ' active: true, title: null, state_detail: "generating…",'
+        " last_activity: 9990, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+        ' source_gaps: ["message history", "token accounting"]}'
+    )
+    QUIET = (
+        '{sid: "agy-quiet", harness: "antigravity", project: "trio/app", state: "idle",'
+        ' active: true, title: null, state_detail: "awaiting your message",'
+        " last_activity: 6400, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+        " source_gaps: []}"
+    )
+    COPILOT = (
+        '{sid: "cop-1", harness: "copilot", project: "trio/other", state: "idle",'
+        ' active: true, title: "Refactor the parser", state_detail: "awaiting your message",'
+        " last_activity: 6400, consumption: null, model: null, tasks: [], subagents: [],"
+        ' source_gaps: ["token accounting"]}'
+    )
+
+    def row(self, html: str, sid: str) -> str:
+        match = re.search(
+            rf'<article[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</article>', html
+        )
+        if match is None:
+            raise AssertionError(f"no operation row for {sid!r} in {html}")
+        return match.group(0)
+
+    def test_a_stale_row_whose_store_told_us_nothing_names_the_missing_readings(self) -> None:
+        row = self.row(self.view(self.STALE), "agy-stale")
+
+        self.assertIn("Source not fully read: message history, token accounting", row)
+
+    def test_the_same_store_read_reads_as_working_and_still_says_it(self) -> None:
+        # The arm the issue's blank-row framing left out. "generating…" is a
+        # claim, and it must not stand beside an unqualified silence.
+        row = self.row(self.view(self.FRESH), "agy-fresh")
+
+        self.assertIn("generating…", row)
+        self.assertIn("Source not fully read: message history, token accounting", row)
+
+    def test_a_session_that_has_genuinely_done_nothing_says_nothing_extra(self) -> None:
+        # The whole point of the disclosure is that it is not on every quiet row.
+        # A quiet row's history NOW cell is the em dash it has always been, and
+        # the disclosed row above differs from this one by the sentence alone.
+        row = self.row(self.view(self.QUIET), "agy-quiet")
+
+        self.assertIn("<small>NOW</small><strong>—</strong>", row)
+        self.assertNotIn("Source not fully read", row)
+
+    def test_a_second_harnesss_unread_store_uses_the_same_sentence(self) -> None:
+        # Harness-agnostic by construction: five collectors report through one
+        # published field, so the page has one sentence rather than five.
+        row = self.row(self.view(self.COPILOT), "cop-1")
+
+        self.assertIn("Source not fully read: token accounting", row)
+        self.assertIn("Refactor the parser", row)
+
+    def test_the_disclosure_explains_itself_without_leaving_the_row(self) -> None:
+        row = self.row(self.view(self.STALE), "agy-stale")
+
+        self.assertIn("Cargento opened this session&#39;s store", row)
+        self.assertIn("missing here rather than empty", row)
+
+    def test_the_session_page_repeats_what_the_row_disclosed(self) -> None:
+        # A reader who clicks through must not land on a page that has quietly
+        # dropped the qualifier and gone back to asserting the state alone.
+        html = self.detail(self.STALE, "trio/app", "antigravity", "agy-stale")
+
+        self.assertIn("Antigravity · awaiting your message", html)
+        self.assertIn("source not fully read: message history, token accounting", html)
+
+    def test_the_session_page_of_a_quiet_row_adds_nothing(self) -> None:
+        html = self.detail(self.QUIET, "trio/app", "antigravity", "agy-quiet")
+
+        self.assertIn("Antigravity · awaiting your message", html)
+        self.assertNotIn("not fully read", html)
+
+    def test_a_row_carrying_junk_where_the_gap_names_go_renders_none_of_it(self) -> None:
+        # `source_gaps` is a published field, and the page treats every payload
+        # value as untrusted: a non-array, and a non-string member, are both
+        # nothing rather than a rendered surprise.
+        junk = self.QUIET.replace("source_gaps: []", 'source_gaps: "message history"').replace(
+            'sid: "agy-quiet"', 'sid: "agy-junk"'
+        )
+        member = self.QUIET.replace("source_gaps: []", 'source_gaps: [{}, 7, null, "  "]').replace(
+            'sid: "agy-quiet"', 'sid: "agy-member"'
+        )
+
+        self.assertNotIn("not fully read", self.row(self.view(junk), "agy-junk"))
+        self.assertNotIn("not fully read", self.row(self.view(member), "agy-member"))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsScanOnlyTest(NextPageJsHarness):
+    """DRC-4473: an idle row that could never have carried a stop must say so.
+
+    Measured on the board at 5bca94b before this shipped: a Goose idle row and a
+    Claude idle row with no stop observed rendered the same five cells, character
+    for character, down to the three em dashes. For the Claude row the absent
+    stop means "did not finish"; for the Goose row it means "cannot be seen from
+    here", and the reader had nothing to separate them by.
+    """
+
+    HARNESSES = (
+        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+        '{key: "claude", label: "Claude Code", reports_needs_input: true},'
+        '{key: "goose", label: "Goose", reports_needs_input: false}],'
+    )
+
+    SCANNED = (
+        '{sid: "goose-1", harness: "goose", project: "solo/app", state: "idle",'
+        ' active: false, title: "Rebuild the index", state_detail: null,'
+        " last_activity: 9600, started_at: 9000, tasks: [], subagents: [],"
+        ' source_gaps: [], acquisition: "scan-only"}'
+    )
+    EVENTED = (
+        '{sid: "claude-1", harness: "claude", project: "solo/app", state: "idle",'
+        ' active: false, title: "Rebuild the index", state_detail: null,'
+        " last_activity: 9600, started_at: 9000, tasks: [], subagents: [],"
+        " source_gaps: [], acquisition: null}"
+    )
+    STOPPED = SCANNED.replace('sid: "goose-1"', 'sid: "goose-stopped"').replace(
+        "last_activity: 9600", "last_activity: 9600, finished_at: 9600"
+    )
+    WORKING = SCANNED.replace('sid: "goose-1"', 'sid: "goose-working"').replace(
+        'state: "idle", active: false', 'state: "working", active: true'
+    )
+
+    def view(self, sessions: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{sessions}]}};\n"
+            "console.log(JSON.stringify(nextSessionsView()));"
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def detail(self, session: str, project: str, harness: str, sid: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{session}]}};\n"
+            "console.log(JSON.stringify(nextSessionView("
+            f'"{project}", "{harness}", "{sid}")));'
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def row(self, html: str, sid: str) -> str:
+        match = re.search(
+            rf'<article[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</article>', html
+        )
+        if match is None:
+            raise AssertionError(f"no operation row for {sid!r} in {html}")
+        return match.group(0)
+
+    def test_a_row_no_event_can_reach_says_no_turn_end_can_be_observed_on_it(self) -> None:
+        row = self.row(self.view(self.SCANNED), "goose-1")
+
+        self.assertIn("Read by scanning: no turn end can be observed here", row)
+
+    def test_an_event_backed_idle_row_keeps_the_em_dash_and_adds_nothing(self) -> None:
+        # The other half of the distinction. Without this the sentence could be
+        # on every idle row, which is Idle restated rather than qualified.
+        row = self.row(self.view(self.EVENTED), "claude-1")
+
+        self.assertIn("<small>NOW</small><strong>—</strong>", row)
+        self.assertNotIn("Read by scanning", row)
+
+    def test_the_sentence_is_the_only_thing_the_two_idle_rows_differ_by(self) -> None:
+        # The measured before-state, pinned so it cannot come back. Both rows are
+        # idle with no stop published, so all three of their reading cells are the
+        # em dash on either side of the fix, and the note is the whole difference.
+        cells = r'<span class="next-operation-fact"[\s\S]*$'
+        scanned = re.search(cells, self.row(self.view(self.SCANNED), "goose-1"))
+        evented = re.search(cells, self.row(self.view(self.EVENTED), "claude-1"))
+        assert scanned is not None
+        assert evented is not None
+
+        self.assertEqual(scanned.group(0), evented.group(0))
+        self.assertEqual(3, scanned.group(0).count("<strong>—</strong>"))
+
+    def test_the_sentence_explains_itself_without_leaving_the_row(self) -> None:
+        # Not a `<details>`, on #302's ground: it qualifies a claim already on
+        # screen beside it, and one a reader can leave shut cannot do that.
+        row = self.row(self.view(self.SCANNED), "goose-1")
+
+        self.assertNotIn("<details", row)
+        self.assertIn("no event from its harness can reach it", row)
+
+    def test_a_working_row_that_no_event_can_reach_says_it_too(self) -> None:
+        # The field is a property of the row's source, not of its state, and the
+        # working arm is where the reader most needs it: this one will stop, and
+        # nothing will tell them that it did.
+        row = self.row(self.view(self.WORKING), "goose-working")
+
+        self.assertIn("Read by scanning: no turn end can be observed here", row)
+
+    def test_a_row_that_somehow_published_a_stop_drops_the_sentence(self) -> None:
+        # Unreachable from this server — `events.parse` refuses the six
+        # harnesses' envelopes outright — so this is the untrusted-payload arm.
+        # The sentence says a stop could not be observed, and a published stamp
+        # beside it would make that false on the reader's screen.
+        row = self.row(self.view(self.STOPPED), "goose-stopped")
+
+        self.assertNotIn("Read by scanning", row)
+
+    def test_the_session_page_repeats_what_the_row_disclosed(self) -> None:
+        html = self.detail(self.SCANNED, "solo/app", "goose", "goose-1")
+
+        self.assertIn("read by scanning: no turn end can be observed here", html)
+
+    def test_the_session_page_of_an_event_backed_row_adds_nothing(self) -> None:
+        html = self.detail(self.EVENTED, "solo/app", "claude", "claude-1")
+
+        self.assertNotIn("read by scanning", html)
+
+    def test_a_row_carrying_junk_where_the_provenance_goes_renders_none_of_it(self) -> None:
+        # One exact string, and everything else is nothing: the value is
+        # published and therefore untrusted, and a truthy-check here would print
+        # the sentence for `acquisition: "event"` as readily as for a hostile one.
+        for value in (
+            '"event"',
+            '"SCAN-ONLY"',
+            '" scan-only "',
+            "true",
+            "7",
+            "{}",
+            '["scan-only"]',
+        ):
+            with self.subTest(acquisition=value):
+                junk = self.SCANNED.replace(
+                    'acquisition: "scan-only"', f"acquisition: {value}"
+                ).replace('sid: "goose-1"', 'sid: "goose-junk"')
+
+                self.assertNotIn("Read by scanning", self.row(self.view(junk), "goose-junk"))

@@ -9,6 +9,53 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextProjectsBehaviorTest(NextPageJsHarness):
+    def test_a_blocked_project_precedes_risk_and_work_but_follows_exact_questions(self) -> None:
+        for reverse in ("false", "true"):
+            with self.subTest(reverse=reverse):
+                out = self._run_page_js(
+                    f"""
+__els.app = {{innerHTML: ""}};
+const sessions = [
+  {{sid: "work", project: "work", state: "working"}},
+  {{sid: "risk", project: "risk", state: "working", loop: {{errors: 4, tool: "Bash"}}}},
+  {{sid: "review", project: "review", state: "idle", active: false,
+    finished_at: 9700, last_activity: 9700}},
+  {{sid: "gate-a", project: "gate-a", state: "needs_input"}},
+  {{sid: "gate-b", project: "gate-b", state: "needs_input"}},
+  {{sid: "gate-c", project: "gate-c", state: "needs_input"}},
+  {{sid: "exact", project: "exact", state: "working"}},
+  {{sid: "ended", project: "ended", state: "needs_input", ended_at: 9800}},
+  {{sid: "recent", project: "recent", state: "idle", last_activity: 9950}}
+].map(s => ({{harness: "claude", active: true, last_activity: 9900, ...s}}));
+if({reverse}) sessions.reverse();
+nextData = {{generated: 10000, sessions, ask: true, asks: [
+  {{id: "question", session_id: "exact", project: "exact", question: "Approve?"}}
+]}};
+const original = JSON.stringify(nextData);
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {{view: "projects", project: null, session: null}};
+renderNext();
+console.log(JSON.stringify({{html: __els.app.innerHTML,
+  unchanged: original === JSON.stringify(nextData)}}));
+"""
+                )
+                assert isinstance(out, dict)
+                html = out["html"]
+                order = re.findall(r'<article[^>]*data-next-project="([^"]+)"', html)
+                gates = (
+                    ["gate-c", "gate-b", "gate-a"]
+                    if reverse == "true"
+                    else ["gate-a", "gate-b", "gate-c"]
+                )
+                self.assertEqual(
+                    ["exact", *gates, "risk", "work", "recent", "ended", "review"], order
+                )
+                self.assertTrue(out["unchanged"])
+                self.assertIn("1 blocked", self.project_row(html, "gate-a"))
+                self.assertIn("1 subject at risk", self.project_row(html, "risk"))
+                self.assertNotIn("close the loop", self.project_row(html, "review"))
+                self.assertNotIn("blocked", self.project_row(html, "ended"))
+
     FIXTURE = """
 location.hash = "#n=projects";
 __els.app = {innerHTML: ""};
@@ -478,6 +525,130 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
             {"view": "project", "project": "alpha/repo", "session": None}, out["route"]
         )
         self.assertEqual("#n=project:alpha%2Frepo", out["hash"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ProjectRowDenominatorTest(NextPageJsHarness):
+    """What a project row's leading total is a count of, and what follows it.
+
+    The leading total counts every session in the group and the words after it
+    count only the active subset, so a group of three with one active put two
+    sessions in the total and in no word at all (DRC-4453). The row now names
+    the subset the words are a count of.
+    """
+
+    SUMMARY = re.compile(r'<div class="next-project-summary">([\s\S]*?)</div>')
+
+    def summary(self, sessions: str, asks: str = "[]") -> str:
+        html = self._run_page_js(
+            "await __settle();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
+            f"""
+__els.app = {{innerHTML: ""}};
+location.hash = "#n=projects";
+__fetchImpl = async () => ({{ok: true, json: async () => ({{
+  generated: 10000, window_hours: 24, ask: true,
+  summary: {{}}, sessions: {sessions}, asks: {asks}
+}})}});
+""",
+        )
+        assert isinstance(html, str)
+        match = self.SUMMARY.search(html)
+        if match is None:  # pragma: no cover — the assertion below reports it
+            raise AssertionError(f"no project summary in {html}")
+        return match.group(1)
+
+    def test_a_row_with_one_of_three_sessions_active_says_so(self) -> None:
+        # Measured at HEAD in Chrome and in this harness, the same group rendered
+        # `3 sessions   1 subject at risk   1 working`: two sessions in the total
+        # and in neither state word. The three sharing a label are one collision
+        # subject, which is why `at risk` reads 1 over 3 sessions and keeps the
+        # unit DRC-4426 gave it.
+        self.assertEqual(
+            "<span>3 sessions, 1 active:</span>"
+            "<span>1 subject at risk</span><span>1 working</span>",
+            self.summary(
+                """[
+  {sid: "one", project: "trio/app", state: "working", active: true,
+   last_activity: 9950, title: "Build", subagents: []},
+  {sid: "two", project: "trio/app", state: "idle", active: false,
+   last_activity: 9000, title: "Read", subagents: []},
+  {sid: "three", project: "trio/app", state: "idle", active: false,
+   last_activity: 8900, title: "Wait", subagents: []}
+]"""
+            ),
+        )
+
+    def test_an_all_idle_row_says_none_are_active_rather_than_going_quiet(self) -> None:
+        # The history arm, and the ordinary row on a quiet machine rather than an
+        # edge case: those rows are rendered with an empty active set, so the row
+        # read `3 sessions` and said nothing about any of them.
+        self.assertEqual(
+            "<span>3 sessions, 0 active:</span><span>none active</span>",
+            self.summary(
+                """[
+  {sid: "one", project: "trio/app", state: "idle", active: false,
+   last_activity: 9950, title: "Build", subagents: []},
+  {sid: "two", project: "trio/app", state: "idle", active: false,
+   last_activity: 9000, title: "Read", subagents: []},
+  {sid: "three", project: "trio/app", state: "idle", active: false,
+   last_activity: 8900, title: "Wait", subagents: []}
+]"""
+            ),
+        )
+
+    def test_one_idle_session_holding_an_exact_request_still_reads_quiet(self) -> None:
+        # `summary.quiet` is reachable and is not dead code: an outstanding exact
+        # request holds an idle row in the active set through the ask branch at
+        # next-sessions.js:86, which next-sessions.js:81-83 documents as
+        # deliberate. This is the payload that renders it.
+        self.assertEqual(
+            "<span>1 session, 1 active:</span><span>1 exact request</span><span>1 quiet</span>",
+            self.summary(
+                """[
+  {sid: "solo", project: "quiet/repo", state: "idle", active: false,
+   last_activity: 9000, title: "Idle work", subagents: []}
+]""",
+                """[
+  {id: "ask-solo", session_id: "solo", project: "quiet/repo",
+   question: "Which branch?", options: ["main", "next"]}
+]""",
+            ),
+        )
+
+    def test_a_blocked_session_is_counted_rather_than_left_out_of_every_word(self) -> None:
+        # `working` and `quiet` do not cover `needs_input`, so the one active
+        # session on this row sat in the leading total and in no word at all.
+        # The three session states now partition the active subset.
+        self.assertEqual(
+            "<span>1 session, 1 active:</span><span>1 blocked</span>",
+            self.summary(
+                """[
+  {sid: "gate", project: "gate/repo", state: "needs_input", active: true,
+   last_activity: 9900, title: "Approve", subagents: []}
+]"""
+            ),
+        )
+
+    def test_an_active_session_in_no_published_state_is_still_accounted_for(self) -> None:
+        # The residue, and why the three state words are not enough alone: an
+        # outstanding exact request holds a row active whatever its state says,
+        # so a state outside the collectors' closed vocabulary would otherwise
+        # vanish from the words while staying in the total. The construction the
+        # Attention brief already uses at next-attention.js:1069-1073.
+        self.assertEqual(
+            "<span>1 session, 1 active:</span>"
+            "<span>1 exact request</span><span>1 in no counted state</span>",
+            self.summary(
+                """[
+  {sid: "odd", project: "odd/repo", state: "starting", active: true,
+   last_activity: 9900, title: "Booting", subagents: []}
+]""",
+                """[
+  {id: "ask-odd", session_id: "odd", project: "odd/repo",
+   question: "Ready?", options: ["yes"]}
+]""",
+            ),
+        )
 
 
 if __name__ == "__main__":

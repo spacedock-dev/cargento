@@ -8,7 +8,7 @@ import os
 import posixpath
 import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Final, TypeAlias
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -41,6 +41,43 @@ def project_label(config: RuntimeConfig, dirname: str) -> str:
     return dirname.lstrip("-") or "(home)"
 
 
+# How many segments a label built by joining path segments may keep. The same
+# figure `history.PROJECT_SEGMENT_CAP` applies to the `/` form, written twice
+# rather than shared because `history` is a leaf over `config` alone and may not
+# import this module. Both implement the
+# [history contract](SECURITY.md#local-history-the-session-history-store),
+# which authorizes a derived two-segment label and nothing wider.
+PROJECT_SEGMENT_CAP: Final = 2
+
+
+def bounded_project_label(config: RuntimeConfig, dirname: str) -> str:
+    """``project_label`` capped to the last two segments of the encoded path.
+
+    The fallback three collectors reach when a transcript carries no ``cwd``:
+    measured, 29 of 3,888 real transcripts on one machine. ``project_label``
+    strips the encoded home prefix and returns *every* remaining segment joined
+    by ``-``, which is a whole home-relative path. One real store held
+    ``repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish``.
+
+    The cap is here rather than downstream because this is the only place the
+    difference is known. A consumer sees one string, and ``my-cool-project`` and
+    ``alpha-beta-gamma`` are the same shape to it: the history store bounded the
+    dash form for a while and truncated correct labels, so a project one
+    directory under ``$HOME`` grouped under a different name than the live board
+    (DRC-4044).
+    decision-history: DR-8 | 4de75d29 | repaired grouping bug; trim at label construction
+    Here the label is being built by joining path segments, so
+    trimming it is reading the string the way it was written.
+
+    The trade is stated rather than hidden: a directory genuinely named
+    ``work-my-repo`` under ``$HOME`` reads as ``my-repo`` on the rows that lack a
+    ``cwd``. That is a grouping cost on 0.75% of rows, against a home-relative
+    path in a fourteen-day store, which ``SECURITY.md``'s never-list calls a
+    security bug.
+    """
+    return "-".join(project_label(config, dirname).split("-")[-PROJECT_SEGMENT_CAP:])
+
+
 def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:
     """``<parent>/<basename>`` for a working directory, ``""`` when unusable.
 
@@ -61,7 +98,8 @@ def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:
     reads ``foo`` from either, never ``<username>/foo``.
 
     ``config.home`` and ``config.os_name`` carry those two facts, so one runner
-    exercises both platforms (design decision D-4).
+    exercises both platforms (design decision
+    [D-4](docs/design-cross-platform.md#d-4)).
 
     Callers apply their own fallback to ``""`` — the harness name, or the
     encoded-directory label for the two collectors that have one.
@@ -93,10 +131,10 @@ def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:
     return "/".join(parts[-2:])
 
 
-def _project_identity_key(kind: str, path: str) -> str:
+def _project_identity_key(prefix: str, path: str) -> str:
     canonical = os.path.normcase(os.path.realpath(path))
     digest = hashlib.blake2b(canonical.encode("utf-8", "surrogatepass"), digest_size=12)
-    return f"{kind}:{digest.hexdigest()}"
+    return f"{prefix}{digest.hexdigest()}"
 
 
 def _git_identity_root(cwd: str) -> str | None:
@@ -169,7 +207,7 @@ def project_identity(config: RuntimeConfig, cwd: str) -> dict[str, str]:
     root = repo_root or os.path.realpath(cwd)
     name = os.path.basename(root.rstrip(os.sep)) or project_from_cwd(config, root)
     return {
-        "key": _project_identity_key("git" if repo_root else "path", root),
+        "key": _project_identity_key("git:" if repo_root else "path:", root),
         "name": name,
         "source": "git common directory" if repo_root else "working directory path",
     }
@@ -304,6 +342,44 @@ TOOL_NAME_CAP_CHARS = 60
 LAST_OUTPUT_CAP_CHARS = 4096
 
 
+# The readings a collector may disclose it could not take from a store that
+# opened. Named constants and not literals at each site: this text reaches the
+# screen verbatim, and five collectors spelling the same reading five ways would
+# render as five different facts. Each is phrased to complete the page's
+# sentence, "Source not fully read: …".
+UNREAD_BLOCK: Final = "block state"
+UNREAD_HISTORY: Final = "message history"
+UNREAD_IDENTITY: Final = "session metadata"
+UNREAD_MODEL: Final = "model"
+UNREAD_TOKENS: Final = "token accounting"
+
+
+# The shape a session id must have before it may be published as `resume_id`.
+#
+# It is a grammar rather than an escaper because of where the value ends up: the
+# page builds `claude --resume <token>` out of it and puts that on a clipboard,
+# so the exposure is everything the reader's shell and the harness's own argument
+# parser will do with it. The id comes off a filename in a store the harness owns,
+# which makes it untrusted like every other reading here. Sixty-four characters
+# covers a UUID with room to spare and nothing near a path.
+#
+# The first character is deliberately narrower than the rest, and that is the half
+# quoting would not have bought. A token a shell reads as one word can still be a
+# word the CLI reads as a flag: `claude --resume` takes an OPTIONAL value, so it
+# never consumes a `-`-leading next token, and clap binds one to an option rather
+# than to Codex's positional. `--dangerously-skip-permissions` as a stem would
+# therefore be pasted as a permission bypass with the session id silently dropped.
+# No real id starts with a dash — both harnesses' ids are UUIDs.
+RESUME_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_-]{0,63}\Z")
+
+
+def resume_token(value: Any) -> str | None:
+    """Return ``value`` when it is a session id safe to build a command from."""
+    if not isinstance(value, str):
+        return None
+    return value if RESUME_TOKEN_PATTERN.match(value) else None
+
+
 def base_session(harness: str, sid: Any, project: str) -> Session:
     # "session" is the display id. The 8 below is the floor and must match
     # config.display_id_len, which assign_display_ids() reads; nothing enforces
@@ -324,10 +400,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
     # `codex`). Naming is presentation and belongs to the page, which has the
     # harness table; the payload stays the raw reading.
     #
-    # `model` is not Pi's alone. Claude, Codex, Copilot, Antigravity and Cursor
-    # each record the model somewhere their collector already reads, so each
-    # fills it; Gemini, Goose, OpenCode and Droid leave it None because nobody
-    # has found where — or whether — those harnesses record it. Cursor fills it
+    # `model` is not Pi's alone. Claude, Codex, Copilot, Antigravity, Cursor and
+    # OpenCode each record the model somewhere their collector already reads, so
+    # each fills it; Gemini, Goose and Droid leave it None because nobody has
+    # found where — or whether — those harnesses record it. Cursor fills it
     # on a child as well as on the parent, out of the child's own store: each
     # Cursor subagent keeps one, so the reading is the same read done twice
     # rather than a parent's model attributed downwards.
@@ -411,11 +487,57 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # thing that separates the two situations Idle covers: a turn that ended
         # and nobody read, and a session still waiting on a reply that never came
         # (DRC-4035). None means "no stop observed" and never "did not finish" —
-        # only the four harnesses in the event vocabulary can supply one at all,
+        # only the four harnesses in events.IDENTITY_NORMALIZERS can supply one,
         # and no collector may infer it, for the reason `model` above may not: a
         # guessed completion renders identically to a measured one. A row that
-        # cannot ever carry it says so through `acquisition` instead.
+        # cannot ever carry it says so through `acquisition` below, and the page
+        # prints that on the row rather than leaving the reader to infer it
+        # (docs/design-scan-only-rows.md).
         "finished_at": None,
+        # How this row was reached, which is the qualifier on `finished_at`
+        # above. None means the harness has an event adapter and no event has
+        # landed on this row; `events.ACQUISITION_EVENT` means one has;
+        # `events.ACQUISITION_SCAN` means no event can ever reach it, because the
+        # harness is absent from `events.IDENTITY_NORMALIZERS`. That third value
+        # is stamped by `Application._mark_unreachable_by_events`, not here.
+        #
+        # Declared here at None for the same reason `provider` and `model` are:
+        # it arrives for six of the ten harnesses, and a key present on only some
+        # rows makes every consumer test for presence rather than for a value. It
+        # went undeclared until the declared-field-set check reached a published
+        # row rather than this function's return value (DRC-4473).
+        "acquisition": None,
+        # When the standing wait began, for the row_order gate queue and the
+        # waited-for duration the page prints. Only the Claude, Copilot and
+        # Cursor collectors and the event overlays ever fill it; declared here at
+        # None on the rule above, and because it is in `events.PATCHABLE`, which
+        # means an untrusted envelope can write it onto any row.
+        "blocked_since": None,
+        # When this session id was observed to END, which is a different fact
+        # from `finished_at` above: that one marks a TURN stopping, and a session
+        # whose turn stopped is usually still open and typeable. Without this the
+        # two render identically — both say Idle — and the reader cannot tell a
+        # session that is over from one sitting at its prompt waiting for them
+        # (DRC-4036).
+        #
+        # None means NOT OBSERVED and never "did not end", which is the whole
+        # reason this is nullable rather than a boolean or a fourth `state`
+        # value. Only a SIGKILL ends a Claude session silently — a SIGTERM and
+        # a closed terminal delivered `SessionEnd` within 0.687s, and both clean
+        # exits delivered one too, the headless completion slowest at 5.581s
+        # (docs/captures/claude/session-end-2.1.261-macos.jsonl) — but an
+        # absent end still covers the six harnesses with no event adapter, a run
+        # that predates this server process, and `--no-events`. A boolean here
+        # would do null's job with false, which is the DRC-4101 failure the
+        # comments above and `events.py` both name.
+        #
+        # `/clear` is not the exception it looks like. It emits `SessionEnd` and
+        # the process keeps accepting prompts, but the prompt after it goes to a
+        # NEW session id: measured 2026-09-06 on Claude Code 2.1.261, two prompts
+        # either side of one `/clear` wrote two different transcripts. So the id
+        # this mark is attached to really is finished, whatever the reason was,
+        # and no collector or adapter needs to read `reason` to know it.
+        "ended_at": None,
         # What one end-of-session `git status` observed in this session's working
         # repository, or None for both. None means NOT PROBED and never "clean":
         # only a harness whose adapter maps a session-end event can be probed at
@@ -427,6 +549,15 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # directory into one entry, so every rendering must say entries.
         "dirty": None,
         "changed": None,
+        # Whether this run holds a terminal a focus command could name. A BIT and
+        # never the target: SECURITY.md's focus section forbids echoing one, and
+        # what a page needs is only enough to render nothing dead. False covers
+        # the feature being off, a harness with no adapter, a session that
+        # predates this server run, a session running outside tmux, and a
+        # platform with no named case — Linux and Windows, where the section's
+        # own device grammar refuses `/dev/pts/N` and so no raise could ever
+        # succeed. A control that does nothing is what that False prevents.
+        "focusable": False,
         "rate_per_min": 0,
         # Output-token readings from the transcript scanner. The session count
         # is present only after a byte-zero scan; the turn count only after that
@@ -449,11 +580,35 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # have seen it. Claude only, since Claude is the only harness that
         # records whether a tool call failed (see records.tool_outcome).
         "loop": None,
-        # One element per subagent: `{"name": str, "model": str | None,
-        # "started_at": float | None}`. Both measurement keys are always present.
-        # None means not read, never "same as the parent" for model or "started
-        # with the parent" for time. A child start comes from its own transcript;
-        # mtime is last activity and cannot stand in for it.
+        # The token this harness's own CLI takes to re-enter this session, or None
+        # where there is nothing honest to publish. It exists because `sid` is not
+        # that token everywhere: Claude's `sid` is the eight-character transcript
+        # prefix, which is its key upstream, and `claude --resume 27d10654` answers
+        # "not a UUID and does not match any session title" (measured on 2.1.261).
+        # Codex's `sid` already is the id `codex resume` takes and it is repeated
+        # here rather than special-cased in the page, so the page's rule can be
+        # total: no token, no control.
+        #
+        # None is the declared value and no collector may infer one. A guessed
+        # command reads exactly like a measured one and fails in the reader's
+        # terminal rather than here. It passes `resume_token` on the way out, for
+        # the reason that function gives.
+        "resume_id": None,
+        # One element per subagent, carrying `name` (str), `model` (str | None),
+        # `started_at` (float | None), `active` (bool | None) and `parent`
+        # (str | None). Every measurement key is always present. None means not
+        # read, never "same as the parent" for model or "started with the
+        # parent" for time. A child start comes from its own transcript; mtime
+        # is last activity and cannot stand in for it.
+        #
+        # `active` is this element's own liveness and `parent` the member that
+        # spawned it, both added by DRC-4344 for teammates dispatched into their
+        # own panes. Claude measures them; every other collector publishes None
+        # on both, which says its liveness and parentage are unread rather than
+        # that the child is idle and parentless. The frontend therefore treats
+        # None as live, so a harness nobody has taught to measure this renders
+        # exactly as it did before. Only `False` withholds the pulse and the
+        # running count.
         #
         # Model is a key rather than a parallel list of only the children whose
         # model differs, because absence from such a map would mean either
@@ -471,8 +626,34 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # frontend, because both views need it and a re-derivation is how they
         # would come to disagree.
         "subagents": [],
+        "subagent_hierarchy": None,
+        "subagent_events": None,
         "tasks": [],
         "spacedock": None,
+        # The readings this row's collector could not take from a store it
+        # opened, by name, from the `UNREAD_*` vocabulary above. Empty is "no
+        # unread reading reported" and never "the store held nothing".
+        #
+        # It exists because the fourth state of a store read — opened, and
+        # nothing in it recognised — was silent on every surface. The good
+        # fields survive that, which is the whole reason it cannot be routed
+        # through `io.record_store_error`: that would withdraw a title and a
+        # workspace that were correct, and `cursor.py`'s `_meta` records the
+        # measurement behind refusing to. Nor does the error record help, because
+        # it reaches no reader: `state.store_errors` is read only by
+        # `diagnostics.diagnose`, appears in no `/api/data` key, and is named
+        # nowhere under `web/`. So a published field is the only way this fact
+        # reaches a screen, whichever way the error boundary is drawn.
+        #
+        # The reader's version of the problem is sharper than a missing value:
+        # a row whose store told us nothing renders as a session at its prompt
+        # when its mtime is stale, and as one *generating* when its mtime is
+        # fresh. Both are confident claims over an absence.
+        #
+        # A list of names rather than a boolean, because "something could not be
+        # read" is not actionable and because a bare False would then mean both
+        # "nothing failed" and "this collector never looks".
+        "source_gaps": [],
     }
 
 

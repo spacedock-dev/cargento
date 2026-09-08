@@ -115,7 +115,15 @@ class CargentoServerTest(RuntimeTestCase):
         # from defaults anywhere downstream would discard the port, window and
         # Spacedock choices the user actually asked for.
         args = cli.build_parser().parse_args(
-            ["--port", "6789", "--window-hours", "7.5", "--no-spacedock", "--no-git"]
+            [
+                "--port",
+                "6789",
+                "--window-hours",
+                "7.5",
+                "--no-spacedock",
+                "--no-git",
+                "--no-history",
+            ]
         )
         config, state = cli.build_runtime(args, started=1234.5, launcher_path=SERVER_PATH)
 
@@ -125,6 +133,11 @@ class CargentoServerTest(RuntimeTestCase):
         # this fail (git_probe_enabled stays True) while every other assertion here
         # still passes, which is the point of asserting it separately.
         self.assertFalse(config.git_probe_enabled)
+        # `--no-history` is DEC-6's off switch, asserted separately for the same
+        # reason: dropping its build_runtime line leaves history_enabled True, so
+        # the store would go on being written for a user who turned it off, which
+        # the promoted contract calls a security bug in as many words.
+        self.assertFalse(config.history_enabled)
         self.assertIs(config, state.config)
         self.assertEqual(1234.5, state.server_started)
 
@@ -530,7 +543,13 @@ class StoreRootsTest(unittest.TestCase):
         self.assertEqual(["/home/u/.gemini/tmp"], roots["gemini.tmp"])
         self.assertEqual(["/home/u/.copilot"], roots["copilot.root"])
         self.assertEqual(["/home/u/.cursor/chats"], roots["cursor.chats"])
-        self.assertEqual(["/home/u/.factory/projects"], roots["droid.projects"])
+        # Sessions first: droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/
+        # <id>.jsonl, and with `projects` as the only root three real transcripts
+        # discovered nothing (DRC-4331). `projects` stays as the fallback because
+        # no measurement says which versions wrote there.
+        self.assertEqual(
+            ["/home/u/.factory/sessions", "/home/u/.factory/projects"], roots["droid.projects"]
+        )
         self.assertEqual(["/home/u/.local/share/opencode"], roots["opencode.data"])
         self.assertEqual(["/home/u/.local/share/goose/sessions/sessions.db"], roots["goose.db"])
 
@@ -909,6 +928,37 @@ class OperatingSystemExpectationTest(unittest.TestCase):
             with self.subTest(home=home, encoded=encoded):
                 config = make_config(home=home)
                 self.assertEqual(expected, runtime_sessions.project_label(config, encoded))
+
+    def test_the_bounded_fallback_label_caps_the_encoded_path_at_two_segments(self) -> None:
+        # The fallback three collectors reach when a transcript carries no `cwd`.
+        # `project_label` returns every remaining segment of a home-relative path
+        # joined by `-`, so the cap belongs here: this is the only place a label
+        # is built by joining path segments, and therefore the only place the
+        # difference between a path and a hyphenated directory name is known.
+        cases = [
+            # The measured six-directory case, encoded the way Claude encodes one.
+            (
+                "/home/cargento-test",
+                (
+                    "-home-cargento-test-repos-recce-recce-cloud-infra"
+                    "--claude-worktrees-drc-3976-finish"
+                ),
+                "3976-finish",
+            ),
+            ("/Users/jared", "-Users-jared-alpha-beta-gamma-delta-epsilon-zeta", "epsilon-zeta"),
+            # Already two segments, so the cap is a no-op rather than a trim.
+            ("/Users/jared", "-Users-jared-repos-cargento", "repos-cargento"),
+            ("/Users/jared", "-somewhere-else", "somewhere-else"),
+            # The home sentinel is a label, not a path, and must survive whole.
+            (r"C:\Users\jared", "C--Users-jared", "(home)"),
+        ]
+        for home, encoded, expected in cases:
+            with self.subTest(home=home, encoded=encoded):
+                config = make_config(home=home)
+                self.assertEqual(
+                    expected,
+                    runtime_sessions.bounded_project_label(config, encoded),
+                )
 
     def test_project_from_cwd_is_parent_over_basename(self) -> None:
         # DRC-3963. Bare basename collapses every checkout named "subspace"

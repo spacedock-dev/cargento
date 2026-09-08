@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1251,3 +1251,178 @@ class AntigravityHookNestingTests(unittest.TestCase):
             self.assertIsInstance(
                 value, dict, f"top-level {key!r} must be a hook NAME mapping to its events"
             )
+
+
+class PromiseParityTests(unittest.TestCase):
+    """The promise map against the Visibility 2x2 board, both sides constructed.
+
+    `validate_promise_parity` shipped with no test, and it is the check in this
+    file whose two inputs are both hand-edited: a person writes
+    `docs/promise-map.md`, and a board editing session writes
+    `docs/visibility-2x2/items.json` through its own save endpoint. The check
+    works — measured against four constructed divergences, all four rejected —
+    so what follows is the missing evidence rather than a bug hunt, and the
+    agreement case sits in the same class so no failure case can pass because
+    its fixtures never parsed.
+
+    Every path here reports through `validation.error`; nothing raises. The two
+    keying decisions get their own tests because both are silent when wrong:
+    the board is keyed POSITIONALLY as `P{i+1}`, so a column reorder renumbers
+    every promise, and equality permits exactly one difference, the board's
+    first character upper-cased.
+    """
+
+    PROMISES: ClassVar[dict[str, str]] = {
+        "P1": "every session on this machine, across ten harnesses, on one screen",
+        "P2": "for each live session, what it is doing now and what it plans next",
+        "P3": "one queue of everything blocked on you",
+        "P4": "your quota in one place across vendors",
+        "P5": "nothing finishes invisibly",
+    }
+
+    COUNT_ERROR = "docs/visibility-2x2/items.json: 6 board columns against 5 promises in the map"
+
+    def _map_body(self, promises: dict[str, str]) -> str:
+        """The map as the regex in `validate_promise_parity` needs to read it.
+
+        P2's promise is wrapped across two lines on purpose: the check
+        whitespace-collapses the map side, and a fixture written all on one line
+        would leave that collapse untested.
+        """
+        blocks = []
+        for key, promise in promises.items():
+            body = promise.replace(" and ", " and\n", 1) if key == "P2" else promise
+            blocks.append(f"### {key}. A question a user asks?\n\n**We promise:** {body}\n")
+        return "# Promise map\n\n" + "\n".join(blocks) + "\n"
+
+    def _board(self, promises: dict[str, str]) -> dict[str, Any]:
+        """The board as it renders each promise: standing alone, so capitalized."""
+        columns = []
+        for promise in promises.values():
+            flat = " ".join(promise.split())
+            columns.append({"promise": flat[:1].upper() + flat[1:]})
+        return {"columns": columns}
+
+    def run_case(self, map_body: str | None = None, board: object = None) -> list[str]:
+        """Both files under a throwaway ROOT; `None` leaves that side absent."""
+        with tempfile.TemporaryDirectory(prefix="cargento-promise-parity-") as directory:
+            root = Path(directory)
+            (root / "docs/visibility-2x2").mkdir(parents=True)
+            if map_body is not None:
+                (root / "docs/promise-map.md").write_text(map_body, encoding="utf-8")
+            if board is not None:
+                (root / "docs/visibility-2x2/items.json").write_text(
+                    json.dumps(board), encoding="utf-8"
+                )
+            validation = validator.Validation()
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_promise_parity(validation)
+            return [str(message) for message in validation.errors]
+
+    def test_a_matching_pair_reports_nothing(self) -> None:
+        errors = self.run_case(self._map_body(self.PROMISES), self._board(self.PROMISES))
+        self.assertEqual([], errors)
+
+    def test_a_board_copy_that_kept_the_lowercase_lead_in_is_rejected(self) -> None:
+        # The permitted difference is exactly one character, in one direction. A
+        # board copy pasted straight out of the map keeps the map's lowercase
+        # opening, which is not the sentence the board renders.
+        board = {"columns": [{"promise": p} for p in self.PROMISES.values()]}
+        errors = self.run_case(self._map_body(self.PROMISES), board)
+        self.assertEqual(5, len(errors), errors)
+        self.assertTrue(all("disagrees with the promise map" in e for e in errors), errors)
+
+    def test_a_diverging_promise_names_its_own_p_number(self) -> None:
+        board = self._board(self.PROMISES)
+        board["columns"][0]["promise"] = "A burn-rate projection per session"
+        errors = self.run_case(self._map_body(self.PROMISES), board)
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("P1 disagrees with the promise map", errors[0])
+        self.assertIn("docs/visibility-2x2/items.json", errors[0])
+
+    def test_swapping_two_columns_is_caught_on_both(self) -> None:
+        # Why the board is keyed positionally rather than by set membership.
+        # Both promises are still present and still spelled correctly; only the
+        # numbering moved, and a set comparison would call this file clean.
+        board = self._board(self.PROMISES)
+        board["columns"][0], board["columns"][1] = board["columns"][1], board["columns"][0]
+        errors = self.run_case(self._map_body(self.PROMISES), board)
+        self.assertEqual(2, len(errors), errors)
+        self.assertIn("P1 disagrees", errors[0])
+        self.assertIn("P2 disagrees", errors[1])
+
+    def test_a_column_with_no_promise_key_is_rejected(self) -> None:
+        board = self._board(self.PROMISES)
+        board["columns"][2] = {"title": "Waiting"}
+        errors = self.run_case(self._map_body(self.PROMISES), board)
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("P3 disagrees", errors[0])
+
+    def test_an_extra_board_column_is_reported_as_a_count_and_masks_the_rest(self) -> None:
+        # The count mismatch returns early, so this is the one divergence that
+        # reports a single line however much else has drifted. The second edit
+        # below would be its own message on a run where the counts agree.
+        board = self._board(self.PROMISES)
+        board["columns"].append({"promise": "A sixth column nobody promised"})
+        board["columns"][0]["promise"] = "Also wrong, and invisible until the count agrees"
+        errors = self.run_case(self._map_body(self.PROMISES), board)
+        self.assertEqual([self.COUNT_ERROR], errors)
+
+    def test_a_map_missing_one_p_number_blames_the_map(self) -> None:
+        # Counts agree, so this reaches the per-column loop: five columns
+        # against P1, P2, P4, P5, P6. The gap is the map's, and the message says
+        # so rather than accusing the board.
+        promises = {
+            key: value
+            for key, value in {**self.PROMISES, "P6": "a sixth promise"}.items()
+            if key != "P3"
+        }
+        errors = self.run_case(self._map_body(promises), self._board(promises))
+        self.assertTrue(any("the map has no P3 promise" in e for e in errors), errors)
+        self.assertTrue(any(e.startswith("docs/promise-map.md:") for e in errors), errors)
+
+    def test_a_two_digit_promise_number_is_invisible_to_the_regex(self) -> None:
+        r"""`P\d` is single-digit, so `### P10.` is not a promise as far as this reads.
+
+        Pinned deliberately rather than discovered later. The check still fails
+        closed — the count mismatch catches it — but it reports the wrong side,
+        blaming the board for a column the map does define. Whoever adds a tenth
+        promise should widen the regex and delete this test.
+        """
+        promises = {**self.PROMISES, "P10": "a tenth promise the regex cannot see"}
+        errors = self.run_case(self._map_body(promises), self._board(promises))
+        self.assertEqual([self.COUNT_ERROR], errors)
+
+    def test_a_missing_file_on_either_side_is_reported_once(self) -> None:
+        for present in ("map", "board"):
+            with self.subTest(present=present):
+                errors = self.run_case(
+                    self._map_body(self.PROMISES) if present == "map" else None,
+                    self._board(self.PROMISES) if present == "board" else None,
+                )
+                self.assertEqual(1, len(errors), errors)
+                self.assertIn("must both exist", errors[0])
+
+    def test_a_board_without_a_columns_list_is_rejected(self) -> None:
+        errors = self.run_case(self._map_body(self.PROMISES), {"columns": {"P1": "wrong shape"}})
+        self.assertTrue(any("must carry a columns list" in e for e in errors), errors)
+
+    def test_the_runtime_files_mode_never_reaches_this_check(self) -> None:
+        # `--runtime-files` points at an installed copy with no repository
+        # around it, where neither input exists. It short-circuits before any
+        # repository check runs; a refactor that moved the short-circuit later
+        # would make every installed-copy run report a missing promise map.
+        with (
+            mock.patch.object(validator, "check_installed_runtime", return_value=0) as installed,
+            mock.patch.object(validator, "validate_promise_parity") as parity,
+            mock.patch.object(sys, "argv", ["validate_plugins.py", "--runtime-files", "/nowhere"]),
+        ):
+            self.assertEqual(0, validator.main())
+        installed.assert_called_once()
+        parity.assert_not_called()
+
+    def test_the_shipped_pair_agrees(self) -> None:
+        """The regression this class exists for, asserted against the real files."""
+        validation = validator.Validation()
+        validator.validate_promise_parity(validation)
+        self.assertEqual([], validation.errors)

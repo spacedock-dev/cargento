@@ -111,11 +111,13 @@ from __future__ import annotations
 
 import hmac
 import secrets
+import subprocess
 import threading
 import time
 from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import events as runtime_events
+from cargento_runtime import focus as runtime_focus
 from cargento_runtime import git_status as runtime_git
 from cargento_runtime import io as runtime_io
 from cargento_runtime import probe as runtime_probe
@@ -145,9 +147,24 @@ ASK_GENERATION = "*ask"
 def _spawn_thread(run: Callable[[], None]) -> None:
     """One daemon thread per probe, matching `quota._spawn_thread`.
 
-    A pool would bound the thread count, and it is not worth one here: the probe
-    fires on `session_ended` only, at most once per edge, and the timeout bounds
-    how long each lives.
+    Still no pool, and the reason is no longer the cadence. This docstring used to
+    say the probe "fires on `session_ended` only, at most once per edge, and the
+    timeout bounds how long each lives" — all true, and none of it a bound on how
+    many run at once. Measured (DRC-4443): the event budget allows 40 burst plus
+    20/s for the probe's whole 10 s life, so 240 live probe threads per harness
+    and 960 across the four normalizers, each a real `git status` in a real
+    repository.
+
+    What bounds it is `Observation._git_inflight`, claimed under the lock before
+    a dispatch and released in a `finally` — `quota`'s `usage_fetch_inflight`
+    pattern, which this class already reuses for the focus command. A pool is
+    still not it, and the reason is refuse rather than queue: a pool bounds the
+    subprocesses too (measured, `ThreadPoolExecutor(max_workers=4)` over 40
+    tasks each spawning one subprocess peaked at 4 concurrent, because a queued
+    task holds no subprocess), but it bounds them by making probes wait, and its
+    queue is itself unbounded. A probe that waits behind thirty others answers
+    about a tree that has moved on. The in-flight set refuses instead, which is
+    the same trade as the maps beside it.
     """
     threading.Thread(target=run, name="cargento-git-probe", daemon=True).start()
 
@@ -200,9 +217,24 @@ class Observation:
         # `claude -p` the stop and the exit arrive back to back, so a mark held
         # there is destroyed milliseconds after the only sessions this answers
         # for have finished (DRC-4035). Narrowing what `session_ended` retires
-        # was the alternative, and it is worse: the event covers `/clear` as well
-        # as exit, so a cleared session would read finished forever.
+        # was the alternative and was rejected on a premise since measured wrong
+        # — see `_ended` below; it stays rejected because retiring the ledger
+        # whole is what keeps a retirement coherent under arrival order.
         self._finished: dict[SessionKey, float] = {}
+        # (harness, sid) -> the stamp of the end observed for that session ID.
+        # Outside `_overlays` for `_finished`'s reason, and set by the very event
+        # that pops the ledger. A different fact from the stop above: that one
+        # marks a turn ending, and a session whose turn stopped is usually still
+        # open and typeable (DRC-4036).
+        #
+        # `/clear` is not a counter-example even though it fires `session_ended`
+        # while the process keeps running. Measured on Claude Code 2.1.261
+        # (2026-09-06): the prompt after a `/clear` goes to a NEW session id, and
+        # two prompts either side of one `/clear` wrote two different
+        # transcripts. So the id this is keyed on really is finished, and nothing
+        # here needs the event's `reason` — which is why `ALLOWED_FIELDS` does
+        # not carry one.
+        self._ended: dict[SessionKey, float] = {}
         # (harness, sid) -> the last end-of-session git reading for it. Outside
         # `_overlays` for the same reason `_finished` is: `session_ended` pops that
         # ledger whole, and `session_ended` is the only edge that produces one of
@@ -213,9 +245,62 @@ class Observation:
         # describes, and the reducer's own clears lapse with the overlay that
         # carries them while a reading does not.
         self._git: dict[SessionKey, runtime_git.GitStatus] = {}
+        # The session keys with a probe in flight, on `quota`'s per-vendor
+        # pattern (`usage_fetch_inflight`, discarded in its own `finally`) and on
+        # `_focus_inflight`'s two hundred lines below. Both a per-key gate and a
+        # ceiling, because they answer different callers: the per-key gate stops a
+        # redelivered or looped end from putting one repository under N probes,
+        # and `git_probe_max_inflight` stops a caller that varies the session id,
+        # which is a payload field. `_spawn_thread`'s docstring carries what the
+        # unbounded ceiling measured.
+        #
+        # The accepted cost, which is new on this path: refusing an overlapping
+        # probe keeps the reading the first one produces, so a row can hold a
+        # reading up to `git_probe_timeout_sec` old — and indefinitely so if no
+        # further edge arrives. That is the refuse-rather-than-evict trade
+        # `_mark_git` and `quota` already make, and a stale reading of the tree a
+        # session stopped in is worth more than N probes of it.
+        self._git_inflight: set[SessionKey] = set()
+        # (harness, sid) -> the terminal a raise would name. Held beside `_git`
+        # but NOT bounded the same way (see `_focus_at`), and not in the overlay
+        # ledger either: an overlay is a display claim that lapses, while a pane
+        # is a durable fact about where the session runs. Not the observer sidecar
+        # either — that writes to disk, and SECURITY.md's focus section says
+        # nothing is written.
+        #
+        # In-process, which is a limitation rather than an implementation detail:
+        # only a session that posted an event to THIS server run can carry a
+        # target, so a session predating the run is unfocusable until it emits
+        # another one. There is no store behind this map by design.
+        self._focus: dict[SessionKey, runtime_focus.Target] = {}
+        # (harness, sid) -> when this run last saw an event for that session.
+        # This is the target map's bound, and it is a CLOCK rather than a row
+        # set. `_finished` and `_git` are pruned by `note_rows` because both are
+        # display state: a mark for a row no collection produces can never
+        # render, so dropping it costs nothing and it comes back with the row.
+        # A target is not display state. It is a durable fact about where the
+        # session runs, gathered once on `session_started` and re-gathered never,
+        # so a collection that misses the row — the transcript not yet on disk,
+        # or a row aged past `window_hours` and used again — would destroy it
+        # permanently and leave the control dead for the rest of the session.
+        self._focus_at: dict[SessionKey, float] = {}
+        # The focus command's floor and in-flight gate, on `quota`'s pattern:
+        # `usage_poll_floor_sec` beside `usage_fetch_inflight`. A raise is the
+        # one thing Cargento does that it cannot undo and that is visible outside
+        # Cargento, so a looped request must not be able to repeat it.
+        self._focus_last_at = 0.0
+        self._focus_inflight = False
+        # This run's focus consumer key. Its own secret rather than a derived
+        # per-harness token: those are byte-identical to the ones
+        # `POST /api/events/<harness>` accepts, so handing the browser one to
+        # raise a window would hand it the power to forge that harness's
+        # lifecycle state.
+        self._focus_secret = secrets.token_hex(32)
+        # Injected so the tests can drive a raise without a tmux server.
+        self._focus_runner: Callable[..., Any] = subprocess.run
         # Injected so the tests can drive the edge without a repository, and so a
-        # probe can be made to block on demand: AC3's oracle is that `submit`
-        # returns while this is still running.
+        # probe can be made to block on demand: `submit` must
+        # return while this is still running.
         self._git_prober: Callable[[str], runtime_git.GitStatus | None] = self._probe_git
         self._spawn: Callable[[Callable[[], None]], None] = _spawn_thread
         # sid -> (first seen, attempts). An event whose session no collection has
@@ -332,9 +417,23 @@ class Observation:
                 self._overlays.pop(key, None)
                 self._pending.pop(key, None)
                 self._bump("retired")
-                if self.config.git_probe_enabled and event.cwd:
-                    # Noted here and dispatched below, once the lock is released.
+                self._mark_ended(key, event.timestamp)
+                # Claimed here and dispatched below, once the lock is released.
+                # The claim has to happen under the lock even though the dispatch
+                # must not: two handler threads reaching this with the same key is
+                # exactly the case being refused. `_claim_git` is last in the
+                # conjunction because it has an effect, so the two flag checks
+                # have to be what short-circuits it away.
+                if self.config.git_probe_enabled and event.cwd and self._claim_git(key):
                     probe_cwd = event.cwd
+                # The session is over, so the pane it ran in is nobody's target.
+                # Retired here rather than in `_mark_finished`, which is where
+                # the git reading goes: that method pops on a WORKING overlay,
+                # and the hook sends terminal identity on `session_started`
+                # alone, so retiring there would drop every target at the first
+                # `turn_started` and leave the feature unable to focus anything.
+                self._focus.pop(key, None)
+                self._focus_at.pop(key, None)
             elif overlay is not None:
                 self._remember(key, overlay)
                 self._mark_finished(key, overlay)
@@ -344,6 +443,8 @@ class Observation:
                 # replaying overlays over a cached read.
                 self._last_reconcile_at = 0.0
                 self._probe_stamp = None
+            self._lift_ended(key, event, overlay)
+            self._mark_focus(key, event)
             self._dirty[event.harness] = self._dirty.get(event.harness, 0) + 1
             if overlay is not None and overlay.kind == runtime_events.OVERLAY_NEEDS_INPUT:
                 # The exemption this module's docstring has always claimed, and
@@ -368,7 +469,17 @@ class Observation:
             # hook open past its timeout. Dispatching from inside the `with` block
             # above would fix only the second of those.
             cwd = probe_cwd
-            self._spawn(lambda: self._probe_and_mark(key, cwd))
+            try:
+                self._spawn(lambda: self._probe_and_mark(key, cwd))
+            except RuntimeError:
+                # `Thread.start` raises this when the interpreter can start no
+                # more threads, which is the failure the ceiling above exists to
+                # keep away from. Releasing the claim matters anyway: nothing else
+                # would, and this session would then be unprobeable for the life
+                # of the process.
+                with self._lock:
+                    self._git_inflight.discard(key)
+                    self._bump("git.failed")
         return "accepted"
 
     def _remember(self, key: SessionKey, overlay: runtime_events.Overlay) -> None:
@@ -422,9 +533,176 @@ class Observation:
         # so a redelivered older stop must not pull the mark backwards.
         self._finished[key] = max(self._finished.get(key, 0.0), overlay.at)
 
+    def _mark_ended(self, key: SessionKey, at: float) -> None:
+        """Remember that this session id ended.
+
+        Refused rather than evicted at the same cap `_remember` uses, and `max`
+        rather than assignment for `_mark_finished`'s reason: delivery is
+        at-least-once and possibly reordered, so a redelivered end must not pull
+        the stamp backwards.
+        """
+        if key not in self._ended and len(self._ended) >= self.config.event_overlay_max_sessions:
+            self._bump("ended.refused")
+            return
+        self._ended[key] = max(self._ended.get(key, 0.0), at)
+
+    def _lift_ended(
+        self,
+        key: SessionKey,
+        event: runtime_events.Event,
+        overlay: runtime_events.Overlay | None,
+    ) -> None:
+        """Forget an end once the session id is observed in use again.
+
+        Three things say that: a `session_started`, which `claude --resume <id>`
+        emits for the id it reuses, and a working or needs-input overlay, which
+        is a session doing something. A `turn_stopped` is deliberately not one of
+        them — every tidy ending has one in front of it, so lifting on idle would
+        erase the mark for exactly the endings this exists to show.
+
+        `session_started` needs the explicit path because `overlay_for` returns
+        None for it, so it reaches neither `_remember` nor `_mark_finished`.
+
+        The comparison is on EVENT stamps rather than arrival order, and that is
+        the half arrival order cannot do: a reordered delivery is precisely one
+        whose arrival order lies about causality. The a1 arm of
+        docs/captures/claude/session-end-2.1.261-macos.jsonl had its `SessionEnd`
+        land 5.581 s after the last Stop, which is longer than a short headless
+        run, so one of that run's own earlier hook POSTs arriving after the end
+        is a real ordering rather than a hypothetical.
+        """
+        if runtime_events.reopens_session(event):
+            at = event.timestamp
+        elif overlay is not None and overlay.kind in {
+            runtime_events.OVERLAY_WORKING,
+            runtime_events.OVERLAY_NEEDS_INPUT,
+        }:
+            at = overlay.at
+        else:
+            return
+        recorded = self._ended.get(key)
+        if recorded is not None and at >= recorded:
+            del self._ended[key]
+
+    def _mark_focus(self, key: SessionKey, event: runtime_events.Event) -> None:
+        """Record where this session's terminal is, if the event carried it.
+
+        Refused rather than evicted at the same cap `_remember` uses, for the
+        same reason: evicting somebody else's target to make room would drop
+        whichever happened to be oldest, and a target does not get to cost an
+        alert. The grammar runs here as well as at the raise, so a value that
+        could never build a command is never stored either.
+
+        Every event for a session already holding a target refreshes its stamp,
+        which is what bounds the map: a session still emitting events is still
+        running in the pane it named, and one that has gone silent for a whole
+        row window can no longer be clicked because its row is no longer
+        produced. That is the only bound besides `session_ended`, because Codex's
+        adapter has no `SessionEnd` mapping at all and would otherwise never
+        retire a target.
+
+        Recording is gated on the platform the case was measured on. The named
+        case is macOS, and the device grammar `SECURITY.md` states admits no
+        separator after `/dev/`, so `/dev/pts/N` — the client device of every
+        terminal emulator and ssh session on Linux — can never pass it. Recording
+        a target there would publish `focusable: true` for a control that spends
+        two subprocesses and returns false every time, which is exactly what the
+        section forbids: "A session matching no named case is not focused, and
+        the reader is told that rather than shown a control that does nothing."
+        Read off the config rather than `sys.platform` for `notify_mac`'s reason,
+        so both branches run on every CI runner.
+        """
+        if not self.config.focus_enabled or self.config.platform_name != "darwin":
+            return
+        now = self.clock()
+        if key in self._focus:
+            self._focus_at[key] = now
+        target = runtime_focus.target_from(event.tmux_socket, event.tmux_pane, event.tmux_server)
+        if target is None:
+            return
+        if key not in self._focus and len(self._focus) >= self.config.event_overlay_max_sessions:
+            self._bump("focus.refused")
+            return
+        self._focus[key] = target
+        self._focus_at[key] = now
+
+    def focus_target(self, harness: str, sid: str) -> runtime_focus.Target | None:
+        """This row's terminal, or None if this run never observed one."""
+        with self._lock:
+            return self._focus.get((harness, sid))
+
+    def focusable(self, harness: str, sid: str) -> bool:
+        """Whether a target exists. A bit, never the target itself."""
+        return self.focus_target(harness, sid) is not None
+
+    def focus_capability(self) -> str:
+        """This run's focus consumer key. Never a harness token."""
+        return self._focus_secret
+
+    def focus_authorized(self, presented: str | None) -> bool:
+        """Whether a caller proved it holds the focus capability.
+
+        `compare_digest` and the `isascii` guard for `authorized`'s reasons: a
+        short-circuiting comparison leaks the shared prefix, and `http.client`
+        decodes header bytes as latin-1, so a single high byte would otherwise
+        raise inside the handler rather than being refused.
+        """
+        if not presented or not presented.isascii():
+            return False
+        return hmac.compare_digest(self._focus_secret, presented)
+
+    def claim_focus(self) -> bool:
+        """Take the one focus slot, or refuse. Release it with `release_focus`."""
+        now = self.clock()
+        with self._lock:
+            if self._focus_inflight or now - self._focus_last_at < self.config.focus_floor_sec:
+                self._bump("focus.rate")
+                return False
+            self._focus_inflight = True
+            self._focus_last_at = now
+            return True
+
+    def release_focus(self) -> None:
+        with self._lock:
+            self._focus_inflight = False
+
+    def raise_focus(self, target: runtime_focus.Target, *, runner: Any = None) -> bool:
+        """Run the raise, outside the lock. Returns whether it happened.
+
+        Outside the lock for `_probe_and_mark`'s reason one feature over: this
+        spawns processes, and holding the coordinator lock across them would
+        stall every arriving event and the collection loop behind a command whose
+        whole budget belongs to somebody else's multiplexer.
+        """
+        return runtime_focus.raise_terminal(
+            target,
+            timeout_sec=self.config.focus_timeout_sec,
+            runner=self._focus_runner if runner is None else runner,
+        )
+
     def _probe_git(self, cwd: str) -> runtime_git.GitStatus | None:
         """The real probe, bound to this run's timeout. Replaced wholesale in tests."""
         return runtime_git.probe(cwd, timeout_sec=self.config.git_probe_timeout_sec)
+
+    def _claim_git(self, key: SessionKey) -> bool:
+        """Take this session's probe slot, or refuse. Caller must hold `_lock`.
+
+        Two gates on one set: this key is not already being probed, and the
+        process is under its ceiling. `_git_inflight`'s comment carries why both.
+
+        A counter each, rather than one refusal count for both, because they read
+        differently to whoever is looking: an overlapping end for one session is
+        ordinary under at-least-once delivery, while a saturated ceiling says the
+        process is turning away sessions that have nothing wrong with them.
+        """
+        if key in self._git_inflight:
+            self._bump("git.inflight")
+            return False
+        if len(self._git_inflight) >= self.config.git_probe_max_inflight:
+            self._bump("git.saturated")
+            return False
+        self._git_inflight.add(key)
+        return True
 
     def _probe_and_mark(self, key: SessionKey, cwd: str) -> None:
         """Run one probe off-thread, then take the lock only to record two scalars.
@@ -435,15 +713,23 @@ class Observation:
         anything git raises here can carry a path in its text.
         """
         try:
-            result = self._git_prober(cwd)
-        except Exception:  # noqa: BLE001 — a raising probe must not kill its own thread
+            try:
+                result = self._git_prober(cwd)
+            except Exception:  # noqa: BLE001 — a raising probe must not kill its own thread
+                with self._lock:
+                    self._bump("git.failed")
+                return
+            if result is None:
+                return
             with self._lock:
-                self._bump("git.failed")
-            return
-        if result is None:
-            return
-        with self._lock:
-            self._mark_git(key, result)
+                self._mark_git(key, result)
+        finally:
+            # In a `finally` rather than beside each return, for `quota`'s reason
+            # at `usage_fetch_inflight`: a probe that raised must not leave the
+            # key claimed, or the raise disables the feature for that session
+            # rather than costing it one reading.
+            with self._lock:
+                self._git_inflight.discard(key)
 
     def _mark_git(self, key: SessionKey, result: runtime_git.GitStatus) -> None:
         """Record a reading, refusing rather than evicting at the same cap.
@@ -462,8 +748,10 @@ class Observation:
 
         None is the whole of the disclosure and it covers every cause: a harness
         whose adapter maps no session-end event, `--no-git`, a directory that is not
-        a repository, an event with no `cwd`, git absent from PATH, a probe that
-        timed out, and a session observed working or waiting since the end that
+        a repository, an event with no `cwd`, git absent from PATH or resolving to a
+        relative path, a probe that timed out, a probe refused because one was
+        already in flight for this session or the process was at its ceiling, and a
+        session observed working or waiting since the end that
         produced the reading — `_mark_finished` retires the reading there, with the
         stop mark it belongs to. `acquisition` cannot see any of them — it separates
         adapter-less harnesses from the rest, and Codex and Antigravity have adapters
@@ -481,6 +769,17 @@ class Observation:
         """
         with self._lock:
             return self._finished.get((harness, sid), 0.0)
+
+    def ended_at(self, harness: str, sid: str) -> float:
+        """When this session id was observed to end, or 0.0 if it never was.
+
+        0.0 means NOT OBSERVED and never "did not end". Only a SIGKILL ends a
+        Claude session silently, but the six harnesses with no event adapter, a
+        session that predates this server run and `--no-events` all land here
+        too, so an absent end is never evidence a session is still alive.
+        """
+        with self._lock:
+            return self._ended.get((harness, sid), 0.0)
 
     def note_ask(self) -> None:
         """A session registered a question. Bring the next collection forward.
@@ -530,7 +829,7 @@ class Observation:
 
         Read-only, and it publishes the reducer's inputs rather than a verdict.
         Why it exists, how to read it, and what `counters` disambiguates are in
-        docs/design-needs-input.md (N-5).
+        [N-5](docs/design-needs-input.md#n-5).
 
         `time_gate_open` is `Overlay.applies`, named for what it is because
         `applies` on the wire reads as "this overlay won", which it does not
@@ -594,6 +893,28 @@ class Observation:
                 del self._finished[key]
             for key in [k for k in self._git if k not in keys and k not in self._overlays]:
                 del self._git[key]
+            # NOT the rule above, and the difference is the point. `session_ended`
+            # pops this session's overlays, so straight after an end the key is in
+            # neither the collected set nor the ledger — exactly the two
+            # conditions above — and a mark retired there can never be re-earned,
+            # because a session fires `session_ended` once. `_finished` tolerates
+            # an over-eager prune only because the next `turn_stopped` re-supplies
+            # it. So this retires by time instead: past one display window the row
+            # is no longer produced from that id's activity and cannot come back.
+            for key in [
+                k
+                for k, at in self._ended.items()
+                if k not in keys and now - at >= self.config.ended_mark_ttl_sec
+            ]:
+                del self._ended[key]
+            # A target is retired by time and never by a row set — see
+            # `_focus_at`. `session_ended` is the ordinary retirement; this
+            # covers the session that dies without one, which for Codex is every
+            # session, its adapter having no `SessionEnd` mapping.
+            ttl = self.config.focus_target_ttl_sec
+            for key in [k for k, at in self._focus_at.items() if now - at >= ttl]:
+                del self._focus[key]
+                del self._focus_at[key]
             for key in list(self._overlays):
                 if key in keys:
                     self._pending.pop(key, None)

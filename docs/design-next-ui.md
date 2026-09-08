@@ -4,6 +4,13 @@ This document records the interface first released behind `?next=true` and the d
 survived its promotion to the default dashboard. The runtime module map remains in
 [design-runtime-architecture.md](design-runtime-architecture.md).
 
+It is a record of rationale, including the direction that was rejected, and it is written for
+whoever changes this interface next. What the interface promises a user, and what backs each
+promise, is owned by [promise-map.md](promise-map.md). Before and after captures live with the
+experiment that produced them, in
+[the session operations board walkthrough](future-ui-exploration/presentations/future-ui-session-operations-board/README.md),
+and they explain a progression rather than a product claim.
+
 ## NUI-1: promotion leaves one precomputed page
 
 The preview originally used a second shell, stylesheet, script list, and server byte string so its
@@ -139,11 +146,11 @@ sessions overview were both right, because both read `state`. A payload has one 
 going on, and a block that derives its own from a different field will eventually contradict the
 rest of the page.
 
-DONE is deliberately narrower. It walks each project session and its Claude task list in payload
-order, selecting only tasks whose published status is `completed`. It does not sort by task times or
-deduplicate subjects. Task identity is local to a session, and the same subject can represent two
-real pieces of work. Spacedock entities are not a completion source: terminal entities do not reach
-this payload, and the remaining plan rows carry no completed marker.
+DONE is deliberately narrower. It walks each project session and whatever task list that session
+published, in payload order, selecting only tasks whose published status is `completed`. It does not
+sort by task times or deduplicate subjects. Task identity is local to a session, and the same
+subject can represent two real pieces of work. Spacedock entities are not a completion source:
+terminal entities do not reach this payload, and the remaining plan rows carry no completed marker.
 
 Both blocks render an explicit empty sentence. DONE names the payload because it is a view of the
 latest snapshot, not a retained history or a claim that a project has never completed work. A
@@ -222,28 +229,38 @@ numeric index to the existing `/api/answer` endpoint. Only `answered: true` conf
 otherwise the question stays put with a failure note keyed to its ask ID. There is no optimistic
 removal.
 
-Task provenance stays Claude-only because no other collector publishes that list. The count is
-derived from the rows being rendered, and their payload order is unchanged. Subagents also keep
-payload order. Their live dot pulses unless reduced motion disables animation, and elapsed time
-appears only when `started_at` was measured, using the NUI-5 duration grammar; model names are
-outside this view. For working sessions,
-the footer prefers measured turn output tokens. For waiting and idle sessions, it prefers the
-measured session total. Either state falls back to the other measured source and labels the visible
-number `this turn` or `this session` from the source it actually chose. An absent reading stays
-absent and a real zero stays visible, so a lifetime total cannot read as if it described the current
-request.
+Task provenance is whichever collectors fill the list, not a harness allowlist. Two do today,
+`collectors/claude.py` and `collectors/codex.py`, and both readers gate on the published field
+rather than on the harness name so a third needs no edit here. The gate was once written against the
+harness name, while Claude was the only collector filling the field, and that spelling hid a Codex
+plan the moment one arrived; the comments in `next-session.js` and `next-activity.js` record the
+change. The count is derived from the rows being rendered, and their payload order is unchanged.
+Subagents also keep payload order. Their live dot pulses unless reduced motion disables animation,
+and elapsed time appears only when `started_at` was measured, using the NUI-5 duration grammar;
+model names are outside this view. For working sessions, the footer prefers measured turn output
+tokens. For waiting and idle sessions, it prefers the measured session total. Either state falls
+back to the other measured source and labels the visible number `this turn` or `this session` from
+the source it actually chose. An absent reading stays absent and a real zero stays visible, so a
+lifetime total cannot read as if it described the current request.
 
 A new session endpoint would duplicate the current payload and expand the HTTP surface without
 supplying new evidence. The `next-session.js` part renders from the canonical payload and adds no
 retained history; that decision remains DRC-4234.
 
-## NUI-9: the workstream starts when this tab starts observing
+## NUI-9: the workstream starts from the store, then from this tab
 
-The server still publishes one current snapshot. `next-workstream.js` therefore builds a bounded
-ledger only from advancing payloads seen by this tab. The first successful payload establishes the
-session and ask baseline without turning existing state into invented history. Later payloads add
-state transitions, newly measured turn stops and newly observed asks in timestamp order. Replayed
-payloads add nothing.
+`next-workstream.js` builds a bounded ledger from the local history the server publishes plus every
+advancing payload this tab sees. On the first payload it replays `history`, the record of state
+changes DRC-4234 authorised the server to keep. Each stored record becomes a batch holding every
+session known at that stamp, so a replayed window and a polled one are the same shape: an
+observation holds until the next one arrives. A session's first stored record is the baseline a
+later change is measured against and is not listed as a change itself, and its last stored record
+closes its span rather than opening one: the store records what changed, never when the server
+stopped, so nothing observed the end of a final `working` record and holding it to the first payload
+counted a closed laptop as time an agent worked. With the store off, or on a
+machine that has never run with it, the first payload establishes the session and ask baseline and
+nothing older exists. Later payloads add state transitions, newly measured turn stops and newly
+observed asks in timestamp order. Replayed payloads add nothing.
 
 Every advancing payload also contributes one sample per session with its project, state and
 measured token rate. These samples are the evidence the later delegation panel needs; transitions
@@ -266,14 +283,18 @@ tail-bounded, a defensive path far outside the measured population.
 
 The section names the retained span rather than copying the mock's fixed six-hour label. Before a
 span exists it says `since this tab opened`; elapsed labels come from payload `generated` times, not
-the viewer clock. Its header always keeps the `N of M unattended` ratio; expansion appends the
-retained span instead of replacing that ratio. The rail is empty until a post-baseline event arrives
-and says so explicitly. Reloading discards the ledger. Only the collapsed preference survives,
-under the next bundle's storage namespace and behind a storage failure boundary.
+the viewer clock. The span reads in days once it passes one, because the shipped retention is
+fourteen of them and `last 336h` is not a figure anyone reads as two weeks. Its header always keeps
+the `N of M unattended` ratio; expansion appends the retained span instead of replacing that ratio.
+The rail is empty until an event arrives and says which window it found none in, rather than
+asserting the tab's lifetime. Reloading discards the in-tab ledger and rebuilds it from the store.
+Only the collapsed preference survives in the browser, under the next bundle's storage namespace and
+behind a storage failure boundary.
 
 Rendering consumes the ledger through a project-window function rather than reading its mutable
-arrays. A future server history source can replace that function without changing the rail, but no
-such source or retention policy is implied here. DRC-4234 owns that later decision.
+arrays. That is what let the server history source arrive without changing the rail: the seeding
+pass appends groups through the same path a payload takes, and the renderer never learned it had
+happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
@@ -302,10 +323,12 @@ an autonomous-observer decision.
 MCP operation, persisted runtime state or model call, so the audited mutating-route inventory and
 the direction invariant do not change.
 
-## NUI-11: delegation is wall time inside this tab's evidence
+<a id="nui-11"></a>
 
-The project rail's delegation figure integrates adjacent sample batches from the in-tab workstream
-ledger. A batch owns the wall-clock interval until the next advancing payload, clipped to the
+## NUI-11: delegation is wall time inside the observed evidence
+
+The project rail's delegation figure integrates adjacent sample batches from the workstream ledger,
+whether they came from this tab's own polls or from the store NUI-9 seeds it with. A batch owns the wall-clock interval until the next advancing payload, clipped to the
 displayed window. That makes an irregular refresh cost the time it actually spans instead of one
 vote in a poll-count average. A non-empty interval with at least one working session and no gate
 adds to the numerator, denominator and observed coverage. Any `needs_input` session makes the
@@ -328,15 +351,20 @@ Ten minutes is the minimum observed evidence window because each published `rate
 itself a trailing ten-minute mean. An all-idle window still has no denominator and remains
 withheld. Below that floor the block says `no figure yet` and prints no percentage, bar, token
 rate or human-turn count. The headline grows with the retained span up to six hours, the window
-the ledger cap was sized to preserve at the measured 22-session population. A trend needs two
-independent full observed windows: it compares the latest six hours with the six before them only
-when twelve retained hours exist. At the measured population the cap may prevent that condition,
-in which case no trend is more honest than a flat arrow.
+the ledger cap was sized to preserve at the measured 22-session population. That ceiling is the
+tab's, not the store's: a seeded window is measured whole, because retention there is the reader's
+own setting and clamping a fourteen-day store to six hours would report six hours under a caption
+naming two weeks. A trend needs two independent full observed windows: it compares the latest six
+hours with the six before them only when twelve retained hours exist. At the measured population the
+cap may prevent that condition, in which case no trend is more honest than a flat arrow.
 
 For each delegated interval, the session rates in that payload are summed and those per-payload
-aggregates are time-weighted over delegated wall time. A session whose harness cannot measure rate
-makes the result a `≥` floor; if nothing in the delegated intervals has a measured rate, or no
-delegated interval exists, the token figure is absent rather than zero. Human-turn candidates are
+aggregates are time-weighted over the delegated wall time that was measured. The denominator is that
+measured span rather than every delegated second, because the store keeps no token rate at all: a
+seeded fortnight beside one measured hour would otherwise spread that hour's area across the whole
+window and print a floor two orders of magnitude under the rate it came from. A session whose
+harness cannot measure rate makes the result a `≥` floor; if nothing in the delegated intervals has
+a measured rate, or no delegated interval exists, the token figure is absent rather than zero. Human-turn candidates are
 transitions out of `needs_input` and `idle` to `working` prompt boundaries. Delegation coalesces an
 immediate same-session `needs_input` to `idle` transition followed by `idle` to `working` into one
 inferred answer. A direct gate-to-working transition still counts once, and a later prompt boundary
@@ -348,8 +376,10 @@ invented time threshold. Events before the displayed window still establish pend
 events inside the window increment its count. Gate openings, ask registrations and turn stops remain
 agent-side events and do not increment it.
 
-The number begins again when the tab reloads. It is not durable;
-[DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about persistent history.
+The number survives a reload and a restart as far back as the store reaches, and no further. What
+the store holds is state changes, not token rates, so a window that predates this tab reports its
+percentage and human turns while withholding or flooring the rate. DRC-4234 authorised the store;
+its bounds and its off switch are in `SECURITY.md`.
 
 ## NUI-12: motion means observed activity, not mere attention
 
@@ -428,6 +458,8 @@ request follow only when published. Health, answer controls, tasks, and token ev
 below the command facts. This hierarchy prevents a session title from competing with its current
 work or making attached subagents look like unrelated sessions.
 
+<a id="nui-16"></a>
+
 ## NUI-16: operations lead; observation stays reachable
 
 The exception-first Attention route was implemented and tested before the operations board. Its
@@ -471,6 +503,85 @@ line per exact active session, with NOW, NEXT, and BLOCKED still attached to tha
 projects keep identity and scope but omit stale operational claims. Project detail then owns
 workflow and grouped activity; session detail owns the exact session's current activity and
 progressive command facts. No level repeats a broader summary merely because it can.
+
+## NUI-17: the gate queue hands over a command, and only where one was measured
+
+A gate-queue row names a session that is waiting and then leaves the reader to find its terminal.
+That is the weakest point of the thing this board is best at: it can tell you a session on this
+machine has been blocked for eleven minutes without telling you where it is.
+
+The row therefore carries one control that copies the command that harness's own CLI takes to
+re-enter that session. It rides the SOURCE line rather than the item's lede, because it must not
+compete with the wait reason, and it reuses the session-ID control's markup, its copied and failed
+states, and its live region, so a reader who has learned one control has learned the other. It is on
+the gate queue's rows alone. Every section of Attention names a session, so a control placed by
+identity would render four times over, and a small affordance on every row is furniture rather than
+an affordance. This one answers "it is waiting on me, get me there", which is the question only
+Needs you asks.
+
+Coverage is two harnesses of the ten, and the table of verbs is measured rather than documented:
+`claude --resume <session-id>` read off Claude Code 2.1.261's help, `codex resume <SESSION_ID>` off
+Codex 0.153.4's. A harness absent from that table gets no control at all, because a guessed verb
+costs the reader a failed command on top of the hunt it was meant to replace. The rule the page
+applies is total: no published token, no control. That is why Codex repeats an id it already
+publishes as `sid` into `resume_id` rather than letting the page infer resumability from the harness
+key, and why Claude publishes the whole transcript stem there. Claude's `sid` is that stem's first
+eight characters, and `claude --resume 27d10654` answers that the argument is not a UUID and matches
+no session title (measured on 2.1.261).
+
+### Re-entering a live session was the question to settle first
+
+The obvious objection is that a reader copies this command while the session is still running and
+puts a second process on one conversation. Both harnesses refuse, and both say so rather than doing
+it quietly. Claude Code declines interactively with
+`Can't open — this session is running in another terminal`, and its background variant starts a copy
+and reports that the original conversation is unchanged. Codex declines with `thread-store conflict: thread <id> already has an active writer`,
+observed by running two `codex exec resume` calls against one id. Both were measured on the
+installed CLIs, not inferred.
+
+So the control carries no warning. A warning would describe a hazard the harnesses already close,
+and the worst case is a refusal that names what to do next. That is also why this is written down:
+re-deriving it means installing two CLIs and deliberately racing them against one conversation, and
+whoever changes this control next will ask the same question first.
+
+The token the command is built from comes off a filename in a store the harness owns, so it is
+untrusted like every other reading here. The grammar that guards it, and the `-`-leading token that
+grammar exists to refuse, are in [SECURITY.md](../SECURITY.md).
+
+### A control's answer outlives the render, and it is not a server fact
+
+One row of a longer inventory. [What reader state survives a redraw](design-reader-state.md) is the
+owner of that list and of the two rules every row follows; this section keeps only the reasoning
+specific to a control cue, including the alternative that was rejected.
+
+`renderNext` replaces the whole of `#app` on every revision event, and the live lane fires one of
+those about as often as anything happens on the machine. A state written onto the node the click
+found therefore dies with the next render, which is how both row controls shipped: the colour cue
+for copied, sent, declined, throttled and failed was lost, while the screen-reader announcement
+survived because the live region sits outside `#app` and is held in a module variable.
+
+The obvious fix, and the one the issue asking for this proposed, is to carry the state in the model
+so a render re-emits it. That was rejected, and the reason is worth keeping. None of these states is
+a server fact. A copy succeeded or failed in one browser's clipboard, and a raise was accepted from
+one tab. The server has no way to know either, and the payload is shared by every viewer, so one
+reader's confirmation would paint the same row for everyone else looking at it.
+
+So the state lives in the page, in a map keyed by lane, harness and session id. Three bounds make
+that safe to hold. It caps at 32 entries and evicts the least recently written, because the key
+space is one entry per control per session and a long-lived tab would otherwise accumulate them for
+sessions that ended hours ago. Each entry expires after 30 seconds, which is above the 20 second
+fallback poll, so a cue always survives at least one full render cycle rather than having its life
+decided by when the next payload happens to arrive. And the expiry exists at all because a cue with
+no clock behind it paints a row that has since changed hands.
+
+Two things follow from the same reasoning. The refusal of a second raise is page-wide rather than
+per-row, because one raise is in flight for the whole page: a per-row cue would tell the reader that
+only the row they clicked second is unavailable, which is false about every other row. And the map
+is consulted by a sweep over the controls in the document rather than only the node the click found.
+Writing to that node alone left a completed raise painting the working look for up to a poll cycle
+while the live region beside it already said the raise was sent. Two channels of one page
+contradicting each other is worse than a cue that was merely missing, which is what the same case
+produced before any of this.
 
 ## What this does not decide
 

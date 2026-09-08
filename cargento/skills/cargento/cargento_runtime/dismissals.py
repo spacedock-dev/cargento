@@ -1,8 +1,9 @@
 """Dismissals: the sessions the reader has marked handled.
 
-The one thing Cargento writes on the reader's behalf. Every other file it writes
-records the instance (`lifecycle`); this one records intent, so it lives outside
-the per-port state file and outlives the process that wrote it. See
+One of the two things Cargento writes on the reader's behalf, the other being
+the history store (`history`). This one records intent rather than observation,
+so it lives outside the per-port state file and outlives the process that wrote
+it, and it is bounded by a count where history is bounded by age. See
 docs/design-dismissals.md for the keying, the invalidation rule and what a
 corrupt or unwritable store does.
 

@@ -6,25 +6,25 @@ license: Apache-2.0 AND OFL-1.1
 
 # Cargento
 
-Cargento is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **ten harnesses** on this machine — Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires desktop notifications when a session is blocked waiting on the human — Claude, Codex, Copilot and Cursor are the four harnesses that can report that — and when any session registers a question through the ask lane. Three display modes render the same data — see Display modes below.
+Cargento is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **ten harnesses** on this machine — Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires desktop notifications when a session is blocked waiting on the human — Claude, Codex, Copilot and Cursor are the four harnesses that can report that — and when any session registers a question through the ask lane. Sessions, Projects and Attention render the same data three ways — see Dashboard views below.
 
 Store locations are resolved per platform, and the documented relocation variables are honored: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` (the CLI creates `.gemini` inside it; relocates the Antigravity store with it), `COPILOT_HOME`, `PI_CODING_AGENT_DIR`, and `PI_CODING_AGENT_SESSION_DIR`. When one is set it is authoritative — no fallback to the default location. Run `--diagnose` to see every path searched.
 
 Data sources (read-only, no external calls; all parsing is defensive — a broken harness store is skipped, never fatal):
 - `~/.claude/projects/*/<session>.jsonl` — Claude transcript tails: session discovery, titles, token usage, pending AskUserQuestion detection and the text of the question it is asking
-- Claude subagents, two generations: modern harnesses write each subagent as a top-level `~/.claude/projects/*/<uuid>.jsonl` whose records carry `agentName` + `teamName: "session-<parent prefix>"` — these fold into the parent session (named pill, freshness, output rate) and never appear as standalone sessions; legacy `<session-uuid>/subagents/agent-*.jsonl` + `.meta.json` files are still recognized (fresh mtime = running), including the `subagents/workflows/<run-id>/` directory a workflow fan-out nests its agents in. A bare `agentName` from a top-level `--agent` launch has no parent relation and remains a standalone session; `agentSetting`, not `agentName`, supplies any Spacedock role. Agent writes count as parent activity in their own right, so a session parked on a long background workflow reads Working rather than Idle
+- Claude subagents, two generations: modern harnesses write each subagent as a top-level `~/.claude/projects/*/<uuid>.jsonl` whose records carry `agentName` + `teamName: "session-<parent prefix>"` — these fold into the parent session (named pill, its own start and elapsed, freshness, output rate) and never appear as standalone sessions. A teammate dispatched into its own pane stays on that row once it goes quiet, marked as no longer running rather than dropped, and its own subagents are walked and listed beside it, each attributed to the teammate that spawned it; legacy `<session-uuid>/subagents/agent-*.jsonl` + `.meta.json` files are still recognized (fresh mtime = running, and one the lead ran itself stays listed as no longer running once quiet, on the same display window as a teammate), including the `subagents/workflows/<run-id>/` directory a workflow fan-out nests its agents in. A bare `agentName` from a top-level `--agent` launch has no parent relation and remains a standalone session; `agentSetting`, not `agentName`, supplies any Spacedock role. Agent writes count as parent activity in their own right, so a session parked on a long background workflow reads Working rather than Idle
 - Spacedock workflows: a Claude session launched by Spacedock carries an `agentSetting` of `spacedock:first-officer` or `spacedock:ensign` in its first transcript records, which is how its role badge appears. Pi writes no such setting, so a Pi session earns a first-officer badge from the boot envelope described below instead, and never an ensign one. A first officer also records its `spacedock status --boot` output — counted only when it arrives as command output, never as ordinary conversation text — which names each workflow directory and each entity-state directory absolutely. The ordered stage list comes from the workflow `README.md` frontmatter, and each entity's current stage from the `status` in its own state-file frontmatter; boot's `dispatchable` list is only a snapshot of what was ready to move at boot, so it fills in behind the state directory rather than standing in for it. Those two kinds of frontmatter are the only project files Cargento reads — see the repository's SECURITY.md for the contract, and `--no-spacedock` to disable it
-- `~/.claude/teams/session-<id>/config.json` — the Claude teams registry: the roster of members a lead session has dispatched. A member is listed here the moment it is spawned, which is before it has written a transcript byte, so a member on the roster with no transcript anywhere is one that has not started — the shape an agent parked on a startup permission prompt takes on disk — and the session reports Needs input and names it. The roster is a roster and not a heartbeat: one file stamp covers every member and moves only on a join or a leave, so a member is read this way only once it has been registered longer than a healthy agent takes to start and only while the session is still inside the display window; running subagents keep their own transcript freshness. Members are pruned as they finish, so finished work is not reported as running, and a session directory with no `config.json` (an older layout) is skipped rather than treated as broken. A gate that opens mid-run is not detected: nothing in the store distinguishes a blocked member from a busy one once it has started
+- `~/.claude/teams/session-<id>/config.json` — the Claude teams registry: the roster of members a lead session has dispatched. A member is listed here the moment it is spawned, which is before it has written a transcript byte, so a member on the roster with no transcript anywhere is one that has not started — the shape an agent parked on a startup permission prompt takes on disk — and the session reports Needs input and names it. The roster is a roster and not a heartbeat: one file stamp covers every member and moves only on a join or a leave, so a member is read this way only once it has been registered longer than a healthy agent takes to start and only while the session is still inside the display window; running subagents keep their own transcript freshness. Older harnesses pruned a member as it finished; Claude Code 2.1.259 keeps it and marks it `isActive: false` instead, so what stops finished work from reading as running is transcript freshness, and that flag is only ever allowed to confirm a member has stopped, never to claim one is still going. A session directory with no `config.json` (an older layout) is skipped rather than treated as broken. A gate that opens mid-run is not detected: nothing in the store distinguishes a blocked member from a busy one once it has started
 - `~/.claude/tasks/<session-id>/N.json` — tracked task state (subject, status, activeForm); current bare-UUID and older `session-<id>` directories are supported
 - `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — Codex. The newest instruction, the title and the agent's turn-start statement of intent come from a walk backward from the end of the file rather than from its tail, because Codex pads a rollout with large encrypted reasoning blobs and the prompt is usually well outside any bounded tail read. Line 1 (`session_meta`) gives identity + cwd; `thread_source: "subagent"` files are subagent threads (named by `agent_nickname`), grouped through `source.subagent.thread_spawn.parent_thread_id`; resumes dedupe to newest file per session. Codex's own plan is read from the newest `update_plan` record and becomes that session's task rows — the same backward walk and for the same reason, since a session that has done any work since writing its plan has pushed it out of tail range. Two wire shapes are read, because a given Codex build writes one or the other: an older tool call whose arguments are JSON, and the current one that carries the plan as JavaScript source. The walk does not stop at a compaction boundary the way the prompt walk does, since the CLI keeps showing the plan across one. A step carries no timestamps of its own, so a Codex session gets task rows and a progress count but no age per row and no "est. remaining"
-- `~/.pi/agent/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl` — Pi v3. The default store is nested; a custom session store is flat and contains JSONL files directly. The last persisted leaf's ancestor path is active, so sibling branches are excluded from prompts, tools, output usage, and turns. The latest global `session_info` name is the title, including a later clear; `parentSession` means fork or clone, never a subagent. Assistant, tool-result, compaction, and branch-summary output usage feed the rate. Pi has no allowance of its own, so each row also names the authority it is spending, read from the newest entry on the active branch that carries one (an assistant message, or a `model_change` the user has switched to but not spent yet): it renders as `via Codex · gpt-5.6-sol`, and a provider with no harness of its own keeps its own name. A session that names no provider makes no claim rather than guessing from Pi's current default. Pi has no passive needs-input or core-subagent signal. Its Working/Idle reading comes off the active-branch leaf record's `stopReason` rather than recency alone, and it is the only harness whose store records how a turn ended: an assistant leaf stamped `toolUse` is a tool call whose result has not been written, so it reads Working — `running <tool>` — past the 90s window and up to 15 minutes, because recency cannot tell a long `bash` from a parked session; past that it reads Idle, because a transcript can record that a tool started and can never record that the process died, so a Pi hard-killed mid-tool would otherwise hold the top of the board for the whole display window. A finished turn (`stop`, `aborted` or `error`) reads Idle the second it lands however fresh it is. A `user` or `toolResult` leaf has handed the turn back to the model and reads `thinking` while fresh. An unrecognised `stopReason` claims nothing and stays on recency. None of this distinguishes a finished turn from an unanswered wait, which still needs a turn-end event Pi does not have. It does get a Spacedock first-officer badge and stage strips: with no `agentSetting` to read, a Pi session is taken to be a first officer when its transcript carries a `spacedock status --boot` envelope, written as a `toolResult` message. There is no Pi ensign role, and a Pi strip never bolds an entity, because Pi reports no workers to attribute one to.
+- `~/.pi/agent/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl` — Pi v3. The default store is nested; a custom session store is flat and contains JSONL files directly. The last persisted leaf's ancestor path is active, so sibling branches are excluded from prompts, tools, output usage, and turns. The latest global `session_info` name is the title, including a later clear; `parentSession` means fork or clone, never a subagent. Assistant, tool-result, compaction, and branch-summary output usage feed the rate. Pi has no allowance of its own, so each row also names the authority it is spending, read from the newest entry on the active branch that carries one (an assistant message, or a `model_change` the user has switched to but not spent yet): it renders as `via Codex · gpt-5.6-sol`, and a provider with no harness of its own keeps its own name. A session that names no provider makes no claim rather than guessing from Pi's current default. Pi has no passive needs-input or core-subagent signal. Its Working/Idle reading comes off the active-branch leaf record's `stopReason` rather than recency alone, and it is the only harness whose store records how a turn ended: an assistant leaf stamped `toolUse` is a tool call whose result has not been written, so it reads Working — `running <tool>` — past the 90s window and up to 15 minutes, because recency cannot tell a long `bash` from a parked session; past that it reads Idle, because a transcript can record that a tool started and can never record that the process died, so a Pi hard-killed mid-tool would otherwise hold the top of the board for the whole display window. A finished turn (`stop`, `aborted` or `error`) reads Idle the second it lands however fresh it is. A `user` or `toolResult` leaf has handed the turn back to the model and reads `thinking` while fresh. An unrecognised `stopReason` claims nothing and stays on recency. None of this distinguishes a finished turn from an unanswered wait, which still needs a turn-end event reaching the board: Pi documents `turn_end` and `agent_settled`, the second one for status integrations by name, but both are handed to an in-process extension handler and Cargento ships no Pi adapter to receive one. It does get a Spacedock first-officer badge and stage strips: with no `agentSetting` to read, a Pi session is taken to be a first officer when its transcript carries a `spacedock status --boot` envelope, written as a `toolResult` message. There is no Pi ensign role, and a Pi strip never bolds an entity, because Pi reports no workers to attribute one to.
 - `~/.gemini/tmp/<project>/chats/session-*.jsonl` — Gemini CLI main sessions. Gemini CLI stopped serving consumer accounts in June 2026 and Antigravity CLI succeeds it there, but enterprise Code Assist and API-key use still write this store, so it is historical on a consumer machine — sessions read as idle and need `?all=1` to show — and live on an enterprise or API-key one (line 1: `sessionId`/`kind`/`directories`); `chats/<parentSessionId>/*.jsonl` are subagent recordings (linked by directory name). Flat messages and resumed-session `$set.messages` snapshots support `type: user|gemini` and per-message `tokens.output`. Legacy single-`.json` chat files are not parsed
 - `~/.gemini/antigravity-cli/conversations/<session-id>.db` + `cache/last_conversations.json` + `log/cli-*.log` — Antigravity CLI (`agy`) sessions. Per-conversation DB/WAL activity provides discovery and working/idle state; trajectory-metadata protobuf fields fold fresh subagents at every nesting depth into the root card with role/type labels, and descendant activity and output usage feed the root state and token rate; stable step-metadata fields provide prompt boundaries and tool action/summary; the cache supplies the primary workspace, with CLI logs as its fallback and as the latest-prompt source. Conversation content is not decoded
 - `~/.copilot/session-state/<uuid>/events.jsonl` (+ legacy `history-session-state/`) — Copilot CLI typed events: `user.message`, `session.start` (`data.context.cwd`), `tool.execution_start`, `subagent.started/completed/failed`, `session.task_complete`, `permission.requested/completed`. The permission pair joins on `data.requestId` and is what makes a Copilot row report Needs input; only the kind of prompt is read from it, never the command or the URL. A subagent's model comes off the same `subagent.started` object its name does, so the two are paired without a join, and all three subagent events are keyed on the `agentId` they share. Event `data` field names are de-facto, parsed defensively
-- `~/.local/share/opencode/opencode*.db` (SQLite, read-only) — OpenCode: `session` table (`parent_id` links subagent/child sessions, `directory`, `title`, `time_updated` in epoch ms; archived sessions filtered), `session_message` for turns/prompts (message kind = the `type` column; prompt text in `data.text`). Busy/idle is not persisted — inferred from `time_updated` freshness
+- `~/.local/share/opencode/opencode*.db` (SQLite, read-only) — OpenCode: `session` table (`parent_id` links subagent/child sessions, `directory`, `title`, `time_updated` in epoch ms; archived sessions filtered), plus `message` joined to `part` for turns and prompts. `message` has no `type` column — the role is inside `message.data` — and the prompt text is inside `part.data`, on the parts a message typed `text`, so an attached filename never publishes as the prompt someone typed. Measured on 1.18.20: `session_message` exists, is what an earlier reading went to, and no build measured writes a row into it. The model is the `id` inside `session.model`, a JSON object OpenCode writes on the session row; the column is optional there, so a row carrying none falls back to the newest assistant message's own `modelID`, and a child session's model is read from its own row rather than inherited. Busy/idle is not persisted — inferred from `time_updated` freshness
 - `~/.cursor/chats/*/<agent-id>/store.db` (SQLite, read-only) + the sibling `meta.json` — Cursor CLI: the `meta` table holds hex-encoded JSON (session name, `latestRootBlobId`, and `subagentInfo` on a child), and the sibling file holds `cwd`. Minimal support: discovery + working/idle via db/WAL mtime + title + project + the model of the newest message + subagents + a standing permission gate; no turn ETA (content is hex blobs). The gate is `pendingToolExecutionContracts` on the newest blob by `rowid` — non-empty means somebody is being asked, and `pendingToolCallStartedAtMs` beside it is when they started waiting. Newest by `rowid` and not simply anywhere, because the store is append-only and content-addressed: the blob that stood at the gate is still there long after the answer, and `rowid` is the only order the schema keeps. The key is matched on bytes, since the carrier is a length-prefixed binary frame rather than JSON, and the wait is published only while the row is fresh — an abandoned session stays pending in the file forever, so without that the board would carry a red row and a notification for a session nobody is in. A reading is also dropped when its stamp is too old to have been written by the store's own last write, since a real gate is what froze that file: that is what keeps a stamp belonging to some neighbouring record, or a message that merely quotes the field, from turning a row red with a wait nobody believes. The model is `providerOptions.cursor.modelName`, found by following the chat's root blob to the message blobs it lists and reading a bounded slice of the newest few. Cursor writes its own codename there and it is published verbatim, since mapping it to a marketing name is a guess that would silently mislabel the next codename. Blobs are plaintext on every store measured, but the store carries an encryption key it is never asked for: where the bytes do not read, the session reports no model. The workspace is `cwd` in the `meta.json` beside the store — no spelling of it appears in the `meta` payload at all — so the key spellings that payload was read for stay on as a fallback beneath it. Either source is accepted, bare path or `file://`, only when it resolves to a directory that exists, since a wrong key would label the row confidently and wrongly; when neither does, the row reads `cursor`, and a store with no `meta.json` (a subagent's has none) is a session without a workspace rather than a broken store. A subagent keeps its own store under the same workspace hash and names its agent in `subagentInfo.rootParentAgentId` — another store's directory name, which is exactly the session id another row carries — so children fold onto that row as pills labelled by `typeName` (their own name is the generic `New Agent`), each with the model read from its own store; a child whose named agent is not among the rows stays a row of its own rather than disappearing
 - `~/.local/share/goose/sessions/sessions.db` (SQLite, read-only) — Goose v1.10.0+: `sessions` (`working_dir`, `updated_at` UTC, `session_type='subagent'` + `parent_session_id`; archived + infrastructure types `hidden/terminal/gateway/acp` filtered), `messages` (role, `created_timestamp`) for turns/prompts, `usage_ledger` for the token rate (`messages.tokens` is never written by goose). Per-session activity = `updated_at` column, not file mtime (shared DB) — a long single-message generation can briefly read Idle since `updated_at` only bumps on message insert. Legacy per-session `.jsonl` and the `GOOSE_PATH_ROOT` override are not supported
-- `~/.factory/projects/<project>/<session-id>.jsonl` — Factory Droid: line 1 `session_start` (`id`, `sessionTitle`, `cwd`); messages are Anthropic-style blocks (`role`, `content[]`, `timestamp`)
+- `~/.factory/sessions/<slugified-cwd>/<session-id>.jsonl` — Factory Droid 0.202.0 (the older `~/.factory/projects/<project>/<session-id>.jsonl` root is still searched): line 1 `session_start` (`id`, `sessionTitle`, `cwd`); messages are Anthropic-style blocks (`role`, `content[]`, `timestamp`). The sibling `<session-id>.settings.json` is not read
 
 Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-store override and takes precedence over `PI_CODING_AGENT_DIR`, Pi's global `sessionDir` setting, and the default. `PI_CODING_AGENT_DIR` relocates the configuration root; a relative global `sessionDir` resolves below it. A one-off Pi `--session-dir` and a project-local `.pi/settings.json` are not discoverable from this separate process. Set `PI_CODING_AGENT_SESSION_DIR` to the effective directory in either case.
 
@@ -34,13 +34,16 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 |---|---|---|
 | **Needs input** (red, popup) | An agent is blocked on the human | Best effort, never guaranteed, and only four harnesses can report it at all. **Claude** has four sources that cover different things rather than ranking cleanly: the bundled `PermissionRequest` hook is the main one for tool gates, seen directly for `ExitPlanMode` and in the wild for `AskUserQuestion`; an actionable Notification-hook POST is the *only* source for an MCP elicitation or a worker's permission or network request; and a pending input tool seen in the transcript is an opportunistic extra, because Claude Code flushes that record on its own schedule and sometimes not until the gate has been answered; the fourth is about a subagent rather than the session, and is a member on the teams roster that was dispatched and never wrote a transcript, described on the teams-registry bullet above. **Codex** has one, its own bundled `PermissionRequest` hook, measured firing interactively with the prompt still on screen. A Codex row says a gate is open and cannot say which, because the event envelope drops the tool name at the hook; it raises a popup on the same terms a Claude one does. **Copilot** has one too, and it is the only one that needs nothing installed: the CLI writes `permission.requested` to its own `events.jsonl` when the dialog opens and `permission.completed` only once the human answers, so the collector reads a request with no answer behind it as a standing gate. A Copilot row says whether a command or a URL is being asked about, and never which command or which URL. **Cursor** takes the same route on a different store: a standing tool-call gate leaves `pendingToolExecutionContracts` non-empty on the newest blob of the chat's SQLite store, and answering it — either way — appends a blob with the map emptied. Its store closes nothing on its own, so the wait is published only while the row is fresh enough to be trusted; the reason is on the Cursor store bullet above. A Cursor row says a permission request is open and how long it has stood, and nothing about what was asked. The other six harnesses have no gate detection; Attention reports that coverage gap so a quiet row cannot be read as an all-clear |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else `thinking` where the harness can see the model holding the turn with no tool call open, else last tool, else `generating…`. Pi is the one exemption from recency, in both directions — see its store bullet above |
-| **Idle** (gray) | Turn ended | anything else — "awaiting your message". Two situations wear the one word: a turn that ended and nobody read the result, and a session still waiting on a reply that never came. Only a turn-end event tells them apart, so only the four harnesses with an event adapter can — Claude Code, Codex, Gemini CLI and Antigravity, and only with their hooks installed. On the other six the row says the answer cannot be known there, rather than guessing at it |
+| **Idle** (gray) | Turn ended | anything else — "awaiting your message". Two situations wear the one word: a turn that ended and nobody read the result, and a session still waiting on a reply that never came. Only a turn-end event tells them apart, so only the four harnesses with an event adapter can — Claude Code, Codex, Gemini CLI and Antigravity, and only with their hooks installed. On the other six the row says the answer cannot be known there, rather than guessing at it: it carries `Read by scanning: no turn end can be observed here`, in the session cell and again on the session page, so a quiet row is read as nothing observed recently and not as a turn that finished |
 
 ## Dashboard views
 
 The dashboard opens on **Sessions**, a command surface with active work first and recent history
 below it. **Projects** groups the same sessions by working directory and opens a project detail with
-current activity, workflow evidence, delegation measurements, and browser-local guardrails. Select
+current activity, workflow evidence, delegation measurements, and browser-local guardrails. Its
+state-change rail and its delegation figure start from the local history the server kept, so both
+survive a restart and a fresh tab instead of beginning again, and each captions itself with the
+window it actually covers. Select
 a session from either view for its bounded detail, including its exact request, tasks, subagents,
 token measurements, and any answerable question attributed to that session.
 
@@ -50,10 +53,10 @@ detail. Reload, pasted links, and browser back therefore preserve the selected v
 that belonged to the retired dashboard normalize to Sessions. Open the dashboard at its bare URL;
 the retired `next` query is no longer a dashboard route.
 
-The header reports running sessions and subagents. When work needs intervention, a **needs input**
-button opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention, Projects, and
-Sessions unless focus is in a form control or a modifier key is held. Breadcrumbs return from a
-session to its project and from a project to the overview.
+The header reports running sessions and subagents. When work needs intervention, a button counting
+the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
+Projects, and Sessions unless focus is in a form control or a modifier key is held. Breadcrumbs
+return from a session to its project and from a project to the overview.
 
 MCP tools appear under the service being called rather than their wire name, for example
 `Linear · list issues`. The full recorded string remains available in the row tooltip.
@@ -61,34 +64,63 @@ MCP tools appear under the service being called rather than their wire name, for
 ## Attention
 
 Attention is a triage view, not a second copy of every session. It divides current evidence into
-**Needs you**, **At risk**, **Safe to close**, and **What's next**. Items retain stable ordering while
-their evidence is unchanged, and each section explains missing coverage instead of treating an
-unmeasured harness as an all-clear.
+**NEEDS YOU NOW**, **AT RISK**, **CLOSE THE LOOP**, and **COMING NEXT**, then closes with
+**NO PUBLISHED EXCEPTION** for every session none of those four claimed, tallied by state as moving,
+quiet, or unknown. Items retain stable ordering while their evidence is unchanged, and each section
+explains missing coverage instead of treating an unmeasured harness as an all-clear. On a board
+where none of the four has anything to report, the summary line above them says the four queues
+were checked and are empty, with a tally of what the sessions are doing, rather than counting out
+four zeros.
 
-**Needs you** combines native harness gates with questions registered through `ask_operator`.
+**NEEDS YOU NOW** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that
-session's terminal; Cargento does not mark them answered on the session's behalf. The item leaves
-when the harness publishes evidence that the wait ended. A question registered through
-`ask_operator` is different: its offered options are buttons in Attention and in the exact session
-detail, and choosing one returns that option to the waiting agent. Free-form replies are not
+session's terminal; Cargento does not mark them answered on the session's behalf. A Claude Code or
+Codex row therefore carries a control that copies the command that harness's own CLI takes to
+re-enter that session, so reaching the terminal is a paste rather than a hunt. The other eight
+harnesses publish no session id their CLI would accept, and their rows show no control rather than a
+guessed command. Where Cargento can reach the terminal a session is running in, the row carries a
+second control that raises it, so the hunt across tabs ends in a click rather than a paste. That
+reach is narrow: macOS, tmux, a session that started while this dashboard has been up, and exactly
+one terminal attached to it. Rows outside it carry no raise control at all, and the queue's coverage
+details say how far the feature reached rather than repeating the absence on every row. A raise
+changes what that terminal displays; it does not bring the window in front of other applications,
+and nothing is ever typed into the session. The item leaves when the harness publishes evidence that the wait ended. A
+question registered through `ask_operator` is different: its offered options are buttons in
+Attention and in the exact session detail, and choosing one returns that option to the waiting
+agent. Free-form replies are not
 accepted, unanswered questions expire, and `--no-ask` disables this lane.
 
-**At risk** is evidence Cargento can actually support, including detected failed-tool loops,
+**AT RISK** is evidence Cargento can actually support, including detected failed-tool loops,
 long-running turns, quota windows at or above 70 percent, and attribution or coverage gaps. A quiet
 row is never promoted into proof that nothing is waiting. Only Claude, Codex, Copilot, and Cursor
 currently expose a gate signal Cargento can read; the other harnesses remain explicitly unmeasured
 for that question.
 
-**Safe to close** identifies sessions whose published state and freshness support that conclusion.
-**What's next** groups the strongest available next action by project. Both are advisory views of
+**CLOSE THE LOOP** identifies sessions whose published state and freshness support that conclusion.
+**COMING NEXT** groups the strongest available next action by project. Both are advisory views of
 observed records, not commands sent to a harness.
 
 ## Usage and rate limits
 
-Quota evidence appears in Attention when a readable window reaches the risk threshold. Codex reads
-rate-limit snapshots from its own session files. Claude and Cursor use the harness credential only
-when usage fetching is enabled, poll their vendor endpoint at most once per five minutes while a
-page is open, and never refresh, write, log, or serve the token. Cursor fetching is macOS-only.
+The capacity strip sits beneath the fleet counts on Session operations. Each readable window shows
+how much of its allowance is spent against how much of its own time is gone, so the two can be
+compared: a window a third spent with an eighth of its time gone runs out long before one that is
+nine-tenths spent with nine-tenths of its time gone. Rows are ordered by when the budget runs out at
+the pace measured so far, which is not the same order as by percentage. Beneath them, what the
+remaining budget buys in minutes, and how long sessions have actually worked in the project that
+consumed the most measured working time, counting the intervals that opened working and were
+seen to close.
+Cargento never states which of the two times arrives first: the budget's end and the window's reset
+sit side by side and the comparison is yours.
+
+Quota evidence also appears in Attention, raised either by a level at or above 70 percent or by a
+pace whose projected end falls before the reset. Codex reads rate-limit snapshots from its own
+session files. Claude and Cursor use the harness credential only after the first-run disclosure in
+the page is answered, poll their vendor endpoint at most once per five minutes while a page is open,
+and never refresh, write, log, or serve the token. Until that disclosure is answered no credential
+is read and no request is made, and the strip carries a switch that changes the answer later.
+Cursor fetching is macOS-only, and because Cursor publishes a cycle end with no start, its row shows
+a level and no clock.
 Copilot contributes per-session AI Units from disk but no percentage because its entitlement is not
 stored locally. Antigravity can forward quota from its status-line payload:
 
@@ -96,7 +128,7 @@ stored locally. Antigravity can forward quota from its status-line payload:
 "statusLine": {"command": "python3 <skill-dir>/notify_hook.py http://127.0.0.1:4553/api/usage", "enabled": true}
 ```
 
-`--no-usage` disables credential-backed vendor fetching for a run; disk-read evidence remains.
+`--no-usage` disables credential-backed vendor fetching for a run whatever the page has stored; disk-read evidence remains.
 Expired, rejected, missing, or stale quota is withheld rather than rendered as zero. Claude, Codex,
 and Antigravity may publish five-hour and weekly windows, while Cursor publishes its monthly billing
 cycle. A percentage is amber from 70 percent and red from 90 percent. Model-specific Claude weekly
@@ -143,9 +175,13 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes three files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes five files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
-detached server's output goes; and `cargento-dismissals.json`, the sessions marked handled. If you
+detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
+`observer/<harness>_<sid>.json`, the sidecar an observer panel records when a reader opens one; and
+`cargento-history.json`, the history of what the server observed, kept for up to 14 days. A store
+that cannot be read is discarded rather than repaired, the board starts empty, and the header names
+which reset it was. If you
 wire up Antigravity's status line, `statusline_hook.py` keeps one small memo per conversation in the
 same directory so a status line that fires many times a turn posts once.
 
@@ -164,12 +200,19 @@ fourth alert rather than needs-input state. On macOS the server can deliver nati
 through `osascript`, even with no dashboard tab open. Gate alerts have a 60-second per-session
 cooldown and a 15-second lane-wide floor; questions have their own 15-second floor. Linux and
 Windows have no native backend in this release; with a dashboard tab open, the page can deliver
-browser notifications after permission is granted. The dashboard shows every published item in
+browser notifications after permission is granted, for a session that starts waiting on the human
+and for one that was working and has gone quiet. The dashboard shows every published item in
 Attention on all platforms.
 
 Native alerts fire on the transition into needs-input, not on every refresh. Questions notify on
-arrival. Idle nudges (`idle_prompt`) can notify without marking the session blocked. Notification
-delivery is best effort; the dashboard's observed state remains the source to inspect.
+arrival. Idle nudges (`idle_prompt`) can notify without marking the session blocked. The browser's
+quiet nudge is close to that but not the same event: it has no hook of its own, so it fires on the
+published row ceasing to look busy, and a row reaches that two ways. Where the harness's lifecycle
+hooks are installed its own turn-stop reaches the row within a few seconds; everywhere else the row
+turns over only once its writes have paused for as long as the working threshold. Its wording says
+the session has gone quiet rather than that it is waiting on you, which is the honest reading of
+either path.
+Notification delivery is best effort; the dashboard's observed state remains the source to inspect.
 
 1. **Transcript detection** — an open `AskUserQuestion` or `ExitPlanMode` flips the session to Needs input on the next collection, *when the record has reached disk*. Claude Code buffers it and may not write it until the gate is answered, so treat this as an opportunistic early signal rather than a source to rely on (an open dashboard tab is what drives collections, so keep one open). When the record is there, the row shows the question itself, or a plan's first line, rather than the tool's name; when it is not, the row still says a question is open but cannot say which. Both readings are normal for the same session. There is also a window of up to 90 seconds after a turn starts where a live event overlay reports Working and the question does not show at all, even though it was parsed.
 2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication, completion and computer-use status notifications do neither; permission prompts, MCP elicitation dialogs and a worker's permission or network request create Needs-input state. A type not on either list is treated as actionable, so a notification kind added upstream surfaces rather than disappearing. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
@@ -198,7 +241,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 
 3. **Lifecycle events** — the plugin's own bundled hooks at `hooks/hooks.json`, so there is **nothing to add to a settings file**. They forward general lifecycle events to `/api/events/claude`: session started and ended, prompt submitted, turn stopped, permission requested, a tool run finishing, subagent started or stopped, tasks changed, compaction finished. Where path 2 sets one piece of side state, this drives the session's Working, Needs-input and Idle state directly, so the board reacts to a turn starting instead of waiting for the next scan.
 
-   Nothing to install: enabling the plugin is enough. Note that a session's overlays are retired when it ends, which is correct and means a one-shot `claude -p` run shows no event-driven state by the time it exits. The one thing it keeps is the mark that its turn ended, held outside those overlays on purpose, so a run that finished and was never read can still say so.
+   Nothing to install: enabling the plugin is enough. Note that a session's overlays are retired when it ends, which is correct and means a one-shot `claude -p` run shows no event-driven state by the time it exits. Two things survive that retirement, both held outside those overlays on purpose: the mark that its turn ended, so a run that finished and was never read can still say so, and the mark that the session itself ended, so a session that is over reads as over rather than as one sitting at its prompt waiting for you. A session with no end recorded is not known to be running — only a `SIGKILL` ends a Claude session silently, but a harness with no adapter, a session that started before the server did, and `--no-events` all look the same from here.
 
    Only add the hooks by hand if the user runs `event_hook.py` outside the plugin, for instance against a checkout. In that case:
 
@@ -286,13 +329,19 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
 | `--stop` | Stop the instance on `--port` over `/api/shutdown`. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
+| `--forget` | Delete the local history store, then exit. A one-shot command like `--stop` and `--status`, not a switch for a run: what it does is not undone by running the next command without it. Refused while a dashboard answers on `--port`, because a running instance holds its own copy in memory and would write the deleted records back. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
-| `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
+| `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; it writes nothing and transmits nothing. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
-| `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty — which is what they already read for a session that was never probed. |
-| `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the one file Cargento writes on your behalf. |
+| `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
+| `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
+| `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
+| `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
+| `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
+| `--history-days N` | How long the local history keeps an observation, in days (default 14). Eviction is age first, so narrowing this drops what falls outside the window and widening it again brings nothing back. Zero or negative is refused. |
+| `--history-max-bytes N` | The size cap on the local history store, in bytes (default 1048576). It is the read cap too: a file larger than it is discarded unread rather than parsed. Zero or negative is refused. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
@@ -319,9 +368,17 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 - **Current-turn estimates** compare elapsed generation time with completed turns from the same
   session. They are withheld when there is no defensible sample. A quiet gap longer than five
   minutes re-anchors elapsed time so a permission wait is not counted as generation.
-- **Loop detection** means four consecutive failed Claude tool calls inside one request. Other
-  harnesses do not expose a verified failure field, so Cargento does not infer the signal there. The
-  pattern is evidence, not proof; iterating on a failing test can look the same from outside.
+- **Loop detection** reads one request three ways, and the note says which one fired. Four
+  consecutive failed Claude tool calls is the tight run. Six failed calls in the request however
+  they were spaced, and more failures than successes, is the total, which no success resets, and it
+  catches the request that fails three times, succeeds once, then fails three more, where the run
+  alone reads as clean. Three failed calls with none succeeding at all is a request where nothing
+  has worked yet. The count alone is not enough for the second of those: six scattered failures
+  among two hundred successful calls is ordinary work, so the failures have to outnumber the
+  successes as well. The last two readings are withheld entirely when the scan started partway
+  through a request, since both describe the whole of it. Other harnesses do not expose a verified
+  failure field, so Cargento does not infer any of the three there. The pattern is evidence, not proof; iterating on a failing test can look
+  the same from outside.
 - **Project** is the last two path segments when the working directory is known. This keeps sibling
   repositories distinguishable without printing an entire path. The fallback harness label is not
   treated as proof that two sessions share a directory.
@@ -338,6 +395,12 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 - **Spacedock evidence** is bounded and freshness-gated. Stage, entity, and delegation readings are
   omitted when the workflow definition or measured window cannot support them. A missing strip is
   not a claim that no workflow exists.
+- **"Source not fully read"** on a row means Cargento opened that session's store and could not read
+  every part of it, and it names which readings are missing. What the row still shows was read
+  normally; the named readings are absent rather than zero, which matters most for a token rate,
+  where nothing else separates a missing measurement from a measured zero. The five harnesses whose
+  store is a database can report it: Antigravity, Copilot, Cursor, Goose, and OpenCode. A row
+  without the line is not a promise that everything read, only that nothing reported otherwise.
 
 ## Stop
 

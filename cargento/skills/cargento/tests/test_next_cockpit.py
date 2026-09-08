@@ -108,6 +108,30 @@ console.log(JSON.stringify({html, rows}));
         self.assertNotIn("data-branch-edge=", html)
         self.assertNotIn("data-merge-edge=", html)
 
+    def test_finished_teammates_are_not_active_work_or_assignment_gaps(self) -> None:
+        out = self.run_fixture(
+            """
+const session = __dashboard.sessions[0];
+session.harness = "claude";
+session.subagent_hierarchy = null;
+session.subagents = [
+  {name:"Finished teammate",active:false,parent:null},
+  {name:"Live teammate",active:true,parent:null,assignment:"Check the merged cockpit"}
+];
+renderNext();
+await __settle();
+const group = nextProjectGroups()[0];
+console.log(JSON.stringify({html:__els.app.innerHTML,
+  briefing:nextCockpitRecoveryBriefing(group).text}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertNotIn("Finished teammate · active", out["html"])
+        self.assertNotIn("inspect Finished teammate assignment", out["html"])
+        self.assertIn("Live teammate · active", out["html"])
+        self.assertNotIn("Finished teammate", out["briefing"])
+        self.assertIn("Live teammate", out["briefing"])
+
     def test_task_subject_and_four_tabs_own_one_operator_question_each(self) -> None:
         out = self.run_fixture(
             """

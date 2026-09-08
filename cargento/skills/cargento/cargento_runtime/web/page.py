@@ -14,6 +14,7 @@ APP_PARTS: tuple[str, ...] = (
     "next-cockpit-compat.js",
     "project.js",  # semantic timeline and exact-session terminal substrate
     "next-chrome.js",
+    "next-capacity.js",
     "next-sessions.js",
     "next-projects.js",
     "next-project.js",

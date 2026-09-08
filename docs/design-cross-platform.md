@@ -98,6 +98,8 @@ ask path gates at the call site.
 
 Corollary for future work: a `--notify` switch must state which owner it disables.
 
+<a id="d-4"></a>
+
 ## D-4: Platform and clock decisions take their environment as an argument
 
 Every decision that depends on the platform or on the current time is a pure function that receives

@@ -105,7 +105,8 @@ def native_notifier(platform_name: str) -> str:
 
     Pure in ``platform_name`` so both branches run on every CI runner and mypy
     checks them all, rather than treating the non-host branch as unreachable
-    (design decision D-4 in docs/design-cross-platform.md).
+    (design decision
+    [D-4](docs/design-cross-platform.md#d-4)).
 
     The page reads this through ``/api/data`` to decide whether to raise its
     own browser notification. Exactly one layer notifies for a given
@@ -509,8 +510,16 @@ def transcript_mtime(path: Any) -> float:
 def clear_session(state: RuntimeState, config: RuntimeConfig, prefix: str) -> None:
     """Retire a session's standing hook state and bump its generation.
 
-    Only SessionEnd does this, because only SessionEnd means "this session is
-    gone". A clearing notification ends one alert, not the session.
+    Only SessionEnd does this, because only SessionEnd says the session reached
+    an end at all. A clearing notification ends one alert, not the session.
+
+    Not quite "this session is gone", which is what this said until the a7 arm of
+    docs/captures/claude/session-end-2.1.261-macos.jsonl drove `/clear`: the
+    SessionEnd fires, the process survives, and it accepts another prompt. What
+    saves this path is that the hook state is keyed on the 8-char session prefix
+    and the prompt after a `/clear` goes to a NEW session id (measured
+    2026-09-06), so the state retired here belongs to the id that really did
+    finish. The events path publishes the same fact as `ended_at` (DRC-4036).
     """
     with state.hook_lock:
         state.hook_notifications.pop(prefix, None)

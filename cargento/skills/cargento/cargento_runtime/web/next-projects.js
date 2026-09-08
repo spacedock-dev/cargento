@@ -112,16 +112,43 @@ function nextProjectNow(sessions){
     : "";
 }
 
-function nextProjectSummaryHtml(summary, sessionCount){
-  const values = [`${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}`];
+function nextProjectSummaryHtml(summary, sessionCount, activeCount){
+  const values = [];
   if(summary.exactRequests){
     values.push(`${summary.exactRequests} exact request${summary.exactRequests === 1 ? "" : "s"}`);
   }
-  if(summary.risk) values.push(`${summary.risk} at risk`);
-  if(summary.close) values.push(`${summary.close} close the loop`);
+  /* `risk` and `close` count SUBJECTS and the state words below them count
+     SESSIONS, in a list whose leading total counts sessions too. Unlabelled,
+     that invites the reader to subtract one from the other: a collision is one
+     subject over two sessions, so "2 sessions · 1 at risk · 2 working" looks
+     like it is missing a session. The unit stays named for that reason, and the
+     lead now names the denominator as well, because the two were never the same
+     set: the total counts every session in the group and every word after it
+     counts the ACTIVE subset, so a group of three with one active read
+     "3 sessions ... 1 working" with two sessions in no word at all (DRC-4453). */
+  if(summary.risk){
+    values.push(`${summary.risk} subject${summary.risk === 1 ? "" : "s"} at risk`);
+  }
+  if(summary.close){
+    values.push(`${summary.close} subject${summary.close === 1 ? "" : "s"} to close the loop`);
+  }
+  if(summary.blocked) values.push(`${summary.blocked} blocked`);
   if(summary.working) values.push(`${summary.working} working`);
   if(summary.quiet) values.push(`${summary.quiet} quiet`);
-  return `<div class="next-project-summary">${values.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
+  /* The arithmetic residue, and not a state any collector publishes: the
+     vocabulary is closed to needs_input, working and idle, but an outstanding
+     exact request holds a row active whatever its state says, so a state
+     outside that vocabulary would leave the active subset short of its own
+     words. Here for the same reason the Attention brief carries one. */
+  const counted = summary.blocked + summary.working + summary.quiet;
+  if(activeCount > counted) values.push(`${activeCount - counted} in no counted state`);
+  /* "none active" rather than an empty tail. A history row is handed no active
+     sessions at all, so every word above is zero and the row used to render its
+     session total and stop -- the ordinary row on a quiet machine, saying
+     nothing about any of the sessions it had just counted. */
+  const spans = [`${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}, ` +
+    `${activeCount} active:`].concat(values.length ? values : ["none active"]);
+  return `<div class="next-project-summary">${spans.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
 }
 
 function nextProjectSessionLine(session, asks, harnesses, labels){
@@ -160,7 +187,8 @@ function nextProjectRow(group, operationalSessions, summary, history = false){
     `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
     `role="link" tabindex="0"${historyAttr}>` +
     `<div class="next-project-project">${nextProjectCell(group, operationalSessions)}` +
-    `${nextProjectSummaryHtml(summary, group.sessions.length)}${progressBlock}</div>` +
+    `${nextProjectSummaryHtml(summary, group.sessions.length, operationalSessions.length)}` +
+    `${progressBlock}</div>` +
     `${command}</article>`;
 }
 
@@ -193,7 +221,10 @@ function nextProjectsView(model){
   }
   const active = groups.filter(item => item.activeSessions.length);
   const history = groups.filter(item => !item.activeSessions.length);
+  // Product priority: explicit questions first, then source-reported waits,
+  // ahead of risk/review and progressing work because the reader can unblock them.
   active.sort((left, right) => right.summary.exactRequests - left.summary.exactRequests ||
+    right.summary.blocked - left.summary.blocked ||
     right.summary.risk - left.summary.risk ||
     right.summary.close - left.summary.close ||
     right.summary.working - left.summary.working ||

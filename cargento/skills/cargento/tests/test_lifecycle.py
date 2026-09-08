@@ -39,7 +39,9 @@ from .support import (
     make_server,
     poll_fast,
     serve_until_closed,
+    short_circuit_native_notifications,
     state_of,
+    without_focus_meta,
 )
 
 if TYPE_CHECKING:
@@ -62,23 +64,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().snapshot.clear()
         # Route-shape tests run the notification code but do not assert native
         # delivery, so keep its osascript process off the host.
-        original_run = subprocess.run
-
-        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
-            command = args[0] if args else kwargs.get("args")
-            if (
-                isinstance(command, (list, tuple))
-                and command
-                and command[0] == "/usr/bin/osascript"
-            ):
-                return subprocess.CompletedProcess(command, 0)
-            return original_run(*args, **kwargs)
-
-        notify_patcher = mock.patch.object(
-            subprocess, "run", side_effect=run_without_native_delivery
-        )
-        notify_patcher.start()
-        self.addCleanup(notify_patcher.stop)
+        short_circuit_native_notifications(self)
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:
@@ -249,6 +235,10 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -355,7 +345,13 @@ print(json.dumps({{
                 code, headers, body = self._response(port, "GET", "/")
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
-                self.assertEqual(frontend_page.load_page(), body)
+                # The copy's own assembly, plus the focus capability `cli.main`
+                # injects after it. Compared with that element stripped, because
+                # the subject here is whether the copied installation assembles
+                # its page from its own files — the token is per run and cannot
+                # be known from outside the process that minted it.
+                self.assertEqual(frontend_page.load_page(), without_focus_meta(body))
+                self.assertIn(b'<meta name="cargento-focus" content="', body)
                 code, headers, body = self._response(port, "GET", "/?next=true")
                 self.assertEqual(404, code)
                 self.assertNotEqual(frontend_page.load_page(), body)
@@ -430,6 +426,10 @@ print(json.dumps({{
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with (
@@ -1168,7 +1168,7 @@ class CargentoServerTest(PageJsHarness):
         self.assertNotIn("within 10s", message)
 
     def test_daemon_rejects_the_flags_it_cannot_combine_with(self) -> None:
-        for other in ("--diagnose", "--stop", "--status"):
+        for other in ("--diagnose", "--stop", "--status", "--forget"):
             with (
                 mock.patch.object(sys, "argv", ["server.py", "--daemon", other]),
                 # parser.error() raises: argparse owns this exit, not main().
@@ -1217,6 +1217,10 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1247,6 +1251,10 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=False,
                 no_ask=False,
                 no_git=False,
+                no_focus=False,
+                no_history=False,
+                history_days=14.0,
+                history_max_bytes=1_048_576,
                 daemon=True,
             ),
         )
@@ -1275,10 +1283,22 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=True,
                 no_ask=False,
                 no_git=True,
+                no_focus=True,
+                no_history=True,
+                history_days=14.0,
+                history_max_bytes=1_048_576,
                 daemon=True,
             ),
         )
-        for flag in ("--no-spacedock", "--no-usage", "--no-events", "--no-dismiss", "--no-git"):
+        for flag in (
+            "--no-spacedock",
+            "--no-usage",
+            "--no-events",
+            "--no-dismiss",
+            "--no-git",
+            "--no-focus",
+            "--no-history",
+        ):
             self.assertIn(flag, argv)
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
@@ -1291,6 +1311,10 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1496,6 +1520,10 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_dismiss": False,
             "no_ask": False,
             "no_git": False,
+            "no_focus": False,
+            "no_history": False,
+            "history_days": 14.0,
+            "history_max_bytes": 1_048_576,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -1523,6 +1551,64 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_git=False))
         self.assertNotIn("--no-git", argv)
+
+    def test_no_focus_is_forwarded(self) -> None:
+        # SECURITY.md's focus off switch. A respawned daemon that re-enables it
+        # is a security bug in as many words, and the branch reads
+        # `args.no_focus` directly, so the hand-written namespaces here raise
+        # AttributeError rather than quietly passing — which is the mechanism
+        # that forces the branch to exist at all.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_focus=True))
+        self.assertIn("--no-focus", argv)
+
+    def test_no_focus_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_focus=False))
+        self.assertNotIn("--no-focus", argv)
+
+    def test_no_history_is_forwarded(self) -> None:
+        # DEC-6's off switch. Without the `spawn_argv` branch a user who turned
+        # the store off gets it back on the respawned daemon, and the promoted
+        # contract calls a respawned daemon that re-enables it a security bug in
+        # as many words. Note the two exact-set assertions in this file are
+        # blind to an omitted branch: what forces the edit is that the branch
+        # reads `args.no_history` directly, so the seven hand-written
+        # namespaces raise AttributeError rather than quietly passing.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_history=True))
+        self.assertIn("--no-history", argv)
+
+    def test_no_history_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_history=False))
+        self.assertNotIn("--no-history", argv)
+
+    def test_a_narrowed_retention_window_is_forwarded(self) -> None:
+        # The bounds are configurable as of the captain's ND-1 ruling, and a
+        # respawn that dropped a narrowed one would widen a bound the operator
+        # tightened — the same class of failure as re-enabling a store they
+        # turned off, since what falls outside the window is gone from the file.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_days=2.0))
+        self.assertIn("--history-days", argv)
+        self.assertEqual("2.0", argv[argv.index("--history-days") + 1])
+
+    def test_the_retention_window_is_absent_when_it_is_the_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_days=14.0))
+        self.assertNotIn("--history-days", argv)
+
+    def test_a_moved_size_cap_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_max_bytes=4_096))
+        self.assertIn("--history-max-bytes", argv)
+        self.assertEqual("4096", argv[argv.index("--history-max-bytes") + 1])
+
+    def test_the_size_cap_is_absent_when_it_is_the_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_max_bytes=1_048_576))
+        self.assertNotIn("--history-max-bytes", argv)
 
     def test_no_ask_is_forwarded(self) -> None:
         config = cfg()

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Cargento Project"
+  short_description: "Keep the Linear project surfaces lean"
+  default_prompt: "Use $sync-project to reconcile Cargento's Linear project, milestone and issue descriptions."

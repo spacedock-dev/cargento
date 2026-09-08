@@ -49,6 +49,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         (web / "next-cockpit-compat.js").write_text("const compat = 1;\n", encoding="utf-8")
         (web / "project.js").write_text("const shared = 1;\n", encoding="utf-8")
         (web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
+        (web / "next-capacity.js").write_text("const capacity = 11;\n", encoding="utf-8")
         (web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
         (web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
         (web / "next-activity.js").write_text("const activity = 5;\n", encoding="utf-8")
@@ -81,6 +82,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             (f"<style>{embedded_styles}.next{{color:red}}\n</style>").encode()
             + b"<script>const first = 1;\nconst attention = 2;\nconst notify = 2;\n"
             b"const compat = 1;\nconst shared = 1;\nconst middle = 2;\n"
+            b"const capacity = 11;\n"
             b"const sessions = 3;\nconst projects = 3;\n"
             b"const project = 4;\nconst activity = 5;\n"
             b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
@@ -182,6 +184,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "next-cockpit-compat.js",
                 "project.js",
                 "next-chrome.js",
+                "next-capacity.js",
                 "next-sessions.js",
                 "next-projects.js",
                 "next-project.js",
@@ -605,68 +608,72 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                11_722,
-                "ac5eb34dc73159e08f2acc74279d80b79996a09c404a65fbc6579e7821696323",
+                22_383,
+                "8c37e4a7be21d25ed24e77e4ab8af1000b14fb2959219aa42c93c120e63451be",
             ),
             "next-attention.js": (
-                42_051,
-                "9ce3a282a6b002ab9d10b2d373a223c7fb23e048e09ba4f883e4e085e07bb5bf",
+                55_856,
+                "db84662107903bd501d6b93bc6c9cf2b028dd123563b7dcb5980ad05541a3b87",
             ),
             "next-notify.js": (
-                3_642,
-                "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
+                6_457,
+                "19430b5fbe080dc13f43ee5c714a1da453dd0ff4b82f1abaeecce105cb373a06",
             ),
             "next-cockpit-compat.js": (
                 599,
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                99_050,
-                "332a20cedf2a49952da5f3145775a1fcc68ff64e91a41e4601033114f5dddbc7",
+                99_070,
+                "5691704a6c164553b5fbf942287e6fdbd7a306aa387d2eebe0872e83d10a0261",
             ),
             "next-chrome.js": (
-                16_287,
-                "2e9ecf80b3908e1bb11d005bedca564f97454e009d1c41883880971e78c286f8",
+                35_822,
+                "e305b13c08b35286673d0f66425f327d54656224376bd5bbe2f365760a3d7b7d",
+            ),
+            "next-capacity.js": (
+                30_666,
+                "95410ca90cd1bffd8a717cd7f597d9a81da0c8d1ae789bf62f4c9f9757ec4d6f",
             ),
             "next-sessions.js": (
-                11_566,
-                "f0a4c655e10ab356011faae99537e792b3eec160705dfce37c245a7d3e03488c",
+                17_362,
+                "34f337530466457405ab470571f327836dbb9f99b7558d9fb2edf5e74c4fc55b",
             ),
             "next-projects.js": (
-                10_277,
-                "031c077b56a4115b59b064967d6e751bc3f8a475e4633f1b7ffebe5d24e76174",
+                12_350,
+                "e33148254ca21c3a3def0e0702209697bcc074eafa2bcf6ecfd22223a7d7ec28",
             ),
             "next-project.js": (
                 11_384,
                 "2aee791136ed89fff265747e7c3e17c6511045bc7e58a9883981edfd69442706",
             ),
             "next-activity.js": (
-                5_424,
-                "70cca91e0f61e2dd2645fc70dc8b0f70ec35420eb3f5e8147bfd09686ce07433",
+                6_081,
+                "5dfcddad55ada20d5786430f0927a7f8ea1829029602bccac2bfe7bac408ae3a",
             ),
             "next-session.js": (
-                15_711,
-                "672be9a054a11fd11b4b24304e15f3bad8be0ec79984cdbac7c19728f4ad521a",
+                19_720,
+                "d39df21375a49440ded562fe1eece8bb71fbbf63ee52faecfb9c64c11d8012d9",
             ),
             "next-workstream.js": (
-                11_696,
-                "5f7132c58033f2ad7aa988fba622f54f94eee4c7b1a45e9b0ac8be353ce6ebd8",
+                17_525,
+                "1ce464621be77779618494f9826c4486fc2c058257818865037eb1c6d15ee9d4",
             ),
             "next-delegation.js": (
-                7_544,
-                "d11ed2749ae3aa351fe26c1205665b6f4b57553aa17d0ce1ecc027371a6e7e7b",
+                8_583,
+                "e526ce96d25ef9c6347d6cbac903aa4c0da9b6399ecdbe0056ce3c119dcc9fdb",
             ),
             "next-controls.js": (
-                6_768,
-                "fb1f51b940a9e29122a6b689beb6ec6c31fe71652c45bc2dffa32f8250084018",
+                10_575,
+                "fb36d3cf4fc98cfd718ea32ed82eac602c3cc0bc658559424d07403396ec84b1",
             ),
             "next-cockpit.js": (
-                74_658,
-                "cd5db034539429b77d6d41193d8d9a3c2a491051e3a15c68751b83b3ced45cf1",
+                74_751,
+                "37ec738687c3ae01f8f97f3a9aec2dfdbd95a421f9a0caff5611849647b19f7b",
             ),
             "next-render.js": (
-                2_204,
-                "3bdb43261d6e223fd7793f9716f4b38a619aa22022c906fcddf27205f515ae66",
+                3_028,
+                "dc5f8c812e94bbf902fdbb7090d2a4e2a32fc9324384b6239b763f538951000e",
             ),
             "next-live.js": (
                 3_375,
@@ -681,16 +688,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(60_752, len(styles))
+        self.assertEqual(68_929, len(styles))
         self.assertEqual(
-            "13d369e6e83609574adbf69390435a131af0ccc7cdb970a398130a9019aeaa1e",
+            "2c554c4938c6bb3f23c6c47e9733db6d2a02694033ffc799e3b19f0a59132d0e",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(521_154, len(assembled))
+        self.assertEqual(630_960, len(assembled))
         self.assertEqual(
-            "9b3c66a1e882f5aae5d09a4244a04d3500517ae22904fa04f8b670f254c9e103",
+            "8eaa800ef6d50b22b4254e0d7acd59964ba7d993f3257b912fb04bb71a90e5d0",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -753,9 +760,15 @@ console.log(JSON.stringify({
             '__els.app = {innerHTML: ""};\n',
         )
 
+        # All three top-level routes, because this assertion pinned the literal
+        # two-link nav and was one of the two places that held Attention off the
+        # header while the router, the title and the `a` shortcut all knew it
+        # (DRC-4421). Kept as a literal rather than loosened: it is the mounted
+        # bundle's own markup, and the order is part of what a reader learns.
         self.assertIn(
             '<nav aria-label="Primary"><a href="#n=projects">Projects</a>'
-            '<a href="#n=sessions" aria-current="page">Sessions</a></nav>',
+            '<a href="#n=sessions" aria-current="page">Sessions</a>'
+            '<a href="#n=attention">Attention</a></nav>',
             out,
         )
         self.assertNotIn('class="next-breadcrumb" aria-label="Breadcrumb"', out)

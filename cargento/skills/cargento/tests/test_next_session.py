@@ -122,6 +122,47 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("did not publish an assignment", html)
         self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
+    def test_the_source_coverage_the_reader_opened_is_still_open_after_a_render(self) -> None:
+        # `renderNext` assigns the app's whole innerHTML, so the open state the
+        # browser keeps on a `<details>` node dies with the node: the panel
+        # closed itself under the reader on the next revision, or within 20
+        # seconds on the bare interval (DRC-4410). The page has to own it.
+        out = self.render(
+            """
+Object.assign(nextData.sessions[0], {state: "working", tasks: [], subagents: []});
+nextData.asks = [];
+const summary = () => __fire("click", {
+  target: {closest(candidate){
+    return candidate === "[data-next-disclosure]"
+      ? {dataset: {nextDisclosure: "session-source-coverage"}}
+      : null;
+  }},
+  preventDefault(){}, stopPropagation(){}
+});
+renderNext();
+const closed = __els.app.innerHTML;
+summary();
+renderNext();
+const opened = __els.app.innerHTML;
+renderNext();
+const survived = __els.app.innerHTML;
+summary();
+renderNext();
+const reclosed = __els.app.innerHTML;
+console.log(JSON.stringify({closed, opened, survived, reclosed}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        tag = '<details class="next-session-source-coverage"'
+        for html in (out["closed"], out["reclosed"]):
+            self.assertIn(f"{tag}>", html)
+            self.assertNotIn(f"{tag} open", html)
+        for html in (out["opened"], out["survived"]):
+            self.assertIn(f"{tag} open>", html)
+            self.assertIn("SOURCE COVERAGE", html)
+        self.assertEqual(out["closed"], out["reclosed"])
+
     def test_current_activity_leads_identity_without_a_redundant_session_label(self) -> None:
         html = self.render()
         assert isinstance(html, str)
@@ -345,6 +386,71 @@ console.log(JSON.stringify(variants));
         for html in out.values():
             self.assertNotIn("129m", html)
 
+    def test_the_health_note_says_which_of_the_three_readings_fired(self) -> None:
+        # One turn can be a tight run, a turn that failed six times either side
+        # of a success, or a turn where nothing worked. Saying "in a row" about
+        # a total is false the moment a success splits it, so each reading gets
+        # its own sentence (DRC-4021).
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.state = "working";
+session.turn = null;
+for(const [name, loop] of Object.entries({
+  run: {errors: 4, failures: 4, barren: false, tool: "Bash"},
+  split: {errors: 3, failures: 6, barren: false, tool: "Bash"},
+  barren: {errors: 3, failures: 3, barren: true, tool: "Bash"},
+  barrenSplit: {errors: 2, failures: 5, barren: true, tool: "Bash"},
+  legacy: {errors: 4, tool: "Bash"},
+  totalNotBigger: {errors: 4, failures: 4, barren: false, tool: "Bash"},
+  totalFractional: {errors: 3, failures: 6.5, barren: false, tool: "Bash"},
+  oneFailure: {errors: 1, failures: 1, barren: false, tool: "Bash"}
+})){
+  session.loop = loop;
+  renderNext();
+  variants[name] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        # A run of four with nothing split: the shipped sentence, unchanged.
+        self.assertIn("4 tool calls in a row came back as errors", out["run"])
+        # Scoped to the note: the token footer says "this turn" on every render.
+        self.assertNotIn("failed this turn", out["run"])
+
+        # Three in a row, six in the turn. The total leads and the run is named
+        # as a subset of it, because the reader's question is how much failed.
+        self.assertIn("6 tool calls failed this turn, 3 of them consecutive", out["split"])
+        self.assertNotIn("in a row", out["split"])
+
+        # Nothing worked. The count is the total and the claim is the absence.
+        self.assertIn("3 tool calls failed this turn and none succeeded", out["barren"])
+        self.assertNotIn("consecutive", out["barren"])
+        self.assertIn("5 tool calls failed this turn and none succeeded", out["barrenSplit"])
+
+        # Two producers reach this shape now: a payload from before DRC-4021, and
+        # a turn the scanner could not finish, which withholds both readings
+        # (turns.py). Rendering them alike is deliberate; either way the run it
+        # did see is the sentence to keep.
+        self.assertIn("4 tool calls in a row came back as errors", out["legacy"])
+        self.assertIn("4 tool calls in a row came back as errors", out["totalNotBigger"])
+
+        # A non-integer total is not a total. It falls back to the run rather
+        # than rendering "6.5 tool calls".
+        self.assertIn("3 tool calls in a row came back as errors", out["totalFractional"])
+        self.assertNotIn("6.5", out["totalFractional"])
+        self.assertNotIn("failed this turn", out["totalFractional"])
+
+        # The singular exists and is reachable.
+        self.assertIn("1 tool call in a row came back as errors", out["oneFailure"])
+
+        for html in out.values():
+            self.assertIn("Check the agent is working the problem", html)
+            self.assertIn("most recently Bash", html)
+
     def test_health_callout_uses_only_measured_long_turns_and_tool_loops(self) -> None:
         out = self.render(
             """
@@ -511,6 +617,140 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn("TASKS · 1 OF 3 DONE", html)
         self.assertIn("Prepare payload", html)
+
+    def test_an_inactive_subagent_neither_pulses_nor_counts_as_running(self) -> None:
+        # DRC-4344. A teammate that has finished, and a member that never
+        # started, are both published now. Only `active === false` withholds the
+        # pulse and leaves the running label; an element that does not carry the
+        # key at all is a harness nobody has taught to measure liveness and must
+        # render exactly as before.
+        # Falsified by: stamping `next-live` unconditionally, or counting every
+        # element into the label, which is the state of the code today.
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.subagents = [
+  {name: "live-one", model: null, started_at: 9700, active: true, parent: null},
+  {name: "finished-one", model: null, started_at: 9000, active: false, parent: null},
+  {name: "lens-a", model: null, started_at: 9500, active: true, parent: "finished-one"}
+];
+renderNext();
+variants.measured = __els.app.innerHTML;
+session.subagents = [{name: "unmeasured", model: null, started_at: 9700}];
+renderNext();
+variants.unmeasured = __els.app.innerHTML;
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        measured = out["measured"]
+        live = self.subagent_row(measured, 0)
+        finished = self.subagent_row(measured, 1)
+        lens = self.subagent_row(measured, 2)
+        self.assertIn("next-live", live)
+        self.assertNotIn("next-live", finished)
+        self.assertIn('aria-label="idle">○</span>', finished)
+        self.assertIn('aria-label="running">●</span>', live)
+        # The heading counts live DIRECT children, so it agrees with the row's
+        # own state line: `working_detail` counts that same population and a
+        # grandchild is deliberately not in it. Counting every live element read
+        # "3 RUNNING SUBAGENTS" above a row saying "running 1 subagent".
+        self.assertIn("1 RUNNING SUBAGENT", measured)
+        self.assertNotIn("3 RUNNING SUBAGENTS", measured)
+        # A grandchild names the teammate that spawned it; a teammate names none.
+        self.assertIn("finished-one", lens)
+        self.assertIn("next-session-subagent-parent", lens)
+        self.assertNotIn("next-session-subagent-parent", live)
+        # An element with no `active` key keeps rendering as live.
+        self.assertIn("next-live", self.subagent_row(out["unmeasured"], 0))
+        self.assertIn("1 RUNNING SUBAGENT", out["unmeasured"])
+
+    def test_an_all_idle_roster_keeps_its_rows_and_does_not_claim_none_running(self) -> None:
+        # The state this feature creates: a finished board still inside the
+        # display window, every element inactive. The block used to guard on the
+        # element count while the heading counted live ones, so it printed
+        # "0 RUNNING SUBAGENTS" above a populated list. Guarding the block on the
+        # live count instead would hide the list, which is the vanishing act
+        # DRC-4344 exists to stop, so the heading tells the truth and the rows
+        # stay.
+        # Falsified by: either restoring the live-count heading, or guarding the
+        # block on it.
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "done-one", model: null, started_at: 9000, active: false, parent: null},
+  {name: "done-two", model: null, started_at: 9000, active: false, parent: null}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertNotIn("0 RUNNING SUBAGENTS", html)
+        self.assertIn("2 SUBAGENTS · NONE RUNNING", html)
+        self.assertIn("done-one", html)
+        self.assertIn("done-two", html)
+        self.assertNotIn("next-live", self.subagent_row(html, 0))
+
+    def test_the_heading_never_says_none_running_over_a_running_worker(self) -> None:
+        # Review round 1 narrowed the running clause to direct children so it
+        # would agree with the state line, and left the total counting every
+        # element. One idle teammate holding one live worker then rendered
+        # "2 SUBAGENTS · NONE RUNNING" directly above a row carrying `next-live`
+        # and `aria-label="running"`, so the heading contradicted the row a
+        # screen reader announces one line down.
+        # Both numbers now name their own population: the total counts direct
+        # children, and a live worker beneath one gets its own clause rather
+        # than being folded into a count of teammates.
+        # Falsified by: restoring `subagents.length` as the total (reads
+        # "2 SUBAGENTS"), or dropping the beneath clause (leaves "NONE RUNNING"
+        # as the whole sentence above a live row).
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "parked-teammate", model: null, started_at: 9000, active: false, parent: null},
+  {name: "lens-a", model: null, started_at: 9500, active: true, parent: "parked-teammate"}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("1 SUBAGENT · NONE RUNNING · 1 WORKER RUNNING BENEATH", html)
+        self.assertNotIn("2 SUBAGENTS", html)
+        # The rows themselves are unchanged: the worker still renders, still
+        # live, still attributed. Only the sentence above them moved.
+        self.assertNotIn("next-live", self.subagent_row(html, 0))
+        self.assertIn("next-live", self.subagent_row(html, 1))
+        self.assertIn("next-session-subagent-parent", self.subagent_row(html, 1))
+
+    def test_the_heading_counts_workers_beneath_a_live_teammate_separately(self) -> None:
+        # The plural arm of the same sentence. A live teammate with two live
+        # workers used to read "1 RUNNING SUBAGENT" above three live rows; the
+        # leading clause still counts direct children only, so it agrees with
+        # `state_detail`, and the workers are stated rather than implied.
+        # Falsified by: counting workers into the leading clause, which is the
+        # defect review round 1 fixed and would reintroduce "3 RUNNING
+        # SUBAGENTS" beside "running 1 subagent".
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "live-teammate", model: null, started_at: 9700, active: true, parent: null},
+  {name: "lens-a", model: null, started_at: 9500, active: true, parent: "live-teammate"},
+  {name: "lens-b", model: null, started_at: 9500, active: true, parent: "live-teammate"}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("1 RUNNING SUBAGENT · 2 WORKERS RUNNING BENEATH", html)
+        self.assertNotIn("3 RUNNING SUBAGENTS", html)
 
     def test_subagents_keep_payload_order_and_omit_unmeasured_elapsed_time(self) -> None:
         html = self.render()
@@ -897,3 +1137,40 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionDetailEndTest(NextPageJsHarness):
+    """DRC-4036: the detail must not call an ended session idle."""
+
+    def detail(self, extra: str) -> str:
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    (
+                        "nextData = {generated: 10000, sessions: [{"
+                        'sid: "e1", harness: "claude", project: "a/b", state: "idle",'
+                        ' active: false, title: "Ended run", state_detail: null,'
+                        f" started_at: 8000, last_activity: 9000, {extra}"
+                        " tasks: [], subagents: []}]};"
+                    ),
+                    'console.log(JSON.stringify(nextSessionView("a/b", "claude", "e1")));',
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def test_an_ended_session_reads_ended_rather_than_idle(self) -> None:
+        html = self.detail("finished_at: 9350, ended_at: 9400,")
+
+        self.assertIn("session ended", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_a_session_with_no_observed_end_still_reads_idle(self) -> None:
+        # Absence is not a verdict: a SIGKILL, an adapter-less harness and
+        # --no-events all look like this, and none of them means still running.
+        html = self.detail("finished_at: 9350,")
+
+        self.assertNotIn("session ended", html)
+        self.assertIn("idle", html)

@@ -1,7 +1,7 @@
 """The observer agent: a read-only analyzer that derives goal + stage + block.
 
 Sits beside an active session, reads its transcript and workflow entity dir
-read-only, and writes one sidecar (``<harness>_<sid>.observer.json``) the
+read-only, and writes one sidecar (``<harness>_<sid>.json``) the
 observer panel renders. The analyzer never mutates the observed session's
 repo or state; the sidecar is written to the observer's own store under
 ``config.state_dir``.

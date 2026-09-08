@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import datetime
 import json
 import os
 import tempfile
@@ -25,7 +26,7 @@ from cargento_runtime import sessions as runtime_sessions
 from . import support
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 NOW = 1_700_000_000.0
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
@@ -243,6 +244,77 @@ class LedgerTest(ObservationTestCase):
         coordinator.submit("claude", self.envelope(event="input_requested"))
         self.assertEqual(0.0, coordinator.finished_at("claude", PREFIX))
 
+    def test_an_end_is_remembered_for_the_session_id_that_ended(self) -> None:
+        # DRC-4036. The ledger is popped by the same event, so this mark cannot
+        # live in it any more than the completion mark can.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertEqual([], coordinator.overlays_for("claude", PREFIX))
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+
+    def test_no_end_observed_reads_zero_and_never_a_guess(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_resumed_session_id_stops_reading_ended(self) -> None:
+        # `session_started` produces NO overlay, so it reaches neither `_remember`
+        # nor `_mark_finished`: without an explicit lift, `claude --resume <id>`
+        # would leave the row reading ended for the rest of the run.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="session_started"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_session_working_after_its_end_stops_reading_ended(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_gate_after_an_end_stops_reading_ended(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_stop_after_an_end_leaves_the_mark_standing(self) -> None:
+        # A `turn_stopped` says a turn ended, not that the session reopened, and
+        # every clean ending has one in front of it.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_event_stamped_before_the_end_does_not_lift_the_mark(self) -> None:
+        # At-least-once delivery, reordered. The a1 arm of the session-end capture
+        # had its `SessionEnd` land 5.581 s after the last Stop, which is long
+        # enough for a short headless run's own earlier hook POST to arrive after
+        # it. Arrival order cannot separate those — it is exactly what got
+        # reordered — so the lift compares the EVENT stamps instead.
+        coordinator = self.build()
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        # Stamped a minute before the end and delivered after it. Written through
+        # the envelope rather than poked into the map, so the parse's own
+        # plausibility filter is on the path a real reordered hook would take.
+        older = datetime.datetime.fromtimestamp(NOW, tz=datetime.UTC).isoformat()
+        coordinator.submit("claude", self.envelope(event="turn_started", timestamp=older))
+        self.assertEqual(self.now, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_end_mark_is_capped_like_the_ledger_and_counts_the_refusal(self) -> None:
+        coordinator = self.build(event_overlay_max_sessions=1)
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        coordinator.submit("claude", self.envelope(event="session_ended", session_id=OTHER))
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+        self.assertEqual(0.0, coordinator.ended_at("claude", OTHER_PREFIX))
+        self.assertEqual(1, coordinator.counters["ended.refused"])
+
     def test_a_clear_followed_by_a_prompt_inside_one_window_reads_as_working(self) -> None:
         # Claude fires session_ended on /clear as well as on exit, so this exact
         # order arrives in practice and must not leave the row retired.
@@ -409,6 +481,31 @@ class PendingTest(ObservationTestCase):
         coordinator.submit("claude", self.envelope(event="turn_stopped"))
         coordinator.note_rows(set())
         self.assertEqual(NOW, coordinator.finished_at("claude", PREFIX))
+
+    def test_an_end_mark_survives_the_note_rows_that_follows_it(self) -> None:
+        # The trap `_finished`'s retirement rule walks straight into. Ending pops
+        # `_overlays[key]`, so straight afterwards the key is in neither the
+        # collected set nor the ledger — `_finished`'s two conditions — and a
+        # mark retired there can never be re-earned, because a session fires
+        # `session_ended` exactly once. A stop is re-supplied by the next
+        # `turn_stopped`, so its rule tolerates being wrong; this one does not.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        coordinator.note_rows(set())
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_end_mark_is_retired_once_its_row_is_a_whole_window_gone(self) -> None:
+        # Its only bound besides the cap, and it is a time rule rather than a
+        # row-set rule for the reason above. A row is produced only while its
+        # activity is inside the display window, and the end is the last thing
+        # that happened to that id, so past the window the row cannot come back.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += self.config.ended_mark_ttl_sec + 1
+        coordinator.note_rows({("claude", PREFIX)})
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX), "still collected")
+        coordinator.note_rows(set())
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
 
     def test_completion_marks_are_capped_like_the_ledger_and_count_the_refusal(self) -> None:
         coordinator = self.build(event_overlay_max_sessions=1)
@@ -934,9 +1031,19 @@ class WaitDetailTest(unittest.TestCase):
             del harness, sid  # this stub remembers no stop
             return 0.0
 
+        def ended_at(self, harness: str, sid: str) -> float:
+            """No end observed: this stub answers only about stops."""
+            del harness, sid
+            return 0.0
+
         def git_for(self, harness: str, sid: str) -> None:
             """Never probed: this stub has no repository behind it."""
             del harness, sid
+
+        def focusable(self, harness: str, sid: str) -> bool:
+            """No terminal identity: this stub observed no session start."""
+            del harness, sid
+            return False
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
@@ -1067,9 +1174,19 @@ class StateDisputeTest(unittest.TestCase):
             del harness, sid  # this stub remembers no stop
             return 0.0
 
+        def ended_at(self, harness: str, sid: str) -> float:
+            """No end observed: this stub answers only about stops."""
+            del harness, sid
+            return 0.0
+
         def git_for(self, harness: str, sid: str) -> None:
             """Never probed: this stub has no repository behind it."""
             del harness, sid
+
+        def focusable(self, harness: str, sid: str) -> bool:
+            """No terminal identity: this stub observed no session start."""
+            del harness, sid
+            return False
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
@@ -1369,11 +1486,14 @@ class StateDisputeTest(unittest.TestCase):
         self.assertEqual(6, self.state.dispute_total)
 
 
-class ApplicationOverlayTest(unittest.TestCase):
-    """The other half: what a collection does with the ledger."""
+class ApplicationOverlayTest(support.RuntimeTestCase):
+    """The other half: what a collection does with the ledger.
 
-    def setUp(self) -> None:
-        support.reset_runtime()
+    `RuntimeTestCase` rather than a bare `TestCase` and a bare `reset_runtime`,
+    because `_collect_with` runs a full `aggregate.collect`, whose `_notify_waits`
+    reaches the real notifier: these three tests sent three audible banners to
+    the machine running the suite (DRC-4431).
+    """
 
     @contextlib.contextmanager
     def _seeded(self, overlays: Any) -> Iterator[aggregate.Application]:
@@ -1422,7 +1542,10 @@ class ApplicationOverlayTest(unittest.TestCase):
         # exactly rather than a variant of the new one.
         row = self._row(self._collect_with(None))
         self.assertEqual("idle", row["state"])
-        self.assertNotIn("acquisition", row)
+        # Present and None, not absent. Since DRC-4473 `base_session` declares
+        # the key for every harness, so the reading is the value: None is "no
+        # provenance stated", and the assertion is that nothing claimed one.
+        self.assertIsNone(row["acquisition"])
 
     def test_a_live_overlay_patches_the_matching_row(self) -> None:
         class Source:
@@ -1446,9 +1569,19 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 self.noted = keys
@@ -1480,9 +1613,19 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1505,9 +1648,19 @@ class ApplicationOverlayTest(unittest.TestCase):
                 # that stopped and stayed stopped looks like.
                 return support.SERVER_STARTED - 200
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1516,10 +1669,120 @@ class ApplicationOverlayTest(unittest.TestCase):
         self.assertEqual("idle", row["state"], "the collector still owns the state")
         self.assertEqual(support.SERVER_STARTED - 200, row["finished_at"])
 
+    def test_a_remembered_end_reaches_the_row_with_no_overlay_left(self) -> None:
+        # The other half of the `claude -p` row, and the one DRC-4036 adds:
+        # `session_ended` pops the ledger that would have carried this, so the
+        # only path onto the row is the coordinator's own memory. Activity AFTER
+        # the end is deliberate — a real end lands after the transcript's last
+        # write — and it proves the stop's staleness guard is not applied here.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                if (harness, sid) != ("claude", PREFIX):
+                    return 0.0
+                return support.SERVER_STARTED - 200
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        row = self._row(self._collect_with(Source()))
+        self.assertEqual("idle", row["state"], "the collector still owns the state")
+        self.assertEqual(support.SERVER_STARTED - 200, row["ended_at"])
+        self.assertIsNone(row["finished_at"], "an end is not a stop")
+
+    def test_an_observed_terminal_reaches_the_row_so_a_raise_can_be_offered(self) -> None:
+        # The seam `ended_at` above is tested across and `focusable` was not.
+        # Deleting the one line in `aggregate.py` that copies it onto the row
+        # left the whole suite green, because every `OverlaySource` stub here
+        # returns False and `sessions.py` already defaults the field to False,
+        # so the stubs agreed with the mutant. What shipped in that state was a
+        # board where no RAISE renders on any row and the coverage line says so
+        # in well-chosen words: a confident absence over a working feature.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                # True for this row alone, so the assertion cannot pass off a
+                # blanket default the way a stub returning True everywhere would.
+                return (harness, sid) == ("claude", PREFIX)
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        # The stub answers True for this one key and False for anything else, so
+        # a True on the row cannot have come from a blanket default: it can only
+        # have crossed the seam. That makes the positive assertion sufficient on
+        # its own, and the fixture seeds a single session anyway.
+        self.assertIs(True, self._row(self._collect_with(Source()))["focusable"])
+
+    def test_a_row_with_no_observed_end_publishes_none_rather_than_a_verdict(self) -> None:
+        # The session that predates this server run, which has no mark at all.
+        # None means not observed; it must never read as "did not end", because
+        # an absent end is also what a SIGKILL and every adapter-less harness
+        # look like.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        row = self._row(self._collect_with(Source()))
+        self.assertIsNone(row["ended_at"])
+
     def test_a_harness_with_no_event_adapter_publishes_that_it_is_scan_only(self) -> None:
-        # DRC-4035 D4: six harnesses can never earn a stop, so their idle rows
-        # must say the answer is unknowable here rather than share the silence of
-        # a Claude row that simply has not finished.
+        # N-9 in `docs/design-needs-input.md`, "Letting a collector infer
+        # completion" (DRC-4035): six harnesses can never earn a stop, so their
+        # idle rows must say the answer is unknowable here rather than share the
+        # silence of a Claude row that simply has not finished.
         config, state = support.runtime()
 
         def collect_one(harness: str) -> Any:
@@ -1546,9 +1809,8 @@ class ApplicationOverlayTest(unittest.TestCase):
         )
         rows = {str(row["harness"]): row for row in application.collect(show_all=True)["sessions"]}
         self.assertEqual(events.ACQUISITION_SCAN, rows["goose"]["acquisition"])
-        self.assertNotIn(
-            "acquisition",
-            rows["claude"],
+        self.assertIsNone(
+            rows["claude"]["acquisition"],
             "a harness that can earn a stop must not be marked unknowable",
         )
 
@@ -1588,10 +1850,20 @@ class ApplicationOverlayTest(unittest.TestCase):
                     return 0.0
                 return support.SERVER_STARTED - 200
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> Any:
                 if (harness, sid) != ("claude", PREFIX):
                     return None
                 return reading
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1618,9 +1890,19 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid
                 return 0.0
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1654,9 +1936,19 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -2139,6 +2431,187 @@ class GitProbeDispatchTest(ObservationTestCase):
         self.assertIsNotNone(coordinator.git_for("claude", PREFIX))
         coordinator.note_rows(set())
         self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+
+class GitProbeConcurrencyTest(ObservationTestCase):
+    """DRC-4443: how many probes may be in flight, and what a refusal costs.
+
+    `_spawn_thread` starts one daemon thread per dispatch and nothing counted
+    them. Measured: the event budget alone allows 40 burst plus 20/s for the
+    probe's whole 10 s life, so 240 live probe threads per harness and 960 across
+    the four normalizers — and each is a real `git status` inside a real
+    repository. The gate is `quota`'s, which this class already reuses for the
+    focus command: claim under the lock, release in a `finally`.
+
+    `_spawn` is injected as a collector rather than as `run` here, so the claim
+    can be observed while it is held. Nothing in this class spawns a thread or a
+    subprocess.
+    """
+
+    def end_envelope(self, **overrides: Any) -> dict[str, Any]:
+        payload = self.envelope(event="session_ended", cwd="/repo/somewhere")
+        payload.update(overrides)
+        return payload
+
+    @staticmethod
+    def _collector(
+        coordinator: observation.Observation,
+    ) -> list[Callable[[], None]]:
+        """Hold every dispatched probe unrun, so the claim stays held."""
+        dispatched: list[Callable[[], None]] = []
+        coordinator._spawn = dispatched.append
+        return dispatched
+
+    def test_a_second_probe_for_one_session_is_refused_while_the_first_is_in_flight(self) -> None:
+        coordinator = self.build()
+        coordinator._git_prober = lambda _cwd: None
+        dispatched = self._collector(coordinator)
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertEqual(1, len(dispatched), "an overlapping probe was dispatched")
+        self.assertEqual(1, coordinator.counters["git.inflight"])
+        # And the claim is released by the probe rather than held for the life of
+        # the process: the next edge for the same session dispatches again.
+        dispatched[0]()
+        coordinator.submit("claude", self.end_envelope())
+        self.assertEqual(2, len(dispatched))
+
+    def test_a_probe_that_raised_still_releases_its_claim(self) -> None:
+        # The `finally` is what this asserts. Without it a repository that makes
+        # git raise disables probing for that session until the process restarts,
+        # which is a worse outcome than the missing reading.
+        coordinator = self.build()
+
+        def raising(_cwd: str) -> git_status.GitStatus | None:
+            raise OSError("git")
+
+        coordinator._git_prober = raising
+        dispatched = self._collector(coordinator)
+        coordinator.submit("claude", self.end_envelope())
+        dispatched[0]()
+        self.assertEqual(1, coordinator.counters["git.failed"])
+        coordinator.submit("claude", self.end_envelope())
+        self.assertEqual(2, len(dispatched), "the raised probe kept its claim")
+
+    def test_a_spawn_that_cannot_start_a_thread_releases_its_claim(self) -> None:
+        # `Thread.start` raises RuntimeError when the interpreter can start no
+        # more threads, and nothing in the repository injected a raising `_spawn`:
+        # deleting that release branch wholesale left this module at 150 tests OK.
+        # What it costs is not one lost reading. The claim is taken under the lock
+        # and released by `_probe_and_mark`, which never runs if the spawn raised,
+        # so the session is unprobeable for the life of the process.
+        coordinator = self.build()
+        coordinator._git_prober = lambda _cwd: None
+
+        def exhausted(_run: Callable[[], None]) -> None:
+            raise RuntimeError("can't start new thread")
+
+        coordinator._spawn = exhausted
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertEqual(1, coordinator.counters["git.failed"])
+        self.assertEqual(set(), coordinator._git_inflight)
+        # The claim released, so the next end for the SAME key dispatches rather
+        # than meeting a gate holding a slot nothing will ever free.
+        dispatched = self._collector(coordinator)
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertEqual(1, len(dispatched), "the exhausted spawn kept its claim")
+        self.assertNotIn("git.inflight", coordinator.counters)
+
+    def test_the_probe_switched_off_claims_no_slot_for_the_ends_it_ignores(self) -> None:
+        # The conjunction's order is load-bearing and no assertion could see it:
+        # reordering to `self._claim_git(key) and self.config.git_probe_enabled
+        # and event.cwd` also left this module at 150 tests OK. `_claim_git` has
+        # an effect and the two flag checks do not, so under that ordering every
+        # end claims a slot and nothing releases one. Measured with the probe off:
+        # two ends left both keys in `_git_inflight` permanently with nothing
+        # dispatched, which saturates the ceiling after
+        # `git_probe_max_inflight` ends and makes `--no-git` a one-way switch.
+        coordinator = self.build(git_probe_enabled=False)
+        dispatched = self._collector(coordinator)
+        for index in range(2):
+            payload = self.end_envelope(session_id=f"{index:08x}-3456-7890-abcd-ef1234567890")
+            self.assertEqual("accepted", coordinator.submit("claude", payload))
+        self.assertEqual([], dispatched)
+        self.assertEqual(set(), coordinator._git_inflight)
+        self.assertEqual([], sorted(n for n in coordinator.counters if n.startswith("git.")))
+
+    def test_five_hundred_session_ends_leave_a_bounded_number_in_flight(self) -> None:
+        # The shape the ceiling was measured with, and the per-key gate alone does
+        # not bound it: every submit here carries a DIFFERENT session id, which is
+        # a payload field, so one token holder can vary it freely.
+        coordinator = self.build()
+        coordinator._git_prober = lambda _cwd: None
+        dispatched = self._collector(coordinator)
+        for index in range(500):
+            payload = self.end_envelope(session_id=f"{index:08x}-3456-7890-abcd-ef1234567890")
+            self.assertEqual("accepted", coordinator.submit("claude", payload))
+        self.assertEqual(self.config.git_probe_max_inflight, len(dispatched))
+        # `git.saturated`, not `git.inflight`: every key here is distinct, so the
+        # per-key gate turned none of them away and the ceiling turned away all
+        # 468. One counter for both causes could not tell those apart.
+        self.assertEqual(
+            500 - self.config.git_probe_max_inflight, coordinator.counters["git.saturated"]
+        )
+        self.assertNotIn("git.inflight", coordinator.counters)
+
+    def test_the_ceiling_recovers_as_probes_finish(self) -> None:
+        # A ceiling that never refilled would turn a burst into a permanently
+        # dead feature rather than a delayed one.
+        coordinator = self.build()
+        coordinator._git_prober = lambda _cwd: None
+        dispatched = self._collector(coordinator)
+        for index in range(self.config.git_probe_max_inflight + 1):
+            coordinator.submit(
+                "claude", self.end_envelope(session_id=f"{index:08x}-3456-7890-abcd-ef1234567890")
+            )
+        self.assertEqual(self.config.git_probe_max_inflight, len(dispatched))
+        for run in list(dispatched):
+            run()
+        coordinator.submit(
+            "claude", self.end_envelope(session_id="ffffffff-3456-7890-abcd-ef1234567890")
+        )
+        self.assertEqual(self.config.git_probe_max_inflight + 1, len(dispatched))
+
+    def test_the_refusal_keeps_the_reading_the_first_probe_produces(self) -> None:
+        # R13, reproduced before the gate existed: two overlapping ends for ONE
+        # key, a slow probe answering 111 and a fast one answering 222. The board
+        # published 222 and then 111 as each returned, and nothing counted it.
+        #
+        # Last completion wins is the right rule for a reading whose freshness IS
+        # its completion time — an arrival-order guard, of the kind `_finished`
+        # and `_remember` use for event-carried values, would let the LATER
+        # arrival win, which here is the seq-2 event whose fast probe finished
+        # first and so read the tree earlier. So the fix is not a guard on the
+        # write: it is that the second probe never runs.
+        # Keyed on cwd, not on call order: which probe answers which number must
+        # not depend on the order the probes are RUN in, or the reproduction reads
+        # backwards, which it did once here.
+        answers = {"/repo/slow": 111, "/repo/fast": 222}
+        coordinator = self.build()
+        coordinator._git_prober = lambda cwd: git_status.GitStatus(dirty=True, changed=answers[cwd])
+        dispatched = self._collector(coordinator)
+        coordinator.submit("claude", self.end_envelope(cwd="/repo/slow"))
+        coordinator.submit("claude", self.end_envelope(cwd="/repo/fast"))
+        self.assertEqual(1, len(dispatched), "the overlapping probe was dispatched")
+        dispatched[0]()
+        published = coordinator.git_for("claude", PREFIX)
+        self.assertEqual(git_status.GitStatus(dirty=True, changed=111), published)
+        self.assertEqual(1, coordinator.counters["git.inflight"])
+
+    def test_only_the_session_end_edge_dispatches_a_probe(self) -> None:
+        # The cadence claim, pinned against the whole vocabulary rather than the
+        # three names a reader would think to try. `_spawn_thread`'s docstring
+        # rests on it: at most once per edge, and only this edge.
+        dispatching = set()
+        for name in sorted(events.EVENT_NAMES):
+            coordinator = self.build()
+            coordinator._git_prober = lambda _cwd: None
+            dispatched = self._collector(coordinator)
+            payload = self.envelope(event=name, cwd="/repo/somewhere")
+            self.assertEqual("accepted", coordinator.submit("claude", payload), name)
+            if dispatched:
+                dispatching.add(name)
+        self.assertEqual({"session_ended"}, dispatching)
 
 
 class GitNullSurfaceTest(ObservationTestCase):

@@ -98,6 +98,16 @@ function nextPayloadAsks(payload){
   return payload.asks.filter(ask => ask && typeof ask === "object" && !Array.isArray(ask));
 }
 
+/* When a session id was observed to end, or null. Null is the whole of what the
+   page may say: absence covers a SIGKILL, a harness with no event adapter, a
+   session that predates this server run, and --no-events, so a row without a
+   stamp is NOT known to be running and must never be rendered as though it
+   were. Every end-aware surface goes through here so that rule lives once. */
+function nextSessionEndedAt(session){
+  const at = nextNumber(session && session.ended_at);
+  return at != null && at > 0 ? at : null;
+}
+
 function nextSessionKey(session){
   return `session:${JSON.stringify([String(session && session.harness || ""), String(session && session.sid || "")])}`;
 }
@@ -112,12 +122,191 @@ function nextExactAskOwner(payload, ask){
   return matches.length === 1 ? matches[0] : null;
 }
 
+// What a row control last said, held outside the DOM. `renderNext` replaces
+// `#app` wholesale on every revision and on a bare interval — 20 s with an
+// EventSource, 5 s without — so a cue written onto the element died of a clock
+// rather than of anything the reader did, and asymmetrically: the live region is
+// a sibling of `#app` and survived, so the screen-reader cue outlived the
+// coloured one (DRC-4392). The render functions below re-emit from here.
+//
+// One map for all three controls, because they are one lane in every other
+// respect and three maps would be three places for the same expiry rule to
+// drift. The lane is part of the key: copying a session id is not proof the
+// re-entry command was copied.
+//
+// Stamped, because never expiring is the worse lie of the two. A row would read
+// SENT for the rest of the run, including after `ended_at` marks the session
+// over. 30 s is longer than the 20 s idle render (next-live.js's
+// NEXT_FALLBACK_POLL_MS), so the cue's life is not decided by when the next
+// render happens to land, and short enough that nobody reads it as a property of
+// the session.
+const NEXT_CONTROL_STATE_TTL_MS = 30_000;
+// Bounded like every other module-level map here. A board carries hundreds of
+// rows and a tab stays open for hours, so the clock drops what is stale and the
+// cap drops what is oldest rather than letting the map grow with the session.
+const NEXT_CONTROL_STATE_LIMIT = 32;
+const nextControlStates = new Map();
+
+function nextControlStateKey(lane, harness, sid){
+  return `${lane}\u0000${String(harness == null ? "" : harness)}` +
+    `\u0000${String(sid == null ? "" : sid)}`;
+}
+
+function nextRememberControlState(key, state){
+  // Deleted before set so the Map's insertion order stays recency order, which
+  // is what makes the first key the right one to evict.
+  nextControlStates.delete(key);
+  nextControlStates.set(key, {state, at: Date.now()});
+  while(nextControlStates.size > NEXT_CONTROL_STATE_LIMIT){
+    nextControlStates.delete(nextControlStates.keys().next().value);
+  }
+}
+
+function nextControlState(key){
+  const held = nextControlStates.get(key);
+  if(!held) return "";
+  if(Date.now() - held.at >= NEXT_CONTROL_STATE_TTL_MS){
+    nextControlStates.delete(key);
+    return "";
+  }
+  return held.state;
+}
+
+function nextControlStateAttr(attribute, lane, harness, sid){
+  const state = nextControlState(nextControlStateKey(lane, harness, sid));
+  return state ? ` ${attribute}="${esc(state)}"` : "";
+}
+
 function nextSessionCopyControl(session){
   const sid = String(session && session.sid || "").trim();
   if(!sid) return "";
+  // The harness rides the control because the cue is keyed on both, as every
+  // other session-keyed structure here is (`nextSessionKey`): a sid is unique
+  // within a harness and nowhere else.
+  const harness = String(session && session.harness || "");
   return `<button type="button" class="next-session-copy" data-next-copy-session="${esc(sid)}" ` +
+    `data-next-copy-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-copy-state", "copy", harness, sid)} ` +
     `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
     '<span aria-hidden="true">COPY ID</span></button>';
+}
+
+// The verb each harness's own CLI takes to re-enter a session, keyed by harness.
+//
+// Both were read off `--help` on the installed CLI rather than off documentation:
+// Claude Code 2.1.261 takes `--resume <session-id>` and Codex 0.153.4 takes
+// `resume <SESSION_ID>`. A harness absent from this table gets no control at all,
+// because a guessed verb costs the reader a failed command on top of the hunt it
+// was meant to replace.
+//
+// On re-entering a session that is still live, which is the question a reader will
+// ask before they trust this: neither harness lets a second process onto the same
+// conversation, and both say so rather than doing it quietly. Measured, not
+// inferred. Claude Code refuses — `Can't open — this session is running in another
+// terminal` interactively, and in the background variant it starts a copy and
+// reports `The original conversation is unchanged`. Codex refuses too, with
+// `thread-store conflict: thread <id> already has an active writer`, observed by
+// running two `codex exec resume` calls against one id. So there is no footgun to
+// warn about, and the control carries no warning: the worst case is a refusal that
+// names what to do next.
+const NEXT_RESUME_COMMANDS = new Map([
+  ["claude", id => `claude --resume ${id}`],
+  ["codex", id => `codex resume ${id}`],
+]);
+
+// The published token is checked again here, having already been checked by the
+// collector that published it. Not belt and braces for its own sake: the page
+// treats the payload as untrusted the way the server treats a hook's output, and
+// this is the one string on the board that becomes a shell command in someone
+// else's terminal.
+//
+// Same grammar as the server's RESUME_TOKEN_PATTERN, first character included:
+// a `-`-leading token is one word to a shell but a flag to the CLI, and both
+// harnesses have a valueless flag that turns off their permission checks. Keep
+// the two in step; a page-only anchor would leave every other reader of
+// /api/data holding the raw value.
+const NEXT_RESUME_TOKEN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
+
+function nextResumeCommand(session){
+  const build = NEXT_RESUME_COMMANDS.get(String(session && session.harness || ""));
+  const token = String(session && session.resume_id || "");
+  return build && NEXT_RESUME_TOKEN.test(token) ? build(token) : "";
+}
+
+function nextSessionResumeControl(session){
+  const command = nextResumeCommand(session);
+  if(!command) return "";
+  // `title` carries the command as well as the clipboard does, which is the
+  // fallback: a context with no `navigator.clipboard` still shows the reader what
+  // to type. Same lane as the session-id control beside it, deliberately.
+  const sid = String(session && session.sid || "");
+  const harness = String(session && session.harness || "");
+  return `<button type="button" class="next-session-copy next-attention-resume" ` +
+    `data-next-copy-command="${esc(command)}" data-next-copy-session="${esc(sid)}" ` +
+    `data-next-copy-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-copy-state", "command", harness, sid)} ` +
+    `aria-label="Copy re-entry command ${esc(command)}" title="${esc(command)}">` +
+    '<span aria-hidden="true">COPY COMMAND</span></button>';
+}
+
+// The capability this run minted for the focus route, injected into the served
+// document at `cli.inject_focus_capability` rather than baked into an asset,
+// which is what keeps this file's bytes deterministic. Read from the document
+// because that is the only place it arrives: SECURITY.md keeps it out of
+// `/api/data`, so a page reading it from the payload is reading something the
+// server does not send. Absent means the feature is off for the run — `--no-focus`,
+// or `--no-events` taking the coordinator that mints it — and an absent capability
+// renders no control rather than one whose request could only be refused.
+const NEXT_FOCUS_META = 'meta[name="cargento-focus"]';
+
+function nextFocusCapability(){
+  if(typeof document === "undefined" || typeof document.querySelector !== "function") return "";
+  let meta = null;
+  try{
+    meta = document.querySelector(NEXT_FOCUS_META);
+  }catch(_error){
+    return "";
+  }
+  const value = meta && typeof meta.getAttribute === "function"
+    ? meta.getAttribute("content")
+    : null;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+// Beside the copy control and never in place of it. The copy always works. This
+// one's target is resolved at the moment of the raise and never at render, so at
+// render the page cannot know whether it will work, and drawing it optimistically
+// over the copy would leave a reader whose raise is declined with less than the
+// affordance that always works.
+//
+// `focusable` is a bit and never a target, so there is nothing for a `title` to
+// carry: the copy control's title holds its own payload as the no-clipboard
+// fallback, and the focus contract forbids echoing a target. The accessible name
+// is the `aria-label`, and it names the act rather than the terminal.
+//
+// A row with no reported terminal renders nothing at all. False is the majority
+// answer and will stay so — a session outside tmux, one that predates this server
+// run, and every Linux and Windows session, where the contract's own device
+// grammar refuses `/dev/pts/N` — so the coverage line says how far the feature
+// reaches once, where a per-row note would print forever and say nothing.
+function nextSessionRaiseControl(session){
+  if(!session || session.focusable !== true) return "";
+  const sid = String(session.sid == null ? "" : session.sid).trim();
+  const harness = String(session.harness == null ? "" : session.harness).trim();
+  if(!sid || !harness || !nextFocusCapability()) return "";
+  // Every RAISE on the page, not the one that was clicked. The refusal is the
+  // daemon's — one `_focus_inflight` and one `_focus_last_at` for the whole
+  // process — and the page's own gate is one module-level flag, so painting the
+  // clicked row alone attributes a page-wide condition to whichever row was
+  // clicked while every other RAISE is equally unavailable and says nothing
+  // (DRC-4390). `aria-disabled` rather than `disabled`: the control keeps its
+  // place in the tab order, and the click still reaches the handler that says why.
+  const busy = nextRaiseInFlight ? ' aria-disabled="true"' : "";
+  return '<button type="button" class="next-session-raise next-attention-raise" ' +
+    `data-next-raise-session="${esc(sid)}" data-next-raise-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-raise-state", "raise", harness, sid)}${busy} ` +
+    'aria-label="Raise the terminal this session is running in">' +
+    '<span aria-hidden="true">RAISE</span></button>';
 }
 
 function nextAskResponsibility(payload, ask){
@@ -256,6 +445,15 @@ function nextStatusDot(label, className, filled = true){
   const suffix = className ? ` ${esc(className)}` : "";
   return `<span class="next-status-dot${suffix}" aria-label="${esc(label)}">` +
     `${filled ? "●" : "○"}</span>`;
+}
+
+/* Only `active === false` withholds the live pulse and the running count. None
+   means the collector does not measure per-entry liveness, so a harness nobody
+   has taught to measure it renders exactly as it did before. This also retires a
+   defect DRC-4229 left standing: a registered member that has demonstrably not
+   started was already published in `subagents[]` and pulsed like a running one. */
+function nextSubagentIsLive(subagent){
+  return !subagent || subagent.active !== false;
 }
 
 function nextProjectGroups(){

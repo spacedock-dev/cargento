@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -10,13 +11,16 @@ from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import records as runtime_records
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import droid as droid_collector
 
 from .support import (
     STORE_OVERRIDES,
+    USER_HOME,
     RuntimeTestCase,
+    config_patch,
     make_runtime,
     runtime,
     store_patch,
@@ -63,6 +67,22 @@ class DroidCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual("w-droidwork", rows[0]["project"])
 
+    def test_a_transcript_without_a_cwd_caps_its_project_directory_label(self) -> None:
+        # DR-15. The fixture above uses `-w-droidwork`, which is already two
+        # segments, so the cap is a no-op there and reverting the bind to
+        # `project_label` left the whole suite green. A deeper encoded name is
+        # the only thing that tells the two apart.
+        home = "/Users/cl"
+        encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(Path(tmp), encoded, "s1", {"id": "s1"})
+            with store_patch(FACTORY_PROJECTS=str(tmp)), config_patch(home=home):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("spacedock-subspace", rows[0]["project"])
+
     def test_droid_sessions_from_project_transcripts(self) -> None:
         now = time.time()
         iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
@@ -106,6 +126,25 @@ class DroidCollectorTest(RuntimeTestCase):
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
         self.assertEqual(runtime_records.parse_ts(iso), s["started_at"])
+
+    def test_the_0_202_0_layout_is_discovered_under_the_default_home(self) -> None:
+        # droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/<id>.jsonl
+        # beside an <id>.settings.json the *.jsonl glob must ignore. With the
+        # root at `projects` alone, three real transcripts discovered nothing
+        # (DRC-4331), so this goes through the resolved default roots rather
+        # than a store override, which would pass against any root at all.
+        factory = Path(USER_HOME) / ".factory"
+        self.addCleanup(shutil.rmtree, factory)
+        fp = self._transcript(
+            factory / "sessions", "-w-droidproj", "s0202", {"id": "s0202", "cwd": "/w/droidproj"}
+        )
+        (fp.parent / "s0202.settings.json").write_text("{}")
+        config, state = runtime()
+
+        self.assertTrue(droid_collector.discover(config, state))
+        rows = droid_collector.collect(config, state, self.NOW, 24, True)
+        self.assertEqual(["s0202"], [row["sid"] for row in rows])
+        self.assertEqual("w/droidproj", rows[0]["project"])
 
 
 class DroidReviewFixTest(unittest.TestCase):
@@ -191,7 +230,15 @@ class DroidVerificationFixTest(unittest.TestCase):
         # The child declares no `turn_context`, so its model is genuinely unread
         # and the key is present holding None rather than absent.
         self.assertEqual(
-            [{"name": "reviewer", "model": None, "started_at": self.NOW}],
+            [
+                {
+                    "name": "reviewer",
+                    "model": None,
+                    "started_at": self.NOW,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
         self.assertLessEqual(sessions[0]["last_activity"], self.NOW, "skewed mtime displayed")

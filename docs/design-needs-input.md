@@ -6,6 +6,8 @@ map, including which file owns the collector and which owns hook classification,
 call between a standing prompt and a session that looks busy, and it exists mainly to record the
 attempts that did not work, because two of them were made and reverted before the third landed.
 
+<a id="n-1"></a>
+
 ## N-1: there is more than one needs-input path, and only one of them was broken
 
 Worth establishing first, because the defect was originally filed as though there were one path and
@@ -79,6 +81,8 @@ a server asking the user rather than a tool being gated, raises only a notificat
 request for network access is in the same position: it is a sandbox grant off a queue, not a tool
 call.
 
+<a id="n-2"></a>
+
 ## N-2: a live subagent used to mean Working, and it could not lapse
 
 The collector resolved state in a fixed order: a pending question in the transcript, then a busy
@@ -144,6 +148,8 @@ unrecognised. That is the safe direction on an upgrade.
   band by dropping the notification entirely, and it trades a wrong colour for a missing prompt. The
   ingress and the precedence test want opposite defaults, which is why they are two decisions and not
   one.
+
+<a id="n-4"></a>
 
 ## N-4: every path is probabilistic, so the docs rank them instead of trusting one
 
@@ -226,6 +232,8 @@ The original report on this behavior measured it once and concluded the branch w
 investigation measured it once and nearly concluded it was live. Both readings came from honest live
 reads. Anything in this area needs n greater than one before it goes in writing, and the desk read
 and the timestamp replay that the original report warned about are not the only ways to get it wrong.
+
+<a id="n-5"></a>
 
 ## N-5: two different faults produce the same row, so the ledger is now readable
 
@@ -313,6 +321,8 @@ Three notes on its shape, each of which was a choice:
   for whoever had the log level raised before the fault. Nothing rotates the log either, so a
   standing gate would write the same rows every few seconds for as long as it stood.
 
+<a id="n-6"></a>
+
 ## N-6: the server records its own contradictions, because nobody else will
 
 N-5 gave a person a way to read the ledger. It assumed the person knows to look, and that
@@ -377,7 +387,7 @@ it was true when it was written; it is not now, and it failed in the two opposit
 Codex reports a gate as an **overlay** and has no collector detection, so there is no collector wait
 for an overlay to contradict. Copilot is the mirror image: its collector raises the wait off the
 permission pair in its own store, and no overlay can ever reach the row, because Copilot has no entry
-in the event vocabulary and `events.parse` refuses its envelopes. Cursor sits exactly where Copilot
+in `events.IDENTITY_NORMALIZERS` and `events.parse` refuses its envelopes. Cursor sits exactly where Copilot
 does, for the same two reasons. So the ledger is structurally blind to a gate on any of the three,
 and a zero on a Codex, Copilot or Cursor machine is not a measurement.
 
@@ -578,6 +588,8 @@ native gate has to overturn the paragraph above on its own merits, and cannot bo
 do it: an answer the runtime delivered and a click about a terminal nobody read are not the same
 evidence.
 
+<a id="n-9"></a>
+
 ## N-9: Idle was two situations, and only an event can separate them
 
 Idle covered a turn that ended and nobody read the result, and a session still waiting on a reply
@@ -623,19 +635,56 @@ constant and requires the prose to agree, because otherwise the two can only mat
   something.
 - **Narrowing what `session_ended` retires**, which would have let the mark live in the ledger after
   all. Claude fires that event on `/clear` as well as on exit (N-5), so a cleared session would read
-  finished forever, which is DRC-4101's failure class by another door.
+  finished forever, which is DRC-4101's failure class by another door. *Amended 2026-09-06: the
+  premise is wrong. `/clear` mints a NEW session id, so the cleared id is not the one that carries
+  on (see N-12). The rejection stands anyway, on the second reason rather than the first: retiring
+  the ledger whole is what keeps a retirement coherent under arrival order, and a mark that lives in
+  the ledger cannot outlive the exit it describes, which is the whole of what N-9 needed.*
 - **A third flag.** The two-flag cap is a shipped decision, and finished work is worth collecting
   rather than worth alarming about, so the word sits in the `idle / wait` cell and in the regular
   view's idle row. A chip would also pull the count into the flagged total, the `f` filter and the
   attention ordering, none of which should move because a turn ended tidily.
 - **Clearing the git reading on every `session_ended`** rather than on the resume. It looks like the
   tighter rule and buys nothing measurable: the resume discards the reading before any second end can
-  reach it, so no test could tell the two apart, and two ends with no turn between them, which is how
-  `/clear` followed by an exit arrives, would discard a reading that is still accurate.
+  reach it, so no test could tell the two apart. *Amended 2026-09-06: this bullet carried a second
+  reason, that "two ends with no turn between them, which is how `/clear` followed by an exit
+  arrives, would discard a reading that is still accurate", and that scenario cannot happen.
+  `self._git` is keyed on `SessionKey`, and N-12's measurement is that the prompt after a `/clear`
+  goes to a NEW session id, so the clear's end lands on one key and the exit's on another. The
+  rejection stands on the first reason alone.*
+- **An arrival-order guard on the reading**, mirroring either the `max` that keeps the completion
+  mark from being pulled backwards by a redelivered stop or the `arrival_seq` comparison that makes
+  the overlay ledger idempotent. Reproduced first, with the probe and the thread spawner injected:
+  two overlapping session ends for one key, a slow probe answering 111 entries and a fast one
+  answering 222, published 222 and then 111 as each returned. The guard is still the wrong fix.
+  Those two neighbours hold values the event itself carried, so the event's order is what decides
+  which is newer; a reading is an observation whose freshness is the moment the probe finished, so
+  last completion wins is correct and an arrival-order guard would let the LATER-arriving event pin
+  an older reading of the tree. The direction is worth stating, because the guard sounds protective
+  read the other way round: the mirror is last-writer-wins sorted by `arrival_seq`
+  (`events.py:630`), so a max-seq guard keeps the seq-2 event's answer, and in the reproduction
+  above that is the fast probe, which finished first and so observed the tree earlier. What the
+  overlap earned instead is a gate on the dispatch: the second probe no longer runs. The accepted
+  cost of that is stated where the gate lives, and it is the same refuse-rather-than-evict trade the
+  maps beside it already make.
+- **Retrying a saturated git probe once when a slot is released (DRC-4467).** Retain refusal under
+  the [canonical concurrency contract](../SECURITY.md#repository-git-reads-the-end-of-session-probe).
+  With a ceiling of two and four distinct ends, draining both probes and running collection left
+  two readings and two nulls, with only two dispatches. There is no automatic recovery without
+  another eligible end event: redelivering `session_ended` for a refused key in the same process
+  dispatched a third probe and supplied its reading. Retry-on-release is deferred work even when
+  limited to one attempt. A bounded queue is possible, but no measured legitimate saturation
+  workload earns it here. Revisit only with that evidence and specified capacity and overflow,
+  deduplication, freshness and resume handling, row retirement, shutdown, and attribution of a
+  later tree reading to an earlier end. Both the per-session guard and the process ceiling remain.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
-  `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
-  collectors to it.
+  `acquisition`, which was defined for this. A test holds the collectors to it. *Amended
+  2026-09-08: this bullet said the field "rendered nowhere until now", written when the stamping
+  site landed, and it stayed false for two and a half weeks. Nothing under
+  `cargento_runtime/web/` read the name at all, so the disclosure the rejection rests on was
+  published and never shown. DRC-4473 put it on the row; where and in what words is
+  [design-scan-only-rows.md](design-scan-only-rows.md).*
 
 ## N-10: a Cursor gate needs a liveness gate, and a time limit cannot be it
 
@@ -730,3 +779,196 @@ A store whose blobs are encrypted reports no wait. Every store measured was plai
 bytes simply do not match and the session reads as nobody waiting, which is the honest reading of
 bytes we cannot read. The key is never used, for the reason the model read gives: opening a user's
 conversation to label a card is not a trade this dashboard makes.
+
+## N-11: Pi raises no approval prompt, and the wait it does publish is not passive
+
+DRC-4190 asked what fires while Pi's own approval prompt stands. The premise is wrong: Pi raises no
+approval prompt of its own. The only standing prompt in the product is `project_trust`, and it is
+asked once per directory rather than once per tool call. The vendor is explicit about how little it
+covers: it "is only an input-loading guard. It prevents a repository from silently changing pi's
+settings or extensions before you approve it. It does not make untrusted code, untrusted prompts, or
+untrusted model output safe."
+([pi.dev/docs/latest/security](https://pi.dev/docs/latest/security).) A gate on a tool call is
+something an extension builds, from the `tool_call` event returning `{ block: true }`, so a stock Pi
+has no gate for a collector or an adapter to find.
+
+That leaves Pi's registry row at `reports_needs_input=False`, correctly, but for a reason unlike the
+one most of the other blind rows carry. Pi does publish a wait. `ui_prompt_start` and `ui_prompt_end`
+fire around `ctx.ui.select()`, `ctx.ui.confirm()`, `ctx.ui.input()`, `ctx.ui.editor()` and
+`ctx.ui.custom()`, and the documented purpose is this board's own: "so host/status integrations can
+report 'waiting for user' instead of just 'running'". `ctx.sessionManager.getSessionId()` supplies
+the key an overlay would be filed under. Nested prompts coalesce into one outer span, and handlers
+are best-effort rather than awaited, so what arrives is a notification about a wait and never a hold
+on it. ([pi.dev/docs/latest/extensions](https://pi.dev/docs/latest/extensions).)
+
+So the honest sentence about Pi is that Cargento ships no Pi adapter, not that no signal exists. The
+gap there is ours rather than the harness's, and the build is DRC-4380. `SKILL.md`'s line that Pi has
+no passive needs-input signal survives that either way, because passive here means read out of the
+store: these are events delivered to an extension handler, and whether Pi also writes them to the
+session JSONL is unmeasured, so nothing here claims a transcript path in either direction. Its
+neighbouring clause did not survive, and changed in the same commit. It said a finished turn and an
+unanswered wait need "a turn-end event Pi does not have", where the same vendor page documents
+`turn_end` and `agent_settled`, the second one for status integrations by name. What is missing there
+is the adapter too.
+
+Pi is not the only blind row where the gap is ours. Antigravity is the other one, for a harder
+reason: its confirmation-pending flag already reaches `statusline_hook.py`, which reads `agent_state`
+and drops the rest, and using it needs the reducer precedence rule N-4 describes rather than an
+adapter nobody has written. Nothing is wanted from either vendor.
+
+## N-12: a session that ended and one waiting for you both said Idle
+
+N-9 separated a turn that stopped from a session still waiting on a reply. It did not separate either
+of those from a session that is **over**. `finished_at` cannot: it marks a turn stopping, and a
+session whose turn stopped is usually still open, still typeable, and still worth going back to. So a
+`claude -p` run that exited and a session sitting at its prompt rendered identically.
+
+The row now carries `ended_at`, a nullable stamp set when the session id itself is observed to end,
+and `CLOSE THE LOOP`, the operations row and the session detail all read it (DRC-4036).
+
+**`/clear` was the objection, and it dissolves.** Claude fires `SessionEnd` on `/clear` as well as on
+exit, and the capture that recorded it
+([`claude/session-end-2.1.261-macos.jsonl`](captures/claude/session-end-2.1.261-macos.jsonl), arm
+a7) reports the process surviving and accepting another prompt 0.277 s later. Read from that file
+alone the only thing separating a continuation from an ending is the event's `reason`. A separate
+probe on 2026-09-06, on the same Claude Code 2.1.261, answered the question the capture could not:
+**the prompt after a `/clear` goes to a new session id.** Two prompts either side of one `/clear`
+wrote two different transcripts. So a `session_ended` means "this session id is finished" whatever
+its reason, `reason` never has to cross `events.ALLOWED_FIELDS`, and no adapter has to special-case
+a clear.
+
+**A nullable stamp, not a fourth `state` value.** A new state member was investigated and rejected
+because three page sites read `state` against a closed set and fail toward the *wrong* answer on an
+unknown member rather than degrading: `nextAttentionStopSignal` drops the session out of Safe to
+close, which is the lane this exists to strengthen; the project activity pill blanks; and the
+coverage note reports it as "unknown state", the opposite of what was observed. `None` follows
+`finished_at`'s contract exactly: it means NOT OBSERVED, never "did not end". Only a SIGKILL ends a
+Claude session silently, but an adapter-less harness, a session predating the server run and
+`--no-events` are all absences too, so the page never reads silence as life.
+
+**What lifts the mark, and what deliberately does not.** A `session_started` lifts it, because
+`claude --resume <id>` reuses the id; so does a working or needs-input overlay, because a session
+doing something has not ended. An idle overlay does not: every tidy ending has a `turn_stopped` in
+front of it, and lifting on idle would erase the mark for exactly the endings this exists to show.
+`session_started` needed an explicit path, since `overlay_for` returns None for it and it reaches
+neither `_remember` nor `_mark_finished`. The comparison is on event stamps rather than arrival
+order, because a reordered delivery is precisely one whose arrival order lies about causality, and
+the a1 arm's 5.581 s gap between the last stop and the end is longer than a short headless run.
+
+**Its retirement rule differs from N-9's, and has to.** `session_ended` pops the session's overlays,
+so straight after an end the key is in neither the collected row set nor the ledger, which is
+exactly `_finished`'s prune condition. `_finished` tolerates that because the next `turn_stopped`
+re-supplies it; a session fires `session_ended` once, so a mark pruned early can never be earned
+again. It is therefore retired on two conditions rather than one: the row must have left the
+collected set **and** the end must be a display window old. The clock is there for the reason
+`focus_target_ttl_sec` uses (a row is produced only while its activity is inside that window, and
+an end is the last thing that happens to an id), and the row-set half is there so a session still
+being collected keeps its mark however long ago it ended. Neither alone would do: the clock alone
+would strip a live row's mark at the window, and the row set alone is `_finished`'s condition above,
+which an end satisfies immediately.
+
+### Rejected
+
+- **Carrying the event's `reason` and special-casing `clear`.** An earlier draft of this issue called
+  for it, on the capture's own reading. The new-session-id measurement makes it unnecessary, and it
+  would have cost a member of `events.ALLOWED_FIELDS`, a public compatibility surface with an
+  indefinite tail, to encode a harness-specific vocabulary the server would then have to keep
+  interpreting.
+- **A boolean `ended`.** Null's job done by false: every harness with no adapter would publish a
+  confident "did not end" over no evidence at all, which is the DRC-4101 shape one field over.
+- **Applying `finished_at`'s activity guard to the end.** A stop is a reading of a moment that later
+  writing invalidates. An end is a fact about an id, and the id cannot write again without a
+  `session_started`. An end also lands *after* the last write rather than before it, 5.581 s after
+  the final stop in the a1 arm, so the guard would have read a perfectly ordinary ending as a
+  contradiction.
+- **Reading an absent end as "still running".** The most tempting inference on the page and the one
+  the capture forbids: only a SIGKILL is silent, but that is one of four causes of an absence, and
+  the coverage note says so rather than counting them as live.
+
+<a id="n-13"></a>
+
+## N-13: the browser has no idle hook, so its nudge fires on the polled edge
+
+A reader with the tab open on Linux or Windows got no notification when a session fell quiet. The
+two lanes are exclusive by design (`notifications.native_notifier` returns `osascript` on darwin
+and `""` everywhere else, and `next-notify.js` fires only when `/api/data` publishes the empty
+string), so on those platforms nothing raised anything for a working-to-idle transition. The macOS
+lane did: `notification_disposition` returns `(needs_input=False, popup=True)` for
+`IDLE_NOTIFICATION_TYPES`, and `handle_payload`'s five gates never ask whether the transition is
+idle.
+
+**The issue asked for a new `/api/data` field and did not need one.** Measured against the
+assembled bundle at the time: the payload already carries `native_notify` and per-session `state`
+and `active`, and `nextNotifyState` already holds each session's previous state. Driving a
+working-to-idle transition with `native_notify:""` and permission granted, the page observed working,
+then idle, and raised nothing, while the same fixture's working-to-needs-input raised one
+`Notification`. The single test stopping it was a `state !== "needs_input"` comparison. So this is a
+web-only change and the field is not part of it.
+
+**The trigger is not the same event, and the page says so rather than pretending.** The native lane
+fires off Claude's own `idle_prompt` hook. The browser has no hook of its own, so the edge it can
+see is `state` moving from `working` to `idle` on the published row, and a row reaches `idle` two
+ways, which is why the wording has to cover both. Where a harness's lifecycle hooks are installed,
+its `Stop` becomes a `turn_stopped` event and `events.overlay_for` returns an idle overlay
+`overlay_idle_dwell_sec` (3 s) later, so the row turns over within one poll of the real turn end.
+Everywhere else the row turns over on the collector's own reading, once writes have paused for
+`working_threshold_sec` (90 s). The two coincide often and not always: a turn whose writes pause for
+ninety seconds crosses the threshold without the harness declaring anything.
+
+**The `active` gate is ordered below the quiet branch, and that ordering is load-bearing.** The idle
+overlay patches `active: False` alongside `state: "idle"`, and `active` is in `events.PATCHABLE`, so
+`_apply_overlays` writes it onto the collected row. A `nextNotifyEdge` that tested
+`session.active !== true` first therefore refused precisely the transition the nudge exists to
+report, and refused it on the **default** install, since `cargento/hooks/hooks.json` and
+`cargento/hooks/codex-hooks.json` both declare `Stop`. Worse, the edge was then spent for good:
+the suppressed render still recorded `idle` in `nextNotifyState`, so a later idle row with
+`active: true` raised nothing either. Measured: the instrumented arm went 0 to 1 once the quiet
+branch moved above the gate, with no double-fire when the overlay later retires.
+
+`previous === "working"` is the liveness check the gate would otherwise have supplied, and it is
+sufficient rather than merely cheaper: the working overlay and every collector's working state both
+carry `active: true`, so a row cannot be seen `working` at one render without having been live at
+it. A dead or ended row cannot nudge without having just been observed working. The gate still
+guards the needs-input branch, whose overlay sets `active: True`.
+
+The near-parity reading is shipped deliberately, and the disclosure is in the sentence:
+
+- The quiet nudge's title is `<harness> has gone quiet`, which is what was observed. It does **not**
+  reuse the gate lane's `waiting_title` (`<harness> is waiting on you`), because that is a claim
+  about intent, and nothing on this path measured intent. The two share the session's tag, so a row
+  that goes quiet and then asks a question replaces its own banner instead of stacking a second.
+- The edge is `working` to `idle` and nothing else. `needs_input` to `idle` also lands on idle and
+  raises nothing, because the reader answered the question and was standing there when it cleared.
+  A row seen idle for the first time raises nothing either, because there is no previous state
+  to have moved from.
+
+**Quiet repeats have a ten-minute floor per tab and per `(harness, sid)` (DRC-4475).** Only a
+successful `Notification` construction starts the floor. Denied permission, native ownership and
+a constructor that throws do not. Every observed state is still recorded, including a suppressed
+edge: a later nudge needs a new working sighting followed by idle, and becomes eligible at 600
+seconds. A session disappearing from one payload does not clear its unexpired floor. Expired
+timestamps are discarded on the next sync. Needs-input and exact questions keep their own delivery
+rules and do not wait for this floor.
+
+The value follows the native `popup_repeat_suppress_sec` precedent, without claiming parity with
+its other gates. One uninterrupted silent tool call can yield one false quiet sighting; repeated
+crossings require renewed working evidence. The floor limits interruptions, not turns: a later real
+turn inside it can be suppressed, and a long turn with renewed activity can nudge again after it.
+Constructor counts are what the tests measure, not operating-system banner alerts. Dismissed rows
+are already removed in `aggregate._subtract_dismissed` before assembly; the browser reads no
+dismissal store.
+
+### Rejected
+
+- **Exact parity through the notification `kind`.** `handle_payload` computes `kind` and drops it
+  for the idle types, so recovering it means publishing a new field and threading it to the page:
+  the field this issue was refuted for asking for, bought back for a distinction the reader cannot
+  act on differently.
+- **Reusing `waiting_title` for both edges.** One sentence for two facts, and the stronger of the
+  two is the wrong one: a turn that stopped is not a request. The gate lane's wording exists because
+  the native notifier and the browser both render it and they drifted once; that argument is about
+  one fact rendered twice, not about collapsing two.
+- **Gating both edges on `active`, for symmetry.** It reads tidier and it is the bug above: the one
+  edge whose own overlay clears `active` is the one edge that must not be gated on it. Anyone
+  reordering those two branches to match the needs-input branch reintroduces it, which is why
+  `next-notify.js` carries a comment at the site rather than leaving the order to look arbitrary.

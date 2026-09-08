@@ -56,23 +56,33 @@
   "columns": [
     {
       "id": "open",
-      "name": "Open Session(s)"
+      "name": "Open Session(s)",
+      "question": "Which of my agents are running?",
+      "promise": "Every session on this machine, across ten harnesses, on one screen, with what is active now kept apart from what is only recent history."
     },
     {
       "id": "mid",
-      "name": "Mid-flight"
+      "name": "Mid-flight",
+      "question": "What is it doing, and when should I come back?",
+      "promise": "For each live session, what it is doing now, what it plans next, how far into the current turn it is, and an estimate of when that turn ends. It tells you when that changes instead of making you poll."
     },
     {
       "id": "gate",
-      "name": "Stopped at Gate"
+      "name": "Stopped at Gate",
+      "question": "Is anything waiting on me?",
+      "promise": "One queue of everything blocked on you, with what it is waiting for and how long it has waited. A session can also ask you a question directly and wait for your answer."
     },
     {
       "id": "usage",
-      "name": "Usage"
+      "name": "Usage",
+      "question": "Will I hit the wall before the work finishes?",
+      "promise": "Your quota in one place across vendors, with each window's budget shown against its own clock, so you can see whether there is room before you start rather than partway through."
     },
     {
       "id": "end",
-      "name": "End of sessions"
+      "name": "End of sessions",
+      "question": "Did anything die quietly?",
+      "promise": "Nothing finishes invisibly. Work that finished and was never read is flagged, and a session that ends leaving uncommitted changes says so."
     }
   ],
   "states": [
@@ -1357,9 +1367,9 @@
       "archetype": "role",
       "impact": 48,
       "build": 50,
-      "state": "new",
+      "state": "shipped",
       "column": "mid",
-      "release": "r3",
+      "release": "done",
       "origin": "proposed",
       "flag": true,
       "note": "Added after review, because four items were quietly resting on a foundation that appeared nowhere on the board. D10, F2, F3 and A6 all need Cargento to remember yesterday, and today it remembers nothing between refreshes. Its own impact is modest, since a history nobody queries is worth nothing, but the sequencing matters: it has to land before the release that depends on it, and nothing in the plan currently says so.",

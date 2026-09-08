@@ -265,7 +265,7 @@ settings file. Both are yours to edit; the plugin does not write either.
 
 A collector skips a store it cannot read rather than taking the dashboard down, so a wrong path and an
 idle machine look identical on the board. `--diagnose` is the only thing that tells them apart. It
-reads local paths, transmits nothing, and starts no server:
+reads local paths, writes nothing, transmits nothing, and starts no server:
 
 ```bash
 python3 "$SKILL/server.py" --diagnose
@@ -330,6 +330,23 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
+`--forget` deletes the local history store and exits. It belongs with `--status` and `--stop` rather
+than in the table below, because what it does is not undone by running the next command without it:
+
+```bash
+python3 "<skill-dir>/server.py" --forget
+```
+
+It removes the file whether or not the store was enabled, so turning the feature off and then asking
+for the file to go does what it says. Nothing over the loopback port can delete history; this is the
+only way.
+
+Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
+it names, because a running server keeps its own copy of the history in memory and writes the
+deleted records back on its next observation, so the delete would report success and be undone a
+few seconds later. It finds the instance with the same probe `--status` and `--stop` use, so
+`--stop` and then `--forget` is the whole procedure.
+
 ## Turn a feature off
 
 Each flag belongs to the dashboard process, so changing one means restarting.
@@ -342,16 +359,40 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-events` | The event coordinator. State comes from scanning stores rather than from pushed events |
 | `--no-spacedock` | Reading Spacedock workflow state out of a project |
 | `--no-git` | The end-of-session git probe. No git command runs inside any repository |
+| `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
+| `--no-focus` | Raising a session's terminal. No focus command runs, no terminal identity is recorded, and the page is offered no raise control. `--no-events` turns it off as well |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 
+### Move the history's two bounds
+
+The history keeps 14 days of observations inside a 1 MiB file, and both figures are flags rather
+than constants:
+
+```bash
+python3 "<skill-dir>/server.py" --history-days 3 --history-max-bytes 262144
+```
+
+Either one alone still applies: narrowing the window drops what falls outside it, and the cap drops
+the oldest first once the file would exceed it. Neither accepts zero or a negative number: a window
+of zero days is a store that evicts everything it records, and `--no-history` is the switch for
+turning the store off. A `--daemon` respawn carries whichever of the two you moved, so a restart
+cannot widen a bound you tightened. What leaves the file is gone from it, so raising a figure back
+afterwards brings nothing with it.
+
 ## Usage and quota
 
-This is the only thing Cargento sends anywhere. It is on by default, carries the vendor's own token
-and nothing else, and is gated behind a first-run disclosure in the page plus a five minute floor.
-`--no-usage` switches it off for the process, and the page's own configure control switches it off
-without a restart. [SECURITY.md](SECURITY.md#usage-quota-reads-the-quota-fetcher) owns the contract,
-including what is sent, what comes back, and what is never touched.
+This is the only thing Cargento sends anywhere, and it does not send it until you say so. The
+first time the dashboard opens on a machine where a harness could be asked, a banner beneath the
+fleet counts explains that answering yes lets Cargento read the credential that harness already
+stored and send it to that vendor for your usage numbers. Until you answer, nothing is read and
+nothing is sent. The request carries the vendor's own token and nothing else, behind a five minute
+floor.
+
+Changing your mind takes one click: the capacity strip carries a switch that turns the fetch on or
+off without a restart. `--no-usage` refuses it for a whole run whatever is stored in the page.
+[SECURITY.md](SECURITY.md#usage-quota-reads-the-quota-fetcher) owns the contract, including what is
+sent, what comes back, and what is never touched.
 
 ## Stop a dashboard, and unstick a port
 

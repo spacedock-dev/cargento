@@ -16,6 +16,8 @@ import importlib.util
 import io
 import json
 import os
+import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -37,6 +39,21 @@ SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 sys.path.insert(0, str(SERVER_PATH.parent))
 frontend_page = importlib.import_module("cargento_runtime.web.page")
 PAGE_BYTES = frontend_page.load_page()
+
+# `cli.main` injects this run's focus capability into the served document between
+# `load_frontend_page()` and the server construction, so the bytes a running
+# server hands out are the assembly plus one meta element. Stripping it here
+# keeps the assertions that care about page IDENTITY comparing against
+# `frontend_page.load_page()`, which is what the two pinned digests in
+# `test_next_page.py` measure — and it fails rather than passing vacuously if the
+# injection ever ships a token outside its own grammar.
+FOCUS_META_RE = re.compile(rb'<meta name="cargento-focus" content="[0-9a-fA-F]{1,128}">')
+
+
+def without_focus_meta(page: bytes) -> bytes:
+    """The served page with the injected focus capability removed."""
+    return FOCUS_META_RE.sub(b"", page, count=1)
+
 
 HOOK_PATH = SERVER_PATH.parent / "notify_hook.py"
 HOOK_SPEC = importlib.util.spec_from_file_location("cargento_notify_hook", HOOK_PATH)
@@ -359,6 +376,120 @@ def clear_state(state: RuntimeState) -> None:
         state.usage_fetch_inflight.clear()
 
 
+# Every platform name whose backend this suite has to refuse. Wider than the
+# one the runner happens to be on, so the refusal does not quietly become a
+# no-op the day someone runs the suite elsewhere.
+NOTIFIER_PLATFORMS = ("darwin", "linux", "win32")
+
+# The argv of every notification this process refused to deliver, newest last.
+REFUSED_NOTIFICATIONS: list[list[str]] = []
+
+_REAL_POPEN_INIT = subprocess.Popen.__init__
+_NOTIFICATION_REFUSER: list[Any] = []
+
+
+def notifier_binaries() -> frozenset[str]:
+    """Every backend name ``native_notifier`` can return, over any platform.
+
+    Derived rather than listed so the day a Linux or Windows backend lands
+    (``docs/plans/native-notifications.md``) the refusal widens with it, instead
+    of leaving a contributor's own desk exposed until someone remembers to edit
+    a tuple here.
+    """
+    named = (notifications.native_notifier(name) for name in NOTIFIER_PLATFORMS)
+    return frozenset(name for name in named if name)
+
+
+def notification_argv(args: Any) -> list[str]:
+    """One spawn's argv as strings, however ``subprocess`` was handed it."""
+    raw = list(args) if isinstance(args, (list, tuple)) else [args]
+    return [part.decode(errors="replace") if isinstance(part, bytes) else str(part) for part in raw]
+
+
+def is_native_notification(args: Any) -> bool:
+    """Whether this argv could put a notification on the host's own desktop."""
+    parts = notification_argv(args)
+    if not parts:
+        return False
+    # Basename rather than the absolute path `notifications.py` hardcodes: an
+    # equality against that one constant holds only while the constant does,
+    # matches nothing a future backend composes, and misses a string argv
+    # entirely.
+    if Path(parts[0]).name in notifier_binaries():
+        return True
+    return any("display notification" in part for part in parts)
+
+
+def _refusing_popen_init(instance: Any, args: Any, *rest: Any, **kwargs: Any) -> None:
+    if is_native_notification(args):
+        argv = notification_argv(args)
+        REFUSED_NOTIFICATIONS.append(argv)
+        raise AssertionError(
+            f"this test tried to notify the machine it is running on: {argv}. "
+            "Derive the test class from support.RuntimeTestCase, or patch "
+            "cargento_runtime.notifications.notify_mac inside the test."
+        )
+    _REAL_POPEN_INIT(instance, args, *rest, **kwargs)
+
+
+def short_circuit_native_notifications(case: unittest.TestCase) -> None:
+    """Let a test run the notifier's composition but not its process.
+
+    For the `InstalledContractCharacterizationTest` classes, which assert the
+    route shape of a successful `/api/notify` and so have to reach the code that
+    composes an argv, unlike every other test — which patches `notify_mac` and
+    never gets that far.
+
+    This is a convenience, not the guard: `forbid_native_notifications` is what
+    makes a leak impossible. Three copies of it were inlined in three modules,
+    each matching `argv[0]` against one absolute path, and each would have gone
+    on matching nothing at all on the day a non-darwin backend landed.
+    """
+    original_run = subprocess.run
+
+    def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
+        command = args[0] if args else kwargs.get("args")
+        if is_native_notification(command):
+            return subprocess.CompletedProcess(notification_argv(command), 0)
+        return original_run(*args, **kwargs)
+
+    patcher = mock.patch.object(subprocess, "run", side_effect=run_without_native_delivery)
+    patcher.start()
+    case.addCleanup(patcher.stop)
+
+
+def forbid_native_notifications() -> bool:
+    """Refuse every native-notification spawn for the life of this process.
+
+    Returns whether this call was the one that installed it.
+
+    The only thing that enforces `RuntimeTestCase`'s ban: a unit run fired three
+    audible banners about sessions that never existed (DRC-4431) while that ban
+    sat in a docstring and 141 classes derived from a bare `unittest.TestCase`.
+
+    At the spawn, not at `notifications.notify_mac`, even though notify_mac is
+    the one seam above the platform branch: three
+    `InstalledContractCharacterizationTest` classes enter notify_mac on purpose
+    and short-circuit only the process, so refusing on entry would fail them for
+    exercising the code they exist to exercise.
+
+    `AssertionError` and not `OSError`, because notify_mac catches OSError and
+    logs a diagnostic — an OSError refusal is silent and the leaking test still
+    passes green.
+
+    Not the environment switch #289 used for Apple Events: `notifications.py`
+    reads no environment at all, and an opt-out read there would move a test
+    concern into shipped runtime code, where a mis-set variable silences a real
+    user's notifications instead.
+    """
+    if _NOTIFICATION_REFUSER:
+        return False
+    patcher = mock.patch.object(subprocess.Popen, "__init__", _refusing_popen_init)
+    patcher.start()
+    _NOTIFICATION_REFUSER.append(patcher)
+    return True
+
+
 class RuntimeTestCase(unittest.TestCase):
     """A clean shared runtime, and no test may fire a real popup."""
 
@@ -368,6 +499,8 @@ class RuntimeTestCase(unittest.TestCase):
         clear_state(reset_runtime())
         # No test may fire a real macOS popup ("[sample] permission" spam
         # during dev runs). Tests asserting popups use their own nested patch.
+        # `forbid_native_notifications` is what makes this a rule rather than
+        # an intention.
         notify_patcher = mock.patch.object(notifications, "notify_mac")
         notify_patcher.start()
         self.addCleanup(notify_patcher.stop)

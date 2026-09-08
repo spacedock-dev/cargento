@@ -21,8 +21,12 @@ function nextAttentionHarnessOrder(payload){
 const NEXT_RISK_KIND_ORDER = new Map([
   ["attribution", 0], ["loop", 1], ["quota", 2], ["long-turn", 3], ["collision", 4],
 ]);
+/* What is at stake leads and the end breaks its ties: uncommitted work is the
+   reason to open the row at all, and an ended session's dirty tree is the one
+   nobody is coming back to. */
 const NEXT_STOP_KIND_ORDER = new Map([
-  ["stop-dirty", 0], ["stop-unknown", 1], ["stop-clean", 2],
+  ["end-dirty", 0], ["stop-dirty", 1], ["end-unknown", 2], ["stop-unknown", 3],
+  ["end-clean", 4], ["stop-clean", 5],
 ]);
 
 function nextAttentionRiskKind(signal){
@@ -110,8 +114,14 @@ function nextAttentionCompareSubjects(left, right, model){
     if(leftKind === "attribution" && left.sourceIndex !== right.sourceIndex){
       return left.sourceIndex - right.sourceIndex;
     }
-    if(leftKind === "loop" && leftDetail.errors !== rightDetail.errors){
-      return rightDetail.errors - leftDetail.errors;
+    if(leftKind === "loop"){
+      // The turn total ranks these, not the peak run: a turn that failed six
+      // times with a success in the middle is worse off than one that failed
+      // four in a row, and ordering by the peak put it second.
+      const leftTotal = leftDetail.failures == null ? leftDetail.errors : leftDetail.failures;
+      const rightTotal = rightDetail.failures == null ? rightDetail.errors : rightDetail.failures;
+      if(leftTotal !== rightTotal) return rightTotal - leftTotal;
+      if(leftDetail.errors !== rightDetail.errors) return rightDetail.errors - leftDetail.errors;
     }
     if(leftKind === "quota"){
       if(leftDetail.pct !== rightDetail.pct) return rightDetail.pct - leftDetail.pct;
@@ -134,7 +144,13 @@ function nextAttentionLoopSignal(session, sourceIndex){
   const loop = session && session.loop;
   if(!loop || typeof loop !== "object" || Array.isArray(loop) || !Number.isInteger(loop.errors) ||
     loop.errors <= 0) return null;
+  // `errors` is the peak consecutive run and `failures` the turn total, which
+  // no success resets. They differ exactly when a success split the failures,
+  // which is the case the run alone reads as clean (DRC-4021).
   const detail = {errors: loop.errors};
+  const failures = Number.isInteger(loop.failures) ? loop.failures : null;
+  if(failures != null && failures > loop.errors) detail.failures = failures;
+  if(loop.barren === true) detail.barren = true;
   const tool = typeof loop.tool === "string" ? loop.tool.trim() : "";
   if(tool) detail.tool = tool;
   return {kind: "loop", section: "risk", sourceIndex, detail};
@@ -149,16 +165,73 @@ function nextAttentionLongTurnSignal(session, sourceIndex){
   return null;
 }
 
-function nextAttentionQuotaSignal(entry, scope, row, sourceIndex){
-  if(!entry || entry.state !== "ok" || !row || !Number.isInteger(row.pct) || row.pct < 70){
-    return null;
-  }
+/* Two floors, and a pace may raise a row only above both. Early in a window the
+   ratio is arithmetic on almost no time: 5% spent with 1% elapsed is a
+   five-times pace and means nothing, and a signal firing on that noise teaches
+   the reader to ignore the one that matters.
+
+   A tenth of the window is the time floor. A quarter was tried first and was
+   wrong, because it excluded the case this trigger exists for: a five-hour
+   window a third spent with an eighth of its time gone is 36 real minutes and
+   34 real points, and it runs dry three hours before it resets. That is the
+   reading, not the noise.
+
+   Ten points is the budget floor, and it bounds rounding rather than time.
+   `pct` is an integer, so at two points one point of rounding is half the
+   ratio; at ten it is a tenth. */
+const NEXT_QUOTA_PACE_MIN_ELAPSED = 0.1;
+const NEXT_QUOTA_PACE_MIN_PCT = 10;
+
+function nextAttentionQuotaPace(row, generated){
+  /* The window's own average pace and where it lands, or null when the vendor
+     did not publish enough to say. Both inputs come from one response, so this
+     composes nothing: `windowSec` is the slot's length and `resetAt` its end. */
+  const windowSec = nextNumber(row && row.windowSec);
+  const resetAt = nextNumber(row && row.resetAt);
+  const at = nextNumber(generated);
+  if(windowSec == null || windowSec <= 0 || resetAt == null || at == null) return null;
+  const remainingSec = resetAt - at;
+  const elapsed = Math.max(0, Math.min(1, (windowSec - remainingSec) / windowSec));
+  if(elapsed <= 0) return null;
+  const ratio = row.pct / (elapsed * 100);
+  const perMin = row.pct / (elapsed * windowSec / 60);
+  return {
+    elapsed,
+    ratio,
+    remainingSec,
+    /* Seconds until the budget reaches 100% at the pace measured so far, or
+       null when nothing is being spent. A pace of zero is not "ends never" in
+       any useful sense, but it is honestly "not projected". */
+    endsInSec: perMin > 0 ? ((100 - row.pct) / perMin) * 60 : null,
+  };
+}
+
+function nextAttentionQuotaSignal(entry, scope, row, sourceIndex, generated){
+  if(!entry || entry.state !== "ok" || !row || !Number.isInteger(row.pct)) return null;
+  const pace = nextAttentionQuotaPace(row, generated);
+  /* Two triggers, and the level one is unchanged because it is proven and it
+     catches what pace cannot see. Pace adds the case the level misses entirely:
+     a window a third spent with an eighth of its time gone runs dry hours before
+     it resets, while a window at 88% with 91% elapsed finishes the period with
+     room to spare. Ranking on level alone raises the second and stays silent on
+     the first, which is exactly backwards. */
+  const byLevel = row.pct >= 70;
+  const byPace = pace != null &&
+    pace.elapsed >= NEXT_QUOTA_PACE_MIN_ELAPSED &&
+    row.pct >= NEXT_QUOTA_PACE_MIN_PCT &&
+    pace.endsInSec != null &&
+    pace.remainingSec > 0 &&
+    pace.endsInSec < pace.remainingSec;
+  if(!byLevel && !byPace) return null;
   const resetAt = typeof row.resetAt === "number" && Number.isFinite(row.resetAt) && row.resetAt > 0
     ? row.resetAt
     : null;
   return {kind: "quota", section: "risk", sourceIndex,
     detail: {harness: String(entry.harness || ""), scope, pct: row.pct,
-      resetAt, tone: row.pct >= 90 ? "critical" : "warning"}};
+      resetAt, reason: byLevel ? "level" : "pace",
+      paceRatio: pace == null ? null : pace.ratio,
+      endsInSec: pace == null ? null : pace.endsInSec,
+      tone: row.pct >= 90 || (byPace && !byLevel) ? "critical" : "warning"}};
 }
 
 function nextAttentionQuotaSignalCompare(left, right){
@@ -193,14 +266,23 @@ function nextAttentionAttributionSignal(session, sourceIndex){
 }
 
 function nextAttentionStopSignal(session, sourceIndex){
+  const endedAt = nextSessionEndedAt(session);
   const finished = typeof session.finished_at === "number" &&
     Number.isFinite(session.finished_at) && session.finished_at > 0;
-  if(!finished || session.state !== "idle") return null;
-  let kind = "stop-unknown";
-  if(session.dirty === true) kind = "stop-dirty";
-  if(session.dirty === false) kind = "stop-clean";
+  /* An observed end promotes the row on its own, and deliberately does not have
+     to agree with `state`: `state` is a collector inference off file recency,
+     an end is an event the session reported, and requiring both would let the
+     weaker reading veto the stronger one. A stop still needs the idle state
+     beside it, because a stop leaves the session open and typeable and the
+     state is the only thing that says it stayed that way. */
+  if(endedAt == null && (!finished || session.state !== "idle")) return null;
+  const prefix = endedAt == null ? "stop" : "end";
+  let kind = `${prefix}-unknown`;
+  if(session.dirty === true) kind = `${prefix}-dirty`;
+  if(session.dirty === false) kind = `${prefix}-clean`;
   return {kind, section: "close", sourceIndex, detail: {
-    finishedAt: session.finished_at,
+    finishedAt: finished ? session.finished_at : null,
+    endedAt,
     changedEntries: Number.isInteger(session.changed) && session.changed >= 0 ? session.changed : null,
   }};
 }
@@ -238,7 +320,8 @@ function nextAttentionCoverage(payload){
       typeof session.finished_at === "number" && Number.isFinite(session.finished_at) &&
         session.finished_at > 0
     ).length,
-    ends: "fleet coverage not reported",
+    observedEnds: nextPayloadSessions(payload).filter(
+      session => nextSessionEndedAt(session) != null).length,
   };
 }
 
@@ -254,6 +337,11 @@ function nextAttentionProjectSummary(model, sessions){
     exactRequests: sessionSubjects.reduce((total, item) => total + item.asks.length, 0),
     risk: sessionSubjects.filter(item => item.section === "risk").length + collisionSubjects.length,
     close: sessionSubjects.filter(item => item.section === "close").length,
+    /* The three published states, all of them, so the project row can account
+       for every session it was handed. `needs_input` used to be counted by
+       nothing here, which put a blocked session in the row's leading total and
+       in no word at all (DRC-4453). */
+    blocked: rows.filter(session => session.state === "needs_input").length,
     working: rows.filter(session => session.state === "working").length,
     quiet: rows.filter(session => session.state === "idle").length,
   };
@@ -358,7 +446,7 @@ function nextAttentionModel(payload){
     if(!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
     const harness = String(entry.harness || "");
     const addQuota = (scope, row, sourceIndex) => {
-      const signal = nextAttentionQuotaSignal(entry, scope, row, sourceIndex);
+      const signal = nextAttentionQuotaSignal(entry, scope, row, sourceIndex, payload && payload.generated);
       if(!signal) return;
       const key = `quota:${harness}:${scope}`;
       let subject = riskSubjects.get(key);
@@ -521,9 +609,12 @@ function nextAttentionModel(payload){
   const moving = healthySessions.filter(session => session.state === "working").length;
   const quiet = healthySessions.filter(session => session.state === "idle").length;
   const unknown = healthySessions.length - moving - quiet;
+  // Read completeness qualifies the remainder; it does not invalidate a state
+  // derived from another source ([U-3](docs/design-unread-sources.md#u-3)/[U-4](docs/design-unread-sources.md#u-4)).
+  const partial = healthySessions.filter(session => nextSessionGapNames(session).length).length;
   const model = {
     needs, risk, close, next,
-    healthy: {sessions: healthySessions, moving, quiet, unknown},
+    healthy: {sessions: healthySessions, moving, quiet, unknown, partial},
     coverage: nextAttentionCoverage(payload),
     counts: {needs: needs.length, risk: risk.length, close: close.length, next: next.length, moving, quiet, unknown},
     harnessOrder: nextAttentionHarnessOrder(payload),
@@ -556,8 +647,23 @@ const NEXT_ATTENTION_KIND_LABELS = new Map([
   ["stop-dirty", "Stop observed with uncommitted work"],
   ["stop-clean", "Stop observed; git state clean"],
   ["stop-unknown", "Stop observed; git state not measured"],
+  ["end-dirty", "Session ended with uncommitted work"],
+  ["end-clean", "Session ended; git state clean"],
+  ["end-unknown", "Session ended; git state not measured"],
   ["task", "Published task"],
 ]);
+
+/* Shared by the stop and end kinds because the git half of the sentence is the
+   same reading either way; only what happened to the session differs. */
+function nextAttentionCloseText(kind, detail){
+  if(kind.endsWith("-dirty")){
+    return Number.isInteger(detail.changedEntries)
+      ? `${detail.changedEntries} changed entries`
+      : "Uncommitted work observed";
+  }
+  if(kind.endsWith("-clean")) return "Git state reported clean";
+  return "Git state was not measured";
+}
 
 function nextAttentionEsc(value){
   return esc(value).replace(/=/g, "&#61;");
@@ -661,12 +767,24 @@ function nextAttentionSignalNow(signal, subject){
   }
   if(signal.kind === "loop"){
     const tool = String(detail.tool == null ? "" : detail.tool).trim();
-    const text = tool
-      ? `${tool} failed ${detail.errors} times`
-      : `Tool failures reported ${detail.errors} times`;
+    // The count said out loud is the turn total wherever it is bigger, because
+    // the peak run understates a turn a success split in two.
+    const count = detail.failures == null ? detail.errors : detail.failures;
+    const subject = tool ? `${tool} failed` : "Tool failures reported";
+    const text = detail.barren === true
+      ? `${subject} ${count} times, nothing succeeded`
+      : `${subject} ${count} times`;
     return {text, note: ""};
   }
-  if(signal.kind === "quota") return {text: `${detail.pct}% reported`, note: ""};
+  if(signal.kind === "quota"){
+    /* The pace is stated beside the level whenever it was measured, because the
+       level alone cannot say why a row at 34% is here and a row at 88% is not. */
+    const pace = nextNumber(detail.paceRatio);
+    const text = pace == null
+      ? `${detail.pct}% reported`
+      : `${detail.pct}% reported, ${pace.toFixed(1)}\u00d7 the pace this window sustains`;
+    return {text, note: ""};
+  }
   if(signal.kind === "long-turn"){
     const session = subject.session || detail.session || {};
     const state = String(session.state_detail || "Working").trim() || "Working";
@@ -681,15 +799,18 @@ function nextAttentionSignalNow(signal, subject){
       note: "Identity scope only; shared location is not established",
     };
   }
-  if(signal.kind === "stop-dirty"){
-    const changed = Number.isInteger(detail.changedEntries)
-      ? `${detail.changedEntries} changed entries`
-      : "Uncommitted work observed";
-    return {text: changed, note: ""};
+  if(signal.kind.startsWith("stop-")){
+    return {text: nextAttentionCloseText(signal.kind, detail), note: ""};
   }
-  if(signal.kind === "stop-clean") return {text: "Git state reported clean", note: ""};
-  if(signal.kind === "stop-unknown"){
-    return {text: "Git state was not measured", note: ""};
+  if(signal.kind.startsWith("end-")){
+    /* The age of the END and never of the stop: they are different moments, and
+       an ended row usually carries no stop at all. */
+    const since = nextDurationSince(detail.endedAt);
+    const text = nextAttentionCloseText(signal.kind, detail);
+    return {
+      text: since ? `${text} · ended ${since} ago` : text,
+      note: "This session id reported its own end",
+    };
   }
   if(signal.kind === "task"){
     const status = subject.checkpoint && subject.checkpoint.status;
@@ -795,6 +916,18 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
     ? '<p class="next-attention-part" data-next-attention-part="next">' +
       `<span class="next-attention-label">NEXT</span><span>${checkpointRows}</span></p>`
     : "";
+  // The gate queue's rows only. Every section here names a session, so the control
+  // would render on all four, and a small affordance on every row is furniture
+  // rather than an affordance. This one answers "it is waiting on me, get me
+  // there", which is the question only NEEDS YOU NOW asks. It rides the SOURCE
+  // line because that is the row's quietest, and it must not shout.
+  const resume = subject.section === "needs"
+    ? nextSessionResumeControl(subject.session)
+    : "";
+  // After the copy and never instead of it. The copy is reversible and always
+  // works; the raise is neither, and a reader who has only the raise has lost the
+  // affordance that cannot fail.
+  const raise = subject.section === "needs" ? nextSessionRaiseControl(subject.session) : "";
   return `<li${hidden ? " hidden" : ""}><article class="next-attention-item" ` +
     `data-next-attention-subject="${nextAttentionEsc(subject.key)}" ` +
     `data-next-attention-kind="${nextAttentionEsc(subject.primaryKind)}">` +
@@ -808,20 +941,50 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
     `<span class="next-attention-label">NOW</span><span>${nowRows}</span></div>` + next +
     '<p class="next-attention-part" data-next-attention-part="source">' +
     `<span class="next-attention-label">SOURCE</span>` +
-    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}</span></p></article></li>`;
+    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}${resume}${raise}</span>` +
+    "</p></article></li>";
 }
 
-function nextAttentionCoverageHtml(model){
+// How far the raise reaches across the queue, said once. The alternative was a
+// per-row "no terminal", which would print on the majority of rows forever: the
+// bit is false for a session outside tmux, one predating this server run, and
+// every Linux and Windows session. It sits with the rest of what the board cannot
+// see rather than beside the rows it is not about.
+function nextAttentionTerminalCoverage(model){
+  const rows = (model && Array.isArray(model.needs) ? model.needs : [])
+    .filter(subject => subject && subject.session);
+  if(!rows.length) return "";
+  if(!nextFocusCapability()) return "<p>Terminal raise: off for this run.</p>";
+  const reached = rows.filter(subject => subject.session.focusable === true).length;
+  const carry = rows.length === 1 ? "waiting row carries" : "waiting rows carry";
+  return `<p>Terminal raise: ${reached} of ${rows.length} ${carry} ` +
+    "a terminal Cargento can reach.</p>";
+}
+
+function nextAttentionCoverageHtml(model, openDisclosures){
   const coverage = model.coverage;
   const gates = coverage.gates;
   const failed = gates.failed ? ` · ${gates.failed} failed` : "";
   const visible = `Gates: ${gates.reporting}/${gates.discovered} reporting · ` +
-    `${gates.unknown} unknown${failed} · Ends: ${coverage.ends}`;
+    `${gates.unknown} unknown${failed} · Ends: ${coverage.observedEnds} observed`;
   const rows = gates.rows.map(row => {
     const name = String(row.label == null ? "" : row.label).trim() || String(row.key || "Harness");
+    /* The condition qualifies a capability the label has just claimed, so the
+       reporting branch below is the only one that takes it: on "unknown" or
+       "failed" there is nothing to qualify and a caveat would read as detail
+       about a gap. That branch is the whole guard, deliberately -- repeating
+       the capability and error checks here as well left a second copy of the
+       rule that no mutation could reach, so neither copy was load-bearing.
+       Escaped like the label beside it, because a registry constant today is
+       still a payload string here. */
+    const when = typeof row.reports_needs_input_when === "string" && row.reports_needs_input_when
+      ? `, ${nextAttentionEsc(row.reports_needs_input_when)}`
+      : "";
     const gate = row.error != null
       ? "needs-input reporting failed"
-      : row.reports_needs_input === true ? "needs-input reporting" : "needs-input reporting unknown";
+      : row.reports_needs_input === true
+        ? `needs-input reporting${when}`
+        : "needs-input reporting unknown";
     const rate = row.error != null
       ? "token-rate reporting failed"
       : row.reports_rate === true
@@ -836,10 +999,22 @@ function nextAttentionCoverageHtml(model){
     ? `<p>Stops observed on ${coverage.observedStops} ` +
       `session${coverage.observedStops === 1 ? "" : "s"}; fleet coverage not reported.</p>`
     : "";
+  /* Stated whether or not any end was seen, because the useful half is the
+     disclaimer rather than the count: an absent end is what a SIGKILL, an
+     adapter-less harness and --no-events all look like. */
+  const ends = (coverage.observedEnds > 0
+    ? `<p>Ends observed on ${coverage.observedEnds} ` +
+      `session${coverage.observedEnds === 1 ? "" : "s"}; `
+    : "<p>No session ends observed; ") +
+    "a session with no observed end is not known to be running.</p>";
   return '<div class="next-attention-coverage">' +
     `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
-    '<details class="next-attention-coverage-details"><summary>Coverage details</summary>' +
-    `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}` +
+    '<details class="next-attention-coverage-details"' +
+    `${nextDisclosureAttr("attention-coverage", openDisclosures)}>` +
+    '<summary data-next-disclosure="attention-coverage" ' +
+    'data-next-focus="attention-coverage">Coverage details</summary>' +
+    `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}${ends}` +
+    nextAttentionTerminalCoverage(model) +
     '<p>Termination cause not reported.</p></details></div>';
 }
 
@@ -878,24 +1053,86 @@ function nextAttentionHealthyHtml(model){
     `<h2 tabindex="-1">NO PUBLISHED EXCEPTION (${count})</h2>` +
     `<p><strong>${count} session${count === 1 ? "" : "s"} with no published exception</strong>` +
     `${states.length ? `<span>${esc(states.join(" · "))}</span>` : ""}</p>` +
-    '<p>No published exception; coverage applies</p>' +
+    `<p>No published exception; ${healthy.partial
+      ? `${nextAttentionPartialReadText(healthy)}; coverage is incomplete`
+      : "coverage applies"}</p>` +
     '<a href="#n=projects" data-next-route="projects">View all projects</a></section>';
 }
 
-function nextAttentionView(model, expandedSections = new Set()){
+function nextAttentionPartialReadText(healthy){
+  return healthy.partial
+    ? `${healthy.partial} session${healthy.partial === 1 ? "" : "s"} partially read`
+    : "";
+}
+
+function nextAttentionView(model, expandedSections = new Set(), openDisclosures = new Set()){
   const counts = model.counts;
-  const observed = [
-    `${counts.needs} need you`, `${counts.risk} at risk`, `${counts.close} close the loop`,
-    `${counts.next} coming next`, `${counts.moving} moving`, `${counts.quiet} quiet`,
+  const partialRead = nextAttentionPartialReadText(model.healthy);
+  /* Two clauses, because there are two units and one sentence could not hold
+     both. `needs`, `risk`, `close` and `next` count SUBJECTS, which group
+     sessions: two agents in one project are a single `collision`, which is the
+     point of a subject. `moving` and `quiet` count SESSIONS, and only the ones
+     no subject already represents. Joined into one list they read as six
+     comparable numbers, and on the repository's own everyday shape the result
+     was "0 moving" beside two agents actively working. Each clause now names
+     its own denominator, the way the fleet strip's coverage line does. */
+  const subjectTotal = counts.needs + counts.risk + counts.close + counts.next;
+  const grouped = model.sessionCount - model.healthy.sessions.length;
+  const subjects = [
+    `${counts.needs} need you`, `${counts.risk} at risk`,
+    `${counts.close} close the loop`, `${counts.next} coming next`,
   ].join(" · ");
+  const rest = [`${counts.moving} moving`, `${counts.quiet} quiet`]
+    /* Included only when non-zero, and it is the arithmetic residue rather than
+       a state any collector publishes: the vocabulary is closed to needs_input,
+       working and idle. It is here so the two clauses sum to sessionCount even
+       if that ever stops being true, which is the property the old line lacked. */
+    .concat(counts.unknown ? [`${counts.unknown} in no counted state`] : [])
+    .join(" · ");
+  const observed = `${subjectTotal} subject${subjectTotal === 1 ? "" : "s"} ` +
+    `across ${grouped} of ${model.sessionCount} session${model.sessionCount === 1 ? "" : "s"}: ` +
+    subjects +
+    (model.healthy.sessions.length
+      ? ` · The other ${model.healthy.sessions.length} ` +
+        `session${model.healthy.sessions.length === 1 ? "" : "s"}: ${rest}` +
+        (partialRead ? `; of these, ${partialRead}` : "")
+      : "");
+  /* What the healthy board says instead. Each state names sessions rather than
+     leaning on a shared total, so the tail reads the same with one entry or
+     three, and a zero-count state stays out: a line whose whole point is that
+     nothing needs you has no business printing a zero. */
+  const clear = [
+    [counts.moving, "moving"], [counts.quiet, "quiet"],
+    [counts.unknown, "in no counted state"],
+  ].filter(([count]) => count).map(([count, word]) =>
+    `${count} session${count === 1 ? "" : "s"} ${word}`);
   const empty = model.sessionCount === 0
     ? `<p class="next-attention-empty">No sessions in this ` +
       `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`
     : "";
+  /* No brief on an empty payload. The two clauses are a longer sentence than the
+     six numbers they replaced, and on nothing at all they read as "0 subjects
+     across 0 of 0 sessions: 0 need you · ..." directly above a notice that
+     already says there is nothing. The notice is the better sentence.
+
+     The healthy board is the neighbouring case and gets a different answer,
+     because there IS something beneath it and it is silent: measured, the four
+     category sections render nothing at zero, so standing down entirely would
+     leave NO PUBLISHED EXCEPTION as the only heading on screen and no sign
+     anywhere that the queues had been looked at (DRC-4452). Two conditions
+     rather than one widened condition: `sessionCount` is a test of the payload's
+     shape and `subjectTotal` is a test of its content. */
+  const brief = model.sessionCount === 0
+    ? ""
+    : `<p><span class="next-attention-brief-label">OBSERVED NOW</span>` +
+      `${subjectTotal === 0
+        ? ["All four queues checked and empty"].concat(clear).join(" · ") +
+          (partialRead ? `; of these, ${partialRead}` : "")
+        : observed}</p>`;
   return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
     "Attention</h1><div class=\"next-attention-brief\">" +
-    `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>` +
-    `${nextAttentionCoverageHtml(model)}</div>${empty}` +
+    brief +
+    `${nextAttentionCoverageHtml(model, openDisclosures)}</div>${empty}` +
     nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model, expandedSections) +
     nextAttentionSectionHtml("risk", "AT RISK", model.risk, model, expandedSections) +
     nextAttentionSectionHtml("close", "CLOSE THE LOOP", model.close, model, expandedSections) +

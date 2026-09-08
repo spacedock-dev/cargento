@@ -9,7 +9,7 @@ import posixpath
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -23,6 +23,16 @@ STORE_ENV_VARS = (
     "PI_CODING_AGENT_SESSION_DIR",
 )
 CARGENTO_HOME_ENV = "CARGENTO_HOME"
+
+# The history store's two bounds as shipped, and the defaults the two flags that
+# override them carry. Named rather than written twice, because `cli.py`'s
+# argparse defaults and this module's constructor are the same figure, and
+# `SECURITY.md`'s "Retention is 14 days by default, with a size cap, and both
+# are configurable" is one assertion about both halves. `spawn_argv` compares
+# against these to decide what a daemon respawn has to carry.
+HISTORY_RETENTION_DEFAULT_DAYS: Final = 14.0
+HISTORY_MAX_BYTES_DEFAULT: Final = 1_048_576
+SECONDS_PER_DAY: Final = 24 * 60 * 60
 _PATH_TYPE = type(Path())
 
 
@@ -46,14 +56,30 @@ class RuntimeConfig:
     spacedock_enabled: bool
     usage_fetch_enabled: bool
     # Whether the end-of-session git probe runs at all. `--no-git` is the off
-    # switch DEC-3 made part of its ruling, and off means no git command runs and
+    # switch [DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe) made part of its
+    # ruling, and off means no git command runs and
     # both published fields stay `None` — never a confident clean.
     git_probe_enabled: bool
+    # Whether the focus command may run at all. `--no-focus` is the off switch
+    # SECURITY.md's focus section made part of the feature, and off means no
+    # command runs, no target is recorded, and the page is handed no capability
+    # to ask with. `--no-events` turns it off as a side effect, because the
+    # capability and the target both come from the observation coordinator, which
+    # does not exist under that flag.
+    focus_enabled: bool
     # Whether the dismissal store is read and written at all. `--no-dismiss` is
     # the rollback switch, and off means off in both directions: the file is
     # neither consulted during a collection nor created by a request, so a run
     # that misbehaves leaves no state a later run would honour.
     dismissals_enabled: bool
+    # Whether the local history store is read and written at all.
+    # `--no-history` is the off switch
+    # [DEC-6](SECURITY.md#local-history-the-session-history-store)'s contract made part of the
+    # feature, and off means off in both directions: nothing is written and an
+    # existing store is not read back, so the board opens with no memory
+    # exactly as it did before the store existed. A store still written while
+    # the feature is off is a security bug by that contract's own terms.
+    history_enabled: bool
     # Whether a session may ask the reader a question and wait for the answer.
     # `--no-ask` is the rollback switch, and off means off in both directions:
     # the routes refuse, and the payload carries no `ask` flag, so the page
@@ -87,6 +113,8 @@ class RuntimeConfig:
     # still calling it healthy.
     pi_tool_in_flight_max_sec: float
     loop_error_run_threshold: int
+    loop_error_total_threshold: int
+    loop_barren_failure_threshold: int
     future_skew_tolerance_sec: float
     sql_message_limit: int
     max_cache_entries: int
@@ -162,6 +190,19 @@ class RuntimeConfig:
     # magnitude above the busiest board measured (31 sessions).
     dismissal_read_cap_bytes: int
     dismissal_max_entries: int
+    # The history store's two bounds, which apply together: raising either does
+    # not stop the other applying. Fourteen days and 1 MiB are the contract's
+    # defaults, and `--history-days` and `--history-max-bytes` are what move
+    # them: the promoted contract says both are configurable, so they are. The
+    # byte cap is the read cap as well — a file larger than it is discarded
+    # unread rather than parsed, which is the same posture the state file takes
+    # — and 1 MiB holds 7,825 observations at the 132 bytes a Claude record
+    # measures over this machine's real board (2,713 rows), or 6,853 at the 151
+    # bytes a Codex one does, since a record's size is its identity strings.
+    # Both are against the 31-session busiest board measured for
+    # `dismissal_max_entries`.
+    history_retention_sec: float
+    history_max_bytes: int
     # What a dismissal request may declare. Three short fields, so this is far
     # below even the event cap: nothing else is read from the body.
     dismissal_body_cap_bytes: int
@@ -188,6 +229,37 @@ class RuntimeConfig:
     # probe already runs off the event thread, so a slow repository costs a late
     # reading rather than a stalled ingress.
     git_probe_timeout_sec: float
+    # How many probes may be in flight at once, across every harness. One per
+    # session key is enforced separately and is the cheaper half; this is the
+    # global ceiling, and it exists because the per-key gate does not bound a
+    # caller that varies the session id. Measured: the event budget alone allows
+    # 40 burst plus 20/s for the probe's whole 10 s life, so 240 live probe
+    # threads per harness and 960 across the four normalizers. 32 is well above
+    # any observed number of sessions ending inside one timeout window — the
+    # board's own row lists run in the low tens across ten harnesses, and
+    # simultaneous ends are rarer than that — and a refused probe costs one row
+    # the two scalars it would have published, which is the disclosure `None`
+    # already carries for every other refusal on this path.
+    git_probe_max_inflight: int
+    # The focus command's three bounds. The timeout is well under the git
+    # probe's because a tmux command answers over a UNIX socket rather than by
+    # walking a tree, and this one runs on the request thread the reader is
+    # waiting on rather than off it. The floor and the in-flight gate are the
+    # `usage_poll_floor_sec` pair one feature over: a repeated or looped request
+    # must not be able to repeat the raise. The body cap matches the dismissal
+    # route's, whose body is the same two fields.
+    focus_timeout_sec: float
+    focus_floor_sec: float
+    focus_body_cap_bytes: int
+    # How long a recorded focus target outlives the last event for its session.
+    # Not a row-set prune the way the completion mark and the git reading are:
+    # those are display state that comes back with the row, while a target is
+    # gathered once on `session_started` and never again, so a collection that
+    # missed the row would kill the control for the session's life. Derived from
+    # `window_hours` rather than chosen: a session silent for a whole row window
+    # is one whose row is no longer produced, so its target can no longer be
+    # clicked either.
+    focus_target_ttl_sec: float
     # Event overlays. The Working deadline is tied to `working_threshold_sec`
     # rather than chosen separately: that value is already what the collectors
     # mean by Working, so an overlay that outlived it would be claiming Working
@@ -201,8 +273,10 @@ class RuntimeConfig:
     # tool_result that follows a grant advances it. What that quiet is not is a
     # tool_use record written ahead of the prompt -- Claude Code writes it on no
     # schedule at all, and often not while the gate stands, which leaves the file
-    # quieter still. See docs/design-needs-input.md (N-2). The grace absorbs the
-    # ordering between a hook process and the write that provoked it, and nothing
+    # quieter still. See
+    # [N-2](docs/design-needs-input.md#n-2).
+    # The grace absorbs the ordering between a hook process and the write that provoked it, and
+    # nothing
     # else -- a wait that ends is over within one write, not within a minute.
     overlay_wait_activity_grace_sec: float
     overlay_working_ttl_sec: float
@@ -218,14 +292,30 @@ class RuntimeConfig:
     event_overlay_max_sessions: int
     event_pending_max: int
     event_pending_ttl_sec: float
+    # How long an observed session end outlives the row it belongs to. Not the
+    # row-set prune the completion mark and the git reading use, and the
+    # difference is deliberate: those are re-supplied by the next `turn_stopped`,
+    # so an over-eager prune self-heals, while `session_ended` fires once per
+    # session id and a mark dropped early can never be earned again. Derived from
+    # `window_hours` for `focus_target_ttl_sec`'s reason — a row is produced only
+    # while its activity is inside that window, and an end is the last thing that
+    # happens to an id, so past one window the row cannot come back.
+    ended_mark_ttl_sec: float
     reconcile_interval_sec: float
     # How many recent state disputes to keep. A ring, unlike the two caps above,
     # because a dispute is evidence rather than a live alert: losing the oldest
     # costs a sample, and refusing new ones would stop recording exactly when the
     # fault became frequent.
     dispute_log_max: int
+    # How many successive quota readings to keep per vendor window, for the
+    # recent-pace figure. A ring for the reason `dispute_log_max` is one: the
+    # oldest sample is the least useful, and refusing new ones would freeze the
+    # pace exactly while it was changing. Twelve at the five-minute fetch floor
+    # spans an hour, which is the shortest window's own scale; a vendor read
+    # from disk fills it only as fast as it writes.
+    usage_samples_max: int
     # Event ingress. The body cap is far below the notification cap because the
-    # envelope is nine short fields and nothing else is read from it. The rate
+    # envelope is twelve short fields and nothing else is read from it. The rate
     # ceiling is independent of the capability: a looping or compromised adapter
     # holds a valid token by definition, so the token cannot be what bounds it.
     # The burst allows one turn's worth of hooks to arrive together.
@@ -368,7 +458,13 @@ def resolve_store_roots(
             app_data(roaming_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
             app_data(local_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
         ),
-        "droid.projects": ordered(under_home(".factory", "projects")),
+        # Droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/<id>.jsonl.
+        # Measured 2026-09-02: with `projects` as the only root, three real
+        # transcripts discovered nothing (DRC-4331). `projects` stays as the
+        # fallback because no measurement says which versions wrote there.
+        "droid.projects": ordered(
+            under_home(".factory", "sessions"), under_home(".factory", "projects")
+        ),
     }
 
 
@@ -394,8 +490,12 @@ def build_runtime_config(
     spacedock_enabled: bool = True,
     usage_fetch_enabled: bool = True,
     git_probe_enabled: bool = True,
+    focus_enabled: bool = True,
     dismissals_enabled: bool = True,
     ask_enabled: bool = True,
+    history_enabled: bool = True,
+    history_retention_sec: float = HISTORY_RETENTION_DEFAULT_DAYS * SECONDS_PER_DAY,
+    history_max_bytes: int = HISTORY_MAX_BYTES_DEFAULT,
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
     windows = platform_name == "win32"
@@ -435,8 +535,10 @@ def build_runtime_config(
         spacedock_enabled=spacedock_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
         git_probe_enabled=git_probe_enabled,
+        focus_enabled=focus_enabled,
         dismissals_enabled=dismissals_enabled,
         ask_enabled=ask_enabled,
+        history_enabled=history_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
         # session "right now", and this window is the reason it cannot have it:
         # narrowing it would re-scale the summary tile, both sparklines and every
@@ -465,6 +567,25 @@ def build_runtime_config(
         # on a failing test looks like, and a flag a reader learns to ignore
         # costs more than no flag.
         loop_error_run_threshold=4,
+        # Higher than the run threshold, deliberately. The run of four is a
+        # tight loop; a total is failures however they were spaced, and four
+        # scattered failures through a long productive turn is ordinary work
+        # rather than a session stuck.
+        #
+        # Six is not on its own enough, and the first draft of this comment
+        # claimed it was. Replaying 60 real Claude transcripts, 3 reached six
+        # scattered failures on turns that were plainly healthy, the worst being
+        # 7 failures among 198 successes with a longest run of 2. So `loop_signal`
+        # pairs this count with a share test: the failures must also outnumber the
+        # successes. Raising the number instead does not work, because silencing
+        # that worst case needs 8 and the shape the rung exists for has 6.
+        loop_error_total_threshold=6,
+        # Lower than both, because the reading is different: not how long the
+        # run is, but whether anything in this turn has worked at all. The
+        # floor exists because every turn is barren for a moment at its start,
+        # and a signal that fires on the second call of a healthy turn is the
+        # flag a reader learns to ignore.
+        loop_barren_failure_threshold=3,
         future_skew_tolerance_sec=120,
         sql_message_limit=400,
         max_cache_entries=8192,
@@ -504,6 +625,8 @@ def build_runtime_config(
         dismissal_read_cap_bytes=65_536,
         dismissal_max_entries=256,
         dismissal_body_cap_bytes=1_024,
+        history_retention_sec=history_retention_sec,
+        history_max_bytes=history_max_bytes,
         prompt_path_collapse_min_length=25,
         first_line_json_cap_bytes=200_000,
         notification_body_cap_bytes=65_536,
@@ -511,6 +634,11 @@ def build_runtime_config(
         usage_poll_floor_sec=300,
         usage_fetch_timeout_sec=10,
         git_probe_timeout_sec=10.0,
+        git_probe_max_inflight=32,
+        focus_timeout_sec=2.0,
+        focus_floor_sec=1.0,
+        focus_body_cap_bytes=1_024,
+        focus_target_ttl_sec=window_hours * 3_600.0,
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
         usage_receipt_cap_bytes=131_072,
@@ -521,8 +649,10 @@ def build_runtime_config(
         event_overlay_max_sessions=512,
         event_pending_max=256,
         event_pending_ttl_sec=60.0,
+        ended_mark_ttl_sec=window_hours * 3_600.0,
         reconcile_interval_sec=30.0,
         dispute_log_max=50,
+        usage_samples_max=12,
         event_body_cap_bytes=8_192,
         event_rate_per_sec=20.0,
         event_burst_max=40,
