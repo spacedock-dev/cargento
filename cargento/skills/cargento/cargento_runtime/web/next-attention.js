@@ -609,9 +609,12 @@ function nextAttentionModel(payload){
   const moving = healthySessions.filter(session => session.state === "working").length;
   const quiet = healthySessions.filter(session => session.state === "idle").length;
   const unknown = healthySessions.length - moving - quiet;
+  // Read completeness qualifies the remainder; it does not invalidate a state
+  // derived from another source (design-unread-sources.md U-3/U-4).
+  const partial = healthySessions.filter(session => nextSessionGapNames(session).length).length;
   const model = {
     needs, risk, close, next,
-    healthy: {sessions: healthySessions, moving, quiet, unknown},
+    healthy: {sessions: healthySessions, moving, quiet, unknown, partial},
     coverage: nextAttentionCoverage(payload),
     counts: {needs: needs.length, risk: risk.length, close: close.length, next: next.length, moving, quiet, unknown},
     harnessOrder: nextAttentionHarnessOrder(payload),
@@ -1050,12 +1053,21 @@ function nextAttentionHealthyHtml(model){
     `<h2 tabindex="-1">NO PUBLISHED EXCEPTION (${count})</h2>` +
     `<p><strong>${count} session${count === 1 ? "" : "s"} with no published exception</strong>` +
     `${states.length ? `<span>${esc(states.join(" · "))}</span>` : ""}</p>` +
-    '<p>No published exception; coverage applies</p>' +
+    `<p>No published exception; ${healthy.partial
+      ? `${nextAttentionPartialReadText(healthy)}; coverage is incomplete`
+      : "coverage applies"}</p>` +
     '<a href="#n=projects" data-next-route="projects">View all projects</a></section>';
+}
+
+function nextAttentionPartialReadText(healthy){
+  return healthy.partial
+    ? `${healthy.partial} session${healthy.partial === 1 ? "" : "s"} partially read`
+    : "";
 }
 
 function nextAttentionView(model, expandedSections = new Set(), openDisclosures = new Set()){
   const counts = model.counts;
+  const partialRead = nextAttentionPartialReadText(model.healthy);
   /* Two clauses, because there are two units and one sentence could not hold
      both. `needs`, `risk`, `close` and `next` count SUBJECTS, which group
      sessions: two agents in one project are a single `collision`, which is the
@@ -1082,7 +1094,8 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
     subjects +
     (model.healthy.sessions.length
       ? ` · The other ${model.healthy.sessions.length} ` +
-        `session${model.healthy.sessions.length === 1 ? "" : "s"}: ${rest}`
+        `session${model.healthy.sessions.length === 1 ? "" : "s"}: ${rest}` +
+        (partialRead ? `; of these, ${partialRead}` : "")
       : "");
   /* What the healthy board says instead. Each state names sessions rather than
      leaning on a shared total, so the tail reads the same with one entry or
@@ -1113,7 +1126,8 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
     ? ""
     : `<p><span class="next-attention-brief-label">OBSERVED NOW</span>` +
       `${subjectTotal === 0
-        ? ["All four queues checked and empty"].concat(clear).join(" · ")
+        ? ["All four queues checked and empty"].concat(clear).join(" · ") +
+          (partialRead ? `; of these, ${partialRead}` : "")
         : observed}</p>`;
   return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
     "Attention</h1><div class=\"next-attention-brief\">" +

@@ -11,6 +11,84 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextAttentionBehaviorTest(NextPageJsHarness):
+    def test_partial_coverage_counts_sessions_instead_of_gap_names(self) -> None:
+        html = self.render(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "a",
+                        "project": "a",
+                        "state": "working",
+                        "source_gaps": ["message history", "token accounting", "token accounting"],
+                    },
+                    {
+                        "harness": "copilot",
+                        "sid": "b",
+                        "project": "b",
+                        "state": "idle",
+                        "source_gaps": ["token accounting"],
+                    },
+                ],
+                "asks": [],
+            }
+        )
+        self.assertEqual(2, html.count("2 sessions partially read"))
+        self.assertIn("NO PUBLISHED EXCEPTION (2)", html)
+        self.assertIn("1 moving · 1 quiet", html)
+
+    def test_a_partially_read_remainder_qualifies_both_attention_summaries(self) -> None:
+        cases = [
+            (["message history", "token accounting"], "idle", 1),
+            (["token accounting"], "working", 1),
+            ([None, {}, " ", " token accounting "], "working", 1),
+            ([], "idle", 0),
+            ("token accounting", "idle", 0),
+            ([None, {}, " "], "idle", 0),
+        ]
+        for gaps, state, partial in cases:
+            for mixed in (False, True):
+                with self.subTest(gaps=gaps, state=state, mixed=mixed):
+                    out = self._run_page_js(
+                        f"""
+__els.app = {{innerHTML: ""}};
+const row = {{harness: "copilot", sid: "partial", project: "partial/repo",
+  active: true, state: {json.dumps(state)}, source_gaps: {json.dumps(gaps)}}};
+nextData = {{generated: 10000, sessions: [row], asks: []}};
+if({json.dumps(mixed)}) nextData.sessions.push(
+  {{harness: "claude", sid: "clean", project: "clean/repo", state: "idle"}},
+  {{harness: "claude", sid: "gate", project: "gate/repo", state: "needs_input",
+    source_gaps: ["message history"]}}
+);
+const original = JSON.stringify(nextData);
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {{view: "attention", project: null, session: null}};
+renderNext();
+console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.healthy,
+  unread: nextSessionUnread(row), unchanged: original === JSON.stringify(nextData)}}));
+"""
+                    )
+                    assert isinstance(out, dict)
+                    html = out["html"]
+                    brief = html.split('class="next-attention-brief"', 1)[1].split("</p>", 1)[0]
+                    healthy_html = html.split('data-next-attention-section="healthy"', 1)[1]
+                    healthy = out["healthy"]
+                    self.assertTrue(out["unchanged"])
+                    self.assertEqual(partial, healthy.get("partial"))
+                    self.assertEqual(int(state == "working"), healthy["moving"])
+                    self.assertEqual(int(state == "idle") + int(mixed), healthy["quiet"])
+                    self.assertEqual(0, healthy["unknown"])
+                    self.assertEqual(1 + int(mixed), len(healthy["sessions"]))
+                    if partial:
+                        for text in (brief, healthy_html):
+                            self.assertIn("1 session partially read", text)
+                        self.assertNotIn("No published exception; coverage applies", healthy_html)
+                        self.assertIn("Source not fully read:", out["unread"])
+                    else:
+                        self.assertNotIn("partially read", html)
+                        self.assertIn("No published exception; coverage applies", healthy_html)
+                        self.assertEqual("", out["unread"])
+
     def model(self, payload: object) -> object:
         encoded = json.dumps(payload)
         return self._run_page_js(
