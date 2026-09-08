@@ -31,6 +31,8 @@ a fabricated payload driving the real bundle:
 So the blank-row framing the issue was filed under is the idle arm of two, and the working arm is
 the worse one: `generating…` is a positive claim about work nobody observed.
 
+<a id="u-2"></a>
+
 ## U-2: `store_errors` reaches no reader, so a published field was required either way
 
 This is the measurement that settles the design regardless of which branch is taken.
