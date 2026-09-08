@@ -372,57 +372,30 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual("2px solid var(--ink)", focus_rules.get("outline"))
         self.assertEqual("3px", focus_rules.get("outline-offset"))
 
-    def test_the_next_palette_tracks_system_light_and_dark_themes(self) -> None:
+    def test_the_next_palette_is_dark_only(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        light = re.search(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
-        dark = re.search(
-            r"@media\(prefers-color-scheme:dark\)\{\s*:root\{([^}]*)\}\s*\}",
-            styles,
-            re.DOTALL,
-        )
+        roots = re.findall(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
+        self.assertEqual(1, len(roots))
+        self.assertNotIn("prefers-color-scheme", styles)
+        for retired in ("--warn", "--alert", "--accent-ink", "--warnink"):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, styles)
         expected = {
-            "light": {
-                "--bg": "#f6f3ec",
-                "--panel": "#fffdf8",
-                "--ink": "#26241d",
-                "--ink2": "#423e33",
-                "--ink3": "#615d52",
-                "--line": "#ded7c7",
-                "--accent": "oklch(0.80 0.16 122)",
-                "--alert": "oklch(0.48 0.20 27)",
-                "--sunk": "#f0ece2",
-                "--line2": "#b3aa95",
-                "--accent-ink": "oklch(0.34 0.07 130)",
-                "--warn": "oklch(0.74 0.11 78)",
-                "--warnink": "oklch(0.44 0.10 70)",
-            },
-            "dark": {
-                "--bg": "#1a1916",
-                "--panel": "#222019",
-                "--ink": "#efece3",
-                "--ink2": "#c9c5ba",
-                "--ink3": "#a19d92",
-                "--line": "#3a362c",
-                "--accent": "oklch(0.84 0.17 122)",
-                "--alert": "oklch(0.76 0.17 27)",
-                "--sunk": "#161512",
-                "--line2": "#5a5245",
-                "--accent-ink": "oklch(0.86 0.10 128)",
-                "--warn": "oklch(0.78 0.11 78)",
-                "--warnink": "oklch(0.82 0.10 76)",
-            },
+            "--bg": "#14140f",
+            "--panel": "#1c1c16",
+            "--sunk": "#11110c",
+            "--line": "#2c2c23",
+            "--line2": "#403f33",
+            "--ink": "#f4f1e8",
+            "--ink2": "#c9c4b4",
+            "--ink3": "#9b9484",
+            "--accent": "#c6e07a",
+            "--accent-dim": "#8ea254",
+            "--amber": "#e8b45c",
+            "--clay": "#e08a6a",
         }
-
-        self.assertIsNotNone(light)
-        self.assertIsNotNone(dark)
-        blocks = {
-            "light": light.group(1) if light else "",
-            "dark": dark.group(1) if dark else "",
-        }
-        for theme, values in expected.items():
-            tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", blocks[theme]))
-            with self.subTest(theme=theme):
-                self.assertEqual(values, {name: tokens.get(name) for name in values})
+        tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", roots[0]))
+        self.assertEqual(expected, {name: tokens.get(name) for name in expected})
 
         def luminance(value: str) -> float:
             channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
@@ -436,13 +409,19 @@ class NextPageAssetContractTest(unittest.TestCase):
             high, low = sorted((luminance(first), luminance(second)), reverse=True)
             return (high + 0.05) / (low + 0.05)
 
-        for theme, surface in (("light", "--sunk"), ("dark", "--panel")):
-            values = expected[theme]
-            for ink in ("--ink", "--ink2", "--ink3"):
-                with self.subTest(theme=theme, ink=ink):
-                    self.assertGreater(contrast(values[ink], values[surface]), 4.5)
-            with self.subTest(theme=theme, focus="--ink"):
-                self.assertGreater(contrast(values["--ink"], values["--bg"]), 3.0)
+        for surface in ("--bg", "--panel", "--sunk"):
+            for ink in (
+                "--ink",
+                "--ink2",
+                "--ink3",
+                "--accent",
+                "--accent-dim",
+                "--amber",
+                "--clay",
+            ):
+                with self.subTest(surface=surface, ink=ink):
+                    self.assertGreater(contrast(tokens[ink], tokens[surface]), 4.5)
+        self.assertGreater(contrast(tokens["--ink"], tokens["--bg"]), 3.0)
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
@@ -455,7 +434,7 @@ class NextPageAssetContractTest(unittest.TestCase):
 
         self.assertIsNotNone(live_rule)
         self.assertIsNotNone(reduced)
-        self.assertIn("color:var(--accent-ink)", live_rule.group(1) if live_rule else "")
+        self.assertIn("color:var(--ink)", live_rule.group(1) if live_rule else "")
         self.assertIn("animation:next-live-pulse", live_rule.group(1) if live_rule else "")
         self.assertIn(".next-live .next-status-dot", reduced.group(1) if reduced else "")
         self.assertIn("animation:none", reduced.group(2) if reduced else "")
@@ -493,7 +472,7 @@ class NextPageAssetContractTest(unittest.TestCase):
     def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         for state, color in (
-            ("needs_input", "var(--warn)"),
+            ("needs_input", "var(--amber)"),
             ("working", "var(--accent)"),
             ("idle", "var(--line2)"),
         ):
@@ -580,16 +559,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(47_910, len(styles))
+        self.assertEqual(47_986, len(styles))
         self.assertEqual(
-            "e6b70f242608cfedae168a7b30fa0b34705bf318e0a744eab4e7cb00f4218d18",
+            "c4337d05cd0f460a8a9444073de8bdcd41d926449298032d6446419cbc04538b",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(430_963, len(assembled))
+        self.assertEqual(431_039, len(assembled))
         self.assertEqual(
-            "b1cc753137227bd16d851889a2269be5b0e0f452d1b02206422747455e8d5e10",
+            "818c3c0f2d2cf3800b2b3a49ae749d820ef552e6efb1496800c1d348f2aa46c0",
             hashlib.sha256(assembled).hexdigest(),
         )
 
