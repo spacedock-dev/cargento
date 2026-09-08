@@ -49,13 +49,13 @@ function nextRowControlKey(app, active){
   return "";
 }
 
-function nextFocusRowControl(app, key){
+function nextFocusRowControl(app, key, options){
   for(const [selector, idKey, keyOf] of NEXT_ROW_CONTROL_LANES){
     for(const control of app.querySelectorAll(selector)){
       const dataset = control && control.dataset || {};
       if(!dataset[idKey] || keyOf(dataset) !== key) continue;
       if(typeof control.focus !== "function") return false;
-      control.focus();
+      control.focus(options);
       return true;
     }
   }
@@ -81,11 +81,11 @@ function nextFocusKey(app, active){
   return "";
 }
 
-function nextFocusNamed(app, key){
+function nextFocusNamed(app, key, options){
   for(const target of app.querySelectorAll("[data-next-focus]")){
     if(String(target.dataset && target.dataset.nextFocus || "") !== key) continue;
     if(typeof target.focus !== "function") return false;
-    target.focus();
+    target.focus(options);
     // A draft input carries an offset as well as an identity. The lane's other
     // two elements are `<summary>`, where there is nothing to place, so this is
     // a no-op for them.
@@ -105,30 +105,38 @@ function nextCaptureFocus(){
   // `[data-next-subject-key]`, so there is no container answer to fall back to
   // and nothing is lost by returning early. `control` is carried because a row
   // control genuinely is inside a row, and its row can end.
+  // The reader can scroll away BEFORE capture; comparing scroll offsets after
+  // capture cannot detect that. See design-reader-state.md, Document scroll.
+  const rect = typeof active.getBoundingClientRect === "function"
+    ? active.getBoundingClientRect() : null;
+  const viewport = rect && (rect.bottom <= 0 || rect.top >= window.innerHeight ||
+    rect.right <= 0 || rect.left >= window.innerWidth) ? {preventScroll: true} : {};
   const named = nextFocusKey(app, active);
   // Carried alongside whichever container the reader was in rather than instead
   // of it, so a control whose row has ended still falls back to the row's own
   // restoration (DRC-4396).
   const control = nextRowControlKey(app, active);
-  if(named) return control ? {named, control} : {named};
+  if(named) return control ? {named, control, ...viewport} : {named, ...viewport};
   for(const session of app.querySelectorAll("[data-next-session]")){
     if(typeof session.contains !== "function" || !session.contains(active)) continue;
     const sid = String(session.dataset && session.dataset.nextSession || "");
       const harness = String(session.dataset && session.dataset.nextHarness || "");
-      if(sid) return control ? {session: sid, harness, control} : {session: sid, harness};
+      if(sid) return control
+        ? {session: sid, harness, control, ...viewport} : {session: sid, harness, ...viewport};
   }
   for(const subject of app.querySelectorAll("[data-next-subject-key]")){
     if(typeof subject.contains !== "function" || !subject.contains(active)) continue;
     const key = String(subject.dataset && subject.dataset.nextSubjectKey || "");
     const section = nextAttentionSectionForKey(nextAttention, key);
-    if(key && section) return control ? {key, section, control} : {key, section};
+    if(key && section) return control
+      ? {key, section, control, ...viewport} : {key, section, ...viewport};
   }
   for(const toggle of app.querySelectorAll("[data-next-attention-toggle]")){
     if(typeof toggle.contains !== "function" || !toggle.contains(active)) continue;
     const section = String(toggle.dataset && toggle.dataset.nextAttentionToggle || "");
-    if(section) return {section, disclosure: true};
+    if(section) return {section, disclosure: true, ...viewport};
   }
-  return control ? {control} : null;
+  return control ? {control, ...viewport} : null;
 }
 
 function nextRestoreFocus(snapshot, model){
@@ -139,8 +147,9 @@ function nextRestoreFocus(snapshot, model){
   // which is where a keyboard reader on a RAISE was being dropped on every
   // revision — and the live lane raises one whenever anything on the machine
   // moves (DRC-4396).
-  if(snapshot.named && nextFocusNamed(app, snapshot.named)) return;
-  if(snapshot.control && nextFocusRowControl(app, snapshot.control)) return;
+  const options = {preventScroll: snapshot.preventScroll === true};
+  if(snapshot.named && nextFocusNamed(app, snapshot.named, options)) return;
+  if(snapshot.control && nextFocusRowControl(app, snapshot.control, options)) return;
   if(snapshot.session){
     for(const session of app.querySelectorAll("[data-next-session]")){
       if(String(session.dataset && session.dataset.nextSession || "") !== snapshot.session ||
@@ -150,8 +159,8 @@ function nextRestoreFocus(snapshot, model){
       const route = typeof session.querySelector === "function"
         ? session.querySelector(".next-operation-route")
         : null;
-      if(route && typeof route.focus === "function") route.focus();
-      else if(typeof session.focus === "function") session.focus();
+      if(route && typeof route.focus === "function") route.focus(options);
+      else if(typeof session.focus === "function") session.focus(options);
       return;
     }
     return;
@@ -162,7 +171,7 @@ function nextRestoreFocus(snapshot, model){
       if(String(toggle.dataset && toggle.dataset.nextAttentionToggle || "") !== snapshot.section){
         continue;
       }
-      if(typeof toggle.focus === "function") toggle.focus();
+      if(typeof toggle.focus === "function") toggle.focus(options);
       return;
     }
   }
@@ -170,7 +179,7 @@ function nextRestoreFocus(snapshot, model){
   for(const subject of app.querySelectorAll("[data-next-subject-key]")){
     if(String(subject.dataset && subject.dataset.nextSubjectKey || "") !== snapshot.key) continue;
     const link = typeof subject.querySelector === "function" ? subject.querySelector("h3 a") : null;
-    if(link && typeof link.focus === "function") link.focus();
+    if(link && typeof link.focus === "function") link.focus(options);
     return;
   }
   }
@@ -180,12 +189,12 @@ function nextRestoreFocus(snapshot, model){
         continue;
       }
       const heading = typeof section.querySelector === "function" ? section.querySelector("h2") : null;
-      if(heading && typeof heading.focus === "function") heading.focus();
+      if(heading && typeof heading.focus === "function") heading.focus(options);
       return;
     }
   }
   const title = typeof app.querySelector === "function" ? app.querySelector(".next-attention h1") : null;
-  if(title && typeof title.focus === "function") title.focus();
+  if(title && typeof title.focus === "function") title.focus(options);
 }
 
 function nextAttentionAnnouncement(previous, current){

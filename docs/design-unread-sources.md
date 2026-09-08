@@ -56,6 +56,14 @@ unread reading reported" and never "the store held nothing". The page renders it
 `Source not fully read: <names>` in the row's identity cell, on the live lane and the history lane
 both, because those are the two arms above, and repeats it on the session page's meta line.
 
+Attention also counts partially read sessions in its no-published-exception remainder. That count
+overlaps the state counts: a missing token ledger does not invalidate a working state derived
+from readable events. Each session counts once in the remainder and, if any nonblank gap name is
+published, once in its partially read subset. Both the OBSERVED NOW brief and the remainder's
+sentence name that subset; a clean payload keeps its existing wording. Gap names use the same
+array/string validation as Sessions. A row already represented by an Attention subject is outside
+this remainder, so its gaps do not inflate the remainder's count (DRC-4476).
+
 Five collectors open SQLite: `antigravity.py`, `copilot.py`, `cursor.py`, `goose.py` and
 `opencode.py`. The other five read files. All five report through this one field, which is what makes
 the sentence one sentence rather than five.

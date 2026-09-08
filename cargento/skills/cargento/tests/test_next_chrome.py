@@ -11,6 +11,82 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextChromeBehaviorTest(NextPageJsHarness):
+    def test_a_live_revision_restores_parked_focus_without_requesting_a_scroll(self) -> None:
+        out = self._run_page_js(
+            """
+await __settle();
+window.innerHeight = 1000; window.innerWidth = 1440;
+const rectangles = [
+  {top: 100, bottom: 144, left: 10, right: 110},
+  {top: 9000, bottom: 9044, left: 10, right: 110},
+  {top: -44, bottom: 0, left: 10, right: 110},
+  {top: 1000, bottom: 1044, left: 10, right: 110},
+  {top: 100, bottom: 144, left: 1440, right: 1540},
+  {top: -10, bottom: 34, left: 10, right: 110}
+];
+const rows = ["owner", "other"].map(sid => ({
+  harness: "claude", sid, project: sid, state: "needs_input", active: true
+}));
+const results = [];
+for(const lane of ["named", "control", "route", "session", "toggle", "subject", "section", "title"]){
+  for(const rect of rectangles){
+    nextData = {sessions: rows, asks: [], native_notify: "osascript"};
+    nextAttention = nextAttentionModel(nextData);
+    nextRoute = {view: "attention", project: null, session: null};
+    let replaced = false;
+    const calls = [];
+    const old = {getBoundingClientRect: () => rect, value: "ship the fix",
+      selectionStart: 4, selectionEnd: 8,
+      dataset: {nextFocus: "steer-draft:owner", nextDraft: "steer", nextControlsProject: "owner"}};
+    const fresh = {dataset: old.dataset, value: old.value,
+      focus(options){ calls.push(options || null); document.activeElement = this; },
+      setSelectionRange(start, end){ this.caret = [start, end]; }};
+    const contains = active => active === old;
+    const container = dataset => ({dataset, contains,
+      focus: fresh.focus.bind(fresh),
+      querySelector: () => lane === "session" ? null : fresh});
+    __els.app = {
+      set innerHTML(value){ replaced = true; this.html = value; },
+      get innerHTML(){ return this.html || ""; },
+      insertAdjacentElement(){},
+      querySelector: selector => selector === ".next-attention h1" ? fresh : null,
+      querySelectorAll(selector){
+        if(lane === "named" && selector === "[data-next-focus]") return [replaced ? fresh : old];
+        if(lane === "named" && selector === "[data-next-draft]") return [old];
+        if(lane === "control" && selector === "[data-next-copy-session]") return [
+          {...container({nextCopySession: "owner", nextCopyHarness: "claude"})}
+        ];
+        if(["route", "session"].includes(lane) && selector === "[data-next-session]")
+          return [container({nextSession: "owner", nextHarness: "claude"})];
+        if(lane === "toggle" && selector === "[data-next-attention-toggle]")
+          return [container({nextAttentionToggle: "needs"})];
+        if(["subject", "section", "title"].includes(lane) && selector === "[data-next-subject-key]" &&
+          (!replaced || lane === "subject"))
+          return [container({nextSubjectKey: 'session:["claude","owner"]'})];
+        if(lane === "section" && selector === "[data-next-attention-section]")
+          return [container({nextAttentionSection: "needs"})];
+        return [];
+      }
+    };
+    __fetchImpl = async () => ({ok: true, json: async () => ({
+      sessions: lane === "title" ? [] : rows.slice().reverse(), asks: [], native_notify: "osascript"
+    })});
+    document.activeElement = old;
+    await refreshNext();
+    results.push({lane, calls, restored: document.activeElement === fresh, caret: fresh.caret});
+  }
+}
+console.log(JSON.stringify(results));
+"""
+        )
+        assert isinstance(out, list)
+        for index, arm in enumerate(out):
+            with self.subTest(lane=arm["lane"], rectangle=index % 6):
+                self.assertTrue(arm["restored"])
+                self.assertEqual([{"preventScroll": index % 6 in (1, 2, 3, 4)}], arm["calls"])
+                if arm["lane"] == "named":
+                    self.assertEqual([4, 8], arm["caret"])
+
     def test_sessions_is_default_and_invalid_fragments_normalize_to_it(self) -> None:
         out = self._run_page_js(
             """
