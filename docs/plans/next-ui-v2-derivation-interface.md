@@ -227,3 +227,102 @@ as a gap:
 
 Termination cause is already covered by the existing coverage caveat, "Termination
 cause not reported." Keep it.
+
+---
+
+## Amendment 2 — from workstreams B and C
+
+### A2.1 · The session model carries `focusable` and `resume_id`
+
+**A functional regression, caused by this file.** §"A session" listed
+`sid, harness, project` as "identity, as published" and named neither of these, so the
+model dropped both, and:
+
+- `nextSessionRaiseControl` (`next-boot.js:272`) returns `""` unless
+  `session.focusable === true`. The raise-terminal control disappeared from the board.
+- `nextResumeCommand` (`next-boot.js:210`) reads `session.resume_id`. The
+  copy-resume-command control degraded to copy-id everywhere.
+
+Both are published payload fields — `focusable` defaults at `sessions.py:366` — and both
+controls are shipped. The model carries them, so a **model session is directly
+acceptable** to those two functions: they read only `sid`, `harness`, `focusable` and
+`resume_id`, all of which the model now has. Pass the model session; do not reach for a
+raw payload row.
+
+They are **control inputs, not observations.** Never render them, never derive a count
+or a tone from them, and never give them a `Text`/`Known` pair — they are not things
+the board says. `resume_id` in particular is re-validated against `NEXT_RESUME_TOKEN`
+inside `nextResumeCommand` because it is the one string on the board that becomes a
+shell command in someone else's terminal; do not bypass that by building the command
+yourself.
+
+### A2.2 · `isWorking` and `isLive` are two different claims
+
+The model collapsed them and the shipped code does not. Measured:
+
+- `state` is a **collector inference off file recency**. `nextOperationsIsActive`
+  (`next-sessions.js:134`) uses it alone, with a comment explaining that an observed
+  end retires the state word and that requiring more would let the weaker reading veto
+  the stronger one.
+- `active` is an **event-published liveness flag**, set from real harness lifecycle
+  events at `events.py:730`, `:749` and `:769`.
+
+Four shipped sites require both — `next-activity.js:10`, `next-projects.js:103`,
+`next-sessions.js:254` and `:295` — and all four are the ones that draw a session as
+live right now.
+
+So:
+
+| Field | Definition | Used by |
+| -- | -- | -- |
+| `isWorking` | `state === "working"`, no observed end | lane membership: active vs history, and the `WORKING` counter, which partitions the active lane |
+| `isLive` | `active === true && state === "working"`, no observed end | the breathing dot, `totals.running`, and any sentence claiming something is running now |
+
+`totals.running` moves to `isLive`, because "running" is a liveness claim and a
+collector's recency inference does not support it. A session with `state: "working"` and
+`active: false` sits in the active lane and **does not breathe**. Assert that pair in a
+test: it is the whole distinction.
+
+### A2.3 · The Capacity panel needs an empty-state reason
+
+Unspecified, and the rail cannot render nothing. When no window is published:
+`"No quota window published"`, with the sub-line `"No vendor window has been read for
+this harness."` Same rule as everywhere else — a reason, not an empty panel.
+
+### A2.4 · The delegation trend is a shipped surface and stays
+
+`nextDelegationTrend` and `nextDelegationTrendMarkup` exist and the new rail dropped
+them. Ruling R1. The model exposes `delegation.trendText`, `delegation.trendKnown` and
+`delegation.trendDelta`, and the rail renders the trend beside the figure.
+
+### A2.5 · The `changes` row shape, declared
+
+`{at, filled, label, harness}`, as implemented. `filled` is the unattended marker and
+drives the dot's fill; `at` is a wall-clock label, not a timestamp to re-format.
+
+### A2.6 · `harness` is always published on a session
+
+No `harnessText`/`harnessKnown` pair. Harness is part of the session's identity and its
+key, so a session that exists has one. The "Harness not published" reason belongs to a
+**request**, not a session, which is where it appears in A's reason table.
+
+### A2.7 · `goalText` is authoritative and rendered verbatim
+
+A normalises the published goal; views render what the model gives, including its
+whitespace, and do not re-trim. One normaliser, in one place.
+
+### A2.8 · Text selection is NOT preserved — my brief was wrong
+
+The worker brief said a text selection must survive a redraw.
+[`docs/design-reader-state.md`](../design-reader-state.md) is canonical and says
+selection is one of the two things `renderNext` deliberately does not manage.
+**The canonical document wins.** Workstream B followed it over the brief and was right
+to. Disclosures, scroll position and in-flight input drafts are preserved; selection is
+not, and nothing should be added to preserve it.
+
+### A2.9 · One discrepancy to reconcile, not yet ruled
+
+On one captured payload the shipped timeline reports the window as "last 10m" and the
+model reports "last 5m". Both cannot be right. Reconcile against
+`nextWorkstreamProjectWindow` and either match it or state in a comment why the model's
+basis is the correct one. Do not simply keep the new number because it is new.
