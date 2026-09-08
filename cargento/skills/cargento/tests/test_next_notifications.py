@@ -8,6 +8,72 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextNotificationBehaviorTest(NextPageJsHarness):
+    def test_repeated_quiet_crossings_wait_ten_minutes_without_delaying_questions(self) -> None:
+        out = self._run_page_js(
+            """
+let now = 0;
+Date.now = () => now;
+__notifyPermission = "granted";
+const row = (state, sid = "s1", harness = "claude") => ({
+  harness, sid, project: "repo", state, active: state !== "idle"
+});
+const send = (seconds, sessions, asks = []) => {
+  now = seconds * 1000;
+  nextSyncNotifications({native_notify: "", sessions, ask: true, asks,
+    harnesses: [{key: "claude", label: "Claude"}]});
+  return __notifications.length;
+};
+const counts = [];
+counts.push(send(0, [row("working")]));
+counts.push(send(0, [row("idle")]));
+counts.push(send(100, [row("working")]));
+counts.push(send(200, [row("idle")]));
+counts.push(send(300, [row("working")]));
+counts.push(send(400, [row("idle")]));
+counts.push(send(599, [row("working")]));
+counts.push(send(599.999, [row("idle")]));
+counts.push(send(600, [row("idle")])); // Suppressed edges still update observed state.
+counts.push(send(600, [row("working")]));
+counts.push(send(600, [row("idle")])); // Inclusive boundary after a new crossing.
+send(601, [row("working")]);
+send(602, [row("needs_input")], [{id: "ask", question: "Ship?", harness: "claude"}]);
+const questions = __notifications.slice(2).map(n => n.title);
+send(603, [row("working"), row("working", "s2"), row("working", "s1", "codex")]);
+send(604, [row("idle"), row("idle", "s2"), row("idle", "s1", "codex")]);
+const separate = __notifications.slice(4).map(n => n.tag);
+send(605, []);
+send(606, [row("working")]);
+send(607, [row("idle")]);
+console.log(JSON.stringify({counts, questions, separate, final: __notifications.length}));
+"""
+        )
+        self.assertEqual([0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2], out["counts"])
+        self.assertEqual(["Claude is waiting on you", "Claude is asking you"], out["questions"])
+        self.assertEqual(["claude:s2", "codex:s1"], out["separate"])
+        self.assertEqual(6, out["final"])
+
+    def test_an_unissued_quiet_nudge_does_not_start_the_repeat_floor(self) -> None:
+        out = self._run_page_js(
+            """
+Date.now = () => 1000000;
+const send = (state, native = "") => nextSyncNotifications({native_notify: native,
+  sessions: [{harness: "claude", sid: "unissued", state, active: state !== "idle"}], asks: []});
+__notifyPermission = "denied";
+send("working"); send("idle");
+__notifyPermission = "granted";
+send("working", "osascript"); send("idle", "osascript");
+const realNotification = Notification;
+Notification = function(){ throw new Error("permission revoked"); };
+Notification.permission = "granted";
+send("working"); send("idle");
+Notification = realNotification;
+send("working"); send("idle");
+send("working"); send("idle");
+console.log(JSON.stringify(__notifications.map(n => n.title)));
+"""
+        )
+        self.assertEqual(["claude has gone quiet"], out)
+
     def test_browser_notifications_cover_gate_transitions_the_server_missed(self) -> None:
         out = self._run_page_js(
             """
@@ -23,6 +89,7 @@ const payload = (sessions, native) => ({
 const reset = permission => {
   __notifications = []; __notifyPermission = permission;
   nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+  nextQuietNudgedAt.clear();
 };
 const out = {};
 
@@ -80,6 +147,7 @@ const payload = (sessions, native) => ({
 const reset = permission => {
   __notifications = []; __notifyPermission = permission;
   nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+  nextQuietNudgedAt.clear();
 };
 const out = {};
 
@@ -161,6 +229,7 @@ const payload = (asks, native) => ({
 const reset = permission => {
   __notifications = []; __notifyPermission = permission;
   nextNotifyState = new Map(); nextNotifyPrimed = false; nextNotifiedAsks = new Set();
+  nextQuietNudgedAt.clear();
 };
 const out = {};
 

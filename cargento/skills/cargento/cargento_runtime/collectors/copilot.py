@@ -145,7 +145,8 @@ def _usage_rows(
         return None
     try:
         connection = runtime_io.open_sqlite_read_only(database, state)
-    except Exception:  # noqa: BLE001 — a broken store must not fail the harness
+    except Exception as exc:  # noqa: BLE001 — a broken store must not fail the harness
+        runtime_io.record_store_error(state, database, exc)
         return None
     try:
         rows: list[Any] = connection.execute(
@@ -153,16 +154,10 @@ def _usage_rows(
             "FROM assistant_usage_events ORDER BY id DESC LIMIT ?",
             (_USAGE_ROW_CAP + 1,),
         ).fetchall()
-    except Exception:  # noqa: BLE001 — schema drift is a miss, never an error
-        runtime_io.record_store_error(state, database, RuntimeError("no assistant_usage_events"))
-        # The store opened and its billing table was not there. `_read_ledger`'s
-        # own comment accepts what that costs — "it degrades to 'no model
-        # reported', which is never wrong, only incomplete" — and this is the
-        # channel that makes the incompleteness visible instead of accepted in
-        # silence. Of the earlier returns only the missing file is excluded,
-        # because it is not a store that read as empty. An UNOPENABLE one lands
-        # here rather than there: the open is lazy, so a 512-zero-byte
-        # session-store.db raises at this SELECT and does disclose. Measured.
+    except Exception as exc:  # noqa: BLE001 — a usage failure must not cost session identity
+        runtime_io.record_store_error(state, database, exc)
+        # This reading is separable from session identity (design-unread-sources U-5).
+        # Corrupt files can open lazily and fail here; permission refusals fail at open.
         if gaps is not None:
             gaps.add(sessions.UNREAD_TOKENS)
         return None

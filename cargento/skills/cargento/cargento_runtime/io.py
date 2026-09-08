@@ -178,12 +178,24 @@ def sqlite_ro_uri(path: str, *, immutable: bool = False, windows: bool | None = 
     return f"file:{quoted}{query}"
 
 
+_STORE_ERROR_MESSAGE_CHARS = 1024
+_STORE_ERROR_TRUNCATION = "... [truncated]"
+
+
 def record_store_error(state: RuntimeState, path: str, exc: BaseException) -> None:
+    """Keep the real type and at most 1,024 message characters, including the marker."""
+    # Even SQLite errors can carry store text; see design-unread-sources U-2.
+    message = str(exc)
+    if len(message) > _STORE_ERROR_MESSAGE_CHARS:
+        message = (
+            message[: _STORE_ERROR_MESSAGE_CHARS - len(_STORE_ERROR_TRUNCATION)]
+            + _STORE_ERROR_TRUNCATION
+        )
     with state.cache_lock:
         runtime_state.bounded_put(
             state.store_errors,
             path,
-            f"{type(exc).__name__}: {exc}",
+            f"{type(exc).__name__}: {message}",
             limit=state.config.max_cache_entries,
         )
 

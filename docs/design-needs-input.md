@@ -655,6 +655,16 @@ constant and requires the prose to agree, because otherwise the two can only mat
   overlap earned instead is a gate on the dispatch: the second probe no longer runs. The accepted
   cost of that is stated where the gate lives, and it is the same refuse-rather-than-evict trade the
   maps beside it already make.
+- **Retrying a saturated git probe once when a slot is released (DRC-4467).** Retain refusal under
+  the [canonical concurrency contract](../SECURITY.md#repository-git-reads-the-end-of-session-probe).
+  With a ceiling of two and four distinct ends, draining both probes and running collection left
+  two readings and two nulls, with only two dispatches. There is no automatic recovery without
+  another eligible end event: redelivering `session_ended` for a refused key in the same process
+  dispatched a third probe and supplied its reading. Retry-on-release is deferred work even when
+  limited to one attempt. A bounded queue is possible, but no measured legitimate saturation
+  workload earns it here. Revisit only with that evidence and specified capacity and overflow,
+  deduplication, freshness and resume handling, row retirement, shutdown, and attribution of a
+  later tree reading to an earlier end. Both the per-session guard and the process ceiling remain.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this. A test holds the collectors to it. *Amended
@@ -917,6 +927,22 @@ The near-parity reading is shipped deliberately, and the disclosure is in the se
   raises nothing, because the reader answered the question and was standing there when it cleared.
   A row seen idle for the first time raises nothing either, because there is no previous state
   to have moved from.
+
+**Quiet repeats have a ten-minute floor per tab and per `(harness, sid)` (DRC-4475).** Only a
+successful `Notification` construction starts the floor. Denied permission, native ownership and
+a constructor that throws do not. Every observed state is still recorded, including a suppressed
+edge: a later nudge needs a new working sighting followed by idle, and becomes eligible at 600
+seconds. A session disappearing from one payload does not clear its unexpired floor. Expired
+timestamps are discarded on the next sync. Needs-input and exact questions keep their own delivery
+rules and do not wait for this floor.
+
+The value follows the native `popup_repeat_suppress_sec` precedent, without claiming parity with
+its other gates. One uninterrupted silent tool call can yield one false quiet sighting; repeated
+crossings require renewed working evidence. The floor limits interruptions, not turns: a later real
+turn inside it can be suppressed, and a long turn with renewed activity can nudge again after it.
+Constructor counts are what the tests measure, not operating-system banner alerts. Dismissed rows
+are already removed in `aggregate._subtract_dismissed` before assembly; the browser reads no
+dismissal store.
 
 ### Rejected
 
