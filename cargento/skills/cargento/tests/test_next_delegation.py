@@ -6,6 +6,119 @@ import unittest
 
 from .next_harness import NextPageJsHarness
 
+RAIL_FIXTURE = """
+const railProject = {
+  key: "alpha/repo", sessions: [], needs: [],
+  delegation: {
+    pctText: "no figure yet", pctKnown: false,
+    tpsText: "Token rate not published", humanText: "Human turns not observed",
+    windowText: "No retained observation window published",
+    noteText: "Waiting on one complete token-rate window."
+  }
+};
+const railPayload = {generated: 10000, sessions: [], usage: []};
+const railModel = {sessions: [], totals: {running: 0, subagents: 0}, projects: [railProject], windows: [],
+  capacityEmptyText: "No quota windows published.",
+  capacityEmptyNoteText: "No vendor window has been read for this harness."};
+// A owns the derivation module; this fixture supplies its frozen view boundary.
+nextObserved = () => railModel;
+nextData = railPayload;
+nextRoute = {view: "project", project: "alpha/repo", session: null};
+nextProjectView = () => nextProjectRail({group: {label: "alpha/repo"}, payload: railPayload});
+__els.app = {innerHTML: ""};
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextProjectRailBehaviorTest(NextPageJsHarness):
+    def rail(self, checks: str) -> object:
+        return self._run_page_js(RAIL_FIXTURE + checks)
+
+    def test_an_unmeasured_project_says_why_without_a_number_or_dash(self) -> None:
+        out = self.rail("""
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out)
+        self.assertIsNotNone(block)
+        assert block is not None
+        self.assertIn("no figure yet", block.group())
+        self.assertIn("Waiting on one complete token-rate window.", block.group())
+        for absent in ("0", "0%", "—"):
+            self.assertNotIn(absent, block.group())
+        self.assertNotIn("<progress", block.group())
+
+    def test_the_percentage_carries_its_reason_but_never_a_floor_prefix(self) -> None:
+        # The percentage-floor half of this test was removed with `pctFloor`: a ratio
+        # is not bounded below by partial data, so `≥` on it asserted a bound nobody
+        # measured. The reason half is untouched and still the point — the figure must
+        # never travel without the sentence explaining what it rests on. `≥` on the
+        # token rate is a separate claim and is tested with the metric that earns it.
+        out = self.rail("""
+Object.assign(railProject.delegation, {
+  pctText: "99%", pctKnown: true, pct: 99,
+  tpsText: "210 tok/m while delegated", humanText: "3 human turns",
+  windowText: "last 4d 21h", noteText: "Two sessions have no closed working interval."
+});
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out["html"])
+        self.assertIsNotNone(block)
+        assert block is not None
+        self.assertIn("99%", block.group())
+        self.assertNotIn("≥99%", block.group())
+        self.assertIn("Two sessions have no closed working interval.", block.group())
+        self.assertIn("210 tok/m while delegated", out["html"])
+        self.assertIn("3 human turns", out["html"])
+        self.assertIn("last 4d 21h", out["html"])
+
+    def test_capacity_compares_usage_with_each_windows_clock(self) -> None:
+        out = self.rail("""
+railPayload.usage = [{harness: "claude", state: "ok",
+  fiveH: {pct: 25, windowSec: 18000, resetAt: 27662.5},
+  week: {pct: 81, windowSec: 604800, resetAt: 124912}
+}];
+railModel.windows = [
+  {key: "claude:fiveH", paceKnown: true, paceText: "13.3\u00d7", clockKnown: true,
+   clockText: "2% of window elapsed", resetsKnown: true, resetsText: "4h 54m"},
+  {key: "claude:week", paceKnown: true, paceText: "1.0\u00d7", clockKnown: true,
+   clockText: "81% of window elapsed", resetsKnown: true, resetsText: "1d 7h"}
+];
+const before = JSON.stringify(railPayload);
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML,
+  unchanged: before === JSON.stringify(railPayload)}));
+""")
+        assert isinstance(out, dict)
+        html = out["html"]
+        self.assertRegex(html, r'next-rail-capacity-fill--clay" style="width:25%"')
+        self.assertRegex(html, r'next-rail-capacity-fill--amber" style="width:81%"')
+        self.assertIn('next-rail-capacity-tick" style="left:1.88%"', html)
+        self.assertNotIn('next-rail-capacity-tick" style="left:25', html)
+        self.assertIn("13.3\u00d7 pace", html)
+        self.assertIn("1.0\u00d7 pace", html)
+        self.assertIn('class="next-rail-used--amber">81%</strong>', html)
+        self.assertIn('class="next-rail-pace--hot">13.3\u00d7 pace</span>', html)
+        self.assertNotIn("overrun", html)
+        self.assertTrue(out["unchanged"])
+
+    def test_an_empty_project_keeps_all_four_panels_explained(self) -> None:
+        out = self.rail("""
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        for panel in ("delegation", "waiting", "capacity", "tripwires"):
+            self.assertIn(f'data-next-rail-panel="{panel}"', out)
+        self.assertIn("Waiting on one complete token-rate window.", out)
+        self.assertIn("Nothing in this project has asked for you.", out)
+        self.assertIn("No quota windows published.", out)
+        self.assertIn("No tripwires saved in this browser.", out)
+        self.assertIn("local only · nothing enforces these", out)
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextDelegationBehaviorTest(NextPageJsHarness):
@@ -32,7 +145,11 @@ __fetchImpl = async () => ({ok: true, json: async () => __delegationPayload});
         return self._run_page_js("await __settle();\n" + checks, self.FIXTURE)
 
     def delegation_block(self, html: str) -> str:
-        match = re.search(r'<section class="next-delegation"[\s\S]*?</section>', html)
+        # Keyed on the data attribute, not the class attribute. The class list grew a
+        # second entry when the panel moved into the rail, and an exact-attribute
+        # regex silently stopped matching -- which failed all eighteen assertions
+        # below with "unexpectedly None" and named neither the panel nor the cause.
+        match = re.search(r"<section [^>]*data-next-delegation\b[\s\S]*?</section>", html)
         self.assertIsNotNone(match)
         return match.group(0) if match else ""
 
@@ -59,7 +176,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("50%", block)
-        self.assertIn("of the time ran without you", block)
+        self.assertIn("of observed time<br>ran without you", block)
         self.assertIn("30 tok/m while delegated", block)
         self.assertIn("2 human turns", block)
         self.assertIn("<progress", block)
@@ -162,8 +279,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("no figure yet", block)
-        self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
-        self.assertIsNone(re.search(r"\d", block))
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">since this tab opened</span>', block)
+        self.assertIsNone(re.search(r"\d", re.sub(r"<[^>]+>", "", block)))
         self.assertNotIn("%", block)
         self.assertNotIn("<progress", block)
         self.assertNotIn("tok/m", block)
@@ -428,7 +546,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
         block = self.delegation_block(html)
 
-        self.assertIn("DELEGATION · LAST 12M", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 12m</span>', block)
         self.assertNotIn("LAST 6H", block)
 
     def test_no_trend_until_two_complete_six_hour_windows_exist(self) -> None:
@@ -442,7 +561,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
         block = self.delegation_block(html)
 
-        self.assertIn("DELEGATION · LAST 6H", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 6h</span>', block)
         self.assertNotIn("data-next-delegation-trend", block)
 
     def test_an_absence_gap_withholds_a_twelve_hour_trend(self) -> None:
@@ -543,7 +663,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         # store's own window it is a figure.
         self.assertNotIn("no figure yet", block)
         self.assertIn("67%", block)
-        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 3d</span>', block)
         self.assertIn("1 human turn", block)
 
     def test_without_a_stored_history_the_same_tab_still_withholds(self) -> None:
@@ -565,7 +686,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("no figure yet", block)
-        self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">since this tab opened</span>', block)
 
     def test_a_withheld_figure_over_a_seeded_window_names_that_window(self) -> None:
         # The third hardcoded caption. A seeded window with nothing countable in
@@ -594,7 +716,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("no figure yet", block)
-        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 3d</span>', block)
         self.assertNotIn("SINCE THIS TAB OPENED", block)
 
     def test_a_session_left_working_in_its_last_record_is_not_counted_to_now(self) -> None:

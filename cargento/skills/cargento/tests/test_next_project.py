@@ -5,6 +5,7 @@ import shutil
 import unittest
 
 from .next_harness import NextPageJsHarness
+from .test_next_projects import V2_MODEL_FIXTURE
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -101,8 +102,8 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn("audit", html)
         self.assertNotIn("latest session context", html)
         self.assertNotIn("latest assignment", html)
-        self.assertIn("2 sessions share this label", html)
-        self.assertIn("Same label is not proof of the same directory", html)
+        self.assertIn("2 sessions share this display label", html)
+        self.assertIn("shared location is not established", html)
         self.assertNotIn("Do not fold this project", html)
 
     def test_two_workflows_in_one_project_render_two_independent_plans(self) -> None:
@@ -159,9 +160,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIsNotNone(status)
         status_html = status.group(0) if status else ""
         self.assertIn(
-            "no estimate left · no confidence</span>"
-            '<span class="next-project-detail-divider" aria-hidden="true">|</span>'
-            "<span>2 entities unhealthy — <span data-next-withheld>estimate withheld",
+            "2 entities unhealthy — <span data-next-withheld>estimate withheld",
             status_html,
         )
 
@@ -267,7 +266,6 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         for html in out.values():
             self.assertNotIn("data-next-plan=", html)
             self.assertNotIn("unhealthy", html)
-            self.assertNotRegex(html, r"\bsteps?\b")
             self.assertNotIn("next-project-detail-divider", html)
 
     def test_missing_project_is_bounded_and_links_to_the_complete_project_map(self) -> None:
@@ -284,6 +282,87 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn('href="#n=projects"', html)
         self.assertNotIn("deleted", html.lower())
         self.assertNotIn("completed", html.lower())
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextProjectV2Test(NextPageJsHarness):
+    def test_legacy_plan_records_follow_model_identity_even_without_a_raw_label(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
+nextProjectRail = () => "";
+nextData = {generated: 10000, sessions: [{sid: "live", harness: "codex", total: 3, done: 2,
+  spacedock: {role: "first-officer", workflows: [{workflow: "Retained plan", goal: "Keep the plan", stages: [], entities: []}]}
+}]};
+console.log(JSON.stringify(nextProjectView("alpha/repo")));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("Retained plan", out)
+        self.assertIn("2 of 3 done", out)
+
+    def test_published_goal_and_timeline_values_are_escaped_without_normalizing(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+v2Project.goalKnown = true;
+v2Project.goalText = "  Ship <exactly>\\n  what was asked.  ";
+v2Project.goalSrcText = "Harness <source>";
+v2Project.goalGapKnown = false;
+v2Project.changes = [
+  {at: 9900, filled: true, label: "Finished <build>", harness: "codex"},
+  {at: 9910, filled: false, label: "Needs approval", harness: "claude"}
+];
+v2Project.changeNoteText = "1 of 2 unattended · last 3m";
+nextWorkstreamCollapsed = false;
+console.log(JSON.stringify({goal: nextProjectGoal(v2Project), changes: nextProjectChanges(v2Project)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("  Ship &lt;exactly&gt;\n  what was asked.  ", out["goal"])
+        self.assertIn("Harness &lt;source&gt;", out["goal"])
+        self.assertNotIn("publish no goal", out["goal"])
+        self.assertIn("1 of 2 unattended · last 3m", out["changes"])
+        self.assertIn("Finished &lt;build&gt;", out["changes"])
+        self.assertIn("Needs approval", out["changes"])
+        self.assertIn("codex", out["changes"])
+        self.assertIn("claude", out["changes"])
+        self.assertEqual(1, out["changes"].count('aria-label="unattended"'))
+        self.assertEqual(1, out["changes"].count('aria-label="attended"'))
+
+    def test_identity_goal_and_model_timeline_survive_both_toggle_directions(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
+nextProjectRail = context => '<div data-rail-project="' + context.project.key + '">rail</div>';
+nextData = {generated: 10000, sessions: []};
+nextRoute = {view: "project", project: "alpha/repo", session: null};
+__els.app = {innerHTML: ""};
+nextWorkstreamCollapsed = false;
+renderNext();
+const open = __els.app.innerHTML;
+const click = {target: {closest: selector => selector === "[data-next-workstream-toggle]" ? {} : null}, preventDefault(){}};
+__fire("click", click);
+renderNext();
+const closed = __els.app.innerHTML;
+__fire("click", click);
+renderNext();
+console.log(JSON.stringify({open, closed, reopened: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        for html in out.values():
+            self.assertIn("No harness published a goal", html)
+            self.assertIn("Exact location not published", html)
+            self.assertIn("1 of 1 sessions publish no goal.", html)
+            self.assertIn("no state changes observed in the last 3m", html)
+            self.assertIn('data-rail-project="alpha/repo"', html)
+        self.assertIn('aria-expanded="true"', out["open"])
+        self.assertIn('aria-expanded="false"', out["closed"])
+        self.assertNotIn('class="next-workstream-empty"', out["closed"])
+        self.assertIn('aria-expanded="true"', out["reopened"])
 
 
 if __name__ == "__main__":

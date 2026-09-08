@@ -31,10 +31,10 @@ Four steps, and only the first two are required.
 2. Say "open cargento". A local dashboard opens at `http://127.0.0.1:4553`, and it maps every
    harness it finds on the machine regardless of which one launched it. No account, no cloud
    service, no repository token. The server binds IPv4 loopback and nothing else.
-3. Read the first screen. Session operations leads with the sessions that are active now, above the
-   ones that are only recent history, and gives each active session the same four columns: where it
-   is, what it is doing now, what it does next, and whether it is blocked. Since 0.20 that is the
-   default view rather than an opt-in one.
+3. Read the first screen. Projects groups the sessions by the label their harness publishes, with
+   active projects first. Sessions separates active work from recent history and gives each active
+   session the same four columns: where it is, what it is doing now, what it does next, and whether
+   it is blocked.
 4. Optionally connect two things, both one-time and both documented in
    [HOW_TO_USE.md](../HOW_TO_USE.md): the lifecycle hooks that let a blocked session raise a
    desktop notification, and the status-line hook that gives Antigravity its working state and

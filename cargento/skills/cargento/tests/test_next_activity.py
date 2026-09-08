@@ -5,6 +5,7 @@ import shutil
 import unittest
 
 from .next_harness import NextPageJsHarness
+from .test_next_projects import V2_MODEL_FIXTURE
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -107,13 +108,13 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             raise AssertionError(f"no activity subagent {index!r} in {card}")
         return match.group(0)
 
-    def test_going_on_keeps_gate_order_then_uses_the_active_attention_ladder(self) -> None:
+    def test_going_on_follows_the_derived_session_collection(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
         order = [
             html.index(f'data-next-going-on="{sid}"')
-            for sid in ("gate-z", "gate-a", "work-z", "work-a")
+            for sid in ("gate-z", "gate-a", "work-a", "work-z")
         ]
         self.assertEqual(sorted(order), order)
         self.assertNotIn('data-next-going-on="inactive-work"', html)
@@ -140,14 +141,16 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
         self.assertNotIn("next-live", gate)
         self.assertNotIn("next-live", unstamped_gate)
-        self.assertIn('aria-label="needs input"', gate)
-        self.assertIn("10m wait", gate)
-        self.assertIn("Claude Code · open question · AskUserQuestion", gate)
+        self.assertIn('aria-label="needs_input"', gate)
+        self.assertIn("10m", gate)
+        self.assertIn("claude · ", gate)
+        self.assertIn("open question · AskUserQuestion", gate)
         self.assertNotIn(" wait", unstamped_gate)
-        self.assertIn("next-live", work)
+        self.assertIn("next-project-dot--working", work)
         self.assertIn('aria-label="working"', work)
-        self.assertIn("1,235 /m", work)
-        self.assertIn("Claude Code · running 1 subagent", work)
+        self.assertIn("Token rate not reported", work)
+        self.assertIn("claude · ", work)
+        self.assertIn("Not finished", work)
 
     def test_live_subagents_win_the_pill_budget_and_idle_ones_are_dimmed(self) -> None:
         # DRC-4344. The strip shows six pills. A lead with one finished teammate
@@ -408,8 +411,40 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         )
         assert isinstance(html, str)
 
-        self.assertIn("Nothing active or waiting on you in this project.", html)
+        self.assertIn("Nothing observed running.", html)
         self.assertIn("No completed tracked tasks in this payload.", html)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextActivityV2Test(NextPageJsHarness):
+    def test_end_outcomes_use_model_glyphs_and_git_readings(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+v2Project.ended = [
+  {...v2Session, sid: "unread", outcomeKnown: true, outcomeGlyph: "◦", outcomeText: "finished and was never read", gitText: "Git state was not measured", gitKnown: false},
+  {...v2Session, sid: "died", outcomeKnown: true, outcomeGlyph: "\u00d7", outcomeText: "died rather than finished", gitText: "No porcelain entries", gitKnown: true},
+  {...v2Session, sid: "dirty", outcomeKnown: true, outcomeGlyph: "△", outcomeText: "ended leaving uncommitted work", gitText: "3 porcelain entries", gitKnown: true}
+];
+console.log(JSON.stringify(nextProjectEndings({project: v2Project})));
+"""
+        )
+        assert isinstance(out, str)
+        for sid, glyph, outcome, git in (
+            ("unread", "◦", "finished and was never read", "Git state was not measured"),
+            ("died", "\u00d7", "died rather than finished", "No porcelain entries"),
+            ("dirty", "△", "ended leaving uncommitted work", "3 porcelain entries"),
+        ):
+            match = re.search(rf'<button[^>]*data-next-outcome="{sid}"[\s\S]*?</button>', out)
+            self.assertIsNotNone(match)
+            row = match.group(0) if match else ""
+            for text in (
+                glyph,
+                outcome,
+                git,
+                f'data-next-route="session:alpha%2Frepo:codex:{sid}"',
+            ):
+                self.assertIn(text, row)
 
 
 if __name__ == "__main__":
