@@ -157,7 +157,13 @@ the board can show that a session stopped with work still in the tree.
 
 The probe is exactly this command, or there is no probe:
 
-    git -c core.fsmonitor= -c core.hooksPath=/dev/null --no-optional-locks status --porcelain
+    git -c core.fsmonitor= -c core.hooksPath=/dev/null -c status.showUntrackedFiles=normal --no-optional-locks status --porcelain
+
+`status.showUntrackedFiles=normal` keeps non-ignored untracked entries visible. Measured
+2026-09-08: one untracked file was suppressed by `status.showUntrackedFiles=no` through local
+config, `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_COUNT`. This key override closes all three routes;
+other operator configuration, including ignore and filter rules, remains in effect. Clean means
+no porcelain entries under these rules, not discovery of ignored content.
 
 Two things about how it is spawned are part of the boundary rather than details of it.
 
@@ -186,7 +192,7 @@ dirty reading belonging to another one, and a directory that is not a repository
 too, so the check that the path is a directory does not help.
 
 The mechanism is subprocess execution rather than a file open. That is what separates this feature from
-every other read Cargento performs, and all three flags are load-bearing. The first two were measured
+every other read Cargento performs, and the three safety flags are load-bearing. The first two were measured
 2026-08-28 at git 2.55.0 across four fresh repositories, one probe each, from an identical racy-clean
 state; the third was measured 2026-09-07 at git 2.55.0 with git-lfs 3.8.0:
 
@@ -248,10 +254,10 @@ cannot be armed, so the Linux and Windows arms are unmeasured rather than verifi
 
 ### The residual: the reading is about the repository, not about the directory
 
-`git status` answers about the repository containing the directory it runs in, because git walks
-upward from that directory until it finds one. The probe passes the session's own working directory
-as cwd and passes nothing that bounds the walk, so the walk is what decides which repository gets
-measured. That is one behaviour with two outcomes, and only one of them is what a reader wants.
+`git status` discovers repository metadata by walking upward from the directory it runs in. The
+probe passes the session's own working directory as cwd and passes nothing that bounds the walk.
+With an ordinary `.git` directory and no working-tree redirection, it answers about the containing
+repository. That walk has two outcomes, and only one of them is what a reader wants.
 
 The common outcome is the right one, and it is why the feature is useful at all. A session working
 in `repo/src/components` gets `repo`'s reading, which is the answer to whether that session left
@@ -278,7 +284,7 @@ the first is the one to read before proposing anything here:
 - Confining the walk costs a reading people rely on. Of 48 recorded session directories still
   present on the machine measured, 30 sat at a repository root, 10 inside a repository below its
   root, and 8 in no repository at all. A parent ceiling would blank one in four of the
-  repository-backed ones, and `null` means not probed, so such a row could not even say why.
+  repository-backed ones, and `null` means no reading available, so such a row could not even say why.
 - The targeted alternative reopens DEC-3. Refusing only when the resolved repository root is `$HOME`
   keeps the subdirectory case and closes the dotfiles case, but learning that root needs a second git
   command, and this section's first bound is that the probe is exactly the one command above or there
@@ -286,14 +292,26 @@ the first is the one to read before proposing anything here:
 
 So the trade was a common correct reading against a hazard nobody here can currently reach, and the
 ruling keeps the reading. What it costs a reader is written down rather than left to be discovered: a
-git reading names a session's directory and is about that directory's repository, and those are the
-same thing right up until `$HOME` is one.
+git reading names a session's directory, but the repository git discovers may be an unrelated
+ancestor such as `$HOME`.
+
+**Local metadata can also select a different working tree (DRC-4492).** Git can read
+`core.worktree` from the discovered `.git/config` and compare another directory's contents against
+that repository's index. Measured 2026-09-08: a clean source pointing at a directory with nine
+untracked entries returned `dirty=True, changed=9`; removing the setting restored clean/zero.
+This is accepted local-config trust, distinct from inherited `GIT_WORK_TREE`, which the probe
+scrubs. A `.git` file selects metadata elsewhere; it does not by itself establish that the remote
+directory's contents were measured. In the gitfile control, changing files beside the target
+metadata left the reading clean, while an untracked file beside the gitfile made it dirty. Metadata
+selection and working-tree redirection are separate mechanisms. The probe retains its one-command
+design and does not confine either one.
 
 What is published, per session, is two fields and nothing else:
 
     {dirty: bool | None, changed: int | None}
 
-Both fields are nullable, and `null` means not probed. It is never a confident clean over no evidence.
+Both fields are nullable, and `null` means no reading available: never attempted (including refused),
+attempted without a usable result, or retired after resumed work. It makes no clean-tree inference.
 The probe fires on `session_ended`, and most harnesses do not emit that event today, so most rows
 carry `null`. `changed` counts porcelain entries rather than files: git collapses an untracked
 directory into a single entry, so a new directory holding three files is one entry, not three.
@@ -321,12 +339,13 @@ and the process holds at most 32 in flight across every harness.
 The two gates cost different things, and only one of them costs a stale reading. A session refused
 because its own probe is already running keeps the reading that probe produces, which can be up to
 ten seconds old and stays until another session end arrives. A session refused by the ceiling
-publishes no reading at all: no first probe ran for it, releasing a slot re-dispatches nothing, and a
-session sends `session_ended` once
-([`docs/design-needs-input.md`](docs/design-needs-input.md#n-12-a-session-that-ended-and-one-waiting-for-you-both-said-idle)
-N-12), so that row stays null for the life of the process. Measured with the ceiling set to 2 and
-four distinct ends: with every in-flight probe drained, the two probed sessions read
-`dirty=True, changed=5`, both refused ones read null, and the dispatch count stayed at 2.
+publishes no reading at all: no first probe ran for it, and releasing a slot re-dispatches nothing.
+There is no automatic recovery without another eligible end event. Measured with the ceiling set
+to 2 and four distinct ends: after every in-flight probe drained and collection ran, the two probed
+sessions read `dirty=True, changed=5`, both refused ones read null, and the dispatch count stayed
+at 2. Redelivering `session_ended` for a refused key in the same process dispatched a third probe
+and supplied its reading. The decision to retain refusal is recorded in
+[N-9's rejected list](docs/design-needs-input.md#n-9-idle-was-two-situations-and-only-an-event-can-separate-them).
 
 The off switch is `--no-git`. The probe is on by default and that flag turns it off. It mirrors
 `--no-spacedock` at every one of that flag's sites, including the branch that forwards flags to a
@@ -334,20 +353,22 @@ respawned daemon, so a restart cannot re-enable a probe the user disabled. With 
 git command runs at all, and both fields stay `null`.
 
 A violation of any boundary in this section is a security bug: a git command other than the one
-above, any of the three flags dropped, a read of file contents or diffs or branch state, a pathname
+above, any of its fixed options dropped, a read of file contents or diffs or branch state, a pathname
 reaching a response, a probe on any edge but session end, a probe while the feature is off, an
 executable taken from anywhere but the resolved absolute path, a reading published about any
-repository but the one containing the directory it names, or any write inside the user's repository
+repository but the one git discovers from the directory it names, subject to the metadata and
+working-tree selection described above, or any write inside the user's repository
 that Cargento's own argv could have prevented.
 
 Two of those clauses are narrower than they read, and both narrowings are the residuals above rather
 than relaxations. A filter driver the inspected repository configured for itself may write where it
 likes, and no argv Cargento can pass stops it; what the argv must prevent, and now does, is git
 writing on the probe's behalf. And the reading clause says repository rather than directory on
-purpose: the containing repository is what git answers about, which is the correct answer for a
-session in a subdirectory and the wrong one for a session under a `$HOME` that is a repository.
-Writing that clause about the directory would make a documented security bug of the subdirectory
-case, which is the common one and the one people rely on.
+purpose: git's discovery normally selects the containing repository, which is the correct answer
+for a session in a subdirectory and the wrong one for a session under a `$HOME` that is a repository.
+That selection also trusts local metadata: a gitfile can select external metadata, and
+`core.worktree` can redirect the contents compared against the discovered index. The boundary does
+not promise that those contents lie beneath the session directory or the discovered metadata.
 
 ## Reaching a session's terminal (the focus command)
 
@@ -1643,8 +1664,11 @@ Verifying it would need a per-session secret that the sessions do not have and t
 boundary could not keep.
 
 `--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of
-the store relocation variables, every candidate store path, and per-path read errors. Nothing is
-transmitted, but redact it before pasting it into a public issue.
+the store relocation variables, every candidate store path, and per-path read errors. A recorded
+store error may include a store or prompt excerpt, even when SQLite raised it. The shared formatter
+keeps the exception type plus at most 1,024 Unicode characters of its message, including
+`... [truncated]` when clipped; clipping does not redact sensitive content. Nothing is transmitted,
+but redact it before pasting it into a public issue.
 
 ## Reporting a vulnerability
 

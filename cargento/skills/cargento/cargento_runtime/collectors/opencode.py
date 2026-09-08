@@ -226,6 +226,11 @@ def collect(
                             for m in reversed(msgs):
                                 data = _json(m["data"])
                                 role = data.get("role")
+                                if role not in ("user", "assistant"):
+                                    gaps.add(sessions.UNREAD_HISTORY)
+                                    # An unknown role cannot extend a measured turn
+                                    # as though it were a recognised reply.
+                                    continue
                                 is_user = role == "user"
                                 events.append((records.norm_epoch(m["time_created"]), is_user))
                                 if is_user:

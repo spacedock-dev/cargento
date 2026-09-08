@@ -39,6 +39,14 @@ This is the measurement that settles the design regardless of which branch is ta
 it never sets the payload's `harness["error"]` (only an exception escaping `collect` does), and a
 grep for it under `cargento_runtime/web/` returns nothing.
 
+The shared formatter preserves the exception type and caps the message body at 1,024 Unicode
+characters, including `... [truncated]` when clipped. The type and `: ` prefix are additional;
+short messages remain intact. This applies to every collector and exception class, with the
+existing `max_cache_entries` bound on cached paths unchanged. A real SQLite UTF-8 decode error
+was measured carrying store text, so a SQLite-only catch is no confidentiality boundary. Clipping
+limits retained text, not its sensitivity: a diagnostic can still contain a store or prompt excerpt.
+The [sensitive-output warning](../SECURITY.md#known-and-accepted) applies before sharing it.
+
 So "route the fourth state through the store-error boundary" is not a fix that reaches a screen. It
 relocates the silence.
 
@@ -66,11 +74,11 @@ the sentence one sentence rather than five.
 
 | Collector | What it discloses | What it does not |
 |---|---|---|
-| `antigravity.py` | Both rungs of the `steps` ladder spent: message history and token accounting | A subagent store's own failure, which costs the parent a slice of its rate and is not the parent's source |
-| `copilot.py` | `assistant_usage_events` absent, on every row the store feeds: token accounting | A missing `session-store.db`, which is not a store that half-read. An unopenable one does disclose: the open is lazy, so the failure lands at the `SELECT` |
+| `antigravity.py` | Both rungs of the `steps` ladder spent: message history and token accounting. A model read that was attempted and did not yield one: the `gen_metadata` query raised, the blob would not open, a seek or read failed, or the tail decoded to nothing recognisable. On an active row, an attempted activity read on a runtime with no `sqlite3` module: message history and token accounting | A subagent store's own failure, which costs the parent a slice of its rate and is not the parent's source. A readable `gen_metadata` table holding no generations, which is a session that has not been answered yet rather than a reading that failed, per U-4. An inactive row's activity readings, which are never attempted |
+| `copilot.py` | Any failure of the usage read, on every row the store feeds: token accounting. The recorded cause is now the exception that was actually raised, so `assistant_usage_events` being absent and the file being corrupt are distinguishable in `--diagnose` rather than both reading as schema drift | A missing `session-store.db`, which is not a store that half-read. Nor an open that failed before the query: this row used to claim the open is lazy so every unopenable store lands at the `SELECT`, which was generalised from the corrupt-file case. A corrupt file does fail there, but a permission refusal fails at the open, where `io.open_sqlite_read_only` records the cause and no `source_gaps` name is set |
 | `cursor.py` | The `meta` query raised, the `meta` rows decoded to no object, the model read raised, the gate read did not settle | An open that failed, since there is then no source to have half-read |
 | `goose.py` | `messages` raised, `usage_ledger` raised | The per-message JSON parse, which loses one message rather than a reading |
-| `opencode.py` | The `message` read raised, the `part` read raised | An empty `session` table, which the select ladder cannot tell from a healthy empty store |
+| `opencode.py` | The `message` read raised, the `part` read raised. A message whose role would not decode: malformed or non-object `data`, an absent role, or a value that is neither `user` nor `assistant`. That reaches `_json`'s `{}` rather than either exception boundary, so it discloses without costing the row | An empty `session` table, which the select ladder cannot tell from a healthy empty store. Which prompt survived an unreadable role: the row keeps an older valid one where there is one and is empty where there is not, and the disclosure is the same either way |
 
 A list of names rather than a boolean. "Something could not be read" is not actionable, and a bare
 `False` would mean both "nothing failed" and "this collector never looks": null's job done by
@@ -160,6 +168,13 @@ workspace, and `_usage_rows` is a read no row's identity depends on. `goose.py`'
 which published field is wrong. So the granularity differs because the code differs, and the two
 collectors are not being reshaped into their siblings. The four now answer the same question at the
 finest grain each can honestly name.
+
+Copilot's usage open and query boundaries both retain broad `Exception` coverage and record the
+actual cause through that shared formatter. Ordinary SQLite open failures were already recorded
+by `io.open_sqlite_read_only`; recording at the collector also covers exceptions outside that
+helper's SQLite catch. Missing-table and corrupt-file failures keep their distinct diagnoses, and
+the query-failure arm keeps its token-accounting gap. Narrowing these catches was measured to let
+an injected query `AttributeError` escape, badge the harness and discard all its rows.
 
 ### Why the disclosure is a store error and not a `source_gaps` name
 

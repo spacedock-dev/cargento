@@ -863,8 +863,7 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
 
     def test_the_documented_command_is_the_argv_the_probe_builds(self) -> None:
         # The contract prints the command as an indented code block. If either side
-        # gains or loses a flag, this fails — which is the point, because all three
-        # flags are independently load-bearing and none may be dropped quietly.
+        # gains or loses a flag, this fails; none may be dropped quietly.
         self.assertIn(
             "    " + " ".join(git_status.GIT_STATUS_ARGV) + "\n",
             self.SECURITY,
@@ -935,12 +934,11 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # And the violation clause has to name them, or they are documented
         # behaviour rather than boundaries.
         self.assertIn("an executable taken from anywhere but the resolved absolute path", self.FLAT)
-        # Repository rather than directory, and the word is load-bearing. Git
-        # answers about the repository containing the cwd, so a clause written
-        # about the directory would make a documented security bug of the
-        # subdirectory case, which is the common one (DRC-4442 R11).
+        # Discovery includes gitfiles and local core.worktree configuration;
+        # containment alone would contradict the accepted residual (DRC-4492).
         self.assertIn(
-            "a reading published about any repository but the one containing the directory it names",
+            "a reading published about any repository but the one git discovers from the "
+            "directory it names, subject to the metadata and working-tree selection described above",
             self.FLAT,
         )
         self.assertNotIn("a reading published about any directory but the one it names", self.FLAT)
@@ -955,8 +953,8 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         self.assertIn("a session already being probed is refused a second probe", self.FLAT)
         # The two gates refuse for different reasons and cost different things.
         # The section said only the per-key cost, which is a stale reading; a
-        # ceiling refusal has no first probe to fall back on, so the row is null
-        # rather than stale, and N-12's one end per session makes that permanent.
+        # ceiling refusal has no first probe to fall back on, until another
+        # eligible end dispatches it (including a redelivery in the same process).
         self.assertIn("A session refused by the ceiling publishes no reading at all", self.FLAT)
 
     def test_the_scrubbed_names_are_the_ones_the_runtime_drops(self) -> None:
@@ -971,7 +969,8 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # cannot agree with a wrong constant, and it exists for this flag in
         # particular because the section's own claim was falsified once without it.
         self.assertIn(
-            "git -c core.fsmonitor= -c core.hooksPath=/dev/null --no-optional-locks status "
+            "git -c core.fsmonitor= -c core.hooksPath=/dev/null "
+            "-c status.showUntrackedFiles=normal --no-optional-locks status "
             "--porcelain",
             self.FLAT,
         )
@@ -1022,7 +1021,11 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
             "### The residual: the reading is about the repository, not about the directory",
             self.SECURITY,
         )
-        self.assertIn("git walks upward from that directory until it finds one", self.FLAT)
+        self.assertIn(
+            "`git status` discovers repository metadata by walking upward from the directory "
+            "it runs in",
+            self.FLAT,
+        )
         self.assertIn(
             "It is not reachable on the machine these measurements were taken on", self.FLAT
         )

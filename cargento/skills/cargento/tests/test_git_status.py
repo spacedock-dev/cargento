@@ -464,12 +464,83 @@ class GitProbeContractTest(unittest.TestCase):
                 "core.fsmonitor=",
                 "-c",
                 "core.hooksPath=/dev/null",
+                "-c",
+                "status.showUntrackedFiles=normal",
                 "--no-optional-locks",
                 "status",
                 "--porcelain",
             ),
             git_status.GIT_STATUS_ARGV,
         )
+
+    def test_untracked_entries_survive_display_config(self) -> None:
+        # Removing the override must fail the three suppressing arms, while
+        # clean and ignored controls still follow Git's tracking/ignore rules.
+        with tempfile.TemporaryDirectory(
+            prefix="fix-git-probe-untracked-and-refusal-record-"
+        ) as tmp:
+            parent = Path(tmp)
+            template = parent / "empty-template"
+            template.mkdir()
+            xdg_config = parent / "empty-xdg-config"
+            xdg_config.mkdir()
+            global_config = parent / "global-config"
+            global_config.write_text("[status]\n\tshowUntrackedFiles = no\n")
+            base = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+            base.update(
+                GIT_CONFIG_GLOBAL=os.devnull,
+                GIT_CONFIG_SYSTEM=os.devnull,
+                GIT_CONFIG_NOSYSTEM="1",
+                GIT_TEMPLATE_DIR=str(template),
+                # Git's default XDG ignore file survives disabling global config.
+                XDG_CONFIG_HOME=str(xdg_config),
+            )
+            arms = {
+                "baseline": {},
+                "GIT_CONFIG_GLOBAL": {"GIT_CONFIG_GLOBAL": str(global_config)},
+                "GIT_CONFIG_COUNT": {
+                    "GIT_CONFIG_COUNT": "1",
+                    "GIT_CONFIG_KEY_0": "status.showUntrackedFiles",
+                    "GIT_CONFIG_VALUE_0": "no",
+                },
+                "local-config": {},
+            }
+            for arm, config in arms.items():
+                with _environment({**base, **config}):
+                    root = _fresh(parent, arm)
+                    if arm == "local-config":
+                        _run(
+                            "git", "config", "--local", "status.showUntrackedFiles", "no", cwd=root
+                        )
+                    with self.subTest(arm=arm, state="clean"):
+                        self.assertEqual(
+                            git_status.GitStatus(dirty=False, changed=0),
+                            git_status.probe(str(root), timeout_sec=10.0),
+                        )
+                    (root / "work.txt").write_text("untracked\n")
+                    control = subprocess.run(
+                        (GIT or "git", "--no-optional-locks", "status", "--porcelain"),
+                        cwd=root,
+                        capture_output=True,
+                        check=True,
+                    )
+                    with self.subTest(arm=arm, state="display-control"):
+                        self.assertEqual(
+                            b"?? work.txt\n" if arm == "baseline" else b"", control.stdout
+                        )
+                    with self.subTest(arm=arm, state="untracked"):
+                        self.assertEqual(
+                            git_status.GitStatus(dirty=True, changed=1),
+                            git_status.probe(str(root), timeout_sec=10.0),
+                        )
+                    excludes = parent / f"{arm}-excludes"
+                    excludes.write_text("work.txt\n")
+                    _run("git", "config", "--local", "core.excludesFile", str(excludes), cwd=root)
+                    with self.subTest(arm=arm, state="ignored"):
+                        self.assertEqual(
+                            git_status.GitStatus(dirty=False, changed=0),
+                            git_status.probe(str(root), timeout_sec=10.0),
+                        )
 
     def test_the_probe_does_not_write_the_index(self) -> None:
         # `--no-optional-locks` is what stops this. Without it git resolves the
@@ -948,6 +1019,7 @@ class GitProbeCallSiteTest(unittest.TestCase):
         self.assertEqual("git", Path(argv[0]).stem)
         # Everything after argv[0] is the constant, unchanged.
         self.assertEqual(git_status.GIT_STATUS_ARGV[1:], tuple(argv[1:]))
+        self.assertIn("status.showUntrackedFiles=normal", argv)
 
     def test_the_probe_scrubs_the_environment_it_hands_the_child(self) -> None:
         # The scrub is asserted here as well as behaviourally above, because this

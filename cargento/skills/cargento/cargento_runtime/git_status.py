@@ -6,7 +6,7 @@ section is the contract it implements. The bounds are
 [DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe)'s ruling (Linear
 DRC-4122) as amended, not this module's preferences.
 
-Why the argv is a constant and not built per call: all three flags are
+Why the argv is a constant and not built per call: all three safety flags are
 independently load-bearing, and each disarms exactly one hazard that was measured.
 The first two were re-measured 2026-08-28 at git 2.55.0 across four fresh
 repositories, one probe each, from an identical racy-clean state; the third was
@@ -71,6 +71,8 @@ GIT_STATUS_ARGV: Final[tuple[str, ...]] = (
     "core.fsmonitor=",
     "-c",
     "core.hooksPath=/dev/null",
+    "-c",
+    "status.showUntrackedFiles=normal",
     "--no-optional-locks",
     "status",
     "--porcelain",
