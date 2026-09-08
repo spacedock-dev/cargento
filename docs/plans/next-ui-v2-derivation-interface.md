@@ -151,3 +151,79 @@ field exists but cannot confirm it against `cargento_runtime/sessions.py` or a r
 payload, A reports the gap instead of guessing. A wrong field name that renders a
 plausible reason string is the worst outcome available here: it looks like honest
 absence and is actually a bug.
+
+---
+
+## Amendment 1 — measured against the runtime, after workstream A reported
+
+### A1.1 · Eight missing `Known` companions, added
+
+The generic absence invariant this file demands contradicted the field list it gave.
+These eight `Text` fields had no companion, so the walk that is supposed to catch a
+field added without a reason string could not pass:
+
+`waitedKnown`, `goalSrcKnown`, `changeNoteKnown`, `delegation.tpsKnown`,
+`delegation.humanKnown`, `delegation.windowKnown`, `delegation.noteKnown`,
+`counters[].noteKnown`.
+
+Purely additive: every name already in use stays. A view may ignore a companion whose
+field is always published, but the model provides it so the invariant holds without an
+exception list.
+
+### A1.2 · The invariant covers `*Text` keys only
+
+`delegation.pct` is a **number for geometry**, not a string for reading. It is `null`
+when `pctKnown` is false, and no view reads it unless `pctKnown` — the bar is inside
+the present branch, so an absent figure draws no bar rather than a zero-width one.
+The generic walk skips keys that do not end in `Text`.
+
+### A1.3 · The end outcomes are the shipped six, not the fixture's three
+
+**This corrects the fixture, this file's first draft, and the brief given to
+workstream B.** The design fixture publishes `outcome: "unread" | "died" | "dirty"`
+and wording — "finished and was never read", "died rather than finished" — that reads
+as though it were the shipped E2/E3/E4 vocabulary. It is not. Measured:
+
+- `next-attention.js:639` `NEXT_ATTENTION_KIND_LABELS` is the shipped vocabulary, and
+  it is a 2×3 matrix: `stop`/`end` × `dirty`/`clean`/`unknown`.
+- `next-attention.js:268` `nextAttentionStopSignal` derives it from `ended_at`,
+  `finished_at`, `state` and `dirty`. It **deliberately does not distinguish a death**:
+  an end with no `finished_at` becomes `end-*`, not "died".
+- Readership is not on a session and not in the payload. The `/api/data` top-level keys
+  are `ask`, `asks`, `discovered`, `generated`, `harnesses`, `history`, `sessions`,
+  `usage`. Dismissals — the nearest thing to "you have read this" — live in a
+  server-side store behind a separate route and never reach the page.
+
+So "finished and was never read" would assert readership no source published, and
+"died rather than finished" would assert a termination cause no source published. Both
+are exactly what contract §1 forbids, and §1 governs.
+
+`outcomeText` is one of these six, verbatim:
+
+| Kind | `outcomeText` | Glyph | Tone |
+| -- | -- | -- | -- |
+| `stop-dirty` | Stop observed with uncommitted work | `△` | bad |
+| `stop-clean` | Stop observed; git state clean | `✓` | ok |
+| `stop-unknown` | Stop observed; git state not measured | `◦` | unknown |
+| `end-dirty` | Session ended with uncommitted work | `△` | bad |
+| `end-clean` | Session ended; git state clean | `✓` | ok |
+| `end-unknown` | Session ended; git state not measured | `◦` | unknown |
+
+Tone follows the **git half**, because that is the half that says whether anything was
+left behind. `stop` versus `end` is carried by the sentence, not by colour: a stop
+leaves the session open and typeable, which is a different fact, not a worse one.
+`gitText` carries the detail line, and `session.changed` gives the entry count where
+one was measured ("3 changed entries") — `nextAttentionCloseText` is the shipped
+wording for it.
+
+The two capabilities the fixture implied get a row in `open` instead, so the gap reads
+as a gap:
+
+```
+["E6", "Finished and never read",
+ "Nothing on the board publishes whether you have read a finished session. The
+  dismissal store is server-side and does not reach the page."]
+```
+
+Termination cause is already covered by the existing coverage caveat, "Termination
+cause not reported." Keep it.
