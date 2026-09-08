@@ -58,24 +58,6 @@ function nextSessionInstruction(session, label){
   return String(instruction.text == null ? "" : instruction.text).trim() ? instruction : null;
 }
 
-function nextSessionNextFact(session, asks){
-  if(asks.length){
-    const question = String(asks[0] && asks[0].question || "").trim();
-    if(question) return {kind: "ask", text: question};
-  }
-  const tasks = Array.isArray(session.tasks) ? session.tasks : [];
-  const task = tasks.find(item =>
-    item && item.status === "pending" && String(item.subject || "").trim());
-  return task ? {kind: "task", text: String(task.subject).trim()} : null;
-}
-
-function nextSessionNowFact(session){
-  const tasks = Array.isArray(session.tasks) ? session.tasks : [];
-  const task = tasks.find(item =>
-    item && item.status === "in_progress" && String(item.subject || "").trim());
-  return task ? String(task.subject).trim() : "";
-}
-
 function nextSessionSourceCoverage(owner, next, asks, openDisclosures){
   if(asks.length || next) return "";
   return '<details class="next-session-source-coverage"' +
@@ -89,53 +71,41 @@ function nextSessionCommandFact(kind, label, body){
   return `<section data-next-session-command-fact="${kind}"><h2>${label}</h2>${body}</section>`;
 }
 
-function nextSessionCommandSurface(session, asks, identity, openDisclosures){
-  const owner = nextSessionSourceOwner(session);
-  const assignment = nextSessionInstruction(session, "asked");
+function nextSessionCommandSurface(session, observed, identity){
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
-  const state = nextSessionDetailState(session.state);
-  const current = nextSessionNowFact(session) || String(session.state_detail || "").trim();
-  /* An observed end replaces the state word rather than sitting beside it: for a
-     session that is over, "idle" is the misreading this field exists to end. */
-  const ended = nextSessionEndedAt(session);
-  const executionText = [ended == null ? state && state.label : "session ended", current]
-    .filter(Boolean).join(" · ") || "Activity unavailable";
   const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
-  const next = asks.length ? null : nextSessionNextFact(session, []);
-  const facts = [];
-  if(assignment){
-    facts.push(nextSessionCommandFact(
-      "assignment", "ASSIGNMENT", nextInstructionLine(session, "", "next-session-command-context"),
-    ));
-  }
-  if(next){
-    facts.push(nextSessionCommandFact("next", "NEXT", `<strong>${esc(next.text)}</strong>`));
-  }
-  if(asks.length){
-    const question = String(asks[0] && asks[0].question || "").trim();
-    if(question){
-      facts.push(nextSessionCommandFact(
-        "request", nextAskResponsibility(nextData, asks[0]), `<strong>${esc(question)}</strong>`,
-      ));
-    }
-  }
-  const factBlock = facts.length
-    ? `<div class="next-session-command-facts">${facts.join("")}</div>`
-    : "";
+  const state = observed.isNeeds ? "waiting on you" : (observed.isEnded ? "session ended" : observed.state);
   return '<div class="next-session-command-surface" aria-label="Session command surface">' +
     '<section class="next-session-current" data-next-session-command="activity">' +
     '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
-    `<strong>${esc(executionText)}</strong>${contextLine}` +
-    nextSessionSubagents(session) + `</section>${identity}` + factBlock +
-    nextSessionSourceCoverage(owner, next, asks, openDisclosures) + "</div>";
+    `<strong${observed.nowKnown ? "" : ' class="next-session-absent"'}>` +
+    `${esc(state)} · ${esc(observed.nowText)}</strong>${contextLine}` +
+    nextSessionSubagents(observed) + `</section>${identity}</div>`;
 }
 
-function nextSessionTitle(session, asks){
-  const firstAsk = asks.length ? asks[0] : null;
-  return String(
-    session.title || session.last_prompt || (firstAsk && firstAsk.question) ||
-    session.project || session.sid || "Session"
-  );
+function nextSessionFacts(observed, asks){
+  const rows = [
+    ["NEXT STEP", "next", observed.nextText, observed.nextKnown],
+    ["TURN", "turn", observed.turnText, observed.turnKnown],
+    ["BLOCKED", "block", observed.blockText, observed.blockKnown],
+    ["OUTCOME", "outcome", observed.outcomeText, observed.outcomeKnown],
+    ["GIT STATE", "git", observed.gitText, observed.gitKnown],
+    ["PROJECT", "project", observed.project, true],
+  ];
+  return '<dl class="next-session-facts">' + rows.map(([label, key, text, known]) => {
+    let value = `<span${known ? "" : ' class="next-session-absent"'}>${esc(text)}</span>`;
+    if(key === "next" && known && !asks.length){
+      value = `<section data-next-session-command-fact="next">${value}</section>`;
+    }
+    const note = key === "block"
+      ? `<span class="next-session-fact-note">${esc(observed.blockNote)}</span>` : "";
+    return `<div data-next-session-fact="${key}"><dt>${label}</dt><dd>${value}${note}</dd></div>`;
+  }).join("") + "</dl>";
+}
+
+function nextSessionTitle(session){
+  return nextObserved(nextData).sessions.find(row =>
+    nextSessionKey(row) === nextSessionKey(session) && row.project === String(session.project == null ? "" : session.project)).titleText;
 }
 
 function nextSessionMeta(session){
@@ -173,8 +143,8 @@ function nextSessionMeta(session){
   return parts.join(" · ");
 }
 
-function nextSessionAskBlock(session, asks){
-  if(!asks.length) return "";
+function nextSessionAskBlock(session, asks, observed){
+  if(!observed.askKnown) return "";
   const cards = asks.map(ask => {
     const id = String(ask && ask.id || "");
     const options = Array.isArray(ask && ask.options) ? ask.options : [];
@@ -190,12 +160,17 @@ function nextSessionAskBlock(session, asks){
       ? `<p class="next-session-answer-failure" role="status">${esc(failure)}</p>`
       : "";
     return `<article class="next-session-ask" data-next-session-ask="${esc(id)}">` +
-      `<p class="next-session-ask-question">${esc(ask && ask.question)}</p>` +
+      `<p class="next-session-ask-question">${esc(asks.length === 1 ? observed.askText : ask.question)}</p>` +
       choices + note + "</article>";
   }).join("");
   return '<section class="next-session-section" data-next-session-section="ask">' +
-    '<div class="next-session-ask-callout"><span>AGENT IS ASKING</span>' +
-    `<strong>${esc(nextSessionAskingTitle(session))}</strong></div>${cards}</section>`;
+    '<div class="next-session-ask-callout">' +
+    `<span>ASKED YOU · <span class="next-session-wait" data-known="${observed.waitedKnown === true}">` +
+    `${esc(observed.waitedText)}</span></span>` +
+    `<strong class="next-visually-hidden">AGENT IS ASKING · ${esc(nextSessionAskingTitle(session))}</strong>` +
+    nextSessionCommandFact("request", nextAskResponsibility(nextData, asks[0]), "") +
+    '</div>' + (asks.length ? cards : `<p class="next-session-ask-question">${esc(observed.askText)}</p>`) +
+    '</section>';
 }
 
 // Keep transport-name presentation beside the session detail that uses it.
@@ -363,22 +338,35 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
       '<a href="#n=sessions" data-next-route="sessions">View all sessions</a></section>';
   }
   nextPruneSessionAnswerNotes();
+  const observed = nextObserved(nextData).sessions.find(row =>
+    nextSessionKey(row) === nextSessionKey(session) && row.project === String(session.project == null ? "" : session.project));
   const asks = nextSessionAsks(session);
-  const blocked = session.state === "needs_input" ? " next-session-detail--blocked" : "";
+  const blocked = observed.isNeeds ? " next-session-detail--blocked" : "";
   const state = nextSessionDetailState(session.state);
   const stateAttr = state ? ` data-next-session-state="${state.token}"` : "";
   const stateLabel = state ?
     `<span class="next-visually-hidden">State: ${state.label}</span>` : "";
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
-  const title = nextSessionTitle(session, asks);
+  const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
+  const rate = observed.rateKnown ? ` · ${esc(observed.rateText)}` : "";
+  const controls = nextSessionCopyControl(session) + nextSessionResumeControl(session) +
+    (observed.isNeeds ? nextSessionRaiseControl(session) : "");
   const identity = `<header class="next-session-detail-header">${stateLabel}` +
-    `<h1>${esc(title)}</h1>${nextSessionCopyControl(session)}${metaLine}</header>`;
+    `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
+    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
+    `<div class="next-session-controls">${controls}</div>${metaLine}</header>`;
+  const assignment = nextSessionInstruction(session, "asked")
+    ? nextSessionCommandFact("assignment", "ASSIGNMENT",
+      nextInstructionLine(session, "", "next-session-command-context")) : "";
+  const coverage = nextSessionSourceCoverage(nextSessionSourceOwner(session),
+    observed.nextKnown, asks, openDisclosures);
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
-    `${stateAttr}>` +
-    nextSessionCommandSurface(session, asks, identity, openDisclosures) +
-    nextSessionHealth(session) +
-    nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
+    `${stateAttr} data-tone="${esc(observed.tone)}">` +
+    nextSessionCommandSurface(session, observed, identity) +
+    nextSessionAskBlock(session, asks, observed) + nextSessionFacts(observed, asks) +
+    `<div class="next-session-evidence">${assignment}${coverage}</div>` +
+    nextSessionHealth(session) + nextSessionTasks(observed) +
     nextSessionFooter(session) + "</article>";
 }
 
