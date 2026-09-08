@@ -1,6 +1,10 @@
 let nextNotifyState = new Map();
 let nextNotifyPrimed = false;
 let nextNotifiedAsks = new Set();
+const nextQuietNudgedAt = new Map();
+// Match the native popup_repeat_suppress_sec precedent, not all native gates.
+// A later real turn inside this per-tab window can also be suppressed.
+const NEXT_QUIET_REPEAT_MS = 600 * 1000;
 
 function nextNotifySupported(){
   return typeof Notification !== "undefined";
@@ -96,17 +100,24 @@ function nextNotifyEdge(session, previous){
 
 function nextSyncNotifications(payload){
   const seen = new Map();
+  const now = Date.now();
+  for(const [key, issuedAt] of nextQuietNudgedAt){
+    if(now - issuedAt >= NEXT_QUIET_REPEAT_MS) nextQuietNudgedAt.delete(key);
+  }
   const fire = nextBrowserNotifyOwns(payload) && nextNotifyPermission() === "granted";
   for(const session of nextPayloadSessions(payload)){
     const key = `${session.harness}:${session.sid}`;
     const edge = nextNotifyEdge(session, nextNotifyState.get(key));
     seen.set(key, session.state);
     if(!fire || !nextNotifyPrimed || !edge) continue;
+    const quiet = session.state === "idle";
+    if(quiet && nextQuietNudgedAt.has(key)) continue;
     try{
       new Notification(`${nextNotifyHarnessLabel(payload, session.harness)} ${edge.title}`, {
         body: `[${session.project}] ${session.state_detail || edge.detail}`,
         tag: key,
       });
+      if(quiet) nextQuietNudgedAt.set(key, now);
     }catch(_error){
       /* Permission can be revoked while a tab is open. */
     }
