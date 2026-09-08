@@ -1086,7 +1086,7 @@ console.log(JSON.stringify(Object.assign(held, {
         # `throttled` to the answered look left all three `assertNotEqual`s standing.
         # "Try again in a moment" is the warn line; the answered pair is the quiet
         # one, and a raise underway is the only state that says work is happening.
-        self.assertIn("border-color:var(--warn)", throttled.group(1))
+        self.assertIn("border-color:var(--amber)", throttled.group(1))
         self.assertIn("border-color:var(--line2)", answered.group(1))
         # `stale` shares that rule rather than bringing a fourth look, and appears
         # in no other: a second rule would win by order and quietly reclassify a
@@ -1095,7 +1095,7 @@ console.log(JSON.stringify(Object.assign(held, {
         # page" (DRC-4396).
         self.assertEqual(1, NEXT_STYLES.count('data-next-raise-state="stale"'))
         self.assertIn("cursor:progress", sending.group(1))
-        self.assertIn("border-color:var(--warn)", sending.group(1))
+        self.assertIn("border-color:var(--amber)", sending.group(1))
         # Same specificity, so the later rule wins: the row that is actually raising
         # keeps `sending` rather than reading as one of the rows waiting on it.
         self.assertLess(NEXT_STYLES.index(busy.group(0)), NEXT_STYLES.index(sending.group(0)))
