@@ -23,6 +23,7 @@ For where these files sit and which way their dependencies run, see
 |---|---|---|
 | An open disclosure (`<details>`) | Restored | `nextOpenDisclosures` in `next-chrome.js`, keyed by the closed `NEXT_DISCLOSURE_KEYS` list, re-emitted by `nextDisclosureAttr` |
 | An expanded Attention section | Restored | `nextAttentionExpandedSections` in `next-chrome.js`, read by `nextAttentionSectionHtml` |
+| The selected quota window | Kept by vendor and window key for the life of the tab, including when its rank falls below the initial three rows; defaults to an existing window when that key disappears, and clears when none remain | `nextCapacitySelectedKey` in `next-capacity.js`; the selected row stays visible, and window buttons use `data-next-focus` for the existing keyboard-focus lane |
 | Keyboard focus | Restored, with scrolling conditional on visibility at capture | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it; see [Document scroll](#document-scroll) |
 | A row control's confirmation cue | Restored for 30 seconds | `nextControlStates` in `next-boot.js`, keyed rather than held by node, and expiring at `NEXT_CONTROL_STATE_TTL_MS`; `NEXT_ROW_CONTROL_LANES` keys the focus lane, not this one |
 | A typed and unsent draft | Restored | `nextControlsCaptureDrafts` in `next-controls.js`, called by `renderNext` before the assignment |

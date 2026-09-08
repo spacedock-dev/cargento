@@ -4,7 +4,7 @@ import shutil
 import unittest
 from typing import Any
 
-from .next_harness import NextPageJsHarness, storage_prelude
+from .next_harness import NEXT_STYLES, NextPageJsHarness, storage_prelude
 
 CONSENT_KEY = "cargento.next.usage.consent"
 
@@ -171,6 +171,97 @@ console.log(JSON.stringify({
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class CapacityStripTest(NextPageJsHarness):
+    def test_picking_a_window_names_its_prose_and_survives_a_reordered_redraw(self) -> None:
+        out = self._run_page_js(
+            'await __settle();\n__els.app = {innerHTML: ""};\n'
+            + PAYLOAD
+            + """
+nextRoute = {view: "sessions"};
+renderNext();
+const before = __els.app.innerHTML;
+const target = {dataset: {nextCapacityPick: "codex:week"},
+  closest(selector){ return selector === "[data-next-capacity-pick]" ? this : null; }};
+__fire("click", {target, preventDefault(){}});
+const picked = __els.app.innerHTML;
+nextData.usage[0].fiveH.pct = 99;
+nextData.usage.push({harness: "cursor", state: "ok", fiveH: {
+  pct: 99, windowSec: 18000, resetAt: nextData.generated + 9000}});
+renderNext();
+const redrawn = __els.app.innerHTML;
+nextData.usage = nextData.usage.slice(0, 1);
+renderNext();
+console.log(JSON.stringify({before, picked, redrawn, removed: __els.app.innerHTML}));
+""",
+            storage_prelude({CONSENT_KEY: "granted"}),
+        )
+        self.assertIn('data-next-capacity-pick="codex:week"', out["before"])
+        for key in ("picked", "redrawn"):
+            panel = out[key].split('class="next-capacity-prospect"', 1)[1]
+            self.assertIn("Codex &middot; weekly", panel)
+            self.assertIn("The remaining 12%", panel)
+            self.assertNotIn("The remaining 22%", panel)
+            self.assertIn('data-next-focus="capacity:codex:week"', out[key])
+            self.assertIn('aria-pressed="true"', out[key])
+            self.assertIn('data-next-capacity-row="codex:week"', out[key])
+        self.assertIn("Claude Code &middot; 5-hour", out["removed"])
+
+    def test_no_selectable_window_leaves_no_prose_or_stray_caption(self) -> None:
+        out = self._run_page_js(
+            'await __settle();\n__els.app = {innerHTML: ""};\n'
+            + PAYLOAD
+            + """
+nextRoute = {view: "sessions"};
+renderNext();
+nextData.usage = [];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            storage_prelude({CONSENT_KEY: "declined"}),
+        )
+        self.assertNotIn("next-capacity-prospect", out)
+        self.assertNotIn("next-capacity-scope", out)
+        self.assertNotIn("data-next-capacity-pick", out)
+
+    def test_bar_ink_follows_pace_while_used_text_has_its_own_ramp(self) -> None:
+        out = self._run_page_js(
+            'await __settle();\n__els.app = {innerHTML: ""};\n'
+            + PAYLOAD
+            + """
+nextData.usage = [
+  {harness: "claude", state: "ok", fiveH: {
+    pct: 25, windowSec: 18000, resetAt: nextData.generated + 18000 * (1 - .25 / 13.3)}},
+  {harness: "codex", state: "ok", week: {
+    pct: 81, windowSec: 604800, resetAt: nextData.generated + 604800 * .19}}
+];
+nextRoute = {view: "sessions"};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            storage_prelude({CONSENT_KEY: "granted"}),
+        )
+        self.assertIn('next-capacity-fill crit" style="width:25%', out)
+        self.assertIn('next-capacity-fill warn" style="width:81%', out)
+        self.assertIn('next-capacity-pct"', out)
+        self.assertIn('next-capacity-pct high"', out)
+        self.assertIn('style="left:1.88%', out)
+        self.assertIn('style="left:81.00%', out)
+        self.assertIn(".next-capacity-fill.crit{background:var(--clay)}", NEXT_STYLES)
+        self.assertIn(".next-capacity-fill.warn{background:var(--amber)}", NEXT_STYLES)
+
+    def test_turning_fetch_off_explains_that_cached_windows_lapse(self) -> None:
+        out = self._run_page_js(
+            'await __settle();\n__els.app = {innerHTML: ""};\n'
+            + PAYLOAD
+            + """
+nextRoute = {view: "sessions"};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            storage_prelude({CONSENT_KEY: "declined"}),
+        )
+        self.assertIn("Vendor quota fetch: <strong>off</strong>", out)
+        self.assertIn("Windows above are the last cached read and will lapse.", out)
+
     def test_rows_rank_by_when_the_budget_ends_not_by_level(self) -> None:
         out = self._run_page_js(
             PAYLOAD
