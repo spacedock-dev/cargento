@@ -38,10 +38,11 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 ## Dashboard views
 
-The dashboard opens on **Projects**, grouping sessions by the label their harness publishes.
+The dark-only dashboard opens on **Projects**, grouping sessions by the label their harness publishes.
 **Sessions** keeps active work first and recent history below it. Project detail shows
-current activity, workflow evidence, delegation measurements, and browser-local guardrails. Its
-state-change rail and its delegation figure start from the local history the server kept, so both
+current activity, observed session endings, workflow evidence, delegation measurements, and
+browser-local tripwires. The tripwires are saved preferences; nothing enforces them. The project's
+state-change timeline and its delegation figure start from the local history the server kept, so both
 survive a restart and a fresh tab instead of beginning again, and each captions itself with the
 window it actually covers. Select
 a session from either view for its bounded detail, including its exact request, tasks, subagents,
@@ -55,8 +56,10 @@ the retired `next` query is no longer a dashboard route.
 
 The header reports event-backed running sessions and all observed subagents. When work needs intervention, a button counting
 the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
-Projects, and Sessions unless focus is in a form control or a modifier key is held. Breadcrumbs
-`Escape` and breadcrumbs return from a session to its project and from a project to Projects.
+Projects, and Sessions unless focus is in a form control or Meta, Control, or Alt is held.
+`Escape` returns from a session to its project and otherwise to Projects, under the same focus and
+modifier rules. Inside a tripwire draft it cancels the draft. Breadcrumbs return through the same
+project hierarchy.
 
 MCP tools appear under the service being called rather than their wire name, for example
 `Linear · list issues`. The full recorded string remains available in the row tooltip.
@@ -92,12 +95,14 @@ accepted, unanswered questions expire, and `--no-ask` disables this lane.
 **At risk** names detected failed-tool loops, long-running turns, uncommitted work and conflicting
 completion evidence. Waiting on the reader takes precedence over those categories; the session
 still carries its observed details. Quota pressure and shared labels appear in the separate board
-group. A quiet
-row is never promoted into proof that nothing is waiting. Only Claude, Codex, Copilot, and Cursor
+group. A quiet row is never promoted into proof that nothing is waiting. Only Claude, Codex, Copilot, and Cursor
 currently expose a gate signal Cargento can read; the other harnesses remain explicitly unmeasured
 for that question.
 
-**CLOSE THE LOOP** identifies sessions whose published state and freshness support that conclusion.
+**CLOSE THE LOOP** identifies observed stops and session ends after waiting and risk take
+precedence. The outcome vocabulary has six readings: stop or end, each with uncommitted work,
+clean git state, or unmeasured git state. A stop is not a session end, and neither tells Cargento
+whether you read the result, whether commits reached a remote, or why the process ended.
 **COMING NEXT** groups the strongest available next action by project. Both are advisory views of
 observed records, not commands sent to a harness.
 
@@ -132,9 +137,9 @@ stored locally. Antigravity can forward quota from its status-line payload:
 `--no-usage` disables credential-backed vendor fetching for a run whatever the page has stored; disk-read evidence remains.
 Expired, rejected, missing, or stale quota is withheld rather than rendered as zero. Claude, Codex,
 and Antigravity may publish five-hour and weekly windows, while Cursor publishes its monthly billing
-cycle. A percentage is amber from 70 percent and red from 90 percent. Model-specific Claude weekly
-limits remain separate because the tightest model allowance can stop work before the account-wide
-window does.
+cycle. Capacity bars use accent below the window's sustainable pace, amber from 1× pace, clay from 1.5×, and neutral ink when no clock supports a pace.
+Model-specific Claude weekly limits remain separate because the tightest model allowance can stop
+work before the account-wide window does.
 
 ## Start
 

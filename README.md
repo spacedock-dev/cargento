@@ -125,8 +125,9 @@ an endpoint you supply, carrying counts and nothing that names a session. See
 The dashboard opens on Projects, grouping sessions by the label their harness publishes. Sessions
 puts active work above recent history and gives each active session the same four facts: where it
 is, what it is doing now, what it does next, and whether it is blocked.
-Attention collects what needs a human. Keyboard shortcuts `s`, `p` and `a` switch between them,
-and the route lives in the URL fragment so a reload or a pasted link comes back to the same view.
+Attention collects what needs a human. Keyboard shortcuts `s`, `p` and `a` switch between them.
+`Escape` returns from a session to its project and otherwise to Projects. The route lives in the
+URL fragment so a reload or a pasted link comes back to the same view.
 
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
 

@@ -87,7 +87,7 @@ mass rename; they do not indicate a second bundle.
 |---|---|
 | `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, validation and data-URL embedding of packaged fonts, and byte-preserving assembly of the one canonical page. |
 | `web/index.html` | The two-slot shell for canonical styles and script. |
-| `web/styles.css` | The single dark palette, responsive layout, live-dot pulse, and reduced-motion override. |
+| `web/styles.css` | The single dark palette, responsive layout, live-dot pulse, and reduced-motion override, in seven owned regions; [the stylesheet contract](design-next-ui.md#nui-2-one-stylesheet-owns-the-interface) names their boundaries. |
 | `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, the fragment route grammar, the three row controls (copy the session id, copy the re-entry command, raise the terminal), and the expiring map that lets a control's state outlive the render that replaces it. It is first in `APP_PARTS`. |
 | `web/next-observed.js` | The v2 session collection, lanes, counts, project groups, coverage and presentation reasons; wraps the shipped workstream and delegation measurements. |
 | `web/next-attention.js` | Attention evidence, stable ordering, coverage gaps, risk groups, and answerable questions. |
@@ -97,11 +97,11 @@ mass rename; they do not indicate a second bundle.
 | `web/next-sessions.js` | Active and recent session-operation tables with exact detail routes. |
 | `web/next-projects.js` | Project overview, measured task progress, current state, and explicit withholding. |
 | `web/next-project.js` | Project detail, workflow-plan merge, entity rows, empty states, and rail layout. |
-| `web/next-activity.js` | Project activity cards and completed-work list. |
+| `web/next-activity.js` | Project activity cards, observed session endings, and the completed-task list. |
 | `web/next-session.js` | Exact session detail, request attribution, measured metadata, subagents, token footer, and answer POST. |
-| `web/next-workstream.js` | The bounded observation ledger, seeded from the published `history` field and extended by each advancing payload, and the project workstream rail. |
+| `web/next-workstream.js` | The bounded observation ledger, seeded from the published `history` field and extended by each advancing payload, and the window and collapse helpers used by the project state-change timeline. |
 | `web/next-delegation.js` | Windowed delegation percentage, token-rate aggregate, human-turn count, evidence floor, and trend gate. |
-| `web/next-controls.js` | Browser-local steer receipts and guardrail preferences. |
+| `web/next-controls.js` | Browser-local steer receipts and tripwire preferences, with no delivery or enforcement. |
 | `web/next-render.js` | View dispatch, payload fetch, refresh serialization, and failure state. |
 | `web/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery, and fallback polling. It is last in `APP_PARTS` and starts refresh. |
 | `web/fonts/` | Embedded Space Grotesk and Space Mono subsets, licenses, and source hashes. |
@@ -314,8 +314,9 @@ Three layers, described in `CONTRIBUTING.md`. Two habits specific to this archit
 
 ## The v2 browser derivation seam
 
-`renderNext` builds one `nextObserved` model and shares it through `nextCurrentObserved` for
-that render. The header, counters, session lanes, projects and Attention coverage all count this
+`next-observed.js` is second in `APP_PARTS`, after `next-boot.js`, and is explicitly listed in
+`CARGENTO_RUNTIME_FILES` for installed-copy validation. `renderNext` builds one `nextObserved`
+model and shares it through `nextCurrentObserved` for that render. The header, counters, session lanes, projects and Attention coverage all count this
 model's session collection. Working means collector state without an observed end; running also
 requires the event-published `active` flag. Subagents in the header are observed, including quiet
 ones. A session has one primary Attention category: waiting on the reader, then risk, then closure.

@@ -233,8 +233,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
   new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
   falls back to a five-second poll. The rebuild itself is unchanged, so anything the reader
-  set has to live in a module variable and be reapplied after the swap: the expanded row, the
-  keyboard cursor, the filters, the scroll offset. Two rules follow. Escape every payload-derived string through
+  set needs an explicit lifetime outside the replaced nodes.
+  [The reader-state inventory](docs/design-reader-state.md) owns what is restored and what is not,
+  including document scroll and text selection. Two rules follow. Escape every payload-derived string through
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
@@ -243,17 +244,18 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless; do not infer a
   second frontend from those internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
   the promotion decision and route grammar.
-- Size text through the `--fs-*` scale in `styles.css` and nothing else. A test rejects any raw px
-  `font-size` and any declared step the file never uses, because the stylesheet previously carried
-  twenty ad-hoc values between 8px and 15px, which is drift rather than hierarchy. Adding a rung is
-  fine when a real role needs one. Reaching past the scale for a one-off is how the twenty came back.
-- Keep the three ink steps far enough apart to mean something. A test computes the contrast of
-  `--ink`, `--ink2` and `--ink3` against the worst surface each can land on, in both themes, and
-  requires `--ink3` to clear WCAG AA and each step to beat the next by 25 percent. `--ink3` carries
-  most of the metadata on the board and once sat at 3.1:1, below AA, on the smallest type in the UI.
-- Draw selected state with `--sel-bg` and `--sel-bd`. The display toggle, the order segment, the
-  state filter chips and the flag pill all used to paint selection as `--panel` over `--bg`, a 1.2:1
-  step, so on and off were indistinguishable in either theme.
+- Keep stylesheet edits inside the region owned by the surface you are changing, including its
+  media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
+  names all seven regions, the dark-only palette and the type floor. Board sentences use at least
+  `--fs-xs` (12.5px); compact labels and source metadata retain their smaller design sizes.
+  The stylesheet contains both scale tokens and literal sizes; no test currently bans all raw
+  pixel sizes or unused scale steps. The earlier scale-only rule followed twenty ad-hoc values
+  between 8px and 15px; new sizes still need a named role.
+- Preserve the fixed palette's contrast. The asset test pins its tokens and checks every text ink
+  against `--bg`, `--panel` and `--sunk` at more than 4.5:1. It no longer tests two themes or a
+  25-percent contrast gap between adjacent ink steps. Keep selection tied to `--sel-bg` and
+  `--sel-bd`; the former dashboard's panel-on-background treatment measured 1.2:1 and made on and
+  off indistinguishable. Its metadata ink once measured 3.1:1, below AA, on the smallest type.
 - Test the page by running it, not by matching strings against its source. `NextPageJsHarness` in
   `next_harness.py` executes the real dashboard script (the `web/next-*.js` parts, concatenated in
   `APP_PARTS` order) under node against a stub DOM. A test can fire a click or a keystroke and assert

@@ -363,10 +363,11 @@ The legacy page sampled quota levels in browser memory and fitted a burn project
 was never durable, disappeared on reload, and mixed a derived trend with the vendor's current
 window. The promoted interface does not carry that client-only history forward.
 
-Attention now raises **Quota pressure** only from the current published percentage at or above 70
-percent. It states the reported percentage and scope, and does not predict exhaustion or compare it
-with reset time. The server payload remains the evidence boundary; durable quota history would be a
-separate storage decision rather than another browser buffer.
+At promotion, Attention raised quota pressure only from the published level at or above 70 percent.
+The [current trigger](#the-attention-trigger-keeps-its-level-test-and-gains-a-pace-test) also uses the
+window's own clock. The v2 board keeps quota subjects outside the session count, with their vendor
+and window scope. This does not restore the retired browser-sampled burn fit: the inputs remain
+published quota readings and window bounds.
 
 <a id="q-3"></a>
 
