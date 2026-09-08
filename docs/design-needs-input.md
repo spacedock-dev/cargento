@@ -655,6 +655,16 @@ constant and requires the prose to agree, because otherwise the two can only mat
   overlap earned instead is a gate on the dispatch: the second probe no longer runs. The accepted
   cost of that is stated where the gate lives, and it is the same refuse-rather-than-evict trade the
   maps beside it already make.
+- **Retrying a saturated git probe once when a slot is released (DRC-4467).** Retain refusal under
+  the [canonical concurrency contract](../SECURITY.md#repository-git-reads-the-end-of-session-probe).
+  With a ceiling of two and four distinct ends, draining both probes and running collection left
+  two readings and two nulls, with only two dispatches. There is no automatic recovery without
+  another eligible end event: redelivering `session_ended` for a refused key in the same process
+  dispatched a third probe and supplied its reading. Retry-on-release is deferred work even when
+  limited to one attempt. A bounded queue is possible, but no measured legitimate saturation
+  workload earns it here. Revisit only with that evidence and specified capacity and overflow,
+  deduplication, freshness and resume handling, row retirement, shutdown, and attribution of a
+  later tree reading to an earlier end. Both the per-session guard and the process ceiling remain.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this. A test holds the collectors to it. *Amended
