@@ -221,7 +221,10 @@ function nextProjectsView(model){
   }
   const active = groups.filter(item => item.activeSessions.length);
   const history = groups.filter(item => !item.activeSessions.length);
+  // Product priority: explicit questions first, then source-reported waits,
+  // ahead of risk/review and progressing work because the reader can unblock them.
   active.sort((left, right) => right.summary.exactRequests - left.summary.exactRequests ||
+    right.summary.blocked - left.summary.blocked ||
     right.summary.risk - left.summary.risk ||
     right.summary.close - left.summary.close ||
     right.summary.working - left.summary.working ||

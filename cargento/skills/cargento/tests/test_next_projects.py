@@ -9,6 +9,53 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextProjectsBehaviorTest(NextPageJsHarness):
+    def test_a_blocked_project_precedes_risk_and_work_but_follows_exact_questions(self) -> None:
+        for reverse in ("false", "true"):
+            with self.subTest(reverse=reverse):
+                out = self._run_page_js(
+                    f"""
+__els.app = {{innerHTML: ""}};
+const sessions = [
+  {{sid: "work", project: "work", state: "working"}},
+  {{sid: "risk", project: "risk", state: "working", loop: {{errors: 4, tool: "Bash"}}}},
+  {{sid: "review", project: "review", state: "idle", active: false,
+    finished_at: 9700, last_activity: 9700}},
+  {{sid: "gate-a", project: "gate-a", state: "needs_input"}},
+  {{sid: "gate-b", project: "gate-b", state: "needs_input"}},
+  {{sid: "gate-c", project: "gate-c", state: "needs_input"}},
+  {{sid: "exact", project: "exact", state: "working"}},
+  {{sid: "ended", project: "ended", state: "needs_input", ended_at: 9800}},
+  {{sid: "recent", project: "recent", state: "idle", last_activity: 9950}}
+].map(s => ({{harness: "claude", active: true, last_activity: 9900, ...s}}));
+if({reverse}) sessions.reverse();
+nextData = {{generated: 10000, sessions, ask: true, asks: [
+  {{id: "question", session_id: "exact", project: "exact", question: "Approve?"}}
+]}};
+const original = JSON.stringify(nextData);
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {{view: "projects", project: null, session: null}};
+renderNext();
+console.log(JSON.stringify({{html: __els.app.innerHTML,
+  unchanged: original === JSON.stringify(nextData)}}));
+"""
+                )
+                assert isinstance(out, dict)
+                html = out["html"]
+                order = re.findall(r'<article[^>]*data-next-project="([^"]+)"', html)
+                gates = (
+                    ["gate-c", "gate-b", "gate-a"]
+                    if reverse == "true"
+                    else ["gate-a", "gate-b", "gate-c"]
+                )
+                self.assertEqual(
+                    ["exact", *gates, "risk", "work", "recent", "ended", "review"], order
+                )
+                self.assertTrue(out["unchanged"])
+                self.assertIn("1 blocked", self.project_row(html, "gate-a"))
+                self.assertIn("1 subject at risk", self.project_row(html, "risk"))
+                self.assertNotIn("close the loop", self.project_row(html, "review"))
+                self.assertNotIn("blocked", self.project_row(html, "ended"))
+
     FIXTURE = """
 location.hash = "#n=projects";
 __els.app = {innerHTML: ""};

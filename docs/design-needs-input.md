@@ -928,6 +928,22 @@ The near-parity reading is shipped deliberately, and the disclosure is in the se
   A row seen idle for the first time raises nothing either, because there is no previous state
   to have moved from.
 
+**Quiet repeats have a ten-minute floor per tab and per `(harness, sid)` (DRC-4475).** Only a
+successful `Notification` construction starts the floor. Denied permission, native ownership and
+a constructor that throws do not. Every observed state is still recorded, including a suppressed
+edge: a later nudge needs a new working sighting followed by idle, and becomes eligible at 600
+seconds. A session disappearing from one payload does not clear its unexpired floor. Expired
+timestamps are discarded on the next sync. Needs-input and exact questions keep their own delivery
+rules and do not wait for this floor.
+
+The value follows the native `popup_repeat_suppress_sec` precedent, without claiming parity with
+its other gates. One uninterrupted silent tool call can yield one false quiet sighting; repeated
+crossings require renewed working evidence. The floor limits interruptions, not turns: a later real
+turn inside it can be suppressed, and a long turn with renewed activity can nudge again after it.
+Constructor counts are what the tests measure, not operating-system banner alerts. Dismissed rows
+are already removed in `aggregate._subtract_dismissed` before assembly; the browser reads no
+dismissal store.
+
 ### Rejected
 
 - **Exact parity through the notification `kind`.** `handle_payload` computes `kind` and drops it
