@@ -34,10 +34,8 @@ let projectTerminalXtermPromise = null;
 let projectTerminalReconnect = null;
 let projectTerminalFollowLive = true;
 let projectTerminalScrollTop = 0;
-const PROJECT_XTERM_JS = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/lib/xterm.js";
-const PROJECT_XTERM_CSS = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.css";
-const PROJECT_XTERM_JS_INTEGRITY = "sha384-f/1U6Z9wM4D71a5eRXEZnyOTMOvjqxr2XLwh+Go1OvIl3L3tOcvUrzudnhbECwl4";
-const PROJECT_XTERM_CSS_INTEGRITY = "sha384-n2n7twoohnW+d3myBKaUgl7DSiwidw6MkQy9oesGzkPpMjejKRR3XlnD+5yCdtBD";
+const PROJECT_XTERM_JS = "/assets/xterm.js";
+const PROJECT_XTERM_CSS = "/assets/xterm.css";
 try{
   projectCockpitLabel = localStorage.getItem(PROJECT_COCKPIT_KEY) || null;
 }catch(e){ /* no browser storage — choose from the payload */ }
@@ -572,11 +570,25 @@ function projectTerminalUpdateJump(){
   if(jump) jump.hidden = projectTerminalFollowLive;
 }
 
+function projectTerminalLiveScrollTop(viewport){
+  const maximum = projectTerminalScrollMaximum(viewport);
+  const terminal = projectTerminal;
+  const cursor = terminal && terminal.buffer && terminal.buffer.active;
+  const screen = terminal && terminal.element && terminal.element.querySelector(".xterm-screen");
+  if(!cursor || !screen || !terminal.rows) return maximum;
+  const height = screen.getBoundingClientRect().height;
+  if(!height) return maximum;
+  // Following unused tmux rows hid short output above the viewport. Keep the
+  // cursor row and both 6px host insets visible instead.
+  const bottom = (cursor.cursorY + 1) * height / terminal.rows + 12;
+  return Math.min(maximum, Math.max(0, Math.ceil(bottom - viewport.clientHeight)));
+}
+
 function projectTerminalScrollToLive(){
   const viewport = document.getElementById("pc-terminal-viewport");
   if(!viewport) return;
   projectTerminalFollowLive = true;
-  viewport.scrollTop = projectTerminalScrollMaximum(viewport);
+  viewport.scrollTop = projectTerminalLiveScrollTop(viewport);
   projectTerminalScrollTop = viewport.scrollTop;
   projectTerminalUpdateJump();
 }
@@ -586,8 +598,8 @@ function projectTerminalBindViewport(){
   if(!viewport) return;
   viewport.onscroll = () => {
     projectTerminalScrollTop = Number(viewport.scrollTop) || 0;
-    projectTerminalFollowLive = projectTerminalScrollMaximum(viewport) -
-      projectTerminalScrollTop <= 2;
+    projectTerminalFollowLive = Math.abs(projectTerminalLiveScrollTop(viewport) -
+      projectTerminalScrollTop) <= 2;
     projectTerminalUpdateJump();
   };
   if(projectTerminalFollowLive) projectTerminalScrollToLive();
@@ -623,43 +635,53 @@ function projectTerminalLookup(d, sess){
   const path = "/api/interaction/origin?harness=" + encodeURIComponent(sess.harness) +
     "&sid=" + encodeURIComponent(sess.sid);
   fetch(path).then(response => {
+    if(response.status === 404) return {state:"refused", reason:"bridge-disabled"};
     if(!response.ok) throw new Error(String(response.status));
     return response.json();
   }).then(data => {
     projectTerminalBySession[key] = data && data.state === "registered"
-      ? {state:"registered", revision, data} : {state:"unavailable", revision};
+      ? {state:"registered", revision, data} : {state:"unavailable", revision, data};
     if(projectTerminalOpenKey === key && data && data.state !== "registered"){
       projectTerminalOpenKey = null;
       projectTerminalDispose();
     }
     if(lastData) render(lastData);
   }).catch(() => {
-    projectTerminalBySession[key] = {state:"unavailable", revision};
+    projectTerminalBySession[key] = {state:"unavailable", revision,
+      data:{reason:"lookup-failed"}};
     if(projectTerminalOpenKey === key){ projectTerminalOpenKey = null; projectTerminalDispose(); }
     if(lastData) render(lastData);
   });
 }
 
 function projectTerminalLoadXterm(){
-  if(window.Terminal) return Promise.resolve();
   if(projectTerminalXtermPromise) return projectTerminalXtermPromise;
-  projectTerminalXtermPromise = new Promise((resolve, reject) => {
-    if(!document.querySelector("link[data-project-xterm]")){
-      const link = document.createElement("link");
-      link.dataset.projectXterm = "true";
-      link.rel = "stylesheet";
-      link.href = PROJECT_XTERM_CSS;
-      link.integrity = PROJECT_XTERM_CSS_INTEGRITY;
-      link.crossOrigin = "anonymous";
-      document.head.append(link);
-    }
+  const link = document.createElement("link");
+  link.dataset.projectXterm = "true";
+  link.rel = "stylesheet";
+  link.href = PROJECT_XTERM_CSS;
+  const stylesheet = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = () => reject(new Error(
+      "Console cannot open because the local terminal stylesheet did not load."));
+    document.head.append(link);
+  });
+  const javascript = new Promise((resolve, reject) => {
+    if(window.Terminal){ resolve(); return; }
     const script = document.createElement("script");
     script.src = PROJECT_XTERM_JS;
-    script.integrity = PROJECT_XTERM_JS_INTEGRITY;
-    script.crossOrigin = "anonymous";
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("xterm unavailable"));
+    const failed = () => {
+      script.remove();
+      reject(new Error("Console cannot open because the local terminal script did not load."));
+    };
+    script.onload = () => window.Terminal ? resolve() : failed();
+    script.onerror = failed;
     document.head.append(script);
+  });
+  projectTerminalXtermPromise = Promise.all([stylesheet, javascript]).catch(error => {
+    link.remove();
+    projectTerminalXtermPromise = null;
+    throw error;
   });
   return projectTerminalXtermPromise;
 }
@@ -722,14 +744,53 @@ function projectTerminalMount(key, originHint){
     if(!document.getElementById("pc-terminal-screen") || projectTerminalOpenKey !== key) return;
     if(projectTerminal && projectTerminalKey === key) return;
     const terminal = new window.Terminal({disableStdin:true, cursorBlink:false,
-      scrollback:500, fontSize:12, fontFamily:"'SFMono-Regular', Consolas, monospace",
-      theme:{background:"#11141a", foreground:"#dbe5ee", cursor:"#11141a"}});
+      scrollback:500, fontSize:12.5, fontFamily:"'Space Mono', ui-monospace, monospace",
+      theme:{background:"#11110c", foreground:"#f4f1e8", cursor:"#11110c"}});
     projectTerminal = terminal;
     projectTerminalKey = key;
+    document.getElementById("pc-terminal-screen").textContent = "";
     terminal.open(document.getElementById("pc-terminal-screen"));
+    if(terminal.textarea){
+      terminal.textarea.readOnly = true;
+      terminal.textarea.setAttribute("aria-label", "Read-only terminal output");
+    }
     projectTerminalBindViewport();
     projectTerminalConnect(key, originHint, terminal);
-  }).catch(() => { screen.textContent = "Terminal renderer unavailable."; });
+  }).catch(error => {
+    if(projectTerminalOpenKey !== key) return;
+    const currentScreen = document.getElementById("pc-terminal-screen");
+    if(currentScreen) currentScreen.textContent = error.message ||
+      "Console cannot open because the terminal renderer could not start.";
+  });
+}
+
+function projectTerminalAbsence(entry){
+  if(!entry || entry.state === "loading"){
+    return `<p class="pc-substrate-empty" role="status">` +
+      `Checking terminal registration for this exact session.</p>`;
+  }
+  const reason = String(entry.data && entry.data.reason || "");
+  const explanations = {
+    "unregistered-origin":"Terminal not registered for this session.",
+    "bridge-disabled":"The terminal bridge is disabled on this server.",
+    "stale-registration":"Terminal registration has expired.",
+    "origin-disconnected":"The registered tmux pane is disconnected.",
+    "origin-mismatch":"The registered tmux pane no longer matches its recorded identity.",
+    "session-mismatch":"The registered terminal belongs to another session.",
+    "session-uncollected":"This session is no longer in the server’s collected sessions.",
+    "lookup-failed":"Terminal registration could not be checked because the local request failed."
+  };
+  const message = explanations[reason] || (reason ? "The server refused terminal access." :
+    "Terminal registration status was not published by the server.");
+  const registration = ["unregistered-origin", "bridge-disabled", "stale-registration",
+    "session-mismatch"].includes(reason);
+  return `<div class="pc-terminal-absence"><p class="pc-substrate-empty">${esc(message)}</p>` +
+    (reason && !explanations[reason] ? `<p class="pc-substrate-empty">Server reason: ` +
+      `<code>${esc(reason)}</code></p>` : "") +
+    (registration ? `<p class="pc-substrate-empty">Registration requires starting the dashboard with ` +
+      `<code>--interaction-origin-session harness:sid</code> and ` +
+      `<code>--interaction-origin-registration-file PATH</code>, then running the registration client ` +
+      `inside the tmux pane for this exact session with that file. Output is read-only.</p>` : "") + `</div>`;
 }
 
 function projectTerminalSurface(sess){
@@ -739,27 +800,38 @@ function projectTerminalSurface(sess){
   }
   const key = sessKey(sess);
   const entry = projectTerminalBySession[key];
-  if(!entry || entry.state !== "registered") return "";
+  if(!entry || entry.state !== "registered") return projectTerminalAbsence(entry);
   if(projectTerminalOpenKey !== key){
     return `<button type="button" class="pc-terminal-open" data-calm="project-terminal-open"` +
       ` data-arg="${esc(key)}">Open terminal</button>`;
   }
   const data = entry.data || {};
   const origin = data.origin || {};
-  const title = `${origin.session_name || "tmux"}:${origin.window_index || "?"}.` +
-    `${origin.pane_index || "?"}`;
+  const hasWindow = origin.window_index != null && origin.window_index !== "";
+  const hasPane = origin.pane_index != null && origin.pane_index !== "";
+  const completeTitle = origin.session_name && hasWindow && hasPane;
+  const title = completeTitle
+    ? `<strong>${esc(`${origin.session_name}:${origin.window_index}.${origin.pane_index}`)}</strong>`
+    : `<div class="pc-terminal-identity">` +
+      (origin.session_name ? `<strong>${esc(origin.session_name)}</strong>` :
+        `<p>Tmux session name not published.</p>`) +
+      (hasWindow ? `<code>window ${esc(origin.window_index)}</code>` :
+        `<p>Window index not published.</p>`) +
+      (hasPane ? `<code>pane ${esc(origin.pane_index)}</code>` :
+        `<p>Pane index not published.</p>`) + `</div>`;
   if(!projectTerminal || projectTerminalKey !== key){
     setTimeout(() => projectTerminalMount(key, data.origin_id_hint || ""), 0);
   }
   return `<aside class="pc-terminal" aria-label="Read-only terminal output">` +
-    `<div class="pc-terminal-bar"><strong>${esc(title)}</strong><span>read-only</span>` +
+    `<div class="pc-terminal-bar">${title}<span>read-only</span>` +
     `<button type="button" id="pc-terminal-jump" class="quiet"` +
     ` data-calm="project-terminal-jump" data-arg="${esc(key)}"` +
     `${projectTerminalFollowLive ? " hidden" : ""}>Jump to live</button>` +
     `<button type="button" class="quiet" data-calm="project-terminal-close"` +
     ` data-arg="${esc(key)}">Close</button></div>` +
     `<div id="pc-terminal-viewport" class="pc-terminal-viewport">` +
-    `<div id="pc-terminal-screen" class="pc-terminal-screen"></div></div></aside>`;
+    `<div id="pc-terminal-screen" class="pc-terminal-screen">` +
+    `Loading the local terminal renderer.</div></div></aside>`;
 }
 
 function projectSessionMirror(d, sess, group){
@@ -888,14 +960,28 @@ function projectLifecycleEvidence(focus){
 
 function projectFactEvidence(fact, scope){
   const evidence = fact.evidence || {};
-  const iso = Number(fact.at) ? new Date(Number(fact.at) * 1000).toISOString() : "";
   const body = `<div>` +
-    `${esc(evidence.source || "source unavailable")}` +
-    (evidence.confidence ? ` · ${esc(evidence.confidence)}` : "") +
-    (iso ? ` · <time datetime="${esc(iso)}">${esc(iso)}</time>` : "") +
+    projectPublishedValue(evidence.source, "Evidence source not published.") + ` · ` +
+    projectPublishedValue(evidence.confidence, "Evidence confidence not published.") + ` · ` +
+    projectEventTime(fact.at) +
     `</div>`;
   return projectDisclosure(`fact:${scope || "event"}:${fact.fact_id || "unknown"}`,
     "evidence", body, "pc-event-evidence");
+}
+
+function projectPublishedValue(value, reason){
+  return value != null && String(value).trim() !== ""
+    ? `<span class="pc-source">${esc(value)}</span>`
+    : `<span class="pc-substrate-reason">${esc(reason)}</span>`;
+}
+
+function projectEventTime(at){
+  const date = new Date(Number(at) * 1000);
+  if(at == null || at === "" || !Number.isFinite(date.getTime())){
+    return `<span class="pc-substrate-reason">Event time not published.</span>`;
+  }
+  const iso = date.toISOString();
+  return `<time datetime="${esc(iso)}">${esc(iso)}</time>`;
 }
 
 function projectDelegationWorkItem(model, row){
@@ -1152,7 +1238,12 @@ function projectLaneRails(registry, activeLane, kind, tip, hasEvent, flows){
 }
 
 function projectGraphRow(d, at, kind, registry, lane, body, attributes, tip, connectsNext){
-  const age = at ? fmtDur(Math.max(0, Number(d.generated) - Number(at))) + " ago" : "";
+  const hasTime = at != null && at !== "" && Number.isFinite(Number(at));
+  const hasNow = d.generated != null && Number.isFinite(Number(d.generated));
+  const age = hasTime && hasNow ? `<time>` +
+    esc(fmtDur(Math.max(0, Number(d.generated) - Number(at))) + " ago") + `</time>` :
+    `<span class="pc-substrate-reason pc-graph-time">` +
+    (hasTime ? "Observation time not published." : "Event time not published.") + `</span>`;
   const style = `--lane-count:${registry.lanes.length};--lane-index:${lane.index}`;
   const flows = connectsNext instanceof Map ? connectsNext :
     (connectsNext ? new Map([[lane.key, "out"]]) : new Map());
@@ -1160,8 +1251,8 @@ function projectGraphRow(d, at, kind, registry, lane, body, attributes, tip, con
     ` data-lane-key="${esc(lane.key)}" style="${style}"` +
     (flows.size ? ` data-lane-connect="next"` : "") +
     (attributes ? ` ${attributes}` : "") + `>` +
-    `<time>${esc(age)}</time><span class="pc-graph-rail">` +
-    projectLaneRails(registry, lane, kind, tip, Boolean(at), flows) +
+    `${age}<span class="pc-graph-rail">` +
+    projectLaneRails(registry, lane, kind, tip, hasTime, flows) +
     `</span><div class="pc-trail-body">${body}</div></article>`;
 }
 
@@ -1306,7 +1397,9 @@ function projectLaneLegend(registry){
 }
 
 function projectHistorySpan(events){
-  const times = events.map(event => Number(event.at)).filter(value => value > 0);
+  const times = events.filter(event => event.at != null && event.at !== "")
+    .map(event => Number(event.at)).filter(Number.isFinite);
+  if(!times.length) return "Observed span not measured: no event times published.";
   if(times.length < 2) return "one observed moment";
   const seconds = Math.max(...times) - Math.min(...times);
   const hours = Math.floor(seconds / 3600);
@@ -1338,7 +1431,7 @@ function projectGlobalEvents(model, registry, focus){
   const foLanes = registry.lanes.filter(lane => lane.kind === "fo");
   foLanes.forEach(foLane => (foLane.directions || []).forEach((fact, index) => {
       const episode = foLane.episodeByFact.get(fact.fact_id);
-      events.push({eventId:fact.fact_id, at:Number(fact.at) || 0, kind:"direction",
+      events.push({eventId:fact.fact_id, at:fact.at, kind:"direction",
         meaning:fact.summary, fact, lane:foLane, branch:"none", merge:"none",
         rationale:projectDirectionRationale(fact.summary), relations:[],
         suppressed:index === 0 ? foLane.suppressedDirections : [],
@@ -1351,13 +1444,13 @@ function projectGlobalEvents(model, registry, focus){
   foLanes.forEach(foLane => {
     const observed = foLane.events.filter(fact => fact.type === "goal_shift")
       .sort((a, b) => Number(b.at) - Number(a.at))[0];
-    if(observed) events.push({eventId:observed.fact_id, at:Number(observed.at) || 0,
+    if(observed) events.push({eventId:observed.fact_id, at:observed.at,
       kind:"observed_goal", meaning:observed.summary, fact:observed, lane:foLane,
       branch:"none", merge:"none", relations:[],
       rationale:"Changes understanding of the observed goal."});
     const finalOutput = foLane.events.find(fact => ["final_output", "result"].includes(fact.type));
     if(finalOutput && (!focus || focus.state !== "working")){
-      events.push({eventId:finalOutput.fact_id, at:Number(finalOutput.at) || 0,
+      events.push({eventId:finalOutput.fact_id, at:finalOutput.at,
         kind:"result", meaning:finalOutput.summary, fact:finalOutput, lane:foLane,
         branch:"none", merge:"none", relations:[],
         rationale:"Changes understanding of an observed outcome."});
@@ -1372,7 +1465,7 @@ function projectGlobalEvents(model, registry, focus){
         ? `fo:${fact.source_session.harness}:${fact.source_session.sid}` : registry.foKey;
       const foLane = registry.laneByKey.get(sourceKey) || registry.laneByKey.get(registry.foKey);
       if(!events.some(event => event.eventId === fact.fact_id)) events.push({
-        eventId:fact.fact_id, at:Number(fact.at) || 0, kind:projectEventKind(fact) || "result",
+        eventId:fact.fact_id, at:fact.at, kind:projectEventKind(fact) || "result",
         meaning:fact.summary, fact, lane:foLane, branch:"none", merge:"none", relations:[],
         rationale:"Changes understanding of a supported reaction or outcome."
       });
@@ -1392,7 +1485,7 @@ function projectGlobalEvents(model, registry, focus){
       const meaning = kind === "progress" && fact.stage ? projectTaskTitle(fact.stage) :
         (kind === "dispatch" ? fact.summary || "Dispatched" :
           fact.summary || projectTaskTitle(kind));
-      events.push({eventId:fact.fact_id, at:Number(fact.at) || 0, kind, meaning, fact, lane,
+      events.push({eventId:fact.fact_id, at:fact.at, kind, meaning, fact, lane,
         branch:projectRelationEdge(branchRelations), merge:projectRelationEdge(mergeRelations),
         relations:branchRelations.concat(mergeRelations),
         rationale:kind === "dispatch" ? "Changes understanding of assigned work." :
@@ -1402,7 +1495,7 @@ function projectGlobalEvents(model, registry, focus){
     });
   });
   const seenDispatches = new Set();
-  return events.sort((a, b) => b.at - a.at || a.eventId.localeCompare(b.eventId))
+  return events.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0) || a.eventId.localeCompare(b.eventId))
     .filter(event => {
       if(event.kind !== "dispatch") return true;
       const key = `${event.lane.key}\n${String(event.meaning || "").toLowerCase().trim()}`;
@@ -1456,7 +1549,6 @@ function projectTaskSource(lane, fact){
 function projectGlobalEventDetails(event, lane){
   const fact = event.fact || {};
   const evidence = fact.evidence || {};
-  const iso = Number(fact.at) ? new Date(Number(fact.at) * 1000).toISOString() : "";
   const bindings = lane.kind === "task" && Array.isArray(lane.item.source_bindings)
     ? lane.item.source_bindings : [];
   const relations = Array.isArray(event.relations) ? event.relations : [];
@@ -1471,28 +1563,33 @@ function projectGlobalEventDetails(event, lane){
       String(event.meaning || "").trim().toLowerCase()) : [];
   const suppressed = Array.isArray(event.suppressed) ? event.suppressed : [];
   const decisionMechanics = event.kind === "decision" ? (() => {
-    const stage = String(fact.stage || "gate");
-    const path = fact.target_stage ? `${stage} → ${fact.target_stage}` : stage;
-    const author = fact.by === "person:captain" ? "Captain" : String(fact.by || "unavailable");
-    return `<div><b>Decision author</b> · ${esc(author)}</div>` +
-      `<div><b>Decision mechanics</b> · ${esc(path)} · ` +
+    const stage = String(fact.stage || "");
+    const path = stage && fact.target_stage ? `${stage} → ${fact.target_stage}` : stage;
+    const author = fact.by === "person:captain" ? "Captain" : fact.by;
+    return `<div><b>Decision author</b> · ` +
+      projectPublishedValue(author, "Decision author not published.") + `</div>` +
+      `<div><b>Decision mechanics</b> · ` +
+      projectPublishedValue(path, "Decision stage not published.") +
+      (!stage && fact.target_stage ? ` Target stage: ` + projectPublishedValue(fact.target_stage, "") : "") + ` · ` +
       `${esc(projectGateApplicationDisposition(fact))}</div>`;
   })() : "";
   const suppressedDetails = suppressed.length ? projectDisclosure(
     `timeline-suppressed:${event.eventId}`, `Source-only messages · ${suppressed.length}`,
     `<div class="pc-entry-source-list">${suppressed.map(row => {
-      const rowIso = Number(row.at) ? new Date(Number(row.at) * 1000).toISOString() : "time unavailable";
-      return `<div><time>${esc(rowIso)}</time> · ${esc(row.summary || row.type)}</div>`;
+      return `<div>${projectEventTime(row.at)} · ` +
+        projectPublishedValue(row.summary || row.type, "Source message not published.") + `</div>`;
     }).join("")}</div>`, "pc-entry-suppressed") : "";
   return `<div class="pc-entry-details">` +
-    `<div><b>Why included</b> · ${esc(event.rationale || "Changes understanding of the work.")}</div>` +
+    `<div><b>Why included</b> · ${esc(event.rationale || "Inclusion reason not published.")}</div>` +
     decisionMechanics +
-    `<div><b>Source</b> · ${esc(evidence.source || fact.source_kind || "source unavailable")}` +
-    (evidence.confidence ? ` · ${esc(evidence.confidence)}` : "") +
-    (iso ? ` · <time datetime="${esc(iso)}">${esc(iso)}</time>` : "") + `</div>` +
+    `<div><b>Source</b> · ` +
+    projectPublishedValue(evidence.source || fact.source_kind, "Evidence source not published.") + ` · ` +
+    projectPublishedValue(evidence.confidence, "Evidence confidence not published.") + ` · ` +
+    projectEventTime(fact.at) + `</div>` +
     (relationText.length ? `<div><b>Relation</b> · ${relationText.map(esc).join("<br>")}</div>` : "") +
     (bindings.length ? `<div><b>Task source</b> · ${bindings.map(binding =>
-      `${esc(binding.source || "task source")} · ${esc(binding.value || "value unavailable")}`
+      projectPublishedValue(binding.source, "Task source not published.") + ` · ` +
+      projectPublishedValue(binding.value, "Task binding not published.")
     ).join("<br>")}</div>` : "") +
     (matchingAssignments.length > 1 ? `<div><b>Assignment records</b> · ` +
       `${matchingAssignments.length} exact records; ${matchingAssignments.length - 1} older matching ` +
@@ -1581,11 +1678,15 @@ function projectGlobalEventRow(d, registry, event, flowKeys, firstByLane, option
   const source = lane.kind === "task" && first ? projectTaskSource(lane, fact) :
     {binding:"", html:""};
   const sentence = projectGlobalEventSentence(event, lane);
+  const sourceResult = event.kind !== "decision" &&
+    (fact.summary && sentence.result === fact.summary || fact.stage && sentence.result === fact.stage);
+  const resultText = sourceResult ? projectPublishedValue(sentence.result, "Event summary not published.") :
+    esc(sentence.result);
   const scanLine = event.kind === "decision"
     ? `<strong>${esc(projectTaskTitle(sentence.action))}</strong> ${esc(sentence.object)} · ` +
       `${esc(projectGateApplicationDisposition(fact))}`
     : `<strong>${esc(sentence.actor)}</strong> ${esc(sentence.action)} ` +
-      `${esc(sentence.object)} · ${esc(sentence.result)}`;
+      `${esc(sentence.object)} · ${resultText}`;
   const visible = `<div class="pc-trail-summary"><div class="pc-trail-top">` +
     (first ? `<strong class="pc-lane-title">${esc(title)}</strong>` :
       `<span class="pc-event-kind">${esc(projectTaskTitle(event.kind))}</span>`) +
@@ -1667,8 +1768,24 @@ function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins,
     `</div>`;
   return `<section class="pc-semantic-timeline" data-order="newest-first" data-model="fact-projection"` +
     ` data-graph-layout="fo-task-lanes" data-graph-mode="${mode}">${controls}` +
-    `${projectLaneLegend(registry)}${primary}${earlier}` +
+    (events.length ? `${projectLaneLegend(registry)}${primary}${earlier}` :
+      `<p class="pc-substrate-empty">${esc(projectHistoryEmptyText(model, mode))}</p>`) +
     `${projectUnboundContext(registry)}</section>`;
+}
+
+function projectHistoryEmptyText(model, mode){
+  const history = model.history || {};
+  if(history.reason) return String(history.reason);
+  const subject = mode === "decisions" ? "decisions" :
+    (mode === "active" ? "semantic events for active work" : "semantic events");
+  const seconds = Number(history.window_sec);
+  if(!Number.isFinite(seconds) || seconds <= 0){
+    return `No ${subject} available. The semantic history window was not published.`;
+  }
+  const count = seconds % 3600 === 0 ? seconds / 3600 :
+    (seconds % 60 === 0 ? seconds / 60 : seconds);
+  const unit = seconds % 3600 === 0 ? "hour" : (seconds % 60 === 0 ? "minute" : "second");
+  return `No ${subject} observed in the last ${count} ${unit}${count === 1 ? "" : "s"}.`;
 }
 function projectSemanticEvidence(group){
   const entry = projectContextEntry(group.label);

@@ -1,0 +1,7 @@
+xterm.js 6.0.0 — https://github.com/xtermjs/xterm.js
+  lib/xterm.js   488663 bytes  sha384-f/1U6Z9wM4D71a5eRXEZnyOTMOvjqxr2XLwh+Go1OvIl3L3tOcvUrzudnhbECwl4
+  css/xterm.css    7112 bytes  sha384-n2n7twoohnW+d3myBKaUgl7DSiwidw6MkQy9oesGzkPpMjejKRR3XlnD+5yCdtBD
+Fetched 2026-09-08 from cdn.jsdelivr.net. Both digests match the SRI hashes the
+operator-cockpit prototype pinned when it loaded them from that CDN, so these are
+the exact bytes it intended. Vendored so the page makes no external request.
+MIT licence in xterm-LICENSE.txt.

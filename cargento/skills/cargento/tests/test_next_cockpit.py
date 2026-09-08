@@ -733,6 +733,197 @@ console.log(JSON.stringify({pending,available,opened}));
             self.assertNotIn("Project cockpit · User direction", html)
             self.assertNotIn('data-semantic-kind="decision"', html)
 
+    def test_terminal_absence_explains_registration_and_preserves_the_server_reason(self) -> None:
+        out = self.run_fixture(
+            """
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+const views = {};
+for(const reason of ["unregistered-origin", "stale-registration", "origin-disconnected",
+    "session-mismatch", "new-<refusal>", "disabled", "failed"]){
+  delete projectTerminalBySession["codex:focus-1"];
+  __fetchImpl = async () => {
+    if(reason === "failed") throw new Error("offline");
+    return {ok:reason !== "disabled",status:reason === "disabled" ? 404 : 200,
+      json:async()=>({state:"refused",reason})};
+  };
+  renderNext();
+  views.pending = __els.app.innerHTML;
+  await __settle(); await __settle();
+  views[reason] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(views));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("Checking terminal registration for this exact session.", out["pending"])
+        self.assertIn("Terminal not registered for this session.", out["unregistered-origin"])
+        self.assertIn("--interaction-origin-session", out["unregistered-origin"])
+        self.assertIn("--interaction-origin-registration-file", out["unregistered-origin"])
+        self.assertIn("inside the tmux pane for this exact session", out["unregistered-origin"])
+        self.assertIn("Terminal registration has expired.", out["stale-registration"])
+        self.assertIn("The registered tmux pane is disconnected.", out["origin-disconnected"])
+        self.assertIn(
+            "The registered terminal belongs to another session.", out["session-mismatch"]
+        )
+        self.assertIn("new-&lt;refusal&gt;", out["new-<refusal>"])
+        self.assertIn("The terminal bridge is disabled on this server.", out["disabled"])
+        self.assertIn("Terminal registration could not be checked", out["failed"])
+        for html in out.values():
+            self.assertIn("EXACT SESSION TERMINAL", html)
+            self.assertNotIn("Open terminal", html)
+
+    def test_terminal_identity_keeps_zero_indices_and_names_missing_coordinates(self) -> None:
+        out = self.run_fixture(
+            """
+const session = __dashboard.sessions[0];
+const views = [];
+projectTerminalOpenKey = "codex:focus-1";
+for(const origin of [{session_name:"Pane <one>",window_index:0,pane_index:0},{}]){
+  projectTerminalBySession[projectTerminalOpenKey] = {state:"registered",data:{origin}};
+  views.push(projectTerminalSurface(session));
+}
+console.log(JSON.stringify(views));
+"""
+        )
+        assert isinstance(out, list)
+        self.assertIn("Pane &lt;one&gt;:0.0", out[0])
+        self.assertIn("Tmux session name not published.", out[1])
+        self.assertIn("Window index not published.", out[1])
+        self.assertIn("Pane index not published.", out[1])
+        self.assertNotIn("tmux:?.?", out[1])
+
+    def test_substrate_empty_history_names_its_published_window_and_filter(self) -> None:
+        out = self.run_fixture(
+            """
+const views = {};
+for(const [name,history,mode] of [["day",{window_sec:86400},"all"],
+    ["short",{window_sec:5400},"decisions"],["unknown",{},"all"],
+    ["active",{window_sec:86400},"active"]]){
+  views[name] = projectSemanticTimeline(__dashboard,
+    {facts:[],work_items:[],projections:{},history},[],null,[],{mode});
+}
+console.log(JSON.stringify(views));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("No semantic events observed in the last 24 hours.", out["day"])
+        self.assertIn("No decisions observed in the last 90 minutes.", out["short"])
+        self.assertIn("The semantic history window was not published.", out["unknown"])
+        self.assertIn(
+            "No semantic events for active work observed in the last 24 hours.", out["active"]
+        )
+        for html in out.values():
+            self.assertIn('class="pc-substrate-empty"', html)
+
+    def test_terminal_assets_load_from_loopback_and_name_either_local_load_failure(self) -> None:
+        out = self.run_fixture(
+            """
+const cases = [];
+for(const failure of ["script", "link", "none"]){
+  projectTerminalXtermPromise = null;
+  delete window.Terminal;
+  const nodes = [];
+  document.querySelector = () => null;
+  document.createElement = tag => ({tag,dataset:{},remove(){}});
+  document.head = {append(node){nodes.push(node);}};
+  const loaded = projectTerminalLoadXterm().then(()=>"loaded",error=>error.message);
+  await __settle();
+  for(const node of nodes){
+    if(node.tag === failure && node.onerror) node.onerror();
+    else if(node.onload){
+      if(node.tag === "script") window.Terminal = function(){};
+      node.onload();
+    }
+  }
+  cases.push({failure,result:await loaded,nodes});
+}
+console.log(JSON.stringify(cases));
+"""
+        )
+        assert isinstance(out, list)
+        for case in out:
+            assets = {node["tag"]: node for node in case["nodes"]}
+            self.assertEqual("/assets/xterm.js", assets["script"]["src"])
+            self.assertEqual("/assets/xterm.css", assets["link"]["href"])
+            for node in assets.values():
+                self.assertNotIn("integrity", node)
+                self.assertNotIn("crossOrigin", node)
+            if case["failure"] == "none":
+                self.assertEqual("loaded", case["result"])
+            else:
+                self.assertIn("Console cannot open because the local terminal", case["result"])
+                self.assertIn("did not load.", case["result"])
+
+    def test_substrate_evidence_names_missing_readings_and_separates_source_strings(self) -> None:
+        out = self.run_fixture(
+            """
+const lane = {key:"fo:codex:focus-1",kind:"fo",label:"Codex",index:0,events:[]};
+const registry = {lanes:[lane]};
+console.log(JSON.stringify({
+  absent:projectGlobalEventDetails({kind:"decision",fact:{}},lane),
+  present:projectGlobalEventDetails({kind:"result",fact:{at:100,
+    evidence:{source:"Transcript <exact>",confidence:"exact"}}},lane),
+  row:projectGraphRow(__dashboard,null,"event",registry,lane,"An observed event"),
+  fact:projectFactEvidence({},"missing"),
+  span:projectHistorySpan([])
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("Decision author not published.", out["absent"])
+        self.assertIn("Decision stage not published.", out["absent"])
+        for key in ("absent", "fact"):
+            self.assertIn("Evidence source not published.", out[key])
+            self.assertIn("Evidence confidence not published.", out[key])
+            self.assertIn("Event time not published.", out[key])
+        self.assertIn('<span class="pc-source">Transcript &lt;exact&gt;</span>', out["present"])
+        self.assertIn("Event time not published.", out["row"])
+        self.assertNotIn("<time></time>", out["row"])
+        self.assertEqual("Observed span not measured: no event times published.", out["span"])
+
+    def test_substrate_does_not_turn_a_missing_event_time_into_epoch_history(self) -> None:
+        out = self.run_fixture(
+            """
+const model = JSON.parse(JSON.stringify(__semantic));
+model.facts.forEach(fact => delete fact.at);
+model.projections.operator_intents.forEach(intent => delete intent.at);
+const registry = projectLaneRegistry(model,[],null,__dashboard.sessions);
+const events = projectGlobalEvents(model,registry,null);
+console.log(JSON.stringify({html:projectSemanticTimeline(__dashboard,model,[],null,
+  __dashboard.sessions,{mode:"all"}),span:projectHistorySpan(events),
+  partial:projectGlobalEventDetails({kind:"decision",fact:{target_stage:"review"}},
+    {kind:"fo",events:[]})}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("Event time not published.", out["html"])
+        self.assertNotIn("ago</time>", out["html"])
+        self.assertEqual("Observed span not measured: no event times published.", out["span"])
+        self.assertIn("Decision stage not published.", out["partial"])
+        self.assertNotIn("> → review<", out["partial"])
+        self.assertIn('<span class="pc-source">Newest direction</span>', out["html"])
+
+    def test_terminal_follow_keeps_short_output_visible_above_unused_rows(self) -> None:
+        out = self.run_fixture(
+            """
+const viewport = {scrollHeight:392,clientHeight:340,scrollTop:0};
+__els["pc-terminal-viewport"] = viewport;
+projectTerminal = {rows:20,buffer:{active:{cursorY:2}},element:{querySelector:()=>({
+  getBoundingClientRect:()=>({height:380})})}};
+projectTerminalBindViewport();
+const short = viewport.scrollTop;
+viewport.onscroll();
+const follows = projectTerminalFollowLive;
+projectTerminal.buffer.active.cursorY = 19;
+projectTerminalScrollToLive();
+const bottom = viewport.scrollTop;
+viewport.scrollTop = 20;
+viewport.onscroll();
+console.log(JSON.stringify({short,follows,bottom,paused:!projectTerminalFollowLive}));
+"""
+        )
+        self.assertEqual({"short": 0, "follows": True, "bottom": 52, "paused": True}, out)
+
     def test_course_is_task_first_source_labeled_and_omits_future_history(self) -> None:
         out = self.run_fixture(
             """
