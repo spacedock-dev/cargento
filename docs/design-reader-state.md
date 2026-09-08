@@ -23,13 +23,13 @@ For where these files sit and which way their dependencies run, see
 |---|---|---|
 | An open disclosure (`<details>`) | Restored | `nextOpenDisclosures` in `next-chrome.js`, keyed by the closed `NEXT_DISCLOSURE_KEYS` list, re-emitted by `nextDisclosureAttr` |
 | An expanded Attention section | Restored | `nextAttentionExpandedSections` in `next-chrome.js`, read by `nextAttentionSectionHtml` |
-| Keyboard focus | Restored | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it |
+| Keyboard focus | Restored, with scrolling conditional on visibility at capture | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it; see [Document scroll](#document-scroll) |
 | A row control's confirmation cue | Restored for 30 seconds | `nextControlStates` in `next-boot.js`, keyed rather than held by node, and expiring at `NEXT_CONTROL_STATE_TTL_MS`; `NEXT_ROW_CONTROL_LANES` keys the focus lane, not this one |
 | A typed and unsent draft | Restored | `nextControlsCaptureDrafts` in `next-controls.js`, called by `renderNext` before the assignment |
 | That draft's caret offset | Restored | `nextControlsApplyCaret`, applied by the focus lane once it has landed on the element |
 | The `+ attach guardrail` box, once opened | Kept open | `nextControlsProjectState(project).adding` in `next-controls.js`, held per project for the life of the tab |
 | The workstream panel's collapse | Kept collapsed | `nextWorkstreamCollapsed` in `next-workstream.js`, and the one restored lane that is persisted to `localStorage` |
-| The document scroll offset | Clamped by the browser, then moved by the focus lane | No lane of its own; the browser clamps it and `nextRestoreFocus` moves it, see [Document scroll](#document-scroll) |
+| The document scroll offset | Clamped by the browser; focus restoration may move it only when the old target intersected the viewport | No lane of its own; `nextRestoreFocus` passes `preventScroll` for offscreen captured focus, see [Document scroll](#document-scroll) |
 | A text selection over rendered text | **Not managed** | Nothing; see [Text selection](#text-selection) |
 
 Two rules follow from the table rather than from any one row.
@@ -91,9 +91,9 @@ The earlier suspicion that a shortening render **jumps to the top** does not rep
 0 row above looks like a jump and is not: the shorter page's scroll maximum is 0, so 0 is the
 clamp, and any restore would arrive at the same place.
 
-**The focus lane.** `nextRestoreFocus` calls `.focus()` on the element it lands on, after the
-`innerHTML` assignment, and not one of those calls passes `{preventScroll:true}`, so the browser
-scrolls that element into view. This is the ordinary live lane, not only a raise. Measured in
+**The focus lane before DRC-4464.** `nextRestoreFocus` called `.focus()` on the element it landed on,
+after the `innerHTML` assignment, without `{preventScroll:true}`, so the browser scrolled that
+element into view. This was the ordinary live lane, not only a raise. Measured in
 headless Chrome 154 against the assembled page with a 60-session payload, at a page height of
 10,833px **before and after**, so no shrink and no clamp are involved:
 
@@ -106,9 +106,50 @@ The second row is an identical payload rendering twice. `focus({preventScroll:tr
 leaves the offset untouched, which is what identifies the writer. So a reader who has tabbed to a
 control low on the board and then scrolled back up is carried back down by the next revision.
 
-That behaviour belongs to the focus-restore lane rather than to the scroll row, and is filed
-separately. It is named here because this file is the inventory, and the row above would otherwise
-tell a reader that the browser is the only writer of the offset.
+**Decision: use visibility at capture, preserving focus and caret (DRC-4464).** If the old focused
+element's rectangle lies wholly outside the viewport, every restoration target receives
+`preventScroll:true`. If it intersects the viewport, including partly visible controls, restoration
+keeps normal scrolling. The same choice follows a disappearing control to its existing row,
+subject, section or heading fallback; it does not change which fallback is chosen.
+
+This preserves the keyboard reader's place without treating an unrelated live revision as a request
+to return to it. When the reader was using a visible control, keeping normal scrolling lets that
+control remain reachable after project reordering or a change in Attention content. When the reader
+has scrolled away, focus remains parked offscreen so typing and subsequent keyboard navigation
+still start from the retained identity. There is no blanket claim that offscreen focus is better:
+this policy gives the reader's current viewport priority until they resume keyboard interaction.
+
+Comparing scroll positions *since* capture was rejected: a reader can scroll away before the fetch
+finishes, and capture, replacement and restore then run without another await. The positions can
+be equal while the old defect reproduces. Dropping focus was also rejected because it discards the
+keyboard position and the draft's caret along with it.
+
+**Measured before and after, Chrome 154, 2026-09-08.** The policy was verified in a real browser
+against both trees, the page served over loopback because `file://` and `--dump-dom` were both
+unusable here: the headless launch aborted with exit `-6` and, with a budget, hung instead. 60
+sessions, `#n=sessions`, page 6,814px on both sides, payload identical across the refresh:
+
+| arm | before, on `main` | after, with this policy |
+| -- | -- | -- |
+| nothing focused in `#app` | `y: 0 → 0` | `y: 0 → 0` |
+| row 50's copy-id control parked at page-Y 5,471, reader scrolled to top | `y: 0 → 4,932` | **`y: 0 → 0`** |
+| `focus({preventScroll: true})` control | `y: 0` | `y: 0` |
+| plain `focus()` control | `y: 4,932` | `y: 4,932` |
+
+The last two rows are the load-bearing ones. They are identical across the trees, so the browser
+still scrolls a plain `focus()` exactly as before and what changed is which option this code
+passes, not a browser or fixture difference. `document.activeElement` is the same control after
+the revision in both trees, so the fix costs no focus identity. The figures differ from the
+9,153/8,769 pair above because that measurement used a taller fixture; the mechanism is the same.
+
+**What is still not measured.** Focus visibility, subsequent Tab navigation and screen-reader
+behavior under this policy, and Safari and Firefox. The conditional half, that a target
+intersecting the viewport still receives a plain `focus()`, is asserted at the DOM API boundary by
+the Node harness over six rectangles rather than in a browser, because the two policies diverge
+behaviorally only when the captured target is offscreen, which is the arm measured above. The
+harness exercises all eight restoration sites through `await refreshNext()` with reversed session
+order, disappearing Attention targets and a draft selection, verifying options, identity and caret;
+its DOM stubs do not measure scrolling.
 
 DRC-4446's AC2 stands **deferred rather than verified**. That criterion is the reader's position
 holding across a shortening revision, in a real browser with the live lane running. The clamp arms
