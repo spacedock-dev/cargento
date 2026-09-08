@@ -32,3 +32,9 @@ docs/future-ui-exploration/.spacedock-state/
 # Spacedock mods: vendored from the plugin at install time, not source.
 # Restoring: see docs/roadmap-burndown/README.md, "Workflow State".
 docs/roadmap-burndown/_mods/
+
+# Browser screenshots: agent capture artifacts, not source. The directory itself is
+# tracked through its .gitkeep, so a fresh clone has somewhere to put a capture; ignoring
+# `docs/screenshots/` outright would leave nothing for the negation below to rescue.
+docs/screenshots/*
+!docs/screenshots/.gitkeep
