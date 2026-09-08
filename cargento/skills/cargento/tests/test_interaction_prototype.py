@@ -270,8 +270,13 @@ class InteractionPrototypeHTTPTest(unittest.TestCase):
         self.assertNotIn("must-not-select", reconnected_view["text"])
         self.assertEqual(0, self.adapter.capture_count)
 
-        time.sleep(0.12)
-        _status, renewed = self._request("GET", "/api/interaction/state")
+        # Hosted macOS runners can schedule the renewal after the old 120 ms sleep.
+        deadline = time.monotonic() + 2.0
+        while True:
+            _status, renewed = self._request("GET", "/api/interaction/state")
+            if renewed["renewal_count"] >= 1 or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
         self.assertGreaterEqual(renewed["renewal_count"], 1)
         self.assertEqual("registered", renewed["origin_state"])
 
@@ -595,7 +600,9 @@ class CollectedSessionOriginHTTPTest(unittest.TestCase):
         self.assertEqual("unregistered", waiting["origin_state"])
         self.assertEqual("awaiting-session-registration", waiting["reason"])
         self.assertEqual(self.session_id, waiting["cargento_session_id"])
-        self.assertEqual(0o600, stat.S_IMODE(self.registration_file.stat().st_mode))
+        # Windows ignores POSIX permission bits; keep the registration checks there.
+        if os.name != "nt":
+            self.assertEqual(0o600, stat.S_IMODE(self.registration_file.stat().st_mode))
         bootstrap = json.loads(self.registration_file.read_text(encoding="utf-8"))
 
         _status, registered = self._request(
