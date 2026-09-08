@@ -1664,8 +1664,11 @@ Verifying it would need a per-session secret that the sessions do not have and t
 boundary could not keep.
 
 `--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of
-the store relocation variables, every candidate store path, and per-path read errors. Nothing is
-transmitted, but redact it before pasting it into a public issue.
+the store relocation variables, every candidate store path, and per-path read errors. A recorded
+store error may include a store or prompt excerpt, even when SQLite raised it. The shared formatter
+keeps the exception type plus at most 1,024 Unicode characters of its message, including
+`... [truncated]` when clipped; clipping does not redact sensitive content. Nothing is transmitted,
+but redact it before pasting it into a public issue.
 
 ## Reporting a vulnerability
 
