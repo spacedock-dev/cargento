@@ -326,3 +326,73 @@ On one captured payload the shipped timeline reports the window as "last 10m" an
 model reports "last 5m". Both cannot be right. Reconcile against
 `nextWorkstreamProjectWindow` and either match it or state in a comment why the model's
 basis is the correct one. Do not simply keep the new number because it is new.
+
+---
+
+## Amendment 3 — from workstream D
+
+Three defects in the lane derivation, all confirmed against the shipped code. The
+shipped answer to all three is one predicate and its complement over a deliberately
+ordered list, and the model should copy that structure rather than invent another.
+
+### A3.1 · `active` and `history` must partition `sessions`
+
+Today they are two independent filters:
+
+```js
+const active  = sessions.filter(s => s.isWorking || s.isNeeds || s.askKnown);
+const history = sessions.filter(s => s.isEnded || s.isQuiet);
+```
+
+An idle session with an outstanding request is `isQuiet` **and** `askKnown`, so it is in
+both. An ended session with an outstanding request likewise. The shipped code cannot
+have this bug because it filters one predicate and its negation
+(`next-sessions.js:333`):
+
+```js
+const active  = ordered.filter(s => nextOperationsIsActive(s, asks));
+const history = ordered.filter(s => !nextOperationsIsActive(s, asks));
+```
+
+Do the same: one `isActive` derived per session, `history` its complement. Assert both
+that the two key sets are disjoint **and** that
+`active.length + history.length === totals.sessions`. A partition is the only thing
+that makes the counters trustworthy, which is the point of §2.
+
+`isActive` follows `nextOperationsIsActive`: no observed end and
+`state ∈ {working, needs_input}`, **or** an outstanding exact request regardless of
+state. The request holds the row because it is a published fact with its own lifecycle,
+answered or withdrawn rather than aged out — that comment is at `next-sessions.js:135`
+and it is the reason an ended session with a live request is still active.
+
+### A3.2 · A session with no published state must not vanish
+
+`isWorking`, `isNeeds`, `isQuiet` and `isEnded` each require a specific `state` or an
+`ended_at`. A session with an unrecognised or absent `state`, no end and no request is
+in **neither** lane — while still counting in `totals.sessions`. The board then says
+twelve and shows eleven, which is the DRC-4453 failure with a different mechanism: the
+denominator and the rows disagree.
+
+The shipped code has a fourth bucket for exactly this (`next-sessions.js:30`):
+
+```js
+const other = rows.filter(s => !["needs_input","working","idle"].includes(String(s.state || "")));
+```
+
+Every session reaches a lane. One with no published state is **not known to be
+running**, so it belongs in history, and its `nowText` says why rather than leaving a
+blank: `"No state published"`.
+
+### A3.3 · Keep the shipped ordering
+
+`nextSessionBlocks` (`next-sessions.js:10`) orders deliberately and the model lost it:
+
+1. `gates` — `needs_input`, **in server order**, which is a deliberate choice, not an
+   accident: the comment at line 16 says `aggregate.py` uses sid for a stable idle
+   payload and only the idle tail is re-sorted here.
+2. `working` — through `nextSessionWorkingOrder`.
+3. `idle` — by nearest activity, ties broken on sid so a redraw is stable.
+4. `other` — the remainder.
+
+Derive the lanes from a list in that order and both lanes inherit it, as the shipped
+filters do. Do not re-sort inside a lane afterwards; that is what loses it.

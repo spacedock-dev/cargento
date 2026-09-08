@@ -26,6 +26,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
   const ended = nextSessionEndedAt(source) != null;
   const working = !ended && source.state === "working";
   const needs = !ended && source.state === "needs_input";
+  const stateKnown = ["working", "needs_input", "idle"].includes(source.state);
   const question = asks.map(ask => nextObservedString(ask.question)).filter(Boolean).join("\n");
   const tasks = nextObservedRecords(source.tasks);
   const task = status => tasks.find(row => row.status === status && nextObservedString(row.subject));
@@ -74,7 +75,8 @@ function nextObservedSession(source, asks, harness, generated, shared){
     resume_id: source.resume_id == null ? null : source.resume_id,
     ...nextObservedPair("title", source.title, "Title not published"),
     ...nextObservedPair("now", ended ? "Session reported its own end" :
-      (doing ? doing.subject : source.state_detail), "Activity not published"),
+      (stateKnown ? (doing ? doing.subject : source.state_detail) : ""),
+    stateKnown ? "Activity not published" : "No state published"),
     ...nextObservedPair("next", pending && pending.subject, "No pending step published"),
     ...nextObservedPair("where", "", "Exact location not published"),
     ...nextObservedPair("turn", turnText, "Harness does not report turn bounds"),
@@ -97,6 +99,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
     ...nextObservedPair("sharedLabel", sharedText, "No shared display label observed"),
     state: String(source.state == null ? "" : source.state),
     isWorking: working, isNeeds: needs, isEnded: ended,
+    isActive: working || needs || Boolean(question),
     isLive: working && source.active === true,
     isQuiet: !ended && source.state === "idle",
     tone: outcomeKnown ? (gitKnown ? (source.dirty ? "bad" : "ok") : "unknown") :
@@ -339,6 +342,19 @@ function nextObservedCapacity(payload){
   return {windows, sublimits, risks};
 }
 
+function nextObservedLaneOrder(sources, sessions){
+  const bySource = new Map(sources.map((source, index) => [source, sessions[index]]));
+  // nextSessionBlocks reads nextData. Keep its gate/server order here and use
+  // the same pure working-order helper without making the model depend on a tab.
+  const gates = sources.filter(source => source.state === "needs_input");
+  const working = nextSessionWorkingOrder(sources.filter(source => source.state === "working"));
+  const idle = sources.filter(source => source.state === "idle").sort((a, b) =>
+    (nextNumber(b.last_activity) || 0) - (nextNumber(a.last_activity) || 0) ||
+      nextObservedCompare(String(a.sid || ""), String(b.sid || "")));
+  const other = sources.filter(source => !["needs_input", "working", "idle"].includes(String(source.state || "")));
+  return [...gates, ...working, ...idle, ...other].map(source => bySource.get(source));
+}
+
 function nextObserved(payload){
   payload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const sources = nextPayloadSessions(payload);
@@ -408,8 +424,9 @@ function nextObserved(payload){
     reportsBlock: sessions.filter(session => session.blockKnown).length,
     exactRequests: sessions.filter(session => session.askKnown).length,
   };
-  const active = sessions.filter(session => session.isWorking || session.isNeeds || session.askKnown);
-  const history = sessions.filter(session => session.isEnded || session.isQuiet);
+  const ordered = nextObservedLaneOrder(sources, sessions);
+  const active = ordered.filter(session => session.isActive);
+  const history = ordered.filter(session => !session.isActive);
   const needs = sessions.filter(session => session.isNeeds || session.askKnown);
   const needKeys = new Set(needs.map(nextSessionKey));
   const atRisk = sessions.filter(session => riskKeys.has(nextSessionKey(session)) && !needKeys.has(nextSessionKey(session)));
