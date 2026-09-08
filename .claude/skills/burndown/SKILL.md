@@ -20,8 +20,8 @@ Picking requires an authenticated Linear capability with read access to the `DRC
 projects, issues, relations, labels and milestones. A full run also requires:
 
 - Linear write access to update issues, relations, milestones and the project overview after merge.
-- The `recce-dev:linear-deep-dive`, `superpowers:test-driven-development`, `sync-docs` and
-  `visual-review-and-fix` skills.
+- The `recce-dev:linear-deep-dive`, `superpowers:test-driven-development`, `sync-docs`,
+  `sync-project` and `visual-review-and-fix` skills.
 - A browser automation capability, for the two `visual-review-and-fix` passes. Without one, say
   so in the report and name the stages that went unwalked rather than treating the issue as
   reviewed.
@@ -107,8 +107,15 @@ PR body: open with the Linear link, `Implements [DRC-####](url) — <issue title
 This is why the skill exists. Roadmap work here has repeatedly desynced: a milestone claiming nothing had shipped after two of its items did, an issue held behind a decision it no longer depended on, a decision issue still blocking work after it closed. All six steps, in order, and only once the merge is confirmed.
 
 1. Move the issue to `Done`. Not before the merge.
-2. Fix the owning milestone description wherever the merge made it false. Keep the older dated section and label it historical rather than deleting it.
-3. Refresh the project overview's "As of" block. Every derived number lives there, so it is one edit. The block's open-issues-by-move line is part of that refresh.
+2. **REQUIRED SUB-SKILL:** invoke `sync-project` for the milestone and the project overview. It owns
+   what those surfaces say and, more to the point, what they stop saying. Do not write a dated
+   "what shipped" section into either one: the pull request is where that lives, and appending one
+   per merge is how the overview reached 25,000 characters before the 2026-09-08 cleanup cut it by
+   about 88 percent. Take the milestone's `What is left` line for this issue out, and correct
+   anything the merge made false.
+3. If the merge changed a contract a *remaining* item builds on, say so in one line on the owning
+   milestone, under a `Read before building <ID>` heading. That is the only build history a
+   milestone keeps, and it earns its place by changing what the next builder does.
 4. Check the closed issue's `blocks`. Move anything newly free to `Todo`.
 5. If the closed issue still blocks something that no longer depends on it, remove the relation, and add
    `relatedTo` in its place so the closed evidence stays reachable from the item it unblocked. A closed
@@ -119,11 +126,12 @@ This is why the skill exists. Roadmap work here has repeatedly desynced: a miles
    into no dependency, which is a different and less true statement. The rule exists because an audit
    found six such edges and the honest question was whether to sweep them or say why not; this is the
    why not.
-6. If the issue's move was `extend` or `new`, draft the change to the promise wording and hand it to
-   the next docs PR's `sync-docs` pass, which owns the three copies. A `keep` or `sharpen` merge
-   changes no promise wording; say so rather than leaving it implied.
+6. If the issue's move was `extend` or `new`, draft the change to the promise wording. `sync-docs`
+   owns the two in-repository copies and `sync-project` owns the Linear one, so hand it to both and
+   land the repository half in the next docs PR. A `keep` or `sharpen` merge changes no promise
+   wording; say so rather than leaving it implied.
 
-Then report: issue worked, which promise it moved and how, milestone updated, overview refreshed, what became unblocked, what is next.
+Then report: issue worked, which promise it moved and how, what the milestone and overview now say, what became unblocked, what is next.
 
 ## 5. Continue or stop
 
