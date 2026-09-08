@@ -252,6 +252,8 @@ function nextOperationsIdentity(session, labels, collisions, route, history = fa
     `<a class="next-operation-route" href="#n=${esc(route)}" data-next-route="${esc(route)}" ` +
     `aria-label="Open session ${esc(title)}"><strong>${dot}${esc(title)}</strong></a>` +
     nextSessionCopyControl(session) +
+    (!session.titleKnown && session.promptKnown ?
+      `<span class="next-operation-assignment">LAST PROMPT · ${esc(session.promptText)}</span>` : "") +
     (history ? "" : nextOperationsAssignment(session)) +
     nextSessionCollision(session, collisions) +
     /* In the identity cell rather than in one column's slot, and on the history
@@ -320,7 +322,7 @@ function nextOperationsObservedFact(kind, label, text, known, note = "", tone = 
 }
 
 function nextOperationsObservedIdentity(session, source, labels, route, history){
-  const dot = session.isWorking && session.tone !== "unknown"
+  const dot = session.isLive
     ? nextStatusDot("working", "next-operation-live-glyph") : "";
   const titleClass = session.titleKnown ? "" : ' class="next-operation-title--unknown"';
   const collision = session.sharedLabelKnown
@@ -332,6 +334,8 @@ function nextOperationsObservedIdentity(session, source, labels, route, history)
     `<a class="next-operation-route" href="#n=${esc(route)}" data-next-route="${esc(route)}" ` +
     `aria-label="Open session ${esc(session.titleText)}"><strong${titleClass}>${dot}${esc(session.titleText)}</strong></a>` +
     nextSessionCopyControl(session) +
+    (!session.titleKnown && session.promptKnown ?
+      `<span class="next-operation-assignment">LAST PROMPT · ${esc(session.promptText)}</span>` : "") +
     (history ? "" : nextOperationsAssignment(source)) + collision +
     nextSessionScanOnly(source) + nextSessionUnread(source) + "</span>";
 }
@@ -373,7 +377,7 @@ function nextOperationsObservedRow(session, source, labels, asks, history){
 }
 
 function nextSessionsView(){
-  const model = nextObserved(nextData);
+  const model = nextCurrentObserved();
   const sources = new Map(nextRows().map(session => [nextSessionKey(session), session]));
   const asks = nextOperationsAsks(nextRows());
   const labels = nextHarnessLabels();

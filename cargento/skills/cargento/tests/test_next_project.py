@@ -290,7 +290,7 @@ class NextProjectV2Test(NextPageJsHarness):
         out = self._run_page_js(
             V2_MODEL_FIXTURE
             + """
-nextObserved = () => v2Model;
+nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
 nextProjectRail = () => "";
 nextData = {generated: 10000, sessions: [{sid: "live", harness: "codex", total: 3, done: 2,
   spacedock: {role: "first-officer", workflows: [{workflow: "Retained plan", goal: "Keep the plan", stages: [], entities: []}]}
@@ -335,7 +335,7 @@ console.log(JSON.stringify({goal: nextProjectGoal(v2Project), changes: nextProje
         out = self._run_page_js(
             V2_MODEL_FIXTURE
             + """
-nextObserved = () => v2Model;
+nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
 nextProjectRail = context => '<div data-rail-project="' + context.project.key + '">rail</div>';
 nextData = {generated: 10000, sessions: []};
 nextRoute = {view: "project", project: "alpha/repo", session: null};

@@ -626,7 +626,7 @@ console.log(JSON.stringify({
         )
         self.assertEqual(5, out["elapsed"])
         self.assertIn("spare", out["html"])
-        self.assertIn("<em>on ", out["html"])
+        self.assertIn("<em>based on ", out["html"])
 
     def test_budget_ends_names_the_day_when_it_is_not_today(self) -> None:
         # A weekly window's budget can end days out, and an hour-of-day alone
@@ -1012,7 +1012,7 @@ console.log(JSON.stringify({
         self.assertTrue(out["clock"])
         self.assertIn(out["clock"], out["html"])
         self.assertIn("spare", out["html"])
-        self.assertIn("<em>on ", out["html"])
+        self.assertIn("<em>based on ", out["html"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

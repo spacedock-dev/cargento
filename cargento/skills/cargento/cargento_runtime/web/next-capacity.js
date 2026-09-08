@@ -335,7 +335,7 @@ function nextCapacityEnds(row, generated){
      carrying the qualifier on the alarm alone means comfort is asserted with
      less evidence than concern. */
   const basis = row.thinBasis
-    ? ` <em>on ${esc(nextCapacityDuration(row.elapsed * row.windowSec))}</em>`
+    ? ` <em>based on ${esc(nextCapacityDuration(row.elapsed * row.windowSec))} observed</em>`
     : "";
   /* The instant, in every projected shape. Where the budget outlasts the
      window this branch used to return the spare INSTEAD of the time, and that
@@ -357,9 +357,9 @@ function nextCapacityEnds(row, generated){
 function nextCapacityRow(row, generated, selected = false){
   const key = `${row.harness}:${row.slot}`;
   const slotLabel = NEXT_CAPACITY_SLOT_LABELS[row.slot] || row.slot;
-  const length = row.windowSec == null ? "no stated length" : nextCapacityDuration(row.windowSec);
+  const length = row.windowSec == null ? '<span class="next-capacity-absent">Window length not published</span>' : nextCapacityDuration(row.windowSec);
   const pace = row.paceRatio == null
-    ? '<span class="next-capacity-absent">&mdash;</span>'
+    ? '<span class="next-capacity-absent">Pace not measured</span>'
     : `${row.paceRatio.toFixed(1)}&times;`;
   const resets = row.remainingSec == null
     ? '<span class="next-capacity-absent">none published</span>'
@@ -372,7 +372,7 @@ function nextCapacityRow(row, generated, selected = false){
     `data-next-focus="capacity:${esc(key)}" aria-pressed="${selected}" ` +
     `aria-label="Read ${esc(nextCapacityHarnessLabel(row.harness))} ${esc(slotLabel)} window">` +
     `<b>${esc(nextCapacityHarnessLabel(row.harness))}</b>` +
-    `<i>${esc(slotLabel)} &middot; ${esc(length)}</i></button></div>` +
+    `<i>${esc(slotLabel)} &middot; ${length}</i></button></div>` +
     `<div class="next-capacity-pct${usedInk}"><small>USED</small>${row.pct}%</div>` +
     nextCapacityBar(row) +
     `<div class="next-capacity-pace${row.paceRatio != null && row.paceRatio > 1 ? " hot" : ""}">` +

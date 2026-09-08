@@ -137,8 +137,7 @@ function nextWorkstreamAskTime(ask, generated, floor){
    is identical until its own next record, and a full store is ~7,800 records:
    rebuilding one object per session per record allocated millions where sharing
    allocates one per record. */
-function nextWorkstreamSeed(history, labels, generated){
-  nextWorkstreamSeededSince = new Map();
+function nextWorkstreamReplay(history, labels, generated, append, seededSince){
   const records = [];
   for(const entry of Array.isArray(history) ? history : []){
     const at = nextNumber(entry && entry.last_activity);
@@ -164,8 +163,8 @@ function nextWorkstreamSeed(history, labels, generated){
   const seen = new Map();
   records.forEach((record, index) => {
     const key = nextWorkstreamSessionKey(record);
-    if(!nextWorkstreamSeededSince.has(record.project)){
-      nextWorkstreamSeededSince.set(record.project, record.at);
+    if(!seededSince.has(record.project)){
+      seededSince.set(record.project, record.at);
     }
     const previous = seen.get(key);
     seen.set(key, record);
@@ -205,9 +204,35 @@ function nextWorkstreamSeed(history, labels, generated){
     // A session's first stored record establishes the state a later change is
     // measured against; it is not itself a change, and listing it would make
     // the rail's heading untrue of its own rows.
-    nextWorkstreamAppendGroup({at: record.at, events, samples: [...held.values()]});
+    append({at: record.at, events, samples: [...held.values()]});
   });
   return true;
+}
+
+function nextWorkstreamSeed(history, labels, generated){
+  nextWorkstreamSeededSince = new Map();
+  return nextWorkstreamReplay(history, labels, generated, nextWorkstreamAppendGroup,
+    nextWorkstreamSeededSince);
+}
+
+function nextWorkstreamSnapshot(){
+  return {groups: nextWorkstreamGroups, observedSince: nextWorkstreamObservedSince,
+    lastGenerated: nextWorkstreamLastGenerated, seeded: nextWorkstreamSeeded,
+    seededSince: nextWorkstreamSeededSince};
+}
+
+// A payload-only derivation replays the same measurements in a private buffer.
+// Live rendering supplies its tab buffer explicitly; neither path changes it.
+function nextWorkstreamPayloadEvidence(payload){
+  const groups = [];
+  const seededSince = new Map();
+  const generated = nextNumber(payload.generated);
+  const labels = new Map(nextObservedRecords(payload.harnesses).map(row => [row.key, row.label]));
+  const seeded = nextWorkstreamReplay(payload.history, labels, generated,
+    group => groups.push(group), seededSince);
+  groups.push({at: generated, samples: [], events: []});
+  return {groups, seededSince, seeded, lastGenerated: generated,
+    observedSince: groups.length > 1 ? groups[0].at : generated};
 }
 
 function nextObserveWorkstream(payload){
@@ -325,12 +350,12 @@ function nextObserveWorkstream(payload){
   nextWorkstreamLastGenerated = generated;
 }
 
-function nextWorkstreamProjectWindow(project){
+function nextWorkstreamProjectWindow(project, evidence = nextWorkstreamSnapshot()){
   const batches = [];
   const samples = [];
   const events = [];
   let startedAt = null;
-  for(const group of nextWorkstreamGroups){
+  for(const group of evidence.groups){
     const groupSamples = group.samples.filter(sample => sample.project === project);
     const groupEvents = group.events.filter(event => event.project === project);
     if((groupSamples.length > 0 || groupEvents.length > 0) && startedAt == null){
@@ -340,14 +365,14 @@ function nextWorkstreamProjectWindow(project){
     samples.push(...groupSamples);
     events.push(...groupEvents);
   }
-  const observed = startedAt == null ? nextWorkstreamObservedSince : startedAt;
-  const seededAt = nextWorkstreamSeededSince.get(project);
+  const observed = startedAt == null ? evidence.observedSince : startedAt;
+  const seededAt = evidence.seededSince.get(project);
   return {
     batches,
-    endedAt: nextWorkstreamLastGenerated,
+    endedAt: evidence.lastGenerated,
     events,
     samples,
-    seeded: nextWorkstreamSeeded,
+    seeded: evidence.seeded,
     startedAt: seededAt != null && (observed == null || seededAt < observed) ? seededAt : observed,
   };
 }

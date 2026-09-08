@@ -74,6 +74,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
     focusable: source.focusable == null ? false : source.focusable,
     resume_id: source.resume_id == null ? null : source.resume_id,
     ...nextObservedPair("title", source.title, "Title not published"),
+    ...nextObservedPair("prompt", source.last_prompt, "Last prompt not published"),
     ...nextObservedPair("now", ended ? "Session reported its own end" :
       (stateKnown ? (doing ? doing.subject : source.state_detail) : ""),
     stateKnown ? "Activity not published" : "No state published"),
@@ -110,119 +111,40 @@ function nextObservedSession(source, asks, harness, generated, shared){
   };
 }
 
-function nextObservedClock(stamp){
-  const at = new Date(stamp * 1000);
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
-function nextObservedTrend(intervals, generated){
-  const width = 6 * 60 * 60;
-  const range = (start, end) => {
-    let observed = 0;
-    let total = 0;
-    let delegated = 0;
-    for(const interval of intervals){
-      const seconds = Math.max(0, Math.min(end, interval.end) - Math.max(start, interval.start));
-      observed += seconds;
-      if(interval.engaged) total += seconds;
-      if(interval.delegated) delegated += seconds;
-    }
-    return observed >= width && total > 0 ? 100 * delegated / total : null;
-  };
-  const current = generated == null ? null : range(generated - width, generated);
-  const previous = generated == null ? null : range(generated - 2 * width, generated - width);
-  const delta = current == null || previous == null ? null : Math.round(current - previous);
-  return {
-    ...nextObservedPair("trend", delta == null ? "" : `${delta > 0 ? "+" : ""}${delta}`,
-      "Two complete six-hour delegation readings are not available"),
-    trendDelta: delta,
-  };
-}
-
-function nextObservedHistory(payload, sessions){
-  const generated = nextNumber(payload.generated);
-  const members = new Set(sessions.map(nextSessionKey));
-  const records = nextObservedRecords(payload.history).filter(record =>
-    generated != null && nextNumber(record.last_activity) != null && record.last_activity > 0 &&
-    record.last_activity <= generated && members.has(nextSessionKey(record)) &&
-    nextObservedLabel(record) === sessions[0].project,
-  ).slice().sort((a, b) => a.last_activity - b.last_activity ||
-    nextObservedCompare(nextSessionKey(a), nextSessionKey(b)));
-  const last = new Map();
-  records.forEach((record, index) => last.set(nextSessionKey(record), index));
-  const held = new Map();
-  const previous = new Map();
-  const closedWorking = new Set();
-  const changes = [];
-  const intervals = [];
-  let delegated = 0;
-  let total = 0;
-  let observed = 0;
-  let human = 0;
-  const idleResumptions = new Set();
-  records.forEach((record, index) => {
-    const key = nextSessionKey(record);
-    const before = previous.get(key);
-    if(before && record.last_activity > before.last_activity && before.state === "working"){
-      closedWorking.add(key);
-    }
-    if(before && before.state !== record.state){
-      const gateExit = before.state === "needs_input" && record.state !== "needs_input";
-      const resume = before.state === "idle" && record.state === "working";
-      const humanTurn = gateExit || resume;
-      if(humanTurn && !(resume && idleResumptions.has(key))) human += 1;
-      idleResumptions.delete(key);
-      if(before.state === "needs_input" && record.state === "idle") idleResumptions.add(key);
-      const label = record.state === "working" ? "agent resumed" :
-        (record.state === "needs_input" ? "needs input" :
-          (record.state === "idle" ? "became idle" : `state changed to ${record.state}`));
-      changes.push({at: nextObservedClock(record.last_activity), harness: record.harness, label,
-        filled: record.state !== "needs_input" && !humanTurn});
-    }
-    previous.set(key, record);
-    // Last observations close spans. Holding them to generated would turn a
-    // stopped server's unobserved time into delegated work.
-    if(last.get(key) === index) held.delete(key);
-    else held.set(key, record);
-    if(index + 1 >= records.length || !held.size) return;
-    const seconds = records[index + 1].last_activity - record.last_activity;
-    observed += seconds;
-    const states = [...held.values()].map(row => row.state);
-    intervals.push({start: record.last_activity, end: records[index + 1].last_activity,
-      engaged: states.includes("needs_input") || states.includes("working"),
-      delegated: !states.includes("needs_input") && states.includes("working")});
-    if(states.includes("needs_input")) total += seconds;
-    else if(states.includes("working")){
-      total += seconds;
-      delegated += seconds;
-    }
-  });
-  const known = observed >= 600 && total > 0;
-  const missing = sessions.filter(session => !closedWorking.has(nextSessionKey(session))).length;
-  const pct = known ? Math.round(100 * delegated / total) : null;
-  // nextWorkstreamProjectWindow ends its caption at the published snapshot.
-  // A last record at +5m with a snapshot at +10m therefore describes last 10m,
-  // while the closed-interval arithmetic above still counts only the first 5m.
-  const span = records.length && generated != null ? generated - records[0].last_activity : 0;
-  const window = span > 0 ? `last ${nextFormatDuration(Math.max(1, span)).replace(/ 0[hm]$/, "")}` : "";
-  const note = known ? (missing ? `≥ because ${missing} ${missing === 1 ? "session has" : "sessions have"} ` +
-    "no closed working interval in the retained window." : "Measured over closed working and needs-input intervals.") :
-    "Waiting on one complete observed working-or-gated window.";
+function nextObservedHistory(project, evidence){
+  const window = nextWorkstreamProjectWindow(project, evidence);
+  const metric = nextDelegationMetric(window);
+  const known = metric.observedSec >= NEXT_DELEGATION_MIN_WINDOW_SEC && metric.delegatedPct != null;
+  const pct = known ? Math.round(metric.delegatedPct) : null;
+  const trend = nextDelegationTrend(window);
+  const label = !known && !window.seeded ? NEXT_WORKSTREAM_TAB_WINDOW :
+    nextWorkstreamWindowLabel(known ? metric : window);
+  const changes = window.events.map(event => ({
+    at: nextWorkstreamClock(event.at), filled: event.filled, label: event.label,
+    harness: event.right, kind: event.kind,
+  }));
   return {
     changes,
-    changeNoteText: changes.length ? `${changes.filter(change => change.filled).length} of ` +
-      `${changes.length} unattended · ${window}` : "No state changes published in retained history",
-    changeNoteKnown: changes.length > 0,
+    changeNoteText: `${changes.filter(change => change.filled).length} of ${changes.length} unattended · ` +
+      nextWorkstreamWindowLabel(window),
+    changeNoteKnown: true,
+    changeEmptyText: `No state changes observed ${nextWorkstreamWindowPhrase(window)}.`,
+    changeEmptyKnown: false,
     delegation: {
-      pctText: known ? `${pct}%` : "no figure yet", pctKnown: known, pctFloor: known && missing > 0, pct,
-      ...nextObservedTrend(intervals, generated),
-      tpsText: "Retained history does not publish token rates",
-      tpsKnown: false,
-      humanText: records.length ? `${human} observed human turns` : "Human turns not observed",
-      humanKnown: records.length > 0,
-      windowText: window || "No retained observation window published",
-      windowKnown: Boolean(window),
-      noteText: note,
+      pctText: known ? `${pct}%` : "no figure yet", pctKnown: known, pctFloor: false, pct,
+      ...nextObservedPair("trend", trend == null ? "" : `${trend > 0 ? "+" : ""}${trend}`,
+        "Two complete six-hour delegation readings are not available"),
+      trendDelta: trend,
+      tpsText: metric.ratePerMin == null ? "no token-rate figure" :
+        `${metric.rateFloor ? "≥" : ""}${Math.round(metric.ratePerMin).toLocaleString("en-US")} tok/m while delegated`,
+      tpsKnown: metric.ratePerMin != null,
+      humanText: `${metric.humanTurns} human ${metric.humanTurns === 1 ? "turn" : "turns"}`,
+      humanKnown: true,
+      windowText: label, windowKnown: true,
+      noteText: known ? "Measured over observed working and needs-input intervals." +
+        (metric.rateFloor && metric.ratePerMin != null ?
+          " ≥ because some sessions or intervals have no token-rate reading." : "") :
+        "Waiting on one complete token-rate window.",
       noteKnown: known,
     },
   };
@@ -238,17 +160,18 @@ function nextObservedGoal(source){
   return goals.length ? {text: goals.map(workflow => workflow.goal).join("\n"), src: "Spacedock · workflow goal"} : false;
 }
 
-function nextObservedProject(key, sessions, sources, payload, risky){
-  const needs = sessions.filter(session => session.isNeeds);
+function nextObservedProject(key, sessions, sources, evidence, risky){
+  const needs = sessions.filter(session => session.isNeeds || session.askKnown);
+  const nativeNeeds = sessions.filter(session => session.isNeeds).length;
   const working = sessions.filter(session => session.isWorking);
   const ended = sessions.filter(session => session.isEnded);
   const quiet = sessions.filter(session => session.isQuiet);
   const counts = [`${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`];
   if(working.length) counts.push(`${working.length} working`);
-  if(needs.length) counts.push(`${needs.length} waiting on you`);
+  if(nativeNeeds) counts.push(`${nativeNeeds} waiting on you`);
   if(ended.length) counts.push(`${ended.length} ended`);
   if(quiet.length) counts.push(`${quiet.length} quiet`);
-  const other = sessions.length - working.length - needs.length - ended.length - quiet.length;
+  const other = sessions.length - working.length - nativeNeeds - ended.length - quiet.length;
   if(other) counts.push(`${other} in no counted state`);
   const goals = sources.map(source => ({source, goal: nextObservedGoal(source)})).filter(row => row.goal);
   goals.sort((a, b) => (nextNumber(b.source.last_activity) || 0) - (nextNumber(a.source.last_activity) || 0) ||
@@ -261,10 +184,10 @@ function nextObservedProject(key, sessions, sources, payload, risky){
     ...nextObservedPair("goal", goal && goal.text, "No assignment or workflow goal published"),
     goalSrcText: goal ? goal.src : "Goal source not published",
     goalSrcKnown: Boolean(goal),
-    goalGapText: `${sessions.length - goals.length} of ${sessions.length} sessions publish no goal.`,
+    goalGapText: `${sessions.length - goals.length} of ${sessions.length} ${sessions.length === 1 ? "session publishes" : "sessions publish"} no goal.`,
     goalGapKnown: true,
     sessions, needs, working, ended, risky,
-    ...nextObservedHistory(payload, sessions),
+    ...nextObservedHistory(key, evidence),
     tone: needs.length || sessions.some(session => session.askKnown) ? "want" :
       (risky.some(session => session.tone === "bad") ? "bad" :
         (risky.length ? "want" : (sessions.some(session => session.tone === "ok") ? "ok" : "unknown"))),
@@ -355,9 +278,10 @@ function nextObservedLaneOrder(sources, sessions){
   return [...gates, ...working, ...idle, ...other].map(source => bySource.get(source));
 }
 
-function nextObserved(payload){
+function nextObserved(payload, evidence){
   payload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const sources = nextPayloadSessions(payload);
+  evidence = evidence || nextWorkstreamPayloadEvidence(payload);
   const harnesses = nextObservedRecords(payload.harnesses);
   const byHarness = new Map(harnesses.map(row => [String(row.key || ""), row]));
   const groups = new Map();
@@ -381,6 +305,8 @@ function nextObserved(payload){
     groups.get(nextObservedLabel(source)).length));
   const risks = [];
   sessions.forEach((session, index) => {
+    // A waiting session has one primary category; its risk evidence stays on the session.
+    if(session.isNeeds || session.askKnown) return;
     const source = sources[index];
     const finished = nextNumber(source.finished_at) > 0;
     const attributed = !session.isEnded && ((finished && (session.isWorking || source.active === true)) ||
@@ -398,7 +324,7 @@ function nextObserved(payload){
   const riskKeys = new Set(risks.map(nextSessionKey));
   const projects = [...groups].map(([key, group]) => {
     const members = sessions.filter(session => session.project === key);
-    return nextObservedProject(key, members, group, payload, members.filter(session => riskKeys.has(nextSessionKey(session))));
+    return nextObservedProject(key, members, group, evidence, members.filter(session => riskKeys.has(nextSessionKey(session))));
   });
   const rank = project => project.needs.length ? 0 : (project.risky.length ? 1 : (project.working.length ? 2 : 3));
   projects.sort((a, b) => rank(a) - rank(b) || nextObservedCompare(a.key, b.key));
@@ -445,12 +371,12 @@ function nextObserved(payload){
   const counted = otherWords.reduce((sum, word) => sum + word[1], 0);
   if(counted < other.length) otherWords.push(["in no counted state", other.length - counted]);
   const coverage = {
-    observed: `${sessions.length - other.length} of ${totals.sessions} sessions carry a subject: ` +
+    observed: `${sessions.length - other.length} of ${totals.sessions} ${totals.sessions === 1 ? "session carries" : "sessions carry"} a subject: ` +
       `${needs.length} waiting on you · ${atRisk.length} at risk · ${close.length} to close the loop.`,
     quiet: `The other ${other.length}: ${otherWords.filter(word => word[1]).map(word => `${word[1]} ${word[0]}`).join(" · ") || "none"}; ` +
       `of these, ${partial} partially read.`,
-    gates: `${totals.reportsBlock} of ${totals.sessions} sessions report block state · ` +
-      `${totals.sessions - totals.reportsBlock} unknown · ends observed on ${totals.ended} sessions`,
+    gates: `${totals.reportsBlock} of ${totals.sessions} ${totals.sessions === 1 ? "session reports" : "sessions report"} block state · ` +
+      `${totals.sessions - totals.reportsBlock} unknown · ends observed on ${totals.ended} ${totals.ended === 1 ? "session" : "sessions"}`,
     rows: harnesses.map(row => ({key: String(row.key || ""), label: nextObservedString(row.label) || String(row.key || "Harness not published"),
       sessions: sessions.filter(session => session.harness === row.key).length,
       ...nextObservedPair("block", !row.error && row.reports_needs_input === true ?
@@ -468,10 +394,10 @@ function nextObserved(payload){
     active, history, totals, coverage, risks, boardRisks,
     counters: [counter("ACTIVE NOW", active.length, `${totals.sessions} recently observed`),
       counter("WORKING", sessions.filter(session => session.isWorking).length, `${needs.length} waiting on you`),
-      counter("EXACT REQUESTS", totals.exactRequests, `${totals.exactRequests} of ${totals.sessions} sessions carry an exact request`),
-      counter("REPORTED BLOCKS", totals.reportsBlock, `${totals.reportsBlock} of ${totals.sessions} sessions report block state`)],
+      counter("EXACT REQUESTS", totals.exactRequests, `${totals.exactRequests} of ${totals.sessions} ${totals.sessions === 1 ? "session carries" : "sessions carry"} an exact request`),
+      counter("REPORTED BLOCKS", totals.reportsBlock, `${totals.reportsBlock} of ${totals.sessions} ${totals.sessions === 1 ? "session reports" : "sessions report"} block state`)],
     windows: capacity.windows, sublimits: capacity.sublimits,
-    ...nextObservedPair("capacityEmpty", "", "No quota window published"),
+    ...nextObservedPair("capacityEmpty", "", "No quota windows published."),
     ...nextObservedPair("capacityEmptyNote", "", "No vendor window has been read for this harness."),
     open: [
       ["C4", "Stated goals across sessions", "Goals shown are whatever a harness publishes. Nothing normalises them yet."],

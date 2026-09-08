@@ -17,7 +17,9 @@ const railProject = {
   }
 };
 const railPayload = {generated: 10000, sessions: [], usage: []};
-const railModel = {projects: [railProject], windows: []};
+const railModel = {sessions: [], totals: {running: 0, subagents: 0}, projects: [railProject], windows: [],
+  capacityEmptyText: "No quota windows published.",
+  capacityEmptyNoteText: "No vendor window has been read for this harness."};
 // A owns the derivation module; this fixture supplies its frozen view boundary.
 nextObserved = () => railModel;
 nextData = railPayload;
@@ -146,7 +148,7 @@ __fetchImpl = async () => ({ok: true, json: async () => __delegationPayload});
         # second entry when the panel moved into the rail, and an exact-attribute
         # regex silently stopped matching -- which failed all eighteen assertions
         # below with "unexpectedly None" and named neither the panel nor the cause.
-        match = re.search(r'<section [^>]*data-next-delegation\b[\s\S]*?</section>', html)
+        match = re.search(r"<section [^>]*data-next-delegation\b[\s\S]*?</section>", html)
         self.assertIsNotNone(match)
         return match.group(0) if match else ""
 
@@ -173,7 +175,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("50%", block)
-        self.assertIn("of the time ran without you", block)
+        self.assertIn("of observed time<br>ran without you", block)
         self.assertIn("30 tok/m while delegated", block)
         self.assertIn("2 human turns", block)
         self.assertIn("<progress", block)
@@ -276,8 +278,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("no figure yet", block)
-        self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
-        self.assertIsNone(re.search(r"\d", block))
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">since this tab opened</span>', block)
+        self.assertIsNone(re.search(r"\d", re.sub(r"<[^>]+>", "", block)))
         self.assertNotIn("%", block)
         self.assertNotIn("<progress", block)
         self.assertNotIn("tok/m", block)
@@ -542,7 +545,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
         block = self.delegation_block(html)
 
-        self.assertIn("DELEGATION · LAST 12M", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 12m</span>', block)
         self.assertNotIn("LAST 6H", block)
 
     def test_no_trend_until_two_complete_six_hour_windows_exist(self) -> None:
@@ -556,7 +560,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
         block = self.delegation_block(html)
 
-        self.assertIn("DELEGATION · LAST 6H", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 6h</span>', block)
         self.assertNotIn("data-next-delegation-trend", block)
 
     def test_an_absence_gap_withholds_a_twelve_hour_trend(self) -> None:
@@ -657,7 +662,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         # store's own window it is a figure.
         self.assertNotIn("no figure yet", block)
         self.assertIn("67%", block)
-        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 3d</span>', block)
         self.assertIn("1 human turn", block)
 
     def test_without_a_stored_history_the_same_tab_still_withholds(self) -> None:
@@ -679,7 +685,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("no figure yet", block)
-        self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">since this tab opened</span>', block)
 
     def test_a_withheld_figure_over_a_seeded_window_names_that_window(self) -> None:
         # The third hardcoded caption. A seeded window with nothing countable in
@@ -708,7 +715,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         block = self.delegation_block(html)
 
         self.assertIn("no figure yet", block)
-        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertIn("<h2>DELEGATION</h2>", block)
+        self.assertIn('class="next-rail-meta">last 3d</span>', block)
         self.assertNotIn("SINCE THIS TAB OPENED", block)
 
     def test_a_session_left_working_in_its_last_record_is_not_counted_to_now(self) -> None:

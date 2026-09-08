@@ -171,21 +171,21 @@ function nextProjectChanges(project){
     `<button type="button" data-next-workstream-toggle data-next-focus="${esc(route)}:changes" ` +
     `aria-expanded="${!collapsed}" aria-controls="next-project-changes">` +
     `<span>${collapsed ? "▸" : "▾"} OBSERVED STATE CHANGES</span>` +
-    `<small>${esc(project.changeNoteText)}</small></button></header>`;
+    `<small>${esc(collapsed ? project.changeNoteText.split(" · ")[0] : project.changeNoteText)}</small></button></header>`;
   const rows = project.changes.map(change =>
-    '<li class="next-project-change">' +
-    `<time>${esc(nextWorkstreamClock(change.at))}</time>` +
+    `<li class="next-project-change" data-next-workstream-event="${esc(change.kind)}">` +
+    `<time>${esc(change.at)}</time>` +
     `<span class="next-project-change-dot${change.filled ? " next-project-change-dot--unattended" : ""}" ` +
     `role="img" aria-label="${change.filled ? "unattended" : "attended"}"></span>` +
     `<span>${esc(change.label)}</span><span class="next-project-change-harness">${esc(change.harness)}</span></li>`,
   ).join("");
   const body = collapsed ? "" : '<div id="next-project-changes">' + (rows ? `<ol>${rows}</ol>` :
-    `<p class="next-workstream-empty">${esc(project.changeNoteText)}</p>`) + '</div>';
+    `<p class="next-workstream-empty">${esc(project.changeEmptyText)}</p>`) + '</div>';
   return `<section class="next-workstream"${collapsed ? " data-next-workstream-collapsed" : ""}>${header}${body}</section>`;
 }
 
 function nextProjectView(project){
-  const model = nextObserved(nextData);
+  const model = nextCurrentObserved();
   const observed = model.projects.find(candidate => candidate.key === project);
   if(!observed){
     return '<div class="next-project-detail-empty"><p>Not present in the current payload.</p>' +

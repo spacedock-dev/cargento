@@ -17,7 +17,7 @@ function nextProjectSessionLine(session){
   return '<button type="button" class="next-project-session" data-next-project-session ' +
     `data-next-harness="${esc(session.harness)}" data-next-session="${esc(session.sid)}" ` +
     `data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
-    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isWorking ? " next-project-dot--working" : ""}" ` +
+    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isLive ? " next-project-dot--working" : ""}" ` +
     `role="img" aria-label="${esc(session.state)}"></span>` +
     `<span class="next-project-session-harness">${esc(session.harness)}</span>` +
     nextProjectValue(session.titleText, session.titleKnown, "next-project-session-title") +
@@ -53,7 +53,7 @@ function nextProjectGroup(kind, title, description, items, renderer, empty){
 }
 
 function nextProjectsView(model){
-  const observed = model.activeProjects ? model : nextObserved(nextData);
+  const observed = model.activeProjects ? model : nextCurrentObserved();
   return '<p class="next-projects-note">sessions grouped by the label their harness publishes</p>' +
     nextProjectGroup(
       "active", "Active", "blocked on you ranks first · only source-backed sessions contribute claims",

@@ -160,7 +160,7 @@ function nextProjectGuardrailAdd(project, state){
 function nextProjectGuardrails(project, state, includeSteer = false){
   return '<section class="next-control next-guardrails next-rail-panel" data-next-guardrails ' +
     'data-next-rail-panel="tripwires">' +
-    nextRailHeader("TRIPWIRES", "local only · nothing enforces these", "amber") +
+    nextRailHeader("TRIPWIRES", "local only · nothing enforces these", "amber", true) +
     `<div class="next-guardrail-rows">${nextProjectGuardrailRows(project, state)}</div>` +
     nextProjectGuardrailAdd(project, state) +
     '<p class="next-rail-reason">C1 would let an observer act on these. Until it ships they are ' +

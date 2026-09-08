@@ -104,7 +104,7 @@ function nextSessionFacts(observed, asks){
 }
 
 function nextSessionTitle(session){
-  return nextObserved(nextData).sessions.find(row =>
+  return nextCurrentObserved().sessions.find(row =>
     nextSessionKey(row) === nextSessionKey(session) && row.project === String(session.project == null ? "" : session.project)).titleText;
 }
 
@@ -338,7 +338,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
       '<a href="#n=sessions" data-next-route="sessions">View all sessions</a></section>';
   }
   nextPruneSessionAnswerNotes();
-  const observed = nextObserved(nextData).sessions.find(row =>
+  const observed = nextCurrentObserved().sessions.find(row =>
     nextSessionKey(row) === nextSessionKey(session) && row.project === String(session.project == null ? "" : session.project));
   const asks = nextSessionAsks(session);
   const blocked = observed.isNeeds ? " next-session-detail--blocked" : "";

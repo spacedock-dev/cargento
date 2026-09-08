@@ -38,7 +38,7 @@ function nextProjectActivityCard(session, project, source){
   return `<button type="button" class="next-activity-card next-project-tone--${esc(session.tone)}" ` +
     `data-next-going-on="${esc(session.sid)}" data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
     '<span class="next-activity-title">' +
-    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isWorking ? " next-project-dot--working" : ""}" ` +
+    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isLive ? " next-project-dot--working" : ""}" ` +
     `role="img" aria-label="${esc(session.state)}"></span>` +
     nextProjectValue(session.titleText, session.titleKnown) + '</span>' + instruction +
     `<span class="next-activity-now"><span class="next-activity-harness">${esc(session.harness)} · </span>` +
@@ -51,7 +51,7 @@ function nextProjectActivityCard(session, project, source){
 }
 
 function nextProjectGoingOn(context){
-  const cards = context.project.sessions.filter(session => session.isWorking || session.isNeeds).map(session => {
+  const cards = context.project.sessions.filter(session => session.isLive || session.isNeeds || session.askKnown).map(session => {
     const source = context.group.sessions.find(candidate => nextSessionKey(candidate) === nextSessionKey(session));
     return nextProjectActivityCard(session, context.project.key, source);
   }).join("");
@@ -64,7 +64,7 @@ function nextProjectEndings(context){
   const cards = context.project.ended.map(session => {
     const route = nextRouteToken({view: "session", project: context.project.key,
       harness: session.harness, session: session.sid});
-    const tone = session.outcomeGlyph === "◦" ? "want" : (session.outcomeKnown ? "bad" : "unknown");
+    const tone = session.tone;
     return `<button type="button" class="next-project-ending next-project-tone--${tone}" ` +
       `data-next-outcome="${esc(session.sid)}" data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
       '<span class="next-project-ending-title">' +

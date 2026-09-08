@@ -194,9 +194,9 @@ function nextProjectDelegation(context){
     `<span data-next-delegation-turns>${esc(turns)}</span></div></section>`;
 }
 
-function nextRailHeader(label, note, tone = ""){
+function nextRailHeader(label, note, tone = "", sentence = false){
   return `<header class="next-rail-header"><h2>${esc(label)}</h2>` +
-    `<span class="next-rail-meta${tone ? ` next-rail-meta--${tone}` : ""}">${esc(note)}</span></header>`;
+    `<span class="next-rail-meta${sentence ? " next-rail-meta--sentence" : ""}${tone ? ` next-rail-meta--${tone}` : ""}">${esc(note)}</span></header>`;
 }
 
 function nextRailDelegation(project){
@@ -211,10 +211,11 @@ function nextRailDelegation(project){
     const figure = `${metric.pctFloor ? "≥" : ""}${metric.pctText}`;
     body = '<div class="next-delegation-figure">' +
       `<strong data-next-delegation-percent>${esc(figure)}</strong>` +
+      nextDelegationTrendMarkup(metric.trendKnown ? metric.trendDelta : null) +
       '<span class="next-delegation-caption">of observed time<br>ran without you</span></div>' +
       `<progress max="100" value="${esc(metric.pct)}" aria-label="${esc(figure)} delegated"></progress>` +
       '<div class="next-delegation-metrics">' +
-      `<span data-next-delegation-rate>${esc(metric.tpsText)}</span>` +
+      `<span ${metric.tpsKnown ? "data-next-delegation-rate" : 'class="next-rail-reason" data-next-delegation-rate-withheld'}>${esc(metric.tpsText)}</span>` +
       `<span data-next-delegation-turns>${esc(metric.humanText)}</span></div>${note}`;
   }
   return '<section class="next-delegation next-rail-panel" data-next-delegation ' +
@@ -233,7 +234,7 @@ function nextRailWaiting(project){
       '<div class="next-rail-wait-heading">' +
       `<a href="${esc(fragment)}" data-next-route="${esc(fragment.slice(3))}" ` +
       `class="${session.titleKnown ? "" : "next-rail-reason"}">${esc(session.titleText)}</a>` +
-      `<span class="next-rail-wait-duration">${esc(session.waitedText)}</span></div>` +
+      `<span class="${session.waitedKnown ? "next-rail-wait-duration" : "next-rail-reason"}">${esc(session.waitedText)}</span></div>` +
       question + '<div class="next-rail-wait-controls">' +
       nextSessionRaiseControl(session) +
       (nextSessionResumeControl(session) || nextSessionCopyControl(session)) + '</div></article>';
@@ -248,7 +249,7 @@ function nextRailCapacityWindow(row, window){
   const usedInk = row.pct >= 80 ? "amber" : (row.pct >= 50 ? "secondary" : "primary");
   const paceInk = !window.paceKnown ? "next-rail-reason" : (hot ? "next-rail-pace--hot" : "");
   const ink = row.paceRatio == null ? "unknown" :
-    (hot && row.pct < 40 ? "clay" : (row.pct >= 80 ? "amber" : "accent"));
+    (row.paceRatio >= 1.5 ? "clay" : (row.paceRatio >= 1 ? "amber" : "accent"));
   const tick = row.elapsed == null ? "" :
     `<span class="next-rail-capacity-tick" style="left:${(row.elapsed * 100).toFixed(2)}%"></span>`;
   const clockNote = window.clockKnown ? "" :
@@ -271,8 +272,10 @@ function nextRailCapacity(payload, model){
   const windows = new Map(model.windows.map(window => [window.key, window]));
   const rows = nextCapacityRows(payload);
   return '<section class="next-rail-panel" data-next-rail-panel="capacity">' +
-    nextRailHeader("CAPACITY", "each window on its own clock") +
-    rows.map(row => nextRailCapacityWindow(row, windows.get(`${row.harness}:${row.slot}`))).join("") +
+    nextRailHeader("CAPACITY", "each window on its own clock", "", true) +
+    (rows.length ? rows.map(row => nextRailCapacityWindow(row, windows.get(`${row.harness}:${row.slot}`))).join("") :
+      `<p class="next-rail-reason">${esc(model.capacityEmptyText)}</p>` +
+      `<p class="next-rail-reason">${esc(model.capacityEmptyNoteText)}</p>`) +
     nextUsageDisclosure(payload) + nextUsageSwitch(payload) + '</section>';
 }
 
@@ -280,7 +283,7 @@ function nextRailCapacity(payload, model){
 // accepted so placement does not require a second context shape at integration.
 function nextProjectRail(context){
   const payload = context.payload || nextData;
-  const model = context.model || nextObserved(payload);
+  const model = context.model || nextCurrentObserved();
   const project = context.project || model.projects.find(item => item.key === context.group.label);
   const state = nextControlsProjectState(project.key);
   return '<aside class="next-project-detail-rail" data-next-project-rail>' +

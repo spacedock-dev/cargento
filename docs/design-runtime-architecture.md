@@ -87,8 +87,9 @@ mass rename; they do not indicate a second bundle.
 |---|---|
 | `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, validation and data-URL embedding of packaged fonts, and byte-preserving assembly of the one canonical page. |
 | `web/index.html` | The two-slot shell for canonical styles and script. |
-| `web/styles.css` | The light-root palette, system dark override, responsive layout, live-dot pulse, and reduced-motion override. |
+| `web/styles.css` | The single dark palette, responsive layout, live-dot pulse, and reduced-motion override. |
 | `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, the fragment route grammar, the three row controls (copy the session id, copy the re-entry command, raise the terminal), and the expiring map that lets a control's state outlive the render that replaces it. It is first in `APP_PARTS`. |
+| `web/next-observed.js` | The v2 session collection, lanes, counts, project groups, coverage and presentation reasons; wraps the shipped workstream and delegation measurements. |
 | `web/next-attention.js` | Attention evidence, stable ordering, coverage gaps, risk groups, and answerable questions. |
 | `web/next-notify.js` | Browser notification permission, the one-layer check that stands the page down where the server has a native backend (`native_notify` in the payload), the per-session and per-ask dedupe that stops a standing gate re-notifying on every revision, and the permission control. |
 | `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh and history-reset notices, delegated controls and the sweep that writes each answer onto the controls now in the document rather than only the node the click found, the per-tab sets that let an expanded section and an opened disclosure survive the render that replaces them, document title, and keyboard shortcuts. |
@@ -310,3 +311,34 @@ Three layers, described in `CONTRIBUTING.md`. Two habits specific to this archit
   gaps in behaviours the plan explicitly required preserved, including both popup cooldown floors,
   the clearing of `store_errors` before a diagnosis, and whether the registry's Claude row notified
   through the notifier it was handed. Each had passed a full green suite.
+
+## The v2 browser derivation seam
+
+`renderNext` builds one `nextObserved` model and shares it through `nextCurrentObserved` for
+that render. The header, counters, session lanes, projects and Attention coverage all count this
+model's session collection. Working means collector state without an observed end; running also
+requires the event-published `active` flag. Subagents in the header are observed, including quiet
+ones. A session has one primary Attention category: waiting on the reader, then risk, then closure.
+Its secondary evidence stays on the session even when waiting takes precedence. An exact request
+keeps its project active and in the waiting rail even if collector state has gone idle; the count
+line still describes the published state, so its state buckets do not count that session twice.
+
+The live call is `nextObserved(payload, nextWorkstreamSnapshot())`. The optional second argument
+is explicit evidence from the bounded tab ledger. Without it, `nextObserved(payload)` replays the
+payload history through `nextWorkstreamReplay` into a private buffer. Both paths call
+`nextWorkstreamProjectWindow`, `nextDelegationMetric` and `nextDelegationTrend`; the model wraps
+those measurements in text and evidence flags. A payload cannot contain the observations this tab
+retained between revisions, so demanding payload-only input for the live board would discard a
+shipped measurement. The payload-only path is deterministic and neither path mutates the ledger.
+The delegation percentage describes the observed working-or-gated intervals, without claiming that
+missing intervals were delegated. Only a partly measured token rate receives the lower-bound sign.
+
+`nextAttentionModel` remains a second pass on each accepted payload. It owns the legacy subject
+identities, exact-request options and replies, secondary tool and termination details, upcoming
+project actions, quota sub-limit subjects, coverage disclosure details, accessibility announcements,
+and focus fallback targets. The v2 Attention renderer uses those subjects for controls and details
+and omits subjects already represented by its v2 risk rows. Session detail and project plan helpers
+also still read published source records for surfaces the v2 interface does not carry, including
+Spacedock, instruction provenance, source coverage, task totals and controls. This is a retained
+adapter boundary, not a completed migration. Removing the pass requires moving those capabilities
+and their behavioral checks together; deleting it now would remove supported interactions.

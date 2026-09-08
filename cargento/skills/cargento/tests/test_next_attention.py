@@ -1963,8 +1963,10 @@ console.log(JSON.stringify({html: __els.app.innerHTML}));
         assert isinstance(out, dict)
         self.assertIn("2 sessions", out["html"])
         self.assertIn("2 working", out["html"])
-        # The collision is one subject over two sessions. Say so.
-        self.assertIn("1 subject at risk", out["html"])
+        # The project names its measured shared-label scope; board risk stays separate.
+        self.assertIn(
+            "2 sessions share this display label; shared location is not established", out["html"]
+        )
         self.assertNotIn(">1 at risk<", out["html"])
 
     def test_a_section_the_reader_expanded_is_still_expanded_after_a_render(self) -> None:
@@ -2396,7 +2398,7 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         html = self.render([self.row(ended_at=9_400), self.row(sid="quiet-1")])
         visible = html.split('<details class="next-attention-coverage-details"')[0]
 
-        self.assertIn("ends observed on 1 sessions", visible)
+        self.assertIn("ends observed on 1 session", visible)
         self.assertNotIn("undefined", visible)
 
     def test_the_visible_coverage_line_counts_no_end_as_none_not_undefined(self) -> None:
@@ -2443,7 +2445,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
     def test_a_healthy_board_names_its_session_count_and_each_empty_queue(self) -> None:
         brief = self.brief(self.ONE_IDLE)
-        self.assertIn("0 of 1 sessions carry a subject", brief)
+        self.assertIn("0 of 1 session carries a subject", brief)
         self.assertIn("0 waiting on you · 0 at risk · 0 to close the loop", brief)
         self.assertIn("The other 1: 1 quiet", brief)
 
@@ -2502,7 +2504,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
 
         self.assertIn(
-            "1 of 1 sessions carry a subject: 1 waiting on you · 0 at risk · 0 to close the loop",
+            "1 of 1 session carries a subject: 1 waiting on you · 0 at risk · 0 to close the loop",
             brief,
         )
 

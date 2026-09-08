@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import unittest
 
@@ -296,7 +297,12 @@ const localStorage = {
 
         self.assertIn("data-next-workstream-collapsed", out["afterClick"])
         self.assertIn("0 of 0 unattended", out["afterClick"])
-        self.assertNotIn("since this tab opened", out["afterClick"])
+        collapsed = re.search(
+            r'<section class="next-workstream"[\s\S]*?</section>', out["afterClick"]
+        )
+        self.assertIsNotNone(collapsed)
+        assert collapsed is not None
+        self.assertNotIn("since this tab opened", collapsed[0])
         self.assertNotIn("data-next-workstream-collapsed", out["afterKeyboard"])
         self.assertIn("0 of 0 unattended", out["afterKeyboard"])
         self.assertIn("since this tab opened", out["afterKeyboard"])

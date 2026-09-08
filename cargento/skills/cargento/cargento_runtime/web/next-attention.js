@@ -1082,7 +1082,7 @@ function nextAttentionModelQuotaHtml(subject, index, model){
 }
 
 function nextAttentionView(model, expandedSections = new Set(), openDisclosures = new Set()){
-  const observed = nextObserved(nextData);
+  const observed = nextCurrentObserved();
   const empty = observed.sessions.length ? "" : `<p class="next-attention-empty">No sessions in this ` +
     `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`;
   const riskNote = `${observed.risks.length} of ${observed.sessions.length} sessions · ` +

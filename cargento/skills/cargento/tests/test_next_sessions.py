@@ -341,7 +341,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
         row = self.session_row(html, "state-absent")
         self.assertIn("State was not published", row)
-        self.assertIn("Activity not published", row)
+        self.assertIn("No state published", row)
         self.assertNotIn(">ENDED</span>", row)
         self.assertNotIn(">QUIET</span>", row)
         self.assertNotIn("running", row.lower())

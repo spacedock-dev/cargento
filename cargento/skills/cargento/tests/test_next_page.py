@@ -493,59 +493,59 @@ class NextPageAssetContractTest(unittest.TestCase):
         expected_parts = {
             "next-boot.js": (
                 21_408,
-                "de523a2adbc7cfb5ff949cce205c71ee0c2ec0b9eaba2329722fa92f9b6220f6",
+                "d525c01f9be1203608cb6b64f264b35a5404110a87b91986925f9e7f1b8d7b1c",
             ),
             "next-observed.js": (
-                29_343,
-                "aa9f0a79a173e1882591b07e207c2ca6353a9621b246b2ef902e1f2eec9818bc",
+                26_182,
+                "675c23fa41d0408804d5d9ad42022cf9241dd88e33bcbb7e8a286cf509b94e95",
             ),
             "next-attention.js": (
-                56_349,
-                "26fae1257de287a75f6323683f9fba494a7f933e7523cc9798749a19ff400cb7",
+                56_348,
+                "2ca8f16c43783c74d21e22aae8adf3099187bdd2a67754ba5e918060c0a75184",
             ),
             "next-notify.js": (
                 6_457,
                 "19430b5fbe080dc13f43ee5c714a1da453dd0ff4b82f1abaeecce105cb373a06",
             ),
             "next-chrome.js": (
-                35_254,
-                "90c8660840fe27a16a04c42d019721e90ca3647805c9de6349f163d6080e8bf0",
+                34_735,
+                "04d5c8453ef4a8dd8900fc2e17c8bf4a8e08758af40ae38bccb4cae5eb954d42",
             ),
             "next-capacity.js": (
-                32_119,
-                "0ebba03f8db0a7b6fecc9e9fe5dbe386b357cbf9e5df72db3ba1347b69c58cc5",
+                32_192,
+                "fccfae64553820ba7da58439694808fdae9275bba00f4d85119db58d36d0ef6b",
             ),
             "next-sessions.js": (
-                19_614,
-                "8364cae466ff36c3fee55a3c4c418319c861776b4c4c49bd8179eb421d806f51",
+                19_890,
+                "38f4c8909f67c1d373124888278340ff11674cda914e626755e7c0d7ff9b63e0",
             ),
             "next-projects.js": (
-                4_190,
-                "9c424aba775646aab3d23f9f5db24d7e6d2e03867def1e5c36a3cdd89e0f79c8",
+                4_186,
+                "0e270a7cecb33368ed71876fae7493104fe29027b695e100e6f24b5527820e0b",
             ),
             "next-project.js": (
-                10_226,
-                "70f06a9423a7b84e33510762b4d4dd6b33d3d4ba0ffae2705da9f531be5050cc",
+                10_308,
+                "d953c248f9b18385e3931b852f1b0c0ceda2411597e9e1ea2ac20a616d1f4735",
             ),
             "next-activity.js": (
-                6_538,
-                "cbd14202e35be369345eae3dd456f27af9d771764885069d7eaebd5f8742b86b",
+                6_480,
+                "c8d0a6269a7a3cfffc4538b0f3188db12678e261d1976b065948c62b986939ee",
             ),
             "next-session.js": (
-                20_191,
-                "4e726f8d55acb7cd987d2d60f6bea2661aa1ece7875c295390c348ad9d6dfcac",
+                20_189,
+                "74458dc9744c6718f964b0db1b7befcee870d6fb58bb8837f7ece6a9af1271fb",
             ),
             "next-workstream.js": (
-                17_525,
-                "1ce464621be77779618494f9826c4486fc2c058257818865037eb1c6d15ee9d4",
+                18_659,
+                "9680ee01d19296e87cf9b35230a51a7e98ddc764c5bfb80f0e18e7723ece8a04",
             ),
             "next-delegation.js": (
-                14_081,
-                "6e1da59ea5180e61c77e379ff306aa37d552115d207ab454ca47cec65c3f9888",
+                14_544,
+                "d4288ca15846749f0441184f315df69cd2e8af016d0f19442c9d36cf99140876",
             ),
             "next-controls.js": (
-                11_557,
-                "e2284e5c514e828246ada59c8c49c3cebb69f5741ca4232dde5e9a6d5f212d13",
+                11_563,
+                "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-render.js": (
                 3_028,
@@ -564,16 +564,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(61_094, len(styles))
+        self.assertEqual(61_466, len(styles))
         self.assertEqual(
-            "36e75144e0fa6dd78fc4da82204b9e85171747cdd1527053d939a5da55481f3f",
+            "78ad56c5f200987c0b78625cf0c271090fa3e48eeb04e52155c966ef1abc9a79",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(478_793, len(assembled))
+        self.assertEqual(477_454, len(assembled))
         self.assertEqual(
-            "01653eb6348f6226eb1cc4f5750063affd263fc87b1529b93b9598fc56f6c881",
+            "8518ab3ee2729fa3ded066447edced48c81aee65d43256601fc09ee0a878c5e5",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -630,7 +630,7 @@ console.log(JSON.stringify({
         )
         self.assertEqual([None, None, "0s", "5m"], out["since"])
 
-    def test_the_default_bundle_mounts_primary_session_navigation(self) -> None:
+    def test_the_default_bundle_mounts_primary_project_navigation(self) -> None:
         out = self._run_page_js(
             "console.log(JSON.stringify(__els.app.innerHTML));",
             '__els.app = {innerHTML: ""};\n',
@@ -642,8 +642,8 @@ console.log(JSON.stringify({
         # (DRC-4421). Kept as a literal rather than loosened: it is the mounted
         # bundle's own markup, and the order is part of what a reader learns.
         self.assertIn(
-            '<nav aria-label="Primary"><a href="#n=projects">Projects</a>'
-            '<a href="#n=sessions" aria-current="page">Sessions</a>'
+            '<nav aria-label="Primary"><a href="#n=projects" aria-current="page">Projects</a>'
+            '<a href="#n=sessions">Sessions</a>'
             '<a href="#n=attention">Attention</a></nav>',
             out,
         )

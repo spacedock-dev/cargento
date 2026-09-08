@@ -149,8 +149,8 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
         self.assertEqual(["dirty", "loop", "stop-dirty"], out["risks"])
         self.assertEqual(["collision"] * 4, out["board"])
         self.assertEqual((4, 9), (out["active"], out["history"]))
-        self.assertEqual(["alpha", "beta"], out["activeProjects"])
-        self.assertEqual(["zeta", "delta", "epsilon", "gamma", "theta"], out["rest"])
+        self.assertEqual(["alpha", "epsilon", "beta"], out["activeProjects"])
+        self.assertEqual(["zeta", "delta", "gamma", "theta"], out["rest"])
 
     def test_every_text_has_a_nonempty_value_and_known_boolean(self) -> None:
         out = self._run_page_js(
@@ -222,7 +222,7 @@ console.log(JSON.stringify({unchanged, deterministic: JSON.stringify(a) === JSON
         self.assertTrue(out["deterministic"])
         self.assertTrue(out["shared"])
         self.assertEqual(
-            ["alpha", "beta", "zeta", "delta", "epsilon", "gamma", "theta"], out["order"]
+            ["alpha", "epsilon", "beta", "zeta", "delta", "gamma", "theta"], out["order"]
         )
         self.assertEqual(out["order"], out["reverse"])
 
@@ -304,8 +304,11 @@ console.log(JSON.stringify({delegation: p.delegation, changes: p.changes,
         assert isinstance(out, dict)
         self.assertEqual(83, out["delegation"]["pct"])
         self.assertTrue(out["delegation"]["pctKnown"])
-        self.assertTrue(out["delegation"]["pctFloor"])
-        self.assertIn("2 sessions have no closed working interval", out["delegation"]["noteText"])
+        self.assertFalse(out["delegation"]["pctFloor"])
+        self.assertEqual(
+            "Measured over observed working and needs-input intervals.",
+            out["delegation"]["noteText"],
+        )
         self.assertEqual(3, len(out["changes"]))
         self.assertEqual("1 of 3 unattended · last 2h 30m", out["note"])
         self.assertEqual("Build the parser", out["goal"])
@@ -331,7 +334,7 @@ console.log(JSON.stringify({
         )
         assert isinstance(out, dict)
         self.assertEqual([True] * 5, out["measured"])
-        self.assertEqual([False] * 5, out["absent"])
+        self.assertEqual([False, True, True, True, False], out["absent"])
         self.assertFalse(out["delta"]["pctKnown"])
         self.assertIsNone(out["delta"]["pct"])
         self.assertEqual("no figure yet", out["delta"]["pctText"])
@@ -490,7 +493,7 @@ console.log(JSON.stringify([empty, populated].map(m => [m.capacityEmptyText,
         self.assertEqual(
             [
                 [
-                    "No quota window published",
+                    "No quota windows published.",
                     False,
                     "No vendor window has been read for this harness.",
                     False,
@@ -532,6 +535,7 @@ console.log(JSON.stringify({legacy: nextWorkstreamWindowLabel(oldWindow),
                     "filled": True,
                     "label": "became idle",
                     "harness": "claude",
+                    "kind": "state",
                 }
             ],
             out["changes"],

@@ -71,11 +71,11 @@ console.log(JSON.stringify({{html: __els.app.innerHTML,
                 order = re.findall(r'<article[^>]*data-next-project="([^"]+)"', html)
                 self.assertEqual(
                     [
+                        "exact",
                         "gate-a",
                         "gate-b",
                         "gate-c",
                         "risk",
-                        "exact",
                         "work",
                         "ended",
                         "recent",
@@ -322,7 +322,7 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
 
         self.assertIn("NEEDS YOU · Source not identified", out["attention"])
         beta_attention = re.search(
-            r'<article class="next-attention-item"[^>]*'
+            r'<article class="next-attention-item next-attention-item--legacy"[^>]*'
             r'data-next-subject-key="session:\[&quot;&quot;,&quot;beta-work&quot;\]"[^>]*>'
             r"(.*?)</article>",
             out["attention"],
@@ -731,7 +731,7 @@ console.log(JSON.stringify({html, routes}));
             [("codex", "live"), ("claude", "second")],
             [(route["harness"], route["session"]) for route in out["routes"]],
         )
-        self.assertEqual(1, out["html"].count("next-project-dot--working"))
+        self.assertEqual(0, out["html"].count("next-project-dot--working"))
         for button in re.findall(r"<button[^>]*data-next-project-session[^>]*>", out["html"]):
             self.assertIn("data-next-focus=", button)
 
