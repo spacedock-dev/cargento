@@ -38,10 +38,11 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 ## Dashboard views
 
-The dashboard opens on **Sessions**, a command surface with active work first and recent history
-below it. **Projects** groups the same sessions by working directory and opens a project detail with
-current activity, workflow evidence, delegation measurements, and browser-local guardrails. Its
-state-change rail and its delegation figure start from the local history the server kept, so both
+The dark-only dashboard opens on **Projects**, grouping sessions by the label their harness publishes.
+**Sessions** keeps active work first and recent history below it. Project detail shows
+current activity, observed session endings, workflow evidence, delegation measurements, and
+browser-local tripwires. The tripwires are saved preferences; nothing enforces them. The project's
+state-change timeline and its delegation figure start from the local history the server kept, so both
 survive a restart and a fresh tab instead of beginning again, and each captions itself with the
 window it actually covers. Select
 a session from either view for its bounded detail, including its exact request, tasks, subagents,
@@ -50,27 +51,28 @@ token measurements, and any answerable question attributed to that session.
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`,
 `#n=project:<encoded-project>`, or the full project, harness, and session identity for session
 detail. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
-that belonged to the retired dashboard normalize to Sessions. Open the dashboard at its bare URL;
+that belonged to the retired dashboard normalize to Projects. Open the dashboard at its bare URL;
 the retired `next` query is no longer a dashboard route.
 
-The header reports running sessions and subagents. When work needs intervention, a button counting
+The header reports event-backed running sessions and all observed subagents. When work needs intervention, a button counting
 the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
-Projects, and Sessions unless focus is in a form control or a modifier key is held. Breadcrumbs
-return from a session to its project and from a project to the overview.
+Projects, and Sessions unless focus is in a form control or Meta, Control, or Alt is held.
+`Escape` returns from a session to its project and otherwise to Projects, under the same focus and
+modifier rules. Inside a tripwire draft it cancels the draft. Breadcrumbs return through the same
+project hierarchy.
 
 MCP tools appear under the service being called rather than their wire name, for example
 `Linear · list issues`. The full recorded string remains available in the row tooltip.
 
 ## Attention
 
-Attention is a triage view, not a second copy of every session. It divides current evidence into
-**NEEDS YOU NOW**, **AT RISK**, **CLOSE THE LOOP**, and **COMING NEXT**, then closes with
-**NO PUBLISHED EXCEPTION** for every session none of those four claimed, tallied by state as moving,
-quiet, or unknown. Items retain stable ordering while their evidence is unchanged, and each section
-explains missing coverage instead of treating an unmeasured harness as an all-clear. On a board
-where none of the four has anything to report, the summary line above them says the four queues
-were checked and are empty, with a tally of what the sessions are doing, rather than counting out
-four zeros.
+Attention is a triage view. **At risk** names session evidence alongside **NEEDS YOU NOW**,
+**CLOSE THE LOOP**, and **COMING NEXT**. The opening brief counts the sessions these categories
+claim and describes the remainder as moving, quiet, ended, or without a counted state.
+**Also at risk, off the session count** holds quota pressure, shared display labels and requests
+whose session ownership is not established. Those subjects never inflate the session denominator.
+**Not on this board yet** names the capabilities no source supports. Coverage details explain
+missing observations instead of treating an unmeasured harness as an all-clear.
 
 **NEEDS YOU NOW** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that
@@ -90,13 +92,17 @@ Attention and in the exact session detail, and choosing one returns that option 
 agent. Free-form replies are not
 accepted, unanswered questions expire, and `--no-ask` disables this lane.
 
-**AT RISK** is evidence Cargento can actually support, including detected failed-tool loops,
-long-running turns, quota windows at or above 70 percent, and attribution or coverage gaps. A quiet
-row is never promoted into proof that nothing is waiting. Only Claude, Codex, Copilot, and Cursor
+**At risk** names detected failed-tool loops, long-running turns, uncommitted work and conflicting
+completion evidence. Waiting on the reader takes precedence over those categories; the session
+still carries its observed details. Quota pressure and shared labels appear in the separate board
+group. A quiet row is never promoted into proof that nothing is waiting. Only Claude, Codex, Copilot, and Cursor
 currently expose a gate signal Cargento can read; the other harnesses remain explicitly unmeasured
 for that question.
 
-**CLOSE THE LOOP** identifies sessions whose published state and freshness support that conclusion.
+**CLOSE THE LOOP** identifies observed stops and session ends after waiting and risk take
+precedence. The outcome vocabulary has six readings: stop or end, each with uncommitted work,
+clean git state, or unmeasured git state. A stop is not a session end, and neither tells Cargento
+whether you read the result, whether commits reached a remote, or why the process ended.
 **COMING NEXT** groups the strongest available next action by project. Both are advisory views of
 observed records, not commands sent to a harness.
 
@@ -131,9 +137,9 @@ stored locally. Antigravity can forward quota from its status-line payload:
 `--no-usage` disables credential-backed vendor fetching for a run whatever the page has stored; disk-read evidence remains.
 Expired, rejected, missing, or stale quota is withheld rather than rendered as zero. Claude, Codex,
 and Antigravity may publish five-hour and weekly windows, while Cursor publishes its monthly billing
-cycle. A percentage is amber from 70 percent and red from 90 percent. Model-specific Claude weekly
-limits remain separate because the tightest model allowance can stop work before the account-wide
-window does.
+cycle. Capacity bars use accent below the window's sustainable pace, amber from 1× pace, clay from 1.5×, and neutral ink when no clock supports a pace.
+Model-specific Claude weekly limits remain separate because the tightest model allowance can stop
+work before the account-wide window does.
 
 ## Start
 

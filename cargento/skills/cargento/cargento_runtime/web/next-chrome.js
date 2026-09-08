@@ -1,3 +1,9 @@
+let nextRenderObserved = null;
+
+function nextCurrentObserved(){
+  return nextRenderObserved || nextObserved(nextData, nextWorkstreamSnapshot());
+}
+
 let nextData = null;
 let nextAttention = nextAttentionModel({});
 let nextRefreshFailures = 0;
@@ -468,20 +474,21 @@ function nextRouteToken(route){
 
 function nextBreadcrumb(){
   if(NEXT_TOP_LEVEL_VIEWS.has(nextRoute.view)) return "";
-  const sessions = '<a class="next-crumb" href="#n=sessions">Sessions</a>';
   const projects = '<a class="next-crumb" href="#n=projects">Projects</a>';
   const project = esc(nextRoute.project);
   if(nextRoute.view === "project"){
-    return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}`;
+    return `${projects}` +
+      `<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>` +
+      `<span aria-current="page">${project}</span>`;
   }
   const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
   const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
   const sessionLabel = session
     ? nextSessionTitle(session, nextSessionAsks(session))
     : "Session";
-  return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}` +
-    `<span aria-hidden="true"> &gt; </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
-    `<span class="next-breadcrumb-current-separator" aria-hidden="true"> &gt; </span>` +
+  return `${projects}` +
+    `<span aria-hidden="true"> › </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
+    `<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>` +
     `<span aria-current="page">${esc(sessionLabel)}</span>`;
 }
 
@@ -498,7 +505,7 @@ function nextPrimaryNavigation(){
     ["sessions", "Sessions"],
     ["attention", "Attention"],
   ].map(([view, label]) => {
-    const current = nextRoute.view === view ? ' aria-current="page"' : "";
+    const current = (nextRoute.view === view || view === "projects" && ["project", "session"].includes(nextRoute.view)) ? ' aria-current="page"' : "";
     return `<a href="#n=${view}"${current}>${label}</a>`;
   });
   return `<nav aria-label="Primary">${links.join("")}</nav>`;
@@ -521,28 +528,11 @@ function nextRows(){
 }
 
 function nextCounts(){
-  const rows = nextRows();
-  const asks = nextOperationsAsks(rows);
-  /* Only the ones moving. The chrome's figure is read as "how much is running
-     right now", and the published list now also carries teammates that have
-     finished and members that have not started — counting those would make the
-     header lie in order to close a pill-level gap. The label says `running`
-     for the same reason: under the bare word `subagents` a live-only count
-     read as a total, so the header could print `0 subagents` above a detail
-     panel listing two. */
-  const subagents = rows.reduce(
-    (total, row) => total + (Array.isArray(row.subagents)
-      ? row.subagents.filter(nextSubagentIsLive).length
-      : 0),
-    0,
-  );
-  const projects = new Set(rows.map(row => String(row.project || ""))).size;
+  const model = nextCurrentObserved();
   return {
-    gates: rows.filter(row => nextOperationsIsBlocked(row, asks)).length,
-    projects,
-    running: rows.filter(row => row.state === "working").length,
-    sessions: rows.length,
-    subagents,
+    gates: model.sessions.filter(session => session.isNeeds || session.askKnown).length,
+    running: model.totals.running,
+    subagents: model.totals.subagents,
   };
 }
 
@@ -602,17 +592,18 @@ function renderNext(focus = nextCaptureFocus()){
   // docs/design-reader-state.md and the reason a draft is read first: it is the
   // one lane that cannot be rebuilt from a key.
   nextControlsCaptureDrafts();
+  nextRenderObserved = nextObserved(nextData, nextWorkstreamSnapshot());
   const counts = nextCounts();
   document.title = nextDocumentTitle();
   const gateLabel = counts.gates === 1 ? "reported block" : "reported blocks";
-  const subagentLabel = counts.subagents === 1 ? "subagent running" : "subagents running";
+  const subagentLabel = counts.subagents === 1 ? "subagent observed" : "subagents observed";
   const gate = counts.gates > 0
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
   const notification = nextNotifyControl(nextData);
   const stalled = nextRefreshNotice() + nextHistoryResetNotice();
   const breadcrumb = nextBreadcrumb();
-  const running = `${nextStatusDot("live")} All projects · ${counts.running} running` +
+  const running = `${nextStatusDot("live")} ${counts.running} running` +
     ` · ${counts.subagents} ${subagentLabel}`;
   const projectDetail = nextRoute.view === "project";
   const utility = projectDetail && typeof nextCockpitUtilityMenuItems === "function"
@@ -620,19 +611,21 @@ function renderNext(focus = nextCaptureFocus()){
   app.innerHTML = '<header class="next-header">' +
     '<div class="next-header-left">' +
     nextPrimaryNavigation() +
-    (breadcrumb ? `<nav class="next-breadcrumb" aria-label="Breadcrumb">${breadcrumb}</nav>` : "") +
     "</div>" +
     '<div class="next-header-right">' +
     (projectDetail ? "" : `<span class="next-running next-live">${running}</span>`) +
     gate + notification +
     (projectDetail ? '<details class="next-menu"><summary aria-label="More">···</summary>' +
       '<div class="next-menu-items">' +
-      `<span class="next-menu-status">${running}</span>${utility}</div></details>` : "") +
+      `<span class="next-menu-status">All projects · ${counts.running} running · ${counts.subagents} ${subagentLabel}</span>` +
+      `${utility}</div></details>` : "") +
     "</div></header>" +
+    (breadcrumb ? `<nav class="next-breadcrumb" aria-label="Breadcrumb">${breadcrumb}</nav>` : "") +
     stalled + nextViewBody(counts);
   nextCockpitAfterRender();
   nextAttentionStatus(app);
   nextRestoreFocus(focus, nextAttention);
+  nextRenderObserved = null;
 }
 
 function navigateNext(route){
@@ -745,14 +738,14 @@ document.addEventListener("keydown", event => {
     nextWorkstreamToggle();
     return;
   }
-  if(["input", "select", "textarea"].includes(tag)) return;
+  if(["input", "select", "textarea"].includes(tag) || event.target && event.target.isContentEditable) return;
   if(event.key === "Escape"){
     if(nextRoute.view === "session"){
       event.preventDefault();
       navigateNext({view: "project", project: nextRoute.project, session: null});
-    }else if(nextRoute.view === "project"){
+    }else{
       event.preventDefault();
-      navigateNext({view: "attention", project: null, session: null});
+      navigateNext({view: "projects", project: null, session: null});
     }
     return;
   }

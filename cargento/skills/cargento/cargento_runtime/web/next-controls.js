@@ -129,39 +129,43 @@ function nextProjectSteer(project, state){
 
 function nextProjectGuardrailRows(project, state){
   if(state.rules.length === 0){
-    return '<p class="next-guardrail-empty">No guardrails attached in this browser.</p>';
+    return '<p class="next-guardrail-empty">No tripwires saved in this browser.</p>';
   }
   return state.rules.map((rule, index) => {
     const enabled = rule.enabled ? "true" : "false";
     return `<button type="button" class="next-guardrail-row" role="switch" aria-checked="${enabled}" ` +
       `data-next-guardrail-toggle="${index}" data-next-controls-project="${esc(project)}">` +
-      `<span class="next-guardrail-glyph" aria-hidden="true">${rule.enabled ? "●" : "○"}</span>` +
+      '<span class="next-guardrail-glyph" aria-hidden="true">◇</span>' +
       '<span class="next-guardrail-copy">' +
       `<strong>${esc(rule.text)}</strong>` +
-      '<small>Saved in this browser. Nothing is enforcing it.</small></span></button>';
+      `${rule.enabled ? "" : "<small>Disabled in this browser.</small>"}</span></button>`;
   }).join("");
 }
 
 function nextProjectGuardrailAdd(project, state){
   if(state.adding){
-    return '<label class="next-guardrail-add-input">' +
-      '<span class="next-visually-hidden">New local guardrail</span>' +
+    return '<form class="next-guardrail-add-input" data-next-guardrail-form ' +
+      `data-next-controls-project="${esc(project)}"><label>` +
+      '<span class="next-visually-hidden">New local tripwire</span>' +
       `<input data-next-guardrail-input data-next-controls-project="${esc(project)}" ` +
       `data-next-draft="guardrail" data-next-focus="guardrail-draft:${esc(project)}" ` +
       `value="${esc(nextControlsDraft(project, "guardrail"))}" ` +
-      'maxlength="500" placeholder="Type a local guardrail">' +
-      '<small>Enter to add · Esc to cancel</small></label>';
+      'name="guardrail" maxlength="500" placeholder="alert me when…"></label>' +
+      '<button type="submit">add ↵</button></form>';
   }
   return `<button type="button" class="next-guardrail-add" data-next-guardrail-add ` +
-    `data-next-controls-project="${esc(project)}">+ attach guardrail</button>`;
+    `data-next-controls-project="${esc(project)}">+ set a tripwire</button>`;
 }
 
-function nextProjectGuardrails(project, state){
-  return '<section class="next-control next-guardrails" data-next-guardrails>' +
-    '<header><span>GUARDRAILS · LOCAL ONLY</span>' +
-    '<small>No observer is enforcing these.</small></header>' +
+function nextProjectGuardrails(project, state, includeSteer = false){
+  return '<section class="next-control next-guardrails next-rail-panel" data-next-guardrails ' +
+    'data-next-rail-panel="tripwires">' +
+    nextRailHeader("TRIPWIRES", "local only · nothing enforces these", "amber", true) +
     `<div class="next-guardrail-rows">${nextProjectGuardrailRows(project, state)}</div>` +
-    nextProjectGuardrailAdd(project, state) + '</section>';
+    nextProjectGuardrailAdd(project, state) +
+    '<p class="next-rail-reason">C1 would let an observer act on these. Until it ships they are ' +
+    'a note to yourself, held in this browser.</p>' +
+    (includeSteer ? nextProjectSteer(project, state) : "") + '</section>';
 }
 
 function nextProjectControls(context){
@@ -185,9 +189,13 @@ function nextControlsAddRule(project, value){
 }
 
 function nextControlsHandleKeydown(event){
-  const input = nextControlsClosest(event, "[data-next-guardrail-input]");
+  const form = event.key === "Escape"
+    ? nextControlsClosest(event, "[data-next-guardrail-form]") : null;
+  const input = nextControlsClosest(event, "[data-next-guardrail-input]") ||
+    (form && form.elements && form.elements.guardrail);
   if(!input || !["Enter", "Escape"].includes(event.key)) return false;
   event.preventDefault();
+  if(typeof event.stopPropagation === "function") event.stopPropagation();
   const project = String(input.dataset.nextControlsProject || "");
   if(event.key === "Enter"){
     nextControlsAddRule(project, input.value);
@@ -203,6 +211,16 @@ function nextControlsHandleKeydown(event){
 }
 
 document.addEventListener("submit", event => {
+  const guardrail = nextControlsClosest(event, "[data-next-guardrail-form]");
+  if(guardrail){
+    event.preventDefault();
+    const project = String(guardrail.dataset.nextControlsProject || "");
+    const input = guardrail.elements && guardrail.elements.guardrail;
+    nextControlsAddRule(project, input && input.value);
+    nextControlsClearDraft(project, "guardrail", input);
+    renderNext();
+    return;
+  }
   const form = nextControlsClosest(event, "[data-next-steer-form]");
   if(!form) return;
   event.preventDefault();

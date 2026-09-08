@@ -55,7 +55,7 @@ function nextRouteFromFragment(fragment){
     const session = nextDecodeRoutePart(parts[2]);
     if(project && session) return {view: "session", project, session};
   }
-  return {view: "sessions", project: null, session: null};
+  return {view: "projects", project: null, session: null};
 }
 
 function nextFragmentForRoute(route){
@@ -73,7 +73,7 @@ function nextFragmentForRoute(route){
     return `#n=project:${encodeURIComponent(route.project)}${focus}${tab}`;
   }
   if(route && NEXT_TOP_LEVEL_VIEWS.has(route.view)) return `#n=${route.view}`;
-  return "#n=sessions";
+  return "#n=projects";
 }
 
 function nextNumber(value){

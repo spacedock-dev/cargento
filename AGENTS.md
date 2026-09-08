@@ -260,8 +260,9 @@ before believing it. Report both results rather than the convenient one. A load 
 
 **Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
 and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
-holds the same size and digest pair, and `tests/test_focus.py` holds a digest of the assembled page
-too. Recompute all three. Recomputing only the first leaves CI red on the other two. Two branches that both change a web asset produce a conflict where
+holds the assembled length and digest in separate tests, and `tests/test_focus.py` holds a digest
+of the assembled page too. Across those three files, two assertions pin the assembled length and
+three pin its digest. Recompute all three. Recomputing only the first leaves CI red on the other two. Two branches that both change a web asset produce a conflict where
 **each side is correct for a tree that no longer exists**, so a textual resolution ships a number
 wrong for both. Recompute from the assets. If only one side changed the page the existing figures
 may still be right, but prove that by running the oracles rather than reasoning about it.

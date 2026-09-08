@@ -1,92 +1,3 @@
-/* The filtered reading of the newest prompt, where the payload carries one.
-   `instruction.text` with the "asked" label IS the newest genuine prompt: the
-   injected harness shapes dropped, slash markup read back out, and the whole
-   string through `safe_text`. `last_prompt` is the raw newest record on every
-   harness but Codex, so on a Claude row the two are two readings of one prompt
-   and this takes the filtered one. Measured over 2,931 local rows: 114 carry an
-   "asked" line, 15 of those differ from `last_prompt`, and 2 have no
-   `last_prompt` at all.
-
-   Only that label. This cell renders one latest-command claim with nowhere to put
-   a source qualifier, and the other two labels are exactly the readings that need one:
-   "agent" is an agent quoting itself and "earlier" says this is not the newest
-   thing asked. Published bare they would be the claim
-   `transcripts.instruction_from` refuses to make. */
-function nextProjectInstructionRecord(session){
-  const instruction = session && session.instruction;
-  const labelled = instruction && typeof instruction === "object" &&
-    !Array.isArray(instruction) && String(instruction.label || "") === "asked";
-  const filtered = labelled
-    ? String(instruction.text == null ? "" : instruction.text).trim()
-    : "";
-  return filtered ? {kind: "assignment", text: filtered} : null;
-}
-
-function nextProjectInstructionText(session){
-  const record = nextProjectInstructionRecord(session);
-  return record ? record.text : "";
-}
-
-function nextProjectInstruction(sessions){
-  let chosen = null;
-  for(const session of sessions){
-    const record = nextProjectInstructionRecord(session);
-    if(!record) continue;
-    const at = nextFiniteNumber(session.last_activity);
-    if(!chosen || at > chosen.at) chosen = {at, ...record};
-  }
-  return chosen;
-}
-
-function nextProjectAsks(group){
-  const keys = new Set(group.sessions.map(nextSessionKey));
-  return nextPayloadAsks(nextData).filter(ask => {
-    const owner = nextExactAskOwner(nextData, ask);
-    return owner && keys.has(nextSessionKey(owner));
-  });
-}
-
-function nextProjectWorkflows(sessions){
-  const found = [];
-  const seen = new Set();
-  for(const session of sessions){
-    const spacedock = session.spacedock;
-    const workflows = spacedock && Array.isArray(spacedock.workflows)
-      ? spacedock.workflows
-      : [];
-    for(const item of workflows){
-      const workflow = String(item && item.workflow || "").trim();
-      const goal = String(item && item.goal || "").trim();
-      if(!workflow && !goal) continue;
-      const key = `${workflow}\n${goal}`;
-      if(seen.has(key)) continue;
-      seen.add(key);
-      found.push({workflow: workflow || goal, goal});
-    }
-  }
-  return found;
-}
-
-function nextProjectCell(group, operationalSessions){
-  const workflows = nextProjectWorkflows(operationalSessions);
-  const instruction = nextProjectInstruction(operationalSessions);
-  const chips = workflows.map(workflow =>
-    `<span class="next-project-workflow" title="${esc(workflow.goal)}">` +
-      `${esc(workflow.workflow)}</span>`,
-  ).join("");
-  const last = instruction
-    ? `<div class="next-project-instruction">Latest assignment · ${esc(instruction.text)}</div>`
-    : "";
-  /* The old collision signal is live-only because it warns about concurrent
-     writes. This table makes a grouping claim, so even two idle rows need the
-     caveat that spark.js:222-232 deliberately withholds from them. */
-  const collision = group.sessions.length >= 2
-    ? `<div class="next-project-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +
-      `${group.sessions.length} sessions share this label</div>`
-    : "";
-  return `<strong class="next-project-name">${esc(group.label)}</strong>${chips}${last}${collision}`;
-}
-
 function nextProjectProgress(sessions){
   const total = sessions.reduce((sum, session) => sum + Math.max(0, nextFiniteNumber(session.total)), 0);
   if(total <= 0) return "";
@@ -96,100 +7,41 @@ function nextProjectProgress(sessions){
     `<span>${esc(done)} of ${esc(total)} done</span>`;
 }
 
-function nextProjectNow(sessions){
-  if(sessions.some(session => session.state === "needs_input")){
-    return '<span class="next-project-now next-project-now--blocked">● blocked</span>';
-  }
-  const running = sessions.filter(session => session.state === "working" && session.active).length;
-  if(running){
-    return `<span class="next-project-now next-project-now--running">● ${running} running</span>`;
-  }
-  const statesKnown = sessions.length && sessions.every(session =>
-    ["needs_input", "working", "idle"].includes(session.state),
-  );
-  return statesKnown
-    ? '<span class="next-project-now next-project-now--idle">idle</span>'
-    : "";
+function nextProjectValue(text, known, className = ""){
+  return `<span class="next-project-value ${known ? "next-project-value--known" : "next-project-value--absent"} ${className}">${esc(text)}</span>`;
 }
 
-function nextProjectSummaryHtml(summary, sessionCount, activeCount){
-  const values = [];
-  if(summary.exactRequests){
-    values.push(`${summary.exactRequests} exact request${summary.exactRequests === 1 ? "" : "s"}`);
-  }
-  /* `risk` and `close` count SUBJECTS and the state words below them count
-     SESSIONS, in a list whose leading total counts sessions too. Unlabelled,
-     that invites the reader to subtract one from the other: a collision is one
-     subject over two sessions, so "2 sessions · 1 at risk · 2 working" looks
-     like it is missing a session. The unit stays named for that reason, and the
-     lead now names the denominator as well, because the two were never the same
-     set: the total counts every session in the group and every word after it
-     counts the ACTIVE subset, so a group of three with one active read
-     "3 sessions ... 1 working" with two sessions in no word at all (DRC-4453). */
-  if(summary.risk){
-    values.push(`${summary.risk} subject${summary.risk === 1 ? "" : "s"} at risk`);
-  }
-  if(summary.close){
-    values.push(`${summary.close} subject${summary.close === 1 ? "" : "s"} to close the loop`);
-  }
-  if(summary.blocked) values.push(`${summary.blocked} blocked`);
-  if(summary.working) values.push(`${summary.working} working`);
-  if(summary.quiet) values.push(`${summary.quiet} quiet`);
-  /* The arithmetic residue, and not a state any collector publishes: the
-     vocabulary is closed to needs_input, working and idle, but an outstanding
-     exact request holds a row active whatever its state says, so a state
-     outside that vocabulary would leave the active subset short of its own
-     words. Here for the same reason the Attention brief carries one. */
-  const counted = summary.blocked + summary.working + summary.quiet;
-  if(activeCount > counted) values.push(`${activeCount - counted} in no counted state`);
-  /* "none active" rather than an empty tail. A history row is handed no active
-     sessions at all, so every word above is zero and the row used to render its
-     session total and stop -- the ordinary row on a quiet machine, saying
-     nothing about any of the sessions it had just counted. */
-  const spans = [`${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}, ` +
-    `${activeCount} active:`].concat(values.length ? values : ["none active"]);
-  return `<div class="next-project-summary">${spans.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
+function nextProjectSessionLine(session){
+  const route = nextRouteToken({view: "session", project: session.project,
+    harness: session.harness, session: session.sid});
+  return '<button type="button" class="next-project-session" data-next-project-session ' +
+    `data-next-harness="${esc(session.harness)}" data-next-session="${esc(session.sid)}" ` +
+    `data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
+    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isLive ? " next-project-dot--working" : ""}" ` +
+    `role="img" aria-label="${esc(session.state)}"></span>` +
+    `<span class="next-project-session-harness">${esc(session.harness)}</span>` +
+    nextProjectValue(session.titleText, session.titleKnown, "next-project-session-title") +
+    nextProjectValue(session.nowText, session.nowKnown, "next-project-session-now") +
+    nextProjectValue(session.nextText, session.nextKnown, "next-project-session-next") + "</button>";
 }
 
-function nextProjectSessionLine(session, asks, harnesses, labels){
-  const harness = String(session.harness || "");
-  const sid = String(session.sid || "");
-  const harnessLabel = labels.get(harness) || harness || "Harness not published";
-  const title = String(session.title || session.last_prompt || "").trim() || "Title not published";
-  return '<div class="next-project-session" role="group" data-next-project-session ' +
-    `data-next-harness="${esc(harness)}" data-next-session="${esc(sid)}" ` +
-    `aria-label="${esc(harnessLabel)} session ${esc(title)}">` +
-    '<span class="next-project-session-identity">' +
-    `<small>SESSION</small><span>${esc(harnessLabel)}</span><strong>${esc(title)}</strong></span>` +
-    nextOperationsNow(session) + nextOperationsNext(session) +
-    nextOperationsBlocked(session, asks, harnesses) + "</div>";
-}
-
-function nextProjectSessionCommands(sessions, asks){
-  const harnesses = nextOperationsHarnesses();
-  const labels = nextHarnessLabels();
-  return '<div class="next-project-sessions" aria-label="Active exact sessions">' +
-    sessions.map(session => nextProjectSessionLine(session, asks, harnesses, labels)).join("") +
-    "</div>";
-}
-
-function nextProjectRow(group, operationalSessions, summary, history = false){
-  const operational = {...group, sessions: operationalSessions};
-  const asks = nextProjectAsks(operational);
-  const blocked = operationalSessions.some(session => nextOperationsIsBlocked(session, asks));
-  const route = nextRouteToken({view: "project", project: group.label, session: null});
-  const progress = nextProjectProgress(operationalSessions);
-  const progressBlock = progress ? `<div class="next-project-progress">${progress}</div>` : "";
+function nextProjectRow(project, history = false){
+  const route = nextRouteToken({view: "project", project: project.key, session: null});
   const historyClass = history ? " next-project-row--history" : "";
   const historyAttr = history ? ' data-next-project-history="true"' : "";
-  const command = history ? "" : nextProjectSessionCommands(operationalSessions, asks);
-  return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}${historyClass}" ` +
-    `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
-    `role="link" tabindex="0"${historyAttr}>` +
-    `<div class="next-project-project">${nextProjectCell(group, operationalSessions)}` +
-    `${nextProjectSummaryHtml(summary, group.sessions.length, operationalSessions.length)}` +
-    `${progressBlock}</div>` +
-    `${command}</article>`;
+  const identity = `<strong class="next-project-name">${esc(project.key)}</strong>`;
+  const count = `<div class="next-project-summary">${esc(project.countLine)}</div>`;
+  const shared = project.sharedLabelKnown
+    ? `<div class="next-project-collision">${esc(project.sharedLabelText)}</div>` : "";
+  const content = history ? identity + count :
+    '<div class="next-project-project">' + identity +
+    nextProjectValue(project.scopeText, project.scopeKnown, "next-project-scope") + count + shared +
+    '</div><div class="next-project-sessions" aria-label="Observed sessions">' +
+    project.sessions.map(nextProjectSessionLine).join("") + "</div>";
+  return `<article class="next-project-row next-project-tone--${esc(project.tone)}${historyClass}" ` +
+    `data-next-project-row data-next-project="${esc(project.key)}" data-next-route="${esc(route)}" ` +
+    `data-next-focus="${esc(route)}" role="link" tabindex="0"${historyAttr}>` + content +
+    '<span class="next-project-chevron" aria-hidden="true">›</span></article>';
 }
 
 function nextProjectGroup(kind, title, description, items, renderer, empty){
@@ -201,44 +53,15 @@ function nextProjectGroup(kind, title, description, items, renderer, empty){
 }
 
 function nextProjectsView(model){
-  const asks = nextPayloadAsks(nextData);
-  const groups = nextProjectGroups().map((group, index) => {
-    const activeSessions = group.sessions.filter(session =>
-      nextOperationsIsActive(session, asks));
-    const latest = Math.max(...group.sessions.map(session =>
-      nextFiniteNumber(session.last_activity)), 0);
-    return {
-      group,
-      index,
-      activeSessions,
-      latest,
-      summary: nextAttentionProjectSummary(model, activeSessions),
-    };
-  });
-  if(!groups.length){
-    const window = model.windowHours == null ? "current payload" : `${esc(model.windowHours)}h payload`;
-    return `<p class="next-projects-empty">No project display labels in this ${window}.</p>`;
-  }
-  const active = groups.filter(item => item.activeSessions.length);
-  const history = groups.filter(item => !item.activeSessions.length);
-  // Product priority: explicit questions first, then source-reported waits,
-  // ahead of risk/review and progressing work because the reader can unblock them.
-  active.sort((left, right) => right.summary.exactRequests - left.summary.exactRequests ||
-    right.summary.blocked - left.summary.blocked ||
-    right.summary.risk - left.summary.risk ||
-    right.summary.close - left.summary.close ||
-    right.summary.working - left.summary.working ||
-    right.summary.quiet - left.summary.quiet ||
-    left.index - right.index);
-  history.sort((left, right) => right.latest - left.latest || left.index - right.index);
-  return nextProjectGroup(
-    "active", "Active projects", "Only source-backed active sessions contribute operational claims.",
-    active, item => nextProjectRow(item.group, item.activeSessions, item.summary),
-    "No project has active session evidence right now.",
-  ) + nextProjectGroup(
-    "history", "Recently observed projects",
-    "Project identity and scope remain available without stale operational claims.",
-    history, item => nextProjectRow(item.group, [], item.summary, true),
-    "No recently observed project history in this payload.",
-  );
+  const observed = model.activeProjects ? model : nextCurrentObserved();
+  return '<p class="next-projects-note">sessions grouped by the label their harness publishes</p>' +
+    nextProjectGroup(
+      "active", "Active", "blocked on you ranks first · only source-backed sessions contribute claims",
+      observed.activeProjects, project => nextProjectRow(project),
+      "No project has active session evidence right now.",
+    ) + nextProjectGroup(
+      "history", "Recently observed", "identity stays reachable; operational claims lapse",
+      observed.restProjects, project => nextProjectRow(project, true),
+      "No recently observed project history in this payload.",
+    );
 }

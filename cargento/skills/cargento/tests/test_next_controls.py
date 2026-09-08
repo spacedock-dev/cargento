@@ -6,10 +6,185 @@ import shutil
 import unittest
 
 from .next_harness import NextPageJsHarness, storage_prelude
+from .test_next_delegation import RAIL_FIXTURE
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextControlsBehaviorTest(NextPageJsHarness):
+    def test_escape_on_the_add_button_cancels_without_leaving_the_project(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+nextControlsProjectState("alpha/repo").adding = true;
+const input = {value: "unfinished", dataset: {nextControlsProject: "alpha/repo"}};
+const form = {elements: {guardrail: input}};
+const button = {tagName: "BUTTON",
+  closest(selector){ return selector === "[data-next-guardrail-form]" ? form : null; }};
+let stopped = false;
+__fire("keydown", {target: button, key: "Escape", preventDefault(){},
+  stopPropagation(){ stopped = true; }});
+console.log(JSON.stringify({stopped, route: nextRoute, html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("project", out["route"]["view"])
+        self.assertTrue(out["stopped"])
+        self.assertIn("+ set a tripwire", out["html"])
+        self.assertNotIn("unfinished", out["html"])
+
+    def test_the_inline_add_button_saves_with_the_same_caps_and_no_request(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+nextControlsProjectState("alpha/repo").adding = true;
+renderNext();
+const before = __els.app.innerHTML;
+const input = {value: "", dataset: {nextControlsProject: "alpha/repo", nextDraft: "guardrail"}};
+const form = {
+  dataset: {nextControlsProject: "alpha/repo"}, elements: {guardrail: input},
+  closest(selector){ return selector === "[data-next-guardrail-form]" ? this : null; }
+};
+__els.app.querySelectorAll = selector => selector === "[data-next-draft]" ? [input] : [];
+__fetchCalls = [];
+for(let i = 0; i < 51; i++){
+  input.value = `${i}:` + "x".repeat(600);
+  __fire("submit", {target: form, preventDefault(){}});
+}
+console.log(JSON.stringify({before, calls: __fetchCalls, value: input.value,
+  rules: nextControlsProjectState("alpha/repo").rules, html: __els.app.innerHTML}));
+""",
+            storage_prelude({}),
+        )
+        assert isinstance(out, dict)
+        self.assertIn("data-next-guardrail-form", out["before"])
+        self.assertIn('type="submit">add ↵', out["before"])
+        self.assertEqual([], out["calls"])
+        self.assertEqual("", out["value"])
+        self.assertEqual(50, len(out["rules"]))
+        self.assertTrue(out["rules"][0]["text"].startswith("1:"))
+        self.assertTrue(all(len(rule["text"]) == 500 for rule in out["rules"]))
+        self.assertIn("◇", out["html"])
+
+    def test_waiting_controls_keep_their_cues_until_the_ttl_expires(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+const session = {sid: "one", harness: "claude", project: "alpha/repo", focusable: true,
+  titleText: "Approve this", titleKnown: true, waitedText: "11m", askKnown: true,
+  askText: "Ship now?", resume_id: "resume-one"};
+railProject.sessions = [session];
+railProject.needs = [session];
+railPayload.sessions = [session];
+document.querySelector = () => ({getAttribute: () => "test-capability"});
+let now = 100000;
+Date.now = () => now;
+const raise = {dataset: {nextRaiseHarness: "claude", nextRaiseSession: "one"}};
+const copy = {dataset: {nextCopyHarness: "claude", nextCopySession: "one",
+  nextCopyCommand: "claude --resume resume-one"}};
+const states = [];
+for(const state of ["sent", "declined", "throttled", "stale", "sending", "failed"]){
+  nextRaiseState(raise, state);
+  nextCopyState(copy, nextCopyStateKey(copy.dataset), "copied");
+  nextRaiseInFlight = state === "sending";
+  nextRaiseControlsBusy(nextRaiseInFlight);
+  now += 29999;
+  renderNext();
+  states.push({state, html: __els.app.innerHTML});
+  now += 1;
+  nextRaiseInFlight = false;
+  renderNext();
+  states[states.length - 1].expired = __els.app.innerHTML;
+}
+console.log(JSON.stringify(states));
+"""
+        )
+        assert isinstance(out, list)
+        for sample in out:
+            with self.subTest(state=sample["state"]):
+                self.assertIn(f'data-next-raise-state="{sample["state"]}"', sample["html"])
+                self.assertIn('data-next-copy-state="copied"', sample["html"])
+                self.assertIn('data-next-copy-command="claude --resume resume-one"', sample["html"])
+                self.assertNotIn("data-next-raise-state=", sample["expired"])
+                self.assertNotIn("data-next-copy-state=", sample["expired"])
+                if sample["state"] == "sending":
+                    self.assertRegex(
+                        sample["html"], r'data-next-raise-state="sending" aria-disabled="true"'
+                    )
+
+    def test_a_waiting_title_opens_its_session_and_raise_requires_capability(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+const waiting = {sid: "one", harness: "claude", titleText: "Approve <release>",
+  titleKnown: true, waitedText: "11m", askKnown: true, askText: "Ship now?", focusable: true};
+railProject.sessions = [waiting, {sid: "two"}];
+railProject.needs = [waiting];
+renderNext();
+const html = __els.app.innerHTML;
+const target = {dataset: {nextRoute: "session:alpha%2Frepo:claude:one"},
+  closest(selector){ return selector === "[data-next-route]" ? this : null; }};
+__fire("click", {target, preventDefault(){}});
+console.log(JSON.stringify({html, route: nextRoute}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn('data-next-route="session:alpha%2Frepo:claude:one"', out["html"])
+        self.assertIn("Approve &lt;release&gt;", out["html"])
+        self.assertIn("Ship now?", out["html"])
+        self.assertIn("1 of 2", out["html"])
+        self.assertIn("COPY ID", out["html"])
+        self.assertNotIn("data-next-raise-session", out["html"])
+        self.assertEqual("session", out["route"]["view"])
+        self.assertEqual("one", out["route"]["session"])
+
+    def test_escape_consumes_the_tripwire_draft_without_navigating(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+nextControlsProjectState("alpha/repo").adding = true;
+renderNext();
+const input = {
+  value: "cancel me", dataset: {nextControlsProject: "alpha/repo"},
+  closest(selector){ return selector === "[data-next-guardrail-input]" ? this : null; }
+};
+let stopped = false;
+__fire("keydown", {target: input, key: "Escape", preventDefault(){},
+  stopPropagation(){ stopped = true; }});
+console.log(JSON.stringify({stopped, route: nextRoute, html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["stopped"])
+        self.assertEqual("project", out["route"]["view"])
+        self.assertEqual("alpha/repo", out["route"]["project"])
+        self.assertNotIn("cancel me", out["html"])
+        self.assertIn("+ set a tripwire", out["html"])
+
+    def test_a_tripwire_draft_and_selection_survive_the_rail_redraw(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+nextControlsProjectState("alpha/repo").adding = true;
+const ranges = [];
+const input = {
+  dataset: {nextDraft: "guardrail", nextControlsProject: "alpha/repo",
+    nextFocus: "guardrail-draft:alpha/repo"},
+  value: "Keep <checks> passing", selectionStart: 5, selectionEnd: 13,
+  focus(){ document.activeElement = this; },
+  setSelectionRange(start, end){ ranges.push([start, end]); },
+  contains(active){ return active === this; }
+};
+__els.app.querySelectorAll = selector =>
+  ["[data-next-draft]", "[data-next-focus]"].includes(selector) ? [input] : [];
+document.activeElement = input;
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML, ranges}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn('value="Keep &lt;checks&gt; passing"', out["html"])
+        self.assertEqual([[5, 13]], out["ranges"])
+
     PROJECT = "alpha/repo"
     STORAGE_KEY = "cargento.next.guardrails.alpha%2Frepo"
     FIXTURE = """
@@ -305,9 +480,9 @@ console.log(JSON.stringify({
         assert isinstance(html, str)
 
         self.assertIn("STEER · LOCAL ONLY", html)
-        self.assertIn("GUARDRAILS · LOCAL ONLY", html)
-        self.assertIn("No observer is enforcing these.", html)
-        self.assertIn("Saved in this browser. Nothing is enforcing it.", html)
+        self.assertIn("TRIPWIRES", html)
+        self.assertIn("local only · nothing enforces these", html)
+        self.assertIn("a note to yourself, held in this browser.", html)
         self.assertNotIn("observer ·", html)
         self.assertNotIn("observer holds the turn", html)
         self.assertNotIn("2 enforced", html)
@@ -390,7 +565,7 @@ const localStorage = {
         assert isinstance(out, str)
 
         self.assertIn("Stay local", out)
-        self.assertIn("No observer is enforcing these.", out)
+        self.assertIn("local only · nothing enforces these", out)
 
 
 if __name__ == "__main__":

@@ -177,39 +177,72 @@ function nextProjectUnhealthyCount(plans){
 }
 
 function nextProjectDetailHeader(context){
-  const workflows = context.plans.map(plan =>
-    `<span class="next-project-detail-workflow" title="${esc(plan.goal)}">${esc(plan.name)}</span>`,
-  ).join("");
-  const instruction = nextProjectInstruction(context.group.sessions);
-  const last = instruction
-    ? `<p class="next-project-detail-instruction">${instruction.kind === "assignment" ?
-      "latest assignment" : "latest session context"} · ${esc(instruction.text)}</p>`
-    : "";
-  const collision = context.group.sessions.length >= 2
-    ? `<p class="next-project-detail-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +
-      `${context.group.sessions.length} sessions share this label</p>`
-    : "";
+  const project = context.project;
+  const unhealthy = nextProjectUnhealthyCount(context.plans);
+  const health = context.plans.length
+    ? `<div class="next-project-detail-status"><span>${unhealthy} ${unhealthy === 1 ? "entity" : "entities"} unhealthy — ` +
+      '<span data-next-withheld>estimate withheld</span></span></div>' : "";
+  const shared = project.sharedLabelKnown
+    ? `<p class="next-project-detail-collision">${esc(project.sharedLabelText)}</p>` : "";
+  return '<header class="next-project-detail-header">' +
+    `<h1 class="next-project-detail-name">${esc(project.key)}</h1>` +
+    nextProjectValue(project.scopeText, project.scopeKnown, "next-project-scope") +
+    `<p class="next-project-detail-count">${esc(project.countLine)}</p>${shared}${health}</header>`;
+}
+
+function nextProjectGoal(project){
+  const source = project.goalKnown
+    ? `<span class="next-project-goal-source">${esc(project.goalSrcText)}</span>` : "";
+  const gap = project.goalGapKnown
+    ? `<p class="next-project-goal-gap">${esc(project.goalGapText)}</p>` : "";
+  return '<section class="next-project-goal"><header><h2>STATED GOAL</h2>' + source + '</header>' +
+    nextProjectValue(project.goalText, project.goalKnown, "next-project-goal-text") + gap + '</section>';
+}
+
+function nextProjectPlanStatus(context){
   let health = "";
   if(context.plans.length){
     const unhealthy = nextProjectUnhealthyCount(context.plans);
-    const entityLabel = `${unhealthy} ${unhealthy === 1 ? "entity" : "entities"} unhealthy`;
-    health = `<div class="next-project-detail-status"><span>${esc(entityLabel)} — ` +
-      '<span data-next-withheld>estimate withheld</span></span></div>';
+    health = `<p>${unhealthy} ${unhealthy === 1 ? "entity" : "entities"} unhealthy — ` +
+      '<span data-next-withheld>estimate withheld</span></p>';
   }
-  return '<header class="next-project-detail-header">' +
-    `<div><span class="next-project-detail-label">project</span>` +
-    `<h1 class="next-project-detail-name">${esc(context.group.label)}</h1>${workflows}</div>` +
-    last + collision + health +
-    '</header>';
+  return health ? '<div class="next-project-detail-status">' +
+    '<span data-next-withheld>no estimate left · no confidence</span>' + health + '</div>' : "";
+}
+
+function nextProjectChanges(project){
+  const collapsed = nextWorkstreamCollapsed;
+  const route = nextRouteToken({view: "project", project: project.key, session: null});
+  const header = '<header class="next-workstream-header">' +
+    `<button type="button" data-next-workstream-toggle data-next-focus="${esc(route)}:changes" ` +
+    `aria-expanded="${!collapsed}" aria-controls="next-project-changes">` +
+    `<span>${collapsed ? "▸" : "▾"} OBSERVED STATE CHANGES</span>` +
+    `<small>${esc(collapsed ? project.changeNoteText.split(" · ")[0] : project.changeNoteText)}</small></button></header>`;
+  const rows = project.changes.map(change =>
+    `<li class="next-project-change" data-next-workstream-event="${esc(change.kind)}">` +
+    `<time>${esc(change.at)}</time>` +
+    `<span class="next-project-change-dot${change.filled ? " next-project-change-dot--unattended" : ""}" ` +
+    `role="img" aria-label="${change.filled ? "unattended" : "attended"}"></span>` +
+    `<span>${esc(change.label)}</span><span class="next-project-change-harness">${esc(change.harness)}</span></li>`,
+  ).join("");
+  const body = collapsed ? "" : '<div id="next-project-changes">' + (rows ? `<ol>${rows}</ol>` :
+    `<p class="next-workstream-empty">${esc(project.changeEmptyText)}</p>`) + '</div>';
+  return `<section class="next-workstream"${collapsed ? " data-next-workstream-collapsed" : ""}>${header}${body}</section>`;
 }
 
 function nextProjectView(project){
-  const group = nextProjectGroups().find(candidate => candidate.label === project);
-  if(!group){
+  const model = nextCurrentObserved();
+  const observed = model.projects.find(candidate => candidate.key === project);
+  if(!observed){
     return '<div class="next-project-detail-empty"><p>Not present in the current payload.</p>' +
       '<a href="#n=projects" data-next-route="projects">View all projects</a></div>';
   }
-  const context = {group, plans: nextProjectPlans(group.sessions), harnesses: nextHarnessLabels()};
+  // The frozen model omits Spacedock strips and published task totals. Keep the
+  // shipped plan helpers on their original records until that interface carries them.
+  const sources = new Map(nextPayloadSessions(nextData).map(session => [nextSessionKey(session), session]));
+  const group = {label: observed.key, sessions: observed.sessions.map(session =>
+    sources.get(nextSessionKey(session))).filter(Boolean)};
+  const context = {model, project: observed, group, plans: nextProjectPlans(group.sessions), harnesses: nextHarnessLabels()};
   const focus = nextCockpitFocusedSession(group);
   if(nextRoute && nextRoute.focus && !focus){
     const root = {view:"project",project:group.label,focus:null,tab:nextRoute.tab || "now"};

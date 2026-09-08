@@ -6,10 +6,37 @@ import unittest
 
 from .next_harness import NEXT_STYLES, NextPageJsHarness
 
+# A literal frozen-interface fixture keeps view tests independent of workstream A.
+V2_MODEL_FIXTURE = """
+const v2Session = {
+  sid: "live", harness: "codex", project: "alpha/repo",
+  titleText: "Title not published", titleKnown: false,
+  nowText: "Compiling", nowKnown: true,
+  nextText: "No pending step published", nextKnown: false,
+  turnText: "Harness does not report turn bounds", turnKnown: false,
+  state: "working", isWorking: true, isNeeds: false, isEnded: false, isQuiet: false,
+  tone: "ok", stuckText: "No stuck signal published", stuckKnown: false,
+  askText: "No exact request published", askKnown: false,
+  rateText: "Token rate not reported", rateKnown: false,
+  waitedText: "Wait duration not published", subagents: [], tasks: [],
+  outcomeText: "No end outcome published", outcomeKnown: false, outcomeGlyph: "",
+  gitText: "Git state was not measured", gitKnown: false
+};
+const v2Project = {
+  key: "alpha/repo", scopeText: "Exact location not published", scopeKnown: false,
+  countLine: "1 session · 1 working", sharedLabelText: "No shared display label observed",
+  sharedLabelKnown: false, goalText: "No harness published a goal", goalKnown: false,
+  goalSrcText: "No goal source published", goalGapText: "1 of 1 sessions publish no goal.",
+  goalGapKnown: true, sessions: [v2Session], needs: [], working: [v2Session], ended: [],
+  risky: [], tone: "ok", changes: [], changeNoteText: "no state changes observed in the last 3m"
+};
+const v2Model = {projects: [v2Project], activeProjects: [v2Project], restProjects: []};
+"""
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextProjectsBehaviorTest(NextPageJsHarness):
-    def test_a_blocked_project_precedes_risk_and_work_but_follows_exact_questions(self) -> None:
+    def test_a_blocked_project_precedes_risk_and_work_with_stable_ties(self) -> None:
         for reverse in ("false", "true"):
             with self.subTest(reverse=reverse):
                 out = self._run_page_js(
@@ -42,17 +69,23 @@ console.log(JSON.stringify({{html: __els.app.innerHTML,
                 assert isinstance(out, dict)
                 html = out["html"]
                 order = re.findall(r'<article[^>]*data-next-project="([^"]+)"', html)
-                gates = (
-                    ["gate-c", "gate-b", "gate-a"]
-                    if reverse == "true"
-                    else ["gate-a", "gate-b", "gate-c"]
-                )
                 self.assertEqual(
-                    ["exact", *gates, "risk", "work", "recent", "ended", "review"], order
+                    [
+                        "exact",
+                        "gate-a",
+                        "gate-b",
+                        "gate-c",
+                        "risk",
+                        "work",
+                        "ended",
+                        "recent",
+                        "review",
+                    ],
+                    order,
                 )
                 self.assertTrue(out["unchanged"])
-                self.assertIn("1 blocked", self.project_row(html, "gate-a"))
-                self.assertIn("1 subject at risk", self.project_row(html, "risk"))
+                self.assertIn("1 waiting on you", self.project_row(html, "gate-a"))
+                self.assertIn("1 working", self.project_row(html, "risk"))
                 self.assertNotIn("close the loop", self.project_row(html, "review"))
                 self.assertNotIn("blocked", self.project_row(html, "ended"))
 
@@ -131,7 +164,7 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         assert isinstance(out, dict)
         html = out["projects"]
 
-        expected = ["alpha/repo", "beta/app", "delta/risk", "gamma/tool", "epsilon/close"]
+        expected = ["alpha/repo", "beta/app", "delta/risk", "epsilon/close", "gamma/tool"]
         positions = [html.index(f'data-next-project="{project}"') for project in expected]
         self.assertEqual(sorted(positions), positions)
         self.assertEqual(5, html.count("data-next-project-row"))
@@ -143,11 +176,11 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         close = self.project_row(html, "epsilon/close")
         working = self.project_row(html, "beta/app")
         quiet = self.project_row(html, "gamma/tool")
-        self.assertIn("1 exact request", alpha)
+        self.assertIn("1 waiting on you", alpha)
         self.assertNotIn("at risk", risk)
         self.assertNotIn("close the loop", close)
         self.assertIn("1 working", working)
-        self.assertNotIn("quiet", quiet)
+        self.assertIn("1 quiet", quiet)
         self.assertNotIn("0 exact requests", html)
         self.assertNotIn("0 at risk", html)
         self.assertNotIn("0 close the loop", html)
@@ -160,17 +193,12 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         self.assertNotIn("Unresolved label-only request", quiet)
         self.assertNotIn("exact request", quiet)
 
-        self.assertIn("NOW · NEEDS INPUT", alpha)
+        self.assertIn('aria-label="needs_input"', alpha)
         self.assertIn("Activity not published", alpha)
-        self.assertIn("NEXT", alpha)
+        self.assertIn("next-project-session-next", alpha)
         self.assertIn("No pending step published", alpha)
-        self.assertIn("BLOCKED · CAPTAIN", alpha)
-        self.assertIn("Approve the release", alpha)
-        self.assertIn("3 of 5 done", alpha)
-        self.assertIn("launch", alpha)
-        self.assertIn("review", alpha)
-        self.assertIn("Ship the next page", alpha)
-        self.assertIn("Check the release", alpha)
+        self.assertIn("1 waiting on you", alpha)
+        self.assertIn("Title not published", alpha)
         self.assertNotIn("Latest session context", alpha)
         self.assertIn("CAPTAIN</h2>", out["session"])
         self.assertNotIn("NEEDS YOU</h2>", out["session"])
@@ -208,7 +236,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         for project in ("gamma/tool", "delta/risk", "epsilon/close"):
             self.assertIn(f'data-next-project="{project}"', history_html)
             self.assertNotIn(f'data-next-project="{project}"', active_html)
-        self.assertIn("Latest assignment · Build the source-backed release", active_html)
+        self.assertIn("1 waiting on you", active_html)
         self.assertNotIn("Old historical assignment", history_html)
         for missing in (
             "No active session observed",
@@ -216,7 +244,6 @@ console.log(JSON.stringify(__els.app.innerHTML));
             "Latest session context",
             "at risk",
             "close the loop",
-            "quiet",
             "SITUATION",
             "RESPONSE",
         ):
@@ -252,16 +279,16 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertEqual(2, row.count("data-next-project-session"))
         self.assertIn('data-next-harness="codex" data-next-session="beta-work"', row)
         self.assertIn('data-next-harness="antigravity" data-next-session="beta-work"', row)
-        self.assertIn("Codex", row)
+        self.assertIn("codex", row)
         self.assertIn("Build the app", row)
-        self.assertIn("Antigravity", row)
+        self.assertIn("antigravity", row)
         self.assertIn("Capture the proof", row)
         self.assertIn("Compile exact release", row)
         self.assertIn("Publish checkpoint", row)
-        self.assertIn("No reported block", row)
+        self.assertIn('aria-label="working"', row)
         self.assertIn("Synchronizing capture", row)
         self.assertIn("No pending step published", row)
-        self.assertIn("Harness does not report blocks", row)
+        self.assertIn("next-project-tone--unknown", row)
         self.assertNotIn("2 sessions executing", row)
         self.assertNotIn("Assignment unavailable", row)
         self.assertNotIn("ASSIGNMENT · Not published", row)
@@ -295,7 +322,7 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
 
         self.assertIn("NEEDS YOU · Source not identified", out["attention"])
         beta_attention = re.search(
-            r'<article class="next-attention-item"[^>]*'
+            r'<article class="next-attention-item next-attention-item--legacy"[^>]*'
             r'data-next-subject-key="session:\[&quot;&quot;,&quot;beta-work&quot;\]"[^>]*>'
             r"(.*?)</article>",
             out["attention"],
@@ -311,8 +338,8 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
             beta_attention.group(1) if beta_attention else "",
         )
         beta = self.project_row(out["projects"], "beta/app")
-        self.assertIn("BLOCKED · NEEDS YOU", beta)
-        self.assertIn("Plain approval", beta)
+        self.assertIn("next-project-tone--want", beta)
+        self.assertIn("Build the app", beta)
         self.assertNotIn("BLOCKED · CAPTAIN", beta)
         self.assertIn("NEEDS YOU</h2>", out["session"])
         self.assertNotIn("CAPTAIN</h2>", out["session"])
@@ -333,40 +360,37 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
 
         self.assertIn("CAPTAIN · Source not identified", out["attention"])
         project = self.project_row(out["projects"], "alpha/repo")
-        self.assertIn("BLOCKED · CAPTAIN", project)
-        self.assertIn("Approve the release", project)
+        self.assertIn("1 waiting on you", project)
+        self.assertIn("Title not published", project)
         self.assertIn("CAPTAIN</h2>", out["session"])
         for html in out.values():
             self.assertNotIn("NEEDS YOU</h2>", html)
 
-    def test_the_cell_prefers_the_filtered_asked_line_over_the_raw_prompt(self) -> None:
+    def test_the_goal_prefers_the_filtered_asked_line_over_the_raw_prompt(self) -> None:
         # `last_prompt` is the raw newest record on every harness but Codex, so
         # a Claude row can carry a harness-injected string there while the
         # runtime's own filtered reading of the same prompt sits beside it.
         html = self.render(
             """
+// The cockpit's assignment fold follows this merge; keep v2's goal contract callable.
+nextProjectCockpit = context => nextProjectGoal(context.project);
 const gate = nextData.sessions.find(session => session.sid === "alpha-gate");
 gate.instruction = {label: "asked", text: "Cut the release branch", at: 9900};
 const beta = nextData.sessions.find(session => session.sid === "beta-work");
 beta.last_prompt = "proceed";
 beta.instruction = {label: "earlier", text: "Not the newest thing asked", at: 9000};
+nextRoute = {view: "project", project: "alpha/repo", session: null};
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """
         )
         assert isinstance(html, str)
 
-        alpha = self.project_row(html, "alpha/repo")
-        self.assertIn("Latest assignment · Cut the release branch", alpha)
-        instruction = re.search(r'<div class="next-project-instruction">[\s\S]*?</div>', alpha)
-        self.assertIsNotNone(instruction)
-        self.assertNotIn("Approve the release", instruction.group(0) if instruction else "")
-        # The other two labels stay out. This cell has nowhere to put a label,
-        # and "agent" and "earlier" are the readings that need one: published
-        # bare they claim to be the newest instruction when they are not.
-        beta_row = self.project_row(html, "beta/app")
-        self.assertNotIn("Latest session context", beta_row)
-        self.assertNotIn("Not the newest thing asked", beta_row)
+        self.assertIn("Cut the release branch", html)
+        goal = re.search(r'<section class="next-project-goal">[\s\S]*?</section>', html)
+        self.assertIsNotNone(goal)
+        self.assertNotIn("Approve the release", goal.group(0) if goal else "")
+        self.assertNotIn("Not the newest thing asked", html)
 
     def test_absent_inventory_facts_do_not_displace_the_command_answer(self) -> None:
         html = self.render()
@@ -407,7 +431,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         row = self.project_row(html, "gamma/tool")
 
         self.assertNotIn("next-project-progress-bar", row)
-        self.assertNotIn(" of ", row)
+        self.assertNotIn("tasks done", row)
 
     def test_blocked_wins_over_running_and_idle_is_explicit(self) -> None:
         html = self.render()
@@ -416,10 +440,10 @@ console.log(JSON.stringify(__els.app.innerHTML));
         beta = self.project_row(html, "beta/app")
         gamma = self.project_row(html, "gamma/tool")
 
-        self.assertIn("next-project-row--blocked", alpha)
-        self.assertIn("BLOCKED · CAPTAIN", alpha)
-        self.assertIn("Approve the release", alpha)
-        self.assertIn("NOW · WORKING", beta)
+        self.assertIn("next-project-tone--want", alpha)
+        self.assertIn("1 waiting on you", alpha)
+        self.assertIn("Title not published", alpha)
+        self.assertIn('aria-label="working"', beta)
         self.assertIn("Activity not published", beta)
         self.assertIn("No pending step published", beta)
         self.assertNotIn("1 session executing", beta)
@@ -429,8 +453,14 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn('data-next-project-history="true"', gamma)
 
     def test_two_idle_sessions_still_get_the_collision_caveat(self) -> None:
-        html = self._run_page_js(
-            "await __settle();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
+        out = self._run_page_js(
+            """
+await __settle();
+const projects = __els.app.innerHTML;
+nextRoute = {view: "project", project: "repo/main", session: null};
+renderNext();
+console.log(JSON.stringify({projects, detail: __els.app.innerHTML}));
+""",
             """
 __els.app = {innerHTML: ""};
 location.hash = "#n=projects";
@@ -444,12 +474,14 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 })});
 """,
         )
-        assert isinstance(html, str)
+        assert isinstance(out, dict)
+        html = out["projects"]
 
         self.assertEqual(1, html.count("data-next-project-row"))
-        self.assertIn("2 sessions share this label", html)
-        self.assertIn("Same label is not proof of the same directory", html)
-        self.assertIn("sibling worktrees read alike", html)
+        self.assertIn("2 sessions · 2 quiet", html)
+        self.assertIn('data-next-route="project:repo%2Fmain"', html)
+        self.assertIn("2 sessions share this display label", out["detail"])
+        self.assertIn("shared location is not established", out["detail"])
 
     def test_zero_session_projects_keeps_its_route_and_bounded_empty_sentence(self) -> None:
         html = self.render(
@@ -464,25 +496,21 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn('<section class="next-projects" data-next-view-body="projects">', html)
         self.assertIn("<h1>Projects</h1>", html)
-        self.assertIn("No project display labels in this 24h payload.", html)
+        self.assertIn("No project has active session evidence right now.", html)
         self.assertIn('<nav aria-label="Primary">', html)
         self.assertIn('<a href="#n=projects" aria-current="page">Projects</a>', html)
         self.assertIn('<a href="#n=sessions">Sessions</a>', html)
         self.assertNotIn('data-next-view-body="attention"', html)
 
-    def test_idle_requires_known_states_but_not_active_work(self) -> None:
-        out = self.render(
-            """
-console.log(JSON.stringify({
-  inactive: nextProjectNow([{state: "working", active: false}]),
-  unknown: nextProjectNow([{active: false}])
-}));
-"""
-        )
-        assert isinstance(out, dict)
-
-        self.assertIn(">idle<", out["inactive"])
-        self.assertEqual("", out["unknown"])
+    def test_no_published_state_still_has_an_explicit_count(self) -> None:
+        html = self.render("""
+nextData.sessions = [{sid: "unknown", project: "unknown", subagents: []}];
+nextData.asks = [];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(html, str)
+        self.assertIn("1 session · 1 in no counted state", html)
 
     def test_clicking_a_project_row_uses_the_project_route(self) -> None:
         out = self.render(
@@ -529,13 +557,7 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class ProjectRowDenominatorTest(NextPageJsHarness):
-    """What a project row's leading total is a count of, and what follows it.
-
-    The leading total counts every session in the group and the words after it
-    count only the active subset, so a group of three with one active put two
-    sessions in the total and in no word at all (DRC-4453). The row now names
-    the subset the words are a count of.
-    """
+    """Every state word and the leading total count the same project collection."""
 
     SUMMARY = re.compile(r'<div class="next-project-summary">([\s\S]*?)</div>')
 
@@ -557,6 +579,18 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
             raise AssertionError(f"no project summary in {html}")
         return match.group(1)
 
+    def test_all_distinguishable_states_share_one_hand_counted_denominator(self) -> None:
+        self.assertEqual(
+            "5 sessions · 1 working · 1 waiting on you · 1 ended · 1 quiet · 1 in no counted state",
+            self.summary("""[
+              {sid: "work", project: "mixed", state: "working", active: true},
+              {sid: "wait", project: "mixed", state: "needs_input", active: true},
+              {sid: "end", project: "mixed", state: "idle", ended_at: 9900},
+              {sid: "quiet", project: "mixed", state: "idle", active: false},
+              {sid: "unknown", project: "mixed", state: "starting", active: false}
+            ]"""),
+        )
+
     def test_a_row_with_one_of_three_sessions_active_says_so(self) -> None:
         # Measured at HEAD in Chrome and in this harness, the same group rendered
         # `3 sessions   1 subject at risk   1 working`: two sessions in the total
@@ -564,8 +598,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
         # subject, which is why `at risk` reads 1 over 3 sessions and keeps the
         # unit DRC-4426 gave it.
         self.assertEqual(
-            "<span>3 sessions, 1 active:</span>"
-            "<span>1 subject at risk</span><span>1 working</span>",
+            "3 sessions · 1 working · 2 quiet",
             self.summary(
                 """[
   {sid: "one", project: "trio/app", state: "working", active: true,
@@ -583,7 +616,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
         # edge case: those rows are rendered with an empty active set, so the row
         # read `3 sessions` and said nothing about any of them.
         self.assertEqual(
-            "<span>3 sessions, 0 active:</span><span>none active</span>",
+            "3 sessions · 3 quiet",
             self.summary(
                 """[
   {sid: "one", project: "trio/app", state: "idle", active: false,
@@ -602,7 +635,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
         # next-sessions.js:86, which next-sessions.js:81-83 documents as
         # deliberate. This is the payload that renders it.
         self.assertEqual(
-            "<span>1 session, 1 active:</span><span>1 exact request</span><span>1 quiet</span>",
+            "1 session · 1 quiet",
             self.summary(
                 """[
   {sid: "solo", project: "quiet/repo", state: "idle", active: false,
@@ -620,7 +653,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
         # session on this row sat in the leading total and in no word at all.
         # The three session states now partition the active subset.
         self.assertEqual(
-            "<span>1 session, 1 active:</span><span>1 blocked</span>",
+            "1 session · 1 waiting on you",
             self.summary(
                 """[
   {sid: "gate", project: "gate/repo", state: "needs_input", active: true,
@@ -636,8 +669,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
         # vanish from the words while staying in the total. The construction the
         # Attention brief already uses at next-attention.js:1069-1073.
         self.assertEqual(
-            "<span>1 session, 1 active:</span>"
-            "<span>1 exact request</span><span>1 in no counted state</span>",
+            "1 session · 1 in no counted state",
             self.summary(
                 """[
   {sid: "odd", project: "odd/repo", state: "starting", active: true,
@@ -649,6 +681,82 @@ __fetchImpl = async () => ({{ok: true, json: async () => ({{
 ]""",
             ),
         )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextProjectsV2Test(NextPageJsHarness):
+    def test_reasons_and_navigation_reach_every_rendered_row(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+const before = JSON.stringify(v2Model);
+const html = nextProjectsView(v2Model);
+console.log(JSON.stringify({html, unchanged: before === JSON.stringify(v2Model)}));
+"""
+        )
+        assert isinstance(out, dict)
+        html = out["html"]
+        self.assertTrue(out["unchanged"])
+        for reason in (
+            "Title not published",
+            "Exact location not published",
+            "No pending step published",
+        ):
+            self.assertIn(reason, html)
+        self.assertIn('data-next-route="project:alpha%2Frepo"', html)
+        self.assertRegex(
+            html,
+            r'<button[^>]*data-next-project-session[^>]*data-next-route="session:alpha%2Frepo:codex:live"',
+        )
+        self.assertIn("1 session · 1 working", html)
+        self.assertIn(">Active</h2>", html)
+        self.assertIn("identity stays reachable; operational claims lapse", html)
+
+    def test_every_session_line_binds_its_own_exact_navigation_target(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+v2Project.sessions = [v2Session, {...v2Session, harness: "claude", sid: "second", isWorking: false, isNeeds: true, state: "needs_input", tone: "want"}];
+const html = nextProjectsView(v2Model);
+__els.app = {innerHTML: html};
+const tokens = [...html.matchAll(/<button[^>]*data-next-project-session[^>]*data-next-route="([^"]+)"/g)].map(match => match[1]);
+const routes = [];
+for(const token of tokens){
+  __fire("click", {target: {closest: selector => selector === "[data-next-route]" ? {dataset: {nextRoute: token}} : null}, preventDefault(){}});
+  routes.push({...nextRoute});
+}
+console.log(JSON.stringify({html, routes}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [("codex", "live"), ("claude", "second")],
+            [(route["harness"], route["session"]) for route in out["routes"]],
+        )
+        self.assertEqual(0, out["html"].count("next-project-dot--working"))
+        for button in re.findall(r"<button[^>]*data-next-project-session[^>]*>", out["html"]):
+            self.assertIn("data-next-focus=", button)
+
+    def test_groups_follow_the_model_order_and_history_has_no_activity_claims(self) -> None:
+        out = self._run_page_js(
+            V2_MODEL_FIXTURE
+            + """
+const blocked = {...v2Project, key: "z-blocked", tone: "want"};
+const rest = {...v2Project, key: "old", countLine: "1 session · 1 quiet"};
+v2Model.activeProjects = [blocked, v2Project];
+v2Model.restProjects = [rest];
+console.log(JSON.stringify(nextProjectsView(v2Model)));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertLess(
+            out.index('data-next-project="z-blocked"'), out.index('data-next-project="alpha/repo"')
+        )
+        row = NextProjectsBehaviorTest.project_row(out, "old")
+        self.assertIn('data-next-route="project:old"', row)
+        self.assertIn("1 session · 1 quiet", row)
+        self.assertNotIn("Compiling", row)
+        self.assertNotIn("data-next-project-session", row)
 
 
 if __name__ == "__main__":

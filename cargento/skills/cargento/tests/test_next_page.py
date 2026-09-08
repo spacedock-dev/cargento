@@ -43,24 +43,13 @@ class NextPageAssetContractTest(unittest.TestCase):
             asset = web / name
             asset.parent.mkdir(parents=True, exist_ok=True)
             asset.write_text("d09GMg==\n", encoding="ascii")
-        (web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
-        (web / "next-attention.js").write_text("const attention = 2;\n", encoding="utf-8")
-        (web / "next-notify.js").write_text("const notify = 2;\n", encoding="utf-8")
-        (web / "next-cockpit-compat.js").write_text("const compat = 1;\n", encoding="utf-8")
-        (web / "project.js").write_text("const shared = 1;\n", encoding="utf-8")
-        (web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
-        (web / "next-capacity.js").write_text("const capacity = 11;\n", encoding="utf-8")
-        (web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
-        (web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
-        (web / "next-activity.js").write_text("const activity = 5;\n", encoding="utf-8")
-        (web / "next-session.js").write_text("const session = 6;\n", encoding="utf-8")
-        (web / "next-workstream.js").write_text("const workstream = 7;\n", encoding="utf-8")
-        (web / "next-delegation.js").write_text("const delegation = 8;\n", encoding="utf-8")
-        (web / "next-controls.js").write_text("const controls = 9;\n", encoding="utf-8")
-        (web / "next-cockpit.js").write_text("const cockpit = 9;\n", encoding="utf-8")
-        (web / "next-sessions.js").write_text("const sessions = 3;\n", encoding="utf-8")
-        (web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
-        (web / "next-live.js").write_text("const live = 10;\n", encoding="utf-8")
+        # One marker per part, derived from APP_PARTS rather than listed. The
+        # hand-written list this replaces went stale the moment a part was added,
+        # and the failure named a byte count rather than the missing file. Order
+        # and membership are pinned against literals in the two oracle tests
+        # below; this fixture only has to make the loader resolvable.
+        for name in frontend_page.APP_PARTS:
+            (web / name).write_text(f"/*{name}*/\n", encoding="utf-8")
 
     def test_load_page_resolves_the_patched_web_dir_at_call_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -80,14 +69,9 @@ class NextPageAssetContractTest(unittest.TestCase):
             )
         self.assertEqual(
             (f"<style>{embedded_styles}.next{{color:red}}\n</style>").encode()
-            + b"<script>const first = 1;\nconst attention = 2;\nconst notify = 2;\n"
-            b"const compat = 1;\nconst shared = 1;\nconst middle = 2;\n"
-            b"const capacity = 11;\n"
-            b"const sessions = 3;\nconst projects = 3;\n"
-            b"const project = 4;\nconst activity = 5;\n"
-            b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
-            b"const controls = 9;\nconst cockpit = 9;\n"
-            b"const second = 2;\nconst live = 10;\n</script>",
+            + b"<script>"
+            + "".join(f"/*{name}*/\n" for name in frontend_page.APP_PARTS).encode()
+            + b"</script>",
             actual,
         )
 
@@ -179,6 +163,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(
             (
                 "next-boot.js",
+                "next-observed.js",
                 "next-attention.js",
                 "next-notify.js",
                 "next-cockpit-compat.js",
@@ -379,57 +364,37 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual("2px solid var(--ink)", focus_rules.get("outline"))
         self.assertEqual("3px", focus_rules.get("outline-offset"))
 
-    def test_the_next_palette_tracks_system_light_and_dark_themes(self) -> None:
+    def test_the_next_palette_is_dark_only(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        light = re.search(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
-        dark = re.search(
-            r"@media\(prefers-color-scheme:dark\)\{\s*:root\{([^}]*)\}\s*\}",
-            styles,
-            re.DOTALL,
+        roots = re.findall(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
+        self.assertEqual(1, len(roots))
+        self.assertNotIn("prefers-color-scheme", styles)
+        # The prototype keeps its existing dark tokens locally until Session A2.
+        # The v2 regions must still use only the shipped palette.
+        v2_styles, prototype_styles = styles.split("/* ===== COCKPIT ===== */", 1)
+        for retired in ("--warn", "--alert", "--accent-ink", "--warnink"):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, v2_styles)
+        self.assertIn(
+            ".next-project-detail{--accent-ink:oklch(0.86 0.10 128);--alert:oklch(0.76 0.17 27)}",
+            prototype_styles,
         )
         expected = {
-            "light": {
-                "--bg": "#f6f3ec",
-                "--panel": "#fffdf8",
-                "--ink": "#26241d",
-                "--ink2": "#423e33",
-                "--ink3": "#615d52",
-                "--line": "#ded7c7",
-                "--accent": "oklch(0.80 0.16 122)",
-                "--alert": "oklch(0.48 0.20 27)",
-                "--sunk": "#f0ece2",
-                "--line2": "#b3aa95",
-                "--accent-ink": "oklch(0.34 0.07 130)",
-                "--warn": "oklch(0.74 0.11 78)",
-                "--warnink": "oklch(0.44 0.10 70)",
-            },
-            "dark": {
-                "--bg": "#1a1916",
-                "--panel": "#222019",
-                "--ink": "#efece3",
-                "--ink2": "#c9c5ba",
-                "--ink3": "#a19d92",
-                "--line": "#3a362c",
-                "--accent": "oklch(0.84 0.17 122)",
-                "--alert": "oklch(0.76 0.17 27)",
-                "--sunk": "#161512",
-                "--line2": "#5a5245",
-                "--accent-ink": "oklch(0.86 0.10 128)",
-                "--warn": "oklch(0.78 0.11 78)",
-                "--warnink": "oklch(0.82 0.10 76)",
-            },
+            "--bg": "#14140f",
+            "--panel": "#1c1c16",
+            "--sunk": "#11110c",
+            "--line": "#2c2c23",
+            "--line2": "#403f33",
+            "--ink": "#f4f1e8",
+            "--ink2": "#c9c4b4",
+            "--ink3": "#9b9484",
+            "--accent": "#c6e07a",
+            "--accent-dim": "#8ea254",
+            "--amber": "#e8b45c",
+            "--clay": "#e08a6a",
         }
-
-        self.assertIsNotNone(light)
-        self.assertIsNotNone(dark)
-        blocks = {
-            "light": light.group(1) if light else "",
-            "dark": dark.group(1) if dark else "",
-        }
-        for theme, values in expected.items():
-            tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", blocks[theme]))
-            with self.subTest(theme=theme):
-                self.assertEqual(values, {name: tokens.get(name) for name in values})
+        tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", roots[0]))
+        self.assertEqual(expected, {name: tokens.get(name) for name in expected})
 
         def luminance(value: str) -> float:
             channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
@@ -443,13 +408,19 @@ class NextPageAssetContractTest(unittest.TestCase):
             high, low = sorted((luminance(first), luminance(second)), reverse=True)
             return (high + 0.05) / (low + 0.05)
 
-        for theme, surface in (("light", "--sunk"), ("dark", "--panel")):
-            values = expected[theme]
-            for ink in ("--ink", "--ink2", "--ink3"):
-                with self.subTest(theme=theme, ink=ink):
-                    self.assertGreater(contrast(values[ink], values[surface]), 4.5)
-            with self.subTest(theme=theme, focus="--ink"):
-                self.assertGreater(contrast(values["--ink"], values["--bg"]), 3.0)
+        for surface in ("--bg", "--panel", "--sunk"):
+            for ink in (
+                "--ink",
+                "--ink2",
+                "--ink3",
+                "--accent",
+                "--accent-dim",
+                "--amber",
+                "--clay",
+            ):
+                with self.subTest(surface=surface, ink=ink):
+                    self.assertGreater(contrast(tokens[ink], tokens[surface]), 4.5)
+        self.assertGreater(contrast(tokens["--ink"], tokens["--bg"]), 3.0)
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
@@ -462,7 +433,7 @@ class NextPageAssetContractTest(unittest.TestCase):
 
         self.assertIsNotNone(live_rule)
         self.assertIsNotNone(reduced)
-        self.assertIn("color:var(--accent-ink)", live_rule.group(1) if live_rule else "")
+        self.assertIn("color:var(--ink)", live_rule.group(1) if live_rule else "")
         self.assertIn("animation:next-live-pulse", live_rule.group(1) if live_rule else "")
         self.assertIn(".next-live .next-status-dot", reduced.group(1) if reduced else "")
         self.assertIn("animation:none", reduced.group(2) if reduced else "")
@@ -497,24 +468,39 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertIsNotNone(rule)
                 self.assertIn("overflow-wrap:anywhere", rule.group(1) if rule else "")
 
-    def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
+    def test_session_detail_tone_rails_use_the_fixed_palette(self) -> None:
+        # Keyed on the observation tone, not the raw harness state: the rule carries
+        # what was observed, which is what the palette encodes. The state-keyed
+        # predecessor could not express `bad`, so a session that ended dirty wore the
+        # same rail as one still working.
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        for state, color in (
-            ("needs_input", "var(--warn)"),
-            ("working", "var(--accent)"),
-            ("idle", "var(--line2)"),
+        for tone, color in (
+            ("want", "var(--amber)"),
+            ("bad", "var(--clay)"),
+            ("ok", "var(--accent)"),
         ):
-            with self.subTest(state=state):
+            with self.subTest(tone=tone):
                 rule = re.search(
-                    rf'\.next-session-detail\[data-next-session-state="{state}"\] '
+                    rf'\.next-session-detail\[data-tone="{tone}"\] '
                     r"\.next-session-current\{([^}]*)\}",
                     styles,
                 )
                 self.assertIsNotNone(rule)
                 self.assertIn(f"border-left-color:{color}", rule.group(1) if rule else "")
+        # Unknown never gets colour, so it must have no override at all rather than a
+        # muted one. Absence of the rule is the assertion.
+        self.assertIsNone(
+            re.search(
+                r'\.next-session-detail\[data-tone="unknown"\] \.next-session-current\{',
+                styles,
+            ),
+        )
 
     def test_project_scope_tree_is_left_at_wide_width_and_stacks_when_narrow(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        styles = styles.split("/* ===== COCKPIT ===== */", 1)[1].split(
+            "/* ===== SUBSTRATE ===== */", 1
+        )[0]
         wide = re.search(r"\.next-cockpit-shell\{([^}]*)\}", styles)
         narrow = re.search(
             r"@media\(max-width:760px\)\{[\s\S]*?"
@@ -609,11 +595,15 @@ class NextPageAssetContractTest(unittest.TestCase):
         expected_parts = {
             "next-boot.js": (
                 22_383,
-                "8c37e4a7be21d25ed24e77e4ab8af1000b14fb2959219aa42c93c120e63451be",
+                "b8ad01153c5d024aed654ecb03f9b29e6e7e92124a5e09c4f6ede6669858d82b",
+            ),
+            "next-observed.js": (
+                26_473,
+                "24821122e96cc1cf412e2613adc77c07b31919ac790894209677b19d26d03b6e",
             ),
             "next-attention.js": (
-                55_856,
-                "db84662107903bd501d6b93bc6c9cf2b028dd123563b7dcb5980ad05541a3b87",
+                56_348,
+                "2ca8f16c43783c74d21e22aae8adf3099187bdd2a67754ba5e918060c0a75184",
             ),
             "next-notify.js": (
                 6_457,
@@ -628,44 +618,44 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "5691704a6c164553b5fbf942287e6fdbd7a306aa387d2eebe0872e83d10a0261",
             ),
             "next-chrome.js": (
-                35_822,
-                "e305b13c08b35286673d0f66425f327d54656224376bd5bbe2f365760a3d7b7d",
+                35_396,
+                "80df29470a5fa713b735a54b483960601d61a316341475006c4c222460ae6ea6",
             ),
             "next-capacity.js": (
-                30_666,
-                "95410ca90cd1bffd8a717cd7f597d9a81da0c8d1ae789bf62f4c9f9757ec4d6f",
+                32_192,
+                "fccfae64553820ba7da58439694808fdae9275bba00f4d85119db58d36d0ef6b",
             ),
             "next-sessions.js": (
-                17_362,
-                "34f337530466457405ab470571f327836dbb9f99b7558d9fb2edf5e74c4fc55b",
+                19_890,
+                "38f4c8909f67c1d373124888278340ff11674cda914e626755e7c0d7ff9b63e0",
             ),
             "next-projects.js": (
-                12_350,
-                "e33148254ca21c3a3def0e0702209697bcc074eafa2bcf6ecfd22223a7d7ec28",
+                4_186,
+                "0e270a7cecb33368ed71876fae7493104fe29027b695e100e6f24b5527820e0b",
             ),
             "next-project.js": (
-                11_384,
-                "2aee791136ed89fff265747e7c3e17c6511045bc7e58a9883981edfd69442706",
+                13_710,
+                "b3b8f9913384bc53a059dd907591b8259cef6c34e3d9d3e67f39ee661b8dd0ed",
             ),
             "next-activity.js": (
-                6_081,
-                "5dfcddad55ada20d5786430f0927a7f8ea1829029602bccac2bfe7bac408ae3a",
+                6_632,
+                "62f971c5e2a570068b7e2c3ee72b2499774d14a3b739f6f908962f91b98382f1",
             ),
             "next-session.js": (
-                19_720,
-                "d39df21375a49440ded562fe1eece8bb71fbbf63ee52faecfb9c64c11d8012d9",
+                20_189,
+                "74458dc9744c6718f964b0db1b7befcee870d6fb58bb8837f7ece6a9af1271fb",
             ),
             "next-workstream.js": (
-                17_525,
-                "1ce464621be77779618494f9826c4486fc2c058257818865037eb1c6d15ee9d4",
+                18_659,
+                "9680ee01d19296e87cf9b35230a51a7e98ddc764c5bfb80f0e18e7723ece8a04",
             ),
             "next-delegation.js": (
-                8_583,
-                "e526ce96d25ef9c6347d6cbac903aa4c0da9b6399ecdbe0056ce3c119dcc9fdb",
+                14_508,
+                "36ecd098147995ae96b5ca7846c6a4366142da400a27a2dd5dfcef9ace01fdb6",
             ),
             "next-controls.js": (
-                10_575,
-                "fb36d3cf4fc98cfd718ea32ed82eac602c3cc0bc658559424d07403396ec84b1",
+                11_563,
+                "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
                 74_751,
@@ -688,16 +678,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(68_929, len(styles))
+        self.assertEqual(82_753, len(styles))
         self.assertEqual(
-            "2c554c4938c6bb3f23c6c47e9733db6d2a02694033ffc799e3b19f0a59132d0e",
+            "5b16c190d1a41b1008ade9058325334d132fa035ea651be4cc682db53172b163",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(630_960, len(assembled))
+        self.assertEqual(678_606, len(assembled))
         self.assertEqual(
-            "8eaa800ef6d50b22b4254e0d7acd59964ba7d993f3257b912fb04bb71a90e5d0",
+            "bf2245104f3ba86033e0ed504ecdb24c000becdbdab3c627efb309ccf88f4c03",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -754,7 +744,7 @@ console.log(JSON.stringify({
         )
         self.assertEqual([None, None, "0s", "5m"], out["since"])
 
-    def test_the_default_bundle_mounts_primary_session_navigation(self) -> None:
+    def test_the_default_bundle_mounts_primary_project_navigation(self) -> None:
         out = self._run_page_js(
             "console.log(JSON.stringify(__els.app.innerHTML));",
             '__els.app = {innerHTML: ""};\n',
@@ -766,8 +756,8 @@ console.log(JSON.stringify({
         # (DRC-4421). Kept as a literal rather than loosened: it is the mounted
         # bundle's own markup, and the order is part of what a reader learns.
         self.assertIn(
-            '<nav aria-label="Primary"><a href="#n=projects">Projects</a>'
-            '<a href="#n=sessions" aria-current="page">Sessions</a>'
+            '<nav aria-label="Primary"><a href="#n=projects" aria-current="page">Projects</a>'
+            '<a href="#n=sessions">Sessions</a>'
             '<a href="#n=attention">Attention</a></nav>',
             out,
         )

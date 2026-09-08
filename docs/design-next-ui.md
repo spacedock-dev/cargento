@@ -11,6 +11,15 @@ experiment that produced them, in
 [the session operations board walkthrough](future-ui-exploration/presentations/future-ui-session-operations-board/README.md),
 and they explain a progression rather than a product claim.
 
+The v2 project-level design this interface was built to is kept as the artifact it was
+designed in, not as a description of it:
+[`Cargento-v2.dc.html`](future-ui-exploration/v2-prototype/Cargento-v2.dc.html) holds the five
+views and
+[`cargento-observed.js`](future-ui-exploration/v2-prototype/cargento-observed.js) the data shape
+they read. Both are design artifacts rather than code, and two of their claims did not survive
+contact with the runtime — the end-outcome vocabulary and the delegation floor. Where the
+prototype and this document disagree, this document is what shipped.
+
 ## NUI-1: promotion leaves one precomputed page
 
 The preview originally used a second shell, stylesheet, script list, and server byte string so its
@@ -30,9 +39,34 @@ asset paths make bundle ownership unambiguous.
 ## NUI-2: one stylesheet owns the interface
 
 During preview, copying the token block kept the two stylesheets byte-independent. Promotion made
-that copy the canonical `web/styles.css` and removed the legacy stylesheet. Its light root,
-`prefers-color-scheme: dark` override, type scale, selection tokens, responsive rules, and reduced
-motion treatment now describe the only UI.
+that copy the canonical `web/styles.css` and removed the legacy stylesheet. The v2 refactor drops
+light mode and the `prefers-color-scheme` override. One dark root now owns the palette: `--amber`
+replaces `--warn`, `--clay` replaces `--alert`, and `--ink` replaces `--accent-ink` and
+`--warnink`. Selection still uses `--sel-bg` and `--sel-bd`, and reduced motion disables pulses.
+
+The stylesheet stays one file because splitting it would change the loader, linter and asset
+contracts. Seven banner-delimited regions divide ownership instead:
+
+| Banner | Owns |
+|---|---|
+| `FOUNDATION` | Tokens, reset, type scale, fonts and shared motion rules |
+| `CHROME` | Navigation, breadcrumbs, live summary, notices and shared row controls |
+| `PROJECTS` | Projects overview, project detail and its main column |
+| `RAIL` | The project detail right rail |
+| `SESSIONS` | Session operations and its capacity strip |
+| `ATTENTION` | Attention |
+| `SESSION` | Session detail |
+
+Assign one owner to each region during parallel work. Keep media queries at the end of their own
+region; a shared responsive block would make every view edit the same tail. Moving a rule between
+regions is an ownership change, not incidental cleanup.
+
+Board sentences have a 12.5px floor (`--fs-xs`). Labels, identifiers, timestamps, rates and
+compact controls retain their smaller design sizes, down to 9px column headers. The prototype
+placed some absence explanations at 10px; those are sentences the board asks a person to read, so
+the sentence floor wins. The stylesheet retains scale tokens and literal sizes. The asset test
+pins the dark palette and checks text inks above 4.5:1 on the ground, panel and inset surfaces; it
+does not enforce all font sizes or spacing between contrast steps.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
@@ -42,8 +76,9 @@ no font route or browser request to a provider. Licenses and source hashes live 
 
 The fragment grammar is `#n=sessions`, `#n=projects`, `#n=attention`,
 `#n=project:<encoded-project>`, or a session route carrying encoded project, harness, and complete
-session id. Invalid and retired fragments normalize to Sessions. Hash changes are both navigation
-output and browser-history input, so reload, pasted links, and back or forward preserve the view.
+session id. The bare URL, invalid fragments and retired fragments normalize to Projects. Hash
+changes are both navigation output and browser-history input, so reload, pasted links, and back or
+forward preserve the view.
 
 Browser state keeps its `cargento.next.*` namespace. That prefix is no longer a firewall between
 two live bundles; it is compatibility with storage written during the preview and protection from
@@ -62,11 +97,15 @@ installed copy is complete rather than relying on recursive copying to conceal a
 
 ## NUI-5: chrome and navigation reflect the current payload
 
-The header reports running sessions and subagents from the payload and exposes a needs-input button
-only when intervention exists. Projects and Sessions are the primary navigation; Attention is
-reached through that button or `a`. Shortcuts `a`, `p`, and `s` are case-insensitive and do not run
-while a form control owns focus or Meta, Control, or Alt is held. The preview's `dashboard mode`
-button and `d` shortcut were removed during promotion because `/` now serves this same interface.
+The header counts running sessions and all observed subagents from the shared derivation,
+including quiet subagents. Running requires working state, no observed end, and the published
+`active` flag. A reported-block button appears while a session is waiting on the reader in that
+model. Projects, Sessions and Attention all have primary navigation links. Shortcuts `p`, `s`, and
+`a` are case-insensitive and do not run while a form control or editable content owns focus or
+Meta, Control, or Alt is held. `Escape` follows the same restrictions and returns from session
+detail to its project, and from any other view to Projects. In a tripwire draft it cancels the
+draft first. The preview's `dashboard mode` button and `d` shortcut were removed during promotion
+because `/` now serves this same interface.
 
 Projects groups the current payload by display label and splits active evidence from recently
 observed groups. Sessions separates Active now from Recent history. The active group retains gate
@@ -75,9 +114,9 @@ last observed state as a current operation. Every row carries the exact route ne
 session detail.
 
 Two consecutive fetch failures show a stalled notice beside the last good payload. A manual retry
-uses the same serialized refresh path. The page forwards only `all=1` to `/api/data`; `next=true`
-never changes collection. Every client-derived age uses the payload's generated time rather than
-the browser clock.
+uses the same serialized refresh path. The page forwards `all=1` to `/api/data` and adds `usage=1`
+only while quota-fetch consent is granted; `next=true` never changes collection. Every
+client-derived age uses the payload's generated time rather than the browser clock.
 
 ## NUI-6: a project keeps its workflows separate
 
@@ -103,75 +142,92 @@ does not prove which session owns it and leaves the owner blank. `stalled <durat
 is one complete token-rate evidence window. The 90-second collector threshold answers a different
 question: whether recent store activity is enough to call a session working.
 
-The project header folds those same per-entity states into an `N entities unhealthy` count. It
-renders the count only when at least one named plan exists. A plan with no published entities
-reports a measured zero; no plan omits the count and its divider. Stages do not become steps, and
-the header makes no step-health claim.
+The project plan section folds those same per-entity states into an `N entities unhealthy` count.
+It renders the count only when at least one named plan exists. A plan with no published entities
+reports a measured zero; no plan omits the count. Stages do not become steps, and the section
+makes no step-health claim.
 
 The payload does not distinguish an initial entity from a completed one, and it carries no pull
 request state. PLAN therefore has no completion glyph, completion count, merge state or review
-state. Its three empty messages keep the payload's distinctions: no Spacedock declaration, a first
-officer whose workflow has no fresh entities, and an ensign whose plan lives with its first officer.
-The main column and rail are separate section-block regions. The activity layer fills the two
-reserved work-state blocks without rebuilding PLAN.
+state. No Spacedock declaration omits the wrapper. A first officer whose workflow has no fresh
+entities and an ensign whose plan lives with its first officer keep distinct empty messages. The
+main column holds the stated goal, current activity, observed endings, state changes, plans and
+completed tasks. The right rail holds waiting requests, delegation, capacity and browser-local
+controls.
 
 ## NUI-7: project activity is a current-payload answer
 
-GOING ON answers from the project's session rows. Sessions waiting for input keep payload order
-because the server has already established their precedence. Re-sorting that queue in the browser
-would erase evidence the collector supplied. Behind them come the working rows, on the same stable
-long-turn and session-ID ladder as the sessions overview. Their cards share the payload clock,
-harness labels and measured wait or token-rate phrases with that overview, then route with both the
-project label and session ID.
+GOING ON reads the project's derived sessions in payload order. It includes event-backed working
+sessions, sessions waiting for input and sessions with an exact request. Their cards share the
+payload clock and measured wait or token-rate phrases with the sessions overview, then route with
+the project label, harness and full session ID. A working state without the freshness flag still
+counts as working elsewhere; it does not enter this block as observed running work.
 
-Each activity card also names its published subagents. The compact list keeps payload order and
-shows at most six rows, followed by `+N more` when the payload carries more. An elapsed age appears
-only when `started_at` is measurable against the payload's `generated` clock; missing or invalid
-stamps leave the name in place without inventing an age. The age uses the NUI-5 duration grammar.
-Malformed subagent collections produce no list, and malformed entries keep the neutral `subagent`
-fallback used by session detail.
+Each activity card also names its published subagents. The compact list puts live subagents first
+and keeps payload order within the live and quiet groups. It shows at most six rows, followed by
+`+N more` when the payload carries more. An elapsed age appears only when `started_at` is
+measurable against the payload's `generated` clock; missing or invalid stamps leave the name in
+place without inventing an age. The age uses the NUI-5 duration grammar. Malformed subagent
+collections produce no list, and malformed entries keep the neutral `subagent` fallback used by
+session detail.
 
 The rate phrase preserves the payload's distinction between absence and zero. A session from a
-rate-blind harness carries `rate_per_min: null`; a reporting harness that measured no output in the
-window carries `0`. The summary remains the sum of present measurements, while the harness strip
-qualifies that total as a floor whenever an active session's source is blind, or any discovered
-collector failed. This keeps the scalar useful without turning an unmeasured session into a
-confident `0 /m`.
+rate-blind harness carries `rate_per_min: null`; a reporting harness that measured no output in
+the window carries `0`. The card shows a rate only when the harness reports it, its collector has
+no error, and that session has no token-accounting gap. Otherwise it says `Token rate not
+reported`, keeping an unmeasured session distinct from a measured `0 /m`.
 
-Membership is `state`, and `active` is only a freshness gate on top of it. The two were conflated
-once, and the block filtered on `active` alone. Every session still inside the display window
-qualified, so a repository running one live Codex session rendered eleven cards, ten of them idle
-and captioned "awaiting your message", under a header that read `1 running`. The header and the
-sessions overview were both right, because both read `state`. A payload has one answer to what is
-going on, and a block that derives its own from a different field will eventually contradict the
-rest of the page.
+Working membership starts with `state`, excludes observed ends, and uses `active` as a freshness
+gate on top. An exact request independently keeps its card reachable. `state` and `active` were
+conflated once, and the block filtered on `active` alone. Every session still inside the display
+window qualified, so a repository running one live Codex session rendered eleven cards, ten of
+them idle and captioned "awaiting your message", under a header that read `1 running`. The header
+and the sessions overview were both right, because both read `state`. A payload has one answer to
+what is going on, and a block that derives its own from a different field will eventually
+contradict the rest of the page.
 
-DONE is deliberately narrower. It walks each project session and whatever task list that session
-published, in payload order, selecting only tasks whose published status is `completed`. It does not
-sort by task times or deduplicate subjects. Task identity is local to a session, and the same
-subject can represent two real pieces of work. Spacedock entities are not a completion source:
-terminal entities do not reach this payload, and the remaining plan rows carry no completed marker.
+COMPLETED TASKS is deliberately narrower. It walks each project session and whatever task list
+that session published, in payload order, selecting only tasks whose published status is
+`completed`. It does not sort by task times or deduplicate subjects. Task identity is local to a
+session, and the same subject can represent two real pieces of work. Spacedock entities are not a
+completion source: terminal entities do not reach this payload, and the remaining plan rows carry
+no completed marker.
 
-Both blocks render an explicit empty sentence. DONE names the payload because it is a view of the
-latest snapshot, not a retained history or a claim that a project has never completed work. A
-time-ordered list would require the persistent-history decision tracked in DRC-4234.
+The activity blocks render explicit empty sentences. COMPLETED TASKS names the payload because it
+is a view of the latest snapshot, not a retained task history or a claim that a project has never
+completed work. HOW THINGS ENDED is separate and contains only observed session ends. A stop on an
+idle session remains visible in Sessions and Attention without becoming a session end.
+
+The outcome vocabulary has six readings, composed from two observed events and three git states:
+
+| Event | Dirty | Clean | Unknown |
+|---|---|---|---|
+| Stop | `Stop observed with uncommitted work` | `Stop observed; git state clean` | `Stop observed; git state not measured` |
+| End | `Session ended with uncommitted work` | `Session ended; git state clean` | `Session ended; git state not measured` |
+
+A positive finite `ended_at` supports an end. Idle state with a positive `finished_at` supports a
+stop. An end takes precedence if both exist. A boolean `dirty` chooses dirty or clean; absent git
+measurement stays unknown. No stop or end yields `No stop or end observed`. These readings
+establish neither readership, unpushed commits nor termination cause; a clean tree is not proof
+that the work succeeded.
 
 ## NUI-8: session detail stays inside the current payload
 
-A session route carries the project display label and full session ID. The detail lookup requires
-both. A stale route, including the right ID under the wrong project label, gets an explicit
+A session route carries the project display label, harness and full session ID. The detail lookup
+requires all three. Older routes without a harness resolve only when there is exactly one match. A
+stale route, including the right ID under the wrong project label, gets an explicit
 outside-payload state instead of a guessed row. The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
-The header uses `title`, then `last_prompt`, with the first matching question as a fallback.
-Beneath it, on the detail header, the flat session table and each GOING ON card, sits the row's
-`instruction`: a labelled second line carrying what the session is working on now, since the title
-above it answers a different question and on a long Claude session answers it about work that
+The header uses the published `title`, or `Title not published`. A last prompt may appear under
+its own label; it never becomes a fallback title. The row's `instruction` supplies attributed
+current context on session detail, the operations table and each GOING ON card. This answers a
+different question from the title, which on a long Claude session can still name work that
 finished hours ago. One renderer serves all three, so the rule for when a line may be shown has a
-single definition. The line renders only with its label and the age of the record it came from,
-and it is dropped when the payload publishes none, when the label is not one the runtime issues,
-when its text equals the title, and when the title ends in an ellipsis and the text continues it,
-which is one prompt reaching the two lines at their two clip widths. Not the reverse: a short
+single definition. The line renders only with its source label and measured age, and is dropped
+when the payload publishes none or its label is not one the runtime issues. Where a caller supplies
+the displayed title, the helper also suppresses equal text and a continuation of a title clipped
+with an ellipsis: one prompt reaching two lines at their two clip widths. Not the reverse: a short
 title that merely opens a longer, genuinely newer instruction is the case the line exists for, so
 a plain prefix test would delete exactly what was added. Over 2,931 rows of one local store the
 equality branch suppresses 13 lines and the clipped-title branch 30, while the reverse rule fires
@@ -183,35 +239,37 @@ grows whenever the newest prompt is long pushes the next card off the fold. The 
 are never in the part that clips. The card renders the line as a span rather than a paragraph,
 since the card is a button and takes phrasing content only.
 
-The age sits outside the label span. `.next-instruction-label` uppercases, which turned "asked, 4m:"
-into "ASKED, 4M:". A duration whose unit is a capital letter reads as an initialism, and the whole
-prefix reads as one label rather than as a label and a measurement. In the session table line 1
-takes a label of its own, but only on rows where line 2 stands under it: a labelled second line
-below a bare first line reads as a caption for the row, and a lone "title:" on every row of a table
-whose column is already headed SESSION buys nothing.
+The age sits outside the label span. `.next-instruction-label` uppercases, which turned "asked,
+4m:" into "ASKED, 4M:". A duration whose unit is a capital letter reads as an initialism, and the
+whole prefix reads as one label rather than as a label and a measurement. The former session table
+labelled its title only when a second instruction line appeared, to keep that line from reading as
+an unlabelled caption. The v2 table names the published title in SESSION and keeps the
+instruction's own source label.
 
-The projects overview reads the same field for a different purpose. Its `last instruction` cell
-takes the newest session in the group and prefers `instruction.text` where the label is `asked`,
-falling back to `last_prompt` and then `title`. That label is the newest genuine prompt with the
-harness-injected shapes dropped and slash markup read back out, while `last_prompt` on every
-harness but Codex is the raw record: on the same 2,931 rows, 114 carry an `asked` line, 15 of those
-differ from `last_prompt`, and 2 have no `last_prompt` at all. The other two labels stay out of
-that cell, which has nowhere to put a label and would otherwise present an agent quoting itself, or
-a line that is explicitly not the newest thing asked, as the project's last instruction.
+The project goal uses the newest session, by last activity, that publishes an `asked` instruction
+or a Spacedock workflow goal. It labels that source and counts sessions with neither. Goals remain
+source statements, without normalization across sessions. An `asked` instruction wins over a
+workflow goal on the same session. The overview now shows each member's published title, current
+activity and pending step instead of selecting one last-instruction cell.
 
-The header's metadata is built only from measurements the row carries: the registry label, short
-session ID, and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
-an absent, empty, or malformed turn measurement removes that clause instead of falling back to the
-transcript's creation time. A needs-input row derives its blocked age against the payload's
-`generated` clock. An idle row may use the same clock for an explicitly named session-start age.
-Those two client-derived ages use the NUI-5 duration grammar; the working turn keeps the server's
-published string. Missing timestamps remove those clauses. They never become zero.
+The earlier cell preferred `asked` over raw `last_prompt` for a measured reason: over 2,931 rows,
+114 carried an `asked` line, 15 differed from `last_prompt`, and 2 had no `last_prompt` at all.
+Using an `agent` or `earlier` instruction without its label would turn quoted or older context
+into a claim about the newest request. That distinction still governs the goal's source label.
 
-The header also carries a static rail for the three published states: warning for needs input,
-accent for working, and muted for idle. Matching visually hidden text keeps the state from becoming
-a color-only cue. Unknown state values produce neither rail nor label. The needs-input article edge
-remains a separate alert treatment around the detail view; the header rail provides orientation and
-does not replace it.
+The header keeps the registry label, full session ID and measured activity metadata. A working row
+labels its measured `turn.elapsed_h` as the current start age; an absent, empty, or malformed turn
+measurement removes that clause instead of falling back to the transcript's creation time. A
+needs-input row derives its blocked age against the payload's `generated` clock. An idle row may
+use the same clock for an explicitly named session-start age. Those two client-derived ages use
+the NUI-5 duration grammar; the working turn keeps the server's published string. Missing
+timestamps remove those clauses. They never become zero.
+
+The detail rail follows the derived observation tone: accent for a supported good reading, amber
+for attention, clay for uncommitted work at an observed stop or end, and neutral for unknown.
+Visually hidden text still names a recognized published state. A state alone cannot imply a clean
+outcome, and an observed end with unknown git state does not inherit the working color. The needs-input article edge
+remains a separate treatment.
 
 The detail health callout is bounded to two measurements already present on the row:
 `turn.long` and the failed-tool-loop peak in `loop`. A long turn keeps the `LONG TURN` label;
@@ -222,26 +280,27 @@ missing or malformed positive integer count removes the loop notice. Neither pat
 or failed outcome. The canonical bundle keeps the MCP tool-name formatter near the detail renderer
 that uses it.
 
-Questions render only when the payload advertises the ask capability. Matching is exact on the
-full session ID, keeps payload order, and shows every match. The callout uses the same
-`<harness> is asking you` sentence as native notifications. Each option posts its
-numeric index to the existing `/api/answer` endpoint. Only `answered: true` confirms the action;
-otherwise the question stays put with a failure note keyed to its ask ID. There is no optimistic
-removal.
+Questions render only when the payload advertises the ask capability. Matching uses exact
+ownership by full session ID and harness when present; a harness-free request needs one
+unambiguous owner. It keeps payload order and shows every match. The callout uses the same
+`<harness> is asking you` sentence as native notifications. Each option posts its numeric index to
+the existing `/api/answer` endpoint. Only `answered: true` confirms the action; otherwise the
+question stays put with a failure note keyed to its ask ID. There is no optimistic removal.
 
 Task provenance is whichever collectors fill the list, not a harness allowlist. Two do today,
 `collectors/claude.py` and `collectors/codex.py`, and both readers gate on the published field
-rather than on the harness name so a third needs no edit here. The gate was once written against the
-harness name, while Claude was the only collector filling the field, and that spelling hid a Codex
-plan the moment one arrived; the comments in `next-session.js` and `next-activity.js` record the
-change. The count is derived from the rows being rendered, and their payload order is unchanged.
-Subagents also keep payload order. Their live dot pulses unless reduced motion disables animation,
-and elapsed time appears only when `started_at` was measured, using the NUI-5 duration grammar;
-model names are outside this view. For working sessions, the footer prefers measured turn output
-tokens. For waiting and idle sessions, it prefers the measured session total. Either state falls
-back to the other measured source and labels the visible number `this turn` or `this session` from
-the source it actually chose. An absent reading stays absent and a real zero stays visible, so a
-lifetime total cannot read as if it described the current request.
+rather than on the harness name so a third needs no edit here. The gate was once written against
+the harness name, while Claude was the only collector filling the field, and that spelling hid a
+Codex plan the moment one arrived; the comments in `next-session.js` and `next-activity.js` record
+the change. The count is derived from the rows being rendered, and their payload order is
+unchanged. Session-detail subagents keep payload order. Only live subagents pulse, unless reduced
+motion disables animation, and elapsed time appears only when `started_at` was measured, using the
+NUI-5 duration grammar; model names are outside this view. For sessions whose published state is
+working, the footer prefers measured turn output tokens. For waiting and idle sessions, it prefers
+the measured session total. Either state falls back to the other measured source and labels the
+visible number `this turn` or `this session` from the source it actually chose. An absent reading
+stays absent and a real zero stays visible, so a lifetime total cannot read as if it described the
+current request.
 
 A new session endpoint would duplicate the current payload and expand the HTTP surface without
 supplying new evidence. The `next-session.js` part renders from the canonical payload and adds no
@@ -286,30 +345,30 @@ span exists it says `since this tab opened`; elapsed labels come from payload `g
 the viewer clock. The span reads in days once it passes one, because the shipped retention is
 fourteen of them and `last 336h` is not a figure anyone reads as two weeks. Its header always keeps
 the `N of M unattended` ratio; expansion appends the retained span instead of replacing that ratio.
-The rail is empty until an event arrives and says which window it found none in, rather than
+The timeline is empty until an event arrives and says which window it found none in, rather than
 asserting the tab's lifetime. Reloading discards the in-tab ledger and rebuilds it from the store.
 Only the collapsed preference survives in the browser, under the next bundle's storage namespace and
 behind a storage failure boundary.
 
 Rendering consumes the ledger through a project-window function rather than reading its mutable
-arrays. That is what let the server history source arrive without changing the rail: the seeding
+arrays. That is what let the server history source arrive without changing the timeline: the seeding
 pass appends groups through the same path a payload takes, and the renderer never learned it had
 happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-The project rail includes STEER and GUARDRAILS because the dashboard needs the interaction shape, but
-neither is a session-control surface. Submitting a steer keeps a bounded draft record in that tab,
+The project rail includes STEER and TRIPWIRES because the dashboard needs the interaction shape,
+but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
 makes no request. A disabled field was rejected because it could not demonstrate the interaction,
 while an enabled field with no receipt would look like a successful send.
 
-Guardrail rules are viewer preferences. They are stored under a project-label key in the next
+Tripwire rules are viewer preferences. They are stored under a project-label key in the next
 bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
 throws. The project label is enough for a local browser preference. It is not stable enough for a
 server store that changes what agents do. Stored values are untrusted input, so both loaded and new
-rules pass through the shared escaping function every time they render. The header and every row
+rules pass through the shared escaping function every time they render. The panel header and standing note
 say that no observer is enforcing them.
 
 Two existing boundaries rule out wiring up either control. DEC-2 does not permit unsolicited free
@@ -383,20 +442,21 @@ its bounds and its off switch are in `SECURITY.md`.
 
 ## NUI-12: motion means observed activity, not mere attention
 
-The same live treatment appears in four places, with two different claims. The header always marks
-its running and subagent summary as live, including when both counts are zero, because the cue is
-about the current payload rather than an individual session. Fresh subagents in session detail,
-working sessions in GOING ON and active working rows in the sessions overview use the marker only
-for observed activity. A listed subagent has passed the collector's freshness test; session rows
-and GOING ON cards also require `active`. No browser timer infers that work is alive.
+Live treatments make two different claims. The header always marks its running and subagent
+summary as live, including when both counts are zero, because the cue is about the current payload
+rather than an individual session. Live subagents in session detail, working sessions in GOING ON
+and the project overview, and active working rows in Sessions use motion only for observed
+activity. A listed subagent may be quiet; `nextSubagentIsLive` decides which ones pulse. Working
+rows also require `active` and no observed session end. No browser timer infers that work is
+alive.
 
 A gate stays amber and static even when its session still has `active: true`. It is important, but
 it is waiting rather than moving, and animation must not turn attention priority into a claim of
 progress. A working row whose `active` flag has lapsed likewise keeps its place in the working
 group without the live dot.
 
-The pulse changes only opacity. Under `prefers-reduced-motion: reduce`, animation is disabled while
-the filled accent dot and `next-live` class remain, so liveness does not depend on motion. All of
+The pulse changes only opacity. Under `prefers-reduced-motion: reduce`, animation is disabled
+while the static dot and `next-live` class remain, so liveness does not depend on motion. All of
 these selectors and keyframes live in the canonical `web/styles.css`.
 
 ## NUI-13: one transport keeps the released namespace
@@ -446,17 +506,19 @@ warning and exact member routes rather than choosing one session as the owner.
 
 Absent optional facts leave no primary placeholder. A project with no Spacedock record omits the
 workflow wrapper instead of saying that a workflow source is unavailable. Session detail omits an
-assignment when none was published and places missing next-action provenance in a closed source
-coverage disclosure. The fixed operational columns may state their bounded absence, such as no
-pending source task, because the column itself answers a stable question. They do not translate
-that absence into intent, completion, or an all-clear.
+assignment when none was published. Its fixed fact grid states absent measurements explicitly;
+missing next-action provenance also stays in a closed source coverage disclosure when there is no
+exact request. The fixed operational columns may state their bounded absence, such as no pending
+source task, because the column itself answers a stable question. They do not translate that
+absence into intent, completion, or an all-clear.
 
 Current activity leads session detail. Its known state, source-backed activity, and running
 subagents occupy one region because they answer the same question: what is happening now. Session
-title and harness metadata remain identity beneath that lede. Assignment, next action, and exact
-request follow only when published. Health, answer controls, tasks, and token evidence remain
-below the command facts. This hierarchy prevents a session title from competing with its current
-work or making attached subagents look like unrelated sessions.
+title and harness metadata remain identity beneath that lede. Assignment and exact request follow
+only when published; the fixed NEXT STEP fact states why a step is absent. Health, answer
+controls, tasks, and token evidence remain below the command facts. This hierarchy prevents a
+session title from competing with its current work or making attached subagents look like
+unrelated sessions.
 
 <a id="nui-16"></a>
 
@@ -470,20 +532,22 @@ was doing now, what came next, and whether it was blocked. The compressed remain
 recently observed sessions look too much like current operations. More ranking did not solve the
 information hierarchy.
 
-Session operations therefore became the default route, with Projects beside it as the complete
-map. Its fleet strip leads with four bounded counts: active now, working, exact requests, and
-reported blocks. `Active now` means a working state, a needs-input state, or an exact request. It is
-not the number of rows in the payload. That distinction prevents a 24-hour observation window from
-reading as a list of open harness processes.
+Session operations initially became the default route. The v2 design moves the entry point up to
+Projects, so the reader first finds the project and then its sessions. Sessions remains the fleet
+operations view, with four bounded counts: active now, working, exact requests, and reported
+blocks. `Active now` means working or needs-input state without an observed end, or an exact
+request. It is not the number of rows in the payload. That distinction prevents a 24-hour
+observation window from reading as a list of open harness processes.
 
 The body makes the time boundary visible. Active now contains only exact sessions with active
 evidence and gives each one stable WHERE, NOW, NEXT, and BLOCKED columns. WHERE is the project
 display label and explicitly withholds exact location. NOW prefers an in-progress source task,
 then bounded state detail. NEXT uses a pending source task or names that no pending step was
 published. BLOCKED distinguishes a reported block, a source-backed no-block reading, and a harness
-whose block state is unknown. Recent history retains identity and project scope, but its operational
-facts are neutral dashes on wide screens and disappear on narrow screens. It never claims that a
-recently observed harness is still open or already closed.
+whose block state is unknown. Recent history retains identity, project scope, the last published
+activity and a QUIET or ENDED label where supported. It also shows measured stop/end outcomes and
+git evidence, but omits NEXT and BLOCKED. An ENDED row reported its own end; mere presence in
+history proves neither an open nor a closed process.
 
 Wide rows share one grid definition with their column header, so values do not drift between rows.
 The harness and title remain visible while the full session ID moves behind a dedicated copy
@@ -491,18 +555,21 @@ control. The control exposes the ID in its accessible label and tooltip, writes 
 and announces success without navigating. Routes include project label, harness, and full session
 ID so equal IDs from different harnesses cannot select the wrong row.
 
-The 320-pixel layout changes form instead of squeezing the table. The fleet strip becomes a compact
-two-by-two summary. Each active session becomes a nearly full-width card with identity across the
-top and WHERE, NOW, NEXT, and BLOCKED in a two-by-two fact grid. Recent history keeps only identity
-and scope. Labels that would repeat desktop column headers appear inside cards only at responsive
-widths. This preserves scan order without a page-level horizontal viewport.
+The 320-pixel layout changes form instead of squeezing the table. The fleet strip becomes a
+compact two-by-two summary. Each active session becomes a nearly full-width card with identity
+across the top and WHERE, NOW, NEXT, and BLOCKED in a two-by-two fact grid. Recent history keeps
+its activity and observed outcome beside identity and scope. Labels that would repeat desktop
+column headers appear inside cards only at responsive widths. This preserves scan order without a
+page-level horizontal viewport.
 
 Projects follows the same hierarchy one level up. It separates active projects from recently
-observed projects. An active project shows its grouping identity, summary counts, and one command
-line per exact active session, with NOW, NEXT, and BLOCKED still attached to that session. Historical
-projects keep identity and scope but omit stale operational claims. Project detail then owns
-workflow and grouped activity; session detail owns the exact session's current activity and
-progressive command facts. No level repeats a broader summary merely because it can.
+observed projects. An active project shows its grouping identity, summary counts, the shared-label
+caveat when applicable, and one line per observed member session with title, NOW and NEXT. The
+grouping can contain quiet or ended members alongside active work. A project stays active while
+any member is working, waiting or carrying an exact request. Historical projects retain identity
+and counts but omit member activity lines. Project detail then owns workflow and grouped activity;
+session detail owns the exact session's current activity and progressive command facts. No level
+repeats a broader summary merely because it can.
 
 ## NUI-17: the gate queue hands over a command, and only where one was measured
 
@@ -585,14 +652,14 @@ produced before any of this.
 
 ## What this does not decide
 
-Promotion does not create durable event, turn, or UI history. History-backed regions remain
-windowed or withheld after reload. Whether Cargento should persist session history is the follow-up
-decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is independent of which
-frontend is canonical.
+Promotion itself did not create durable history. DRC-4234 subsequently authorized the bounded
+local state-change store used by the workstream and delegation readings in NUI-9 and NUI-11.
+That store is independent of which frontend is canonical, and its limits remain in
+[SECURITY.md](../SECURITY.md#local-history-the-session-history-store).
 
-Project and session rows are live from the existing payload. Their detail views render only that
-snapshot: the project shows the honest Spacedock plan, while the session shows its current asks,
-tasks, subagents and measured token total.
+Project and session identities, Spacedock plans, asks, tasks, subagents and token totals come from
+the current payload. The project timeline and delegation figure also read the retained observation
+window. Neither view supplies a durable task-completion history or a record of what the reader saw.
 
 ## Promotion boundary
 

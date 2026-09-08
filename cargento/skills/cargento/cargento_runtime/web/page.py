@@ -9,6 +9,7 @@ WEB_DIR = Path(__file__).resolve().parent
 # scope, so order carries meaning.
 APP_PARTS: tuple[str, ...] = (
     "next-boot.js",
+    "next-observed.js",
     "next-attention.js",
     "next-notify.js",
     "next-cockpit-compat.js",

@@ -87,7 +87,7 @@ console.log(JSON.stringify(results));
                 if arm["lane"] == "named":
                     self.assertEqual([4, 8], arm["caret"])
 
-    def test_sessions_is_default_and_invalid_fragments_normalize_to_it(self) -> None:
+    def test_projects_is_default_and_invalid_fragments_normalize_to_it(self) -> None:
         out = self._run_page_js(
             """
 const fragments = ["", "#n=overview", "#n=unknown"];
@@ -100,8 +100,8 @@ console.log(JSON.stringify({routes, repaired}));
         assert isinstance(out, dict)
 
         for route, repaired in zip(out["routes"], out["repaired"], strict=True):
-            self.assertEqual("sessions", route["view"])
-            self.assertEqual("#n=sessions", repaired)
+            self.assertEqual("projects", route["view"])
+            self.assertEqual("#n=projects", repaired)
 
     def test_attention_route_round_trips(self) -> None:
         out = self._run_page_js(
@@ -212,10 +212,10 @@ console.log(JSON.stringify({initial, project, attention: nextRoute, html: __els.
             out["project"],
         )
         self.assertEqual(
-            {"view": "sessions", "project": None, "session": None},
+            {"view": "projects", "project": None, "session": None},
             out["attention"],
         )
-        self.assertIn("<h1>Session operations</h1>", out["html"])
+        self.assertIn("<h1>Projects</h1>", out["html"])
 
     def test_canonical_session_route_round_trips_harness_and_sid(self) -> None:
         out = self._run_page_js(
@@ -1086,7 +1086,7 @@ console.log(JSON.stringify(Object.assign(held, {
         # `throttled` to the answered look left all three `assertNotEqual`s standing.
         # "Try again in a moment" is the warn line; the answered pair is the quiet
         # one, and a raise underway is the only state that says work is happening.
-        self.assertIn("border-color:var(--warn)", throttled.group(1))
+        self.assertIn("border-color:var(--amber)", throttled.group(1))
         self.assertIn("border-color:var(--line2)", answered.group(1))
         # `stale` shares that rule rather than bringing a fourth look, and appears
         # in no other: a second rule would win by order and quietly reclassify a
@@ -1095,7 +1095,7 @@ console.log(JSON.stringify(Object.assign(held, {
         # page" (DRC-4396).
         self.assertEqual(1, NEXT_STYLES.count('data-next-raise-state="stale"'))
         self.assertIn("cursor:progress", sending.group(1))
-        self.assertIn("border-color:var(--warn)", sending.group(1))
+        self.assertIn("border-color:var(--amber)", sending.group(1))
         # Same specificity, so the later rule wins: the row that is actually raising
         # keeps `sending` rather than reading as one of the rows waiting on it.
         self.assertLess(NEXT_STYLES.index(busy.group(0)), NEXT_STYLES.index(sending.group(0)))
@@ -1128,15 +1128,15 @@ navigateNext({view: "session", project: "recce", session: "019a"});
 __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
 const project = {...nextRoute};
 __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
-const attention = {...nextRoute};
+const projects = {...nextRoute};
 __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
-console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute}));
+console.log(JSON.stringify({sessionHtml, project, projects, stayed: nextRoute}));
 """,
             'location.hash = "#n=session:recce:019a";\n__els.app = {innerHTML: ""};\n',
         )
 
         self.assertIn('<a href="#n=sessions">Sessions</a>', out["sessionHtml"])
-        self.assertIn('<a href="#n=projects">Projects</a>', out["sessionHtml"])
+        self.assertIn('<a href="#n=projects" aria-current="page">Projects</a>', out["sessionHtml"])
         self.assertIn('<a class="next-crumb" href="#n=project:recce">recce</a>', out["sessionHtml"])
         self.assertIn("recce", out["sessionHtml"])
         self.assertIn('<span aria-current="page">Session</span>', out["sessionHtml"])
@@ -1146,10 +1146,10 @@ console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute})
             out["project"],
         )
         self.assertEqual(
-            {"view": "attention", "project": None, "session": None},
-            out["attention"],
+            {"view": "projects", "project": None, "session": None},
+            out["projects"],
         )
-        self.assertEqual(out["attention"], out["stayed"])
+        self.assertEqual(out["projects"], out["stayed"])
 
     def test_the_next_fragment_never_contains_the_old_session_token(self) -> None:
         out = self._run_page_js(
@@ -1173,7 +1173,7 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
         self.assertEqual("#n=projects", out["fragments"][1])
         self.assertEqual("#n=sessions", out["fragments"][2])
         self.assertEqual("#n=project:recce%3Acloud", out["fragments"][3])
-        self.assertEqual("#n=sessions", out["repaired"])
+        self.assertEqual("#n=projects", out["repaired"])
 
     def test_shortcuts_select_matching_top_level_routes_and_ignore_retired_dashboard_key(
         self,
@@ -1672,14 +1672,8 @@ __fetchImpl = async () => {
         self.assertEqual(out["afterSuccess"]["writes"], out["finalWrites"])
         self.assertEqual("Attention updated: 1 need you", out["text"])
 
-    def test_the_subagent_count_excludes_the_ones_that_are_not_running(self) -> None:
-        # DRC-4344. The published list now carries finished teammates and
-        # unstarted members. The chrome figure is read as "how much is running
-        # right now", so counting those would make the header lie in order to
-        # close a pill-level gap. An element with no `active` key still counts,
-        # which is every harness but Claude.
-        # Falsified by: counting `subagents.length`, which is the code today and
-        # reports 5 here.
+    def test_the_subagent_count_includes_every_observed_subagent(self) -> None:
+        # Observed includes quiet and unmeasured children; running requires active evidence.
         out = self._run_page_js(
             """
 await __settle();
@@ -1703,15 +1697,10 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertIn("1 running · 3 subagents running</span>", out)
-        self.assertNotIn("5 subagents", out)
+        self.assertIn("0 running · 5 subagents observed</span>", out)
+        self.assertNotIn("subagents running", out)
 
-    def test_a_single_running_subagent_reads_in_the_singular(self) -> None:
-        # `1 subagents running` is reachable and this round is what put the
-        # word `running` beside the number, so the sentence is this round's to
-        # finish. The gate count beside it has had a singular arm all along.
-        # Falsified by: the bare `${counts.subagents} subagents running`, which
-        # renders "1 subagents running" here.
+    def test_a_single_observed_subagent_reads_in_the_singular(self) -> None:
         out = self._run_page_js(
             """
 await __settle();
@@ -1724,15 +1713,14 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
   summary: {working: 1, needs_input: 0, active_sessions: 1},
   sessions: [
     {project: "recce", state: "working", subagents: [
-      {name: "live-a", active: true, parent: null},
-      {name: "done-a", active: false, parent: null}
+      {name: "live-a", active: true, parent: null}
     ]}
   ]
 })});
 """,
         )
 
-        self.assertIn("1 running · 1 subagent running</span>", out)
+        self.assertIn("0 running · 1 subagent observed</span>", out)
         self.assertNotIn("1 subagents", out)
 
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
@@ -1747,8 +1735,8 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
   window_hours: 24,
   summary: {working: 1, needs_input: 1, active_sessions: 4},
   sessions: [
-    {project: "recce", state: "working", subagents: [{}, {}]},
-    {project: "recce", state: "needs_input", subagents: [{}]},
+    {project: "recce", state: "working", active: true, subagents: [{}, {}]},
+    {project: "recce", state: "needs_input", active: true, subagents: [{}]},
     {project: "cargento", state: "idle", subagents: []},
     {project: "cargento", state: "idle", subagents: []}
   ]
@@ -1759,7 +1747,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn(
             '<span class="next-running next-live">'
             '<span class="next-status-dot" aria-label="live">●</span> '
-            "All projects · 1 running · 3 subagents running</span>",
+            "1 running · 3 subagents observed</span>",
             out,
         )
         self.assertIn(
@@ -1768,7 +1756,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
         self.assertNotIn("4 running", out)
-        self.assertIn("<h1>Session operations</h1>", out)
+        self.assertIn("<h1>Projects</h1>", out)
 
     def test_exact_request_state_skew_is_counted_in_the_header_block_total(self) -> None:
         out = self._run_page_js(
@@ -1777,6 +1765,7 @@ await __settle();
 console.log(JSON.stringify(__els.app.innerHTML));
 """,
             """
+location.hash = "#n=sessions";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   ask: true,
@@ -1799,7 +1788,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
 
-    def test_all_projects_header_counts_running_children_and_excludes_finished_teammates(
+    def test_all_projects_header_counts_observed_children_including_finished_teammates(
         self,
     ) -> None:
         out = self._run_page_js(
@@ -1824,7 +1813,7 @@ __fetchImpl = async url => ({ok: true, json: async () =>
 """,
         )
 
-        self.assertIn("All projects · 1 running · 1 subagent running", out)
+        self.assertIn("All projects · 1 running · 2 subagents observed", out)
         self.assertNotIn("0 subagents", out)
         self.assertIn('<h1 class="next-project-detail-name">recce</h1>', out)
         self.assertNotIn("org/recce", out)
@@ -1876,7 +1865,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn(
             '<span class="next-running next-live">'
             '<span class="next-status-dot" aria-label="live">●</span> '
-            "All projects · 0 running · 0 subagents running</span>",
+            "0 running · 0 subagents observed</span>",
             out,
         )
         self.assertNotIn('class="next-gate"', out)
@@ -1884,7 +1873,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn('<nav aria-label="Primary"', out)
         self.assertIn('href="#n=projects"', out)
         self.assertIn('href="#n=sessions"', out)
-        self.assertIn("<h1>Session operations</h1>", out)
+        self.assertIn("<h1>Projects</h1>", out)
         self.assertNotIn("dashboard mode", out)
         self.assertNotIn('data-next-action="dashboard"', out)
 
@@ -2001,6 +1990,7 @@ __els.app = {
     return selector === ".next-attention h1" ? __focusTarget("next-attention-title") : null;
   }
 };
+location.hash = "#n=attention";
 let __nextShouldFail = false;
 let __payload = {
   generated: 1000,
@@ -2068,8 +2058,8 @@ __releaseRetry({ok: true, json: async () => ({
   window_hours: 24,
   summary: {working: 2, needs_input: 0},
   sessions: [
-    {project: "recce", sid: "one", state: "working", subagents: []},
-    {project: "cargento", sid: "two", state: "working", subagents: []}
+    {project: "recce", sid: "one", state: "working", active: true, subagents: []},
+    {project: "cargento", sid: "two", state: "working", active: true, subagents: []}
   ]
 })});
 await __settle();
@@ -2092,7 +2082,7 @@ __fetchImpl = async () => {
     generated: 1000,
     window_hours: 24,
     summary: {working: 1, needs_input: 0},
-    sessions: [{project: "recce", sid: "one", state: "working", subagents: []}]
+    sessions: [{project: "recce", sid: "one", state: "working", active: true, subagents: []}]
   })};
 };
 """,
@@ -2103,11 +2093,11 @@ __fetchImpl = async () => {
         self.assertEqual(1000, out["during"]["generated"])
         self.assertIn('data-next-action="retry-refresh" disabled', out["during"]["html"])
         self.assertIn(
-            'aria-label="live">●</span> All projects · 1 running',
+            'aria-label="live">●</span> 1 running',
             out["during"]["html"],
         )
         self.assertNotIn('data-next-state="stalled"', out["recovered"])
-        self.assertIn('aria-label="live">●</span> All projects · 2 running', out["recovered"])
+        self.assertIn('aria-label="live">●</span> 2 running', out["recovered"])
         self.assertEqual(0, out["recoveredFailures"])
         self.assertEqual(2000, out["recoveredGenerated"])
 

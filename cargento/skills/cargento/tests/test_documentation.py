@@ -219,9 +219,16 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
             SERVER_PATH.parent / "cargento_runtime" / "web" / "next-attention.js"
         ).read_text(encoding="utf-8")
         rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Z ]+)"', attention))
-        rendered |= set(re.findall(r'<h2 tabindex="-1">([A-Z ]+) \(', attention))
+        rendered |= set(re.findall(r'<h2 tabindex="-1">([A-Za-z ,]+)</h2>', attention))
         self.assertEqual(
-            {"NEEDS YOU NOW", "AT RISK", "CLOSE THE LOOP", "COMING NEXT", "NO PUBLISHED EXCEPTION"},
+            {
+                "NEEDS YOU NOW",
+                "At risk",
+                "CLOSE THE LOOP",
+                "COMING NEXT",
+                "Also at risk, off the session count",
+                "Not on this board yet",
+            },
             rendered,
             "the Attention headings moved; the skill body has to move with them",
         )
