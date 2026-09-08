@@ -11,6 +11,64 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextSessionBehaviorTest(NextPageJsHarness):
+    def test_absent_facts_are_reasons_and_never_placeholder_values(self) -> None:
+        out = self._run_page_js("""
+__els.app = {innerHTML: ""};
+nextData = {generated: 10000, sessions: [
+  {harness: "antigravity", sid: "absent", project: "repo", state: "idle"}
+]};
+const original = JSON.stringify(nextData);
+nextRoute = {view: "session", project: "repo", harness: "antigravity", session: "absent"};
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML, unchanged: original === JSON.stringify(nextData)}));
+""")
+        assert isinstance(out, dict)
+        self.assertTrue(out["unchanged"])
+        html = out["html"]
+        for reason in (
+            "Title not published",
+            "No pending step published",
+            "Harness does not report turn bounds",
+            "Harness does not report blocks",
+            "No stop or end observed",
+            "Git state was not measured",
+        ):
+            self.assertIn(f'class="next-session-absent">{reason}</', html)
+        for label in ("NEXT STEP", "TURN", "BLOCKED", "OUTCOME", "GIT STATE", "PROJECT"):
+            self.assertIn(f">{label}</dt>", html)
+        self.assertNotIn("—", html)
+        self.assertNotRegex(html, r">\s*0\s*<")
+
+    def test_raise_is_only_offered_to_a_waiting_reachable_session_with_capability(self) -> None:
+        out = self.render("""
+const query = document.querySelector;
+let capability = "test-focus";
+document.querySelector = selector => selector === NEXT_FOCUS_META
+  ? {getAttribute(){return capability;}} : query(selector);
+const variants = [];
+for(const state of ["working", "idle", "needs_input"]){
+  for(const focusable of [false, true]){
+    for(const enabled of [false, true]){
+      capability = enabled ? "test-focus" : "";
+      Object.assign(nextData.sessions[0], {state, focusable, resume_id: "resume-me"});
+      renderNext();
+      variants.push({state, focusable, enabled, html: __els.app.innerHTML});
+    }
+  }
+}
+console.log(JSON.stringify(variants));
+""")
+        assert isinstance(out, list)
+        for row in out:
+            expected = row["state"] == "needs_input" and row["focusable"] and row["enabled"]
+            self.assertEqual(expected, "data-next-raise-session=" in row["html"])
+            self.assertIn("data-next-copy-session=", row["html"])
+            if expected:
+                self.assertLess(
+                    row["html"].index("data-next-copy-session="),
+                    row["html"].index("data-next-raise-session="),
+                )
+
     SID = "session-1234567890abcdef"
     FIXTURE = f"""
 location.hash = "#n=session:alpha%2Frepo:{SID}";
@@ -122,7 +180,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("did not publish an assignment", html)
         self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
-    def test_the_source_coverage_the_reader_opened_is_still_open_after_a_render(self) -> None:
+    def test_the_source_coverage_keeps_the_readers_open_and_closed_choice_after_redraws(
+        self,
+    ) -> None:
         # `renderNext` assigns the app's whole innerHTML, so the open state the
         # browser keeps on a `<details>` node dies with the node: the panel
         # closed itself under the reader on the next revision, or within 20
@@ -149,13 +209,15 @@ const survived = __els.app.innerHTML;
 summary();
 renderNext();
 const reclosed = __els.app.innerHTML;
-console.log(JSON.stringify({closed, opened, survived, reclosed}));
+renderNext();
+const closedSurvived = __els.app.innerHTML;
+console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived}));
 """
         )
         assert isinstance(out, dict)
 
         tag = '<details class="next-session-source-coverage"'
-        for html in (out["closed"], out["reclosed"]):
+        for html in (out["closed"], out["reclosed"], out["closedSurvived"]):
             self.assertIn(f"{tag}>", html)
             self.assertNotIn(f"{tag} open", html)
         for html in (out["opened"], out["survived"]):
@@ -566,7 +628,7 @@ console.log(JSON.stringify(variants));
         self.assertIn('data-next-answer="ask-one" data-next-answer-index="1"', html)
         self.assertIn("&lt;Later&gt;", html)
 
-    def test_question_is_only_the_title_when_no_instruction_exists(self) -> None:
+    def test_an_exact_question_does_not_impersonate_an_unpublished_title(self) -> None:
         html = self.render(
             """
 nextData.sessions[0].title = "";
@@ -577,7 +639,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
-        self.assertIn(">Choose &lt;img src=x onerror=&#39;1&#39;&gt;</h1>", html)
+        self.assertIn('<h1 class="next-session-absent">Title not published</h1>', html)
 
     def test_task_bearing_claude_session_keeps_payload_order_and_status_glyphs(self) -> None:
         html = self.render()

@@ -928,7 +928,7 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
   // works; the raise is neither, and a reader who has only the raise has lost the
   // affordance that cannot fail.
   const raise = subject.section === "needs" ? nextSessionRaiseControl(subject.session) : "";
-  return `<li${hidden ? " hidden" : ""}><article class="next-attention-item" ` +
+  return `<li${hidden ? " hidden" : ""}><article class="next-attention-item next-attention-item--legacy" ` +
     `data-next-attention-subject="${nextAttentionEsc(subject.key)}" ` +
     `data-next-attention-kind="${nextAttentionEsc(subject.primaryKind)}">` +
     '<h3 class="next-attention-why" data-next-attention-part="why">' +
@@ -961,61 +961,38 @@ function nextAttentionTerminalCoverage(model){
     "a terminal Cargento can reach.</p>";
 }
 
-function nextAttentionCoverageHtml(model, openDisclosures){
-  const coverage = model.coverage;
-  const gates = coverage.gates;
-  const failed = gates.failed ? ` · ${gates.failed} failed` : "";
-  const visible = `Gates: ${gates.reporting}/${gates.discovered} reporting · ` +
-    `${gates.unknown} unknown${failed} · Ends: ${coverage.observedEnds} observed`;
-  const rows = gates.rows.map(row => {
-    const name = String(row.label == null ? "" : row.label).trim() || String(row.key || "Harness");
-    /* The condition qualifies a capability the label has just claimed, so the
-       reporting branch below is the only one that takes it: on "unknown" or
-       "failed" there is nothing to qualify and a caveat would read as detail
-       about a gap. That branch is the whole guard, deliberately -- repeating
-       the capability and error checks here as well left a second copy of the
-       rule that no mutation could reach, so neither copy was load-bearing.
-       Escaped like the label beside it, because a registry constant today is
-       still a payload string here. */
-    const when = typeof row.reports_needs_input_when === "string" && row.reports_needs_input_when
-      ? `, ${nextAttentionEsc(row.reports_needs_input_when)}`
-      : "";
-    const gate = row.error != null
-      ? "needs-input reporting failed"
-      : row.reports_needs_input === true
-        ? `needs-input reporting${when}`
-        : "needs-input reporting unknown";
-    const rate = row.error != null
-      ? "token-rate reporting failed"
-      : row.reports_rate === true
-        ? "token-rate reporting"
-        : row.reports_rate === false ? "token-rate not reported" : "token-rate reporting unknown";
-    return `<li><strong>${nextAttentionEsc(name)}</strong> · ${gate} · ${rate}</li>`;
-  }).join("");
-  const exact = coverage.exactRequestsReported && coverage.exactRequestCount === 0
-    ? "<p>No exact requests published.</p>"
-    : "";
-  const stops = coverage.observedStops > 0
-    ? `<p>Stops observed on ${coverage.observedStops} ` +
-      `session${coverage.observedStops === 1 ? "" : "s"}; fleet coverage not reported.</p>`
-    : "";
-  /* Stated whether or not any end was seen, because the useful half is the
-     disclaimer rather than the count: an absent end is what a SIGKILL, an
-     adapter-less harness and --no-events all look like. */
-  const ends = (coverage.observedEnds > 0
-    ? `<p>Ends observed on ${coverage.observedEnds} ` +
-      `session${coverage.observedEnds === 1 ? "" : "s"}; `
+function nextAttentionCoverageHtml(model, openDisclosures, observed){
+  const coverage = observed.coverage;
+  const rows = coverage.rows.map(row =>
+    `<li data-next-coverage-harness="${nextAttentionEsc(row.key)}"><strong>${nextAttentionEsc(row.label)}</strong>` +
+    '<span class="next-attention-squares" aria-hidden="true">' +
+    `<span class="next-attention-square" data-known="${row.blockKnown}"></span>` +
+    `<span class="next-attention-square" data-known="${row.rateKnown}"></span></span>` +
+    `<span>${nextAttentionEsc(row.blockText)} · ${nextAttentionEsc(row.rateText)}</span></li>`
+  ).join("");
+  const caveats = coverage.caveats.map(text => `<p>${nextAttentionEsc(text)}</p>`).join("");
+  // Fleet end/stop coverage and terminal reach are not in nextObserved yet.
+  const previous = model.coverage;
+  const exact = previous.exactRequestsReported && previous.exactRequestCount === 0
+    ? "<p>No exact requests published.</p>" : "";
+  const failed = previous.gates.failed
+    ? `<p>Harness sources: ${previous.gates.failed} failed.</p>` : "";
+  const stops = previous.observedStops > 0
+    ? `<p>Stops observed on ${previous.observedStops} ` +
+      `session${previous.observedStops === 1 ? "" : "s"}; fleet coverage not reported.</p>` : "";
+  const ends = (previous.observedEnds > 0
+    ? `<p>Ends observed on ${previous.observedEnds} ` +
+      `session${previous.observedEnds === 1 ? "" : "s"}; `
     : "<p>No session ends observed; ") +
     "a session with no observed end is not known to be running.</p>";
   return '<div class="next-attention-coverage">' +
-    `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
+    `<p><span class="next-attention-brief-label">COVERAGE</span><span>${nextAttentionEsc(coverage.gates)}</span></p>` +
     '<details class="next-attention-coverage-details"' +
     `${nextDisclosureAttr("attention-coverage", openDisclosures)}>` +
     '<summary data-next-disclosure="attention-coverage" ' +
-    'data-next-focus="attention-coverage">Coverage details</summary>' +
-    `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}${ends}` +
-    nextAttentionTerminalCoverage(model) +
-    '<p>Termination cause not reported.</p></details></div>';
+    'data-next-focus="attention-coverage">per-harness detail</summary>' +
+    `<ul>${rows}</ul><div class="next-attention-caveats">${caveats}${exact}${failed}${stops}${ends}` +
+    nextAttentionTerminalCoverage(model) + '</div></details></div>';
 }
 
 const NEXT_ATTENTION_INITIAL_SECTION_SIZE = 3;
@@ -1040,102 +1017,111 @@ function nextAttentionSectionHtml(key, title, subjects, model, expandedSections)
     `<ol id="${listId}">${items}</ol>${disclosure}</section>`;
 }
 
-function nextAttentionHealthyHtml(model){
-  const healthy = model.healthy;
-  const count = healthy.sessions.length;
-  if(!count) return "";
-  const states = [];
-  if(healthy.moving) states.push(`${healthy.moving} moving`);
-  if(healthy.quiet) states.push(`${healthy.quiet} quiet`);
-  if(healthy.unknown) states.push(`${healthy.unknown} unknown state`);
-  return '<section class="next-attention-section next-attention-healthy" ' +
-    'data-next-attention-section="healthy">' +
-    `<h2 tabindex="-1">NO PUBLISHED EXCEPTION (${count})</h2>` +
-    `<p><strong>${count} session${count === 1 ? "" : "s"} with no published exception</strong>` +
-    `${states.length ? `<span>${esc(states.join(" · "))}</span>` : ""}</p>` +
-    `<p>No published exception; ${healthy.partial
-      ? `${nextAttentionPartialReadText(healthy)}; coverage is incomplete`
-      : "coverage applies"}</p>` +
-    '<a href="#n=projects" data-next-route="projects">View all projects</a></section>';
+function nextAttentionRiskSubject(risk, model){
+  if(risk.scope === "session"){
+    return [...model.needs, ...model.risk, ...model.close, ...model.next]
+      .find(row => row.key === nextSessionKey(risk));
+  }
+  if(risk.kind === "collision"){
+    return model.risk.find(row => row.kind === "collision" &&
+      risk.identity === `${row.identity.project} display label`);
+  }
+  if(risk.kind === "ask"){
+    return model.needs.find(row => !row.session && row.asks.some(ask => ask.id === risk.identity));
+  }
+  return null;
 }
 
-function nextAttentionPartialReadText(healthy){
-  return healthy.partial
-    ? `${healthy.partial} session${healthy.partial === 1 ? "" : "s"} partially read`
-    : "";
+function nextAttentionRiskHtml(risk, index, model, board = false, retained = null){
+  const subject = retained || nextAttentionRiskSubject(risk, model);
+  const key = subject ? subject.key : (board
+    ? `board:${JSON.stringify([risk.kind, risk.identity])}` : nextSessionKey(risk));
+  const route = board ? (subject ? nextAttentionSubjectRoute(subject) : "sessions")
+    : nextRouteToken({view: "session", project: risk.project, harness: risk.harness, session: risk.sid});
+  const title = route
+    ? `<a href="#n=${nextAttentionEsc(route)}" data-next-route="${nextAttentionEsc(route)}">${nextAttentionEsc(risk.title)}</a>`
+    : nextAttentionEsc(risk.title);
+  // Secondary signals and measured tool/termination detail have no v2 fields yet.
+  const detailsSubject = retained ? {...subject, signals: subject.signals.slice(1)} : subject && board
+    ? {...subject, signals: subject.signals.filter(signal => signal.kind !== "collision")} : subject;
+  const detail = detailsSubject ? nextAttentionSubjectNow(detailsSubject, model).map(row =>
+    `<span>${nextAttentionEsc(row.text)}${row.note ? `<small>${nextAttentionEsc(row.note)}</small>` : ""}</span>`
+  ).join("") : "";
+  const checkpoints = subject ? nextAttentionCheckpointRows(subject, model) : [];
+  const next = risk.nextKnown
+    ? `<span class="next-attention-risk-next">${nextAttentionEsc(risk.nextText)}</span>`
+    : checkpoints.map(text => `<span class="next-attention-risk-next">${nextAttentionEsc(text)}</span>`).join("");
+  const controls = subject && subject.section === "needs"
+    ? nextSessionResumeControl(subject.session) + nextSessionRaiseControl(subject.session) : "";
+  const outcome = subject && nextAttentionOutcome(subject, model);
+  const assignment = outcome && outcome.label === "OUTCOME"
+    ? `<p class="next-attention-risk-assignment">${nextAttentionEsc(outcome.text)}</p>` : "";
+  return `<li><article class="next-attention-item${board ? " next-attention-item--board" : ""}" ` +
+    (board ? `data-next-board-risk="${nextAttentionEsc(risk.kind)}" ` : "") +
+    `data-tone="${nextAttentionEsc(risk.tone)}" data-next-attention-subject="${nextAttentionEsc(key)}" ` +
+    `data-next-attention-kind="${nextAttentionEsc(risk.kind)}">` +
+    `<span class="next-attention-index">${index + 1}</span>` +
+    `<div class="next-attention-risk-identity"><h3>${title}</h3>` +
+    `<span>${nextAttentionEsc(risk.identity)}</span>${assignment}</div>` +
+    `<div class="next-attention-risk-observation"><p>${nextAttentionEsc(risk.nowText)}</p>` +
+    `<div class="next-attention-risk-detail">${detail}</div></div>` +
+    `<div class="next-attention-risk-source">${next}<span>source · ${nextAttentionEsc(risk.src)}</span>${controls}</div>` +
+    "</article></li>";
+}
+
+function nextAttentionModelQuotaHtml(subject, index, model){
+  // Per-model pressure is still a legacy subject; v2 only puts window pressure in boardRisks.
+  const now = nextAttentionSubjectNow(subject, model);
+  const checkpoints = nextAttentionCheckpointRows(subject, model);
+  return nextAttentionRiskHtml({scope: "board", kind: "quota",
+    title: NEXT_ATTENTION_KIND_LABELS.get("quota"),
+    identity: nextAttentionSubjectIdentityText(subject, model),
+    nowText: now[0].text, nextText: checkpoints.join(" · "), nextKnown: checkpoints.length > 0,
+    src: nextAttentionSubjectSource(subject, model), tone: "unknown",
+  }, index, model, true, subject);
 }
 
 function nextAttentionView(model, expandedSections = new Set(), openDisclosures = new Set()){
-  const counts = model.counts;
-  const partialRead = nextAttentionPartialReadText(model.healthy);
-  /* Two clauses, because there are two units and one sentence could not hold
-     both. `needs`, `risk`, `close` and `next` count SUBJECTS, which group
-     sessions: two agents in one project are a single `collision`, which is the
-     point of a subject. `moving` and `quiet` count SESSIONS, and only the ones
-     no subject already represents. Joined into one list they read as six
-     comparable numbers, and on the repository's own everyday shape the result
-     was "0 moving" beside two agents actively working. Each clause now names
-     its own denominator, the way the fleet strip's coverage line does. */
-  const subjectTotal = counts.needs + counts.risk + counts.close + counts.next;
-  const grouped = model.sessionCount - model.healthy.sessions.length;
-  const subjects = [
-    `${counts.needs} need you`, `${counts.risk} at risk`,
-    `${counts.close} close the loop`, `${counts.next} coming next`,
-  ].join(" · ");
-  const rest = [`${counts.moving} moving`, `${counts.quiet} quiet`]
-    /* Included only when non-zero, and it is the arithmetic residue rather than
-       a state any collector publishes: the vocabulary is closed to needs_input,
-       working and idle. It is here so the two clauses sum to sessionCount even
-       if that ever stops being true, which is the property the old line lacked. */
-    .concat(counts.unknown ? [`${counts.unknown} in no counted state`] : [])
-    .join(" · ");
-  const observed = `${subjectTotal} subject${subjectTotal === 1 ? "" : "s"} ` +
-    `across ${grouped} of ${model.sessionCount} session${model.sessionCount === 1 ? "" : "s"}: ` +
-    subjects +
-    (model.healthy.sessions.length
-      ? ` · The other ${model.healthy.sessions.length} ` +
-        `session${model.healthy.sessions.length === 1 ? "" : "s"}: ${rest}` +
-        (partialRead ? `; of these, ${partialRead}` : "")
-      : "");
-  /* What the healthy board says instead. Each state names sessions rather than
-     leaning on a shared total, so the tail reads the same with one entry or
-     three, and a zero-count state stays out: a line whose whole point is that
-     nothing needs you has no business printing a zero. */
-  const clear = [
-    [counts.moving, "moving"], [counts.quiet, "quiet"],
-    [counts.unknown, "in no counted state"],
-  ].filter(([count]) => count).map(([count, word]) =>
-    `${count} session${count === 1 ? "" : "s"} ${word}`);
-  const empty = model.sessionCount === 0
-    ? `<p class="next-attention-empty">No sessions in this ` +
-      `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`
-    : "";
-  /* No brief on an empty payload. The two clauses are a longer sentence than the
-     six numbers they replaced, and on nothing at all they read as "0 subjects
-     across 0 of 0 sessions: 0 need you · ..." directly above a notice that
-     already says there is nothing. The notice is the better sentence.
-
-     The healthy board is the neighbouring case and gets a different answer,
-     because there IS something beneath it and it is silent: measured, the four
-     category sections render nothing at zero, so standing down entirely would
-     leave NO PUBLISHED EXCEPTION as the only heading on screen and no sign
-     anywhere that the queues had been looked at (DRC-4452). Two conditions
-     rather than one widened condition: `sessionCount` is a test of the payload's
-     shape and `subjectTotal` is a test of its content. */
-  const brief = model.sessionCount === 0
-    ? ""
-    : `<p><span class="next-attention-brief-label">OBSERVED NOW</span>` +
-      `${subjectTotal === 0
-        ? ["All four queues checked and empty"].concat(clear).join(" · ") +
-          (partialRead ? `; of these, ${partialRead}` : "")
-        : observed}</p>`;
-  return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
-    "Attention</h1><div class=\"next-attention-brief\">" +
-    brief +
-    `${nextAttentionCoverageHtml(model, openDisclosures)}</div>${empty}` +
-    nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model, expandedSections) +
-    nextAttentionSectionHtml("risk", "AT RISK", model.risk, model, expandedSections) +
-    nextAttentionSectionHtml("close", "CLOSE THE LOOP", model.close, model, expandedSections) +
-    nextAttentionSectionHtml("next", "COMING NEXT", model.next, model, expandedSections) +
-    `${nextAttentionHealthyHtml(model)}</section>`;
+  const observed = nextObserved(nextData);
+  const empty = observed.sessions.length ? "" : `<p class="next-attention-empty">No sessions in this ` +
+    `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`;
+  const riskNote = `${observed.risks.length} of ${observed.sessions.length} sessions · ` +
+    "every one names the source that published it";
+  const risks = observed.risks.map((risk, index) => nextAttentionRiskHtml(risk, index, model)).join("");
+  const boardRisks = observed.boardRisks.map((risk, index) => nextAttentionRiskHtml(risk, index, model, true)).join("");
+  const modelQuotas = model.risk.filter(subject => subject.kind === "quota" &&
+    subject.identity.project.startsWith("model:"));
+  const modelQuotaRows = modelQuotas.map((subject, index) =>
+    nextAttentionModelQuotaHtml(subject, observed.boardRisks.length + index, model)).join("");
+  const rendered = new Set([...observed.risks, ...observed.boardRisks].map(risk => {
+    const subject = nextAttentionRiskSubject(risk, model);
+    return subject && subject.key;
+  }));
+  const remaining = subjects => subjects.filter(subject => !rendered.has(subject.key));
+  const open = observed.open.map(([code, name, note]) =>
+    `<li data-next-open="${esc(code)}"><span>${esc(code)}</span>` +
+    `<strong>${esc(name)}</strong><p>${esc(note)}</p></li>`).join("");
+  return '<section class="next-attention" data-next-view-body="attention">' +
+    '<header class="next-attention-heading"><h1 tabindex="-1">Attention</h1>' +
+    '<p>what is observed, and what the board could not see</p></header>' +
+    '<div class="next-attention-brief"><p><span class="next-attention-brief-label">OBSERVED</span>' +
+    `<span>${esc(observed.coverage.observed)} <span class="next-attention-quiet">` +
+    `${esc(observed.coverage.quiet)}</span></span></p>` +
+    nextAttentionCoverageHtml(model, openDisclosures, observed) +
+    '<a class="next-attention-projects-link" href="#n=projects" data-next-route="projects">View all projects</a>' +
+    `</div>${empty}` +
+    '<section class="next-attention-section" data-next-attention-section="risk">' +
+    `<div class="next-attention-section-heading"><h2 tabindex="-1">At risk</h2><p>${esc(riskNote)}</p></div>` +
+    `<ol>${risks}</ol>` +
+    nextAttentionSectionHtml("needs", "NEEDS YOU NOW", remaining(model.needs), model, expandedSections) +
+    nextAttentionSectionHtml("close", "CLOSE THE LOOP", remaining(model.close), model, expandedSections) +
+    nextAttentionSectionHtml("next", "COMING NEXT", remaining(model.next), model, expandedSections) + '</section>' +
+    '<section class="next-attention-section" data-next-attention-section="board-risk">' +
+    '<div class="next-attention-section-heading"><h2 tabindex="-1">Also at risk, off the session count</h2>' +
+    '<p>not sessions, so not in that denominator</p></div>' +
+    `<ol>${boardRisks}${modelQuotaRows}</ol></section>` +
+    '<section class="next-attention-section" data-next-attention-section="open">' +
+    '<div class="next-attention-section-heading"><h2 tabindex="-1">Not on this board yet</h2>' +
+    '<p>so a gap reads as a gap, not as good news</p></div>' +
+    `<ul class="next-attention-open">${open}</ul></section></section>`;
 }

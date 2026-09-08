@@ -10,6 +10,152 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class NextAttentionV2Test(NextPageJsHarness):
+    FIXTURE = """
+__els.app = {innerHTML: ""};
+nextData = {generated: 10000, ask: true, asks: [], harnesses: [
+  {key: "claude", label: "Claude", reports_needs_input: true, reports_rate: true},
+  {key: "antigravity", label: "Antigravity", reports_needs_input: false, reports_rate: false}
+], sessions: [
+  {harness: "claude", sid: "risk", project: "one", state: "working",
+    title: "Inspect failures", loop: {errors: 4, tool: "Bash"}},
+  {harness: "antigravity", sid: "quiet", project: "two", state: "idle"}
+]};
+nextRoute = {view: "attention", project: null, session: null};
+"""
+
+    def test_board_risks_do_not_move_the_observed_session_denominator(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+const original = nextObserved(nextData);
+nextData.usage = [{harness: "claude", state: "ok", week: {pct: 90}}];
+const pressure = nextObserved(nextData);
+nextData.sessions[1].project = "one";
+const collision = nextObserved(nextData);
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+console.log(JSON.stringify({original, pressure, collision, html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        for model in (out["original"], out["pressure"], out["collision"]):
+            self.assertEqual(2, model["totals"]["sessions"])
+            self.assertIn("1 of 2 sessions carry a subject", model["coverage"]["observed"])
+        self.assertEqual(0, len(out["original"]["boardRisks"]))
+        self.assertEqual(1, len(out["pressure"]["boardRisks"]))
+        self.assertEqual(2, len(out["collision"]["boardRisks"]))
+        self.assertIn("1 of 2 sessions carry a subject", out["html"])
+        self.assertIn("not sessions, so not in that denominator", out["html"])
+
+    def test_the_risk_note_tracks_the_sessions_and_cards_link_to_their_owner(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+const variants = [];
+for(let n = 2; n <= 3; n++){
+  if(n === 3) nextData.sessions.push({harness: "claude", sid: "third", project: "three", state: "idle"});
+  nextAttention = nextAttentionModel(nextData);
+  const before = JSON.stringify(nextData);
+  renderNext();
+  variants.push({html: __els.app.innerHTML, unchanged: before === JSON.stringify(nextData)});
+}
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, list)
+        for count, row in enumerate(out, 2):
+            self.assertTrue(row["unchanged"])
+            self.assertIn(
+                f"1 of {count} sessions · every one names the source that published it",
+                row["html"],
+            )
+            self.assertIn('data-next-route="session:one:claude:risk"', row["html"])
+            self.assertIn("source · claude", row["html"])
+
+    def test_unknown_coverage_and_identity_collisions_keep_neutral_rules(self) -> None:
+        html = self._run_page_js(
+            self.FIXTURE
+            + """
+nextData.sessions[1].project = "one";
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        self.assertRegex(
+            html,
+            r'data-next-coverage-harness="antigravity"[\s\S]*?'
+            r'class="next-attention-square" data-known="false"',
+        )
+        self.assertRegex(html, r'data-next-board-risk="collision" data-tone="unknown"')
+        self.assertRegex(
+            NEXT_STYLES,
+            r"\.next-attention-square\{[^}]*background:var\(--line2\)",
+        )
+        self.assertRegex(
+            NEXT_STYLES,
+            r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line2\)',
+        )
+        self.assertIn("Not on this board yet", html)
+        for code in ("C4", "C6", "C1", "F3", "E5"):
+            self.assertIn(f'data-next-open="{code}"', html)
+
+    def test_a_risk_owns_its_session_once_and_its_link_opens_that_session(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+Object.assign(nextData.sessions[0], {state: "idle", loop: null,
+  finished_at: 9000, dirty: true, changed: 3});
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+const attention = __els.app.innerHTML;
+const route = attention.match(/data-next-route="(session:[^"]+)"/)[1];
+__fire("click", {target: {closest(selector){
+  return selector === "[data-next-route]" ? {dataset: {nextRoute: route}} : null;
+}}, preventDefault(){}, stopPropagation(){}});
+renderNext();
+console.log(JSON.stringify({attention, route: nextRoute, html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        key = 'data-next-attention-subject="session:[&quot;claude&quot;,&quot;risk&quot;]"'
+        self.assertEqual(1, out["attention"].count(key))
+        self.assertEqual("session", out["route"]["view"])
+        self.assertEqual("risk", out["route"]["session"])
+        self.assertIn('data-next-session-detail="risk"', out["html"])
+
+    def test_a_risk_keeps_its_published_assignment(self) -> None:
+        html = self._run_page_js(
+            self.FIXTURE
+            + """
+nextData.sessions[0].instruction = {label: "asked", text: "Keep the assigned outcome visible"};
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        self.assertIn("Keep the assigned outcome visible", html)
+
+    def test_per_model_quota_pressure_stays_off_the_session_count(self) -> None:
+        html = self._run_page_js(
+            self.FIXTURE
+            + """
+nextData.usage = [{harness: "claude", state: "ok", models: [{label: "Extra model", pct: 95}]}];
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        board = html.split('data-next-attention-section="board-risk"', 1)[1]
+        self.assertIn("Extra model", board)
+        self.assertIn("95% reported", board)
+        self.assertIn("1 of 2 sessions carry a subject", html)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class NextAttentionBehaviorTest(NextPageJsHarness):
     def test_partial_coverage_counts_sessions_instead_of_gap_names(self) -> None:
         html = self.render(
@@ -33,8 +179,9 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
                 "asks": [],
             }
         )
-        self.assertEqual(2, html.count("2 sessions partially read"))
-        self.assertIn("NO PUBLISHED EXCEPTION (2)", html)
+        self.assertIn("of these, 2 partially read", html)
+        self.assertNotIn("NO PUBLISHED EXCEPTION", html)
+        self.assertIn("The other 2: 1 moving · 1 quiet", html)
         self.assertIn("1 moving · 1 quiet", html)
 
     def test_a_partially_read_remainder_qualifies_both_attention_summaries(self) -> None:
@@ -65,13 +212,12 @@ nextAttention = nextAttentionModel(nextData);
 nextRoute = {{view: "attention", project: null, session: null}};
 renderNext();
 console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.healthy,
-  unread: nextSessionUnread(row), unchanged: original === JSON.stringify(nextData)}}));
+  unread: nextSessionUnread(row), observed: nextObserved(nextData), unchanged: original === JSON.stringify(nextData)}}));
 """
                     )
                     assert isinstance(out, dict)
                     html = out["html"]
                     brief = html.split('class="next-attention-brief"', 1)[1].split("</p>", 1)[0]
-                    healthy_html = html.split('data-next-attention-section="healthy"', 1)[1]
                     healthy = out["healthy"]
                     self.assertTrue(out["unchanged"])
                     self.assertEqual(partial, healthy.get("partial"))
@@ -79,14 +225,11 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
                     self.assertEqual(int(state == "idle") + int(mixed), healthy["quiet"])
                     self.assertEqual(0, healthy["unknown"])
                     self.assertEqual(1 + int(mixed), len(healthy["sessions"]))
+                    self.assertIn(out["observed"]["coverage"]["quiet"], brief)
+                    self.assertNotIn("NO PUBLISHED EXCEPTION", html)
                     if partial:
-                        for text in (brief, healthy_html):
-                            self.assertIn("1 session partially read", text)
-                        self.assertNotIn("No published exception; coverage applies", healthy_html)
                         self.assertIn("Source not fully read:", out["unread"])
                     else:
-                        self.assertNotIn("partially read", html)
-                        self.assertIn("No published exception; coverage applies", healthy_html)
                         self.assertEqual("", out["unread"])
 
     def model(self, payload: object) -> object:
@@ -1096,7 +1239,7 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
         self.assertEqual([], failure_model["needs"])
         agy_html = self.render(agy_payload)
         failure_html = self.render(failure_payload)
-        self.assertIn("1 session with no published exception", agy_html)
+        self.assertIn("The other 1: 1 quiet", agy_html)
         self.assertNotIn("AGY is clear", agy_html)
         self.assertIn("1 failed", failure_html)
         self.assertNotIn("PermissionError", failure_html)
@@ -1155,17 +1298,18 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
         html = self.render({"harnesses": self._capability_rows(), "sessions": [], "asks": []})
 
         self.assertIn(
-            "Codex</strong> \u00b7 needs-input reporting, where approvals are enabled \u00b7",
+            "needs-input reporting, where approvals are enabled ·",
             html,
         )
-        self.assertIn("Claude Code</strong> \u00b7 needs-input reporting \u00b7", html)
-        self.assertIn("AGY</strong> \u00b7 needs-input reporting unknown \u00b7", html)
-        self.assertIn("Broken</strong> \u00b7 needs-input reporting failed \u00b7", html)
+        self.assertIn("needs-input reporting ·", html)
+        self.assertIn("Harness does not report blocks ·", html)
+        self.assertIn("Harness source could not be read ·", html)
         self.assertNotIn("where a caveat would be noise", html)
         # The condition qualifies the capability; it does not withdraw it. The
         # mechanism exists, so the count that says how much of the board can
         # report a gate at all is the same with the caveat as without it.
-        self.assertIn("Gates: 2/4 reporting \u00b7 1 unknown \u00b7 1 failed", html)
+        self.assertIn("Harness sources: 1 failed", html)
+        self.assertEqual(5, html.count('data-known="true"'))
 
     def test_the_gate_condition_is_escaped_like_the_label_beside_it(self) -> None:
         # A registry constant today, and reaching HTML regardless. Escaped on
@@ -1213,9 +1357,9 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
             }
         )
 
-        self.assertIn("NO PUBLISHED EXCEPTION (1)</h2>", html)
+        self.assertIn("The other 1: 1 quiet", html)
         self.assertNotIn("HEALTHY FLEET", html)
-        self.assertIn("No published exception; coverage applies", html)
+        self.assertIn("Harness does not report blocks", html)
         self.assertIn('href="#n=projects"', html)
 
     def test_attention_uses_semantic_lists_and_the_five_part_item_grammar(self) -> None:
@@ -1281,13 +1425,15 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
         html = self.render(payload)
 
         self.assertEqual(1, html.count("<h1 "))
-        self.assertEqual(5, html.count("<h2"))
-        self.assertEqual(4, html.count('<ol id="next-attention-'))
+        self.assertEqual(6, html.count("<h2"))
+        self.assertEqual(3, html.count('<ol id="next-attention-'))
         self.assertEqual(4, html.count("<li><article"))
-        self.assertEqual(4, html.count('data-next-attention-part="why"><a '))
+        self.assertEqual(3, html.count('data-next-attention-part="why"><a '))
         self.assertEqual(1, html.count('<details class="next-attention-coverage-details">'))
         self.assertNotIn('<details class="next-attention-coverage-details" open', html)
-        ask_item = html.split('data-next-attention-subject="session:[&quot;claude&quot;,', 1)[1]
+        ask_item = html.split(
+            'data-next-attention-subject="session:[&quot;claude&quot;,&quot;ask-owner&quot;]"', 1
+        )[1]
         ask_item = ask_item.split("</article>", 1)[0]
         grammar = [
             'data-next-attention-part="why"',
@@ -1302,9 +1448,8 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
         self.assertTrue(all(label in ask_item for label in grammar))
         risk_item = html.split('data-next-attention-kind="loop"', 1)[1].split("</article>", 1)[0]
         self.assertNotIn('data-next-attention-part="next"', risk_item)
-        healthy = html.split('data-next-attention-section="healthy"', 1)[1]
-        self.assertNotIn("<article", healthy)
-        self.assertIn('href="#n=projects"', healthy)
+        self.assertIn('href="#n=projects"', html)
+        self.assertNotIn('data-next-attention-section="healthy"', html)
 
     def test_all_model_subject_kinds_render_bounded_source_claims(self) -> None:
         html = self.render(
@@ -1388,9 +1533,9 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
 
         for claim in (
             "Input signal observed",
-            "Repeated tool failures",
+            "Stuck signal",
             "Bash failed 4 times",
-            "Long-running turn",
+            "Long working turn",
             "Quota pressure",
             "92% reported",
             "Stop observed with uncommitted work",
@@ -1401,7 +1546,7 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
             "Ship docs",
         ):
             self.assertIn(claim, html)
-        self.assertNotIn("soon", html)
+        self.assertIn("estimated remaining", html)
         self.assertNotIn("exhaust", html.lower())
 
     def test_outcome_uses_exact_assignment_or_one_distinct_workflow_goal(self) -> None:
@@ -1732,7 +1877,8 @@ console.log(JSON.stringify({
         self.assertNotIn("0 moving", out["html"])
         # And the subject clause must carry its own denominator, the way the
         # fleet strip's coverage line does (next-sessions.js:99-104).
-        self.assertIn("across 2 of 2 sessions", out["html"])
+        self.assertIn("0 of 2 sessions carry a subject", out["html"])
+        self.assertIn("2 moving", out["html"])
 
     def test_an_empty_payload_does_not_get_a_line_of_zeroes(self) -> None:
         # Found on a real board during the after-walk, and introduced by the
@@ -1754,7 +1900,7 @@ console.log(JSON.stringify({html: __els.app.innerHTML}));
         assert isinstance(out, dict)
         self.assertIn("No sessions in this 6h payload", out["html"])
         self.assertNotIn("0 need you", out["html"])
-        self.assertNotIn("of 0 sessions", out["html"])
+        self.assertIn("0 of 0 sessions carry a subject", out["html"])
         # The label goes with it; an OBSERVED NOW with nothing after it is worse.
         self.assertNotIn("OBSERVED NOW", out["html"])
 
@@ -1788,8 +1934,8 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertEqual(4, out["sessionCount"])
         self.assertEqual(2, out["healthy"])
-        self.assertIn("across 2 of 4 sessions", out["html"])
-        self.assertIn("The other 2 sessions", out["html"])
+        self.assertIn("0 of 4 sessions carry a subject", out["html"])
+        self.assertIn("The other 4: 3 moving · 1 quiet", out["html"])
 
     def test_the_project_row_names_the_unit_of_its_subject_counts(self) -> None:
         # The same two units, in a milder form: here `working` and `quiet` count
@@ -1855,7 +2001,9 @@ console.log(JSON.stringify({collapsed, expanded, survived, recollapsed}));
         self.assertEqual(out["expanded"], out["survived"])
         self.assertEqual(out["collapsed"], out["recollapsed"])
 
-    def test_the_coverage_panel_the_reader_opened_is_still_open_after_a_render(self) -> None:
+    def test_the_coverage_panel_keeps_the_readers_open_and_closed_choice_after_redraws(
+        self,
+    ) -> None:
         # `renderNext` assigns the app's whole innerHTML, so the open state the
         # browser keeps on a `<details>` node dies with the node: the panel
         # closed itself under the reader on the next revision, or within 20
@@ -1875,13 +2023,15 @@ const survived = __els.app.innerHTML;
 summary();
 renderNext();
 const reclosed = __els.app.innerHTML;
-console.log(JSON.stringify({closed, opened, survived, reclosed}));
+renderNext();
+const closedSurvived = __els.app.innerHTML;
+console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived}));
 """
         )
         assert isinstance(out, dict)
 
         tag = '<details class="next-attention-coverage-details"'
-        for html in (out["closed"], out["reclosed"]):
+        for html in (out["closed"], out["reclosed"], out["closedSurvived"]):
             self.assertIn(f"{tag}>", html)
             self.assertNotIn(f"{tag} open", html)
         for html in (out["opened"], out["survived"]):
@@ -2246,14 +2396,14 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         html = self.render([self.row(ended_at=9_400), self.row(sid="quiet-1")])
         visible = html.split('<details class="next-attention-coverage-details"')[0]
 
-        self.assertIn("Ends: 1 observed", visible)
+        self.assertIn("ends observed on 1 sessions", visible)
         self.assertNotIn("undefined", visible)
 
     def test_the_visible_coverage_line_counts_no_end_as_none_not_undefined(self) -> None:
         html = self.render([self.row(sid="quiet-1")])
         visible = html.split('<details class="next-attention-coverage-details"')[0]
 
-        self.assertIn("Ends: 0 observed", visible)
+        self.assertIn("ends observed on 0 sessions", visible)
         self.assertNotIn("undefined", visible)
 
 
@@ -2291,18 +2441,11 @@ console.log(JSON.stringify(__els.app.innerHTML));
    last_activity: 9000}
 ]"""
 
-    def test_a_healthy_board_says_the_queues_were_checked_instead_of_seven_zeros(self) -> None:
-        # Measured at HEAD, this payload rendered ten numerals, seven of them
-        # zero, to say one session is quiet: `0 subjects across 0 of 1 session:
-        # 0 need you · 0 at risk · 0 close the loop · 0 coming next · The other
-        # 1 session: 0 moving · 1 quiet`.
+    def test_a_healthy_board_names_its_session_count_and_each_empty_queue(self) -> None:
         brief = self.brief(self.ONE_IDLE)
-
-        self.assertEqual(
-            '<p><span class="next-attention-brief-label">OBSERVED NOW</span>'
-            "All four queues checked and empty · 1 session quiet</p>",
-            brief,
-        )
+        self.assertIn("0 of 1 sessions carry a subject", brief)
+        self.assertIn("0 waiting on you · 0 at risk · 0 to close the loop", brief)
+        self.assertIn("The other 1: 1 quiet", brief)
 
     def test_the_healthy_line_still_says_the_queues_were_checked(self) -> None:
         # The reachability criterion, and why plain standing-down was rejected:
@@ -2322,8 +2465,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
-        self.assertIn("All four queues checked and empty", html)
-        self.assertIn("NO PUBLISHED EXCEPTION (1)", html)
+        self.assertIn("0 waiting on you · 0 at risk · 0 to close the loop", html)
+        self.assertIn("The other 1: 1 quiet", html)
         for heading in ("NEEDS YOU NOW", "AT RISK", "CLOSE THE LOOP", "COMING NEXT"):
             self.assertNotIn(f"{heading} (", html)
 
@@ -2342,10 +2485,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
 ]"""
         )
 
-        self.assertIn(
-            "All four queues checked and empty · 2 sessions moving · 1 session quiet", brief
-        )
-        self.assertNotIn("0 ", brief)
+        self.assertIn("The other 3: 2 moving · 1 quiet", brief)
+        self.assertNotIn("0 moving", brief)
 
     def test_a_board_with_one_subject_still_shows_all_four_categories(self) -> None:
         # The half that already held and must be preserved rather than added:
@@ -2361,8 +2502,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
 
         self.assertIn(
-            "1 subject across 1 of 1 session: "
-            "1 need you · 0 at risk · 0 close the loop · 0 coming next",
+            "1 of 1 sessions carry a subject: 1 waiting on you · 0 at risk · 0 to close the loop",
             brief,
         )
 
@@ -2379,8 +2519,9 @@ console.log(JSON.stringify(nextAttentionView.toString()));
         assert isinstance(out, str)
         sections = re.findall(r'nextAttentionSectionHtml\("([a-z]+)"', out)
 
-        self.assertEqual(["needs", "risk", "close", "next"], sections)
-        self.assertIn("All four queues", self.brief(self.ONE_IDLE))
+        self.assertEqual(["needs", "close", "next"], sections)
+        self.assertIn('data-next-attention-section="risk"', out)
+        self.assertIn("0 at risk", self.brief(self.ONE_IDLE))
 
     def test_an_empty_payload_still_gets_no_brief_at_all(self) -> None:
         # The neighbouring standdown, kept: with no sessions the notice already
