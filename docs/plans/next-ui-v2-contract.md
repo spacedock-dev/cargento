@@ -169,13 +169,40 @@ The board is dark-only after this refactor. The light `:root` palette and the
 single palette. `--warn` and `--alert` are replaced by `--amber` and `--clay`
 respectively, and every existing usage migrates.
 
-### R6 · Byte pins are off-limits
+### R6 · Byte pins are off-limits to the view workstreams
 
-`tests/test_next_page.py` pins a SHA-256 per `APP_PARTS`/`STYLE_PARTS` entry and
-a digest of the assembled page; `tests/test_next_flag.py` and `tests/test_focus.py`
-pin that assembled digest again. **Do not edit those three files.** Every worker
-recomputing them would conflict with every other worker. The coordinator
-recomputes all of them once, in the integration pass.
+`tests/test_next_page.py` pins a SHA-256 and a byte length per `APP_PARTS` entry,
+the same pair for `styles.css`, and a digest of the assembled page;
+`tests/test_next_flag.py` and `tests/test_focus.py` pin that assembled digest
+again. **Workstreams A–E must not edit those three files.** Every worker
+recomputing them would conflict with every other worker, and each side would be
+correct for a tree that no longer exists. The coordinator recomputes all of them
+once, in the integration pass.
+
+The scaffolding pass is the one exception: it runs alone, before A–E, and owes
+them a green baseline, so it recomputes every pin it moves.
+
+### R8 · One stylesheet, delimited regions, one owner each
+
+`styles.css` stays a single file — it is named by eight call sites across the
+tests, the harnesses and `scripts/lint_embedded.py`, and splitting it buys less
+than the ripple costs. Ownership is enforced by region instead. The scaffolding
+pass lays down these banners, in this order:
+
+```
+/* ===== FOUNDATION ===== */   tokens, reset, type scale, fonts   · scaffolding
+/* ===== CHROME ===== */       tabs, breadcrumb, live note, nav   · integration
+/* ===== PROJECTS ===== */     projects list + project detail     · B
+/* ===== RAIL ===== */         the project-detail right rail      · C
+/* ===== SESSIONS ===== */     session operations                 · D
+/* ===== ATTENTION ===== */    attention                          · E
+/* ===== SESSION ===== */      session detail                     · E
+```
+
+Edit only your own region. **Put your media queries at the end of your own
+region**, not in a shared responsive block at the bottom of the file — a shared
+block is a guaranteed conflict between all five of you. Never move a rule
+between regions; if a rule looks misfiled, say so in your report and leave it.
 
 ### R7 · Do not run the full test suite
 
