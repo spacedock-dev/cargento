@@ -396,3 +396,85 @@ blank: `"No state published"`.
 
 Derive the lanes from a list in that order and both lanes inherit it, as the shipped
 filters do. Do not re-sort inside a lane afterwards; that is what loses it.
+
+---
+
+## Amendment 4 — measured on the merged tree
+
+Five workstreams merged without a conflict. The full suite then reported **33
+failures in 8 modules**, and they are not merge damage — they are the model asserting
+less than the shipped code already measured. The governing correction is one sentence:
+
+> **The model wraps the shipped measurements. It does not reimplement them.**
+
+### A4.1 · Delegation is measured by the shipped functions, not re-derived
+
+16 of the 33 failures are `test_next_delegation`, and 12 of those are the panel
+rendering `"no figure yet"` where the shipped measurement produced `100%`, `0%`,
+`50%`, `≥100 tok/m while delegated` and `1 human turn`.
+
+`nextDelegationBatches`, `nextDelegationHumanTurns`, `nextDelegationRange`,
+`nextDelegationMetric` and `nextDelegationTrend` are all still present and all still
+correct. Nothing deleted them; the model simply stopped asking them, and its own basis
+withholds where theirs reports. Those functions encode rules that were measured rather
+than reasoned — DRC-4258's "a gate answer can count as two human turns across idle"
+among them — and 16 tests pin the behaviour.
+
+So `delegation` is computed **by calling them** and wrapping the result in the
+`Text`/`Known` shape. The model owns the presentation contract; the shipped functions
+own the measurement. A narrower basis that withholds an available figure is not
+caution — under §1 it is a false absence, which is the same defect as a false claim.
+
+The remaining 4 of the 16 are a legitimate change: the prototype moves the window out
+of the heading (`DELEGATION · LAST 3D`) into a right-aligned meta slot. Those
+expectations follow the prototype.
+
+### A4.2 · The timeline note keeps the shipped window vocabulary
+
+11 failures are `test_next_workstream`. The model's `changeNoteText` replaced two
+shipped concepts and both must come back:
+
+- the **tab window** — "since this tab opened", and
+  "No state changes observed since this tab opened."
+- the **unattended count** — "0 of 1 unattended", which is a derived denominator and
+  exactly the kind of sentence §2 exists to protect.
+
+`nextWorkstreamProjectWindow`, `nextWorkstreamWindowLabel` and
+`nextWorkstreamWindowPhrase` are the shipped vocabulary. Call them.
+
+One of those 11 is an escaping test: a question containing
+`<img src=x onerror=1>` must still render escaped in the rail. It fails because the
+question no longer renders there at all, not because the escaping broke. Restore the
+surface and the escaping assertion passes with it — but verify that, do not assume it.
+
+### A4.3 · Coverage sentences must be grammatical
+
+The model emits `1 of 1 sessions` and `ends observed on 1 sessions`. Singular and
+plural both occur in real payloads, so the count decides the noun.
+
+### A4.4 · One category policy for risks and coverage
+
+Reproduced: a `needs_input` session with `loop.errors = 4` produces one `risks` entry
+while coverage says `1 waiting on you · 0 at risk`. Two derived sentences over one
+collection disagreeing is §2's failure, whatever the mechanism. Decide one policy —
+either a subject may hold several categories and both sentences say so, or a subject
+has one primary category and both sentences use it — and apply it in both places.
+
+### A4.5 · The Capacity panel must render its reason
+
+A4.3 of Amendment 2 added `capacityEmptyText`; the rail renders an empty panel with a
+header and nothing under it. Render the reason. The shipped test expects
+`"No quota windows published."`; the model publishes `"No quota window published"`.
+Pick one, and change the other deliberately rather than by accident.
+
+### A4.6 · Two derivation passes now run, and that was the thing being removed
+
+`nextObserved` was added; `nextAttentionModel` was not retired. Chrome, the
+announcements and the attention queues still consume the old subject groups, so the
+board derives twice. §2 asks for one collection in one pass.
+
+This is the one item that may not be finishable inside this refactor, and **guessing is
+worse than declaring**. Either migrate the remaining consumers, or leave the second
+pass in place and write down — in `docs/design-runtime-architecture.md` — which pass
+owns what and why there are two. A known, documented seam is a defensible state; an
+undocumented one is how the next person reintroduces DRC-4453.
