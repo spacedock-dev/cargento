@@ -350,42 +350,22 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 6. **Update the pointers.** Keep the `AGENTS.md` architecture tree and doc map, and `README.md`'s
    links, current. `CLAUDE.md` imports `AGENTS.md`, so those edits propagate — but check that no
    Claude-only bullet has become universally true (move it up) or obsolete (delete it).
-7. **Reconcile the tracker, and shrink it.** If the work is tracked in Linear, the same
-   ownership rule applies there: one surface owns a subject and the others link to it. The failure
-   mode is the opposite of doc drift — nothing goes stale, the overview just accretes, because every
-   burndown leaves a paragraph behind and no single paragraph looks like too much.
+7. **Hand the tracker to `sync-project`.** The Linear project overview, the milestone descriptions
+   and the shape of an issue are that skill's subject, not this one's. Invoke it in the same pass,
+   after this one, because a promise sentence is canonical in `docs/promise-map.md` and the tracker
+   copies it: reconcile the source first, then the copies.
 
-   | Linear surface | Owns | Never |
-   |---|---|---|
-   | **Project overview** | Derived counts, in one "As of" block. The sequencing rule. Decision **status**. The score and label legend. | Per-item status, estimates, staleness, what shipped, what it taught. |
-   | **Milestone description** | The group's narrative: what shipped, what it changed for the rest of the group, what the group waits on. | Anything about one item that its own issue could carry. |
-   | **Issue body** | That item's scope, score, and its dated staleness notes. | Another item's status. |
-   | **Issue comment** | Validation findings, build post-mortems, corrections to the body, cross-issue consequences. | Anything the body should have said instead. |
-   | **Labels** | Release row, journey stage, move, origin. They *are* the record. | Restating a label's content in prose. |
+   This split exists because the two surfaces fail in opposite directions. Repository docs go
+   **stale**, so this skill diffs them against the code. Tracker descriptions **accrete**, because
+   every burndown leaves behind a paragraph that was true when written and nothing ever removes one.
+   A skill that diffs for staleness will not catch a page that is entirely accurate and four times
+   too long. Measured 2026-09-08: this step's own rules were followed and the overview still reached
+   about 25,000 characters, of which three lines were current state.
 
-   Four tests, applied to every line of the overview:
-
-   - **Would this change what someone does next?** If not, cut it. A closed defect with no bearing
-     on remaining work belongs to its own ticket and nowhere else.
-   - **Is it about one item?** Issue. **About a group?** Milestone. **A number?** The "As of" block,
-     exactly once.
-   - **Is it a lesson rather than a state?** Comment it on the issue that taught it. An overview is
-     read to decide what to do next, not to learn what went wrong last time.
-   - **Did the overview grow after a burndown?** Then something is in the wrong place. Closing work
-     should make it shorter.
-
-   One read-only check on the tracker: every open issue in the project carries a `journey:*` label
-   and a `move:*` label. Report the ones that do not; do not label them here, because the label is a
-   triage product and setting it without the brief is the drift this check exists to catch.
-
-   Refresh the counts whenever an issue is closed, cancelled, re-scoped or re-gated, and take the
-   figures from a fresh query rather than by adjusting the previous block's numbers. Check the
-   blocking relations while there: a closed issue still holding a `blocks` edge reads as a live gate
-   to everyone.
-
-   Corrections are the one thing to keep rather than tidy. A wrong mechanism in a closed issue still
-   misleads whoever reads it next, so record the correction as a comment instead of editing the
-   mistake away.
+   One thing stays here, because it is about this repository rather than about Linear: the promise
+   wording is duplicated verbatim in `docs/promise-map.md`, in `docs/visibility-2x2/items.json`, and
+   in the Linear project description. Change one and change all three. `sync-project` owns the third
+   copy; make sure the first two agree before handing over.
 
 8. **Bring the tone back to the standard.** The prose docs are written for humans, and the fastest
    way for that to rot is an agent topping them up in model-default voice one sync at a time. Apply

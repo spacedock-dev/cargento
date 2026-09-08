@@ -98,7 +98,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/roadmap-burndown/README.md` | The Spacedock workflow the roadmap burndown runs on: its stages, gates, and the measured rules each one earned. Machinery rather than prose — entity state lives on an orphan branch and is gitignored. |
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus closed harness vocabularies such as `notification_type` and `reply`, each earned one at a time on the reasoning the captures README gives; never a value a person or a model wrote. |
-| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `visibility-2x2`, `burndown`, `cargento-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `sync-project`, `visibility-2x2`, `burndown`, `cargento-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 | `docs/screenshots/` | Screenshots taken in this repository. Every capture — browser or screen — lands here unless the request names another location. Its contents are gitignored, so a capture never reaches a commit, and a committed `.gitkeep` holds the directory itself for a fresh clone. Write a descriptive filename, because the directory has no index and nothing prunes it. |
@@ -115,6 +115,13 @@ roots, and an inbound-link count alone would not establish reachability from a r
 Invoke the `sync-docs` skill before opening a PR (see Pre-PR Checks) so doc updates ride in the PR
 that changes the code. Claude Code discovers it under `.claude/skills/`; Codex discovers the same
 canonical directory through `.agents/skills/`.
+
+The Linear surfaces are a separate subject with a separate failure mode, and `sync-project` owns
+them: the project overview, the milestone descriptions and the shape of an issue. Repository docs go
+stale, so `sync-docs` diffs them against the code. Tracker descriptions accrete instead, because
+every burndown leaves behind a paragraph that was true when written and nothing removes one. Run
+`sync-docs` first, since the promise wording is canonical in `docs/promise-map.md` and the tracker
+copies it.
 
 ## Commit Conventions
 
