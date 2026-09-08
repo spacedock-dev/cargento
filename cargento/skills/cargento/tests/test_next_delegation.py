@@ -142,7 +142,11 @@ __fetchImpl = async () => ({ok: true, json: async () => __delegationPayload});
         return self._run_page_js("await __settle();\n" + checks, self.FIXTURE)
 
     def delegation_block(self, html: str) -> str:
-        match = re.search(r'<section class="next-delegation"[\s\S]*?</section>', html)
+        # Keyed on the data attribute, not the class attribute. The class list grew a
+        # second entry when the panel moved into the rail, and an exact-attribute
+        # regex silently stopped matching -- which failed all eighteen assertions
+        # below with "unexpectedly None" and named neither the panel nor the cause.
+        match = re.search(r'<section [^>]*data-next-delegation\b[\s\S]*?</section>', html)
         self.assertIsNotNone(match)
         return match.group(0) if match else ""
 

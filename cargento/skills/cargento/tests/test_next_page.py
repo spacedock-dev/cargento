@@ -43,21 +43,13 @@ class NextPageAssetContractTest(unittest.TestCase):
             asset = web / name
             asset.parent.mkdir(parents=True, exist_ok=True)
             asset.write_text("d09GMg==\n", encoding="ascii")
-        (web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
-        (web / "next-attention.js").write_text("const attention = 2;\n", encoding="utf-8")
-        (web / "next-notify.js").write_text("const notify = 2;\n", encoding="utf-8")
-        (web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
-        (web / "next-capacity.js").write_text("const capacity = 11;\n", encoding="utf-8")
-        (web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
-        (web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
-        (web / "next-activity.js").write_text("const activity = 5;\n", encoding="utf-8")
-        (web / "next-session.js").write_text("const session = 6;\n", encoding="utf-8")
-        (web / "next-workstream.js").write_text("const workstream = 7;\n", encoding="utf-8")
-        (web / "next-delegation.js").write_text("const delegation = 8;\n", encoding="utf-8")
-        (web / "next-controls.js").write_text("const controls = 9;\n", encoding="utf-8")
-        (web / "next-sessions.js").write_text("const sessions = 3;\n", encoding="utf-8")
-        (web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
-        (web / "next-live.js").write_text("const live = 10;\n", encoding="utf-8")
+        # One marker per part, derived from APP_PARTS rather than listed. The
+        # hand-written list this replaces went stale the moment a part was added,
+        # and the failure named a byte count rather than the missing file. Order
+        # and membership are pinned against literals in the two oracle tests
+        # below; this fixture only has to make the loader resolvable.
+        for name in frontend_page.APP_PARTS:
+            (web / name).write_text(f"/*{name}*/\n", encoding="utf-8")
 
     def test_load_page_resolves_the_patched_web_dir_at_call_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,13 +69,9 @@ class NextPageAssetContractTest(unittest.TestCase):
             )
         self.assertEqual(
             (f"<style>{embedded_styles}.next{{color:red}}\n</style>").encode()
-            + b"<script>const first = 1;\nconst attention = 2;\nconst notify = 2;\n"
-            b"const middle = 2;\nconst capacity = 11;\n"
-            b"const sessions = 3;\nconst projects = 3;\n"
-            b"const project = 4;\nconst activity = 5;\n"
-            b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
-            b"const controls = 9;\n"
-            b"const second = 2;\nconst live = 10;\n</script>",
+            + b"<script>"
+            + "".join(f"/*{name}*/\n" for name in frontend_page.APP_PARTS).encode()
+            + b"</script>",
             actual,
         )
 
@@ -175,6 +163,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(
             (
                 "next-boot.js",
+                "next-observed.js",
                 "next-attention.js",
                 "next-notify.js",
                 "next-chrome.js",
@@ -469,21 +458,33 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertIsNotNone(rule)
                 self.assertIn("overflow-wrap:anywhere", rule.group(1) if rule else "")
 
-    def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
+    def test_session_detail_tone_rails_use_the_fixed_palette(self) -> None:
+        # Keyed on the observation tone, not the raw harness state: the rule carries
+        # what was observed, which is what the palette encodes. The state-keyed
+        # predecessor could not express `bad`, so a session that ended dirty wore the
+        # same rail as one still working.
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        for state, color in (
-            ("needs_input", "var(--amber)"),
-            ("working", "var(--accent)"),
-            ("idle", "var(--line2)"),
+        for tone, color in (
+            ("want", "var(--amber)"),
+            ("bad", "var(--clay)"),
+            ("ok", "var(--accent)"),
         ):
-            with self.subTest(state=state):
+            with self.subTest(tone=tone):
                 rule = re.search(
-                    rf'\.next-session-detail\[data-next-session-state="{state}"\] '
+                    rf'\.next-session-detail\[data-tone="{tone}"\] '
                     r"\.next-session-current\{([^}]*)\}",
                     styles,
                 )
                 self.assertIsNotNone(rule)
                 self.assertIn(f"border-left-color:{color}", rule.group(1) if rule else "")
+        # Unknown never gets colour, so it must have no override at all rather than a
+        # muted one. Absence of the rule is the assertion.
+        self.assertIsNone(
+            re.search(
+                r'\.next-session-detail\[data-tone="unknown"\] \.next-session-current\{',
+                styles,
+            ),
+        )
 
     def test_load_page_preserves_its_byte_oracles(self) -> None:
         # Per-part first, deliberately. Every part feeds the assembled page, so a
@@ -494,9 +495,13 @@ class NextPageAssetContractTest(unittest.TestCase):
                 21_408,
                 "de523a2adbc7cfb5ff949cce205c71ee0c2ec0b9eaba2329722fa92f9b6220f6",
             ),
+            "next-observed.js": (
+                29_343,
+                "aa9f0a79a173e1882591b07e207c2ca6353a9621b246b2ef902e1f2eec9818bc",
+            ),
             "next-attention.js": (
-                55_856,
-                "db84662107903bd501d6b93bc6c9cf2b028dd123563b7dcb5980ad05541a3b87",
+                56_349,
+                "26fae1257de287a75f6323683f9fba494a7f933e7523cc9798749a19ff400cb7",
             ),
             "next-notify.js": (
                 6_457,
@@ -507,40 +512,40 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "90c8660840fe27a16a04c42d019721e90ca3647805c9de6349f163d6080e8bf0",
             ),
             "next-capacity.js": (
-                30_666,
-                "95410ca90cd1bffd8a717cd7f597d9a81da0c8d1ae789bf62f4c9f9757ec4d6f",
+                32_119,
+                "0ebba03f8db0a7b6fecc9e9fe5dbe386b357cbf9e5df72db3ba1347b69c58cc5",
             ),
             "next-sessions.js": (
-                17_362,
-                "34f337530466457405ab470571f327836dbb9f99b7558d9fb2edf5e74c4fc55b",
+                19_614,
+                "8364cae466ff36c3fee55a3c4c418319c861776b4c4c49bd8179eb421d806f51",
             ),
             "next-projects.js": (
-                12_350,
-                "e33148254ca21c3a3def0e0702209697bcc074eafa2bcf6ecfd22223a7d7ec28",
+                4_190,
+                "9c424aba775646aab3d23f9f5db24d7e6d2e03867def1e5c36a3cdd89e0f79c8",
             ),
             "next-project.js": (
-                8_512,
-                "439021748213a21ed311dd1ce931dd500b538ad9cd0317e11d0fc716c1699903",
+                10_226,
+                "70f06a9423a7b84e33510762b4d4dd6b33d3d4ba0ffae2705da9f531be5050cc",
             ),
             "next-activity.js": (
-                5_938,
-                "6ef68e1321e586622a8543527f3a3bce56176d2efaa87553e8360dae82ad0a61",
+                6_538,
+                "cbd14202e35be369345eae3dd456f27af9d771764885069d7eaebd5f8742b86b",
             ),
             "next-session.js": (
-                19_720,
-                "d39df21375a49440ded562fe1eece8bb71fbbf63ee52faecfb9c64c11d8012d9",
+                20_191,
+                "4e726f8d55acb7cd987d2d60f6bea2661aa1ece7875c295390c348ad9d6dfcac",
             ),
             "next-workstream.js": (
                 17_525,
                 "1ce464621be77779618494f9826c4486fc2c058257818865037eb1c6d15ee9d4",
             ),
             "next-delegation.js": (
-                8_583,
-                "e526ce96d25ef9c6347d6cbac903aa4c0da9b6399ecdbe0056ce3c119dcc9fdb",
+                14_081,
+                "6e1da59ea5180e61c77e379ff306aa37d552115d207ab454ca47cec65c3f9888",
             ),
             "next-controls.js": (
-                10_575,
-                "fb36d3cf4fc98cfd718ea32ed82eac602c3cc0bc658559424d07403396ec84b1",
+                11_557,
+                "e2284e5c514e828246ada59c8c49c3cebb69f5741ca4232dde5e9a6d5f212d13",
             ),
             "next-render.js": (
                 3_028,
@@ -559,16 +564,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(48_149, len(styles))
+        self.assertEqual(61_094, len(styles))
         self.assertEqual(
-            "c0ddef2c0303aeb0d425e56ac78140b70aadf1f1f199cda0ba9f9f788217e3fb",
+            "36e75144e0fa6dd78fc4da82204b9e85171747cdd1527053d939a5da55481f3f",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(431_202, len(assembled))
+        self.assertEqual(478_793, len(assembled))
         self.assertEqual(
-            "a602daae629c24fbde5c8cd4ae5f740aa53aa994d486e238d6bfd3cab83ff4ab",
+            "01653eb6348f6226eb1cc4f5750063affd263fc87b1529b93b9598fc56f6c881",
             hashlib.sha256(assembled).hexdigest(),
         )
 
