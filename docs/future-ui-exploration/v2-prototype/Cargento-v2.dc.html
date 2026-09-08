@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0e0e0c;color:#f4f1e8;font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:#c6e07a;text-decoration:none;border-bottom:1px solid currentColor}
+  a:hover{color:#f4f1e8}
+  :root{
+    /* Ground: three steps only. */
+    --bg:#14140f; --panel:#1c1c16; --sunk:#11110c; --line:#2c2c23; --line2:#403f33;
+    /* Ink: every step is at least 4.5:1 on --bg. */
+    --ink:#f4f1e8; --ink2:#c9c4b4; --ink3:#9b9484;
+    /* Colour carries observation, never decoration.
+       accent = observed and fine · amber = observed and wants you
+       clay   = observed bad outcome · ink3 = nothing was published */
+    --accent:#c6e07a; --accent-dim:#8ea254;
+    --amber:#e8b45c; --clay:#e08a6a;
+    --sans:'Space Grotesk',system-ui,sans-serif; --mono:'Space Mono',ui-monospace,monospace;
+  }
+  @keyframes breathe{50%{opacity:.35}}
+  .r .go{opacity:0;transition:opacity .12s}
+  .r:hover .go{opacity:1}
+  .cf:focus{outline:none}
+  .in input{all:unset;flex:1;min-width:0;font-family:var(--sans);font-size:13px;color:var(--ink)}
+  .in input::placeholder{color:var(--ink3)}
+</style>
+</helmet>
+
+<div class="cf" ref="{{ frameRef }}" tabIndex="0" onKeyDown="{{ onKey }}" style="width:1320px;min-height:920px;margin:28px auto 44px;background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;font-family:var(--sans);color:var(--ink);box-shadow:0 24px 60px -32px #000">
+
+  <div style="flex:none;display:flex;align-items:center;gap:22px;padding:0 26px;height:52px">
+    <div style="display:flex;align-items:flex-end;gap:20px;height:52px">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <span onClick="{{ t.onPick }}" style="font-family:var(--mono);font-size:12.5px;font-weight:700;color:{{ t.ink }};cursor:pointer;padding-bottom:12px;border-bottom:2px solid {{ t.bd }};transition:color .12s">{{ t.label }}</span>
+      </sc-for>
+    </div>
+    <span style="flex:1"></span>
+    <span style="display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--ink2)">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);animation:breathe 2s infinite"></span>{{ liveNote }}
+    </span>
+    <sc-if value="{{ hasNeeds }}">
+      <span onClick="{{ goAttention }}" style-hover="border-color:var(--amber)" style="font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--amber);border:1px solid var(--line2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:border-color .12s">{{ needsLabel }}</span>
+    </sc-if>
+  </div>
+  <div style="flex:none;height:1px;background:var(--line);margin:0 26px"></div>
+
+  <sc-if value="{{ hasCrumbs }}">
+    <div style="flex:none;display:flex;align-items:center;gap:9px;padding:14px 26px 0">
+      <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="2">
+        <sc-if value="{{ c.sep }}"><span style="font-family:var(--mono);font-size:11px;color:var(--ink3)">›</span></sc-if>
+        <span onClick="{{ c.onPick }}" style-hover="color:var(--ink)" style="font-family:var(--mono);font-size:12px;color:{{ c.ink }};cursor:pointer;transition:color .12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:430px">{{ c.label }}</span>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isProjects }}">
+    <div style="flex:1;min-height:0;padding:26px 26px 34px;display:flex;flex-direction:column;gap:26px">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <span style="font-size:23px;font-weight:700;letter-spacing:-.02em">Projects</span>
+        <span style="font-family:var(--mono);font-size:11.5px;color:var(--ink3)">sessions grouped by the label their harness publishes</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <span style="font-size:15px;font-weight:600">Active</span>
+          <span style="flex:1;height:1px;background:var(--line)"></span>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">blocked on you ranks first · only source-backed sessions contribute claims</span>
+        </div>
+        <sc-for list="{{ activeProjects }}" as="p" hint-placeholder-count="4">
+          <div class="r" onClick="{{ p.onOpen }}" style-hover="border-color:var(--line2)" style="position:relative;display:grid;grid-template-columns:300px minmax(0,1fr) 12px;gap:20px;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-left:2px solid {{ p.railInk }};border-radius:10px;cursor:pointer;transition:border-color .12s">
+            <div style="min-width:0;display:flex;flex-direction:column;gap:7px">
+              <span style="font-family:var(--mono);font-size:13.5px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.key }}</span>
+              <span style="font-family:var(--mono);font-size:11px;color:{{ p.scopeInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.scopeText }}</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--ink2);padding-top:2px">{{ p.countLine }}</span>
+              <sc-if value="{{ p.shared }}"><span style="font-family:var(--mono);font-size:10px;color:var(--amber)">{{ p.label.shared }} sessions share this label</span></sc-if>
+            </div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:1px">
+              <sc-for list="{{ p.sess }}" as="s" hint-placeholder-count="2">
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px 150px;gap:16px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)">
+                  <div style="min-width:0;display:flex;align-items:center;gap:9px">
+                    <span style="width:6px;height:6px;flex:none;border-radius:50%;background:{{ s.dotBg }};border:1px solid {{ s.dotBd }};animation:{{ s.anim }}"></span>
+                    <span style="font-family:var(--mono);font-size:10px;color:var(--ink3);width:64px;flex:none">{{ s.h }}</span>
+                    <span style="font-size:12.5px;color:{{ s.titleInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.titleText }}</span>
+                  </div>
+                  <span style="font-family:var(--mono);font-size:11px;color:{{ s.nowInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.nowLine }}</span>
+                  <span style="font-family:var(--mono);font-size:10.5px;color:{{ s.nextInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.nextText }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <span class="go" style="font-family:var(--mono);font-size:12px;color:var(--ink3);align-self:center">›</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ hasRest }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:12px">
+            <span style="font-size:15px;font-weight:600;color:var(--ink2)">Recently observed</span>
+            <span style="flex:1;height:1px;background:var(--line)"></span>
+            <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">identity stays reachable; operational claims lapse</span>
+          </div>
+          <sc-for list="{{ restProjects }}" as="p" hint-placeholder-count="1">
+            <div class="r" onClick="{{ p.onOpen }}" style-hover="border-color:var(--line2)" style="display:grid;grid-template-columns:300px minmax(0,1fr) 12px;gap:20px;padding:12px 18px;border:1px solid var(--line);border-radius:10px;cursor:pointer;transition:border-color .12s">
+              <span style="font-family:var(--mono);font-size:13px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.key }}</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--ink3)">{{ p.countLine }}</span>
+              <span class="go" style="font-family:var(--mono);font-size:12px;color:var(--ink3)">›</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isProject }}">
+    <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 356px">
+      <div style="min-width:0;display:flex;flex-direction:column;padding:18px 26px 34px;gap:22px">
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <span style="font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:-.02em">{{ P.key }}</span>
+            <span style="font-family:var(--mono);font-size:11.5px;color:{{ P.scopeInk }}">{{ P.scopeText }}</span>
+          </div>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--ink2)">{{ P.countLine }}</span>
+          <sc-if value="{{ P.shared }}">
+            <span style="font-family:var(--mono);font-size:10.5px;color:var(--amber)">{{ P.label.note }}</span>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;background:var(--panel);border:1px solid var(--line);border-radius:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">STATED GOAL</span>
+            <span style="flex:1"></span>
+            <sc-if value="{{ P.hasGoal }}"><span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">{{ P.goal.src }}</span></sc-if>
+          </div>
+          <sc-if value="{{ P.hasGoal }}">
+            <p style="margin:0;max-width:640px;font-size:14.5px;line-height:1.55;color:var(--ink);text-wrap:pretty">{{ P.goal.text }}</p>
+          </sc-if>
+          <sc-if value="{{ P.noGoal }}">
+            <p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--ink3)">{{ P.goalWhy }}</p>
+          </sc-if>
+          <sc-if value="{{ P.hasGoalGap }}">
+            <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ P.goalGap }}</span>
+          </sc-if>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start">
+          <div style="min-width:0;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">GOING ON</span>
+              <span style="flex:1;height:1px;background:var(--line)"></span>
+            </div>
+            <sc-for list="{{ liveRows }}" as="s" hint-placeholder-count="2">
+              <div onClick="{{ s.onOpen }}" style-hover="border-color:var(--line2)" style="display:flex;flex-direction:column;gap:7px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-left:2px solid {{ s.railInk }};border-radius:9px;cursor:pointer;transition:border-color .12s">
+                <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                  <span style="width:6px;height:6px;flex:none;border-radius:50%;background:{{ s.dotBg }};border:1px solid {{ s.dotBd }};animation:{{ s.anim }}"></span>
+                  <span style="font-size:13px;font-weight:500;color:{{ s.titleInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.titleText }}</span>
+                  <span style="flex:1"></span>
+                  <sc-if value="{{ s.hasRate }}"><span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex:none">{{ s.rate }}</span></sc-if>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--ink2);min-width:0">
+                  <span style="color:var(--ink3)">{{ s.h }}</span><span style="color:var(--ink3)">·</span>
+                  <span style="color:{{ s.nowInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.now }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px;font-family:var(--mono);font-size:10.5px;line-height:1.5">
+                  <span style="color:{{ s.nextInk }}">next · {{ s.nextText }}</span>
+                  <span style="color:var(--ink3)">turn · {{ s.turnLine }}</span>
+                </div>
+                <sc-if value="{{ s.hasStuck }}">
+                  <span style="font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--amber)">stuck · {{ s.stuck }}</span>
+                </sc-if>
+                <sc-if value="{{ s.hasAsk }}">
+                  <span style="font-size:12.5px;line-height:1.5;color:var(--ink);border-top:1px solid var(--line);padding-top:7px;text-wrap:pretty">{{ s.ask }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+            <sc-if value="{{ noLive }}"><span style="font-family:var(--mono);font-size:11.5px;color:var(--ink3)">Nothing observed running.</span></sc-if>
+          </div>
+
+          <div style="min-width:0;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">HOW THINGS ENDED</span>
+              <span style="flex:1;height:1px;background:var(--line)"></span>
+            </div>
+            <sc-for list="{{ endRows }}" as="s" hint-placeholder-count="2">
+              <div onClick="{{ s.onOpen }}" style-hover="border-color:var(--line2)" style="display:flex;flex-direction:column;gap:6px;padding:11px 14px;border:1px solid var(--line);border-left:2px solid {{ s.outInk }};border-radius:9px;cursor:pointer;transition:border-color .12s">
+                <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                  <span style="font-family:var(--mono);font-size:10px;color:{{ s.outInk }};flex:none">{{ s.outGlyph }}</span>
+                  <span style="font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.titleText }}</span>
+                </div>
+                <span style="font-family:var(--mono);font-size:10.5px;line-height:1.5;color:{{ s.outInk }}">{{ s.outcomeNote }}</span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">{{ s.h }} · git: {{ s.git.note }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ noEnd }}"><span style="font-family:var(--mono);font-size:11.5px;color:var(--ink3)">No session in this project has been observed ending.</span></sc-if>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span onClick="{{ toggleLog }}" style-hover="color:var(--ink)" style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3);cursor:pointer;transition:color .12s">{{ logCaret }} OBSERVED STATE CHANGES</span>
+            <span style="flex:1;height:1px;background:var(--line)"></span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">{{ P.changeNote }}</span>
+          </div>
+          <sc-if value="{{ logOpen }}">
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ changeRows }}" as="c" hint-placeholder-count="4">
+                <div style="display:grid;grid-template-columns:52px 16px minmax(0,1fr) 90px;gap:12px;align-items:center;height:30px;border-bottom:1px solid var(--line)">
+                  <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);font-variant-numeric:tabular-nums">{{ c.at }}</span>
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ c.bg }};border:1px solid {{ c.bd }};justify-self:center"></span>
+                  <span style="font-family:var(--mono);font-size:11.5px;color:{{ c.ink }}">{{ c.what }}</span>
+                  <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);text-align:right">{{ c.by }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ noChanges }}"><span style="font-family:var(--mono);font-size:11.5px;color:var(--ink3);padding:6px 0">{{ P.changeNote }}.</span></sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="border-left:1px solid var(--line);background:var(--sunk);display:flex;flex-direction:column">
+        <div style="padding:20px 22px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">DELEGATION</span>
+            <span style="flex:1"></span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">{{ P.delegation.window }}</span>
+          </div>
+          <sc-if value="{{ P.hasPct }}">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;gap:9px">
+                <span style="font-family:var(--mono);font-size:32px;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--accent)">{{ P.pctLabel }}</span>
+                <span style="font-size:12.5px;line-height:1.35;color:var(--ink2)">of observed time<br>ran without you</span>
+              </div>
+              <span style="display:block;height:5px;border-radius:3px;background:var(--line);overflow:hidden"><span style="display:block;height:100%;border-radius:3px;background:var(--accent-dim);width:{{ P.delegation.pct }}%"></span></span>
+              <div style="display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:10.5px;color:var(--ink2);line-height:1.5">
+                <span>{{ P.delegation.tps }} tok/m while delegated · {{ P.delegation.human }} human turns</span>
+                <span style="color:var(--ink3)">{{ P.delegation.note }}</span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ P.noPct }}">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--ink2)">no figure yet</span>
+              <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ P.delegation.why }}</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="padding:18px 22px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">WAITING ON YOU</span>
+            <span style="flex:1"></span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">{{ needLabel }}</span>
+          </div>
+          <sc-for list="{{ needRows }}" as="s" hint-placeholder-count="1">
+            <div style="display:flex;flex-direction:column;gap:8px;padding:12px 13px;background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:9px">
+              <div style="display:flex;align-items:baseline;gap:9px">
+                <span style="font-size:12.5px;font-weight:500;color:var(--ink);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.titleText }}</span>
+                <span style="flex:1"></span>
+                <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--amber);flex:none">{{ s.waited }}</span>
+              </div>
+              <sc-if value="{{ s.hasAsk }}"><span style="font-size:12px;line-height:1.5;color:var(--ink2);text-wrap:pretty">{{ s.ask }}</span></sc-if>
+              <div style="display:flex;gap:7px;padding-top:2px">
+                <span onClick="{{ s.onRaise }}" style-hover="border-color:var(--amber)" style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--ink);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;cursor:pointer;transition:border-color .12s">raise terminal</span>
+                <span onClick="{{ s.onCopy }}" style-hover="border-color:var(--line2)" style="font-family:var(--mono);font-size:10px;color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;transition:border-color .12s">{{ s.copyLabel }}</span>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noNeeds }}"><span style="font-family:var(--mono);font-size:11.5px;color:var(--ink3);line-height:1.5">Nothing in this project has asked for you.</span></sc-if>
+        </div>
+
+        <div style="padding:18px 22px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">CAPACITY</span>
+            <span style="flex:1"></span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">each window on its own clock</span>
+          </div>
+          <sc-for list="{{ windowRows }}" as="w" hint-placeholder-count="3">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:11px">
+                <span style="font-weight:700;color:var(--ink)">{{ w.vendor }}</span>
+                <span style="color:var(--ink3)">{{ w.window }}</span>
+                <span style="flex:1"></span>
+                <span style="font-weight:700;color:{{ w.usedInk }};font-variant-numeric:tabular-nums">{{ w.used }}%</span>
+              </div>
+              <span style="position:relative;display:block;height:6px;border-radius:3px;background:var(--line);overflow:hidden">
+                <span style="position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:{{ w.barInk }};width:{{ w.used }}%"></span>
+                <span style="position:absolute;top:-2px;bottom:-2px;width:1.5px;background:var(--ink2);left:{{ w.clock }}%"></span>
+              </span>
+              <div style="display:flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10px;color:var(--ink3)">
+                <span style="color:{{ w.paceInk }};font-weight:700">{{ w.pace }} pace</span><span>·</span><span>resets {{ w.resets }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:18px 22px;display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">TRIPWIRES</span>
+            <span style="flex:1"></span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--amber)">local only · nothing enforces these</span>
+          </div>
+          <sc-for list="{{ tripRows }}" as="t" hint-placeholder-count="1">
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:9px">
+              <span style="font-family:var(--mono);font-size:10px;color:var(--ink3);margin-top:2px">◇</span>
+              <span style="font-size:12.5px;line-height:1.45;color:var(--ink2);text-wrap:pretty">{{ t.text }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ tripOpen }}">
+            <div class="in" style="display:flex;align-items:center;gap:9px;padding:9px 12px;background:var(--panel);border:1px solid var(--line2);border-radius:9px">
+              <input value="{{ tripDraft }}" onChange="{{ onTripDraft }}" onKeyDown="{{ onTripKey }}" placeholder="alert me when…">
+              <span onClick="{{ saveTrip }}" style="font-family:var(--mono);font-size:10px;font-weight:700;color:{{ saveInk }};cursor:pointer">add ↵</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ tripClosed }}">
+            <span onClick="{{ addTrip }}" style-hover="color:var(--ink)" style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);cursor:pointer;transition:color .12s">+ set a tripwire</span>
+          </sc-if>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--ink3);line-height:1.55;padding-top:2px">C1 would let an observer act on these. Until it ships they are a note to yourself, held in this browser.</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isSessions }}">
+    <div style="flex:1;min-height:0;padding:26px 26px 34px;display:flex;flex-direction:column;gap:24px">
+      <div style="display:flex;align-items:baseline;gap:16px">
+        <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--accent-dim);width:132px;flex:none">COMMAND SURFACE</span>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:23px;font-weight:700;letter-spacing:-.02em">Session operations</span>
+          <span style="font-size:13.5px;color:var(--ink2);line-height:1.5">Active evidence leads. Every recently observed session remains reachable.</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+        <sc-for list="{{ counters }}" as="c" hint-placeholder-count="4">
+          <div style="display:flex;flex-direction:column;gap:7px;padding:15px 18px;border-left:1px solid {{ c.divider }}">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3)">{{ c.label }}</span>
+            <span style="font-family:var(--mono);font-size:27px;font-weight:400;line-height:1;color:{{ c.ink }}">{{ c.value }}</span>
+            <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ c.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:0">
+        <div style="display:grid;grid-template-columns:190px 56px minmax(0,1fr) 74px 190px 92px;gap:14px;align-items:center;padding:0 0 8px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.13em;color:var(--ink3)">
+          <span>WINDOW</span><span>USED</span><span>BUDGET AGAINST CLOCK</span><span style="text-align:right">PACE</span><span>BUDGET ENDS</span><span>RESETS</span>
+        </div>
+        <sc-for list="{{ windowRows }}" as="w" hint-placeholder-count="3">
+          <div onClick="{{ w.onPick }}" style-hover="background:var(--panel)" style="display:grid;grid-template-columns:190px 56px minmax(0,1fr) 74px 190px 92px;gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--ink)">{{ w.vendor }}</span>
+              <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">{{ w.window }}</span>
+            </div>
+            <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:{{ w.usedInk }};font-variant-numeric:tabular-nums">{{ w.used }}%</span>
+            <span style="position:relative;display:block;height:14px;border:1px solid var(--line);border-radius:3px;background:var(--sunk);overflow:hidden">
+              <span style="position:absolute;left:0;top:0;bottom:0;background:{{ w.barInk }};width:{{ w.used }}%"></span>
+              <span style="position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--ink);left:{{ w.clock }}%"></span>
+            </span>
+            <span style="font-family:var(--mono);font-size:11.5px;font-weight:700;color:{{ w.paceInk }};text-align:right">{{ w.pace }}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--ink2);line-height:1.45">{{ w.ends }}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--ink2)">{{ w.resets }}</span>
+          </div>
+        </sc-for>
+        <div style="display:flex;flex-direction:column;gap:5px;padding:11px 0 12px 14px;border-left:2px solid var(--line2);margin-top:12px">
+          <div style="display:flex;align-items:baseline;gap:12px;font-family:var(--mono);font-size:10.5px">
+            <span style="font-weight:700;letter-spacing:.11em;color:var(--ink3)">WITHIN {{ SL.within }}</span>
+            <sc-for list="{{ sublimitRows }}" as="r" hint-placeholder-count="1">
+              <span style="color:var(--ink2)"><b style="color:var(--ink);font-weight:700">{{ r.name }}</b> {{ r.used }}</span>
+            </sc-for>
+          </div>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ SL.note }}</span>
+        </div>
+      </div>
+
+      <sc-if value="{{ hasDetail }}">
+        <div style="display:flex;flex-direction:column;gap:9px;padding:15px 18px;background:var(--panel);border-left:2px solid var(--accent-dim);border-radius:0 10px 10px 0">
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">{{ W.vendor }} · {{ W.window }}</span>
+          <sc-for list="{{ detailRows }}" as="r" hint-placeholder-count="2">
+            <span style="font-size:13.5px;line-height:1.6;color:{{ r.ink }};text-wrap:pretty">{{ r.text }}</span>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--ink2)">Vendor quota fetch: <b style="color:{{ fetchInk }};font-weight:700">{{ fetchLabel }}</b></span>
+        <span onClick="{{ toggleFetch }}" style-hover="border-color:var(--line2)" style="font-family:var(--mono);font-size:10.5px;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:7px 13px;cursor:pointer;transition:border-color .12s">{{ fetchAction }}</span>
+        <sc-if value="{{ fetchOff }}"><span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">Windows above are the last cached read and will lapse.</span></sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <span style="font-size:16px;font-weight:600">Active now</span>
+          <span style="flex:1;height:1px;background:var(--line)"></span>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">working, waiting on you, or an exact request</span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.5fr) 190px minmax(0,1fr) minmax(0,1fr) 170px;gap:16px;padding:0 0 8px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.13em;color:var(--ink3)">
+          <span>SESSION</span><span>WHERE</span><span>NOW</span><span>NEXT</span><span>BLOCKED</span>
+        </div>
+        <sc-for list="{{ activeRows }}" as="s" hint-placeholder-count="4">
+          <div class="r" onClick="{{ s.onOpen }}" style-hover="background:var(--panel)" style="display:grid;grid-template-columns:minmax(0,1.5fr) 190px minmax(0,1fr) minmax(0,1fr) 170px;gap:16px;align-items:start;padding:13px 0 13px 12px;border-bottom:1px solid var(--line);border-left:2px solid {{ s.railInk }};cursor:pointer;transition:background .12s">
+            <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+              <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">{{ s.h }}</span>
+              <div style="display:flex;align-items:baseline;gap:8px;min-width:0">
+                <span style="width:6px;height:6px;flex:none;border-radius:50%;background:{{ s.dotBg }};border:1px solid {{ s.dotBd }};animation:{{ s.anim }}"></span>
+                <span style="font-size:13px;color:{{ s.titleInk }};line-height:1.45;text-wrap:pretty">{{ s.titleText }}</span>
+              </div>
+              <span onClick="{{ s.onCopy }}" style-hover="border-color:var(--line2)" style="align-self:flex-start;font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.09em;color:var(--ink2);border:1px solid var(--line);border-radius:5px;padding:5px 9px;cursor:pointer;transition:border-color .12s">{{ s.copyChip }}</span>
+              <sc-if value="{{ s.hasShared }}"><span style="font-family:var(--mono);font-size:10px;color:var(--amber)">{{ s.sharedNote }}</span></sc-if>
+            </div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:var(--mono);font-size:12px;color:{{ s.whereInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.whereLabel }}</span>
+              <sc-if value="{{ s.whereUnknown }}"><span style="font-family:var(--mono);font-size:10px;color:var(--ink3);line-height:1.45">Exact location not published</span></sc-if>
+            </div>
+            <span style="font-family:var(--mono);font-size:12px;color:{{ s.nowInk }};line-height:1.5;text-wrap:pretty">{{ s.now }}</span>
+            <span style="font-family:var(--mono);font-size:12px;color:{{ s.nextInk }};line-height:1.5;text-wrap:pretty">{{ s.nextText }}</span>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:var(--mono);font-size:12px;color:{{ s.blockInk }};line-height:1.45">{{ s.blockLabel }}</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--ink3);line-height:1.45">{{ s.blockNote }}</span>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noActive }}"><span style="font-size:13.5px;color:var(--ink2);padding:8px 0">No exact session has active evidence right now.</span></sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:baseline;gap:16px">
+          <span style="font-size:16px;font-weight:600;color:var(--ink2)">Recent history</span>
+          <span style="flex:1;height:1px;background:var(--line)"></span>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);max-width:420px;text-align:right;line-height:1.5">recently observed is not proof a harness process is open or closed; rows marked ENDED reported their own end</span>
+        </div>
+        <sc-for list="{{ historyRows }}" as="s" hint-placeholder-count="4">
+          <div class="r" onClick="{{ s.onOpen }}" style-hover="background:var(--panel)" style="display:grid;grid-template-columns:minmax(0,1.5fr) 190px minmax(0,1fr) 92px;gap:16px;align-items:start;padding:13px 0 13px 12px;border-bottom:1px solid var(--line);border-left:2px solid {{ s.railInk }};cursor:pointer;transition:background .12s">
+            <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+              <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">{{ s.h }}</span>
+              <span style="font-size:13px;color:{{ s.titleInk }};line-height:1.45;text-wrap:pretty">{{ s.titleText }}</span>
+              <span onClick="{{ s.onCopy }}" style-hover="border-color:var(--line2)" style="align-self:flex-start;font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.09em;color:var(--ink2);border:1px solid var(--line);border-radius:5px;padding:5px 9px;cursor:pointer;transition:border-color .12s">{{ s.copyChip }}</span>
+            </div>
+            <span style="font-family:var(--mono);font-size:12px;color:{{ s.whereInk }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.whereLabel }}</span>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:var(--mono);font-size:12px;color:var(--ink2);line-height:1.5">{{ s.now }}</span>
+              <sc-if value="{{ s.hasOutcome }}"><span style="font-family:var(--mono);font-size:10.5px;color:{{ s.outInk }};line-height:1.5">{{ s.outcomeNote }}</span></sc-if>
+            </div>
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.1em;color:{{ s.stateInk }};text-align:right">{{ s.stateTag }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAttention }}">
+    <div style="flex:1;min-height:0;padding:26px 26px 34px;display:flex;flex-direction:column;gap:24px">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <span style="font-size:23px;font-weight:700;letter-spacing:-.02em">Attention</span>
+        <span style="font-family:var(--mono);font-size:11.5px;color:var(--ink3)">what is observed, and what the board could not see</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--accent-dim);border-radius:10px">
+        <div style="display:grid;grid-template-columns:104px minmax(0,1fr);gap:16px;align-items:baseline">
+          <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3)">OBSERVED</span>
+          <span style="font-size:13.5px;line-height:1.6;color:var(--ink);text-wrap:pretty">{{ C.observed }} <span style="color:var(--ink2)">{{ C.quiet }}</span></span>
+        </div>
+        <div style="grid-column:1 / -1;height:1px;background:var(--line)"></div>
+        <div style="display:grid;grid-template-columns:104px minmax(0,1fr);gap:16px;align-items:baseline">
+          <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3)">COVERAGE</span>
+          <span style="font-size:13.5px;line-height:1.6;color:var(--ink2)">{{ C.gates }}</span>
+        </div>
+        <span onClick="{{ toggleCov }}" style-hover="color:var(--ink)" style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);cursor:pointer;transition:color .12s;padding-left:120px">{{ covCaret }} per-harness detail</span>
+        <sc-if value="{{ covOpen }}">
+          <div style="display:flex;flex-direction:column;gap:1px;padding-left:120px">
+            <sc-for list="{{ covRows }}" as="r" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:96px 20px minmax(0,1fr);gap:12px;align-items:center;height:27px;border-bottom:1px solid var(--line)">
+                <span style="font-family:var(--mono);font-size:11.5px;font-weight:700;color:{{ r.nameInk }}">{{ r.name }}</span>
+                <span style="display:flex;gap:3px;justify-content:flex-start">
+                  <span style="width:6px;height:6px;border-radius:1px;background:{{ r.d1 }}"></span>
+                  <span style="width:6px;height:6px;border-radius:1px;background:{{ r.d2 }}"></span>
+                </span>
+                <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.detail }}</span>
+              </div>
+            </sc-for>
+            <div style="display:flex;flex-direction:column;gap:4px;padding-top:9px">
+              <sc-for list="{{ covCaveats }}" as="c" hint-placeholder-count="3">
+                <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ c.text }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <span style="font-size:15px;font-weight:600">At risk</span>
+          <span style="flex:1;height:1px;background:var(--line)"></span>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">{{ riskNote }}</span>
+        </div>
+        <sc-for list="{{ riskRows }}" as="r" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:26px 240px minmax(0,1fr) 190px;gap:18px;align-items:start;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-left:2px solid {{ r.tone }};border-radius:10px">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--ink3)">{{ r.n }}</span>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.4;text-wrap:pretty">{{ r.title }}</span>
+              <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ r.identity }}</span>
+            </div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:13px;line-height:1.5;color:var(--ink2);text-wrap:pretty">{{ r.now }}</span>
+              <sc-if value="{{ r.hasSub }}"><span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ r.sub }}</span></sc-if>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <sc-if value="{{ r.hasNext }}"><span style="font-family:var(--mono);font-size:11px;color:var(--ink2)">{{ r.next }}</span></sc-if>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">source · {{ r.src }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <span style="font-size:15px;font-weight:600;color:var(--ink2)">Also at risk, off the session count</span>
+          <span style="flex:1;height:1px;background:var(--line)"></span>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">{{ boardRiskNote }}</span>
+        </div>
+        <sc-for list="{{ boardRiskRows }}" as="r" hint-placeholder-count="2">
+          <div style="display:grid;grid-template-columns:26px 240px minmax(0,1fr) 190px;gap:18px;align-items:start;padding:14px 18px;border:1px solid var(--line);border-left:2px solid {{ r.tone }};border-radius:10px">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--ink3)">{{ r.n }}</span>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.4;text-wrap:pretty">{{ r.title }}</span>
+              <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ r.identity }}</span>
+            </div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:13px;line-height:1.5;color:var(--ink2);text-wrap:pretty">{{ r.now }}</span>
+              <sc-if value="{{ r.hasSub }}"><span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.5">{{ r.sub }}</span></sc-if>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <sc-if value="{{ r.hasNext }}"><span style="font-family:var(--mono);font-size:11px;color:var(--ink2)">{{ r.next }}</span></sc-if>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">source · {{ r.src }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <span style="font-size:15px;font-weight:600;color:var(--ink2)">Not on this board yet</span>
+          <span style="flex:1;height:1px;background:var(--line)"></span>
+          <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3)">so a gap reads as a gap, not as good news</span>
+        </div>
+        <sc-for list="{{ openRows }}" as="o" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:34px 210px minmax(0,1fr);gap:16px;align-items:baseline;padding:9px 18px;border-bottom:1px solid var(--line)">
+            <span style="font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--ink3)">{{ o.code }}</span>
+            <span style="font-size:13px;color:var(--ink2)">{{ o.name }}</span>
+            <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.55;text-wrap:pretty">{{ o.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isSession }}">
+    <div style="flex:1;min-height:0;padding:20px 26px 34px;display:flex;flex-direction:column;gap:20px;max-width:820px">
+      <div style="display:flex;flex-direction:column;gap:9px;padding:14px 17px;background:var(--panel);border:1px solid var(--line);border-left:2px solid {{ S.railInk }};border-radius:10px">
+        <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--ink3)">CURRENT ACTIVITY</span>
+        <span style="font-size:15px;font-weight:600;color:{{ S.nowInk }}">{{ S.stLabel }} · {{ S.now }}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:19px;font-weight:600;letter-spacing:-.015em;color:{{ S.titleInk }};text-wrap:pretty">{{ S.titleText }}</span>
+        <div style="display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--ink2)">
+          <span>{{ S.h }}</span><span style="color:var(--ink3)">·</span><span>{{ S.id }}</span>
+          <sc-if value="{{ S.hasRate }}"><span style="color:var(--ink3)">·</span><span>{{ S.rate }}</span></sc-if>
+        </div>
+        <div style="display:flex;gap:7px;padding-top:3px">
+          <span onClick="{{ S.onCopy }}" style-hover="border-color:var(--line2)" style="font-family:var(--mono);font-size:10px;color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;transition:border-color .12s">{{ S.copyLabel }}</span>
+          <sc-if value="{{ S.isNeeds }}">
+            <span onClick="{{ S.onRaise }}" style-hover="border-color:var(--amber)" style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--ink);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;cursor:pointer;transition:border-color .12s">raise terminal</span>
+          </sc-if>
+        </div>
+      </div>
+      <sc-if value="{{ S.hasAsk }}">
+        <div style="padding:13px 16px;background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:10px">
+          <div style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--amber);margin-bottom:7px">ASKED YOU · {{ S.waited }}</div>
+          <span style="font-size:14px;line-height:1.6;color:var(--ink);text-wrap:pretty">{{ S.ask }}</span>
+        </div>
+      </sc-if>
+      <div style="display:flex;flex-direction:column;gap:0">
+        <sc-for list="{{ S.factRows }}" as="f" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:18px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)">
+            <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3)">{{ f.label }}</span>
+            <span style="font-family:var(--mono);font-size:12px;line-height:1.55;color:{{ f.ink }};text-wrap:pretty">{{ f.value }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1000}}">
+class Component extends DCLogic {
+  state = { D: null, view: 'projects', pkey: null, skey: null, logOpen: true, covOpen: true,
+            trips: {}, tripOpen: false, tripDraft: '', copied: null, raised: null,
+            wkey: 'codex-week', fetchOn: true };
+  frameRef = React.createRef();
+
+  componentDidMount() {
+    import('./cargento-observed.js').then(m => this.setState({ D: m.derive() })).catch(() => {});
+    setTimeout(() => { try { this.frameRef.current.focus(); } catch (e) {} }, 60);
+  }
+
+  set(o) { this.setState(o); }
+
+  onKey = (e) => {
+    const k = e.key;
+    if (k === 'Escape') this.setState(s => ({ view: s.view === 'session' ? 'project' : 'projects' }));
+    else if (k === 'p') this.set({ view: 'projects' });
+    else if (k === 's') this.set({ view: 'sessions' });
+    else if (k === 'a') this.set({ view: 'attention' });
+    else return;
+    e.preventDefault();
+  };
+
+  // Ink is a claim about what was observed, never decoration.
+  ink = {
+    ok: 'var(--accent)', okDim: 'var(--accent-dim)', want: 'var(--amber)', bad: 'var(--clay)',
+    unknown: 'var(--ink3)', body: 'var(--ink2)', strong: 'var(--ink)', line: 'var(--line2)',
+  };
+
+  toneFor(s) {
+    if (s.isNeeds) return this.ink.want;
+    if (s.hasStuck) return this.ink.want;
+    if (s.outcome === 'died' || s.outcome === 'dirty') return this.ink.bad;
+    if (s.outcome === 'unread') return this.ink.want;
+    if (s.isWorking) return this.ink.okDim;
+    return 'var(--line)';
+  }
+
+  decorate = (s, pkey) => {
+    const I = this.ink;
+    const unknownNow = s.isIdle || (s.block && s.block.state === 'unknown');
+    return {
+      ...s,
+      onOpen: () => this.set({ view: 'session', skey: s.id, pkey: pkey || this.state.pkey }),
+      railInk: this.toneFor(s),
+      dotBg: s.isWorking ? I.ok : (s.isNeeds ? I.want : 'transparent'),
+      dotBd: s.isWorking ? I.ok : (s.isNeeds ? I.want : (s.isEnded ? I.line : I.unknown)),
+      anim: s.isWorking ? 'breathe 2s infinite' : 'none',
+      titleInk: s.titleKnown ? I.strong : I.unknown,
+      nowInk: s.isNeeds ? I.want : (s.isWorking ? I.body : I.unknown),
+      nowLine: s.now,
+      nextInk: s.nextKnown ? I.body : I.unknown,
+      turnLine: s.turn ? (s.turn.into + ' in' + (s.turn.ends ? ' · ends ' + s.turn.ends : (s.turn.endsWhy ? ' · ' + s.turn.endsWhy : ''))) : 'not reported',
+      outGlyph: s.outcome === 'died' ? '×' : (s.outcome === 'dirty' ? '△' : (s.outcome === 'unread' ? '◦' : '✓')),
+      outInk: s.outcome === 'died' || s.outcome === 'dirty' ? I.bad : (s.outcome === 'unread' ? I.want : I.okDim),
+      copyLabel: this.state.copied === s.id ? 'copied' : (s.resume ? 'copy resume command' : 'copy id'),
+      onCopy: (e) => { if (e) e.stopPropagation(); this.setState({ copied: s.id }); setTimeout(() => this.setState(st => st.copied === s.id ? { copied: null } : {}), 1400); },
+      onRaise: (e) => { if (e) e.stopPropagation(); this.setState({ raised: s.id }); },
+    };
+  };
+
+  renderVals() {
+    const I = this.ink, st = this.state, D = st.D;
+    const view = st.view;
+    const projects = (D && D.projects) || [];
+    const P0 = projects.find(p => p.key === st.pkey) || null;
+    const S0 = D ? D.allSess.find(s => s.id === st.skey) : null;
+
+    const countLine = (p) => {
+      const bits = [p.total + (p.total === 1 ? ' session' : ' sessions')];
+      if (p.nWorking) bits.push(p.nWorking + ' working');
+      if (p.nNeeds) bits.push(p.nNeeds + ' waiting on you');
+      if (p.nEnded) bits.push(p.nEnded + ' ended');
+      if (!p.nWorking && !p.nNeeds && !p.nEnded) bits.push('none active');
+      return bits.join(' · ');
+    };
+
+    const tabDefs = [['projects', 'Projects'], ['sessions', 'Sessions'], ['attention', 'Attention']];
+    const activeTab = view === 'project' || view === 'session' ? 'projects' : view;
+
+    const vals = {
+      frameRef: this.frameRef, onKey: this.onKey,
+      tabs: tabDefs.map(([k, label]) => ({
+        label, onPick: () => this.set({ view: k }),
+        ink: activeTab === k ? I.strong : I.body,
+        bd: activeTab === k ? I.ok : 'transparent',
+      })),
+      liveNote: D ? (D.running + ' running · ' + D.subagents + ' subagents observed') : '',
+      hasNeeds: !!(D && D.needsCount),
+      needsLabel: D ? (D.needsCount + (D.needsCount === 1 ? ' waiting on you' : ' waiting on you')) : '',
+      goAttention: () => this.set({ view: 'attention' }),
+      isProjects: view === 'projects', isProject: view === 'project',
+      isSession: view === 'session', isAttention: view === 'attention',
+      isSessions: view === 'sessions',
+      hasCrumbs: view === 'project' || view === 'session',
+      crumbs: (() => {
+        const c = [{ label: 'projects', ink: view === 'project' || view === 'session' ? I.unknown : I.strong, sep: false, onPick: () => this.set({ view: 'projects' }) }];
+        if (P0) c.push({ label: P0.key, ink: view === 'project' ? I.strong : I.unknown, sep: true, onPick: () => this.set({ view: 'project' }) });
+        if (S0 && view === 'session') c.push({ label: S0.titleText, ink: I.strong, sep: true, onPick: () => {} });
+        return c;
+      })(),
+      activeProjects: (D ? D.activeProjects : []).map(p => ({
+        ...p, onOpen: () => this.set({ view: 'project', pkey: p.key }),
+        countLine: countLine(p),
+        railInk: p.nNeeds ? I.want : (p.risky.length ? I.want : (p.nWorking ? I.okDim : 'var(--line)')),
+        scopeText: p.hasScope ? p.scope : p.scopeWhy,
+        scopeInk: p.hasScope ? I.body : I.unknown,
+        sess: p.sess.map(s => this.decorate(s, p.key)),
+      })),
+      restProjects: (D ? D.restProjects : []).map(p => ({
+        ...p, onOpen: () => this.set({ view: 'project', pkey: p.key }), countLine: countLine(p),
+      })),
+      hasRest: !!(D && D.restProjects.length),
+      logOpen: st.logOpen, logCaret: st.logOpen ? '▾' : '▸',
+      toggleLog: () => this.setState(s => ({ logOpen: !s.logOpen })),
+      covOpen: st.covOpen, covCaret: st.covOpen ? '▾' : '▸',
+      toggleCov: () => this.setState(s => ({ covOpen: !s.covOpen })),
+      windowRows: (D ? D.windows : []).map(w => ({
+        ...w,
+        onPick: () => this.set({ wkey: w.key }),
+        usedInk: w.used >= 80 ? I.want : (w.used >= 50 ? I.body : I.strong),
+        // A window burning far faster than its own clock is the alarm, not a
+        // high percentage: 25% used at 13x pace is worse than 81% at 1x.
+        barInk: w.paceHot && w.used < 40 ? I.bad : (w.used >= 80 ? I.want : I.okDim),
+        paceInk: w.paceHot ? I.want : I.unknown,
+      })),
+      fetchLabel: st.fetchOn ? 'on' : 'off',
+      fetchAction: st.fetchOn ? 'Turn off' : 'Turn on',
+      fetchInk: st.fetchOn ? I.ok : I.unknown,
+      fetchOff: !st.fetchOn,
+      toggleFetch: () => this.setState(s => ({ fetchOn: !s.fetchOn })),
+      tripOpen: st.tripOpen, tripClosed: !st.tripOpen, tripDraft: st.tripDraft,
+      saveInk: st.tripDraft ? I.ok : I.unknown,
+      onTripDraft: (e) => this.set({ tripDraft: e.target.value }),
+      onTripKey: (e) => { if (e.key === 'Enter') this.saveTripNow(); if (e.key === 'Escape') this.set({ tripOpen: false, tripDraft: '' }); e.stopPropagation(); },
+      saveTrip: () => this.saveTripNow(),
+      addTrip: () => this.set({ tripOpen: true }),
+      tripRows: ((st.trips[st.pkey] || [])).map((t, i) => ({ text: t, i })),
+    };
+
+    if (D) {
+      const W0 = D.windows.find(w => w.key === st.wkey) || D.windows[0];
+      vals.W = W0;
+      vals.hasDetail = !!(W0 && W0.detail.length);
+      vals.detailRows = (W0 ? W0.detail : []).map(([text, lead]) => ({ text, ink: lead ? I.strong : I.body }));
+      vals.SL = D.sublimits;
+      vals.sublimitRows = D.sublimits.rows.map(([name, used]) => ({ name, used }));
+      vals.counters = D.counters.map(([label, value, note], i) => ({
+        label, value, note,
+        ink: value === 0 ? I.body : I.strong,
+        divider: i === 0 ? 'transparent' : 'var(--line)',
+      }));
+      const opRow = (s) => {
+        const d = this.decorate(s, s.project);
+        const b = s.block || { state: 'unknown', note: 'no block state published' };
+        return {
+          ...d,
+          copyChip: st.copied === s.id ? 'COPIED' : (s.resume ? 'COPY RESUME' : 'COPY ID'),
+          whereLabel: s.whereKnown ? s.project : s.project,
+          whereInk: I.body,
+          whereUnknown: !s.whereKnown,
+          hasShared: !!s.sharedNote,
+          blockLabel: b.state === 'you' ? 'Waiting on you' : (b.state === 'unknown' ? 'Unknown' : 'No reported block'),
+          blockInk: b.state === 'you' ? I.want : (b.state === 'unknown' ? I.unknown : I.okDim),
+          blockNote: b.note,
+          hasOutcome: !!s.outcomeNote,
+          stateTag: s.isEnded ? 'ENDED' : (s.isIdle ? 'QUIET' : ''),
+          stateInk: s.isEnded ? I.body : I.unknown,
+        };
+      };
+      vals.activeRows = D.active.map(opRow);
+      vals.noActive = D.active.length === 0;
+      vals.historyRows = D.history.map(opRow);
+      const C = D.coverage;
+      vals.C = C;
+      vals.covRows = C.rows.map(([name, needs, rate, score]) => ({
+        name, detail: needs + ' · ' + rate,
+        nameInk: score === 2 ? I.strong : I.body,
+        d1: /unknown/.test(needs) ? 'var(--line2)' : I.okDim,
+        d2: /not reported/.test(rate) ? 'var(--line2)' : I.okDim,
+      }));
+      vals.covCaveats = C.caveats.map((text, i) => ({ text, i }));
+      const tone = (t) => t === 'amber' ? I.want : (t === 'clay' ? I.bad : 'var(--line2)');
+      vals.riskRows = D.risks.map(r => ({ ...r, hasSub: !!r.sub, hasNext: !!r.next, tone: tone(r.tone) }));
+      vals.boardRiskRows = D.boardRisks.map(r => ({ ...r, hasSub: !!r.sub, hasNext: !!r.next, tone: tone(r.tone) }));
+      vals.riskNote = D.risks.length + ' of 12 sessions · every one names the source that published it';
+      vals.boardRiskNote = 'not sessions, so not in that denominator';
+      vals.openRows = D.open.map(([code, name, note]) => ({ code, name, note }));
+    }
+
+    if (P0) {
+      const live = P0.sess.filter(s => s.isWorking || s.isNeeds).map(s => this.decorate(s, P0.key));
+      const ends = P0.ended.map(s => this.decorate(s, P0.key));
+      const needs = P0.needs.map(s => this.decorate(s, P0.key));
+      vals.liveRows = live; vals.noLive = live.length === 0;
+      vals.endRows = ends; vals.noEnd = ends.length === 0;
+      vals.needRows = needs; vals.noNeeds = needs.length === 0;
+      vals.needLabel = needs.length ? (needs.length + ' of ' + P0.total) : 'none';
+      vals.changeRows = P0.changes.map(([at, what, by, unattended]) => ({
+        at, what, by,
+        bg: unattended ? I.ok : 'transparent',
+        bd: unattended ? I.ok : I.line,
+        ink: /needs input/.test(what) ? I.want : I.body,
+      }));
+      vals.noChanges = P0.changes.length === 0;
+      vals.P = {
+        ...P0,
+        countLine: countLine(P0),
+        scopeText: P0.hasScope ? P0.scope : P0.scopeWhy,
+        scopeInk: P0.hasScope ? I.body : I.unknown,
+        noGoal: !P0.hasGoal, hasGoalGap: !!P0.goalGap,
+        hasPct: P0.delegation.pct !== null && P0.delegation.pct !== undefined,
+        noPct: P0.delegation.pct === null || P0.delegation.pct === undefined,
+        pctLabel: (P0.delegation.floor ? '≥' : '') + P0.delegation.pct + '%',
+      };
+    }
+
+    if (S0) {
+      const d = this.decorate(S0, S0.project);
+      const facts = [
+        ['NEXT STEP', S0.nextText, S0.nextKnown ? I.body : I.unknown],
+        ['TURN', d.turnLine, S0.turn && S0.turn.ends ? I.body : I.unknown],
+      ];
+      if (S0.block) facts.push(['BLOCKED', S0.block.state === 'unknown' ? 'Unknown · ' + S0.block.note : (S0.block.state === 'you' ? S0.block.note : 'No reported block · ' + S0.block.note), S0.block.state === 'you' ? I.want : (S0.block.state === 'unknown' ? I.unknown : I.body)]);
+      if (S0.outcomeNote) facts.push(['OUTCOME', S0.outcomeNote, d.outInk]);
+      if (S0.git) facts.push(['GIT STATE', S0.git.note, S0.git.state === 'dirty' ? I.bad : (S0.git.state === 'unmeasured' ? I.unknown : I.body)]);
+      facts.push(['PROJECT', S0.project, I.body]);
+      vals.S = {
+        ...d,
+        stLabel: S0.isNeeds ? 'waiting on you' : (S0.isWorking ? 'working' : (S0.isEnded ? 'ended' : 'idle')),
+        factRows: facts.map(([label, value, ink]) => ({ label, value, ink })),
+      };
+    }
+    return vals;
+  }
+
+  saveTripNow() {
+    const t = this.state.tripDraft.trim();
+    if (!t) { this.setState({ tripOpen: false }); return; }
+    this.setState(s => ({ tripDraft: '', tripOpen: false, trips: { ...s.trips, [s.pkey]: [...(s.trips[s.pkey] || []), t] } }));
+  }
+}
+
+</script>
+</body>
+</html>
