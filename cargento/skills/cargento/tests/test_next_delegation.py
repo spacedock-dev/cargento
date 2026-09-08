@@ -6,6 +6,116 @@ import unittest
 
 from .next_harness import NextPageJsHarness
 
+RAIL_FIXTURE = """
+const railProject = {
+  key: "alpha/repo", sessions: [], needs: [],
+  delegation: {
+    pctText: "no figure yet", pctKnown: false, pctFloor: false,
+    tpsText: "Token rate not published", humanText: "Human turns not observed",
+    windowText: "No retained observation window published",
+    noteText: "Waiting on one complete token-rate window."
+  }
+};
+const railPayload = {generated: 10000, sessions: [], usage: []};
+const railModel = {projects: [railProject], windows: []};
+// A owns the derivation module; this fixture supplies its frozen view boundary.
+nextObserved = () => railModel;
+nextData = railPayload;
+nextRoute = {view: "project", project: "alpha/repo", session: null};
+nextProjectView = () => nextProjectRail({group: {label: "alpha/repo"}, payload: railPayload});
+__els.app = {innerHTML: ""};
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextProjectRailBehaviorTest(NextPageJsHarness):
+    def rail(self, checks: str) -> object:
+        return self._run_page_js(RAIL_FIXTURE + checks)
+
+    def test_an_unmeasured_project_says_why_without_a_number_or_dash(self) -> None:
+        out = self.rail("""
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out)
+        self.assertIsNotNone(block)
+        assert block is not None
+        self.assertIn("no figure yet", block.group())
+        self.assertIn("Waiting on one complete token-rate window.", block.group())
+        for absent in ("0", "0%", "—"):
+            self.assertNotIn(absent, block.group())
+        self.assertNotIn("<progress", block.group())
+
+    def test_a_floor_prefix_and_its_reason_travel_with_the_figure(self) -> None:
+        out = self.rail("""
+Object.assign(railProject.delegation, {
+  pctText: "99%", pctKnown: true, pct: 99, pctFloor: true,
+  tpsText: "210 tok/m while delegated", humanText: "3 human turns",
+  windowText: "last 4d 21h", noteText: "Two sessions have no closed working interval."
+});
+renderNext();
+const floor = __els.app.innerHTML;
+railProject.delegation.pctFloor = false;
+renderNext();
+console.log(JSON.stringify({floor, exact: __els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out["floor"])
+        self.assertIsNotNone(block)
+        assert block is not None
+        self.assertIn("≥99%", block.group())
+        self.assertIn("Two sessions have no closed working interval.", block.group())
+        self.assertIn("210 tok/m while delegated", out["floor"])
+        self.assertIn("3 human turns", out["floor"])
+        self.assertIn("last 4d 21h", out["floor"])
+        self.assertNotIn("≥99%", out["exact"])
+        self.assertIn("99%", out["exact"])
+
+    def test_capacity_compares_usage_with_each_windows_clock(self) -> None:
+        out = self.rail("""
+railPayload.usage = [{harness: "claude", state: "ok",
+  fiveH: {pct: 25, windowSec: 18000, resetAt: 27662.5},
+  week: {pct: 81, windowSec: 604800, resetAt: 124912}
+}];
+railModel.windows = [
+  {key: "claude:fiveH", paceKnown: true, paceText: "13.3\u00d7", clockKnown: true,
+   clockText: "2% of window elapsed", resetsKnown: true, resetsText: "4h 54m"},
+  {key: "claude:week", paceKnown: true, paceText: "1.0\u00d7", clockKnown: true,
+   clockText: "81% of window elapsed", resetsKnown: true, resetsText: "1d 7h"}
+];
+const before = JSON.stringify(railPayload);
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML,
+  unchanged: before === JSON.stringify(railPayload)}));
+""")
+        assert isinstance(out, dict)
+        html = out["html"]
+        self.assertRegex(html, r'next-rail-capacity-fill--clay" style="width:25%"')
+        self.assertRegex(html, r'next-rail-capacity-fill--amber" style="width:81%"')
+        self.assertIn('next-rail-capacity-tick" style="left:1.88%"', html)
+        self.assertNotIn('next-rail-capacity-tick" style="left:25', html)
+        self.assertIn("13.3\u00d7 pace", html)
+        self.assertIn("1.0\u00d7 pace", html)
+        self.assertIn('class="next-rail-used--amber">81%</strong>', html)
+        self.assertIn('class="next-rail-pace--hot">13.3\u00d7 pace</span>', html)
+        self.assertNotIn("overrun", html)
+        self.assertTrue(out["unchanged"])
+
+    def test_an_empty_project_keeps_all_four_panels_explained(self) -> None:
+        out = self.rail("""
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        for panel in ("delegation", "waiting", "capacity", "tripwires"):
+            self.assertIn(f'data-next-rail-panel="{panel}"', out)
+        self.assertIn("Waiting on one complete token-rate window.", out)
+        self.assertIn("Nothing in this project has asked for you.", out)
+        self.assertIn("No quota windows published.", out)
+        self.assertIn("No tripwires saved in this browser.", out)
+        self.assertIn("local only · nothing enforces these", out)
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextDelegationBehaviorTest(NextPageJsHarness):

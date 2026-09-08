@@ -193,3 +193,97 @@ function nextProjectDelegation(context){
     '<div class="next-delegation-metrics">' + nextDelegationRateMarkup(metric) +
     `<span data-next-delegation-turns>${esc(turns)}</span></div></section>`;
 }
+
+function nextRailHeader(label, note, tone = ""){
+  return `<header class="next-rail-header"><h2>${esc(label)}</h2>` +
+    `<span class="next-rail-meta${tone ? ` next-rail-meta--${tone}` : ""}">${esc(note)}</span></header>`;
+}
+
+function nextRailDelegation(project){
+  const metric = project.delegation;
+  const header = nextRailHeader("DELEGATION", metric.windowText);
+  const note = `<p class="next-rail-reason">${esc(metric.noteText)}</p>`;
+  let body;
+  if(!metric.pctKnown){
+    body = '<div class="next-delegation-withheld" data-next-delegation-withheld>' +
+      `<strong>${esc(metric.pctText)}</strong>${note}</div>`;
+  }else{
+    const figure = `${metric.pctFloor ? "≥" : ""}${metric.pctText}`;
+    body = '<div class="next-delegation-figure">' +
+      `<strong data-next-delegation-percent>${esc(figure)}</strong>` +
+      '<span class="next-delegation-caption">of observed time<br>ran without you</span></div>' +
+      `<progress max="100" value="${esc(metric.pct)}" aria-label="${esc(figure)} delegated"></progress>` +
+      '<div class="next-delegation-metrics">' +
+      `<span data-next-delegation-rate>${esc(metric.tpsText)}</span>` +
+      `<span data-next-delegation-turns>${esc(metric.humanText)}</span></div>${note}`;
+  }
+  return '<section class="next-delegation next-rail-panel" data-next-delegation ' +
+    `data-next-rail-panel="delegation">${header}${body}</section>`;
+}
+
+function nextRailWaiting(project){
+  const note = project.needs.length ? `${project.needs.length} of ${project.sessions.length}` : "none";
+  const cards = project.needs.map(session => {
+    const fragment = nextFragmentForRoute({view: "session", project: project.key,
+      harness: session.harness, session: session.sid});
+    const question = session.askKnown
+      ? `<p class="next-rail-question">${esc(session.askText)}</p>` : "";
+    return '<article class="next-rail-wait" ' +
+      `data-next-wait-session="${esc(session.sid)}">` +
+      '<div class="next-rail-wait-heading">' +
+      `<a href="${esc(fragment)}" data-next-route="${esc(fragment.slice(3))}" ` +
+      `class="${session.titleKnown ? "" : "next-rail-reason"}">${esc(session.titleText)}</a>` +
+      `<span class="next-rail-wait-duration">${esc(session.waitedText)}</span></div>` +
+      question + '<div class="next-rail-wait-controls">' +
+      nextSessionRaiseControl(session) +
+      (nextSessionResumeControl(session) || nextSessionCopyControl(session)) + '</div></article>';
+  }).join("");
+  return '<section class="next-rail-panel" data-next-rail-panel="waiting">' +
+    nextRailHeader("WAITING ON YOU", note) + (cards ||
+      '<p class="next-rail-reason">Nothing in this project has asked for you.</p>') + '</section>';
+}
+
+function nextRailCapacityWindow(row, window){
+  const hot = row.paceRatio != null && row.paceRatio >= 1;
+  const usedInk = row.pct >= 80 ? "amber" : (row.pct >= 50 ? "secondary" : "primary");
+  const paceInk = !window.paceKnown ? "next-rail-reason" : (hot ? "next-rail-pace--hot" : "");
+  const ink = row.paceRatio == null ? "unknown" :
+    (hot && row.pct < 40 ? "clay" : (row.pct >= 80 ? "amber" : "accent"));
+  const tick = row.elapsed == null ? "" :
+    `<span class="next-rail-capacity-tick" style="left:${(row.elapsed * 100).toFixed(2)}%"></span>`;
+  const clockNote = window.clockKnown ? "" :
+    `<p class="next-rail-reason">${esc(window.clockText)}</p>`;
+  return `<div class="next-rail-capacity-window" data-next-rail-window="${esc(row.harness)}:${esc(row.slot)}">` +
+    '<div class="next-rail-capacity-heading">' +
+    `<b>${esc(nextCapacityHarnessLabel(row.harness))}</b>` +
+    `<span>${esc(NEXT_CAPACITY_SLOT_LABELS[row.slot])}</span>` +
+    `<strong class="next-rail-used--${usedInk}">${row.pct}%</strong></div>` +
+    `<div class="next-rail-capacity-bar" role="img" aria-label="${row.pct}% used; ${esc(window.clockText)}">` +
+    `<span class="next-rail-capacity-fill next-rail-capacity-fill--${ink}" style="width:${row.pct}%"></span>` +
+    `${tick}</div>${clockNote}<div class="next-rail-capacity-caption">` +
+    `<span class="${paceInk}">${esc(window.paceText)}` +
+    `${window.paceKnown ? " pace" : ""}</span><span>·</span>` +
+    `<span class="${window.resetsKnown ? "" : "next-rail-reason"}">` +
+    `${window.resetsKnown ? "resets " : ""}${esc(window.resetsText)}</span></div></div>`;
+}
+
+function nextRailCapacity(payload, model){
+  const windows = new Map(model.windows.map(window => [window.key, window]));
+  const rows = nextCapacityRows(payload);
+  return '<section class="next-rail-panel" data-next-rail-panel="capacity">' +
+    nextRailHeader("CAPACITY", "each window on its own clock") +
+    rows.map(row => nextRailCapacityWindow(row, windows.get(`${row.harness}:${row.slot}`))).join("") +
+    nextUsageDisclosure(payload) + nextUsageSwitch(payload) + '</section>';
+}
+
+// B may pass its already-derived project; the original group context remains
+// accepted so placement does not require a second context shape at integration.
+function nextProjectRail(context){
+  const payload = context.payload || nextData;
+  const model = context.model || nextObserved(payload);
+  const project = context.project || model.projects.find(item => item.key === context.group.label);
+  const state = nextControlsProjectState(project.key);
+  return '<aside class="next-project-detail-rail" data-next-project-rail>' +
+    nextRailDelegation(project) + nextRailWaiting(project) + nextRailCapacity(payload, model) +
+    nextProjectGuardrails(project.key, state, true) + '</aside>';
+}
