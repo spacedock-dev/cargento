@@ -304,7 +304,9 @@ console.log(JSON.stringify({delegation: p.delegation, changes: p.changes,
         assert isinstance(out, dict)
         self.assertEqual(83, out["delegation"]["pct"])
         self.assertTrue(out["delegation"]["pctKnown"])
-        self.assertFalse(out["delegation"]["pctFloor"])
+        # Absent, not false: a ratio takes no floor, so the field should not exist
+        # at all. Asserting absence is what stops it being reintroduced.
+        self.assertNotIn("pctFloor", out["delegation"])
         self.assertEqual(
             "Measured over observed working and needs-input intervals.",
             out["delegation"]["noteText"],

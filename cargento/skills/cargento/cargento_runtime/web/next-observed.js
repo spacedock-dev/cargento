@@ -131,7 +131,11 @@ function nextObservedHistory(project, evidence){
     changeEmptyText: `No state changes observed ${nextWorkstreamWindowPhrase(window)}.`,
     changeEmptyKnown: false,
     delegation: {
-      pctText: known ? `${pct}%` : "no figure yet", pctKnown: known, pctFloor: false, pct,
+      /* No floor on the percentage, deliberately. A ratio is not bounded below by
+         partial data: an interval nobody measured could have been delegated or
+         human, so it moves the figure either way. The token rate below does carry
+         `≥`, because more readings can only add tokens. */
+      pctText: known ? `${pct}%` : "no figure yet", pctKnown: known, pct,
       ...nextObservedPair("trend", trend == null ? "" : `${trend > 0 ? "+" : ""}${trend}`,
         "Two complete six-hour delegation readings are not available"),
       trendDelta: trend,

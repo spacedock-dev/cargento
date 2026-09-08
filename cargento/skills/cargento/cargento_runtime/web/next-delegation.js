@@ -208,7 +208,7 @@ function nextRailDelegation(project){
     body = '<div class="next-delegation-withheld" data-next-delegation-withheld>' +
       `<strong>${esc(metric.pctText)}</strong>${note}</div>`;
   }else{
-    const figure = `${metric.pctFloor ? "≥" : ""}${metric.pctText}`;
+    const figure = metric.pctText;
     body = '<div class="next-delegation-figure">' +
       `<strong data-next-delegation-percent>${esc(figure)}</strong>` +
       nextDelegationTrendMarkup(metric.trendKnown ? metric.trendDelta : null) +

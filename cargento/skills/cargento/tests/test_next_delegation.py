@@ -10,7 +10,7 @@ RAIL_FIXTURE = """
 const railProject = {
   key: "alpha/repo", sessions: [], needs: [],
   delegation: {
-    pctText: "no figure yet", pctKnown: false, pctFloor: false,
+    pctText: "no figure yet", pctKnown: false,
     tpsText: "Token rate not published", humanText: "Human turns not observed",
     windowText: "No retained observation window published",
     noteText: "Waiting on one complete token-rate window."
@@ -49,30 +49,31 @@ console.log(JSON.stringify(__els.app.innerHTML));
             self.assertNotIn(absent, block.group())
         self.assertNotIn("<progress", block.group())
 
-    def test_a_floor_prefix_and_its_reason_travel_with_the_figure(self) -> None:
+    def test_the_percentage_carries_its_reason_but_never_a_floor_prefix(self) -> None:
+        # The percentage-floor half of this test was removed with `pctFloor`: a ratio
+        # is not bounded below by partial data, so `≥` on it asserted a bound nobody
+        # measured. The reason half is untouched and still the point — the figure must
+        # never travel without the sentence explaining what it rests on. `≥` on the
+        # token rate is a separate claim and is tested with the metric that earns it.
         out = self.rail("""
 Object.assign(railProject.delegation, {
-  pctText: "99%", pctKnown: true, pct: 99, pctFloor: true,
+  pctText: "99%", pctKnown: true, pct: 99,
   tpsText: "210 tok/m while delegated", humanText: "3 human turns",
   windowText: "last 4d 21h", noteText: "Two sessions have no closed working interval."
 });
 renderNext();
-const floor = __els.app.innerHTML;
-railProject.delegation.pctFloor = false;
-renderNext();
-console.log(JSON.stringify({floor, exact: __els.app.innerHTML}));
+console.log(JSON.stringify({html: __els.app.innerHTML}));
 """)
         assert isinstance(out, dict)
-        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out["floor"])
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out["html"])
         self.assertIsNotNone(block)
         assert block is not None
-        self.assertIn("≥99%", block.group())
+        self.assertIn("99%", block.group())
+        self.assertNotIn("≥99%", block.group())
         self.assertIn("Two sessions have no closed working interval.", block.group())
-        self.assertIn("210 tok/m while delegated", out["floor"])
-        self.assertIn("3 human turns", out["floor"])
-        self.assertIn("last 4d 21h", out["floor"])
-        self.assertNotIn("≥99%", out["exact"])
-        self.assertIn("99%", out["exact"])
+        self.assertIn("210 tok/m while delegated", out["html"])
+        self.assertIn("3 human turns", out["html"])
+        self.assertIn("last 4d 21h", out["html"])
 
     def test_capacity_compares_usage_with_each_windows_clock(self) -> None:
         out = self.rail("""

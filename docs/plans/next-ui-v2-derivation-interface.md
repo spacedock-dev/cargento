@@ -108,7 +108,7 @@ belongs in the accompanying text, not in the view.
   goalText, goalKnown, goalSrcText,
   goalGapText, goalGapKnown,      // "3 of 10 sessions publish no goal." — derived
   sessions, needs, working, ended, risky,
-  delegation: {pctText, pctKnown, pctFloor, pct, tpsText, humanText, windowText,
+  delegation: {pctText, pctKnown, pct, tpsText, humanText, windowText,
                noteText},         // when pctKnown is false, pctText is "no figure yet"
                                   // and noteText is the reason
   changes, changeNoteText,        // the observed state-change timeline and its
@@ -478,3 +478,24 @@ worse than declaring**. Either migrate the remaining consumers, or leave the sec
 pass in place and write down — in `docs/design-runtime-architecture.md` — which pass
 owns what and why there are two. A known, documented seam is a defensible state; an
 undocumented one is how the next person reintroduces DRC-4453.
+
+---
+
+## Amendment 5 — `pctFloor` is removed
+
+The integration pass argued that the `≥` prefix §1 specifies for the delegation
+percentage is not justified, and it is right: a **ratio** is not bounded below by partial
+data. An interval nobody measured could have been delegated or human, so it moves the
+figure in either direction. `≥99%` claimed a bound no source supports.
+
+The floor survives where it is earned. A **token-rate total** only grows with more
+readings, so `tpsText` still carries `≥` with its own reason ("≥ because some sessions or
+intervals have no token-rate reading").
+
+`pctFloor` is therefore gone from the model, from the rail's render, and from this field
+list. The test that asserted the prefix is narrowed rather than deleted: its other half —
+that the figure never travels without the sentence explaining what it rests on — is still
+the point, and `test_next_observed` now asserts the key is **absent** rather than false,
+so it cannot creep back.
+
+Confirmed by the contract's author, who wrote the `≥99%` rule this overrides.
