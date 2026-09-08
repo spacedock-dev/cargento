@@ -354,7 +354,9 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         # empty activity snapshot behind it is what makes this row read as
         # working with a rate of zero. The title and the workspace above come
         # from the CLI log rather than the store and are unaffected.
-        self.assertEqual(["message history", "token accounting"], sessions[0]["source_gaps"])
+        self.assertEqual(
+            ["message history", "model", "token accounting"], sessions[0]["source_gaps"]
+        )
         self.assertEqual(0, sessions[0]["rate_per_min"])
 
     def test_an_antigravity_store_that_reads_leaves_the_row_saying_nothing_extra(self) -> None:
@@ -371,6 +373,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             logs.mkdir()
             db = conversations / f"{session_id}.db"
             write_antigravity_metadata(db, protobuf_bytes_field(6, session_id.encode()))
+            _write_antigravity_generations(db, [])
             con = sqlite3.connect(db)
             con.execute("CREATE TABLE steps (idx INTEGER, step_type TEXT, metadata BLOB)")
             con.commit()
@@ -1399,7 +1402,9 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             config, state = runtime()
             info = agy_collector._session_info(config, state, str(database), "session")
 
-        self.assertEqual({"parent_id": None, "subagent_label": None, "model": None}, info)
+        self.assertEqual(
+            {"parent_id": None, "subagent_label": None, "model": None, "model_unread": True}, info
+        )
         self.assertEqual(1, connect.call_count)
         connection.close.assert_called_once_with()
 
@@ -1445,7 +1450,9 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             config, state = runtime()
             info = agy_collector._session_info(config, state, "/tmp/session.db", "session")
 
-        self.assertEqual({"parent_id": None, "subagent_label": None, "model": None}, info)
+        self.assertEqual(
+            {"parent_id": None, "subagent_label": None, "model": None, "model_unread": True}, info
+        )
         self.assertEqual(2, connect.call_count)
         plain.close.assert_called_once_with()
         immutable.close.assert_called_once_with()
