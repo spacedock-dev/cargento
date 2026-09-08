@@ -49,6 +49,8 @@ enough T is a row hidden forever, and a clock the server owns cannot express it.
 sufficient: a session's next write is later than the instant the reader marked it, whether the row
 was idle for an hour or generating at the time.
 
+<a id="d-3"></a>
+
 ## D-3: an unanswered gate is clearable, and clearing silences its popup
 
 A gate the reader has decided to answer somewhere else is exactly the row they want off the board, so

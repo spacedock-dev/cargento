@@ -445,7 +445,9 @@ def overlay_rows(overlays: Iterable[Overlay], *, now: float) -> list[dict[str, A
     per kind and re-recording a kind leaves it in its original dict slot: a wait
     at seq 2 outranked by a working overlay at seq 3 comes back working-first.
     That is the one case a reader most needs to see in order, since comparing the
-    two sequences is how N-5's second reading is told from its first.
+    two sequences is how
+    [N-5](docs/design-needs-input.md#n-5)'s
+    second reading is told from its first.
     """
     return [
         overlay_row(overlay, now=now)
@@ -590,7 +592,7 @@ def _side_channel_patch(
     at `overlay_working_ttl_sec` nothing nulled it, so a clean tree republished
     as `dirty: false` over a session that kept working — permanently, because
     `note_rows` keeps the reading while the row is still collected. That is
-    null's job done by false, the DRC-4101 shape AC6 exists to prevent.
+    null's job done by false, the failure pattern recorded in DRC-4101.
     """
     stale = bool(finished_at) and session_activity > finished_at + activity_grace_sec
     # One condition for both, because both describe the same observed stop and

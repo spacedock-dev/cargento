@@ -403,7 +403,8 @@ def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, st
     object whose keys this build does not know sets ``parsed`` and stays
     silent: measured, renamed keys publish `source_gaps []` with title None and
     state working, which is the fourth-state row
-    `docs/design-unread-sources.md` U-1 describes and this does not close.
+    [U-1](docs/design-unread-sources.md#u-1)
+    describes and this does not close.
 
     Every value here is untrusted JSON from disk, and each is taken on its own
     terms: a row that fails to parse, or parses to something other than an
@@ -890,7 +891,8 @@ def collect(
         if gate and not sessions.is_fresh(config, chat.mtime, gate, window_hours * 3600):
             gate = None
         if gate is not None:
-            # Ahead of the working test, like Copilot's (design-needs-input N-2):
+            # Ahead of the working test, like Copilot's
+            # ([N-2](docs/design-needs-input.md#n-2)):
             # the store moves when the gate opens, so every standing gate is
             # inside the working window and a Working row here would be the whole
             # defect.

@@ -11,7 +11,7 @@
    when it resets, and with its own length that is enough to say how much of its
    TIME is spent too. Both halves come from the vendor in one response, so the
    bar draws the budget as fill and the clock as a tick, and the gap between
-   them is the whole reading. Nothing here composes a verdict. DEC-12 settled
+   them is the whole reading. Nothing here composes a verdict. [DEC-12](docs/design-usage-quota.md#q-12) settled
    that: A9's single safe-to-start light was cancelled because every quota
    producer signals failure as an empty list, so a composed light reads "safe"
    exactly when Cargento can see nothing, and A5's burn projection produced five
@@ -50,7 +50,7 @@ function nextCapacityModels(raw){
      else. `quota._scoped_limits` publishes them with no `windowSec`, no
      `resetAt` and no `recent`, so every figure the rest of this file derives —
      elapsed, the tick, `paceRatio`, `endsAt` — is undefined for them, and
-     borrowing the weekly row's clock would compose the reading DEC-12 refuses.
+     borrowing the weekly row's clock would compose the reading [DEC-12](docs/design-usage-quota.md#q-12) refuses.
      A row with no usable label is dropped rather than published under a
      placeholder, on `_scoped_limit`'s reasoning: an unnamed bar beneath the
      weekly one reads as a second weekly figure disagreeing with the first. */
@@ -136,7 +136,7 @@ function nextUsageFetchOffered(payload){
 function nextUsageDisclosure(payload){
   if(!nextUsageFetchOffered(payload) || nextUsageConsent() !== null) return "";
   /* In flow, never a modal overlay. The board stays fully readable behind the
-     answer, which is the shape docs/design-usage-quota.md Q-3 records: a
+     answer, which is the shape [Q-3](docs/design-usage-quota.md#q-3) records: a
      disclosure read alongside the dashboard rather than in front of it. */
   return '<section class="next-usage-consent" data-next-usage-consent role="region"' +
     ' aria-label="Quota fetch disclosure">' +
@@ -198,7 +198,7 @@ function nextCapacityWindow(entry, slot, generated){
      to 1 there made the pace look tiny, which made the projected end enormous,
      which rendered as "lasts, ~123% spare" — a reassurance over evidence that
      had expired, and more spare than there was budget left. That is the shape
-     A9 and A5 died on, so a passed reset removes the claim instead. The inner
+     the [quota ruling](docs/design-usage-quota.md#q-12) records, so a passed reset removes the claim instead. The inner
      clamp still serves its other purpose: a vendor clock running ahead of ours
      puts `remainingSec` above `windowSec`, and pinning that to 0 keeps the tick
      on the bar. */
@@ -337,7 +337,7 @@ function nextCapacityEnds(row, generated){
      is the one place the column stopped being a quantity: observed in one
      render, `claude:fiveH` showed 12:15 while both weekly rows showed
      "lasts, ~N% spare", so the reader could not compare the budget's end with
-     the reset that DEC-12 leaves them to adjudicate. The spare is worth saying
+     the reset that [DEC-12](docs/design-usage-quota.md#q-12) leaves them to adjudicate. The spare is worth saying
      — it is what the window turns over with — but as an annotation on the
      time, never as a replacement for it. */
   const spare = row.remainingSec != null && row.windowMinutesLeft * 60 >= row.remainingSec
@@ -389,7 +389,7 @@ function nextCapacityProspect(row, projectSpread){
      Scoping the count to the row's harness fixes the vendor and not the clock —
      a count read now cannot describe a span already averaged — so the claim is
      withdrawn rather than narrowed, on the same rule as the recent pace below
-     (DRC-4396). */
+     (history: commit 935558e). */
   const parts = [];
   if(row.windowMinutesLeft != null){
     parts.push(`<b>${esc(nextCapacityDuration(row.windowMinutesLeft * 60))}</b> at this window's ` +
@@ -468,7 +468,7 @@ function nextCapacityView(payload){
 function nextCapacityProjectSpread(payload, harness){
   /* How long this harness's sessions have actually run in the project that
      consumed the most measured working time, from the state transitions the
-     history store already keeps. This is A6's shape-match, keyed on project and
+     history store already keeps. The comparison is keyed on project and
      duration rather than on a prompt: sizing an unstarted task from its text
      was the issue's original mechanism and the part the board itself called the
      part nobody does well. A project's own past durations are a measurement,
@@ -483,7 +483,7 @@ function nextCapacityProjectSpread(payload, harness){
      span is the sum of the intervals that OPENED with a `working` record and
      were closed by that session's next record. First-to-last would count every
      idle gap in between as run time: a session that worked ten minutes, sat
-     overnight and worked ten more would read as fifteen hours. NUI-11 states
+     overnight and worked ten more would read as fifteen hours. [NUI-11](docs/design-next-ui.md#nui-11) states
      the same rule for the same store, and a session's last record closes
      nothing, so a trailing `working` contributes no span and the figure is
      biased low rather than invented. */

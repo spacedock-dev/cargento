@@ -6,6 +6,8 @@ map, including which file owns the collector and which owns hook classification,
 call between a standing prompt and a session that looks busy, and it exists mainly to record the
 attempts that did not work, because two of them were made and reverted before the third landed.
 
+<a id="n-1"></a>
+
 ## N-1: there is more than one needs-input path, and only one of them was broken
 
 Worth establishing first, because the defect was originally filed as though there were one path and
@@ -79,6 +81,8 @@ a server asking the user rather than a tool being gated, raises only a notificat
 request for network access is in the same position: it is a sandbox grant off a queue, not a tool
 call.
 
+<a id="n-2"></a>
+
 ## N-2: a live subagent used to mean Working, and it could not lapse
 
 The collector resolved state in a fixed order: a pending question in the transcript, then a busy
@@ -144,6 +148,8 @@ unrecognised. That is the safe direction on an upgrade.
   band by dropping the notification entirely, and it trades a wrong colour for a missing prompt. The
   ingress and the precedence test want opposite defaults, which is why they are two decisions and not
   one.
+
+<a id="n-4"></a>
 
 ## N-4: every path is probabilistic, so the docs rank them instead of trusting one
 
@@ -226,6 +232,8 @@ The original report on this behavior measured it once and concluded the branch w
 investigation measured it once and nearly concluded it was live. Both readings came from honest live
 reads. Anything in this area needs n greater than one before it goes in writing, and the desk read
 and the timestamp replay that the original report warned about are not the only ways to get it wrong.
+
+<a id="n-5"></a>
 
 ## N-5: two different faults produce the same row, so the ledger is now readable
 
@@ -313,6 +321,8 @@ Three notes on its shape, each of which was a choice:
   for whoever had the log level raised before the fault. Nothing rotates the log either, so a
   standing gate would write the same rows every few seconds for as long as it stood.
 
+<a id="n-6"></a>
+
 ## N-6: the server records its own contradictions, because nobody else will
 
 N-5 gave a person a way to read the ledger. It assumed the person knows to look, and that
@@ -377,7 +387,7 @@ it was true when it was written; it is not now, and it failed in the two opposit
 Codex reports a gate as an **overlay** and has no collector detection, so there is no collector wait
 for an overlay to contradict. Copilot is the mirror image: its collector raises the wait off the
 permission pair in its own store, and no overlay can ever reach the row, because Copilot has no entry
-in the event vocabulary and `events.parse` refuses its envelopes. Cursor sits exactly where Copilot
+in `events.IDENTITY_NORMALIZERS` and `events.parse` refuses its envelopes. Cursor sits exactly where Copilot
 does, for the same two reasons. So the ledger is structurally blind to a gate on any of the three,
 and a zero on a Codex, Copilot or Cursor machine is not a measurement.
 
@@ -577,6 +587,8 @@ question, and the band still keeps no handled state of its own. A future change 
 native gate has to overturn the paragraph above on its own merits, and cannot borrow this carve-out to
 do it: an answer the runtime delivered and a click about a terminal nobody read are not the same
 evidence.
+
+<a id="n-9"></a>
 
 ## N-9: Idle was two situations, and only an event can separate them
 
@@ -872,6 +884,8 @@ which an end satisfies immediately.
 - **Reading an absent end as "still running".** The most tempting inference on the page and the one
   the capture forbids: only a SIGKILL is silent, but that is one of four causes of an absence, and
   the coverage note says so rather than counting them as live.
+
+<a id="n-13"></a>
 
 ## N-13: the browser has no idle hook, so its nudge fires on the polled edge
 

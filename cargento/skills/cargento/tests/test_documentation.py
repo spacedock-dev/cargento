@@ -6,21 +6,88 @@ import io
 import json
 import os
 import re
+import tempfile
 import unittest
-from typing import TYPE_CHECKING, Any, ClassVar
+from pathlib import Path
+from typing import Any, ClassVar
 
 from cargento_runtime import aggregate, claude_data, cli, focus, git_status, history
 from cargento_runtime import config as runtime_config
 from cargento_runtime import events as runtime_events
 from cargento_runtime import transcripts as runtime_transcripts
 
+from .decision_citations import citation_errors
 from .support import (
     SERVER_PATH,
     make_config,
 )
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+class RuntimeDecisionCitationsTest(unittest.TestCase):
+    def test_runtime_pointers_resolve(self) -> None:
+        root = SERVER_PATH.parents[3]
+        self.assertEqual(citation_errors(root, SERVER_PATH.parent / "cargento_runtime"), [])
+
+    def test_no_history_help_is_for_operators(self) -> None:
+        help_text = cli.build_parser().format_help()
+        self.assertIn("--no-history", help_text)
+        self.assertNotIn("DEC-6", help_text)
+        self.assertNotIn("SECURITY.md", help_text)
+
+    def test_lexical_link_and_history_contract(self) -> None:
+        cases = (
+            ("# [D-4](docs/owner.md#ruling)", ""),
+            ("// [NUI-1](docs/owner.md#explicit)", ""),
+            ("/* [N-1](SECURITY.md#contract) */", ""),
+            ("<!-- [AC1](docs/owner.md#ruling) -->", ""),
+            ("# D-999", "missing local link or explicit history marker"),
+            ("# [D-1](docs/missing.md#ruling)", "missing/nonlocal document"),
+            ("# [D-1](docs/owner.md#absent)", "missing fragment"),
+            ("# [D-1](docs/owner.md)", "missing fragment"),
+            ("# [D-1](docs/owner.md#Ruling)", "missing fragment"),
+            ("# [D-1](../SECURITY.md#contract)", "missing/nonlocal document"),
+            ("# [D-1](other/owner.md#ruling)", "missing/nonlocal document"),
+            ("# [D-1](https://example.com/a.md#ruling)", "missing/nonlocal document"),
+            ("# decision-history: DR-8 | 4de75d29 | repaired grouping bug", ""),
+            ("// decision-history: AC-3 | 2026-09-07 | replaced criterion", ""),
+            ("# decision-history: D4 | 4de75d29 | ", "missing local link"),
+            ("<!-- decision-history: D4 | 4de75d29 | -->", "missing local link"),
+            ("/* decision-history: D4 | 4de75d29 | */", "missing local link"),
+            ("# decision-history: D4 | yesterday | retired", "missing local link"),
+            ("# decision-history: D4 | 4de75d29 | retired; D1 remains", "D1"),
+            ("# [D1](docs/owner.md#ruling) D-2", "D-2"),
+            ("# D-2 [context](docs/owner.md#ruling)", "D-2"),
+            ("# [D-2]\n# (docs/owner.md#ruling)", "D-2"),
+            ("# DRC-4396 A5 A6 A9 B2 S104 UTF-8 xD1 D1_suffix x-D1 D1-x", ""),
+            # An existing unrelated heading passes: the reviewer checks meaning.
+            ("# [DEC-13](docs/owner.md#unrelated)", ""),
+        )
+        with tempfile.TemporaryDirectory(prefix="bld-hyg-citations-") as tmp:
+            root = Path(tmp)
+            (root / "docs").mkdir()
+            (root / "docs" / "owner.md").write_text(
+                '# Ruling\n<a id="explicit"></a>\n## Unrelated\n', encoding="utf-8"
+            )
+            (root / "SECURITY.md").write_text("# Contract\n", encoding="utf-8")
+            runtime = root / "runtime"
+            runtime.mkdir()
+            (runtime / "nested").mkdir()
+            (root / "tests").mkdir()
+            (root / "tests/ignored.py").write_text("# D-999", encoding="utf-8")
+            (runtime / "font.woff2").write_bytes(b"\xffD-999")
+            for suffix in (".py", ".js", ".css", ".html"):
+                source = runtime / "nested" / ("source" + suffix)
+                for text, error in cases:
+                    with self.subTest(suffix=suffix, text=text):
+                        source.write_text(text, encoding="utf-8")
+                        errors = citation_errors(root, runtime)
+                        if error:
+                            self.assertEqual(len(errors), 1, errors)
+                            self.assertIn(error, errors[0])
+                            self.assertIn(f"nested/source{suffix}:1:", errors[0])
+                        else:
+                            self.assertEqual(errors, [])
+                source.unlink()
 
 
 def _flat_section(security: str, heading: str) -> str:

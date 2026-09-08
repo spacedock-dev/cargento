@@ -1009,7 +1009,7 @@ class CapabilityDeliveryTest(unittest.TestCase):
         # would fail on the reader rather than on an injected token.
         self.assertNotIn(b'<meta name="cargento-focus"', assembled)
         self.assertEqual(
-            "c72e569e5eef6eea5e27b3ae9fdf66cd3fc148b64b205b24ad7929184fb9db93",
+            "b1cc753137227bd16d851889a2269be5b0e0f452d1b02206422747455e8d5e10",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1037,7 +1037,8 @@ class OffSwitchTest(unittest.TestCase):
         self.assertTrue(config.focus_enabled)
         # The route's own gate is the coordinator being absent, which is what
         # `--no-events` produces at assembly.
-        self.assertIsNone(support.make_server().observation)
+        with support.make_server() as httpd:
+            self.assertIsNone(httpd.observation)
 
     def test_the_flag_survives_a_daemon_respawn(self) -> None:
         config = support.make_config()

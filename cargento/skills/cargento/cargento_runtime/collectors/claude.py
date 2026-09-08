@@ -557,7 +557,8 @@ def collect(
         # (captain-ruling 2026-09-03: a lens the LEAD dispatched was still
         # fresh-gated, so it vanished at 90 s while a teammate's did not). The
         # state derivation takes the running ones straight back out, so the two
-        # lists stay exactly as far apart as AC-4 froze them.
+        # lists retain the measured distinction. See
+        # [unchanged-state capture](docs/captures/README.md#files).
         own_agents = load_subagents(
             config,
             transcript,
@@ -630,13 +631,12 @@ def collect(
         # strip, `last_activity` -- keeps reading `subagents`, which is gated on
         # `working_threshold_sec` because DRC-4118 settled that a child parked
         # hours ago must not make its parent read "running 1 subagent", and
-        # DRC-4263's AC-3 requires it. What a person reads on the row is a
+        # DRC-4263 requires it. What a person reads on the row is a
         # different question: a teammate blocked on its own subagents writes
         # nothing for minutes and used to flicker off the row entirely. It now
         # stays, and reads as stopped -- as does an agent the lead dispatched
         # itself, which review round 1 found still fresh-gated while the
-        # children and grandchildren beside it were not. That is what AC-2 asked
-        # for and is not
+        # children and grandchildren beside it were not. That is not
         # the whole of what a reader wants. A teammate whose own worker is
         # writing is alive, and nothing here says so: the honest fix absorbs a
         # grandchild's mtime into this session's activity the way DRC-4118 does
@@ -763,7 +763,8 @@ def collect(
             # The question itself when the record carried it, the tool's name when
             # it did not. Both happen: the record reaches disk on no schedule, so
             # this reads as one or the other rather than appearing and vanishing
-            # for the same session. See docs/design-needs-input.md (N-4).
+            # for the same session. See
+            # [N-4](docs/design-needs-input.md#n-4).
             asks = p.get("asks") or ""
             state_detail = (
                 f"{asks}, waiting {waited}"
@@ -802,7 +803,7 @@ def collect(
         # and surfaces. The quiet does not rest on the tool_use record being
         # written ahead of the prompt: it is written on no schedule at all, and a
         # record that never arrives leaves the file quieter still. See
-        # docs/design-needs-input.md (N-2).
+        # [N-2](docs/design-needs-input.md#n-2).
         #
         # A live subagent is different, and used to be tested here as if it were
         # the same. It never lapses: one running subagent pinned this branch for

@@ -108,7 +108,8 @@ def _collect_db(
             # invalidates is this row. `cursor.py` withdraws a single reading
             # instead, because its reads are separable and it knows which one
             # raised — the same rule at a finer grain, not a different rule.
-            # docs/design-unread-sources.md, U-5, carries the argument.
+            # [U-5](docs/design-unread-sources.md#u-5)
+            # carries the argument.
             try:
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                 activity_sources = (upd, *(m for _, m in agents))

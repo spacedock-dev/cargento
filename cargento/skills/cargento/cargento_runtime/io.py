@@ -184,7 +184,8 @@ _STORE_ERROR_TRUNCATION = "... [truncated]"
 
 def record_store_error(state: RuntimeState, path: str, exc: BaseException) -> None:
     """Keep the real type and at most 1,024 message characters, including the marker."""
-    # Even SQLite errors can carry store text; see design-unread-sources U-2.
+    # Even SQLite errors can carry store text:
+    # [U-2](docs/design-unread-sources.md#u-2).
     message = str(exc)
     if len(message) > _STORE_ERROR_MESSAGE_CHARS:
         message = (

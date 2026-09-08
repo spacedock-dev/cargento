@@ -48,7 +48,8 @@ if TYPE_CHECKING:
 # `dispatchable: []` forever, so a strip anchored on it alone never renders.
 #
 # Every parser here is pure so the whole matrix is exercisable on any runner
-# (design decision D-4 in docs/design-cross-platform.md).
+# (design decision
+# [D-4](docs/design-cross-platform.md#d-4)).
 SPACEDOCK_FO = "spacedock:first-officer"
 
 
@@ -188,7 +189,8 @@ def _codex_tool_output(record: dict[str, Any]) -> list[str] | None:
     envelope this parses, 9 of them on a ``function_call_output`` and 6 on a
     ``custom_tool_call_output`` (one file carries both). Counting files with a
     ``{"command"`` candidate rather than a parsed envelope gives 18 and 12
-    instead, which is a different question; see design-spacedock.md decision S-6.
+    instead, which is a different question; see
+    [S-6](docs/design-spacedock.md#s-6).
 
     Nothing else under ``payload`` is read. A ``function_call``'s own arguments
     are the model's request rather than the command's output, which is the
@@ -733,7 +735,9 @@ def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str,
     open descriptor — so the identity check in :func:`read_frontmatter`
     would refuse every entity file and the strip would come back empty on that
     platform alone. A silent per-platform false negative is exactly the failure
-    mode D-4 in ``docs/design-cross-platform.md`` exists to keep out.
+    mode
+    [D-4](docs/design-cross-platform.md#d-4)
+    exists to keep out.
     """
     try:
         with os.scandir(os.path.realpath(entity_dir)) as entries:

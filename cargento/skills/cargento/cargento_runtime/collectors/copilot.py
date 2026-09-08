@@ -156,7 +156,8 @@ def _usage_rows(
         ).fetchall()
     except Exception as exc:  # noqa: BLE001 — a usage failure must not cost session identity
         runtime_io.record_store_error(state, database, exc)
-        # This reading is separable from session identity (design-unread-sources U-5).
+        # This reading is separable from session identity:
+        # [U-5](docs/design-unread-sources.md#u-5).
         # Corrupt files can open lazily and fail here; permission refusals fail at open.
         if gaps is not None:
             gaps.add(sessions.UNREAD_TOKENS)
@@ -513,7 +514,8 @@ def collect(
             # `tool.execution_start` it gates, so every gate opens well inside the
             # working window and a Working row here would be the whole defect.
             # Claude's collector resolves the same conflict the same way, for the
-            # same reason (docs/design-needs-input.md N-2).
+            # same reason:
+            # [N-2](docs/design-needs-input.md#n-2).
             session_state = "needs_input"
             blocked_since = gate.at or mtime
             waited = sessions.fmt_duration(sessions.age(config, now, blocked_since))

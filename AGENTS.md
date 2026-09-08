@@ -93,6 +93,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. What a release note, the README lede and the Linear project all restate rather than reinvent. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
 | `docs/design-reader-state.md` | **Canonical** rule for what survives a redraw: one row per thing a reader can leave in the DOM, whether `renderNext` puts it back, and — for the two it does not manage — why. The code cites it instead of repeating it. |
+| [docs/design-adapter-packaging.md](docs/design-adapter-packaging.md) | **Canonical** adapter admission and packaging contract: identity normalizers, hook-shaped mappings, and implementation-language boundaries. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/roadmap-burndown/README.md` | The Spacedock workflow the roadmap burndown runs on: its stages, gates, and the measured rules each one earned. Machinery rather than prose — entity state lives on an orphan branch and is gitignored. |
@@ -106,6 +107,9 @@ resolves every relative Markdown link **and heading anchor**, and rejects the `l
 the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fails the build. It also
 owns `CARGENTO_RUNTIME_FILES`, the inventory of every file the shipped dashboard needs at runtime;
 `--runtime-files <plugin root>` checks an installed copy without the repository around it.
+
+There is no blanket orphan-document gate. The documentation graph has no agreed scope or entry
+roots, and an inbound-link count alone would not establish reachability from a reader's entry point.
 
 Invoke the `sync-docs` skill before opening a PR (see Pre-PR Checks) so doc updates ride in the PR
 that changes the code. Claude Code discovers it under `.claude/skills/`; Codex discovers the same
@@ -135,18 +139,30 @@ not rely on CI to surface failures:
 
 **One documented short path.** If the diff touches *only* prose — `HOW_TO_USE.md`, `AGENTS.md`,
 `CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `CODE_OF_CONDUCT.md`,
-`.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` that no test opens by literal path —
+`.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` outside the effective deny list below —
 then the five measurable quality-gate jobs skip. CI applies the same rule (see Quality Gate), so
 the two agree by construction rather than by memory. Five skipped runners is all the short path
 buys: **run the suite locally anyway**, because `validate.yml` is unfiltered by design and runs the
 same `unittest discover` on every PR. `validate_plugins.py` is not what catches a prose edit that
 breaks an assertion — measured, one stranded row in `docs/captures/README.md`, which the detector
-does call prose, left the validator at exit 0 and turned that suite red. **`SKILL.md` is not prose
+then called prose, left the validator at exit 0 and turned that suite red. **`SKILL.md` is not prose
 for this purpose**: `tests/test_documentation.py` asserts its `~/...` paths against
 `config.resolve_store_roots`. Neither are `SECURITY.md` and `README.md`, which that same module
-opens by literal path — both sat on this list until someone read the tests. Nor is any `docs/` file
-a test reads: the CI detector derives *that* set by grepping the tests, so it cannot go stale,
-while the root documents above are named by hand and a new one has to be caught by a person.
+opens by literal path — both sat on this list until someone read the tests. The effective docs deny
+list has three sources: whole double-quoted paths found in dashboard tests, reviewed exceptions for
+known composed paths (currently `docs/captures/README.md`), and every document the runtime cites a
+heading anchor in, derived from the citation links themselves. That third source is derived rather
+than listed because it *is* the citation checker's dependency set: the checker resolves each linked
+target and requires the exact fragment, so renaming a heading in any of those documents turns
+`test_documentation` red. Nine such documents were reachable and absent from the list on the commit
+that introduced the checker, which is the same misclassification one layer up, so a hand-maintained
+copy would have gone stale on the very change that created it.
+
+The literal scan is still not dependency analysis, and the first two sources do not discover every
+way a test can read a document. Review new document dependencies against the list, and review the
+root-document prose allowlist by hand. The unfiltered validate suite remains the backstop for
+misclassification; the detector's job is to request all five measurable jobs with `code=true` for
+these dependencies.
 
 ```bash
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
@@ -349,7 +365,35 @@ Do not write one to restate the line below it, to summarize a function its name 
 
 Length follows the decision, not the code. A one-line change can deserve two lines of why; it rarely deserves six. If the explanation runs longer than the code it explains, the reason is durable enough for `docs/design-*.md`, and the comment shrinks to a reference.
 
-Nothing in CI checks this. It is a review standard, like the voice standard the `sync-docs` skill holds the prose docs to.
+The citation syntax is checked by `RuntimeDecisionCitationsTest` in `test_documentation.py`.
+It reads `.py`, `.js`, `.css` and `.html` recursively under `cargento_runtime`, without importing
+those files or using the network. The finite local-label grammar is `D1`, `D-1`, `DEC-1`, `AC1`,
+`AC-1`, `DR-1`, `N-1`, `NUI-1`, `Q-1`, `R-1`, `S-1` and `U-1`, with decimal digits in place of
+`1` and exact token boundaries (no adjoining word character or hyphen). Each retained active label
+must be the entire link text of a same-line link, such as
+`[D-4](docs/design-cross-platform.md#d-4)`, without whitespace
+inside the target. Paths are repository-relative, confined to root Markdown or Markdown below
+`docs/`, and include an exact heading fragment or explicit HTML anchor. The checker uses
+`scripts.validate_plugins.heading_slugs`; keep long links intact on their own line when needed.
+
+Intentionally absent historical records may use this per-occurrence form:
+
+```text
+decision-history: DR-8 | 4de75d29 | repaired grouping bug; the bound now lives in sessions
+```
+
+The marker exempts only the label immediately after `decision-history:`. It requires a lowercase
+hex commit (7–40 characters) or an ISO date (`YYYY-MM-DD`), and a nonempty reason after the second
+` | `. A history marker never exempts another label on the same line. If the old ruling still
+justifies current behavior, cite the current contract too, or replace the shorthand with that
+contract. Remove unnecessary labels instead of inventing archival headings to preserve them.
+
+This is a lexical reachability check, not a semantic review: a link to an existing but wrong owner
+passes. Reviewers must check that the ruling supports the sentence and that a history claim is true.
+Bare tracker keys such as `DRC-4396`, roadmap identifiers such as `A5` and `B2`, lint/encoding tokens,
+and new label families are outside its grammar. It neither queries trackers nor requires globally
+unique labels, and has no line-number allowlist. The rest of this comment standard remains a review
+obligation, like the prose voice standard in `sync-docs`.
 
 ## Versioning and Releases
 

@@ -3,9 +3,10 @@
 The board is rebuilt from the harness stores on every start, so a restart used
 to leave it with no memory of sessions that already ran. This module owns the
 one file that answers that, and `SECURITY.md`'s "Local history (the session
-history store)" section is the contract it implements. The bounds are DEC-6's
-ruling (Linear DRC-4234) as written into that contract, not this module's
-preferences.
+history store)" section is the contract it implements:
+[local history](SECURITY.md#local-history-the-session-history-store).
+The bounds are the ruling in Linear DRC-4234 as written into that contract,
+not this module's preferences.
 
 A leaf: `config` for the paths and the bounds, and nothing else. It is the shape
 `git_status.py` took rather than the shape `dismissals.py` took, deliberately —
@@ -18,7 +19,8 @@ store holds nothing the live snapshot does not already serve, and the enforceabl
 reading of that is field provenance — every field written is one the board
 already publishes. A retained row would satisfy it on its face and violate it in
 its nested carriers, because a row's `tasks` and `subagents` hold operator text
-that no `PROMPT_TEXT_ALLOWLIST` entry could reach: DEC-13's allowlist admits one
+that no `PROMPT_TEXT_ALLOWLIST` entry could reach:
+[DEC-13](SECURITY.md#local-history-the-session-history-store)'s allowlist admits one
 named, published, capped field per line, never text buried inside one. So what
 is written is five named fields and never a row, which makes the rule satisfiable
 by construction instead of by review.
@@ -40,8 +42,9 @@ if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
 
 # The file format version, and unlike `dismissals.SCHEMA_VERSION` this one is
-# enforced. DEC-6 named only a corrupt store; the contract added "a version the
-# running build does not understand", and the reason the repository should not
+# enforced. The [history contract](SECURITY.md#local-history-the-session-history-store)
+# also resets a version the running build does not understand, and the reason the repository
+# should not
 # grow a second inert version field is that it already has one: a fourteen-day
 # time series whose reader must tolerate every past shape forever is how a silent
 # mis-parse ships.
@@ -71,8 +74,8 @@ _UNSAFE_CHARS = re.compile("[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\u2066-
 RESET_UNREADABLE: Final = "unreadable"
 RESET_VERSION: Final = "version"
 
-# How many segments a stored project label may hold. The captain's D4 ruling
-# authorized the derived two-segment label the board groups by and nothing
+# The [history contract](SECURITY.md#local-history-the-session-history-store)
+# authorizes the derived two-segment label the board groups by and nothing
 # wider, and the never-list bans a working directory outright.
 PROJECT_SEGMENT_CAP: Final = 2
 
@@ -82,7 +85,8 @@ class Observation(TypedDict):
 
     Five fields, every one of them already published on the row this was derived
     from. `project` is the derived two-segment label the board groups by, kept by
-    the captain's D4 ruling of 2026-09-03 and never a raw working directory.
+    the [history contract](SECURITY.md#local-history-the-session-history-store), never a raw
+    working directory.
     """
 
     harness: str
@@ -123,7 +127,8 @@ PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
     "title",
 )
 
-# DEC-13's allowlist, in code, and empty on purpose.
+# [DEC-13](SECURITY.md#local-history-the-session-history-store)'s allowlist, in code, and empty
+# on purpose.
 #
 # SECURITY.md's "Local history" section used to ban prompt-derived text from this
 # store outright. The captain's ruling of 2026-09-04 replaced that with a
@@ -175,8 +180,9 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
     return {
         "harness": str(harness),
         "sid": str(sid),
-        # Kept by the captain's D4 ruling: both panels group by this label and
-        # cannot be seeded without a grouping key. It is already published on
+        # Kept by the [history contract](SECURITY.md#local-history-the-session-history-store):
+        # both panels group by this label and cannot be seeded without a grouping key. It is
+        # already published on
         # every row, and it is bounded here to the two segments that ruling
         # authorized rather than trusted to be that already — a row whose
         # collector fell back to the encoded directory name carries a whole
@@ -201,8 +207,9 @@ def _bounded_project(label: str) -> str:
     truncated correct labels. Measured on real directories, `my-cool-project`
     was stored as `cool-project` and `spacedock-ensign-drc-4044` as `drc-4044`,
     which grouped a project's history under a different name than the live board
-    and left the seeded panels with nothing to show for it (DRC-4044 DR-8). The
-    fix is the bound moving to `sessions`, where the label is being built by
+    and left the seeded panels with nothing to show for it (DRC-4044).
+    decision-history: DR-8 | 4de75d29 | repaired grouping bug; the bound now lives in sessions
+    The fix is the bound moving to `sessions`, where the label is being built by
     joining path segments and the difference is still known.
     """
     return "/".join(label.split("/")[-PROJECT_SEGMENT_CAP:])

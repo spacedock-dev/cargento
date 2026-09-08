@@ -42,9 +42,9 @@ def project_label(config: RuntimeConfig, dirname: str) -> str:
 # How many segments a label built by joining path segments may keep. The same
 # figure `history.PROJECT_SEGMENT_CAP` applies to the `/` form, written twice
 # rather than shared because `history` is a leaf over `config` alone and may not
-# import this module. Both come from the captain's D4 ruling of 2026-09-03
-# (Linear DRC-4044), which authorized a derived two-segment label and nothing
-# wider.
+# import this module. Both implement the
+# [history contract](SECURITY.md#local-history-the-session-history-store),
+# which authorizes a derived two-segment label and nothing wider.
 PROJECT_SEGMENT_CAP: Final = 2
 
 
@@ -62,7 +62,9 @@ def bounded_project_label(config: RuntimeConfig, dirname: str) -> str:
     ``alpha-beta-gamma`` are the same shape to it: the history store bounded the
     dash form for a while and truncated correct labels, so a project one
     directory under ``$HOME`` grouped under a different name than the live board
-    (DRC-4044 DR-8). Here the label is being built by joining path segments, so
+    (DRC-4044).
+    decision-history: DR-8 | 4de75d29 | repaired grouping bug; trim at label construction
+    Here the label is being built by joining path segments, so
     trimming it is reading the string the way it was written.
 
     The trade is stated rather than hidden: a directory genuinely named
@@ -94,7 +96,8 @@ def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:
     reads ``foo`` from either, never ``<username>/foo``.
 
     ``config.home`` and ``config.os_name`` carry those two facts, so one runner
-    exercises both platforms (design decision D-4).
+    exercises both platforms (design decision
+    [D-4](docs/design-cross-platform.md#d-4)).
 
     Callers apply their own fallback to ``""`` — the harness name, or the
     encoded-directory label for the two collectors that have one.
@@ -380,7 +383,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # thing that separates the two situations Idle covers: a turn that ended
         # and nobody read, and a session still waiting on a reply that never came
         # (DRC-4035). None means "no stop observed" and never "did not finish" —
-        # only the four harnesses in the event vocabulary can supply one at all,
+        # only the four harnesses in events.IDENTITY_NORMALIZERS can supply one,
         # and no collector may infer it, for the reason `model` above may not: a
         # guessed completion renders identically to a measured one. A row that
         # cannot ever carry it says so through `acquisition` below, and the page

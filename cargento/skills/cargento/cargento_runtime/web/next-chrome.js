@@ -106,7 +106,7 @@ function nextCaptureFocus(){
   // and nothing is lost by returning early. `control` is carried because a row
   // control genuinely is inside a row, and its row can end.
   // The reader can scroll away BEFORE capture; comparing scroll offsets after
-  // capture cannot detect that. See design-reader-state.md, Document scroll.
+  // capture cannot detect that. See [Document scroll](docs/design-reader-state.md#document-scroll).
   const rect = typeof active.getBoundingClientRect === "function"
     ? active.getBoundingClientRect() : null;
   const viewport = rect && (rect.bottom <= 0 || rect.top >= window.innerHeight ||
@@ -114,7 +114,7 @@ function nextCaptureFocus(){
   const named = nextFocusKey(app, active);
   // Carried alongside whichever container the reader was in rather than instead
   // of it, so a control whose row has ended still falls back to the row's own
-  // restoration (DRC-4396).
+  // restoration. See [reader state](docs/design-reader-state.md#the-inventory).
   const control = nextRowControlKey(app, active);
   if(named) return control ? {named, control, ...viewport} : {named, ...viewport};
   for(const session of app.querySelectorAll("[data-next-session]")){
@@ -146,7 +146,7 @@ function nextRestoreFocus(snapshot, model){
   // Tried first and never last. The row branch below lands on the route link,
   // which is where a keyboard reader on a RAISE was being dropped on every
   // revision — and the live lane raises one whenever anything on the machine
-  // moves (DRC-4396).
+  // moves. See [reader state](docs/design-reader-state.md#the-inventory).
   const options = {preventScroll: snapshot.preventScroll === true};
   if(snapshot.named && nextFocusNamed(app, snapshot.named, options)) return;
   if(snapshot.control && nextFocusRowControl(app, snapshot.control, options)) return;
@@ -376,7 +376,7 @@ const NEXT_RAISE_ANNOUNCEMENTS = new Map([
   // The capability is minted per run and `/api/data` needs none, so a restart
   // leaves a board rendering fresh rows above a control that can only be refused,
   // and a reload is the whole remedy. Observed: page `1a6c12…` against server
-  // `823939…`, 403 on every click until the tab was reloaded (DRC-4396).
+  // `823939…`, 403 on every click until the tab was reloaded (history: commit 935558e).
   ["stale", "Raise refused: the dashboard restarted. Reload the page."],
   ["failed", "Raise could not be sent"],
 ]);
@@ -492,7 +492,7 @@ function nextPrimaryNavigation(){
      here while the router, the document title and the `a` shortcut all knew
      about it, so it was a whole screen a reader could reach only by typing a
      fragment, pressing a key nothing advertises, or clicking the reported-blocks
-     chip, which exists only while a block is reported. NUI-16 decided which
+     chip, which exists only while a block is reported. [NUI-16](docs/design-next-ui.md#nui-16) decided which
      route leads, not which routes are findable. Appended rather than placed
      first so the two entries a reader has already learned keep their positions. */
   const links = [
@@ -587,7 +587,7 @@ function nextHistoryResetNotice(){
   /* Which reset it was, not merely that one happened. A corruption reset may be
      the reader's own disk while a version reset is ours, and one message for
      both would satisfy the contract's clause while losing the only thing it is
-     there to tell them apart by (D1). */
+     there to tell them apart by. */
   return '<div class="next-stalled" data-next-state="history-reset" role="status">' +
     "<strong>The saved history was reset.</strong>" +
     `<span>${esc(detail)} The rail and the delegation figure start from this tab.</span></div>`;

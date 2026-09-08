@@ -299,8 +299,8 @@ class Observation:
         # Injected so the tests can drive a raise without a tmux server.
         self._focus_runner: Callable[..., Any] = subprocess.run
         # Injected so the tests can drive the edge without a repository, and so a
-        # probe can be made to block on demand: AC3's oracle is that `submit`
-        # returns while this is still running.
+        # probe can be made to block on demand: `submit` must
+        # return while this is still running.
         self._git_prober: Callable[[str], runtime_git.GitStatus | None] = self._probe_git
         self._spawn: Callable[[Callable[[], None]], None] = _spawn_thread
         # sid -> (first seen, attempts). An event whose session no collection has
@@ -829,7 +829,7 @@ class Observation:
 
         Read-only, and it publishes the reducer's inputs rather than a verdict.
         Why it exists, how to read it, and what `counters` disambiguates are in
-        docs/design-needs-input.md (N-5).
+        [N-5](docs/design-needs-input.md#n-5).
 
         `time_gate_open` is `Overlay.applies`, named for what it is because
         `applies` on the wire reads as "this overlay won", which it does not

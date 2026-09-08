@@ -610,7 +610,7 @@ function nextAttentionModel(payload){
   const quiet = healthySessions.filter(session => session.state === "idle").length;
   const unknown = healthySessions.length - moving - quiet;
   // Read completeness qualifies the remainder; it does not invalidate a state
-  // derived from another source (design-unread-sources.md U-3/U-4).
+  // derived from another source ([U-3](docs/design-unread-sources.md#u-3)/[U-4](docs/design-unread-sources.md#u-4)).
   const partial = healthySessions.filter(session => nextSessionGapNames(session).length).length;
   const model = {
     needs, risk, close, next,

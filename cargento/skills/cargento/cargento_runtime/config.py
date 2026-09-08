@@ -56,7 +56,8 @@ class RuntimeConfig:
     spacedock_enabled: bool
     usage_fetch_enabled: bool
     # Whether the end-of-session git probe runs at all. `--no-git` is the off
-    # switch DEC-3 made part of its ruling, and off means no git command runs and
+    # switch [DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe) made part of its
+    # ruling, and off means no git command runs and
     # both published fields stay `None` — never a confident clean.
     git_probe_enabled: bool
     # Whether the focus command may run at all. `--no-focus` is the off switch
@@ -72,7 +73,8 @@ class RuntimeConfig:
     # that misbehaves leaves no state a later run would honour.
     dismissals_enabled: bool
     # Whether the local history store is read and written at all.
-    # `--no-history` is the off switch DEC-6's contract made part of the
+    # `--no-history` is the off switch
+    # [DEC-6](SECURITY.md#local-history-the-session-history-store)'s contract made part of the
     # feature, and off means off in both directions: nothing is written and an
     # existing store is not read back, so the board opens with no memory
     # exactly as it did before the store existed. A store still written while
@@ -271,8 +273,10 @@ class RuntimeConfig:
     # tool_result that follows a grant advances it. What that quiet is not is a
     # tool_use record written ahead of the prompt -- Claude Code writes it on no
     # schedule at all, and often not while the gate stands, which leaves the file
-    # quieter still. See docs/design-needs-input.md (N-2). The grace absorbs the
-    # ordering between a hook process and the write that provoked it, and nothing
+    # quieter still. See
+    # [N-2](docs/design-needs-input.md#n-2).
+    # The grace absorbs the ordering between a hook process and the write that provoked it, and
+    # nothing
     # else -- a wait that ends is over within one write, not within a minute.
     overlay_wait_activity_grace_sec: float
     overlay_working_ttl_sec: float

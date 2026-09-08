@@ -323,6 +323,8 @@ an autonomous-observer decision.
 MCP operation, persisted runtime state or model call, so the audited mutating-route inventory and
 the direction invariant do not change.
 
+<a id="nui-11"></a>
+
 ## NUI-11: delegation is wall time inside the observed evidence
 
 The project rail's delegation figure integrates adjacent sample batches from the workstream ledger,
@@ -455,6 +457,8 @@ title and harness metadata remain identity beneath that lede. Assignment, next a
 request follow only when published. Health, answer controls, tasks, and token evidence remain
 below the command facts. This hierarchy prevents a session title from competing with its current
 work or making attached subagents look like unrelated sessions.
+
+<a id="nui-16"></a>
 
 ## NUI-16: operations lead; observation stays reachable
 

@@ -131,7 +131,7 @@ function nextWorkstreamAskTime(ask, generated, floor){
    server stopped, so nothing observed the end of a final `working` record:
    holding it to this tab's first payload counted a closed laptop as time an
    agent worked. A state is counted only over a span whose end was actually
-   observed, which biases the figure down and never invents evidence (NUI-11).
+   observed, which biases the figure down and never invents evidence ([NUI-11](docs/design-next-ui.md#nui-11)).
 
    The sample objects are shared between batches on purpose. A session's sample
    is identical until its own next record, and a full store is ~7,800 records:
