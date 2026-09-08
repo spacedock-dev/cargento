@@ -11,6 +11,15 @@ experiment that produced them, in
 [the session operations board walkthrough](future-ui-exploration/presentations/future-ui-session-operations-board/README.md),
 and they explain a progression rather than a product claim.
 
+The v2 project-level design this interface was built to is kept as the artifact it was
+designed in, not as a description of it:
+[`Cargento-v2.dc.html`](future-ui-exploration/v2-prototype/Cargento-v2.dc.html) holds the five
+views and
+[`cargento-observed.js`](future-ui-exploration/v2-prototype/cargento-observed.js) the data shape
+they read. Both are design artifacts rather than code, and two of their claims did not survive
+contact with the runtime — the end-outcome vocabulary and the delegation floor. Where the
+prototype and this document disagree, this document is what shipped.
+
 ## NUI-1: promotion leaves one precomputed page
 
 The preview originally used a second shell, stylesheet, script list, and server byte string so its
