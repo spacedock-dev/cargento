@@ -23,7 +23,7 @@ const payload = {
      reports_needs_input: false, reports_rate: false}
   ],
   sessions: [
-    {sid: 'build', harness: 'claude', project: 'alpha', state: 'working',
+    {sid: 'build', harness: 'claude', project: 'alpha', state: 'working', active: true,
      title: 'Build', state_detail: 'running Bash', rate_per_min: 120,
      instruction: {label: 'asked', text: 'Build the parser', at: 9800},
      turn: {elapsed_h: '4m', eta_h: null, long: false},
@@ -98,7 +98,7 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
         self.assertEqual(
             {
                 "sessions": 12,
-                "running": 2,
+                "running": 1,
                 "needs": 1,
                 "ended": 3,
                 "quiet": 6,
@@ -302,7 +302,7 @@ console.log(JSON.stringify({delegation: p.delegation, changes: p.changes,
         self.assertTrue(out["delegation"]["pctFloor"])
         self.assertIn("2 sessions have no closed working interval", out["delegation"]["noteText"])
         self.assertEqual(3, len(out["changes"]))
-        self.assertEqual("1 of 3 unattended · last 20m", out["note"])
+        self.assertEqual("1 of 3 unattended · last 2h 30m", out["note"])
         self.assertEqual("Build the parser", out["goal"])
         self.assertEqual("2 of 3 sessions publish no goal.", out["gap"])
 
@@ -396,3 +396,187 @@ console.log(JSON.stringify({risks: m.risks.map(r => r.kind),
         self.assertEqual(["ask"], out["board"])
         self.assertEqual(0, out["exact"])
         self.assertEqual([False, True], out["outcomes"])
+
+    def test_model_sessions_retain_controls_and_use_the_shipped_token_validation(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + self.WALK
+            + """
+document.querySelector = selector => selector === NEXT_FOCUS_META
+  ? {getAttribute: () => 'test-capability'} : null;
+payload.sessions[0].focusable = true;
+payload.sessions[0].resume_id = 'published-resume-token';
+const m = nextObserved(payload);
+assertAbsence(m);
+const session = m.sessions[0];
+const raise = nextSessionRaiseControl(session);
+const resume = nextSessionResumeControl(session);
+payload.sessions[0].resume_id = '-invalid-option';
+payload.sessions[0].focusable = false;
+const invalid = nextObserved(payload);
+console.log(JSON.stringify({focusable: session.focusable, resume_id: session.resume_id,
+  command: nextResumeCommand(session), raise, resume,
+  rejected: nextResumeCommand(invalid.sessions[0]), absentRaise: nextSessionRaiseControl(invalid.sessions[0]),
+  preservedInvalid: invalid.sessions[0].resume_id,
+  sameCounts: JSON.stringify(m.totals) === JSON.stringify(invalid.totals),
+  sameTone: session.tone === invalid.sessions[0].tone,
+  absentToken: m.sessions[1].resume_id,
+  noHarnessPair: !('harnessText' in session) && !('harnessKnown' in session)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["focusable"])
+        self.assertEqual("published-resume-token", out["resume_id"])
+        self.assertEqual("claude --resume published-resume-token", out["command"])
+        self.assertIn('data-next-raise-session="build"', out["raise"])
+        self.assertIn(
+            'data-next-copy-command="claude --resume published-resume-token"', out["resume"]
+        )
+        self.assertEqual("", out["rejected"])
+        self.assertEqual("", out["absentRaise"])
+        self.assertEqual("-invalid-option", out["preservedInvalid"])
+        self.assertIsNone(out["absentToken"])
+        self.assertTrue(out["sameCounts"])
+        self.assertTrue(out["sameTone"])
+        self.assertTrue(out["noHarnessPair"])
+
+    def test_recency_keeps_a_session_in_the_working_lane_without_claiming_liveness(self) -> None:
+        out = self._run_page_js(
+            """
+const m = nextObserved({sessions: [
+  {sid: 'recent', harness: 'claude', project: 'p', state: 'working', active: false},
+  {sid: 'live', harness: 'claude', project: 'p', state: 'working', active: true},
+  {sid: 'ended', harness: 'claude', project: 'p', state: 'working', active: true, ended_at: 99},
+  {sid: 'unmeasured', harness: 'claude', project: 'p', state: 'working', active: null}
+]});
+console.log(JSON.stringify({sessions: m.sessions.map(s => [s.sid, s.isWorking, s.isLive]),
+  active: m.active.map(s => s.sid), running: m.totals.running,
+  working: m.counters.find(c => c.label === 'WORKING').value}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                ["recent", True, False],
+                ["live", True, True],
+                ["ended", False, False],
+                ["unmeasured", True, False],
+            ],
+            out["sessions"],
+        )
+        self.assertEqual(["recent", "live", "unmeasured"], out["active"])
+        self.assertEqual(1, out["running"])
+        self.assertEqual(3, out["working"])
+
+    def test_capacity_empty_reasons_are_available_even_for_a_filtered_empty_list(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + self.WALK
+            + """
+const empty = nextObserved(payload);
+payload.usage = [{harness: 'codex', state: 'ok', week: {pct: 10}}];
+const populated = nextObserved(payload);
+assertAbsence(empty);
+assertAbsence(populated);
+console.log(JSON.stringify([empty, populated].map(m => [m.capacityEmptyText,
+  m.capacityEmptyKnown, m.capacityEmptyNoteText, m.capacityEmptyNoteKnown, m.windows.length])));
+"""
+        )
+        self.assertEqual(
+            [
+                [
+                    "No quota window published",
+                    False,
+                    "No vendor window has been read for this harness.",
+                    False,
+                    count,
+                ]
+                for count in (0, 1)
+            ],
+            out,
+        )
+
+    def test_timeline_matches_the_shipped_window_without_counting_an_unobserved_tail(self) -> None:
+        out = self._run_page_js(
+            """
+const payload = {generated: 10000, sessions: [
+  {sid: 'one', harness: 'claude', project: 'p', state: 'idle'}
+], history: [
+  {sid: 'one', harness: 'claude', project: 'p', state: 'working', last_activity: 9400},
+  {sid: 'one', harness: 'claude', project: 'p', state: 'idle', last_activity: 9700}
+]};
+nextObserveWorkstream(payload);
+const oldWindow = nextWorkstreamProjectWindow('p');
+const p = nextObserved(payload).projects[0];
+console.log(JSON.stringify({legacy: nextWorkstreamWindowLabel(oldWindow),
+  window: p.delegation.windowText, note: p.changeNoteText, pct: p.delegation.pct,
+  pctKnown: p.delegation.pctKnown, changes: p.changes,
+  legacyClock: nextWorkstreamClock(9700)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("last 10m", out["legacy"])
+        self.assertEqual("last 10m", out["window"])
+        self.assertEqual("1 of 1 unattended · last 10m", out["note"])
+        self.assertFalse(out["pctKnown"])
+        self.assertIsNone(out["pct"])
+        self.assertEqual(
+            [
+                {
+                    "at": out["legacyClock"],
+                    "filled": True,
+                    "label": "became idle",
+                    "harness": "claude",
+                }
+            ],
+            out["changes"],
+        )
+        self.assertRegex(out["changes"][0]["at"], r"^\d{2}:\d{2}$")
+
+    def test_trend_matches_two_complete_six_hour_windows_and_withholds_gaps(self) -> None:
+        for steps, expected in (
+            ("[[6800, 'needs_input'], [17600, 'working'], [50000, 'idle']]", 50),
+            (
+                "[[6800, 'working'], [28400, 'needs_input'], [39200, 'working'], [50000, 'idle']]",
+                -50,
+            ),
+            ("[[6800, 'working'], [50000, 'idle']]", 0),
+        ):
+            with self.subTest(delta=expected):
+                out = self._run_page_js(
+                    self.WALK
+                    + f"""
+const identity = {{sid: 'one', harness: 'claude', project: 'p'}};
+const payload = {{generated: 50000, sessions: [{{...identity, state: 'idle'}}],
+  history: {steps}.map(([at, state]) => ({{...identity, last_activity: at, state}}))}};
+nextObserveWorkstream(payload);
+const p = nextObserved(payload).projects[0];
+assertAbsence(p);
+const legacy = nextDelegationTrend(nextWorkstreamProjectWindow('p'));
+payload.generated += 1;
+const gap = nextObserved(payload).projects[0].delegation;
+console.log(JSON.stringify({{trend: p.delegation.trendText, delta: p.delegation.trendDelta,
+  known: p.delegation.trendKnown, legacy, gap}}));
+"""
+                )
+                assert isinstance(out, dict)
+                self.assertEqual(expected, out["legacy"])
+                self.assertEqual(expected, out["delta"])
+                self.assertEqual(f"{expected:+}" if expected > 0 else str(expected), out["trend"])
+                self.assertTrue(out["known"])
+                self.assertFalse(out["gap"]["trendKnown"])
+                self.assertIsNone(out["gap"]["trendDelta"])
+                self.assertEqual(
+                    "Two complete six-hour delegation readings are not available",
+                    out["gap"]["trendText"],
+                )
+
+    def test_goal_normalization_keeps_internal_whitespace_authoritative(self) -> None:
+        out = self._run_page_js(
+            """
+const m = nextObserved({sessions: [{sid: 'goal', harness: 'claude', project: 'p',
+  instruction: {label: 'asked', text: '  Build  the\\n parser.  '}}]});
+console.log(JSON.stringify(m.projects[0].goalText));
+"""
+        )
+        self.assertEqual("Build  the\n parser.", out)
