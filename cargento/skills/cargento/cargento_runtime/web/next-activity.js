@@ -1,17 +1,3 @@
-/* `active` is freshness — inside the display window — not "generating now", so
-   filtering on it alone put every session the window still carries into GOING
-   ON. One live Codex row read as eleven, ten of them idle and captioned
-   "awaiting your message". The state is the only thing that says a session is
-   doing something, and it is what the header count and the sessions view
-   already read. */
-function nextProjectGoingOnSessions(sessions){
-  const gates = sessions.filter(session => session.state === "needs_input");
-  const working = nextSessionWorkingOrder(
-    sessions.filter(session => session.active === true && session.state === "working"),
-  );
-  return [...gates, ...working];
-}
-
 const NEXT_ACTIVITY_SUBAGENT_LIMIT = 6;
 
 function nextProjectActivitySubagents(session){
@@ -44,44 +30,52 @@ function nextProjectActivitySubagents(session){
     `${rows}${more}</span>`;
 }
 
-function nextProjectActivityCard(session, harnesses, project){
-  const sid = String(session.sid || "");
-  const harness = String(session.harness || "");
-  const harnessLabel = harnesses.get(harness) || harness;
-  const activity = String(session.state_detail || "");
-  const detail = activity ? `${harnessLabel} · ${activity}` : harnessLabel;
-  const title = String(session.title || session.last_prompt || project);
-  const route = nextRouteToken({view: "session", project, harness, session: sid});
-  const gate = session.state === "needs_input";
-  const blocked = gate ? " next-activity-card--blocked" : "";
-  const live = gate ? "" : " next-live";
-  const stateLabel = gate ? "needs input" : "working";
-  const metric = nextSessionMetric(session);
-  /* The same second line the session table and the detail header carry, from
-     the same renderer, because a third copy of "when may this be shown" is a
-     third chance to disagree with the runtime about it. Clipped to one line
-     here and not wrapped as it is there: GOING ON is scanned rather than read,
-     and a card that grows by two lines whenever the newest prompt is long
-     pushes the next card off the fold. What is lost is the tail of a line
-     already bounded at 140 characters; the label and age, which are what make
-     the line survivable, are never in the part that clips. */
-  const instruction = nextInstructionLine(session, title, "next-activity-instruction", "span");
-  return `<button type="button" class="next-activity-card${blocked}${live}" ` +
-    `data-next-going-on="${esc(sid)}" data-next-route="${esc(route)}">` +
-    nextStatusDot(stateLabel, "next-activity-dot") +
-    `<span class="next-activity-identity"><strong>${esc(title)}</strong>${instruction}` +
-    `<small>${esc(detail)}</small>${nextProjectActivitySubagents(session)}</span>` +
-    `<span class="next-activity-metric">${esc(metric)}</span></button>`;
+function nextProjectActivityCard(session, project, source){
+  const route = nextRouteToken({view: "session", project, harness: session.harness, session: session.sid});
+  const stuck = session.stuckKnown ? `<span class="next-activity-stuck">stuck · ${esc(session.stuckText)}</span>` : "";
+  const question = session.askKnown ? `<span class="next-activity-question">${esc(session.askText)}</span>` : "";
+  const instruction = source ? nextInstructionLine(source, session.titleText, "next-activity-instruction", "span") : "";
+  return `<button type="button" class="next-activity-card next-project-tone--${esc(session.tone)}" ` +
+    `data-next-going-on="${esc(session.sid)}" data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
+    '<span class="next-activity-title">' +
+    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isWorking ? " next-project-dot--working" : ""}" ` +
+    `role="img" aria-label="${esc(session.state)}"></span>` +
+    nextProjectValue(session.titleText, session.titleKnown) + '</span>' + instruction +
+    `<span class="next-activity-now"><span class="next-activity-harness">${esc(session.harness)} · </span>` +
+    nextProjectValue(session.nowText, session.nowKnown) + '</span>' +
+    `<span>next · ${nextProjectValue(session.nextText, session.nextKnown)}</span>` +
+    `<span>turn · ${nextProjectValue(session.turnText, session.turnKnown)}</span>` + stuck + question +
+    (session.isNeeds ? `<span class="next-activity-metric">${esc(session.waitedText)}</span>` :
+      nextProjectValue(session.rateText, session.rateKnown, "next-activity-metric")) +
+    nextProjectActivitySubagents(session) + '</button>';
 }
 
 function nextProjectGoingOn(context){
-  const cards = nextProjectGoingOnSessions(context.group.sessions).map(session =>
-    nextProjectActivityCard(session, context.harnesses, context.group.label),
-  ).join("");
-  const body = cards || '<p class="next-activity-empty">' +
-    "Nothing active or waiting on you in this project.</p>";
+  const cards = context.project.sessions.filter(session => session.isWorking || session.isNeeds).map(session => {
+    const source = context.group.sessions.find(candidate => nextSessionKey(candidate) === nextSessionKey(session));
+    return nextProjectActivityCard(session, context.project.key, source);
+  }).join("");
   return '<section class="next-project-activity" data-next-project-activity="going-on">' +
-    '<h2>GOING ON</h2><div class="next-activity-cards">' + body + "</div></section>";
+    '<h2>GOING ON</h2><div class="next-activity-cards">' +
+    (cards || '<p class="next-activity-empty">Nothing observed running.</p>') + '</div></section>';
+}
+
+function nextProjectEndings(context){
+  const cards = context.project.ended.map(session => {
+    const route = nextRouteToken({view: "session", project: context.project.key,
+      harness: session.harness, session: session.sid});
+    const tone = session.outcomeGlyph === "◦" ? "want" : (session.outcomeKnown ? "bad" : "unknown");
+    return `<button type="button" class="next-project-ending next-project-tone--${tone}" ` +
+      `data-next-outcome="${esc(session.sid)}" data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
+      '<span class="next-project-ending-title">' +
+      `<span class="next-project-ending-glyph" aria-hidden="true">${esc(session.outcomeGlyph)}</span>` +
+      nextProjectValue(session.titleText, session.titleKnown) + '</span>' +
+      nextProjectValue(session.outcomeText, session.outcomeKnown, "next-project-ending-outcome") +
+      `<span>${esc(session.harness)} · git: ${nextProjectValue(session.gitText, session.gitKnown)}</span></button>`;
+  }).join("");
+  return '<section class="next-project-activity" data-next-project-activity="ended">' +
+    '<h2>HOW THINGS ENDED</h2><div class="next-activity-cards">' +
+    (cards || '<p class="next-activity-empty">No session in this project has been observed ending.</p>') + '</div></section>';
 }
 
 function nextProjectCompletedTasks(sessions){
@@ -99,7 +93,9 @@ function nextProjectCompletedTasks(sessions){
 }
 
 function nextProjectDone(context){
-  const rows = nextProjectCompletedTasks(context.group.sessions).map(task =>
+  const completed = nextProjectCompletedTasks(context.project.sessions);
+  const progress = nextProjectProgress(context.group.sessions);
+  const rows = completed.map(task =>
     '<li><span class="next-activity-done-glyph" aria-label="completed">✓</span>' +
     `<span>${esc(task.subject || "")}</span></li>`,
   ).join("");
@@ -107,5 +103,5 @@ function nextProjectDone(context){
     ? `<ul class="next-activity-done">${rows}</ul>`
     : '<p class="next-activity-empty">No completed tracked tasks in this payload.</p>';
   return '<section class="next-project-activity" data-next-project-activity="done">' +
-    `<h2>DONE</h2>${body}</section>`;
+    `<h2>COMPLETED TASKS · ${completed.length}</h2>${progress}${body}</section>`;
 }
