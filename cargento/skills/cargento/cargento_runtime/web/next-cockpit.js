@@ -156,16 +156,16 @@ function nextCockpitHumanLabel(value){
 }
 
 function nextCockpitProjectNeeds(group){
-  const identities = new Set(group.sessions.map(session => sessKey(session)));
-  const asks = nextData && nextData.ask === true && Array.isArray(nextData.asks)
-    ? nextData.asks : [];
-  const waiting = asks.filter(ask => identities.has(
-    `${String(ask && ask.harness || "")}:${String(ask && ask.session_id || "")}`));
-  const blocked = group.sessions.filter(session => session.state === "needs_input");
-  return new Set([
-    ...waiting.map(ask => `${String(ask.harness || "")}:${String(ask.session_id || "")}`),
-    ...blocked.map(session => sessKey(session)),
-  ]).size;
+  return nextCockpitObservedProject(group)?.needs.length || 0;
+}
+
+function nextCockpitObservedProject(group){
+  return nextCurrentObserved().projects.find(project => project.key === group.label);
+}
+
+function nextCockpitWorkingSessions(group){
+  const keys = new Set((nextCockpitObservedProject(group)?.working || []).map(nextSessionKey));
+  return group.sessions.filter(session => keys.has(nextSessionKey(session)));
 }
 
 function nextCockpitProjectStatus(group, semantic){
@@ -264,7 +264,7 @@ function nextCockpitAttentionCoverage(group, observation){
 }
 
 function nextCockpitRecoveryChildren(group){
-  const active = group.sessions.filter(session => session.state === "working")
+  const active = nextCockpitWorkingSessions(group)
     .flatMap(session => projectDelegationLanes(session, {label:nextCockpitStableKey(group)}))
     .filter(lane => lane.active !== false)
     .map(lane => ({worker:lane.worker,lifecycle:"active",assignment:lane.assignment,
@@ -325,19 +325,12 @@ function nextCockpitCommandAttention(group, observation){
       evidence:{source:coverage.source,
         confidence:"bounded"}});
   }
-  const identities = new Set(group.sessions.map(session => sessKey(session)));
-  const asks = nextData && nextData.ask === true && Array.isArray(nextData.asks)
-    ? nextData.asks.filter(ask => identities.has(
-      `${String(ask && ask.harness || "")}:${String(ask && ask.session_id || "")}`)) : [];
-  const askedSessions = new Set();
-  for(const ask of asks){
-    const question = String(ask && ask.question || "").trim();
-    if(!question) continue;
-    askedSessions.add(`${String(ask.harness || "")}:${String(ask.session_id || "")}`);
-    add("CAPTAIN", question, "AskRegistry exact question", "exact", "ask");
-  }
-  for(const session of group.sessions.filter(row => row.state === "needs_input" &&
-    !askedSessions.has(sessKey(row)))){
+  const waiting = nextCockpitObservedProject(group)?.needs || [];
+  for(const session of waiting){
+    if(session.askKnown){
+      add("CAPTAIN", session.askText, "AskRegistry exact question", "exact", "ask");
+      continue;
+    }
     const name = nextHarnessLabels().get(String(session.harness || "")) ||
       nextCockpitHumanLabel(session.harness || "session");
     add("FO", `inspect ${name} input request`, "exact session needs-input state",
@@ -447,8 +440,8 @@ function nextCockpitRecoveryAttention(group, observation, commandAttention){
     state === "fo-inspecting" ? "FO INSPECTING" : "FO CONTINUES";
   const children = nextCockpitRecoveryChildren(group);
   const compactIdle = state === "fo-continues" && !children.active.length &&
-    !children.latestReturn;
-  const captainTruth = captain.length ? "" : coverage.state === "complete"
+    !children.latestReturn && !nextCockpitProjectNeeds(group);
+  const captainTruth = captain.length || nextCockpitProjectNeeds(group) ? "" : coverage.state === "complete"
     ? "Captain not needed" : "Captain state unknown";
   const stateHeading = compactIdle ? "FO CONTINUES · Continue current assignment" : stateLabel;
   const primary = compactIdle ? "" : captain.map(row).join("") +
@@ -476,7 +469,7 @@ function nextCockpitRecoveryDecisions(semantic){
 }
 
 function nextCockpitRecoveryActive(group){
-  const activeSessions = group.sessions.filter(session => session.state === "working");
+  const activeSessions = nextCockpitWorkingSessions(group);
   const exactAssignments = activeSessions.flatMap(session =>
     projectDelegationLanes(session, {label:nextCockpitStableKey(group)}))
     .filter(lane => lane.active !== false && lane.assignment !== "assignment unavailable" &&
@@ -496,7 +489,7 @@ function nextCockpitFactSessionKey(fact){
 }
 
 function nextCockpitSubstantiveDirection(group, semantic){
-  const active = new Set(group.sessions.filter(session => session.state === "working")
+  const active = new Set(nextCockpitWorkingSessions(group)
     .map(session => sessKey(session)));
   const known = new Set(group.sessions.map(session => sessKey(session)));
   const facts = semantic && Array.isArray(semantic.facts) ? semantic.facts : [];
@@ -526,8 +519,7 @@ function nextCockpitStageLinkEffect(group, commandAttention, sourceSession){
     item.kind === "stage_link_required" && item.blockedStep && item.evidence &&
     item.evidence.confidence === "exact");
   if(blocked) return `Stage link required before ${blocked.blockedStep}`;
-  const canContinue = group.sessions.some(session => sessKey(session) === sourceSession &&
-    session.state === "working");
+  const canContinue = nextCockpitWorkingSessions(group).some(session => sessKey(session) === sourceSession);
   return canContinue ? "Stage link missing · current work can continue" : "";
 }
 
@@ -603,7 +595,7 @@ function nextCockpitRecoveryBriefing(group, focus, observation, commandAttention
   const captain = (commandAttention || []).filter(item => item && item.owner === "CAPTAIN" &&
     !["coverage_unavailable"].includes(String(item.kind || "")) &&
     item.label !== "Captain-attention coverage incomplete");
-  const activeSessions = group.sessions.filter(session => session.state === "working");
+  const activeSessions = nextCockpitWorkingSessions(group);
   const assignments = activeSessions.flatMap(session =>
     projectDelegationLanes(session, {label:nextCockpitStableKey(group)}))
     .filter(lane => lane.active !== false && lane.assignment !== "assignment unavailable" &&
@@ -690,7 +682,8 @@ function nextCockpitRecoveryExecution(group, briefing, compactIdle = false){
   const children = [...briefing.children.active];
   if(briefing.children.latestReturn) children.push(briefing.children.latestReturn);
   if(compactIdle) return '<strong>No execution observed · Captain not needed</strong>';
-  const sessions = group.sessions.filter(session => session.state === "working" ||
+  const working = new Set(nextCockpitWorkingSessions(group).map(sessKey));
+  const sessions = group.sessions.filter(session => working.has(sessKey(session)) ||
     children.some(child => child.sourceSession === sessKey(session)));
   if(!sessions.length) return '<strong>No execution observed</strong>';
   const childEvidence = child => '<details><summary>Evidence</summary>' +
@@ -717,7 +710,22 @@ function nextCockpitRecoveryExecution(group, briefing, compactIdle = false){
   }).join("");
 }
 
-function nextCockpitRecoveryStrip(group, observation, commandAttention){
+function nextCockpitWaitingCommand(project){
+  const session = project && project.needs[0];
+  if(!session) return "";
+  const route = nextFragmentForRoute({view:"session",project:project.key,
+    harness:session.harness,session:session.sid});
+  return '<div class="next-cockpit-waiting" data-next-cockpit-waiting>' +
+    '<span>WAITING ON YOU</span>' +
+    `<a href="${esc(route)}" data-next-route="${esc(route.slice(3))}">` +
+    nextProjectValue(session.titleText, session.titleKnown) + '</a>' +
+    nextProjectValue(session.waitedText, session.waitedKnown) +
+    (session.askKnown ? `<p>${esc(session.askText)}</p>` : "") +
+    '<div class="next-rail-wait-controls">' + nextSessionRaiseControl(session) +
+    (nextSessionResumeControl(session) || nextSessionCopyControl(session)) + '</div></div>';
+}
+
+function nextCockpitRecoveryStrip(group, observation, commandAttention, project = nextCockpitObservedProject(group)){
   const focus = nextCockpitFocusedSession(group);
   const briefing = nextCockpitRecoveryBriefing(group, focus, observation, commandAttention);
   const attention = commandAttention || nextCockpitCommandAttention(group, observation);
@@ -726,7 +734,7 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention){
   const authorityState = captain.length ? "captain-needed" :
     briefing.coverage.state !== "complete" || system.length ? "fo-inspecting" : "fo-continues";
   const compactIdle = authorityState === "fo-continues" && !briefing.children.active.length &&
-    !briefing.children.latestReturn;
+    !briefing.children.latestReturn && !project?.needs.length;
   const exactLabel = briefing.latest.stale ? "ACTIONABLE DIRECTION · STALE CACHED" :
     "LATEST ACTIONABLE DIRECTION";
   const directionSource = briefing.latest.direction
@@ -770,9 +778,11 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention){
   return '<section class="next-cockpit-recovery" aria-label="Recovery summary">' +
     '<header><strong>PROJECT RECOVERY BRIEFING</strong></header>' +
     `<div data-next-cockpit-task${taskAttrs}><span>ASSIGNMENT</span>` +
-    `<strong>${esc(taskText)}</strong>${assignmentEffect}${assignmentEvidence}</div>` +
+    `<strong>${esc(taskText)}</strong>${assignmentEffect}${assignmentEvidence}` +
+    (project ? nextProjectGoal(project) : "") + '</div>' +
     `<div><span>EXECUTION</span>${nextCockpitRecoveryExecution(group, briefing, compactIdle)}</div>` +
     `<div><span>COMMAND</span>` +
+    nextCockpitWaitingCommand(project) +
     `${nextCockpitRecoveryAttention(group, observation, attention)}</div>` +
     latestCell +
     nextCockpitRecoveryMemoCell(group, focus, briefing) +
@@ -979,7 +989,7 @@ function nextCockpitActiveDelegation(group, observation){
   const task = nextCockpitCurrentTask(observation);
   const delegationGroup = {label:nextCockpitStableKey(group)};
   const lanes = group.sessions.flatMap(session => projectDelegationLanes(session, delegationGroup));
-  const activeSessions = group.sessions.filter(session => session.state === "working");
+  const activeSessions = nextCockpitWorkingSessions(group);
   if(!lanes.length && !activeSessions.length){
     return '<section class="next-cockpit-active-delegation" data-next-cockpit-primary>' +
       nextCockpitScopeCue(nextCockpitProjectScopeKind()) +
@@ -1278,9 +1288,11 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
   const tab = NEXT_PROJECT_TABS.includes(nextRoute && nextRoute.tab) ? nextRoute.tab : "now";
   let body = "";
   if(tab === "now"){
-    body = nextCockpitPlanDisclosure(context);
+    body = nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
+      nextProjectPlanStatus(context) + nextCockpitPlanDisclosure(context);
   }else if(tab === "course"){
-    body = nextCockpitCoursePanel(context.group, focus) + nextCockpitCompletedWork(context);
+    body = nextProjectChanges(context.project) +
+      nextCockpitCoursePanel(context.group, focus) + nextCockpitCompletedWork(context);
   }else if(tab === "decisions"){
     body = nextCockpitDecisionSummary(context.group, focus, observation) +
       nextCockpitTimeline(context.group, focus, "decisions");
@@ -1288,9 +1300,7 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
     body = nextCockpitConsoleScope(focus) + (focus
       ? nextCockpitTerminal(context.group, focus)
       : '<p class="next-cockpit-empty">Select one exact session to open its read-only console.</p>') +
-      nextCockpitConsoleStatus(context.group) + nextProjectGoingOn(context, commandAttention) +
-      nextProjectDelegation(context) +
-      nextProjectControls(context);
+      nextCockpitConsoleStatus(context.group) + nextProjectRail(context);
   }
   return `<section class="next-cockpit-panel" id="next-cockpit-panel-${tab}" role="tabpanel" ` +
     `data-next-cockpit-panel="${tab}" aria-label="${nextCockpitHumanLabel(tab)}">${body}</section>`;
@@ -1302,7 +1312,7 @@ function nextProjectCockpit(context, observation, commandAttention){
   projectQuerySession = focus ? sessKey(focus) : "";
   lastData = nextData;
   return nextCockpitViewingSession(focus) +
-    nextCockpitRecoveryStrip(group, observation, commandAttention) +
+    nextCockpitRecoveryStrip(group, observation, commandAttention, context.project) +
     nextCockpitTabList() +
     nextCockpitPanel(context, focus, observation, commandAttention);
 }

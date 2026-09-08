@@ -77,6 +77,170 @@ __fetchImpl = async url => ({ok: true, json: async () =>
             storage_prelude(storage or {}) + self.FIXTURE,
         )
 
+    def test_v2_surfaces_mount_in_their_cockpit_panels_once(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.sessions[0].instruction = {label:"asked",text:"Ship <the cockpit>"};
+__dashboard.sessions[1].ended_at = 100;
+__dashboard.sessions[0].spacedock = {workflows:[{workflow:"cockpit",goal:"Build cockpit",
+  stages:["review"],entities:[{slug:"cockpit",stage:"review",live:true}]}]};
+const views = {};
+for(const tab of ["now", "course", "decisions", "console"]){
+  nextRoute = nextRouteFromFragment("#n=project:cargento:" + tab);
+  renderNext();
+  const html = __els.app.innerHTML;
+  views[tab] = {briefing:html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
+    html.indexOf('<nav class="next-cockpit-tabs"')),
+    panel:html.slice(html.indexOf('<section class="next-cockpit-panel"'))};
+}
+console.log(JSON.stringify(views));
+"""
+        )
+        assert isinstance(out, dict)
+        for tab, view in out.items():
+            with self.subTest(tab=tab):
+                self.assertIn("Ship &lt;the cockpit&gt;", view["briefing"])
+                self.assertIn("codex · latest assignment", view["briefing"])
+                self.assertIn("2 of 3 sessions publish no goal.", view["briefing"])
+                self.assertEqual(1, view["briefing"].count('class="next-project-goal"'))
+                self.assertEqual(
+                    tab == "now", 'data-next-project-activity="going-on"' in view["panel"]
+                )
+                self.assertEqual(
+                    tab == "now", 'data-next-project-activity="ended"' in view["panel"]
+                )
+                self.assertEqual(tab == "course", "OBSERVED STATE CHANGES" in view["panel"])
+                self.assertEqual(tab == "console", "data-next-project-rail" in view["panel"])
+        self.assertIn("no estimate left · no confidence", out["now"]["panel"])
+        self.assertIn("HOW THINGS ENDED", out["now"]["panel"])
+        self.assertIn("git:", out["now"]["panel"])
+        self.assertIn("Other directions (2)", out["course"]["panel"])
+        for panel in ("delegation", "waiting", "capacity", "tripwires"):
+            self.assertEqual(1, out["console"]["panel"].count(f'data-next-rail-panel="{panel}"'))
+        self.assertNotIn("DELEGATION ·", out["console"]["panel"])
+        self.assertIn("data-next-cockpit-console-status", out["console"]["panel"])
+
+    def test_waiting_session_never_leaves_command_and_console_both_silent(self) -> None:
+        out = self.run_fixture(
+            """
+document.querySelector = () => ({getAttribute: () => "test-capability"});
+const waiting = __dashboard.sessions[1];
+Object.assign(waiting, {harness:"codex", title:"Waiting <peer>",
+  focusable:true, resume_id:"resume-peer"});
+const views = [];
+for(const kind of ["state", "ask", "harnessless-ask"]){
+  waiting.state = kind === "state" ? "needs_input" : "idle";
+  __dashboard.ask = true;
+  __dashboard.asks = kind === "state" ? [] : [{session_id:"pi-idle",question:"Ship peer?",
+    ...(kind === "ask" ? {harness:"codex"} : {})}];
+  for(const focus of ["", ":session:codex%3Afocus-1"]){
+    for(const tab of ["now", "course", "decisions", "console"]){
+      nextRoute = {view:"project",project:"cargento",tab,
+        focus:focus ? "codex:focus-1" : null};
+      renderNext();
+      const html = __els.app.innerHTML;
+      const briefing = html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
+        html.indexOf('<nav class="next-cockpit-tabs"'));
+      views.push({kind,tab,focus,command:briefing.slice(briefing.indexOf('<span>COMMAND</span>')),
+        panel:html.slice(html.indexOf('<section class="next-cockpit-panel"'))});
+    }
+  }
+}
+console.log(JSON.stringify(views));
+"""
+        )
+        assert isinstance(out, list)
+        for view in out:
+            with self.subTest(kind=view["kind"], tab=view["tab"], focus=view["focus"]):
+                command = view["command"]
+                self.assertIn("Waiting &lt;peer&gt;", command)
+                self.assertIn('data-next-raise-session="pi-idle"', command)
+                self.assertIn('data-next-raise-harness="codex"', command)
+                self.assertIn('data-next-copy-command="codex resume resume-peer"', command)
+                self.assertIn('aria-label="Raise the terminal this session is running in"', command)
+                self.assertNotIn("Captain not needed", command)
+                if view["tab"] == "console":
+                    self.assertIn('data-next-wait-session="pi-idle"', view["panel"])
+                if view["kind"] != "state":
+                    self.assertIn("Ship peer?", command)
+
+    def test_waiting_controls_share_cues_across_briefing_console_and_redraw(self) -> None:
+        out = self.run_fixture(
+            """
+Object.assign(__dashboard.sessions[0], {state:"needs_input",focusable:true,resume_id:"resume-one"});
+document.querySelector = () => ({getAttribute: () => "test-capability"});
+let now = 100000;
+Date.now = () => now;
+nextRememberControlState(nextControlStateKey("raise", "codex", "focus-1"), "sent");
+nextRememberControlState(nextControlStateKey("command", "codex", "focus-1"), "copied");
+nextRoute = nextRouteFromFragment("#n=project:cargento:console");
+now += 20000;
+renderNext();
+const kept = __els.app.innerHTML;
+now += 10000;
+renderNext();
+console.log(JSON.stringify({kept,expired:__els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, out["kept"].count('data-next-raise-state="sent"'))
+        self.assertEqual(2, out["kept"].count('data-next-copy-state="copied"'))
+        self.assertNotIn("data-next-raise-state=", out["expired"])
+        self.assertNotIn("data-next-copy-state=", out["expired"])
+
+    def test_waiting_summary_uses_exact_model_ownership_without_semantic_context(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.sessions = [
+  {sid:"shared",harness:"codex",project:"cargento",state:"idle",title:"Ambiguous Codex"},
+  {sid:"shared",harness:"claude",project:"cargento",state:"idle",title:"Ambiguous Claude"},
+  {sid:"ended",harness:"codex",project:"cargento",state:"needs_input",ended_at:100},
+  {sid:"foreign",harness:"codex",project:"elsewhere",state:"needs_input"}
+];
+__dashboard.ask = true;
+__dashboard.asks = [{session_id:"shared",question:"Unowned question"}];
+nextRoute = nextRouteFromFragment("#n=project:cargento:console");
+renderNext();
+const withoutOwner = __els.app.innerHTML;
+const needsWithoutOwner = nextCockpitProjectNeeds(nextProjectGroups().find(g => g.label === "cargento"));
+__dashboard.asks[0].harness = "claude";
+nextCockpitContexts.clear();
+renderNext();
+const group = nextProjectGroups().find(g => g.label === "cargento");
+console.log(JSON.stringify({withoutOwner,needsWithoutOwner,withOwner:__els.app.innerHTML,
+  needsWithOwner:nextCockpitProjectNeeds(group)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["needsWithoutOwner"])
+        self.assertNotIn("data-next-cockpit-waiting", out["withoutOwner"])
+        self.assertNotIn("data-next-wait-session=", out["withoutOwner"])
+        self.assertEqual(1, out["needsWithOwner"])
+        command = out["withOwner"].split("<span>COMMAND</span>")[1].split("<nav")[0]
+        self.assertIn("data-next-cockpit-waiting", command)
+        self.assertIn("Ambiguous Claude", command)
+        self.assertNotIn("Ambiguous Codex", command)
+        self.assertIn("Unowned question", command)
+        self.assertIn("Captain attention unavailable", command)
+
+    def test_ended_working_session_does_not_remain_in_recovery_execution(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.sessions[0].ended_at = 100;
+renderNext();
+const group = nextProjectGroups()[0];
+const briefing = nextCockpitRecoveryBriefing(group, null, {semantic:__semantic}, []);
+console.log(JSON.stringify({active:briefing.active,children:briefing.children.active,
+  execution:nextCockpitRecoveryExecution(group, briefing),html:__els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("No active sessions or exact assignments observed", out["active"])
+        self.assertEqual([], out["children"])
+        self.assertNotIn("Codex · working", out["execution"])
+        self.assertNotIn('data-next-going-on="focus-1"', out["html"])
+        self.assertIn('data-next-outcome="focus-1"', out["html"])
+
     def test_upstream_project_detail_hosts_focus_semantics_and_no_duplicate_shell(self) -> None:
         out = self.run_fixture(
             """
@@ -187,7 +351,7 @@ nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,revi
 renderNext();
 const html=__els.app.innerHTML;
 const panel=(html.match(/<section class="next-cockpit-panel"[\\s\\S]*<\\/section>/)||[""])[0];
-const mirror=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const mirror=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 const visible=mirror
   .replace(/<details(?![^>]*\\bopen\\b)[^>]*>[\\s\\S]*?<\\/details>/g," ")
   .replace(/<[^>]+>/g," ").replace(/&[^;]+;/g," ")
@@ -273,7 +437,7 @@ console.log(JSON.stringify({project,session,narrowest}));
 nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1");
 renderNext();await __settle();await __settle();
 const html=__els.app.innerHTML;
-const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 const task=(recovery.match(/<div data-next-cockpit-task[\\s\\S]*?<\\/div>/)||[""])[0];
 const switcher=(html.match(/<details class="next-cockpit-scope-switcher"[\\s\\S]*?<\\/details>/)||[""])[0];
 console.log(JSON.stringify({html,recovery,task,switcher}));
@@ -642,7 +806,7 @@ console.log(JSON.stringify({html, query:[...nextCockpitContexts.keys()]}));
         out = self.run_fixture(
             """
 const html = __els.app.innerHTML;
-const task = (html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/) || [""])[0];
+const task = (html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/) || [""])[0];
 console.log(JSON.stringify({html, task}));
 """
         )
@@ -689,7 +853,7 @@ nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,revi
 nextRoute=nextRouteFromFragment("#n=project:cargento");
 renderNext();await __settle();await __settle();
 const html=__els.app.innerHTML;
-const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 const task=(recovery.match(/<div data-next-cockpit-task[\\s\\S]*?<\\/div>/)||[""])[0];
 const scope=(html.match(/<nav class="next-cockpit-scope-tree"[\\s\\S]*?<\\/nav>/)||[""])[0];
 const panel=(html.match(/<section class="next-cockpit-panel"[\\s\\S]*<\\/section>/)||[""])[0];
@@ -1130,7 +1294,7 @@ nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
 renderNext();
 const html=__els.app.innerHTML;
-const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 console.log(JSON.stringify({html,recovery,strip:html.indexOf("next-cockpit-recovery"),
   tabs:html.indexOf("next-cockpit-tabs"),tabCount:(html.match(/role="tab"/g)||[]).length,
   copyCount:(html.match(/data-next-cockpit-action="copy-briefing"/g)||[]).length}));
@@ -1805,7 +1969,7 @@ console.log(JSON.stringify({quiet,planned,incomplete}));
             """
 const html=__els.app.innerHTML;
 const header=(html.match(/<header class="next-header">[\\s\\S]*?<\\/header>/)||[""])[0];
-const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 const beforeMenu=header.split('<details class="next-menu"',1)[0];
 console.log(JSON.stringify({html,header,recovery,beforeMenu}));
 """
@@ -1942,7 +2106,7 @@ console.log(JSON.stringify({items,html}));
         out = self.run_fixture(
             """
 const html=__els.app.innerHTML;
-const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 console.log(JSON.stringify({recovery,
   memoEdits:(recovery.match(/data-next-cockpit-action="memo-edit"/g)||[]).length}));
 """
@@ -1956,7 +2120,7 @@ console.log(JSON.stringify({recovery,
         out = self.run_fixture(
             """
 const recovery=(__els.app.innerHTML.match(
-  /<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+  /<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 console.log(JSON.stringify({recovery}));
 """
         )
@@ -2008,7 +2172,7 @@ console.log(JSON.stringify({html}));
         out = self.run_fixture(
             """
 const recovery=(__els.app.innerHTML.match(
-  /<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+  /<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 console.log(JSON.stringify({recovery,
   edits:(recovery.match(/data-next-cockpit-action="memo-edit"/g)||[]).length}));
 """
@@ -2091,7 +2255,7 @@ console.log(JSON.stringify({primary:html.slice(start,disclosure),
         out = self.run_fixture(
             """
 const html=__els.app.innerHTML;
-const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>/)||[""])[0];
+const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
 const panel=html.slice(html.indexOf('data-next-cockpit-panel="now"'));
 console.log(JSON.stringify({html,recovery,panel,
   recoveryCount:(html.match(/class="next-cockpit-recovery"/g)||[]).length,

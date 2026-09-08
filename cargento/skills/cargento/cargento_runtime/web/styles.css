@@ -717,7 +717,10 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-now-state strong,.next-cockpit-now-state small{display:block;margin-top:4px;overflow-wrap:anywhere}
 .next-cockpit-now-state strong{font-size:var(--fs-xs);font-weight:600}
 .next-cockpit-now-state small{color:var(--ink3);font-size:var(--fs-2xs)}
-.next-cockpit-panel[data-next-cockpit-panel="now"]{display:grid;grid-template-columns:minmax(180px,2fr) minmax(0,5fr)}
+.next-cockpit-panel[data-next-cockpit-panel="now"]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.next-cockpit-panel[data-next-cockpit-panel="now"]>.next-project-detail-status,.next-cockpit-panel[data-next-cockpit-panel="now"]>.next-cockpit-plan-details{grid-column:1/-1}
+.next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;width:auto;min-width:0;border-left:0}
+.next-cockpit-waiting{margin-bottom:12px}
 .next-cockpit-active-delegation,.next-cockpit-needs{min-width:0;padding:18px 12px;border-bottom:1px solid var(--line)}
 .next-cockpit-needs{border-right:1px solid var(--line)}
 .next-cockpit-active-delegation h2,.next-cockpit-needs h2{margin:0 0 10px;font-size:var(--fs-md);font-weight:600}
@@ -847,6 +850,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
   .next-cockpit-scope-switcher>summary{display:flex;justify-content:space-between;gap:12px;padding:8px;color:var(--ink2);font:var(--fs-2xs) var(--mono);cursor:pointer}
   .next-cockpit-scope-options{padding:4px 0}
   .next-cockpit-panel[data-next-cockpit-panel="now"]{grid-template-columns:1fr}
+  .next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{grid-template-columns:1fr}
   .next-cockpit-memos,.next-cockpit-system-details,.next-cockpit-plan-details{grid-column:1}
   .next-cockpit-memos>div{grid-template-columns:1fr}
   .next-cockpit-memos>div>[data-next-cockpit-memo-field]+[data-next-cockpit-memo-field]{border-top:1px solid var(--line);border-left:0}

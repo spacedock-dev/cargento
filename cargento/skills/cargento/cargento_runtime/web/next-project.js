@@ -178,16 +178,12 @@ function nextProjectUnhealthyCount(plans){
 
 function nextProjectDetailHeader(context){
   const project = context.project;
-  const unhealthy = nextProjectUnhealthyCount(context.plans);
-  const health = context.plans.length
-    ? `<div class="next-project-detail-status"><span>${unhealthy} ${unhealthy === 1 ? "entity" : "entities"} unhealthy — ` +
-      '<span data-next-withheld>estimate withheld</span></span></div>' : "";
   const shared = project.sharedLabelKnown
     ? `<p class="next-project-detail-collision">${esc(project.sharedLabelText)}</p>` : "";
   return '<header class="next-project-detail-header">' +
     `<h1 class="next-project-detail-name">${esc(project.key)}</h1>` +
     nextProjectValue(project.scopeText, project.scopeKnown, "next-project-scope") +
-    `<p class="next-project-detail-count">${esc(project.countLine)}</p>${shared}${health}</header>`;
+    `<p class="next-project-detail-count">${esc(project.countLine)}</p>${shared}</header>`;
 }
 
 function nextProjectGoal(project){
@@ -237,7 +233,7 @@ function nextProjectView(project){
     return '<div class="next-project-detail-empty"><p>Not present in the current payload.</p>' +
       '<a href="#n=projects" data-next-route="projects">View all projects</a></div>';
   }
-  // The frozen model omits Spacedock strips and published task totals. Keep the
+  // The shared model omits Spacedock strips and published task totals. Keep the
   // shipped plan helpers on their original records until that interface carries them.
   const sources = new Map(nextPayloadSessions(nextData).map(session => [nextSessionKey(session), session]));
   const group = {label: observed.key, sessions: observed.sessions.map(session =>

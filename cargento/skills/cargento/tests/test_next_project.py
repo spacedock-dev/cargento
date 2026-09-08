@@ -152,7 +152,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("blocked on you", pending)
         self.assertNotIn("stalled", pending)
 
-    def test_the_header_estimate_is_withheld_and_the_unhealthy_entity_count_is_real(self) -> None:
+    def test_now_plan_status_withholds_estimates_and_counts_unhealthy_entities(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         status = re.search(r'<div class="next-project-detail-status"[\s\S]*?</div>', html)
@@ -163,8 +163,10 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             "2 entities unhealthy — <span data-next-withheld>estimate withheld",
             status_html,
         )
-        self.assertNotIn("no estimate left", status_html)
-        self.assertNotIn("no confidence", status_html)
+        self.assertIn("no estimate left", status_html)
+        self.assertIn("no confidence", status_html)
+        self.assertEqual(1, html.count('class="next-project-detail-status"'))
+        self.assertGreater(html.index(status_html), html.index('data-next-cockpit-panel="now"'))
 
     def test_the_unhealthy_entity_label_uses_the_singular(self) -> None:
         html = self.render(
@@ -395,14 +397,8 @@ console.log(JSON.stringify({goal: nextProjectGoal(v2Project), changes: nextProje
             V2_MODEL_FIXTURE
             + """
 nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
-// RC-3 folding follows this merge; these renderers must remain callable now.
-nextViewBody = () => {
-  const context = {project: v2Project};
-  return nextProjectDetailHeader({...context, plans: []}) + nextProjectGoal(v2Project) +
-    nextProjectChanges(v2Project) + '<div data-rail-project="' + context.project.key + '">rail</div>';
-};
 nextData = {generated: 10000, sessions: []};
-nextRoute = {view: "project", project: "alpha/repo", session: null};
+nextRoute = {view: "project", project: "alpha/repo", session: null, tab: "course"};
 __els.app = {innerHTML: ""};
 nextWorkstreamCollapsed = false;
 renderNext();
@@ -422,7 +418,7 @@ console.log(JSON.stringify({open, closed, reopened: __els.app.innerHTML}));
             self.assertIn("Exact location not published", html)
             self.assertIn("1 of 1 sessions publish no goal.", html)
             self.assertIn("no state changes observed in the last 3m", html)
-            self.assertIn('data-rail-project="alpha/repo"', html)
+            self.assertIn('data-next-cockpit-panel="course"', html)
         self.assertIn('aria-expanded="true"', out["open"])
         self.assertIn('aria-expanded="false"', out["closed"])
         self.assertNotIn('class="next-workstream-empty"', out["closed"])
