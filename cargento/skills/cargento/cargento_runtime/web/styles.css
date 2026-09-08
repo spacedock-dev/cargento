@@ -16,7 +16,9 @@
   --fs-2xs:11.5px; --fs-xs:12.5px; --fs-sm:14px; --fs-md:15.5px; --fs-lg:17px; --fs-xl:19px;
   --fs-2xl:23px; --fs-num:28px; --fs-brand:38px; --fs-hero:52px;
   /* Additional steps come from Cargento-v2.dc.html, not a re-derived scale. */
-  --fs-label:9.5px; --fs-meta:10px; --fs-meta-detail:10.5px; --fs-machine:11px;
+  /* 9px is the operations table's column header, the smallest label the
+     prototype draws. It is a label, never a sentence: see ruling R9. */
+  --fs-column:9px; --fs-label:9.5px; --fs-meta:10px; --fs-meta-detail:10.5px; --fs-machine:11px;
   --fs-breadcrumb:12px; --fs-body:13px; --fs-summary:13.5px; --fs-lead:14.5px;
   --fs-section:15px; --fs-subheading:16px; --fs-project-title:22px;
   --fs-counter:27px; --fs-figure:32px;

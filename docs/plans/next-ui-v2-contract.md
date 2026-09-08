@@ -182,6 +182,37 @@ once, in the integration pass.
 The scaffolding pass is the one exception: it runs alone, before A–E, and owes
 them a green baseline, so it recomputes every pin it moves.
 
+### R9 · The type floor applies to the board's sentences, not to its labels
+
+§4 and the prototype disagree: the prototype renders twelve board sentences at
+10–10.5px, two of which are §1's own flagship strings. Ruled, by the person who
+wrote both: **§4 wins for sentences, the prototype wins for everything else.**
+
+Raise to `--fs-xs` (12.5px):
+
+| String | Where |
+| -- | -- |
+| `No pending step published` | next step, projects rows and operations table |
+| `harness does not report blocks` | the block sub-line |
+| `Waiting on one complete token-rate window.` | delegation, absent state |
+| `3 of 10 sessions publish no goal…` | the goal-gap line |
+| `Per-model sub-limits publish no clock…` | the sub-limit note |
+| `No exact requests published.` | coverage caveats |
+| `Termination cause beyond the reason field is not reported` | risk sub-lines |
+| `ended leaving 3 files uncommitted` | outcome notes |
+| `Goals shown are whatever a harness publishes…` | "Not on this board yet" notes |
+| `10 sessions share this display label…` | the shared-label note |
+| `not sessions, so not in that denominator` | the board-risk note |
+| `C1 would let an observer act on these…` | the tripwire standing note |
+
+Keep at the prototype's 9–11px: uppercase mono section labels and column headers,
+identifiers (`Claude · 43ea29fa`), timestamps, durations, token rates, window
+metadata (`weekly · 7d 0h`), and control chips (`COPY RESUME`, `raise terminal`).
+
+The test: read the string aloud. If it is the board talking, it is a sentence and
+it takes `--fs-xs`. If it is a value a source published, or the name of a column,
+it is a label and it keeps its size.
+
 ### R8 · One stylesheet, delimited regions, one owner each
 
 `styles.css` stays a single file — it is named by eight call sites across the
@@ -210,3 +241,19 @@ Concurrent suites on this repository manufacture failures that read as
 regressions — loopback port binds in `test_http_api`, `subprocess.TimeoutExpired`
 in `test_lifecycle`, socket-read timeouts in `test_quota`. Run only the
 `test_next_*` modules you own. The integration pass runs the suite once.
+
+### R10 · There are four assembled-page pin sites, not three
+
+`AGENTS.md` names three files that pin the assembled page. It undercounts, measured
+here: `tests/test_next_flag.py` pins the assembled **length** at line 67 *and* its
+digest at line 69, and the two sit in different tests, so substituting only the
+digest leaves `test_the_canonical_loader_is_the_released_ui_bundle` red with a
+message that names a byte count and no file. The integration pass recomputes:
+
+| Site | Pins |
+| -- | -- |
+| `tests/test_next_page.py` | per-part length + digest, `styles.css` length + digest, assembled length + digest |
+| `tests/test_next_flag.py` | assembled length (line 67), assembled digest (line 69) |
+| `tests/test_focus.py` | assembled digest |
+
+Grep the old length as well as the old digest. Both are unique strings.
