@@ -23,7 +23,7 @@ const payload = {
      reports_needs_input: false, reports_rate: false}
   ],
   sessions: [
-    {sid: 'build', harness: 'claude', project: 'alpha', state: 'working',
+    {sid: 'build', harness: 'claude', project: 'alpha', state: 'working', active: true,
      title: 'Build', state_detail: 'running Bash', rate_per_min: 120,
      instruction: {label: 'asked', text: 'Build the parser', at: 9800},
      turn: {elapsed_h: '4m', eta_h: null, long: false},
@@ -49,7 +49,9 @@ const payload = {
     {sid: 'stop-clean', harness: 'claude', project: 'zeta', state: 'idle',
      finished_at: 9100, dirty: false, changed: 0},
     {sid: 'stop-unknown', harness: 'claude', project: 'zeta', state: 'idle',
-     finished_at: 9100, dirty: null}
+     finished_at: 9100, dirty: null},
+    {sid: 'other', harness: 'agy', project: 'theta', state: 'starting',
+     state_detail: 'An unrecognised state detail'}
   ].map(s => ({active: false, last_activity: 9900, tasks: [], subagents: [], ...s})),
   asks: [
     {id: 'a', harness: 'codex', session_id: 'gate', question: 'Approve?', age_sec: 660},
@@ -81,7 +83,7 @@ function assertAbsence(value, path = 'model') {
 }
 """
 
-    def test_every_denominator_comes_from_the_same_twelve_sessions(self) -> None:
+    def test_every_denominator_comes_from_the_same_thirteen_sessions(self) -> None:
         out = self._run_page_js(
             self.FIXTURE
             + """
@@ -97,8 +99,8 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
         assert isinstance(out, dict)
         self.assertEqual(
             {
-                "sessions": 12,
-                "running": 2,
+                "sessions": 13,
+                "running": 1,
                 "needs": 1,
                 "ended": 3,
                 "quiet": 6,
@@ -110,10 +112,10 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
         )
         self.assertEqual(
             [
-                ["ACTIVE NOW", 4, "12 recently observed"],
+                ["ACTIVE NOW", 4, "13 recently observed"],
                 ["WORKING", 2, "2 waiting on you"],
-                ["EXACT REQUESTS", 2, "2 of 12 sessions carry an exact request"],
-                ["REPORTED BLOCKS", 9, "9 of 12 sessions report block state"],
+                ["EXACT REQUESTS", 2, "2 of 13 sessions carry an exact request"],
+                ["REPORTED BLOCKS", 9, "9 of 13 sessions report block state"],
             ],
             out["counters"],
         )
@@ -125,19 +127,20 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
                 "delta": "1 session · 1 quiet",
                 "epsilon": "1 session · 1 quiet",
                 "zeta": "3 sessions · 3 quiet",
+                "theta": "1 session · 1 in no counted state",
             },
             out["counts"],
         )
         self.assertEqual(
-            "9 of 12 sessions carry a subject: 2 waiting on you · 3 at risk · 4 to close the loop.",
+            "9 of 13 sessions carry a subject: 2 waiting on you · 3 at risk · 4 to close the loop.",
             out["coverage"]["observed"],
         )
         self.assertEqual(
-            "The other 3: 2 moving · 1 quiet; of these, 1 partially read.",
+            "The other 4: 2 moving · 1 quiet · 1 in no counted state; of these, 1 partially read.",
             out["coverage"]["quiet"],
         )
         self.assertEqual(
-            "9 of 12 sessions report block state · 3 unknown · ends observed on 3 sessions",
+            "9 of 13 sessions report block state · 4 unknown · ends observed on 3 sessions",
             out["coverage"]["gates"],
         )
         self.assertEqual(4, len(out["coverage"]["rows"]))
@@ -147,7 +150,7 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
         self.assertEqual(["collision"] * 4, out["board"])
         self.assertEqual((4, 9), (out["active"], out["history"]))
         self.assertEqual(["alpha", "beta"], out["activeProjects"])
-        self.assertEqual(["zeta", "delta", "epsilon", "gamma"], out["rest"])
+        self.assertEqual(["zeta", "delta", "epsilon", "gamma", "theta"], out["rest"])
 
     def test_every_text_has_a_nonempty_value_and_known_boolean(self) -> None:
         out = self._run_page_js(
@@ -194,7 +197,7 @@ console.log(JSON.stringify({lengths: [before, quota, collision].map(m => m.board
         )
         assert isinstance(out, dict)
         self.assertEqual([4, 5, 6], out["lengths"])
-        self.assertEqual([12, 12, 12], out["totals"])
+        self.assertEqual([13, 13, 13], out["totals"])
         self.assertEqual([out["observed"][0]] * 3, out["observed"])
 
     def test_pure_stable_ranking_and_shared_session_objects(self) -> None:
@@ -218,7 +221,9 @@ console.log(JSON.stringify({unchanged, deterministic: JSON.stringify(a) === JSON
         self.assertTrue(out["unchanged"])
         self.assertTrue(out["deterministic"])
         self.assertTrue(out["shared"])
-        self.assertEqual(["alpha", "beta", "zeta", "delta", "epsilon", "gamma"], out["order"])
+        self.assertEqual(
+            ["alpha", "beta", "zeta", "delta", "epsilon", "gamma", "theta"], out["order"]
+        )
         self.assertEqual(out["order"], out["reverse"])
 
     def test_six_outcomes_use_observed_stops_ends_and_git_without_readership_claims(self) -> None:
@@ -302,7 +307,7 @@ console.log(JSON.stringify({delegation: p.delegation, changes: p.changes,
         self.assertTrue(out["delegation"]["pctFloor"])
         self.assertIn("2 sessions have no closed working interval", out["delegation"]["noteText"])
         self.assertEqual(3, len(out["changes"]))
-        self.assertEqual("1 of 3 unattended · last 20m", out["note"])
+        self.assertEqual("1 of 3 unattended · last 2h 30m", out["note"])
         self.assertEqual("Build the parser", out["goal"])
         self.assertEqual("2 of 3 sessions publish no goal.", out["gap"])
 
@@ -396,3 +401,299 @@ console.log(JSON.stringify({risks: m.risks.map(r => r.kind),
         self.assertEqual(["ask"], out["board"])
         self.assertEqual(0, out["exact"])
         self.assertEqual([False, True], out["outcomes"])
+
+    def test_model_sessions_retain_controls_and_use_the_shipped_token_validation(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + self.WALK
+            + """
+document.querySelector = selector => selector === NEXT_FOCUS_META
+  ? {getAttribute: () => 'test-capability'} : null;
+payload.sessions[0].focusable = true;
+payload.sessions[0].resume_id = 'published-resume-token';
+const m = nextObserved(payload);
+assertAbsence(m);
+const session = m.sessions[0];
+const raise = nextSessionRaiseControl(session);
+const resume = nextSessionResumeControl(session);
+payload.sessions[0].resume_id = '-invalid-option';
+payload.sessions[0].focusable = false;
+const invalid = nextObserved(payload);
+console.log(JSON.stringify({focusable: session.focusable, resume_id: session.resume_id,
+  command: nextResumeCommand(session), raise, resume,
+  rejected: nextResumeCommand(invalid.sessions[0]), absentRaise: nextSessionRaiseControl(invalid.sessions[0]),
+  preservedInvalid: invalid.sessions[0].resume_id,
+  sameCounts: JSON.stringify(m.totals) === JSON.stringify(invalid.totals),
+  sameTone: session.tone === invalid.sessions[0].tone,
+  absentToken: m.sessions[1].resume_id,
+  noHarnessPair: !('harnessText' in session) && !('harnessKnown' in session)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["focusable"])
+        self.assertEqual("published-resume-token", out["resume_id"])
+        self.assertEqual("claude --resume published-resume-token", out["command"])
+        self.assertIn('data-next-raise-session="build"', out["raise"])
+        self.assertIn(
+            'data-next-copy-command="claude --resume published-resume-token"', out["resume"]
+        )
+        self.assertEqual("", out["rejected"])
+        self.assertEqual("", out["absentRaise"])
+        self.assertEqual("-invalid-option", out["preservedInvalid"])
+        self.assertIsNone(out["absentToken"])
+        self.assertTrue(out["sameCounts"])
+        self.assertTrue(out["sameTone"])
+        self.assertTrue(out["noHarnessPair"])
+
+    def test_recency_keeps_a_session_in_the_working_lane_without_claiming_liveness(self) -> None:
+        out = self._run_page_js(
+            """
+const m = nextObserved({sessions: [
+  {sid: 'recent', harness: 'claude', project: 'p', state: 'working', active: false},
+  {sid: 'live', harness: 'claude', project: 'p', state: 'working', active: true},
+  {sid: 'ended', harness: 'claude', project: 'p', state: 'working', active: true, ended_at: 99},
+  {sid: 'unmeasured', harness: 'claude', project: 'p', state: 'working', active: null}
+]});
+console.log(JSON.stringify({sessions: m.sessions.map(s => [s.sid, s.isWorking, s.isLive]),
+  active: m.active.map(s => s.sid), running: m.totals.running,
+  working: m.counters.find(c => c.label === 'WORKING').value}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                ["recent", True, False],
+                ["live", True, True],
+                ["ended", False, False],
+                ["unmeasured", True, False],
+            ],
+            out["sessions"],
+        )
+        self.assertEqual(["live", "recent", "unmeasured"], out["active"])
+        self.assertEqual(1, out["running"])
+        self.assertEqual(3, out["working"])
+
+    def test_capacity_empty_reasons_are_available_even_for_a_filtered_empty_list(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + self.WALK
+            + """
+const empty = nextObserved(payload);
+payload.usage = [{harness: 'codex', state: 'ok', week: {pct: 10}}];
+const populated = nextObserved(payload);
+assertAbsence(empty);
+assertAbsence(populated);
+console.log(JSON.stringify([empty, populated].map(m => [m.capacityEmptyText,
+  m.capacityEmptyKnown, m.capacityEmptyNoteText, m.capacityEmptyNoteKnown, m.windows.length])));
+"""
+        )
+        self.assertEqual(
+            [
+                [
+                    "No quota window published",
+                    False,
+                    "No vendor window has been read for this harness.",
+                    False,
+                    count,
+                ]
+                for count in (0, 1)
+            ],
+            out,
+        )
+
+    def test_timeline_matches_the_shipped_window_without_counting_an_unobserved_tail(self) -> None:
+        out = self._run_page_js(
+            """
+const payload = {generated: 10000, sessions: [
+  {sid: 'one', harness: 'claude', project: 'p', state: 'idle'}
+], history: [
+  {sid: 'one', harness: 'claude', project: 'p', state: 'working', last_activity: 9400},
+  {sid: 'one', harness: 'claude', project: 'p', state: 'idle', last_activity: 9700}
+]};
+nextObserveWorkstream(payload);
+const oldWindow = nextWorkstreamProjectWindow('p');
+const p = nextObserved(payload).projects[0];
+console.log(JSON.stringify({legacy: nextWorkstreamWindowLabel(oldWindow),
+  window: p.delegation.windowText, note: p.changeNoteText, pct: p.delegation.pct,
+  pctKnown: p.delegation.pctKnown, changes: p.changes,
+  legacyClock: nextWorkstreamClock(9700)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("last 10m", out["legacy"])
+        self.assertEqual("last 10m", out["window"])
+        self.assertEqual("1 of 1 unattended · last 10m", out["note"])
+        self.assertFalse(out["pctKnown"])
+        self.assertIsNone(out["pct"])
+        self.assertEqual(
+            [
+                {
+                    "at": out["legacyClock"],
+                    "filled": True,
+                    "label": "became idle",
+                    "harness": "claude",
+                }
+            ],
+            out["changes"],
+        )
+        self.assertRegex(out["changes"][0]["at"], r"^\d{2}:\d{2}$")
+
+    def test_trend_matches_two_complete_six_hour_windows_and_withholds_gaps(self) -> None:
+        for steps, expected in (
+            ("[[6800, 'needs_input'], [17600, 'working'], [50000, 'idle']]", 50),
+            (
+                "[[6800, 'working'], [28400, 'needs_input'], [39200, 'working'], [50000, 'idle']]",
+                -50,
+            ),
+            ("[[6800, 'working'], [50000, 'idle']]", 0),
+        ):
+            with self.subTest(delta=expected):
+                out = self._run_page_js(
+                    self.WALK
+                    + f"""
+const identity = {{sid: 'one', harness: 'claude', project: 'p'}};
+const payload = {{generated: 50000, sessions: [{{...identity, state: 'idle'}}],
+  history: {steps}.map(([at, state]) => ({{...identity, last_activity: at, state}}))}};
+nextObserveWorkstream(payload);
+const p = nextObserved(payload).projects[0];
+assertAbsence(p);
+const legacy = nextDelegationTrend(nextWorkstreamProjectWindow('p'));
+payload.generated += 1;
+const gap = nextObserved(payload).projects[0].delegation;
+console.log(JSON.stringify({{trend: p.delegation.trendText, delta: p.delegation.trendDelta,
+  known: p.delegation.trendKnown, legacy, gap}}));
+"""
+                )
+                assert isinstance(out, dict)
+                self.assertEqual(expected, out["legacy"])
+                self.assertEqual(expected, out["delta"])
+                self.assertEqual(f"{expected:+}" if expected > 0 else str(expected), out["trend"])
+                self.assertTrue(out["known"])
+                self.assertFalse(out["gap"]["trendKnown"])
+                self.assertIsNone(out["gap"]["trendDelta"])
+                self.assertEqual(
+                    "Two complete six-hour delegation readings are not available",
+                    out["gap"]["trendText"],
+                )
+
+    def test_goal_normalization_keeps_internal_whitespace_authoritative(self) -> None:
+        out = self._run_page_js(
+            """
+const m = nextObserved({sessions: [{sid: 'goal', harness: 'claude', project: 'p',
+  instruction: {label: 'asked', text: '  Build  the\\n parser.  '}}]});
+console.log(JSON.stringify(m.projects[0].goalText));
+"""
+        )
+        self.assertEqual("Build  the\n parser.", out)
+
+    def test_active_and_history_key_sets_are_disjoint(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+payload.asks.push({id: 'ended-question', harness: 'agy', session_id: 'end-clean',
+  question: 'Read this result?'});
+const m = nextObserved(payload);
+const activeKeys = new Set(m.active.map(nextSessionKey));
+const historyKeys = new Set(m.history.map(nextSessionKey));
+console.log(JSON.stringify({intersection: [...activeKeys].filter(key => historyKeys.has(key)),
+  asksActive: ['exact', 'end-clean'].map(sid => m.active.some(s => s.sid === sid && s.isActive)),
+  predicates: m.active.every(s => s.isActive) && m.history.every(s => !s.isActive)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([], out["intersection"])
+        self.assertEqual([True, True], out["asksActive"])
+        self.assertTrue(out["predicates"])
+
+    def test_active_length_plus_history_length_equals_totals_sessions(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+// A duplicate request row must not numerically cancel the missing unknown row.
+payload.asks = [];
+const m = nextObserved(payload);
+const allKeys = m.sessions.map(nextSessionKey).sort();
+const laneKeys = [...m.active, ...m.history].map(nextSessionKey).sort();
+console.log(JSON.stringify({total: m.totals.sessions, laneTotal: m.active.length + m.history.length,
+  keys: JSON.stringify(allKeys) === JSON.stringify(laneKeys),
+  awkward: m.history.some(s => s.sid === 'other' && !s.isActive && !s.isLive)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(13, out["total"])
+        self.assertEqual(out["total"], out["laneTotal"])
+        self.assertTrue(out["keys"])
+        self.assertTrue(out["awkward"])
+
+    def test_unrecognised_and_absent_states_publish_a_reason_and_keep_exact_requests(self) -> None:
+        out = self._run_page_js(
+            self.FIXTURE
+            + self.WALK
+            + """
+const source = payload.sessions.find(s => s.sid === 'other');
+const cases = ['starting', undefined, null, ''].map(state => {
+  source.state = state;
+  const m = nextObserved(payload);
+  assertAbsence(m);
+  const s = m.sessions.find(s => s.sid === 'other');
+  return [s.state, s.nowText, s.nowKnown, s.isActive, m.history.includes(s)];
+});
+payload.asks.push({id: 'other-question', harness: 'agy', session_id: 'other', question: 'Continue?'});
+const m = nextObserved(payload);
+console.log(JSON.stringify({cases, askedActive: m.active.some(s => s.sid === 'other'),
+  askedHistory: m.history.some(s => s.sid === 'other')}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                [state, "No state published", False, False, True]
+                for state in ("starting", "", "", "")
+            ],
+            out["cases"],
+        )
+        self.assertTrue(out["askedActive"])
+        self.assertFalse(out["askedHistory"])
+
+    def test_lanes_inherit_shipped_bucket_order_without_resorting_gates(self) -> None:
+        out = self._run_page_js(
+            """
+const payload = {generated: 10000, ask: true, sessions: [
+  {sid: 'idle-old', state: 'idle', last_activity: 8000},
+  {sid: 'short-z', state: 'working'},
+  {sid: 'gate-z', state: 'needs_input'},
+  {sid: 'idle-ask', state: 'idle', last_activity: 9950},
+  {sid: 'long-z', state: 'working', turn: {long: true}},
+  {sid: 'gate-a', state: 'needs_input'},
+  {sid: 'end-long', state: 'working', turn: {long: true}, ended_at: 9900},
+  {sid: 'other', state: 'starting'},
+  {sid: 'short-a', state: 'working'},
+  {sid: 'idle-b', state: 'idle', last_activity: 9000},
+  {sid: 'idle-a', state: 'idle', last_activity: 9000},
+  {sid: 'other-ask'}
+].map(s => ({harness: 'claude', project: 'p', ...s})), asks: [
+  {id: 'idle-question', session_id: 'idle-ask', question: 'Choose?'},
+  {id: 'other-question', session_id: 'other-ask', question: 'Continue?'}
+]};
+const before = JSON.stringify(payload);
+const m = nextObserved(payload);
+nextData = payload;
+const buckets = nextSessionBlocks();
+const ordered = [...buckets.gates, ...buckets.working, ...buckets.idle, ...buckets.other];
+console.log(JSON.stringify({active: m.active.map(s => s.sid), history: m.history.map(s => s.sid),
+  legacyActive: ordered.filter(s => nextOperationsIsActive(s, payload.asks)).map(s => s.sid),
+  legacyHistory: ordered.filter(s => !nextOperationsIsActive(s, payload.asks)).map(s => s.sid),
+  unchanged: before === JSON.stringify(payload),
+  shared: [...m.active, ...m.history].every(s => m.sessions.includes(s))}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            ["gate-z", "gate-a", "long-z", "short-a", "short-z", "idle-ask", "other-ask"],
+            out["active"],
+        )
+        self.assertEqual(["end-long", "idle-a", "idle-b", "idle-old", "other"], out["history"])
+        self.assertEqual(out["legacyActive"], out["active"])
+        self.assertEqual(out["legacyHistory"], out["history"])
+        self.assertTrue(out["unchanged"])
+        self.assertTrue(out["shared"])
