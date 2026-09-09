@@ -196,6 +196,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="report where each harness's data is searched for, and exit",
     )
+    parser.add_argument(
+        "--observer-model",
+        action="store_true",
+        help="offer model goal summaries; requires disclosure consent on refresh",
+    )
+    parser.add_argument(
+        "--no-observer-model",
+        "--no-harness-usage",
+        action="store_true",
+        help="refuse observer model calls for this run, overriding --observer-model",
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
     parser.add_argument(
         "--no-spacedock",
@@ -352,6 +363,7 @@ def build_runtime(
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
         usage_fetch_enabled=not args.no_usage,
+        observer_model_enabled=args.observer_model and not args.no_observer_model,
         git_probe_enabled=not args.no_git,
         focus_enabled=not args.no_focus,
         dismissals_enabled=not args.no_dismiss,

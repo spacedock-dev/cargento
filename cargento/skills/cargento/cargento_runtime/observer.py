@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from typing import TYPE_CHECKING, Any, Protocol
 
 from . import io as runtime_io
@@ -40,10 +41,32 @@ NO_GOAL_REASON = "generic-opener-only-no-work"
 OBSERVER_MODEL = "gpt-5.6-luna"
 OBSERVER_MODEL_REASONING_EFFORT = "max"
 OBSERVER_MODEL_TIMEOUT_SEC = 60
+OBSERVER_MODEL_MAX_PROMPT_BYTES = 16_384
+_MODEL_FLIGHT_LOCK = threading.Lock()
+_MODEL_IN_FLIGHT: set[tuple[str, str]] = set()
 
 # How many recent messages a model caller is shown. Twenty is one working
 # stretch on the sessions this was read against, not a tuned figure.
 _MODEL_CONTEXT_MESSAGES = 20
+# Read-only shell sandboxing still permits reading files. Disable the CLI's
+# execution and integration surfaces too; ignoring user config alone leaves
+# default-on hooks and plugin discovery available in current Codex builds.
+_MODEL_DISABLED_FEATURES = (
+    "shell_tool",
+    "unified_exec",
+    "shell_snapshot",
+    "hooks",
+    "plugins",
+    "apps",
+    "multi_agent",
+    "multi_agent_v2",
+    "browser_use",
+    "computer_use",
+    "image_generation",
+    "skill_search",
+    "code_mode",
+    "tool_suggest",
+)
 _CHILD_ACTIVITY_BYTES = 2 * 1024 * 1024
 
 # A session id in a sidecar filename. Deliberately narrower than anything a
@@ -129,10 +152,8 @@ class ModelCaller(Protocol):
     cannot produce one. None is the only failure signal: the analyzer degrades
     to the deterministic fallback rather than raising.
 
-    Nothing in the shipped tree passes one. It is the seam for the derivation
-    the design calls for and this module does not yet make, kept typed so the
-    bound above (the sentinel short-circuit, the cap on what goes out and on
-    what comes back) is written down before there is a caller to forget it.
+    The project observer passes CodexGoalModel only after explicit enablement
+    and per-request disclosure consent. The deterministic analyzer needs neither.
     """
 
     def __call__(self, recent_text: str, entity_stage: str) -> str | None: ...
@@ -148,12 +169,22 @@ class CodexGoalModel:
         runner: Any = subprocess.run,
         binary_resolver: Any = shutil.which,
         child_assignment: bool = False,
+        consent: bool = False,
+        session_key: str = "",
     ) -> None:
         self.config = config
         self.runner = runner
         self.binary_resolver = binary_resolver
         self.child_assignment = child_assignment
-        self.status = "not-run"
+        self.consent = consent
+        self.session_key = session_key
+        self.status = (
+            "disabled"
+            if not config.observer_model_enabled
+            else "not-run"
+            if consent and session_key
+            else "consent-required"
+        )
 
     def metadata(self) -> dict[str, str]:
         return {
@@ -164,8 +195,27 @@ class CodexGoalModel:
         }
 
     def __call__(self, recent_text: str, entity_stage: str) -> str | None:
+        if not self.config.observer_model_enabled:
+            self.status = "disabled"
+            return None
+        if not self.consent or not self.session_key:
+            self.status = "consent-required"
+            return None
+        key = (os.path.realpath(self.config.state_dir), self.session_key)
+        with _MODEL_FLIGHT_LOCK:
+            if key in _MODEL_IN_FLIGHT:
+                self.status = "in-flight"
+                return None
+            _MODEL_IN_FLIGHT.add(key)
+        try:
+            return self._invoke(recent_text, entity_stage)
+        finally:
+            with _MODEL_FLIGHT_LOCK:
+                _MODEL_IN_FLIGHT.discard(key)
+
+    def _invoke(self, recent_text: str, entity_stage: str) -> str | None:
         binary = self.binary_resolver("codex")
-        if not binary:
+        if not binary or not os.path.isabs(binary):
             self.status = "unavailable"
             return None
         os.makedirs(self.config.state_dir, mode=0o700, exist_ok=True)
@@ -184,6 +234,13 @@ class CodexGoalModel:
             f"{recent_text}\n"
             "</transcript_excerpt>\n"
         )
+        # Redact the complete prompt before the UTF-8 bound; clipping first can
+        # turn a recognizable credential into an unrecognizable fragment.
+        prompt = (
+            records.redact_secrets(prompt)
+            .encode("utf-8", "replace")[:OBSERVER_MODEL_MAX_PROMPT_BYTES]
+            .decode("utf-8", "ignore")
+        )
         output_path = ""
         try:
             with tempfile.NamedTemporaryFile(
@@ -197,6 +254,17 @@ class CodexGoalModel:
                 binary,
                 "exec",
                 "--ignore-user-config",
+                *[
+                    item
+                    for feature in _MODEL_DISABLED_FEATURES
+                    for item in ("--config", f"features.{feature}=false")
+                ],
+                "--config",
+                'web_search="disabled"',
+                "--config",
+                "project_doc_max_bytes=0",
+                "--config",
+                "skills.include_instructions=false",
                 "--model",
                 OBSERVER_MODEL,
                 "--config",
@@ -289,6 +357,23 @@ def _blocks_carry_tool_result(content: Any) -> bool:
     )
 
 
+def _redacted_message_content(value: Any, depth: int = 0) -> Any:
+    """Redact before extract_text can cut a credential into an unrecognizable prefix."""
+    if depth > 4:
+        return None
+    if isinstance(value, str):
+        return records.redact_secrets(value)
+    if isinstance(value, list):
+        return [_redacted_message_content(item, depth + 1) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _redacted_message_content(value[key], depth + 1)
+            for key in ("text", "content", "message", "prompt", "value")
+            if key in value
+        }
+    return None
+
+
 def _message_from(role: Any, content: Any, harness: str, cap: int) -> dict[str, str] | None:
     """The (role, text) pair for one already-unwrapped message, or None.
 
@@ -310,7 +395,7 @@ def _message_from(role: Any, content: Any, harness: str, cap: int) -> dict[str, 
         return None
     if _blocks_carry_tool_result(content):
         return None
-    text = records.extract_text(content, cap=cap).strip()
+    text = records.extract_text(_redacted_message_content(content), cap=cap).strip()
     if not text:
         return None
     if role == "assistant":

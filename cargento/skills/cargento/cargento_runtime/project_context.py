@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import hashlib
 import json
 import os
 import re
 import shlex
+import shutil
+import stat
 import subprocess
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -77,11 +80,9 @@ _SEMANTIC_FACT_TYPES = {
 }
 _DISPATCH_BUILD_RE = re.compile(r"^\s*spacedock\s+dispatch\s+build(?:\s+(.*))?$", re.IGNORECASE)
 # This is transcript grammar from the dispatch contract, not a location we create or write.
-_DISPATCH_DIRECTORY = "/tmp/spacedock-dispatch"  # noqa: S108
+_DISPATCH_DIRECTORY = "/tmp/spacedock-dispatch"  # noqa: S108 — legacy producer path; checked file reads below.
+DISPATCH_MAX_BYTES = 64 * 1024
 _DISPATCH_FILE_PREFIX = f"{_DISPATCH_DIRECTORY}/spacedock-ensign-"
-_DISPATCH_ARTIFACT_RE = re.compile(
-    re.escape(_DISPATCH_FILE_PREFIX) + r"[A-Za-z0-9][A-Za-z0-9._-]*\.md"
-)
 _DISPATCH_VALUE_OPTIONS = {
     "--checklist-file",
     "--host",
@@ -164,7 +165,11 @@ def _run_project_workflow_discovery(
     root: str,
     runner: Any,
 ) -> dict[str, Any]:
-    executable = os.environ.get("SPACEDOCK_BIN") or "spacedock"
+    executable = os.environ.get("SPACEDOCK_BIN") or shutil.which("spacedock")
+    if not executable or not os.path.isabs(executable):
+        return _discovery_result(
+            "unavailable", "Spacedock discovery command requires an absolute path"
+        )
     argv = [executable, "status", "--discover"]
     try:
         completed = runner(
@@ -175,6 +180,7 @@ def _run_project_workflow_discovery(
             timeout=WORKFLOW_DISCOVERY_TIMEOUT_SEC,
             check=False,
             shell=False,
+            env={"PATH": os.defpath, "HOME": config.home, "LANG": "C.UTF-8"},
         )
     except FileNotFoundError:
         return _discovery_result("unavailable", "Spacedock discovery command unavailable")
@@ -300,13 +306,14 @@ def _observe_session(
     config: RuntimeConfig,
     state: RuntimeState,
     transcript_path: str,
-    harness: str,
-    sid: str,
+    identity: tuple[str, str],
     *,
     now: float,
     refresh: bool,
     child_activity_fallback: bool = False,
+    model_consent: bool = False,
 ) -> dict[str, Any] | None:
+    harness, sid = identity
     signature = _transcript_signature(transcript_path)
     cached = observer.read_sidecar(config, harness, sid)
     cached_payload = cached if isinstance(cached, dict) else {}
@@ -331,17 +338,23 @@ def _observe_session(
             "snapshot_status": model_metadata["status"],
         }
 
-    caller = observer.CodexGoalModel(config, child_assignment=child_activity_fallback)
+    caller = observer.CodexGoalModel(
+        config,
+        child_assignment=child_activity_fallback,
+        consent=model_consent,
+        session_key=f"{harness}:{sid}",
+    )
+    model = caller if config.observer_model_enabled and model_consent else None
     result = observer.analyze(
         config,
         state,
         transcript_path,
         now=now,
         window_sec=config.window_hours * 3600,
-        model=caller,
+        model=model,
     )
-    if child_activity_fallback and result.get("goal") == observer.NO_GOAL:
-        result["goal"] = observer.derive_child_assignment(config, transcript_path, caller)
+    if child_activity_fallback and model is not None and result.get("goal") == observer.NO_GOAL:
+        result["goal"] = observer.derive_child_assignment(config, transcript_path, model)
         if result["goal"] != observer.NO_GOAL:
             result["reason"] = "derived-from-readable-child-activity"
     model_metadata = caller.metadata()
@@ -550,15 +563,31 @@ def _subagent_tasks(arguments: dict[str, Any]) -> list[str]:
     return tasks
 
 
+def _dispatch_directories() -> tuple[str, ...]:
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if runtime and os.path.isabs(runtime):
+        return (os.path.join(runtime, "spacedock-dispatch"), _DISPATCH_DIRECTORY)
+    return (_DISPATCH_DIRECTORY,)
+
+
 def _dispatch_artifact(text: str) -> str:
-    match = _DISPATCH_ARTIFACT_RE.search(text)
-    return match.group(0) if match is not None else ""
+    for directory in _dispatch_directories():
+        pattern = re.escape(directory + "/spacedock-ensign-") + r"[A-Za-z0-9][A-Za-z0-9._-]*\.md"
+        match = re.search(pattern, text)
+        if match is not None:
+            return match.group(0)
+    return ""
 
 
 def _dispatch_artifact_identity(artifact: str) -> tuple[str, str] | None:
-    if not artifact.startswith(_DISPATCH_FILE_PREFIX) or not artifact.endswith(".md"):
+    directory, name = os.path.split(artifact)
+    if (
+        directory not in _dispatch_directories()
+        or not name.startswith("spacedock-ensign-")
+        or not name.endswith(".md")
+    ):
         return None
-    name = artifact[len(_DISPATCH_FILE_PREFIX) : -len(".md")]
+    name = name[len("spacedock-ensign-") : -len(".md")]
     slug, separator, stage = name.rpartition("-")
     if not separator or not spacedock.SD_STAGE_RE.fullmatch(slug):
         return None
@@ -567,16 +596,51 @@ def _dispatch_artifact_identity(artifact: str) -> tuple[str, str] | None:
     return slug, stage
 
 
+def _read_dispatch_artifact(artifact: str) -> str:
+    if (
+        _dispatch_artifact_identity(artifact) is None
+        or not hasattr(os, "O_NOFOLLOW")
+        or not hasattr(os, "getuid")
+    ):
+        return ""
+    directory = os.path.dirname(artifact)
+    try:
+        resolved_directory = os.path.realpath(directory)
+        if os.path.dirname(os.path.realpath(artifact)) != resolved_directory:
+            return ""
+        # The directory fd anchors the open even if an entry is replaced between
+        # realpath and open. Inspect the opened file, never a pre-open stat.
+        with contextlib.ExitStack() as stack:
+            directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            stack.callback(os.close, directory_fd)
+            if os.fstat(directory_fd).st_uid != os.getuid():
+                return ""
+            descriptor = os.open(
+                os.path.basename(artifact),
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                dir_fd=directory_fd,
+            )
+            with os.fdopen(descriptor, "rb") as handle:
+                info = os.fstat(handle.fileno())
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.getuid()
+                    or info.st_mode & 0o022
+                    or info.st_size > DISPATCH_MAX_BYTES
+                ):
+                    return ""
+                raw = handle.read(DISPATCH_MAX_BYTES + 1)
+                return raw.decode("utf-8", "replace") if len(raw) <= DISPATCH_MAX_BYTES else ""
+    except (OSError, ValueError):
+        return ""
+
+
 def _dispatch_file_assignment(artifact: str) -> str:
     """Read the bounded human work title from one exact dispatch artifact."""
     if _dispatch_artifact_identity(artifact) is None:
         return ""
     prefix = "You are working on:"
-    for raw in runtime_io.iter_bounded_text_lines(
-        artifact,
-        max_lines=40,
-        per_line_bytes=2048,
-    ):
+    for raw in _read_dispatch_artifact(artifact).splitlines()[:40]:
         line = raw.strip()
         if line.startswith(prefix):
             return records.safe_text(line[len(prefix) :].strip(), MAX_SEMANTIC_LINE)
@@ -1113,14 +1177,21 @@ def _codex_dispatch_artifact(task_name: str) -> tuple[str, str, str, str] | None
     if match is None:
         return None
     stem = match.group(1).replace("_", "-")
-    artifact = f"{_DISPATCH_FILE_PREFIX}{stem}.md"
+    artifact = next(
+        (
+            candidate
+            for directory in _dispatch_directories()
+            if _read_dispatch_artifact(candidate := f"{directory}/spacedock-ensign-{stem}.md")
+        ),
+        "",
+    )
     identity = _dispatch_artifact_identity(artifact)
     if identity is None or not os.path.isfile(artifact):
         return None
     entity, stage = identity
     assignment = _dispatch_file_assignment(artifact)
     workflow = ""
-    for raw in runtime_io.iter_bounded_text_lines(artifact, max_lines=80, per_line_bytes=2048):
+    for raw in _read_dispatch_artifact(artifact).splitlines()[:80]:
         if "--workflow-dir" not in raw:
             continue
         try:
@@ -2978,6 +3049,7 @@ def _active_child_assignments(
     *,
     now: float,
     refresh: bool,
+    model_consent: bool = False,
 ) -> list[dict[str, Any]]:
     hierarchy = session.get("subagent_hierarchy")
     if not isinstance(hierarchy, list):
@@ -3046,11 +3118,11 @@ def _active_child_assignments(
             config,
             state,
             transcript_path,
-            "codex",
-            child_sid,
+            ("codex", child_sid),
             now=now,
             refresh=refresh,
             child_activity_fallback=True,
+            model_consent=model_consent,
         )
         if observed is None:
             assignments.append({**row, "assignment": None, "confidence": "unavailable"})
@@ -3085,6 +3157,7 @@ def collect(
     now: float,
     refresh: bool = False,
     focus: tuple[str, str] | None = None,
+    model_consent: bool = False,
 ) -> dict[str, Any]:
     """Observer results and a real project event log for exact-label sessions."""
     analysis_sessions, omitted, scope, surrounding_active = _analysis_context_sessions(
@@ -3135,6 +3208,7 @@ def collect(
                 session,
                 now=now,
                 refresh=refresh,
+                model_consent=model_consent,
             )
         transcript_path = observer.resolve_transcript(config, state, harness, sid)
         if transcript_path is None:
@@ -3144,10 +3218,10 @@ def collect(
             config,
             state,
             transcript_path,
-            harness,
-            sid,
+            (harness, sid),
             now=now,
             refresh=refresh and is_focused,
+            model_consent=model_consent,
         )
         if result is not None:
             observers.append(
@@ -3211,6 +3285,16 @@ def collect(
         attention_coverage,
     )
     return {
+        "observer_model": {
+            "enabled": config.observer_model_enabled,
+            "max_prompt_bytes": observer.OBSERVER_MODEL_MAX_PROMPT_BYTES,
+            "disclosure": (
+                "Send redacted transcript excerpts and workflow stage to OpenAI through Codex "
+                "for a goal summary? Each prompt is capped at 16 KiB, with a 60-second timeout "
+                "and one call in flight per session. A focused refresh can include up to three "
+                "active child sessions. --no-observer-model refuses calls for this run."
+            ),
+        },
         "project": project,
         "focus": {
             "harness": focus[0],

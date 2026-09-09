@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import http.client
 import json
 import os
+import select
 import socket
 import stat
 import tempfile
@@ -226,6 +228,76 @@ class InteractionPrototypeHTTPTest(unittest.TestCase):
         while len(payload) < length:
             payload.extend(client.recv(length - len(payload)))
         return header[0] & 0x0F, bytes(payload)
+
+    def test_vendored_assets_require_feature_and_same_origin(self) -> None:
+        vendor = Path(interaction.__file__).parent / "web" / "vendor"
+        for name, content_type in (("xterm.js", "text/javascript"), ("xterm.css", "text/css")):
+            for headers, expected in (
+                ({}, 200),
+                ({"Origin": "https://evil.example"}, 403),
+                ({"Sec-Fetch-Site": "cross-site"}, 403),
+                ({"Sec-Fetch-Site": "same-site"}, 403),
+            ):
+                with self.subTest(name=name, headers=headers):
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", self.httpd.server_port, timeout=2
+                    )
+                    try:
+                        connection.request("GET", "/assets/" + name, headers=headers)
+                        response = connection.getresponse()
+                        body = response.read()
+                        self.assertEqual(expected, response.status)
+                        if expected == 200:
+                            self.assertEqual(content_type, response.getheader("Content-Type"))
+                            self.assertEqual(
+                                hashlib.sha256((vendor / name).read_bytes()).digest(),
+                                hashlib.sha256(body).digest(),
+                            )
+                    finally:
+                        connection.close()
+        self.assertEqual(0, self.adapter.prepare_count)
+        prototype = self.httpd.interaction_prototype
+        self.httpd.interaction_prototype = None
+        try:
+            for path in ("/assets/xterm.js", "/assets/xterm.css", "/assets/../observer.py"):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", self.httpd.server_port, timeout=2
+                )
+                try:
+                    connection.request("GET", path)
+                    response = connection.getresponse()
+                    response.read()
+                    self.assertEqual(404, response.status)
+                finally:
+                    connection.close()
+        finally:
+            self.httpd.interaction_prototype = prototype
+
+    def test_asset_refuses_a_nonloopback_peer_even_with_local_host_header(self) -> None:
+        handler = object.__new__(http_api._RequestHandler)
+        handler.client_address = ("192.0.2.1", 3000)
+        handler.headers = http.client.HTTPMessage()
+        with (
+            mock.patch.object(handler, "_local_ok", return_value=True),
+            mock.patch.object(handler, "send_error") as error,
+            mock.patch.object(handler, "_send") as send,
+        ):
+            handler._interaction_asset("/assets/xterm.js")
+        error.assert_called_once_with(403)
+        send.assert_not_called()
+
+    def test_stream_backlog_is_bounded_in_bytes_and_oversized_frame_disconnects(self) -> None:
+        self._request("GET", "/api/interaction/state")
+        assert self.adapter.origin is not None
+        for _index in range(50):
+            self.prototype._on_stream_output(self.adapter.origin.pane_id, "界" * 1000)
+        frame = self.prototype.wait_stream(self.httpd.server_port, 1, 0)
+        self.assertLessEqual(len(frame["data"].encode("utf-8")), 65536)
+        self.assertLessEqual(
+            sum(len(row[1].encode("utf-8")) for row in self.prototype._stream_frames), 65536
+        )
+        self.prototype._on_stream_output(self.adapter.origin.pane_id, "界" * 65536)
+        self.assertFalse(self.prototype._stream_connected)
 
     def test_exact_tmux_origin_renews_and_attaches_read_only(self) -> None:
         status, initial = self._request("GET", "/api/interaction/state")
@@ -728,6 +800,89 @@ class ControlModeParsingTest(unittest.TestCase):
             interaction._control_mode_output(b"%output %7 hello\\015\\012\xce\xbb"),
         )
         self.assertIsNone(interaction._control_mode_output(b"%session-changed $0 disposable"))
+
+
+@unittest.skipUnless(
+    hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "requires POSIX file ownership"
+)
+class RegistrationFileSecurityTest(unittest.TestCase):
+    def test_read_checks_actual_permissions_ownership_symlink_and_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registration.json"
+            path.write_text('{"port":4553}', encoding="utf-8")
+            path.chmod(0o600)
+            self.assertEqual({"port": 4553}, interaction._read_registration_file(path))
+            for mode in (0o644, 0o660, 0o606, 0o400):
+                path.chmod(mode)
+                with self.subTest(mode=mode), self.assertRaises(ValueError):
+                    interaction._read_registration_file(path)
+            path.chmod(0o600)
+            with (
+                mock.patch.object(os, "getuid", return_value=os.getuid() + 1),
+                self.assertRaises(ValueError),
+            ):
+                interaction._read_registration_file(path)
+            target = path.with_name("target.json")
+            path.rename(target)
+            path.symlink_to(target)
+            self.assertTrue(path.is_symlink())
+            with self.assertRaises((OSError, ValueError)):
+                interaction._read_registration_file(path)
+            path.unlink()
+            target.rename(path)
+            path.write_text('{"large":"' + "x" * 16384 + '"}', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                interaction._read_registration_file(path)
+
+    def test_disposable_client_writer_produces_a_private_readable_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = interaction.TmuxAdapter()
+            adapter._client_config = Path(tmp) / "client.json"
+            origin = FakeTmuxAdapter().prepare()
+            adapter._origin = origin
+            adapter.start_client(4553, "token", "codex:one", 15, origin)
+            self.assertEqual(0o600, stat.S_IMODE(adapter._client_config.stat().st_mode))
+            self.assertEqual(
+                "token",
+                interaction._read_registration_file(adapter._client_config)["registration_token"],
+            )
+
+    def test_waiting_client_cannot_use_a_public_registration_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registration.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "port": 4553,
+                        "registration_token": "secret",
+                        "cargento_session_id": "codex:one",
+                        "lease_sec": 10,
+                        "require_session_environment": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            path.chmod(0o644)
+            with mock.patch.object(interaction, "_run_tmux_client", return_value=0) as run:
+                self.assertEqual(1, interaction._run_waiting_tmux_client(path))
+            run.assert_not_called()
+
+
+class ControlModeBufferSecurityTest(unittest.TestCase):
+    def test_unterminated_control_line_is_bounded_before_next_read(self) -> None:
+        adapter = interaction.TmuxAdapter()
+        output, disconnected = mock.Mock(), mock.Mock()
+        with (
+            mock.patch.object(select, "select", return_value=([1], [], [])),
+            mock.patch.object(
+                os,
+                "read",
+                side_effect=[b"x" * 65536, b"y", AssertionError("unbounded pending line")],
+            ),
+        ):
+            adapter._read_control_mode(1, output, disconnected)
+        output.assert_not_called()
+        disconnected.assert_called_once()
 
 
 if __name__ == "__main__":

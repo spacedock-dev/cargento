@@ -18,6 +18,7 @@ import secrets
 import select
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,8 @@ LEASE_SEC: Final = 15.0
 REGISTER_TIMEOUT_SEC: Final = 2.0
 MAX_CAPTURE_CHARS: Final = 12_000
 MAX_STREAM_FRAMES: Final = 512
+MAX_STREAM_BYTES: Final = 65_536
+MAX_REGISTRATION_BYTES: Final = 16_384
 SESSION_ENVIRONMENT: Final = {
     "codex": "CODEX_THREAD_ID",
     "claude": "CLAUDE_CODE_SESSION_ID",
@@ -282,21 +285,25 @@ class TmuxAdapter:
         config_path = self._client_config
         if config_path is None:
             raise OriginUnavailableError("tmux client configuration path is missing")
-        temporary = config_path.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "port": port,
-                    "registration_token": registration_token,
-                    "cargento_session_id": cargento_session_id,
-                    "lease_sec": lease_sec,
-                    "require_session_environment": False,
-                },
-                separators=(",", ":"),
-            ),
-            encoding="utf-8",
-        )
-        os.replace(temporary, config_path)
+        temporary = config_path.with_name(f".{config_path.name}.{secrets.token_hex(4)}.tmp")
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "port": port,
+                        "registration_token": registration_token,
+                        "cargento_session_id": cargento_session_id,
+                        "lease_sec": lease_sec,
+                        "require_session_environment": False,
+                    },
+                    handle,
+                    separators=(",", ":"),
+                )
+            os.replace(temporary, config_path)
+        finally:
+            with contextlib.suppress(OSError):
+                temporary.unlink()
 
     def bind_origin(self, origin: TmuxOrigin) -> None:
         """Adopt one external origin, or verify the disposable origin already prepared."""
@@ -451,9 +458,13 @@ class TmuxAdapter:
                 pending += chunk
                 while b"\n" in pending:
                     raw_line, pending = pending.split(b"\n", 1)
+                    if len(raw_line) > MAX_STREAM_BYTES:
+                        return
                     parsed = _control_mode_output(raw_line.rstrip(b"\r"))
                     if parsed is not None:
                         on_output(*parsed)
+                if len(pending) > MAX_STREAM_BYTES:
+                    return
         except OSError:
             pass
         finally:
@@ -949,14 +960,17 @@ class InteractionPrototype:
         if path is None or not generation:
             return
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            value = _read_registration_file(path)
             if not isinstance(value, dict) or value.get("server_generation") != generation:
                 return
             path.unlink()
-        except (OSError, ValueError, json.JSONDecodeError, RecursionError):
+        except (OSError, ValueError, TypeError, json.JSONDecodeError, RecursionError):
             return
 
     def _on_stream_output(self, pane_id: str, text: str) -> None:
+        if len(text) > MAX_STREAM_BYTES or len(text.encode("utf-8", "replace")) > MAX_STREAM_BYTES:
+            self._on_stream_disconnect()
+            return
         with self._condition:
             origin = self._expected_origin
         if origin is None or pane_id != origin.pane_id:
@@ -984,6 +998,11 @@ class InteractionPrototype:
                     int(inspected.pane_rows),
                 )
             )
+            while (
+                sum(len(frame[1].encode("utf-8", "replace")) for frame in self._stream_frames)
+                > MAX_STREAM_BYTES
+            ):
+                self._stream_frames.popleft()
             self._stream_connected = True
             self._condition.notify_all()
 
@@ -1088,6 +1107,29 @@ def _run_tmux_client(
         print(f"lease renewed {renewal_count}", flush=True)
 
 
+def _read_registration_file(path: Path) -> dict[str, Any]:
+    """Read capabilities only from a private, owned, bounded regular file."""
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "getuid"):
+        raise ValueError("private registration files require POSIX ownership checks")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o600
+            or info.st_size > MAX_REGISTRATION_BYTES
+        ):
+            raise ValueError("registration file must be owned, regular, bounded and mode 0600")
+        raw = handle.read(MAX_REGISTRATION_BYTES + 1)
+    if len(raw) > MAX_REGISTRATION_BYTES:
+        raise ValueError("registration file exceeds byte limit")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise TypeError("registration file must be an object")
+    return value
+
+
 def _run_waiting_tmux_client(config_path: Path) -> int:
     """Wait inside one stable pane until the server publishes client capabilities."""
     deadline = time.monotonic() + REGISTER_TIMEOUT_SEC
@@ -1097,7 +1139,7 @@ def _run_waiting_tmux_client(config_path: Path) -> int:
             return 1
         time.sleep(0.02)
     try:
-        value = json.loads(config_path.read_text(encoding="utf-8"))
+        value = _read_registration_file(config_path)
         port = value["port"]
         registration_token = value["registration_token"]
         cargento_session_id = value["cargento_session_id"]

@@ -15,6 +15,7 @@ import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import ParseResult, parse_qs, urlparse
 
@@ -519,8 +520,37 @@ class _RequestHandler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/" and "next" not in parse_qs(url.query, keep_blank_values=True):
             self._send(self.server.page_bytes, "text/html; charset=utf-8")
+        elif url.path.startswith("/assets/"):
+            self._interaction_asset(url.path)
         elif not self._get_api(url):
             self.send_error(404)
+
+    def _loopback_resource_ok(self) -> bool:
+        site = (self.headers.get("Sec-Fetch-Site") or "").lower()
+        return (
+            ipaddress.ip_address(self.client_address[0]).is_loopback
+            and site not in {"same-site", "cross-site"}
+            and self._local_ok()
+        )
+
+    def _interaction_asset(self, path: str) -> None:
+        if not self._loopback_resource_ok():
+            self.send_error(403)
+            return
+        asset = {
+            "/assets/xterm.js": ("xterm.js", "text/javascript"),
+            "/assets/xterm.css": ("xterm.css", "text/css"),
+        }.get(path)
+        if self.server.interaction_prototype is None or asset is None:
+            self.send_error(404)
+            return
+        name, content_type = asset
+        try:
+            body = (Path(__file__).parent / "web" / "vendor" / name).read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        self._send(body, content_type)
 
     def _get_api(self, url: ParseResult) -> bool:
         """Route one GET API path, or return False so `do_GET` can 404 it.
@@ -671,6 +701,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
             now=application.clock(),
             refresh=refresh,
             focus=focus,
+            # As with usage=1, the page sends this only after disclosure consent.
+            # Quota consent does not authorize sending transcript content.
+            model_consent=(
+                refresh
+                and parse_qs(url.query).get("observer_model") == ["1"]
+                and not self._is_document_navigation()
+                and self._loopback_resource_ok()
+            ),
         )
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),

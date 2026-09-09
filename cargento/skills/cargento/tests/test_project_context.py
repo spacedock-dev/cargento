@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -177,7 +179,7 @@ class ProjectContextTest(unittest.TestCase):
             )
 
         state = build_runtime_state(self.config, started=self.NOW)
-        with mock.patch.dict(os.environ, {"SPACEDOCK_BIN": "spacedock"}):
+        with mock.patch.dict(os.environ, {"SPACEDOCK_BIN": "/opt/bin/spacedock"}):
             result = project_context.discover_project_workflows(
                 self.config,
                 state,
@@ -189,7 +191,9 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("observed", result["state"])
         self.assertEqual(["dev", "explore"], [row["workflow"] for row in result["workflows"]])
         self.assertEqual(["shaping", "review"], result["workflows"][0]["stages"])
-        self.assertEqual([["spacedock", "status", "--discover"]], [call["argv"] for call in calls])
+        self.assertEqual(
+            [["/opt/bin/spacedock", "status", "--discover"]], [call["argv"] for call in calls]
+        )
         self.assertEqual(os.path.realpath(repository), calls[0]["cwd"])
         self.assertFalse(calls[0].get("shell", False))
 
@@ -484,6 +488,17 @@ class ProjectContextTest(unittest.TestCase):
             project_context.MAX_PROJECT_OBSERVERS,
             result["sources"]["surrounding_active"],
         )
+
+    def test_refresh_without_model_consent_uses_local_analysis(self) -> None:
+        self.config = dataclasses.replace(self.config, observer_model_enabled=True)
+        with mock.patch.object(observer.CodexGoalModel, "__call__") as model:
+            result = self.collect()
+        model.assert_not_called()
+        self.assertEqual("Follow the captain revision", result["observers"][0]["goal"])
+        self.assertEqual("consent-required", result["observers"][0]["model"]["status"])
+        self.assertTrue(result["observer_model"]["enabled"])
+        self.assertEqual(16384, result["observer_model"]["max_prompt_bytes"])
+        self.assertIn("transcript", result["observer_model"]["disclosure"])
 
     def test_automatic_context_uses_stale_cache_without_model_wait(self) -> None:
         refreshed = self.collect()
@@ -1168,18 +1183,20 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("requested", model["projections"]["trail_heads"][0]["status"])
         self.assertFalse(any(fact["type"] == "work_result" for fact in model["facts"]))
 
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "requires POSIX file ownership"
+    )
     def test_dispatch_artifact_title_supplies_assignment_without_claiming_result(self) -> None:
-        artifact = "/tmp/spacedock-dispatch/spacedock-ensign-search-review.md"
-        with mock.patch(
-            "cargento_runtime.project_context.runtime_io.iter_bounded_text_lines",
-            return_value=iter(
-                [
-                    "You are working on: Review the search release evidence\n",
-                    "Stage: review\n",
-                ]
-            ),
-        ):
-            assignment = project_context._dispatch_file_assignment(artifact)
+        directory = self.root / "spacedock-dispatch"
+        directory.mkdir(mode=0o700)
+        artifact = directory / "spacedock-ensign-search-review.md"
+        artifact.write_text(
+            "You are working on: Review the search release evidence\nStage: review\n",
+            encoding="utf-8",
+        )
+        artifact.chmod(0o600)
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(self.root)}):
+            assignment = project_context._dispatch_file_assignment(str(artifact))
 
         self.assertEqual("Review the search release evidence", assignment)
         self.assertEqual("", project_context._dispatch_file_assignment("/tmp/unrelated.md"))
@@ -1983,6 +2000,170 @@ class ProjectContextTest(unittest.TestCase):
         ).encode()
 
         self.assertEqual(1, len(spacedock.boot_records(self.config, record)))
+
+
+@unittest.skipUnless(
+    hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "requires POSIX file ownership"
+)
+class DispatchSecurityTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.directory = self.root / "spacedock-dispatch"
+        self.directory.mkdir(mode=0o700)
+        self.artifact = self.directory / "spacedock-ensign-test-review.md"
+        self.artifact.write_text("You are working on: Safe assignment\n", encoding="utf-8")
+        self.artifact.chmod(0o600)
+        patch = mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(self.root)})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_private_runtime_directory_is_preferred_and_readable(self) -> None:
+        self.assertEqual(
+            "Safe assignment", project_context._dispatch_file_assignment(str(self.artifact))
+        )
+        self.assertEqual(str(self.artifact), project_context._dispatch_artifact(str(self.artifact)))
+
+    def test_real_symlink_cannot_redirect_the_read(self) -> None:
+        target = self.root / "private.md"
+        self.artifact.replace(target)
+        self.artifact.symlink_to(target)
+        self.assertTrue(self.artifact.is_symlink())
+        self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_symlinked_dispatch_directory_is_refused(self) -> None:
+        target = self.root / "elsewhere"
+        self.directory.rename(target)
+        self.directory.symlink_to(target, target_is_directory=True)
+        self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_group_and_world_writable_files_are_refused(self) -> None:
+        for mode in (0o620, 0o602, 0o666):
+            with self.subTest(mode=mode):
+                self.artifact.chmod(mode)
+                self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_wrong_uid_is_refused(self) -> None:
+        fstat = os.fstat
+
+        def foreign_file(descriptor: int) -> os.stat_result:
+            info = fstat(descriptor)
+            if stat.S_ISREG(info.st_mode):
+                fields = list(info)
+                fields[4] = os.getuid() + 1
+                return os.stat_result(fields)
+            return info
+
+        with mock.patch.object(os, "fstat", side_effect=foreign_file):
+            self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_symlink_inside_directory_is_refused_by_no_follow(self) -> None:
+        target = self.directory / "another.md"
+        self.artifact.replace(target)
+        self.artifact.symlink_to(target)
+        self.assertEqual(self.directory.resolve(), self.artifact.resolve().parent)
+        self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_symlink_swap_after_realpath_is_refused(self) -> None:
+        target = self.directory / "another.md"
+        target.write_text("You are working on: Planted title\n", encoding="utf-8")
+        target.chmod(0o600)
+        open_file = os.open
+
+        def swap(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+            if path == self.artifact.name:
+                self.artifact.unlink()
+                self.artifact.symlink_to(target)
+            return open_file(path, flags, *args, **kwargs)
+
+        with mock.patch.object(os, "open", side_effect=swap):
+            self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+        self.assertTrue(self.artifact.is_symlink())
+
+    def test_checked_fallback_works_without_xdg_runtime_directory(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": ""}),
+            mock.patch.object(project_context, "_DISPATCH_DIRECTORY", str(self.directory)),
+        ):
+            self.assertEqual(
+                "Safe assignment", project_context._dispatch_file_assignment(str(self.artifact))
+            )
+            self.artifact.chmod(0o666)
+            self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_growth_after_stat_cannot_exceed_read_cap(self) -> None:
+        with self.artifact.open("a", encoding="utf-8") as handle:
+            handle.write("x" * 65536)
+        fstat = os.fstat
+
+        def small_stat(descriptor: int) -> os.stat_result:
+            info = fstat(descriptor)
+            fields = list(info)
+            fields[6] = 20
+            return os.stat_result(fields)
+
+        with mock.patch.object(os, "fstat", side_effect=small_stat):
+            self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_realpath_escape_is_refused_before_open(self) -> None:
+        realpath = os.path.realpath
+
+        def resolve(path: Any) -> str:
+            return (
+                str(self.root / "escape.md") if str(path) == str(self.artifact) else realpath(path)
+            )
+
+        with mock.patch.object(os.path, "realpath", side_effect=resolve):
+            self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_oversized_dispatch_is_refused_even_with_title_at_start(self) -> None:
+        with self.artifact.open("a", encoding="utf-8") as handle:
+            handle.write("x" * 65536)
+        self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+    def test_fifo_is_refused_without_blocking(self) -> None:
+        self.artifact.unlink()
+        os.mkfifo(self.artifact, 0o600)
+        self.assertEqual("", project_context._dispatch_file_assignment(str(self.artifact)))
+
+
+class SpacedockExecutableSecurityTest(unittest.TestCase):
+    def test_relative_override_is_refused_without_running(self) -> None:
+        config = build_runtime_config(
+            environ={}, platform_name="linux", os_name="posix", launcher_path=Path("/server.py")
+        )
+        state = build_runtime_state(config, started=0)
+        for value in ("spacedock", "./spacedock", "bin/spacedock"):
+            runner = mock.Mock()
+            with mock.patch.dict(os.environ, {"SPACEDOCK_BIN": value}):
+                result = project_context._run_project_workflow_discovery(config, state, "/", runner)
+            runner.assert_not_called()
+            self.assertEqual("unavailable", result["state"])
+
+    def test_absolute_override_uses_minimal_environment_and_existing_bounds(self) -> None:
+        config = build_runtime_config(
+            environ={}, platform_name="linux", os_name="posix", launcher_path=Path("/server.py")
+        )
+        state = build_runtime_state(config, started=0)
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, stdout=""))
+        with mock.patch.dict(
+            os.environ,
+            {
+                "SPACEDOCK_BIN": "/opt/bin/spacedock",
+                "PLANTED_SECRET": "private",
+                "PYTHONPATH": "/evil",
+            },
+        ):
+            project_context._run_project_workflow_discovery(config, state, "/", runner)
+        self.assertEqual(["/opt/bin/spacedock", "status", "--discover"], runner.call_args.args[0])
+        options = runner.call_args.kwargs
+        self.assertEqual(2, options["timeout"])
+        self.assertFalse(options["shell"])
+        self.assertNotIn("PLANTED_SECRET", options["env"])
+        self.assertNotIn("PYTHONPATH", options["env"])
+        self.assertEqual(os.defpath, options["env"]["PATH"])
+        self.assertEqual(65536, project_context.WORKFLOW_DISCOVERY_MAX_BYTES)
 
 
 if __name__ == "__main__":

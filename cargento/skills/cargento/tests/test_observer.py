@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import cli, observer, project_context, records
 from cargento_runtime import io as runtime_io
-from cargento_runtime import observer, records
 
 from .support import (
     RuntimeTestCase,
@@ -749,11 +749,14 @@ class ObserverAnalyzerTest(unittest.TestCase):
                 self.config,
                 state_dir=Path(tmp),
                 state_home=tmp,
+                observer_model_enabled=True,
             )
             caller = observer.CodexGoalModel(
                 config,
                 runner=run,
                 binary_resolver=lambda _name: "/opt/bin/codex",
+                consent=True,
+                session_key="pi:model-test",
             )
 
             result = caller("Captain requested the exact checkpoint", "shaping")
@@ -763,6 +766,11 @@ class ObserverAnalyzerTest(unittest.TestCase):
         self.assertEqual("gpt-5.6-luna", command[command.index("--model") + 1])
         self.assertIn("model_reasoning_effort=max", command)
         self.assertIn("--ephemeral", command)
+        for feature in ("shell_tool", "unified_exec", "hooks", "plugins", "apps", "multi_agent"):
+            self.assertIn(f"features.{feature}=false", command)
+        self.assertIn('web_search="disabled"', command)
+        self.assertIn("project_doc_max_bytes=0", command)
+        self.assertIn("skills.include_instructions=false", command)
         self.assertEqual("read-only", command[command.index("--sandbox") + 1])
         self.assertIn("<transcript_excerpt>", recorded["prompt"])
         self.assertEqual("used", caller.metadata()["status"])
@@ -1492,3 +1500,220 @@ class ObserverRouteTest(RuntimeTestCase):
         self.assertEqual("I am blocked on a missing token.", payload["block"])
         self.assertEqual("", payload["stage"])  # no workflow booted
         self.assertTrue(wrote_sidecar)
+
+
+class ObserverModelSecurityTest(unittest.TestCase):
+    def test_cli_requires_opt_in_and_rollback_always_wins(self) -> None:
+        for flags, enabled in (
+            ([], False),
+            (["--observer-model"], True),
+            (["--observer-model", "--no-observer-model"], False),
+            (["--no-observer-model", "--observer-model"], False),
+        ):
+            with self.subTest(flags=flags):
+                args = cli.build_parser().parse_args(flags)
+                config, _state = cli.build_runtime(args, started=0)
+                self.assertEqual(enabled, config.observer_model_enabled)
+
+    def test_disabled_model_never_resolves_or_runs(self) -> None:
+        runner, resolver = mock.Mock(), mock.Mock()
+        caller = observer.CodexGoalModel(make_config(), runner=runner, binary_resolver=resolver)
+        self.assertIsNone(caller("private transcript", "stage"))
+        runner.assert_not_called()
+        resolver.assert_not_called()
+        self.assertEqual("disabled", caller.status)
+
+    def test_enabled_model_requires_scoped_consent_and_session(self) -> None:
+        config = dataclasses.replace(make_config(), observer_model_enabled=True)
+        for kwargs in ({}, {"consent": True}, {"session_key": "codex:one"}):
+            with self.subTest(kwargs=kwargs):
+                runner = mock.Mock()
+                caller = observer.CodexGoalModel(config, runner=runner, **kwargs)
+                self.assertIsNone(caller("private", "stage"))
+                runner.assert_not_called()
+
+    def test_relative_resolution_is_refused(self) -> None:
+        config = dataclasses.replace(make_config(), observer_model_enabled=True)
+        for binary in ("codex", "./codex", "bin/codex"):
+            runner = mock.Mock()
+            caller = observer.CodexGoalModel(
+                config,
+                runner=runner,
+                binary_resolver=mock.Mock(return_value=binary),
+                consent=True,
+                session_key="codex:one",
+            )
+            self.assertIsNone(caller("private", "stage"))
+            runner.assert_not_called()
+            self.assertEqual("unavailable", caller.status)
+
+    def test_transcript_extraction_redacts_credentials_crossing_each_earlier_cap(self) -> None:
+        secret = "AKIA" + "A" * 16
+        for cap in (2000, 8192):
+            text = "Fix the observer. " + "x" * (cap - 37) + " " + secret
+            for content in (text, [{"type": "text", "text": text}], {"content": text}):
+                with self.subTest(cap=cap, content_type=type(content).__name__):
+                    parsed = observer._message_from("user", content, "pi", cap)
+                    assert parsed is not None
+                    self.assertNotIn(secret[:-1], parsed["text"])
+                    self.assertIn("REDACTED", parsed["text"])
+
+    def test_parent_and_child_model_prompts_never_receive_clipped_credentials(self) -> None:
+        secret = "AKIA" + "A" * 16
+        with tempfile.TemporaryDirectory() as tmp:
+            config, state = make_runtime(
+                state_dir=Path(tmp), observer_model_enabled=True, spacedock_enabled=False
+            )
+            for child, cap in ((False, 8192), (True, 2000)):
+                text = "Fix the observer. " + "x" * (cap - 36) + " " + secret
+                path = Path(tmp) / f"{child}.jsonl"
+                path.write_text(
+                    json.dumps(
+                        {
+                            "type": "message",
+                            "message": {"role": "assistant" if child else "user", "content": text},
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                runner = mock.Mock(return_value=subprocess.CompletedProcess([], 1))
+                caller = observer.CodexGoalModel(
+                    config,
+                    runner=runner,
+                    binary_resolver=lambda _name: "/bin/codex",
+                    consent=True,
+                    session_key=f"pi:{child}",
+                )
+                if child:
+                    observer.derive_child_assignment(config, str(path), caller)
+                else:
+                    observer.analyze(
+                        config, state, str(path), now=0, window_sec=86400, model=caller
+                    )
+                runner.assert_called_once()
+                prompt = runner.call_args.kwargs["input"]
+                self.assertNotIn(secret[:-1], prompt)
+                self.assertIn("REDACTED", prompt)
+
+    def test_entire_prompt_is_redacted_before_utf8_byte_cap(self) -> None:
+        secret = "sk-ant-api03-" + "a" * 93
+        recorded: dict[str, Any] = {}
+
+        def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            recorded.update(kwargs)
+            return subprocess.CompletedProcess(command, 1)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = dataclasses.replace(
+                make_config(), state_dir=Path(tmp), observer_model_enabled=True
+            )
+            caller = observer.CodexGoalModel(
+                config,
+                runner=run,
+                binary_resolver=lambda _name: "/opt/bin/codex",
+                consent=True,
+                session_key="codex:one",
+            )
+            caller(secret + "界" * 20000 + secret, secret)
+        prompt = recorded["input"]
+        self.assertNotIn(secret, prompt)
+        self.assertNotIn("sk-ant-api03-", prompt)
+        self.assertIn("sk-ant-…REDACTED", prompt)
+        self.assertLessEqual(len(prompt.encode("utf-8")), observer.OBSERVER_MODEL_MAX_PROMPT_BYTES)
+        self.assertEqual(60, recorded["timeout"])
+
+    def test_one_in_flight_per_session_and_failure_releases_slot(self) -> None:
+        entered, release = threading.Event(), threading.Event()
+
+        def run(_command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+            entered.set()
+            if not release.wait(3):
+                raise RuntimeError("test did not release model")
+            raise OSError("provider unavailable")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = dataclasses.replace(
+                make_config(), state_dir=Path(tmp), observer_model_enabled=True
+            )
+            first = observer.CodexGoalModel(
+                config,
+                runner=run,
+                binary_resolver=lambda _name: "/bin/codex",
+                consent=True,
+                session_key="codex:one",
+            )
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 1))
+            second = observer.CodexGoalModel(
+                config,
+                runner=runner,
+                binary_resolver=lambda _name: "/bin/codex",
+                consent=True,
+                session_key="codex:one",
+            )
+            other = observer.CodexGoalModel(
+                config,
+                runner=runner,
+                binary_resolver=lambda _name: "/bin/codex",
+                consent=True,
+                session_key="codex:two",
+            )
+            thread = threading.Thread(target=first, args=("goal", "stage"))
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertIsNone(second("goal", "stage"))
+                self.assertEqual("in-flight", second.status)
+                runner.assert_not_called()
+                other("goal", "stage")
+                runner.assert_called_once()
+            finally:
+                release.set()
+                thread.join(3)
+            second("goal", "stage")
+            self.assertEqual(2, runner.call_count)
+
+
+class ObserverConsentRouteTest(RuntimeTestCase):
+    def test_only_explicit_refresh_consent_reaches_the_collector(self) -> None:
+        server = make_server()
+        thread = threading.Thread(target=poll_fast(server), daemon=True)
+        thread.start()
+        try:
+            for query, headers, expected in (
+                ("&refresh=1", {}, False),
+                ("&refresh=1&usage=1", {}, False),
+                ("&observer_model=1", {}, False),
+                ("&refresh=1&observer_model=1", {"Sec-Fetch-Site": "same-site"}, False),
+                ("&refresh=1&observer_model=1", {"Sec-Fetch-Site": "same-origin"}, True),
+                ("&refresh=1&observer_model=1", {}, True),
+                ("&refresh=1&observer_model=1&observer_model=0", {}, False),
+                (
+                    "&refresh=1&observer_model=1",
+                    {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"},
+                    False,
+                ),
+            ):
+                with (
+                    self.subTest(query=query, headers=headers),
+                    mock.patch.object(project_context, "collect", return_value={}) as collect,
+                ):
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", server.server_port, timeout=5
+                    )
+                    try:
+                        connection.request(
+                            "GET",
+                            "/api/project-context?project=test&session=codex:one" + query,
+                            headers=headers,
+                        )
+                        response = connection.getresponse()
+                        response.read()
+                        self.assertEqual(200, response.status)
+                        self.assertEqual(expected, collect.call_args.kwargs["model_consent"])
+                    finally:
+                        connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)

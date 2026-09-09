@@ -1250,19 +1250,14 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
     def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
         self.assertIn("## Light harness usage (asking a harness a bounded question)", self.SECURITY)
 
-    def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
-        # The load-bearing assertion. `--no-harness-usage` is the off switch the
-        # section promises the first feature will ship; until then the section
-        # says so and the parser has no such flag, so whoever adds the flag is
-        # failed here until they amend the section. The reverse does not hold and
-        # is not claimed: nothing in this suite can see a feature that uses the
-        # pathway while shipping no flag, so that half is held by review.
-        self.assertIn("No shipped feature uses this pathway today", self.SECTION)
-        self.assertIn("That flag does not exist yet", self.SECTION)
-        # argparse prints its usage to stderr before exiting, and that banner in
-        # a passing run reads like a failure to anyone watching the suite.
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            cli.build_parser().parse_args(["--no-harness-usage"])
+    def test_the_observer_pathway_is_opt_in_and_has_both_rollback_spellings(self) -> None:
+        self.assertIn("The observer model is the first implementation", self.SECTION)
+        self.assertIn("off unless `--observer-model` was supplied", self.SECTION)
+        self.assertIn("16,384 bytes", self.SECTION)
+        for flag in ("--no-observer-model", "--no-harness-usage"):
+            args = cli.build_parser().parse_args(["--observer-model", flag])
+            config, _state = cli.build_runtime(args, started=0)
+            self.assertFalse(config.observer_model_enabled)
 
     def test_the_invariant_names_the_second_outbound_kind_apart(self) -> None:
         # Invariant 1 used to call the quota poll "the single outbound
@@ -1577,6 +1572,8 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
             {
                 "--no-spacedock",
                 "--no-usage",
+                "--no-observer-model",
+                "--no-harness-usage",
                 "--no-git",
                 "--no-focus",
                 "--no-history",
@@ -1586,7 +1583,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
             },
             shipped,
         )
-        for documented in ("--no-handoff", "--no-reach", "--no-irreversible", "--no-harness-usage"):
+        for documented in ("--no-handoff", "--no-reach", "--no-irreversible"):
             with self.subTest(flag=documented):
                 self.assertNotIn(documented, shipped)
                 self.assertIn(f"`{documented}`", self.FLAT)
@@ -1645,7 +1642,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
         # falsifies both the old number and the closing clause (DRC-4434).
         self.assertNotIn("Two kinds of outbound request are in scope", self.FLAT)
         self.assertIn(
-            "Three kinds of outbound request are in scope, one shipped and two written down",
+            "Three kinds of outbound request are in scope, two implemented and one written down",
             self.FLAT,
         )
         readme = (self.ROOT / "README.md").read_text(encoding="utf-8")
