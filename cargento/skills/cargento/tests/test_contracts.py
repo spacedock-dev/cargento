@@ -1308,6 +1308,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
+            "cargento_runtime.annotations",
             "cargento_runtime.aggregate",
             "cargento_runtime.asks",
             "cargento_runtime.dismissals",

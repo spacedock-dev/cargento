@@ -1578,6 +1578,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
                 "--no-focus",
                 "--no-history",
                 "--no-dismiss",
+                "--no-annotations",
                 "--no-ask",
                 "--no-events",
             },
@@ -1880,10 +1881,10 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
             'path.startswith("/api/events/")' in do_post
         )
         gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
-        self.assertEqual(9, routes)
+        self.assertEqual(10, routes)
         self.assertEqual(2, gated)
-        self.assertIn("Writing is the nine POST routes", self.FLAT)
-        self.assertIn("There is nothing to authenticate with on seven of them", self.FLAT)
+        self.assertIn("Writing is the ten POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on eight of them", self.FLAT)
         self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
 
     def test_the_documented_framing_header_is_the_one_the_server_sends(self) -> None:

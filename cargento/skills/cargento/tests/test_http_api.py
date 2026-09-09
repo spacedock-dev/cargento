@@ -22,6 +22,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
@@ -2623,3 +2624,123 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "broken store"):
                 collect_json(24, False)
             self.assertEqual(good, json.loads(collect_json(24, False)))
+
+
+class AnnotateRouteTest(unittest.TestCase):
+    """POST /api/annotate over a real socket.
+
+    `test_annotations` covers the store. This covers the wiring, and one thing
+    the store cannot: a body field that is not a string. `records.safe_text`
+    does `str(value or "")`, so a dict reaching it publishes its Python repr,
+    which is why `/api/ask` type-checks before redacting and this does too.
+    """
+
+    def _runtime(self, **changes: Any) -> Any:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+
+    @contextlib.contextmanager
+    def _serving(self, application: Any) -> Any:
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    @staticmethod
+    def _post(port: int, body: bytes, *, declared: str | None = None) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            if declared is None:
+                conn.request(
+                    "POST", "/api/annotate", body=body, headers={"Content-Type": "text/plain"}
+                )
+            else:
+                conn.putrequest("POST", "/api/annotate")
+                conn.putheader("Content-Length", declared)
+                conn.endheaders()
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _get_data(port: int) -> int:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/data")
+            response = conn.getresponse()
+            response.read()
+            return response.status
+        finally:
+            conn.close()
+
+    def test_a_typed_goal_reaches_the_store_and_drops_the_published_body(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            # Warm the published body: without `snapshot.clear()` in the handler
+            # this is the response the next GET would reuse.
+            first = self._get_data(port)
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+        self.assertEqual((200, 200), (first, status))
+        answer = json.loads(body)
+        self.assertIs(True, answer["persisted"])
+        self.assertEqual(1, answer["revision"])
+        entry = annotation_store.find(annotation_store.load(config), "claude", "abcd1234")
+        assert entry is not None
+        self.assertEqual("Ship the cockpit", entry["revisions"][-1]["goal"])
+        self.assertIsNone(
+            state.snapshot.current((config.window_hours, False)),
+            "the published body survived the save and would be served again",
+        )
+
+    def test_a_field_that_is_not_a_string_is_refused_rather_than_stringified(self) -> None:
+        """`safe_text` would publish a dict's repr. 400 rather than a quiet 200.
+
+        The same hazard `/api/ask` type-checks for, and the reason it checks
+        before redacting rather than after.
+        """
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "s", "goal": {"k": "AKIAQQQQQQQQQQQQQQQQ"}}
+                ).encode(),
+            )
+        self.assertEqual(400, status)
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_clearing_removes_what_was_typed(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": "G"}).encode())
+            status, body = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
+            )
+        self.assertEqual(200, status)
+        self.assertEqual(0, json.loads(body)["revision"])
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_the_off_switch_answers_503_rather_than_404(self) -> None:
+        """503 for `/api/dismiss`'s reason: under the off switch the route
+        exists and the store does not, and 404 would read as a build too old."""
+        config, state = self._runtime(annotations_enabled=False)
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._post(port, json.dumps({"harness": "pi", "sid": "s"}).encode())
+        self.assertEqual(503, status)
+
+    def test_an_oversized_declared_length_is_refused_before_any_read(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _body = self._post(port, b"", declared="200000")
+        self.assertEqual(413, status)

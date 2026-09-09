@@ -226,6 +226,9 @@ class RuntimeConfig:
     # What a dismissal request may declare. Three short fields, so this is far
     # below even the event cap: nothing else is read from the body.
     dismissal_body_cap_bytes: int
+    # What an annotation request may declare. Two 240-character fields plus
+    # their keys, so 4 KiB is generous and still far below the event cap.
+    annotation_body_cap_bytes: int
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
     notification_body_cap_bytes: int
@@ -652,6 +655,7 @@ def build_runtime_config(
         annotation_max_sessions=256,
         annotation_max_revisions=16,
         annotation_text_cap_chars=240,
+        annotation_body_cap_bytes=4_096,
         dismissal_body_cap_bytes=1_024,
         history_retention_sec=history_retention_sec,
         history_max_bytes=history_max_bytes,

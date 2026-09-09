@@ -336,8 +336,13 @@ def annotate(
     if not key[0] or not key[1]:
         return False
     cap = config.annotation_text_cap_chars
-    text_goal = records.safe_text(goal, cap)
-    text_output = records.safe_text(output, cap)
+    # Type-checked before redaction, not after. `records.safe_text` does
+    # `str(value or "")`, so a dict arriving here would publish its Python repr
+    # — with whatever is inside it — rather than being refused. `/api/ask`
+    # checks for the same reason, and the endpoint above answers 400; this is
+    # the store's own floor under that.
+    text_goal = records.safe_text(goal, cap) if isinstance(goal, str) else ""
+    text_output = records.safe_text(output, cap) if isinstance(output, str) else ""
     if not text_goal and not text_output:
         return False
     stamp = time.time() if now is None else now

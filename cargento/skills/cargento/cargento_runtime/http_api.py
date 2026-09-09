@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import ParseResult, parse_qs, urlparse
 
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import dismissals, notifications, quota, records
 from cargento_runtime import events as runtime_events
@@ -1060,6 +1061,79 @@ class _RequestHandler(BaseHTTPRequestHandler):
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
+    def _annotate(self) -> None:
+        """Record what the reader typed this session should achieve, or clear it.
+
+        Guarded like `/api/dismiss`: `_local_ok()` has already run, the declared
+        length is checked before any read, and a malformed body degrades to
+        `{}`, which names no session and does nothing.
+
+        The two text fields are type-checked BEFORE redaction, which is
+        `/api/ask`'s discipline rather than `/api/dismiss`'s. `records.safe_text`
+        does `str(value or "")`, so a dict reaching it publishes its Python repr
+        — including anything inside it — where a string would have been
+        redacted. That is a 400 rather than a silent stringification, because
+        the reader needs to know their words were not saved.
+
+        `persisted` is answered honestly, for `_dismiss`'s reason: an unwritable
+        home still holds the annotation for this run, and the page says so
+        rather than implying it will survive a restart.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.annotations_enabled:
+            # 503, not 404: under `--no-annotations` the route exists and the
+            # store does not, and a 404 would read as a build too old to have it.
+            self._reject(503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        goal, output = payload.get("goal"), payload.get("output")
+        if any(value is not None and not isinstance(value, str) for value in (goal, output)):
+            self._reject(400)
+            return
+        state = application.state
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if payload.get("clear") is True:
+            persisted = annotation_store.clear(
+                config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
+            )
+        else:
+            persisted = annotation_store.annotate(
+                config,
+                state,
+                harness,
+                sid,
+                goal=goal,
+                output=output,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        # Dropped rather than waited out, for `_dismiss`'s reason: the next GET
+        # would otherwise serve the pre-save payload for up to `collect_memo_sec`.
+        state.snapshot.clear()
+        current = annotation_store.published(
+            annotation_store.find(annotation_store.active(config, state), harness, sid)
+        )
+        answer = {
+            "ok": True,
+            "persisted": persisted,
+            "revision": current["revision"],
+            "revision_count": current["revision_count"],
+        }
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
     def _events(self, harness: str) -> None:
         """A harness's lifecycle events, forwarded by its own hook.
 
@@ -1199,6 +1273,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._shutdown,
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
+            "/api/annotate": self._annotate,
             "/api/focus": self._focus,
             "/api/ask": self._ask,
             "/api/ask/withdraw": self._withdraw,
