@@ -5,6 +5,50 @@ work ships.
 
 **If you are a fresh session picking this up, read this file first and trust it over your memory.**
 
+## THE RATIFIED ORDER (2026-09-10) — read this before anything else
+
+The captain ratified DEC-17 and this order on 2026-09-10. Work it in sequence. Everything lands in
+PR #317, which is kept OPEN for the captain to test and is NOT to be merged.
+
+| # | Step | Status |
+| -- | -- | -- |
+| 1 | The three DRC-4533 items that are defects in #317's own diff | TODO |
+| 2 | DRC-4512a: the two-axis end-evidence lift in `next-observed.js` | TODO |
+| 3 | `nextCockpitTabs(focus)` pure refactor, routing all 13 tab call sites | TODO |
+| 4 | DRC-4508 input surface: the `Held to` tab, memo-cell conditional in the SAME commit | TODO |
+| 5 | DRC-4509 remainder: observation time on the derived row, work evidence | TODO |
+| 6 | The reader-state row for the new 240-char lane | TODO |
+| 7 | DRC-4511: the reader-requested reading, built around DEC-17 rules 3, 4 and 7 | TODO |
+| 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | TODO |
+| 9 | Recompute the three byte pins once, full pre-PR suite, `sync-docs` | TODO |
+
+Update the Status column as each lands, and commit that update with the work.
+
+### Rulings that now govern
+
+- **DEC-17 (DRC-4532), decided.** The evaluation rubric gates AUTOMATIC evaluation only. A
+  reader-requested reading is held to a seven-rule shape contract instead. Read DRC-4532 before
+  building step 7: rules 3, 4 and 7 are what the producer is built around, not checked against.
+  The `Ask for a reading` control stays disabled until the abstention check passes; the reading is
+  still built.
+- **DEC-18 (DRC-4534), open and urgent.** The captain reopened DEC-15's refusal of automatic
+  evaluation, because flagging while the reader is away is the use case they want. It blocks
+  DRC-4514, which is therefore OUT of this order until it is ruled.
+- **DRC-4512's storage half takes a migration path.** `history.py:406` returns `RESET_VERSION` on a
+  schema mismatch, enforced, unlike the dismissal store. Bumping the version as DEC-15b literally
+  describes would discard every existing user's history on upgrade and no test would catch it.
+  Step 8 reads the old version rather than resetting.
+
+### Three facts measured 2026-09-10, do not re-derive
+
+- `NEXT_PROJECT_TABS` has **13** read sites, not eight. The keyboard-wrap function alone holds six,
+  and that is where a scope-dependent tab set sends a project-scope reader to a tab that is not
+  there. Step 3 exists to de-risk exactly that, and it must change no product behaviour.
+- `nextCockpitMemoFields` is **dead code**: four test references, no production caller. Only
+  `nextCockpitRecoveryMemoCell` ships. The collision step 4 must settle is two bounds, not three.
+- Byte pins move on every web commit. Never copy one out of this file.
+
+
 ## Where the work is
 
 - Worktree: `.claude/worktrees/hold-it-to-what-i-asked` in `spacedock-dev/cargento`
