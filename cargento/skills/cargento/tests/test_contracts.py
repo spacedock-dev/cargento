@@ -1233,6 +1233,16 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.state",
         },
+        # `annotations` is `dismissals`' shape over the reader's own words rather
+        # than over a mark, so it is a leaf on the same four and nothing else.
+        # The one behavioural difference is the absent watermark, which costs no
+        # edge: see that module's docstring for why an annotation does not lapse.
+        "cargento_runtime.annotations": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
+        },
         # The observer analyzer: a read-only bystander that derives goal +
         # stage + block from a session transcript head and its workflow entity
         # dir. `spacedock` provides the read-only entity-dir frontmatter reader;

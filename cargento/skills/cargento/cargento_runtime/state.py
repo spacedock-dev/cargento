@@ -156,6 +156,12 @@ class RuntimeState:
     # dashboard's write is picked up by the next `dismissals.refresh`.
     dismissal_lock: LockType = field(default_factory=threading.Lock)
     dismissals: tuple[dict[str, Any], ...] | None = None
+    # The reader's typed goal and expected output per session. Its own lock for
+    # `dismissal_lock`'s reason, and `None` distinguishes "not loaded yet" from
+    # "nobody has annotated anything", which the render treats differently: the
+    # first is unknown and the second is an absence with a reason.
+    annotation_lock: LockType = field(default_factory=threading.Lock)
+    annotations: tuple[dict[str, Any], ...] | None = None
     dispute_lock: LockType = field(default_factory=threading.Lock)
     dispute_total: int = 0
     disputes: deque[dict[str, Any]] = field(default_factory=deque)
