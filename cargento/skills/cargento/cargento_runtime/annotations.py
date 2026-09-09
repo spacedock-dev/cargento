@@ -19,8 +19,8 @@ still on the board.
 Two acceptance criteria of DRC-4508 are not met by this module and are not
 quietly skipped. Binding across a *live* harness resume needs real captures
 under `docs/captures/`, which desk research cannot produce. And the
-later-conflicting-instruction rule needs a detector that does not exist: the
-resolution shape is here, the detection is not.
+later-conflicting-instruction rule needs a detector that does not exist. The
+resolution shape is buildable; nothing in this module carries it yet.
 
 A leaf: `config` for paths and caps, `records` for the untrusted-input
 discipline, `io` for the diagnostic sink. It reads nothing else in the runtime.
@@ -58,6 +58,21 @@ KEY_CAP_CHARS = 64
 # diverges; wording that lives here cannot.
 NO_GOAL_TYPED = "No goal typed for this session."
 NO_OUTPUT_TYPED = "No expected output typed."
+
+# Whether the identity this store bound on is the session's whole identity.
+# `exact` is the ordinary case. `prefix` is the one the issue named as a hazard
+# and it is real on this tree: `collectors/claude.py` passes the transcript
+# stem's first eight characters to `base_session`, so a Claude row's `sid` IS
+# the display prefix and the full stem is published beside it as `resume_id`.
+# Two sessions sharing those eight characters share an annotation, and the
+# honest answer is to say so on the row rather than to claim an exactness the
+# identity does not have.
+BINDING_EXACT = ""
+BINDING_BY_PREFIX = (
+    "Bound by an eight-character identity prefix, which is all this harness "
+    "publishes as the session id. Another session sharing it would share these "
+    "words."
+)
 
 
 class Revision(TypedDict):
@@ -103,13 +118,19 @@ def _revision(value: Any, cap: int) -> Revision | None:
     if not isinstance(value, dict):
         return None
     number = value.get("n")
-    if not isinstance(number, int) or number < 1:
+    # `isinstance(True, int)` is True, and a bool here would publish as a JSON
+    # boolean where the shape declares a number.
+    if isinstance(number, bool) or not isinstance(number, int) or number < 1:
         return None
+    raw_goal, raw_output = value.get("goal"), value.get("output")
     return {
         "n": number,
         "at": records.norm_epoch(value.get("at")),
-        "goal": records.safe_text(value.get("goal"), cap),
-        "output": records.safe_text(value.get("output"), cap),
+        # Type-checked here as well as on the way in. Any local process can
+        # rewrite this file, so a dict here would publish its repr exactly as one
+        # arriving over the endpoint would.
+        "goal": records.safe_text(raw_goal, cap) if isinstance(raw_goal, str) else "",
+        "output": records.safe_text(raw_output, cap) if isinstance(raw_output, str) else "",
     }
 
 
@@ -215,7 +236,7 @@ def save(
     except (OSError, ValueError):
         runtime_io.diag(
             f"Cargento: could not write the annotation store {target}; "
-            "what you typed will be gone at the next restart",
+            "what you typed will be gone at the next collection",
             diagnostic_sink,
         )
         with contextlib.suppress(OSError, ValueError):
@@ -282,13 +303,18 @@ def holds(entries: Iterable[Annotation], harness: Any, sid: Any, _last_activity:
     return find(entries, harness, sid) is not None
 
 
-def published(entry: Annotation | None) -> dict[str, Any]:
+def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> dict[str, Any]:
     """The latest revision as the board renders it, absences named.
 
     One helper rather than three renderers, because the shared contract's first
     rule is that an absent value states its reason and three copies of that
     wording diverge. `None` is a session nobody annotated, which is an absence
     with a reason and not an error.
+
+    `revision` and `at` are None rather than 0 when there is nothing typed. A
+    zero is the thing the first rule forbids: a render printing `annotation.at`
+    would show 1 January 1970 for every unannotated session, and `revision 0`
+    reads as a revision rather than as none.
     """
     latest: Revision | None = entry["revisions"][-1] if entry else None
     goal = latest["goal"] if latest else ""
@@ -298,9 +324,10 @@ def published(entry: Annotation | None) -> dict[str, Any]:
         "goal_why": "" if goal else NO_GOAL_TYPED,
         "output": output,
         "output_why": "" if output else NO_OUTPUT_TYPED,
-        "revision": latest["n"] if latest else 0,
+        "revision": latest["n"] if latest else None,
         "revision_count": len(entry["revisions"]) if entry else 0,
-        "at": latest["at"] if latest else 0.0,
+        "at": latest["at"] if latest else None,
+        "binding_why": binding_why,
     }
 
 
@@ -341,9 +368,15 @@ def annotate(
     # — with whatever is inside it — rather than being refused. `/api/ask`
     # checks for the same reason, and the endpoint above answers 400; this is
     # the store's own floor under that.
-    text_goal = records.safe_text(goal, cap) if isinstance(goal, str) else ""
-    text_output = records.safe_text(output, cap) if isinstance(output, str) else ""
-    if not text_goal and not text_output:
+    #
+    # None means "not sent" and carries the previous revision's value forward.
+    # The empty string means "clear this one field". Collapsing the two would
+    # make a client that posts only the goal silently destroy the expected
+    # output beside it, which is the opposite of the independence the two fields
+    # are documented to have.
+    new_goal = records.safe_text(goal, cap) if isinstance(goal, str) else None
+    new_output = records.safe_text(output, cap) if isinstance(output, str) else None
+    if new_goal is None and new_output is None:
         return False
     stamp = time.time() if now is None else now
 
@@ -355,7 +388,15 @@ def annotate(
         existing = find(current, *key)
         if existing is not None:
             last = existing["revisions"][-1]
+            text_goal = last["goal"] if new_goal is None else new_goal
+            text_output = last["output"] if new_output is None else new_output
             if (last["goal"], last["output"]) == (text_goal, text_output):
+                # Unchanged text is not a new request, so it mints no revision.
+                # The cache is still refreshed from the load above: two
+                # dashboards share this file, and returning early with a stale
+                # cache is how this process went on reporting "no goal typed"
+                # for words the other one had already saved.
+                state.annotations = _stored(_bounded(current, config.annotation_max_sessions))
                 return True
             revision: Revision = {
                 "n": last["n"] + 1,
@@ -373,12 +414,23 @@ def annotate(
             updated = {
                 "harness": key[0],
                 "sid": key[1],
-                "revisions": ({"n": 1, "at": stamp, "goal": text_goal, "output": text_output},),
+                "revisions": (
+                    {
+                        "n": 1,
+                        "at": stamp,
+                        "goal": new_goal or "",
+                        "output": new_output or "",
+                    },
+                ),
             }
         others = [e for e in current if (e["harness"], e["sid"]) != key]
         bounded = _bounded([*others, updated], config.annotation_max_sessions)
         state.annotations = _stored(bounded)
-    return save(config, bounded, diagnostic_sink=diagnostic_sink)
+        # Inside the lock, not after it. The server is threaded, so two saves on
+        # one session both read the pre-write store, both mint revision n+1, and
+        # the later write erases the earlier one. Holding the lock across the
+        # write costs one file write and closes the whole in-process window.
+        return save(config, bounded, diagnostic_sink=diagnostic_sink)
 
 
 def clear(
@@ -403,12 +455,5 @@ def clear(
     with state.annotation_lock:
         kept = tuple(e for e in load(config) if (e["harness"], e["sid"]) != key)
         state.annotations = _stored(kept)
-    return save(config, kept, diagnostic_sink=diagnostic_sink)
-
-
-def rows(entries: Iterable[Annotation]) -> list[dict[str, Any]]:
-    """Every annotation as the payload carries it, newest save first."""
-    ordered = sorted(entries, key=lambda entry: entry["revisions"][-1]["at"], reverse=True)
-    return [
-        {"harness": entry["harness"], "sid": entry["sid"], **published(entry)} for entry in ordered
-    ]
+        # Inside the lock, for `annotate`'s reason.
+        return save(config, kept, diagnostic_sink=diagnostic_sink)

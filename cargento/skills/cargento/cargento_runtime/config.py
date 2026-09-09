@@ -197,8 +197,14 @@ class RuntimeConfig:
     # magnitude above the busiest board measured (31 sessions).
     dismissal_read_cap_bytes: int
     dismissal_max_entries: int
-    # The annotation store. The read cap is the dismissal store's, for the same
-    # reason it is the state file's. Two count bounds and no time-to-live, again
+    # The annotation store. The read cap is NOT the dismissal store's: measured,
+    # 256 sessions at 16 revisions of two 240-character fields serialize to about
+    # 2.2 MB, so the 65,536 copied from `dismissal_read_cap_bytes` was 31 times
+    # too small and a store inside its own three other bounds would have been
+    # discarded whole by `load` and then overwritten by the next save. A
+    # dismissal is four scalars; an annotation is prose. 2.5 MiB clears the
+    # worst case the other three bounds permit, and `load` still refuses
+    # anything past it. Two count bounds and no time-to-live, again
     # for `dismissals._bounded`'s reason: a TTL would delete the reader's own
     # words while the session they describe is still on the board. 256 sessions
     # matches `dismissal_max_entries` against the same measured board; 16
@@ -651,7 +657,7 @@ def build_runtime_config(
         state_read_cap_bytes=65_536,
         dismissal_read_cap_bytes=65_536,
         dismissal_max_entries=256,
-        annotation_read_cap_bytes=65_536,
+        annotation_read_cap_bytes=2_621_440,
         annotation_max_sessions=256,
         annotation_max_revisions=16,
         annotation_text_cap_chars=240,

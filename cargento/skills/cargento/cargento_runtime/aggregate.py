@@ -512,8 +512,26 @@ def _attach_annotations(
     beside it. Both are on the row, and the prefix can collide.
     """
     for row in rows:
+        # `resume_id` is the harness's own full identity where it publishes one.
+        # When it is longer than the `sid` this store binds on, the sid is a
+        # truncation and the binding is by prefix. That is not hypothetical:
+        # `collectors/claude.py` hands `base_session` the transcript stem's
+        # first eight characters, so every Claude row is this case, which is the
+        # hazard DRC-4508 named and the reason it is reported rather than
+        # claimed away.
+        sid = row.get("sid")
+        resume = row.get("resume_id")
+        by_prefix = (
+            isinstance(sid, str)
+            and isinstance(resume, str)
+            and len(resume) > len(sid)
+            and resume.startswith(sid)
+        )
         row["annotation"] = annotation_store.published(
-            annotation_store.find(entries, row.get("harness"), row.get("sid"))
+            annotation_store.find(entries, row.get("harness"), sid),
+            binding_why=(
+                annotation_store.BINDING_BY_PREFIX if by_prefix else annotation_store.BINDING_EXACT
+            ),
         )
 
 
@@ -728,7 +746,16 @@ class Application:
             collection["dismiss"] = True
         # Folded in rather than branched on here: `collect` sits on ruff's
         # complexity and statement caps, and an inline `if` puts it over both.
-        collection.update({**self._ask_cards(now), **history_fields})
+        # `annotate` is keyed the way `dismiss` is, and the page needs it because
+        # `--no-annotations` promises no field at all rather than a field whose
+        # every save answers 503.
+        collection.update(
+            {
+                **({"annotate": True} if config.annotations_enabled else {}),
+                **self._ask_cards(now),
+                **history_fields,
+            }
+        )
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"

@@ -2720,6 +2720,20 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertEqual(400, status)
         self.assertEqual((), annotation_store.load(config))
 
+    def test_a_non_string_identity_is_refused_too(self) -> None:
+        """`harness` and `sid` reach `safe_text` by the same path the text does.
+
+        An earlier version checked only the two text fields, which let a dict
+        harness land a store entry keyed on its Python repr.
+        """
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._post(
+                port, json.dumps({"harness": {"k": "v"}, "sid": ["a"], "goal": "x"}).encode()
+            )
+        self.assertEqual(400, status)
+        self.assertEqual((), annotation_store.load(config))
+
     def test_clearing_removes_what_was_typed(self) -> None:
         config, state = self._runtime()
         with self._serving(cli.build_application(config, state, clock=time.time)) as port:
@@ -2728,7 +2742,7 @@ class AnnotateRouteTest(unittest.TestCase):
                 port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
             )
         self.assertEqual(200, status)
-        self.assertEqual(0, json.loads(body)["revision"])
+        self.assertIsNone(json.loads(body)["revision"])
         self.assertEqual((), annotation_store.load(config))
 
     def test_the_off_switch_answers_503_rather_than_404(self) -> None:

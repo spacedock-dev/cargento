@@ -1100,11 +1100,18 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             payload = {}
         goal, output = payload.get("goal"), payload.get("output")
+        harness, sid = payload.get("harness"), payload.get("sid")
         if any(value is not None and not isinstance(value, str) for value in (goal, output)):
             self._reject(400)
             return
+        # The identity is untrusted too, and it reaches `records.safe_text` by
+        # the same path the text does. An earlier version checked only the two
+        # text fields, which let a dict harness land a store entry keyed on its
+        # Python repr.
+        if not isinstance(harness, str) or not isinstance(sid, str):
+            self._reject(400)
+            return
         state = application.state
-        harness, sid = payload.get("harness"), payload.get("sid")
         if payload.get("clear") is True:
             persisted = annotation_store.clear(
                 config, state, harness, sid, diagnostic_sink=application.diagnostic_sink

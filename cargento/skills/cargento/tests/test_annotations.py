@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
-from cargento_runtime import aggregate
+from cargento_runtime import aggregate, cli
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
+
+from .support import make_runtime
 
 
 class AnnotationStoreTest(unittest.TestCase):
@@ -136,6 +139,62 @@ class AnnotationStoreTest(unittest.TestCase):
         self.assertTrue(absent["goal_why"])
         self.assertEqual(0, absent["revision_count"])
 
+    def test_saving_one_field_does_not_destroy_the_other(self) -> None:
+        """An omitted field is unchanged; an empty one is cleared.
+
+        Collapsing the two would make a client that posts only the goal wipe the
+        expected output beside it, which is the opposite of the independence
+        these two fields are documented to have.
+        """
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s", goal="G1", output="O1", now=self.NOW
+        )
+        # Only the goal is sent. The expected output is not mentioned.
+        annotation_store.annotate(self.config, self.state, "pi", "s", goal="G2", now=self.NOW + 1)
+        entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
+        assert entry is not None
+        self.assertEqual(
+            ("G2", "O1"), (entry["revisions"][-1]["goal"], entry["revisions"][-1]["output"])
+        )
+
+        # An explicit empty string is a clear of that one field.
+        annotation_store.annotate(self.config, self.state, "pi", "s", output="", now=self.NOW + 2)
+        entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
+        assert entry is not None
+        self.assertEqual(
+            ("G2", ""), (entry["revisions"][-1]["goal"], entry["revisions"][-1]["output"])
+        )
+
+    def test_an_unannotated_session_publishes_no_zero_revision_and_no_epoch(self) -> None:
+        """`revision: 0` and `at: 0.0` are the zeros the first rule forbids.
+
+        A render printing the annotation timestamp would show 1 January 1970 for
+        every session nobody annotated.
+        """
+        absent = annotation_store.published(None)
+        self.assertIsNone(absent["revision"])
+        self.assertIsNone(absent["at"])
+
+    def test_a_prefix_binding_says_so_and_an_exact_one_stays_quiet(self) -> None:
+        """The hazard DRC-4508 named, reported rather than claimed away.
+
+        `collectors/claude.py` passes the transcript stem's first eight
+        characters to `base_session`, so a Claude row's sid IS the display
+        prefix and the full stem is published beside it as `resume_id`.
+        """
+        rows: list[Any] = [
+            {
+                "harness": "claude",
+                "sid": "77aa41c2",
+                "resume_id": "77aa41c2-aaaa-4aaa",
+                "state": "x",
+            },
+            {"harness": "pi", "sid": "full-identity", "resume_id": None, "state": "x"},
+        ]
+        aggregate._attach_annotations(rows, ())
+        self.assertTrue(rows[0]["annotation"]["binding_why"], "a truncated identity said nothing")
+        self.assertEqual("", rows[1]["annotation"]["binding_why"])
+
     def test_a_saved_revision_that_repeats_the_last_one_is_not_appended(self) -> None:
         """Re-saving unchanged text is not a new request, so it is not a revision.
 
@@ -158,12 +217,20 @@ class AnnotationStoreTest(unittest.TestCase):
         matches the shape list and is published intact.
         """
         secret = "AKIA" + "Q" * 16
+        cap = self.config.annotation_text_cap_chars
+        # Straddling the cap on purpose. A short fixture never reaches the clip,
+        # so clip-then-redact and redact-then-clip are indistinguishable and the
+        # test proves nothing about the order it is named for. Here the tail
+        # falls outside the bound, so clipping first would leave a head the
+        # shape list no longer matches and publish it intact.
         annotation_store.annotate(
-            self.config, self.state, "pi", "s", goal=f"deploy with {secret} today", now=self.NOW
+            self.config, self.state, "pi", "s", goal="x" * (cap - 10) + " " + secret, now=self.NOW
         )
         entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
         assert entry is not None
-        self.assertNotIn(secret, entry["revisions"][-1]["goal"])
+        stored = entry["revisions"][-1]["goal"]
+        self.assertNotIn(secret, stored)
+        self.assertNotIn(secret[:12], stored, "a clipped head of the key survived")
 
     def test_text_is_clipped_to_the_configured_bound(self) -> None:
         annotation_store.annotate(
@@ -268,6 +335,41 @@ class AnnotationStoreTest(unittest.TestCase):
         # Numbering keeps counting, so a dropped revision reads as dropped
         # rather than as one that never existed.
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
+
+
+class AnnotationWiringTest(unittest.TestCase):
+    """The two wirings a copy-paste breaks silently.
+
+    Both off-switch tests elsewhere construct the config directly, and the
+    documentation oracle only greps `cli.py` for the flag string, so neither
+    would notice `annotations_enabled=not args.no_dismiss`.
+    """
+
+    def test_the_flag_reaches_the_config(self) -> None:
+        parser = cli.build_parser()
+        self.assertFalse(parser.parse_args(["--no-annotations"]).no_annotations is False)
+        self.assertTrue(parser.parse_args([]).no_annotations is False)
+
+    def test_the_capability_is_published_only_when_the_store_is_live(self) -> None:
+        """The flag's help text says the page offers no field to type them in,
+        which needs the page to be told."""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        on_config, on_state = make_runtime(state_home=home, state_dir=Path(home))
+        self.assertIs(
+            True,
+            cli.build_application(on_config, on_state, clock=lambda: 0.0)
+            .collect(show_all=True)
+            .get("annotate"),
+        )
+        off_config, off_state = make_runtime(
+            state_home=home, state_dir=Path(home), annotations_enabled=False
+        )
+        self.assertIsNone(
+            cli.build_application(off_config, off_state, clock=lambda: 0.0)
+            .collect(show_all=True)
+            .get("annotate")
+        )
 
 
 class AnnotationOnTheRowTest(unittest.TestCase):

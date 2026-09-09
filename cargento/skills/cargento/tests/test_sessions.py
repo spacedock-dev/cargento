@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events as runtime_events
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
@@ -28,6 +29,7 @@ from .support import (
     make_runtime,
     store_patch,
 )
+from .support import runtime as support_runtime
 
 # The payload's declared field set, written out here rather than derived from
 # base_session(), so the two sides cannot move together. Comparing a function
@@ -1374,6 +1376,25 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 self.assertEqual("", annotation["goal"])
                 self.assertTrue(annotation["goal_why"], "an absence with no reason")
                 self.assertEqual(0, annotation["revision_count"])
+
+    def test_a_stored_annotation_reaches_the_published_row_through_collect(self) -> None:
+        # The wiring nothing else covered. `AnnotationOnTheRowTest` calls the
+        # attach pass directly, so removing its call site in `Application.collect`
+        # left every test green while the feature's whole purpose stopped
+        # working. Verified as a real gap by mutation before this was written.
+        key, build = next((k, b) for k, b in HARNESSES if k == "codex")
+        with self.subTest(harness=key):
+            config, _state = support_runtime()
+            annotation_store.annotate(
+                config, _state, key, self.SID, goal="Ship the cockpit", now=self.NOW
+            )
+            # The store is the shared runtime's and outlives this test, so the
+            # sibling asserting an unannotated row would see these words.
+            self.addCleanup(annotation_store.clear, config, _state, key, self.SID)
+            rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+            self.assertEqual("Ship the cockpit", rows[0]["annotation"]["goal"])
+            self.assertEqual(1, rows[0]["annotation"]["revision"])
+            self.assertEqual("", rows[0]["annotation"]["goal_why"])
 
     def test_every_field_an_event_may_patch_is_a_declared_field(self) -> None:
         # The reachable-by-an-envelope half, which no store fixture can produce:

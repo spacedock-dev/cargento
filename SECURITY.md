@@ -50,7 +50,7 @@ The posture rests on two invariants:
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
    own connection, which is why it is named here rather than counted above.
-2. Read-only against harness stores. They are opened read-only and never written. Seven endpoints
+2. Read-only against harness stores. They are opened read-only and never written. Eight endpoints
    mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
@@ -58,10 +58,15 @@ The posture rests on two invariants:
    which register a question a session asked, record the option the reader chose, and drop a question
    whose asker has stopped waiting for it, all three described under The ask lane. The long
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
-   which is the delivery completing rather than a change a caller asked for. The seventh,
-   `POST /api/dismiss`, does write to disk, but what it writes is
+   which is the delivery completing rather than a change a caller asked for. Two write to disk.
+   `POST /api/dismiss` writes the sessions you marked handled, and
+   `POST /api/annotate` writes the goal and expected output you typed against a session. Both write
    Cargento's own state under `~/.cargento` and never a harness store, so the read-only rule above stands
-   unchanged. What that file holds and how to clear it is in Dismissals. One forwarder writes too:
+   unchanged. What the first holds and how to clear it is in Dismissals; the second is one file,
+   `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
+   redacted on the way in like every other prompt-derived string, written owner-only through a temp
+   file and a rename, and turned off entirely by `--no-annotations`. It is the only store holding
+   prose you composed rather than anything a harness published. One forwarder writes too:
    `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
    name and a timestamp and nothing about the session's content.
    One `GET` writes as well, which is why it is named here rather than left to the count above.
