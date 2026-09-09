@@ -97,6 +97,8 @@ around 01:58 CST on 2026-09-10.
 - **Resume cron:** session job `f3648d22`, `7 2-8 * * *`, seven attempts hourly at seven past.
   Session-only: it dies with the Claude session that created it, so if the terminal was closed there
   is no automatic resume and this file is the handoff instead.
+- **Backend review run:** `wf_a5411087-b92`. Four lenses, a completeness critic and an arbiter over
+  the backend diff. Its journal holds every finding even if nothing was written back here.
 - **Survey workflow run:** `wf_180ad01a-ff1`. Five per-issue surveys plus a cross-item arbiter.
   Transcript, including each agent's actual return value in `journal.jsonl`:
   `~/.claude/projects/-Users-jaredmscott-repos-recce-cargento/165d5bf4-7fca-44f4-82de-1bc3f8e66d21/subagents/workflows/wf_180ad01a-ff1`
