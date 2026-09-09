@@ -117,14 +117,14 @@ function nextCockpitScopeCue(scope){
     `<strong>${label}</strong>${detail}</span>`;
 }
 
-function nextCockpitScopeLinks(group, focus){
+function nextCockpitScopeLinks(group, focus, surface = "tree"){
   const selected = focus ? sessKey(focus) : "project";
   const link = (key, label, state, subtitle, scope) => {
     const route = {view:"project",project:group.label,focus:key === "project" ? null : key,
       tab:nextRoute && nextRoute.tab || "now"};
     return `<a href="${esc(nextFragmentForRoute(route))}" data-next-cockpit-scope="${esc(key)}"` +
       (selected === key ? ` aria-current="page"` : "") +
-      ` data-scope-kind="${esc(scope.kind)}">` +
+      ` data-scope-kind="${esc(scope.kind)}" data-next-focus="cockpit-scope:${surface}:${esc(key)}">` +
       nextCockpitScopeCue(Object.assign({}, scope, {detail:""})) +
       `<strong class="next-cockpit-scope-name">${esc(label)}</strong>` +
       (state ? `<span class="next-cockpit-scope-state">${esc(state)}</span>` : "") +
@@ -161,7 +161,7 @@ function nextCockpitScopeSwitcher(group, focus){
   return '<details class="next-cockpit-scope-switcher"' + nextCockpitDisclosureAttr("scope") + '>' +
     `<summary><span>${esc(selected)}</span><strong>Change scope</strong></summary>` +
     `<nav class="next-cockpit-scope-options" aria-label="Change project scope">` +
-    nextCockpitScopeLinks(group, focus) + '</nav></details>';
+    nextCockpitScopeLinks(group, focus, "switcher") + '</nav></details>';
 }
 
 function nextCockpitHumanLabel(value){
@@ -215,7 +215,7 @@ function nextCockpitProjectStatus(group, semantic){
 function nextCockpitCaptainDecisionCounts(semantic){
   const counts = {pending:0, unknown:0, superseded:0, applied:0};
   for(const fact of semantic && Array.isArray(semantic.facts) ? semantic.facts : []){
-    if(!fact || fact.type !== "gate_decision" || fact.by !== "person:captain") continue;
+    if(!fact || projectEventKind(fact) !== "decision") continue;
     const state = String(fact.application_state || "unknown").toLowerCase();
     if(state === "pending" || state === "unspent") counts.pending += 1;
     else if(state === "consumed" || state === "applied") counts.applied += 1;
@@ -579,13 +579,13 @@ function nextCockpitRecoveryLatest(group, semantic, stale, assignment){
     .filter(fact => fact && fact.type === type && fact.evidence &&
       fact.evidence.confidence === "exact" && String(fact.summary || "").trim())
     .sort((left, right) => Number(right.at || 0) - Number(left.at || 0));
-  const direction = assignment.fact ? null : nextCockpitSubstantiveDirection(group, semantic);
+  const direction = assignment.fact || nextCockpitSubstantiveDirection(group, semantic);
   const semanticResult = exact("result").find(fact =>
     assignment.id && String(fact.work_item_id || "") === assignment.id ||
     assignment.sourceSession && nextCockpitFactSessionKey(fact) === assignment.sourceSession) || null;
   const sessionResult = semanticResult || !assignment.sourceSession ? null :
     nextCockpitLatestSessionResult(group, assignment.sourceSession);
-  return {direction,result:semanticResult || sessionResult,
+  return {direction,directionInAssignment:!!assignment.fact,result:semanticResult || sessionResult,
     resultKind:semanticResult ? "semantic" : sessionResult ? "session" : "unavailable",
     stale:!!stale};
 }
@@ -762,7 +762,7 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
   const authorityState = captain.length ? "captain-needed" :
     briefing.coverage.state !== "complete" || system.length ? "fo-inspecting" : "fo-continues";
   const compactIdle = authorityState === "fo-continues" && !briefing.children.active.length &&
-    !briefing.children.latestReturn && !project?.needs.length;
+    !briefing.children.latestReturn && !project?.needs.length && !nextCockpitWorkingSessions(group).length;
   const exactLabel = briefing.latest.stale ? "ACTIONABLE DIRECTION · STALE CACHED" :
     "LATEST ACTIONABLE DIRECTION";
   const directionSource = briefing.latest.direction
@@ -794,6 +794,7 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
         (briefing.task.fact && briefing.task.fact.at ? ` · event ${briefing.task.fact.at}` : ""))}</small>` +
       '</details>' : '<small class="next-cockpit-evidence-missing">Assignment evidence not published</small>';
   const latestCells = [
+    briefing.latest.directionInAssignment ? '<p>Direction shown in assignment</p>' :
     briefing.latest.direction ? `<span>${exactLabel}</span>` +
       `<strong>${esc(briefing.latest.direction.summary)}</strong>` : "",
     briefing.latest.result ? `<span>${resultLabel}</span>` +
@@ -987,7 +988,7 @@ function nextCockpitTabList(){
       const label = nextCockpitHumanLabel(tab);
       const current = tab === selected;
       return `<button type="button" role="tab" data-next-cockpit-action="tab" ` +
-        `data-arg="${tab}" aria-controls="next-cockpit-panel-${tab}" ` +
+        `data-arg="${tab}" data-next-focus="cockpit-tab:${tab}" aria-controls="next-cockpit-panel-${tab}" ` +
         `aria-selected="${current}" tabindex="${current ? 0 : -1}">${label}</button>`;
     }).join("") + '</nav>';
 }
@@ -1092,25 +1093,29 @@ function nextCockpitPlanDisclosure(context){
   const discovery = observation && observation.workflow_discovery || {};
   const discovered = discovery.state === "observed" &&
     Array.isArray(discovery.workflows) && discovery.workflows.length;
-  if(!context.plans.length && !discovered) return "";
+  const attached = context.group.sessions.some(session => session.spacedock);
+  if(!context.plans.length && !discovered && !attached) return "";
   return '<details class="next-cockpit-plan-details" data-next-cockpit-plan-details' +
     nextCockpitDisclosureAttr("plan") + '>' +
     `<summary>Show project plan</summary><div>${nextProjectPlanBlock(context)}</div></details>`;
 }
 
 function nextCockpitCompletedWork(context){
-  return nextProjectCompletedTasks(context.group.sessions).length ? nextProjectDone(context) : "";
+  const sessions = context.group.sessions;
+  return nextProjectCompletedTasks(sessions).length || nextProjectProgress(sessions)
+    ? nextProjectDone(context) : "";
 }
 
 function nextCockpitDecisionSummary(group, focus, observation){
   const entry = focus ? nextCockpitContexts.get(nextCockpitContextKey(group, focus)) : null;
   const semantic = focus ? entry && entry.data && entry.data.semantic : nextCockpitSemantic(observation);
   if(!semantic) return "";
-  const counts = nextCockpitCaptainDecisionCounts(semantic || {});
+  const canonical = nextCockpitCanonicalSemantic(group, semantic);
+  const counts = nextCockpitCaptainDecisionCounts(canonical);
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
   if(!total) return "";
   return '<p class="next-cockpit-decision-summary" data-next-cockpit-decision-summary>' +
-    `Decision application · ${esc(nextCockpitRecoveryDecisions(semantic))}</p>`;
+    `Decision application · ${esc(nextCockpitRecoveryDecisions(canonical))}</p>`;
 }
 
 function nextCockpitConsoleStatus(group){
@@ -1266,7 +1271,7 @@ function nextCockpitCourse(group, semantic, lanes){
     nextCockpitDisclosureAttr("course-earlier") + '><summary>' +
     `${earlier.length} Earlier</summary>${earlier.map(nextCockpitCourseRow).join("")}</details>` : "";
   const empty = episodes.length ? "" :
-    '<p class="next-cockpit-empty">No source-backed course changes observed.</p>';
+    `<p class="next-cockpit-empty">${esc(projectHistoryEmptyText(semantic, "course"))}</p>`;
   const other = directions.length ? '<details class="next-course-directions"' +
     nextCockpitDisclosureAttr("course-directions") + '><summary>' +
     `Other directions (${directions.length})</summary>` +
@@ -1296,18 +1301,12 @@ function nextCockpitTimeline(group, focus, mode = "active"){
     group,
     entry.data.semantic || {facts:[], work_items:[], projections:{}},
   );
-  if(mode === "decisions" && !(semantic.facts || []).some(fact =>
-    fact && fact.type === "gate_decision" && fact.by === "person:captain")){
-    return '<section class="next-cockpit-semantic" data-next-cockpit-semantic>' +
-      '<h2>CAPTAIN DECISIONS</h2>' +
-      '<p class="next-cockpit-empty">No explicit captain decisions observed.</p></section>';
-  }
   const timeline = projectSemanticTimeline(nextData, semantic, lanes, focus, group.sessions,
     mode === "decisions" ? {mode:"decisions",controls:false,
       eventPrefix:event => nextCockpitScopeCue(nextCockpitFactScope(event.fact))} : null)
     .replaceAll('data-calm="project-graph-mode"', 'data-next-cockpit-action="graph-mode"');
   return '<section class="next-cockpit-semantic" data-next-cockpit-semantic>' +
-    `<h2>${mode === "decisions" ? "CAPTAIN DECISIONS" : "SEMANTIC TIMELINE"}</h2>` +
+    `<h2>${mode === "decisions" ? "RECORDED DECISIONS" : "SEMANTIC TIMELINE"}</h2>` +
     timeline + '</section>';
 }
 
@@ -1346,7 +1345,9 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
   const tab = NEXT_PROJECT_TABS.includes(nextRoute && nextRoute.tab) ? nextRoute.tab : "now";
   let body = "";
   if(tab === "now"){
-    body = nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
+    body = (focus ? '<p class="next-cockpit-scope-note">Now remains project-wide, ' +
+      'including activity from other sessions.</p>' : "") +
+      nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
       nextProjectPlanStatus(context) + nextCockpitPlanDisclosure(context);
   }else if(tab === "course"){
     body = nextProjectChanges(context.project) +
@@ -1440,13 +1441,14 @@ document.addEventListener("click", event => {
     if(!group || !NEXT_PROJECT_TABS.includes(tab)) return;
     event.preventDefault();
     navigateNext({view:"project",project:group.label,focus:nextRoute.focus || null,tab});
+    nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
     return;
   }
   if(action === "memo-edit"){
     event.preventDefault();
     nextCockpitMemoEditingKey = String(target.dataset.arg || "");
     nextCockpitMemoOriginal = nextCockpitReadMemo(nextCockpitMemoEditingKey);
-    renderNext();
+    renderNext({named:"memo:" + nextCockpitMemoEditingKey});
     return;
   }
   if(action === "memo-done"){
@@ -1531,5 +1533,6 @@ function nextCockpitHandleKeydown(event){
   event.preventDefault();
   navigateNext({view:"project",project:nextRoute.project,focus:nextRoute.focus || null,
     tab:NEXT_PROJECT_TABS[next]});
+  nextRestoreFocus({named:"cockpit-tab:" + NEXT_PROJECT_TABS[next]}, nextAttention);
   return true;
 }

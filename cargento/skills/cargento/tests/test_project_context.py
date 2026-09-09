@@ -1577,6 +1577,39 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual({"harness": "codex", "sid": "codex-root"}, fact["source_session"])
         self.assertNotIn("branch", fact)
 
+    def test_gate_metadata_credentials_never_reach_semantic_publication(self) -> None:
+        secret = "sk-ant-api03-" + "a" * 93
+        for field in ("stage", "decision", "target-stage", "by", "state"):
+            with self.subTest(field=field):
+                values = {
+                    "stage": "review",
+                    "decision": "approve",
+                    "target-stage": "shaping",
+                    "by": "person:captain",
+                    "state": "consumed",
+                }
+                values[field] = secret
+                lines = [
+                    "id: gate-entity",
+                    "title: Synthetic gate",
+                    "- id: gate:review",
+                    f"  stage: {values['stage']}",
+                    "  resolution:",
+                    "    at: 1970-01-01T00:01:40Z",
+                    f"    decision: {values['decision']}",
+                    f"    by: {values['by']}",
+                    "  application:",
+                    f"    state: {values['state']}",
+                    f"    target-stage: {values['target-stage']}",
+                ]
+                events, _ = project_context.gate_events(
+                    self.config, lines, "synthetic", "/workflow", "codex", self.SID
+                )
+                model = project_context._semantic_model(events, [], now=105)
+                self.assertEqual(1, len(model["facts"]))
+                self.assertNotIn(secret, json.dumps(events))
+                self.assertNotIn(secret, json.dumps(model))
+
     def test_gate_facts_are_project_scoped_without_invented_session_origin(self) -> None:
         lines = [
             "id: abcdefghjkmnpqrstvwxyz23",

@@ -28,6 +28,7 @@ const projectTerminalBySession = {};
 let projectTerminalOpenKey = null;
 let projectTerminalSocket = null;
 let projectTerminal = null;
+let projectTerminalScreen = null;
 let projectTerminalKey = null;
 let projectTerminalSequence = 0;
 let projectTerminalXtermPromise = null;
@@ -546,16 +547,18 @@ function projectTerminalDispose(){
   }
   if(projectTerminal){ projectTerminal.dispose(); projectTerminal = null; }
   projectTerminalKey = null;
+  projectTerminalScreen = null;
   projectTerminalSequence = 0;
 }
 
 function projectTerminalBeforeRender(){
   if(!projectTerminal || !projectTerminalKey) return null;
-  return document.getElementById("pc-terminal-screen");
+  return document.getElementById("pc-terminal-screen") || projectTerminalScreen;
 }
 
 function projectTerminalAfterRender(screen){
   if(screen && projectTerminal && projectTerminalKey === projectTerminalOpenKey){
+    projectTerminalScreen = screen;
     const replacement = document.getElementById("pc-terminal-screen");
     if(replacement && replacement !== screen) replacement.replaceWith(screen);
   }
@@ -1779,11 +1782,12 @@ function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins,
 function projectHistoryEmptyText(model, mode){
   const history = model.history || {};
   if(history.reason) return String(history.reason);
-  const subject = mode === "decisions" ? "decisions" :
+  const subject = mode === "course" ? "source-backed course changes" :
+    mode === "decisions" ? "decisions" :
     (mode === "active" ? "semantic events for active work" : "semantic events");
   const seconds = Number(history.window_sec);
   if(!Number.isFinite(seconds) || seconds <= 0){
-    return `No ${subject} available. The semantic history window was not published.`;
+    return `No ${subject} ${mode === "course" ? "observed" : "available"}. The semantic history window was not published.`;
   }
   const count = seconds % 3600 === 0 ? seconds / 3600 :
     (seconds % 60 === 0 ? seconds / 60 : seconds);

@@ -1479,6 +1479,10 @@ def _gate_event(
     _harness: str,
     _sid: str,
 ) -> dict[str, Any] | None:
+    current = {
+        key: records.safe_text(value, config.observer_block_cap_chars)
+        for key, value in current.items()
+    }
     at = records.parse_ts(current.get("at", ""))
     decision = current.get("decision", "")
     if at is None or not decision:

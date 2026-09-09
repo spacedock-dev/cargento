@@ -58,6 +58,17 @@ def store_path(config: RuntimeConfig) -> str:
     return os.path.join(config.state_home, STORE_NAME)
 
 
+def _redact_history(value: Any) -> Any:
+    # Nested facts are republished after restart, including records from older writers.
+    if isinstance(value, str):
+        return records.redact_secrets(value)
+    if isinstance(value, list):
+        return [_redact_history(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_history(item) for key, item in value.items()}
+    return value
+
+
 def _read(config: RuntimeConfig) -> dict[str, Any]:
     try:
         with open(store_path(config), "rb") as handle:
@@ -69,7 +80,7 @@ def _read(config: RuntimeConfig) -> dict[str, Any]:
         return {"v": SCHEMA_VERSION, "projects": {}}
     if not isinstance(value, dict) or not isinstance(value.get("projects"), dict):
         return {"v": SCHEMA_VERSION, "projects": {}}
-    return value
+    return dict(_redact_history(value))
 
 
 def read(config: RuntimeConfig, state: RuntimeState, project: str) -> dict[str, Any]:
@@ -192,6 +203,7 @@ def _event_from_fact(
             "work_item_id",
             "stage",
             "decision",
+            "by",
             "application_state",
             "target_stage",
             "intent_promoted",
@@ -553,7 +565,7 @@ def update(
         prior = projects.get(project)
         existing = prior.get("events", []) if isinstance(prior, dict) else []
         _bind_final_output_events([*(existing if isinstance(existing, list) else []), *incoming])
-        merged = _merge(existing if isinstance(existing, list) else [], incoming)
+        merged = _redact_history(_merge(existing if isinstance(existing, list) else [], incoming))
         if isinstance(now, (int, float)):
             floor = float(now) - HISTORY_WINDOW_SEC
             merged = [event for event in merged if float(event.get("at") or 0) >= floor]

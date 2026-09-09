@@ -317,12 +317,14 @@ __fetchImpl = async url => ({ok: true, json: async () => {
         assert isinstance(out, dict)
 
         self.assertNotIn("no commissioned workflow directories", out["plain/repo"])
-        self.assertNotIn("first-officer attachment", out["empty/fo"])
+        self.assertIn("first-officer attachment", out["empty/fo"])
         self.assertIn("project root unavailable", out["empty/fo"])
-        self.assertNotIn("semantic timeline", out["worker/repo"])
+        self.assertIn("semantic timeline", out["worker/repo"])
         self.assertIn("discovery timed out", out["worker/repo"])
+        self.assertNotIn("Show project plan", out["plain/repo"])
+        self.assertIn("Show project plan", out["empty/fo"])
+        self.assertIn("Show project plan", out["worker/repo"])
         for html in out.values():
-            self.assertNotIn("Show project plan", html)
             self.assertNotIn("data-next-plan=", html)
             self.assertNotIn("declares no workflow", html)
             self.assertNotIn("unhealthy", html)

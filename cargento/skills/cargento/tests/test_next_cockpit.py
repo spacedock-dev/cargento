@@ -77,6 +77,205 @@ __fetchImpl = async url => ({ok: true, json: async () =>
             storage_prelude(storage or {}) + self.FIXTURE,
         )
 
+    FOCUS_DOM = r"""
+let controls = [];
+const decode = text => text.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+__els.app = {
+  get innerHTML(){ return this.html || ""; },
+  set innerHTML(html){
+    this.html = html;
+    document.activeElement = null;
+    controls = [...html.matchAll(/<(button|a|textarea)\b([^>]*)>/g)].map(match => {
+      const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      const dataset = Object.fromEntries(Object.entries(attrs).filter(([key]) => key.startsWith("data-"))
+        .map(([key, value]) => [key.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value]));
+      return {dataset, tagName:match[1].toUpperCase(), value:"", attrs,
+        getAttribute(name){ return attrs[name] || null; },
+        focus(){ document.activeElement = this; },
+        closest(selector){ return selector === "[data-next-cockpit-action]" && dataset.nextCockpitAction ? this : null; }};
+    });
+  },
+  querySelectorAll(selector){
+    return selector === "[data-next-focus]" ? controls.filter(control => control.dataset.nextFocus) : [];
+  }
+};
+renderNext();
+"""
+
+    def test_tab_arrow_navigation_keeps_focus_for_consecutive_keys(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+controls.find(control => control.dataset.nextCockpitAction === "tab" && control.dataset.arg === "now").focus();
+const states = [];
+for(let index = 0; index < 2; index++){
+  __fire("keydown", {target:document.activeElement,key:"ArrowRight",preventDefault(){}});
+  states.push({tab:nextRoute.tab,focused:document.activeElement?.dataset.arg || null});
+}
+console.log(JSON.stringify(states));
+"""
+        )
+        self.assertEqual(
+            [{"tab": "course", "focused": "course"}, {"tab": "decisions", "focused": "decisions"}],
+            out,
+        )
+
+    def test_scope_link_focus_survives_live_refresh(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+controls.find(control => control.dataset.nextCockpitScope === "codex:focus-1").focus();
+await refreshNext();
+console.log(JSON.stringify(document.activeElement?.dataset.nextCockpitScope || null));
+"""
+        )
+        self.assertEqual("codex:focus-1", out)
+
+    def test_opening_human_context_moves_focus_to_the_editor(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+const edit = controls.find(control => control.dataset.nextCockpitAction === "memo-edit");
+edit.focus();
+__fire("click", {target:edit,preventDefault(){}});
+console.log(JSON.stringify({tag:document.activeElement?.tagName || null,
+  key:document.activeElement?.dataset.nextCockpitMemoKey || null,expected:edit.dataset.arg}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("TEXTAREA", out["tag"])
+        self.assertEqual(out["expected"], out["key"])
+
+    def test_console_screen_survives_navigation_away_and_back(self) -> None:
+        out = self.run_fixture("""
+const original = {textContent:"Delivered terminal output"};
+let screen = original;
+const getElement = document.getElementById;
+document.getElementById = id => id === "pc-terminal-screen" ? screen : getElement(id);
+projectTerminal = {dispose(){}};
+projectTerminalKey = projectTerminalOpenKey = "codex:focus-1";
+nextCockpitBeforeRender();
+screen = null;
+nextCockpitAfterRender();
+nextCockpitBeforeRender();
+screen = {textContent:"Loading the local terminal renderer.",replaceWith(node){ screen = node; }};
+nextCockpitAfterRender();
+console.log(JSON.stringify({same:screen === original,text:screen.textContent}));
+""")
+        self.assertEqual({"same": True, "text": "Delivered terminal output"}, out)
+
+    def test_working_root_prevents_no_execution_claim(self) -> None:
+        out = self.run_fixture("""
+__dashboard.sessions = __dashboard.sessions.slice(0, 1);
+__dashboard.sessions[0].subagent_hierarchy = [];
+__semantic.facts = [];
+__semantic.projections = {command_attention:[],command_attention_coverage:{
+  state:"complete",scanned:1,total:1,omitted:0}};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        self.assertNotIn("No execution observed", out)
+        self.assertIn("Codex · working", out)
+
+    def test_assignment_direction_remains_available_in_latest_evidence(self) -> None:
+        out = self.run_fixture("""
+__semantic.facts = [{fact_id:"direction",type:"user_message",at:104,
+  summary:"Fix the completion guard",intent_promoted:true,
+  source_session:{harness:"codex",sid:"focus-1"},
+  evidence:{source:"root transcript",confidence:"exact"}}];
+__semantic.projections = {};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        self.assertIn("Exact operator direction", out)
+        self.assertNotIn("Actionable direction not captured", out)
+        self.assertIn("Direction shown in assignment", out)
+
+    def test_decision_rows_and_counts_include_unknown_authors_without_claiming_captain(
+        self,
+    ) -> None:
+        out = self.run_fixture("""
+__semantic.facts.push({...__semantic.facts.find(f => f.type === "gate_decision"),
+  fact_id:"unknown-author",at:101,by:"",decision:"hold",summary:"Pending hold",
+  application_state:"pending"});
+nextRoute = {view:"project",project:"cargento",tab:"decisions"};
+renderNext();
+console.log(JSON.stringify({counts:nextCockpitCaptainDecisionCounts(__semantic),
+  html:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertEqual({"pending": 1, "unknown": 0, "superseded": 0, "applied": 1}, out["counts"])
+        self.assertIn("Decision author not published", out["html"])
+        self.assertIn("pending 1", out["html"])
+        self.assertNotIn("CAPTAIN DECISIONS", out["html"])
+
+    def test_session_scoped_now_discloses_project_wide_contents(self) -> None:
+        out = self.run_fixture("""
+nextRoute = {view:"project",project:"cargento",focus:"claude:claude-idle",tab:"now"};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML.slice(
+  __els.app.innerHTML.indexOf('<section class="next-cockpit-panel"'))));
+""")
+        assert isinstance(out, str)
+        self.assertIn("Now remains project-wide", out)
+        self.assertIn("Shape project cockpit", out)
+
+    def test_empty_course_and_decisions_keep_history_window(self) -> None:
+        out = self.run_fixture("""
+__semantic.facts = [];
+__semantic.projections = {};
+__semantic.history = {events:[],event_count:0,window_sec:86400,persisted:true};
+const views = {};
+for(const tab of ["course","decisions"]){
+  nextRoute = {view:"project",project:"cargento",tab};
+  renderNext();
+  views[tab] = __els.app.innerHTML.slice(
+    __els.app.innerHTML.indexOf('<section class="next-cockpit-panel"'));
+}
+console.log(JSON.stringify(views));
+""")
+        assert isinstance(out, dict)
+        for tab, html in out.items():
+            with self.subTest(tab=tab):
+                self.assertIn("last 24 hours", html)
+
+    def test_missing_plan_attachment_and_discovery_explanations_reach_now(self) -> None:
+        out = self.run_fixture("""
+__dashboard.sessions = __dashboard.sessions.slice(0,1);
+__dashboard.sessions[0].spacedock = {role:"first-officer",workflows:[]};
+for(const entry of nextCockpitContexts.values())
+  entry.data.workflow_discovery = {state:"none",workflows:[]};
+__semantic.facts = [];
+__semantic.work_items = [];
+__semantic.projections = {};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        self.assertIn(
+            "A first-officer attachment was observed, but it exposed no current plan", out
+        )
+        self.assertIn(
+            "Spacedock project discovery observed no commissioned workflow directories", out
+        )
+
+    def test_zero_completed_tasks_retain_published_progress_in_course(self) -> None:
+        out = self.run_fixture("""
+__dashboard.sessions = __dashboard.sessions.slice(0,1);
+__dashboard.sessions[0].tasks = ["alpha","beta","gamma"].map(subject => ({subject,status:"pending"}));
+__dashboard.sessions[0].total = 3;
+__dashboard.sessions[0].done = 0;
+nextRoute = {view:"project",project:"cargento",tab:"course"};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""")
+        assert isinstance(out, str)
+        self.assertIn("0 of 3 done", out)
+        self.assertIn("No completed tracked tasks in this payload", out)
+
     def test_scope_navigation_keeps_the_title_when_activity_is_published(self) -> None:
         out = self.run_fixture(
             """
@@ -2219,6 +2418,7 @@ console.log(JSON.stringify({html,primary}));
             """
 const group=nextProjectGroups()[0];
 group.sessions=[group.sessions[0]];
+group.sessions[0].state="idle";
 group.sessions[0].subagent_hierarchy=[];group.sessions[0].subagent_events=[];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention_coverage={state:"complete",scanned:1,total:1,

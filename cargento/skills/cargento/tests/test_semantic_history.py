@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,6 +48,34 @@ class SemanticHistoryTest(unittest.TestCase):
             "branch": {"harness": "codex", "sid": "root", "record_id": fact_id},
             "evidence": {"source": "structured rollout record", "confidence": "exact"},
         }
+
+    def test_nested_gate_credentials_are_redacted_on_write_and_legacy_reload(self) -> None:
+        secret = "sk-ant-api03-" + "a" * 93
+        fact = self._fact("gate", 100, "gate_decision", "gate", "Approval", "workflow:gate")
+        fact.update(stage=secret, decision=secret, target_stage=secret, by="person:captain")
+        model = {"facts": [fact], "work_items": []}
+        result = semantic_history.update(
+            self.config, build_runtime_state(self.config, started=1), "project", model, [], now=105
+        )
+        with self.subTest(boundary="publication"):
+            self.assertNotIn(secret, json.dumps(result))
+        path = Path(semantic_history.store_path(self.config))
+        with self.subTest(boundary="disk"):
+            self.assertNotIn(secret, path.read_text())
+        legacy = json.loads(path.read_text())
+        legacy["projects"]["project"]["events"][0]["fact"] = fact
+        path.write_text(json.dumps(legacy))
+        restarted = semantic_history.read(
+            self.config, build_runtime_state(self.config, started=106), "project"
+        )
+        with self.subTest(boundary="legacy reload"):
+            self.assertNotIn(secret, json.dumps(restarted))
+        rewritten = semantic_history.update(
+            self.config, build_runtime_state(self.config, started=107), "project", {}, [], now=108
+        )
+        with self.subTest(boundary="legacy rewrite"):
+            self.assertNotIn(secret, path.read_text())
+            self.assertEqual("person:captain", rewritten["events"][0]["fact"]["by"])
 
     def test_restart_dedupes_replaces_progress_and_suppresses_lifecycle_only(self) -> None:
         work_item_id = "workflow:project-cockpit"
