@@ -1048,6 +1048,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # collectors and whichever one is added next. `records` is a leaf, so
         # this stays inward.
         "cargento_runtime.aggregate": {
+            "cargento_runtime.annotations",
             "cargento_runtime.collectors",
             "cargento_runtime.config",
             "cargento_runtime.dismissals",

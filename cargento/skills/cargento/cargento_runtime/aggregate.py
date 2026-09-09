@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
+from . import annotations as annotation_store
 from . import dismissals, notifications, quota, records, sessions
 from . import events as runtime_events
 from . import io as runtime_io
@@ -497,6 +498,25 @@ def _redact_published_text(rows: list[Session]) -> list[Session]:
     return rows
 
 
+def _attach_annotations(
+    rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
+) -> None:
+    """Put what the reader typed onto every row, including the rows with none.
+
+    Every row, not only the annotated ones. A missing key renders as
+    `undefined`, which is the blank the board's first rule forbids; an absence
+    has to arrive as an absence carrying its reason. `annotations.published`
+    owns that wording so three surfaces cannot word it three ways.
+
+    Bound on the full `sid` rather than the eight-character `session` prefix
+    beside it. Both are on the row, and the prefix can collide.
+    """
+    for row in rows:
+        row["annotation"] = annotation_store.published(
+            annotation_store.find(entries, row.get("harness"), row.get("sid"))
+        )
+
+
 def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:
     """Replace a rate-blind collector's numeric placeholder with wire-level unknown."""
     reporting = {spec.key for spec in harnesses if spec.reports_rate}
@@ -585,6 +605,10 @@ class Application:
         window_hours = config.window_hours
         now = self.clock()
         cleared_marks = dismissals.refresh(config, state)
+        # Alongside the dismissal refresh and for its reason: two dashboards can
+        # bind on one machine and the file is the record, so a save made in the
+        # other is picked up here rather than at the next restart.
+        annotation_entries = annotation_store.refresh(config, state)
         # Sampled before the harness loop for the reason Claude's collector used
         # to sample it before its transcript scan: a SessionEnd that commits
         # while this collection is in flight must invalidate the popup, and a
@@ -631,6 +655,10 @@ class Application:
 
         out_sessions = _redact_published_text(sessions.dedupe_sessions(out_sessions))
         _hide_unmeasured_rates(out_sessions, self.harnesses)
+        # After dedupe, which keys on (harness, sid) and would otherwise decide
+        # between two rows one of which carries the annotation. Before the
+        # overlays, which change `state` and not identity.
+        _attach_annotations(out_sessions, annotation_entries)
         self._mark_unreachable_by_events(out_sessions)
         # Between dedupe and the sort, deliberately. Dedupe keys on
         # (harness, sid), which no overlay changes, and the sort ranks on `state`,

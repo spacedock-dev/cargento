@@ -89,6 +89,11 @@ DECLARED_SESSION_FIELDS = frozenset(
         # `events.PATCHABLE`, so an event envelope can write either onto any row.
         "acquisition",
         "blocked_since",
+        # Same provenance as the two above: written onto every row by
+        # `Application._attach_annotations` after `base_session` returns. Every
+        # row and not only the annotated ones, because a missing key renders as
+        # `undefined` where an absence has to state its reason.
+        "annotation",
     }
 )
 
@@ -1353,6 +1358,22 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 # offending key. Compared as mismatched types it reports two
                 # truncated reprs instead, which leaves whoever hit it grepping.
                 self.assertSetEqual(set(DECLARED_SESSION_FIELDS), set(rows[0]))
+
+    def test_the_published_annotation_is_never_the_constructor_default(self) -> None:
+        # `base_session` declares `annotation` as None, the way it declares
+        # `acquisition`, because that module has no runtime imports. The comment
+        # there claims a None never reaches a reader, and this is what makes the
+        # claim checkable: the payload carries the absence and its reason, which
+        # is a sentence the board can print, rather than a null it would print
+        # as a blank.
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+                annotation = rows[0]["annotation"]
+                self.assertIsInstance(annotation, dict)
+                self.assertEqual("", annotation["goal"])
+                self.assertTrue(annotation["goal_why"], "an absence with no reason")
+                self.assertEqual(0, annotation["revision_count"])
 
     def test_every_field_an_event_may_patch_is_a_declared_field(self) -> None:
         # The reachable-by-an-envelope half, which no store fixture can produce:

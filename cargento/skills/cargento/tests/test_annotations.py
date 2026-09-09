@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from cargento_runtime import aggregate
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
@@ -267,6 +268,59 @@ class AnnotationStoreTest(unittest.TestCase):
         # Numbering keeps counting, so a dropped revision reads as dropped
         # rather than as one that never existed.
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
+
+
+class AnnotationOnTheRowTest(unittest.TestCase):
+    """The store reaching the published payload.
+
+    `AnnotationStoreTest` covers the store. This covers the one thing every
+    surface downstream depends on: that a session row carries what the reader
+    typed, and that a row with nothing typed carries the absence and its reason
+    rather than no key at all. A missing key renders as `undefined`, which is
+    the blank the shared contract's first rule forbids.
+    """
+
+    def test_a_row_carries_what_was_typed_and_an_unannotated_row_says_why(self) -> None:
+        rows: list[Any] = [
+            {"harness": "pi", "sid": "typed", "state": "working"},
+            {"harness": "pi", "sid": "untouched", "state": "working"},
+        ]
+        entries: Any = (
+            {
+                "harness": "pi",
+                "sid": "typed",
+                "revisions": ({"n": 2, "at": 5.0, "goal": "Ship it", "output": ""},),
+            },
+        )
+        aggregate._attach_annotations(rows, entries)
+
+        self.assertEqual("Ship it", rows[0]["annotation"]["goal"])
+        self.assertEqual(2, rows[0]["annotation"]["revision"])
+        self.assertEqual("", rows[0]["annotation"]["goal_why"])
+        # The expected output was never typed, so it names its absence.
+        self.assertTrue(rows[0]["annotation"]["output_why"])
+
+        # Present, not absent: the key exists so the render has something to ask.
+        self.assertEqual("", rows[1]["annotation"]["goal"])
+        self.assertTrue(rows[1]["annotation"]["goal_why"])
+        self.assertEqual(0, rows[1]["annotation"]["revision_count"])
+
+    def test_binding_on_the_row_is_the_full_sid_not_the_display_prefix(self) -> None:
+        """`sessions.py` publishes both. Keying on `session` would let one
+        session's words appear under another's name."""
+        rows: list[Any] = [
+            {"harness": "claude", "session": "77aa41c2", "sid": "77aa41c2-aaaa", "state": "x"}
+        ]
+        entries: Any = (
+            {
+                "harness": "claude",
+                "sid": "77aa41c2-bbbb",
+                "revisions": ({"n": 1, "at": 1.0, "goal": "Not yours", "output": ""},),
+            },
+        )
+        aggregate._attach_annotations(rows, entries)
+        self.assertEqual("", rows[0]["annotation"]["goal"])
+        self.assertTrue(rows[0]["annotation"]["goal_why"])
 
 
 if __name__ == "__main__":

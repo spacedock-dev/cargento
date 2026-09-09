@@ -506,6 +506,16 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # rows makes every consumer test for presence rather than for a value. It
         # went undeclared until the declared-field-set check reached a published
         # row rather than this function's return value (DRC-4473).
+        # What the reader typed this session should achieve. Declared here so
+        # every constructed row carries the key, and left None here for the
+        # reason the two fields below are: this module has no runtime imports
+        # and is not going to gain one for a default. Every published row goes
+        # through `Application._attach_annotations`, which replaces this with
+        # `annotations.published(...)` — the stored revision, or the absence and
+        # its reason. A None reaching a reader would be a blank where the
+        # board's first rule wants a sentence, and the payload field-set test is
+        # what proves it does not.
+        "annotation": None,
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and
