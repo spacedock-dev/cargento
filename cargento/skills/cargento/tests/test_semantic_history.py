@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from cargento_runtime import semantic_history
 from cargento_runtime.config import build_runtime_config
@@ -70,12 +71,47 @@ class SemanticHistoryTest(unittest.TestCase):
         )
         with self.subTest(boundary="legacy reload"):
             self.assertNotIn(secret, json.dumps(restarted))
+        with self.subTest(boundary="legacy disk after read alone"):
+            self.assertNotIn(secret, path.read_text())
         rewritten = semantic_history.update(
             self.config, build_runtime_state(self.config, started=107), "project", {}, [], now=108
         )
         with self.subTest(boundary="legacy rewrite"):
             self.assertNotIn(secret, path.read_text())
             self.assertEqual("person:captain", rewritten["events"][0]["fact"]["by"])
+
+    def test_a_failed_read_repair_retries_and_cleans_other_projects_too(self) -> None:
+        secret = "sk-ant-api03-" + "b" * 93
+        path = Path(semantic_history.store_path(self.config))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        legacy = {
+            "v": 1,
+            "projects": {
+                "project": {"events": [{"summary": secret}], "cursors": {"source": 100}},
+                "other": {"events": [{"fact": {"stage": secret}}]},
+            },
+        }
+        path.write_text(json.dumps(legacy))
+        state = build_runtime_state(self.config, started=106)
+
+        with (
+            patch("cargento_runtime.semantic_history.os.replace", side_effect=PermissionError),
+            self.assertLogs(semantic_history.__name__, level="WARNING") as logs,
+        ):
+            result = semantic_history.read(self.config, state, "project")
+        self.assertNotIn(secret, json.dumps(result))
+        self.assertNotIn(secret, " ".join(logs.output))
+        self.assertEqual(legacy, json.loads(path.read_text()))
+        self.assertEqual([], list(path.parent.glob("*.tmp")))
+
+        repaired = semantic_history.read(self.config, state, "project")
+        self.assertNotIn(secret, path.read_text())
+        self.assertEqual({"source": 100}, repaired["cursors"])
+        self.assertIn("other", json.loads(path.read_text())["projects"])
+        clean_stat = path.stat()
+        semantic_history.read(self.config, state, "other")
+        self.assertEqual(clean_stat.st_mtime_ns, path.stat().st_mtime_ns)
+        self.assertEqual(clean_stat.st_ino, path.stat().st_ino)
 
     def test_restart_dedupes_replaces_progress_and_suppresses_lifecycle_only(self) -> None:
         # Given: history already contains assignments, progress, a checkpoint, and final output.

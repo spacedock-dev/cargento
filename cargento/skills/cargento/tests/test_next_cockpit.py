@@ -247,6 +247,42 @@ console.log(JSON.stringify({counts:nextCockpitCaptainDecisionCounts(__semantic),
         self.assertIn("pending 1", out["html"])
         self.assertNotIn("CAPTAIN DECISIONS", out["html"])
 
+    def test_a_counted_unbound_decision_is_reachable_in_decisions(self) -> None:
+        out = self.run_fixture(r"""
+__semantic.facts.push({fact_id:"unbound-decision",at:104,type:"decision",
+  source_kind:"decision",summary:"Hold for operator review",scope:"session",
+  source_session:{harness:"codex",sid:"focus-1"},work_item_id:null,
+  decision:"hold",application_state:"pending",
+  evidence:{source:"synthetic recorded decision",confidence:"exact"}});
+nextRoute = {view:"project",project:"cargento",tab:"decisions"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML,
+  rows:[...__els.app.innerHTML.matchAll(/data-event-id="([^"]+)"/g)].map(row=>row[1])}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("pending 1", out["html"])
+        self.assertIn("consumed/applied 1", out["html"])
+        self.assertEqual(["unbound-decision", "gate-a"], out["rows"])
+
+    def test_a_rendered_decision_is_not_duplicated_by_its_steering_link(self) -> None:
+        out = self.run_fixture(r"""
+__semantic.facts.push({fact_id:"linked-decision",at:104,type:"decision",
+  source_kind:"decision",summary:"Hold for operator review",scope:"session",
+  source_session:{harness:"codex",sid:"focus-1"},work_item_id:__task,
+  decision:"hold",application_state:"pending",
+  evidence:{source:"synthetic recorded decision",confidence:"exact"}});
+__semantic.projections.steering_episodes.push({episode_id:"linked",intent_id:"intent-a",
+  adaptation_fact:"linked-decision",confidence:"structural"});
+nextRoute = {view:"project",project:"cargento",tab:"decisions"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML,
+  rows:[...__els.app.innerHTML.matchAll(/data-event-id="([^"]+)"/g)].map(row=>row[1])}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("pending 1", out["html"])
+        self.assertIn("consumed/applied 1", out["html"])
+        self.assertEqual(["linked-decision", "gate-a"], out["rows"])
+
     def test_session_scoped_now_discloses_project_wide_contents(self) -> None:
         out = self.run_fixture("""
 // Given: a Claude session is selected on Now.

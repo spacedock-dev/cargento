@@ -214,8 +214,7 @@ function nextCockpitProjectStatus(group, semantic){
 
 function nextCockpitCaptainDecisionCounts(semantic){
   const counts = {pending:0, unknown:0, superseded:0, applied:0};
-  for(const fact of semantic && Array.isArray(semantic.facts) ? semantic.facts : []){
-    if(!fact || projectEventKind(fact) !== "decision") continue;
+  for(const fact of projectDecisionFacts(semantic)){
     const state = String(fact.application_state || "unknown").toLowerCase();
     if(state === "pending" || state === "unspent") counts.pending += 1;
     else if(state === "consumed" || state === "applied") counts.applied += 1;

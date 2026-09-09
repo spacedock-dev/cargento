@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import re
 from typing import TYPE_CHECKING, Any
@@ -80,11 +81,18 @@ def _read(config: RuntimeConfig) -> dict[str, Any]:
         return {"v": SCHEMA_VERSION, "projects": {}}
     if not isinstance(value, dict) or not isinstance(value.get("projects"), dict):
         return {"v": SCHEMA_VERSION, "projects": {}}
-    return dict(_redact_history(value))
+    redacted = dict(_redact_history(value))
+    # A read may be the only event after an upgrade; do not leave recognized
+    # credentials at rest until an unrelated history update happens to arrive.
+    if redacted != value and not _write(config, redacted):
+        logging.getLogger(__name__).warning(
+            "Could not persist semantic-history redaction; will retry on the next read"
+        )
+    return redacted
 
 
 def read(config: RuntimeConfig, state: RuntimeState, project: str) -> dict[str, Any]:
-    """Read one project's persisted semantic evidence without mutating it."""
+    """Read one project's evidence, repairing legacy credential redaction on disk."""
     with state.semantic_history_lock:
         payload = _read(config)
     row = payload.get("projects", {}).get(project)

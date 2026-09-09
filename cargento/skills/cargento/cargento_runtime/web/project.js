@@ -1423,6 +1423,29 @@ function projectEventKind(fact){
   return "";
 }
 
+function projectDecisionFacts(model){
+  // Decisions belong by recorded fact identity, independent of author, task binding,
+  // or steering links. Both the summary and rows consume this collection.
+  const facts = model && Array.isArray(model.facts) ? model.facts : [];
+  return [...new Map(facts.filter(fact => fact && projectEventKind(fact) === "decision")
+    .map(fact => [fact.fact_id || fact, fact])).values()];
+}
+
+function projectDecisionEvents(model, registry, focus){
+  const placed = new Map(projectGlobalEvents(model, registry, focus)
+    .map(event => [event.fact, event]));
+  return projectDecisionFacts(model).map(fact => {
+    if(placed.has(fact)) return placed.get(fact);
+    const source = fact.source_session || {};
+    const lane = registry.laneByKey.get(`fo:${source.harness}:${source.sid}`) ||
+      registry.laneByKey.get(registry.foKey);
+    return {eventId:fact.fact_id, at:fact.at, kind:"decision", meaning:fact.summary,
+      fact, lane, branch:"none", merge:"none", relations:[],
+      rationale:"Changes understanding of a recorded decision."};
+  }).sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0) ||
+    String(a.eventId || "").localeCompare(String(b.eventId || "")));
+}
+
 function projectRelationEdge(relations){
   if(!relations.length) return "none";
   return relations.some(relation => !String(relation.confidence || "").includes("derived"))
@@ -1744,9 +1767,9 @@ function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins,
     ? requestedMode : projectGraphModeBySession.get(String(projectQuerySession || "")) || "active";
   const visibleRegistry = projectVisibleRegistry(fullRegistry, mode);
   const registry = fullRegistry;
-  const events = projectGlobalEvents(model, fullRegistry, focus)
-    .filter(event => mode !== "decisions" || event.kind === "decision")
-    .filter(event => visibleRegistry.laneByKey.has(event.lane.key));
+  const events = mode === "decisions" ? projectDecisionEvents(model, fullRegistry, focus) :
+    projectGlobalEvents(model, fullRegistry, focus)
+      .filter(event => visibleRegistry.laneByKey.has(event.lane.key));
   const flows = projectEventFlows(events);
   const firstByLane = new Set();
   const rows = events.map((event, index) =>

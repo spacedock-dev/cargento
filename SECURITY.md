@@ -1516,6 +1516,14 @@ under the configured state directory, and can invoke the installed Codex CLI for
 This is separate from quota fetching and from the session-history switch. The prototype retains
 its own semantic-history store; `--forget` continues to delete only the session-history store.
 
+Semantic history redacts recognized credential shapes before publication and persistence.
+Loading an older store also redacts nested values and, if any changed, immediately replaces
+the file atomically with an owner-only copy under the history lock. A read may be the only
+activity after an upgrade, so waiting for a later history update would retain known secrets
+unnecessarily. If replacement fails, the read still publishes redacted values, logs a warning
+without their contents, and retries the repair on the next load. Original bytes can remain
+until the filesystem permits replacement; this does not erase filesystem snapshots or backups.
+
 The terminal is off unless both `--interaction-origin-session` and
 `--interaction-origin-registration-file` are supplied. When enabled, ten POST operations under
 `/api/interaction/` join the ordinary routes: `register`, `renew`, `probe-unregistered`,
