@@ -114,7 +114,7 @@ mass rename; they do not indicate a second bundle.
 | `web/next-cockpit-compat.js` | Compatibility helpers for the prototype substrate. |
 | `web/project.js` | Semantic timeline, project-context reads and exact-session terminal substrate; lazily loads vendored xterm from loopback. |
 | `web/next-cockpit.js` | Scope tree and switcher, recovery briefing, Now / Course / Decisions / Console panels, and browser-local context. |
-| `web/next-render.js` | View dispatch, payload fetch, refresh serialization, and failure state. |
+| `web/next-render.js` | View dispatch, payload fetch, refresh serialization, failure state, and the separately consented explicit observer-model request in Console. |
 | `web/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery, and fallback polling. It is last in `APP_PARTS` and starts refresh. |
 | `web/fonts/` | Embedded Space Grotesk and Space Mono subsets, licenses, and source hashes. |
 

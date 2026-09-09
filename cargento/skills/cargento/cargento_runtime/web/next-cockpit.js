@@ -9,6 +9,7 @@ const nextCockpitDisclosureStates = new Map();
 let nextCockpitHadDisclosures = false;
 let nextCockpitTerminalScreen = null;
 let nextCockpitMemoEditingKey = null;
+let nextCockpitMemoOriginal = "";
 
 function nextCockpitDisclosureAttr(control){
   const key = [nextRoute && nextRoute.project || "", nextRoute && nextRoute.focus || "", control].join("\n");
@@ -202,7 +203,7 @@ function nextCockpitProjectStatus(group, semantic){
   };
   const latest = decisions.slice(0, 2).map(row).join("");
   const older = decisions.slice(2);
-  const history = older.length ? `<details><summary>${older.length} older ` +
+  const history = older.length ? `<details${nextCockpitDisclosureAttr("older-status")}><summary>${older.length} older ` +
     `${older.length === 1 ? "decision" : "decisions"}</summary><ul>${older.map(row).join("")}</ul></details>` : "";
   const decisionList = latest ? `<ul>${latest}</ul>${history}` :
     '<span class="next-cockpit-status-empty">No captain decisions observed</span>';
@@ -679,6 +680,7 @@ function nextCockpitRecoveryMemoCell(group, focus, briefing){
       return `<label data-next-cockpit-memo-field="${kind}"><span>${label}</span>` +
         `<textarea maxlength="${NEXT_COCKPIT_MEMO_LIMIT}" data-next-cockpit-memo-input ` +
         `data-next-cockpit-memo-key="${esc(key)}" data-next-cockpit-memo-kind="${kind}" ` +
+        `data-next-focus="memo:${esc(key)}" ` +
         `placeholder="${esc(placeholder)}">${esc(value === "Not set" ? "" : value)}</textarea>` +
         `<small data-next-cockpit-memo-cue="${kind}">${cue}</small>` +
         '<button type="button" data-next-cockpit-action="memo-done">Done</button></label>';
@@ -867,22 +869,24 @@ function nextCockpitCanonicalSemantic(group, semantic){
 function nextCockpitLoadContext(group, focus){
   if(!nextData) return;
   const key = nextCockpitContextKey(group, focus);
+  if(nextObserverRequests.has(key)) return;
   const revision = nextFiniteNumber(nextData.generated);
   const settled = nextCockpitContexts.get(key);
   if(nextCockpitRequests.has(key) || settled && settled.revision >= revision) return;
-  nextCockpitRequests.set(key, revision);
+  const request = {};
+  nextCockpitRequests.set(key, request);
   const query = "/api/project-context?project=" + encodeURIComponent(nextCockpitStableKey(group)) +
     (focus ? "&session=" + encodeURIComponent(sessKey(focus)) : "");
   fetch(query).then(response => {
     if(!response.ok) throw new Error(String(response.status));
     return response.json();
   }).then(data => {
-    if(nextCockpitRequests.get(key) !== revision) return;
+    if(nextCockpitRequests.get(key) !== request) return;
     nextCockpitRequests.delete(key);
     nextCockpitContexts.set(key, {data, revision});
     renderNext();
   }).catch(() => {
-    if(nextCockpitRequests.get(key) !== revision) return;
+    if(nextCockpitRequests.get(key) !== request) return;
     nextCockpitRequests.delete(key);
     nextCockpitContexts.set(key, {data: settled && settled.data || null, revision, error: true});
     renderNext();
@@ -901,6 +905,7 @@ function nextCockpitMemoFields(group, focus){
       return `<label data-next-cockpit-memo-field="${kind}"><span>${label}</span>` +
         `<textarea maxlength="${NEXT_COCKPIT_MEMO_LIMIT}" data-next-cockpit-memo-input ` +
         `data-next-cockpit-memo-key="${esc(key)}" data-next-cockpit-memo-kind="${kind}" ` +
+        `data-next-focus="memo:${esc(key)}" ` +
         `placeholder="${esc(placeholder)}">${esc(value)}</textarea>` +
         `<small data-next-cockpit-memo-cue="${kind}">${cue}</small>` +
         `<button type="button" data-next-cockpit-action="memo-done">Done</button></label>`;
@@ -1076,7 +1081,8 @@ function nextCockpitNeedsYou(commandAttention){
 function nextCockpitSystemDetails(commandAttention){
   const system = (commandAttention || []).filter(item => item && item.owner === "FO");
   if(!system.length) return "";
-  return '<details class="next-cockpit-system-details" data-next-cockpit-system-details>' +
+  return '<details class="next-cockpit-system-details" data-next-cockpit-system-details' +
+    nextCockpitDisclosureAttr("system") + '>' +
     `<summary>System details</summary><ul>${system.map(item =>
       `<li>${esc(item.label)}</li>`).join("")}</ul></details>`;
 }
@@ -1087,7 +1093,8 @@ function nextCockpitPlanDisclosure(context){
   const discovered = discovery.state === "observed" &&
     Array.isArray(discovery.workflows) && discovery.workflows.length;
   if(!context.plans.length && !discovered) return "";
-  return '<details class="next-cockpit-plan-details" data-next-cockpit-plan-details>' +
+  return '<details class="next-cockpit-plan-details" data-next-cockpit-plan-details' +
+    nextCockpitDisclosureAttr("plan") + '>' +
     `<summary>Show project plan</summary><div>${nextProjectPlanBlock(context)}</div></details>`;
 }
 
@@ -1110,7 +1117,8 @@ function nextCockpitConsoleStatus(group){
   const rows = group.sessions.map(session => `<li>${esc(sessKey(session))} · ` +
     `${esc(String(session.state || "unknown"))}</li>`).join("");
   if(!rows) return "";
-  return '<details class="next-cockpit-console-status" data-next-cockpit-console-status>' +
+  return '<details class="next-cockpit-console-status" data-next-cockpit-console-status' +
+    nextCockpitDisclosureAttr("status") + '>' +
     `<summary>Raw project status</summary><ul>${rows}</ul></details>`;
 }
 
@@ -1254,11 +1262,13 @@ function nextCockpitCourse(group, semantic, lanes){
   const directions = nextCockpitCourseDirections(semantic, episodes);
   const visible = episodes.slice(-8);
   const earlier = episodes.slice(0, -8);
-  const disclosure = earlier.length ? '<details class="next-course-earlier"><summary>' +
+  const disclosure = earlier.length ? '<details class="next-course-earlier"' +
+    nextCockpitDisclosureAttr("course-earlier") + '><summary>' +
     `${earlier.length} Earlier</summary>${earlier.map(nextCockpitCourseRow).join("")}</details>` : "";
   const empty = episodes.length ? "" :
     '<p class="next-cockpit-empty">No source-backed course changes observed.</p>';
-  const other = directions.length ? '<details class="next-course-directions"><summary>' +
+  const other = directions.length ? '<details class="next-course-directions"' +
+    nextCockpitDisclosureAttr("course-directions") + '><summary>' +
     `Other directions (${directions.length})</summary>` +
     directions.map(nextCockpitCourseDirectionRow).join("") + '</details>' : "";
   return `<div class="next-cockpit-course" data-next-cockpit-course>${empty}${disclosure}` +
@@ -1347,7 +1357,12 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
   }else{
     body = nextCockpitConsoleScope(focus) + (focus
       ? nextCockpitTerminal(context.group, focus)
-      : '<p class="next-cockpit-empty">Select one exact session to open its read-only console.</p>') +
+      : '<p class="next-cockpit-empty">Select one exact session to open its read-only console.' +
+        (context.group.sessions.length === 1
+          ? ` <a href="${esc(nextFragmentForRoute({view:"project",project:context.group.label,
+            focus:sessKey(context.group.sessions[0]),tab:"console"}))}">Open this session’s console</a>`
+          : "") + '</p>') +
+      nextObserverModelControls(context.group, focus) +
       nextCockpitConsoleStatus(context.group) + nextProjectRail(context);
   }
   return `<section class="next-cockpit-panel" id="next-cockpit-panel-${tab}" role="tabpanel" ` +
@@ -1430,6 +1445,7 @@ document.addEventListener("click", event => {
   if(action === "memo-edit"){
     event.preventDefault();
     nextCockpitMemoEditingKey = String(target.dataset.arg || "");
+    nextCockpitMemoOriginal = nextCockpitReadMemo(nextCockpitMemoEditingKey);
     renderNext();
     return;
   }
@@ -1488,6 +1504,22 @@ document.addEventListener("click", event => {
 });
 
 function nextCockpitHandleKeydown(event){
+  const field = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-memo-field]") : null;
+  if(event.key === "Escape" && field && nextCockpitMemoEditingKey){
+    event.preventDefault();
+    const key = nextCockpitMemoEditingKey;
+    nextCockpitMemoDrafts.set(key, nextCockpitMemoOriginal);
+    try{
+      localStorage.setItem(key, nextCockpitMemoOriginal);
+      nextCockpitMemoStates.set(key, "saved");
+    }catch(_error){
+      nextCockpitMemoStates.set(key, "error");
+    }
+    nextCockpitMemoEditingKey = null;
+    renderNext();
+    return true;
+  }
   const target = nextCockpitActionTarget(event);
   if(!target || String(target.dataset.nextCockpitAction || "") !== "tab") return false;
   if(!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return false;

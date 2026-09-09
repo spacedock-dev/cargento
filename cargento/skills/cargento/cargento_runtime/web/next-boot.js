@@ -3,6 +3,10 @@ const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same director
   " last two segments of each session's path, so sibling worktrees read alike.";
 const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
+const NEXT_OBSERVER_CONSENT_KEY = "cargento.observer-model-consent.v1";
+let nextObserverConsentMemo = null;
+const nextObserverRequests = new Set();
+const nextObserverRequestStates = new Map();
 
 const qs = name => nextQuery.get(name);
 const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g,

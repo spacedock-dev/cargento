@@ -50,13 +50,15 @@ function projectGoalKey(label){
 }
 
 function projectDisclosure(control, summary, body, className, attributes){
-  const session = String(projectQuerySession || "");
+  const session = String(projectQuerySession ||
+    (typeof nextRoute !== "undefined" && nextRoute && nextRoute.view === "project"
+      ? `project:${nextRoute.project}` : ""));
   const key = `${session}\n${control}`;
   const open = session && projectDisclosureOpenBySession.get(key) === true ? " open" : "";
   const classes = className ? ` class="${esc(className)}"` : "";
   return `<details${classes}${open} data-pc-disclosure="${esc(control)}"` +
     ` data-disclosure-session="${esc(encodeURIComponent(session))}"${attributes || ""}>` +
-    `<summary>${summary}</summary>${body}</details>`;
+    `<summary data-next-focus="${esc("substrate:" + key)}">${summary}</summary>${body}</details>`;
 }
 
 function projectDisclosureElementKey(details){

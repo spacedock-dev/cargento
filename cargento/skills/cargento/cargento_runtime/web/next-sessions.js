@@ -272,12 +272,9 @@ function nextOperationsEndedNow(endedAt){
 }
 
 function nextOperationsHistoryNow(session){
-  /* A history row has always shown "—", because nothing about a quiet session
-     is knowable from recency alone. An observed end is the one exception, and
-     it is an exception because the session reported it rather than because the
-     row went quiet: a row with no stamp keeps the dash. */
+  // Recency cannot establish current activity; an end requires its own stamp.
   const endedAt = nextSessionEndedAt(session);
-  if(endedAt == null) return nextOperationsFact("now", "NOW", "—");
+  if(endedAt == null) return nextOperationsFact("now", "NOW", "Current activity not observed");
   return nextOperationsEndedNow(endedAt);
 }
 
@@ -290,9 +287,9 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses, history
   const live = session.active === true && state === "working" ? " next-live" : "";
   const historyAttr = history ? ' data-next-operation-history="true"' : "";
   const now = history ? nextOperationsHistoryNow(session) : nextOperationsNow(session);
-  const next = history ? nextOperationsFact("next", "NEXT", "—") : nextOperationsNext(session);
+  const next = history ? nextOperationsFact("next", "NEXT", "No current step observed") : nextOperationsNext(session);
   const blocked = history
-    ? nextOperationsFact("blocked", "BLOCKED", "—")
+    ? nextOperationsFact("blocked", "BLOCKED", "Current block state not observed")
     : nextOperationsBlocked(session, asks, harnesses);
   return `<article class="next-operation-row next-operation-row--${esc(state)}${live}" ` +
     `data-next-harness="${esc(harness)}" data-next-session="${esc(sid)}" ` +

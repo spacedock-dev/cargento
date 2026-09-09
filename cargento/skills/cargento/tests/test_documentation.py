@@ -2063,8 +2063,8 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 )
             }
         )
-        self.assertEqual(["overflow-wrap:anywhere", "overflow:hidden", "overflow:scroll"], forms)
-        scroll_rules = re.findall(r"([^{}]+)\{([^{}]*overflow\s*:\s*scroll[^{}]*)\}", styles)
+        self.assertEqual(["overflow-wrap:anywhere", "overflow:auto", "overflow:hidden"], forms)
+        scroll_rules = re.findall(r"([^{}]+)\{([^{}]*overflow\s*:\s*auto[^{}]*)\}", styles)
         self.assertEqual([".pc-terminal-viewport"], [rule.strip() for rule, _ in scroll_rules])
         for form in forms:
             with self.subTest(form=form):

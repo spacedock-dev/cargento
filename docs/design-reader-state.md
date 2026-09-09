@@ -27,13 +27,19 @@ For where these files sit and which way their dependencies run, see
 | Keyboard focus | Restored, with scrolling conditional on visibility at capture | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it; see [Document scroll](#document-scroll) |
 | A row control's confirmation cue | Restored for 30 seconds | `nextControlStates` in `next-boot.js`, keyed rather than held by node, and expiring at `NEXT_CONTROL_STATE_TTL_MS`; `NEXT_ROW_CONTROL_LANES` keys the focus lane, not this one |
 | A typed and unsent draft | Restored | `nextControlsCaptureDrafts` in `next-controls.js`, called by `renderNext` before the assignment |
-| That draft's caret offset | Restored | `nextControlsApplyCaret`, applied by the focus lane once it has landed on the element |
+| That draft's caret offset | Restored | `nextCaptureFocus` / `nextFocusNamed`, with `nextControlsApplyCaret` as the control-state fallback |
 | The `+ set a tripwire` box, once opened | Kept open | `nextControlsProjectState(project).adding` in `next-controls.js`, held per project for the life of the tab |
 | The workstream panel's collapse | Kept collapsed | `nextWorkstreamCollapsed` in `next-workstream.js`, persisted to `localStorage` |
 | The prototype terminal viewport scroll offset | Restored, or follows live output | `projectTerminalScrollTop` and `projectTerminalFollowLive`, restored by `projectTerminalBindViewport` in `project.js` |
 | Cockpit scope and selected tab | Preserved through redraw, reload and browser navigation | `nextRoute` and the fragment helpers in `next-boot.js`; changing scope retains the current tab |
 | Cockpit disclosures and the mounted terminal | Captured before replacement and restored afterward | `nextCockpitBeforeRender` and `nextCockpitAfterRender` in `next-cockpit.js`, including substrate disclosure capture in `project.js` |
 | Cockpit human context | Bounded to 500 characters per field, saved on input, and retained in memory if storage fails | `nextCockpitMemoDrafts` and `cargento.cockpit.memo.v2:` storage keys in `next-cockpit.js`, keyed by project, scope and field |
+| Context editor focus, caret and internal scroll | Restored by the named-focus lane; Escape in the field or Done control restores the value from when editing began and closes the editor | `nextCaptureFocus` / `nextFocusNamed` in `next-chrome.js`, memo focus keys and `nextCockpitMemoOriginal` in `next-cockpit.js` |
+| A draft input's internal scroll and resized dimensions, even after focus leaves it | Restored by the input's named key; unfocused caret offsets are restored too | `nextCaptureInputState` before replacement and `nextRestoreInputState` after it in `next-chrome.js` |
+| The More menu | Restored, including summary focus | The `more` disclosure key in `next-chrome.js` |
+| Project plan, raw status, earlier Course entries and other directions | Restored independently by project and selected scope | `nextCockpitDisclosureAttr` in `next-cockpit.js` |
+| Project-level semantic timeline disclosures | Restored independently per project when no session is selected; summary focus restored | `projectDisclosure` and `projectCaptureDisclosureStates` in `project.js` |
+| Observer model consent and request status | Consent survives reload with an in-memory fallback; per-session pending and result state survives redraw | `nextObserverConsent`, `nextObserverRequests` and `nextObserverRequestStates` in `next-render.js` / `next-boot.js`; controls use `data-next-focus` |
 | The document scroll offset | Clamped by the browser; focus restoration may move it only when the old target intersected the viewport | No lane of its own; `nextRestoreFocus` passes `preventScroll` for offscreen captured focus, see [Document scroll](#document-scroll) |
 | A text selection over rendered text | **Not managed** | Nothing; see [Text selection](#text-selection) |
 
@@ -166,7 +172,8 @@ cockpit redraws. When follow-live is enabled, the restored viewport follows its 
 That state has its own row in the inventory above.
 
 The other overflow forms remain `overflow:hidden` and `overflow-wrap:anywhere`.
-The reconciled stylesheet uses auto scrolling only on the terminal. Adding another scroll
+The reconciled stylesheet declares auto scrolling only on the terminal. Native textareas also
+scroll internally; their viewport and user-resized dimensions have a separate inventory row. Adding another scroll
 container requires its own state owner and an inventory update. `text-overflow:ellipsis` is a text
 rendering rule, not a scroll container.
 

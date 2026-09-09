@@ -342,6 +342,31 @@ class NextPageAssetContractTest(unittest.TestCase):
     def test_the_retired_preview_asset_directory_is_absent(self) -> None:
         self.assertFalse((frontend_page.WEB_DIR / "next").exists())
 
+    def test_the_optional_terminal_uses_the_verified_local_vendor_assets(self) -> None:
+        assets = {
+            "vendor/xterm.js": (
+                488_663,
+                "14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972",
+            ),
+            "vendor/xterm.css": (
+                7_112,
+                "854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6",
+            ),
+            "vendor/xterm-LICENSE.txt": (
+                1_261,
+                "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd",
+            ),
+            "vendor/SOURCES.txt": (
+                534,
+                "426b3d3a2288c8f88c9b960b5089294aa35c7e77a84969650633669b884e2e45",
+            ),
+        }
+        for name, (size, digest) in assets.items():
+            with self.subTest(asset=name):
+                data = frontend_page.asset_path(name).read_bytes()
+                self.assertEqual(size, len(data))
+                self.assertEqual(digest, hashlib.sha256(data).hexdigest())
+
     def test_every_css_variable_the_canonical_page_uses_is_declared(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         page = frontend_page.load_page().decode()
@@ -369,16 +394,10 @@ class NextPageAssetContractTest(unittest.TestCase):
         roots = re.findall(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
         self.assertEqual(1, len(roots))
         self.assertNotIn("prefers-color-scheme", styles)
-        # The prototype keeps its existing dark tokens locally until Session A2.
-        # The v2 regions must still use only the shipped palette.
-        v2_styles, prototype_styles = styles.split("/* ===== COCKPIT ===== */", 1)
+        # Reconciliation removed the temporary prototype palette (RC-5).
         for retired in ("--warn", "--alert", "--accent-ink", "--warnink"):
             with self.subTest(retired=retired):
-                self.assertNotIn(retired, v2_styles)
-        self.assertIn(
-            ".next-project-detail{--accent-ink:oklch(0.86 0.10 128);--alert:oklch(0.76 0.17 27)}",
-            prototype_styles,
-        )
+                self.assertNotIn(retired, styles)
         expected = {
             "--bg": "#14140f",
             "--panel": "#1c1c16",
@@ -503,26 +522,24 @@ class NextPageAssetContractTest(unittest.TestCase):
         )[0]
         wide = re.search(r"\.next-cockpit-shell\{([^}]*)\}", styles)
         narrow = re.search(
-            r"@media\(max-width:760px\)\{[\s\S]*?"
+            r"@media\(max-width:1279px\)\{[\s\S]*?"
             r"\.next-cockpit-shell\{([^}]*)\}",
             styles,
         )
 
         self.assertIsNotNone(wide)
-        self.assertIn(
-            "grid-template-columns:minmax(180px,230px) minmax(0,1fr)", wide.group(1) if wide else ""
-        )
+        self.assertIn("grid-template-columns:264px minmax(0,1fr)", wide.group(1) if wide else "")
         self.assertIsNotNone(narrow)
         self.assertIn("grid-template-columns:1fr", narrow.group(1) if narrow else "")
         self.assertNotIn("overflow-x:auto", wide.group(1) if wide else "")
 
         wide_switcher = re.search(r"\.next-cockpit-scope-switcher\{([^}]*)\}", styles)
         narrow_tree = re.search(
-            r"@media\(max-width:760px\)\{[\s\S]*?\.next-cockpit-scope-tree\{([^}]*)\}",
+            r"@media\(max-width:1279px\)\{[\s\S]*?\.next-cockpit-scope-tree\{([^}]*)\}",
             styles,
         )
         narrow_switcher = re.search(
-            r"@media\(max-width:760px\)\{[\s\S]*?\.next-cockpit-scope-switcher\{([^}]*)\}",
+            r"@media\(max-width:1279px\)\{[\s\S]*?\.next-cockpit-scope-switcher\{([^}]*)\}",
             styles,
         )
         self.assertIsNotNone(wide_switcher)
@@ -561,7 +578,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
         self.assertIsNotNone(now_wide)
         self.assertIn(
-            "grid-template-columns:minmax(180px,2fr) minmax(0,5fr)",
+            "grid-template-columns:repeat(2,minmax(0,1fr))",
             now_wide.group(1) if now_wide else "",
         )
         self.assertIsNotNone(now_narrow)
@@ -594,8 +611,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                22_383,
-                "b8ad01153c5d024aed654ecb03f9b29e6e7e92124a5e09c4f6ede6669858d82b",
+                22_576,
+                "758106a0d2b488ad589e4f74aeced032284d62850ec5f9003013f04d16b592f7",
             ),
             "next-observed.js": (
                 26_473,
@@ -614,28 +631,28 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                99_070,
-                "5691704a6c164553b5fbf942287e6fdbd7a306aa387d2eebe0872e83d10a0261",
+                105_499,
+                "563db97a7f62d06acaf33da4fa37619ba12501194ad0ff003e8db409ae276943",
             ),
             "next-chrome.js": (
-                35_396,
-                "80df29470a5fa713b735a54b483960601d61a316341475006c4c222460ae6ea6",
+                37_051,
+                "e7ba0644817abdbb6e6730dda7f1c7cd6d58a189c0578bb1884286b0ce738320",
             ),
             "next-capacity.js": (
                 32_192,
                 "fccfae64553820ba7da58439694808fdae9275bba00f4d85119db58d36d0ef6b",
             ),
             "next-sessions.js": (
-                19_890,
-                "38f4c8909f67c1d373124888278340ff11674cda914e626755e7c0d7ff9b63e0",
+                19_745,
+                "dbb317ce92bf0bd2b5121b43ab50cbe8878f8712fcfa51581a5b01cb87527f4e",
             ),
             "next-projects.js": (
                 4_186,
                 "0e270a7cecb33368ed71876fae7493104fe29027b695e100e6f24b5527820e0b",
             ),
             "next-project.js": (
-                13_710,
-                "b3b8f9913384bc53a059dd907591b8259cef6c34e3d9d3e67f39ee661b8dd0ed",
+                13_397,
+                "08d06ee829b8d01f71bfb066eb0df08be67c22c4fd191ca14ad4ab258dea44b1",
             ),
             "next-activity.js": (
                 6_632,
@@ -658,12 +675,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
-                74_751,
-                "37ec738687c3ae01f8f97f3a9aec2dfdbd95a421f9a0caff5611849647b19f7b",
+                81_068,
+                "3c9a44d271e9a1c7059bc76f106fe40f38b5d851c650d55d186681df94ae9339",
             ),
             "next-render.js": (
-                3_028,
-                "dc5f8c812e94bbf902fdbb7090d2a4e2a32fc9324384b6239b763f538951000e",
+                8_630,
+                "efe65035d6af60cfdfd5e5e87e2f6dcd8757286b7bf81ee36f6624098da52cbc",
             ),
             "next-live.js": (
                 3_375,
@@ -678,16 +695,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(82_753, len(styles))
+        self.assertEqual(88_784, len(styles))
         self.assertEqual(
-            "5b16c190d1a41b1008ade9058325334d132fa035ea651be4cc682db53172b163",
+            "7be9f66fac3848fecefa5ad3b701431f5dca489ee8cc7c324394a94c02e7acc0",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(678_606, len(assembled))
+        self.assertEqual(704_375, len(assembled))
         self.assertEqual(
-            "bf2245104f3ba86033e0ed504ecdb24c000becdbdab3c627efb309ccf88f4c03",
+            "0ba93cf91b90b61a0bc932c65fe527b4879afb209a678596f369e6bc87200da8",
             hashlib.sha256(assembled).hexdigest(),
         )
 

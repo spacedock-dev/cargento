@@ -889,8 +889,10 @@ server also requires `observer_model=1` on that refresh, following the quota con
 the page must send it only after presenting the observer disclosure and storing its answer.
 Only loopback peers can authorize a model call, and cross-origin Fetch Metadata is refused.
 The response publishes the disclosure and byte cap. The backend does not treat `usage=1` as
-observer consent. Frontend disclosure wiring is a separate reconciliation task; until it sends
-that scoped consent, model summaries remain unavailable through the UI.
+observer consent. Console presents that disclosure for an exact session and stores the answer separately from
+quota consent. Allowing summaries sends no request: each call requires the reader to choose
+Summarize this session. Passive refreshes never carry model consent. Storage failure retains
+the answer only for the current tab, using the same fallback as quota consent.
 
 Transcript message content is redacted before extraction can clip credential shapes. The complete
 generated prompt, including workflow stage, then goes through `records.redact_secrets` again
