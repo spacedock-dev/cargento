@@ -528,39 +528,23 @@ project workflow prose. A correction round uses
 `- Cycle {N}: {verdict} — {reviewer/loop}; surface {files}/{LOC} vs estimate {declared} ({P}%); AC {unchanged | narrowed: <note>}`.
 Compare `git diff --numstat "$(git merge-base main HEAD)"..HEAD` with the triage estimate; beyond
 declared tolerance or on narrowed AC, require a captain-visible design reset. Cycle 3 escalates.
-
 ## Post-merge Linear reconcile
 
 Required, and the reason this workflow exists rather than just the skills it calls. Runs when the
-merge is detected, before the entity is reported closed to the captain. All six, in order, and
-only once the merge to `main` is confirmed.
+merge is detected, before the entity is reported closed to the captain.
 
-1. Move the Linear issue to `Done`. Not before the merge.
-2. Fix the owning milestone description wherever the merge made it false. Keep the older dated
-   section and label it historical rather than deleting it. This write resends the whole
-   description and Linear's serializer will move some emphasis boundaries in text you did not
-   touch — see the milestone-edit rule in `## Workflow-specific rules`. Report it; do not repair it.
-3. Refresh the project overview's "As of" block. Every derived number lives there, so it is one edit.
-   The block's open-issues-by-move line is part of that refresh.
-4. Check the closed issue's `blocks`. Move anything newly free to `Todo`.
-5. If the closed issue still blocks something that no longer depends on it, remove the relation and
-   add `relatedTo` in its place, so the closed evidence stays reachable from the item it unblocked.
-   **Only when the blocked side is still open.** An edge between two closed issues gates nothing and
-   is part of the record of what waited on what — removing those turns a satisfied dependency into
-   no dependency, which is a different and less true statement.
-6. If the issue's move was `extend` or `new`, draft the change to the promise wording and hand it to
-   the next docs PR's `sync-docs` pass, which owns the three copies. A `keep` or `sharpen` merge
-   changes no promise wording; say so rather than leaving it implied.
+The six edits live in the `burndown` skill, at its step 4, and not here. This section used to carry
+its own copy, against this document's own lede, and the copy drifted: it kept a dated historical
+section on milestones that `sync-project` removes, it required an "As of" block of derived numbers
+on the project overview that `sync-project` forbids, and its third item was a different instruction
+from the skill's third rather than a reworded one. Read `.claude/skills/burndown/SKILL.md` and do
+what step 4 says. The evidence for why the step is not optional lives with it.
 
-Then report: issue worked, which promise it moved and how, milestone updated, overview refreshed,
-what became unblocked, what is next.
-
-The evidence for why this is not optional, as of 2026-08-21: C6 sat behind DEC-2 after a rewrite
-removed its need for one, so a 56 risk-adjusted item read as blocked for weeks. E4 and E5 read as
-ready to build while needing a security amendment nobody had filed. *Don't be the bottleneck* said
-no item had shipped after B3 and B7 both had. DEC-1 closed and kept a `blocks` edge on E7, so a
-closed decision was still gating live work. Each was one edit away from being right and nobody made
-it, because closing an issue felt like finishing.
+What this workflow adds on top is set out at the `merge` stage above and is not the skill's: the
+receipt comment on the Linear issue, and the `reconciled` stamp written before `merge guard`
+archives. One thing step 4.2 needs from here: the milestone write resends the whole description, so
+the milestone-edit rule in `## Workflow-specific rules` applies to it. Report what the serializer
+moves; do not repair it.
 
 ## Writing a dispatch checklist
 

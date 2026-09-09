@@ -47,7 +47,7 @@ and no single paragraph looks like too much.
 | Surface | Owns | Never |
 |---|---|---|
 | Project overview | The promise and the journey table. Build order. Decisions in force. Where to start. | Per-item status, counts Linear shows, what shipped, what it taught. |
-| Milestone description | The user value for that group, what is left as one line per issue, what it waits on, and a decision owed before building. | Anything about one item that its own issue could carry. Any dated build narrative. |
+| Milestone description | The user value for that group, what is left as one line per issue, what it waits on, a decision owed before building, and a contract note a named remaining item must read. | Anything about one item that its own issue could carry. Any dated build narrative. |
 | Issue body | That item's user value, scope, acceptance criteria, score, and dated staleness notes. | Another item's status. A post-mortem of its own build. |
 | Issue comment | Validation findings, build post-mortems, corrections to the body, cross-issue consequences. | Anything the body should have said instead. |
 | Labels | Release row, journey stage, move, origin. They *are* the record. | Prose restating a label. |
@@ -123,7 +123,15 @@ Nothing. [Or the gate, linked.]
 
 ## Decide before building        <- only when a real question is open
 [The question, why it is owed now, and what it costs to get wrong.]
+
+## Read before building          <- only when a merge changed a contract a remaining item needs
+- [ID]: the one line that changes what that item's builder does.
 ```
+
+`Read before building` is written by the `burndown` skill at its step 4.3 and read at its step 2.
+Preserve it through a rewrite, keyed by ID, and drop a bullet whose ID has reached `Done`. It is the
+one exception to the no-build-history rule, and it earns it by changing what the next builder does
+rather than by recording what the last one did.
 
 A complete milestone is three lines: the heading, the promise, and `Complete. Nothing is left, and
 nothing is waiting.` Resist adding a retrospective to a finished milestone. It is the single most
