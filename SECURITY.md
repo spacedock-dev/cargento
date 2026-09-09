@@ -922,7 +922,12 @@ argv without a shell, and a two-second timeout. Discovery output over 64 KiB is 
 capture; that is a parsing cap, not a streaming bound on subprocess output allocation.
 
 The terminal registration file is created with mode **0600**. Its reader checks that exact mode,
-uid, regular-file type and a **16 KiB** limit on the opened descriptor, refusing symlinks. The tmux
+uid, regular-file type and a **16 KiB** limit on the opened descriptor, refusing symlinks.
+This capability trust check is POSIX-only; platforms without `O_NOFOLLOW` or `getuid`, including
+native Windows, refuse terminal registration and report why. Shutdown uses a separate bounded
+regular-file read of `server_generation` solely to decide whether to remove its own file. That
+cleanup read does not require ownership or mode checks and never consumes a token, port or lease;
+it preserves files with a different generation, nonregular files and files over the byte cap. The tmux
 adapter attaches with `-r`; it exposes no pane-input method, HTTP input/control requests refuse,
 and any client WebSocket frame closes the connection. Control lines and queued output each have
 a **64 KiB** byte cap; overlong frames disconnect instead of growing the buffer. The snapshot

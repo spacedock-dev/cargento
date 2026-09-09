@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import hashlib
 import http.client
+import io
 import json
 import os
 import select
@@ -13,6 +15,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
@@ -800,6 +803,75 @@ class ControlModeParsingTest(unittest.TestCase):
             interaction._control_mode_output(b"%output %7 hello\\015\\012\xce\xbb"),
         )
         self.assertIsNone(interaction._control_mode_output(b"%session-changed $0 disposable"))
+
+
+class RegistrationFileCleanupTest(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.path = Path(temporary.name) / "registration.json"
+        self.prototype = interaction.InteractionPrototype(
+            FakeTmuxAdapter(),
+            collected_session_id="codex:one",
+            registration_file=self.path,
+        )
+        self.prototype.start(4553)
+        self.bootstrap = self.path.read_bytes()
+        platform_os = SimpleNamespace(
+            **{key: value for key, value in vars(os).items() if key not in {"getuid", "O_NOFOLLOW"}}
+        )
+        patcher = mock.patch.object(interaction, "os", platform_os)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_stop_removes_own_file_without_posix_ownership_checks(self) -> None:
+        with self.assertRaisesRegex(ValueError, "POSIX ownership checks"):
+            interaction._read_registration_file(self.path)
+        self.prototype.stop()
+        self.assertFalse(self.path.exists())
+
+    def test_stop_preserves_newer_generation_without_posix_ownership_checks(self) -> None:
+        newer = interaction.InteractionPrototype(
+            FakeTmuxAdapter(),
+            collected_session_id="codex:one",
+            registration_file=self.path,
+        )
+        newer.start(4554)
+        newer_bootstrap = self.path.read_bytes()
+        self.prototype.stop()
+        self.assertEqual(newer_bootstrap, self.path.read_bytes())
+        newer.stop()
+        self.assertFalse(self.path.exists())
+
+    def test_stop_preserves_oversized_and_malformed_files(self) -> None:
+        for payload in (self.bootstrap + b" " * 16384, b"{", b"[]"):
+            with self.subTest(payload_size=len(payload)):
+                self.path.write_bytes(payload)
+                self.prototype.stop()
+                self.assertEqual(payload, self.path.read_bytes())
+
+    def test_stop_preserves_nonregular_file(self) -> None:
+        self.path.unlink()
+        self.path.mkdir()
+        self.prototype.stop()
+        self.assertTrue(self.path.is_dir())
+
+    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "requires symlink support")
+    def test_stop_preserves_symlink_without_posix_ownership_checks(self) -> None:
+        target = self.path.with_name("target.json")
+        self.path.rename(target)
+        self.path.symlink_to(target)
+        self.prototype.stop()
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(self.bootstrap, target.read_bytes())
+
+    def test_waiting_client_explains_unavailable_posix_checks(self) -> None:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = interaction._run_waiting_tmux_client(self.path)
+        self.assertEqual(1, result)
+        self.assertIn("terminal registration unsupported", output.getvalue())
+        self.assertIn("POSIX ownership checks", output.getvalue())
 
 
 @unittest.skipUnless(

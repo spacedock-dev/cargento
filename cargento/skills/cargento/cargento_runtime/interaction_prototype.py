@@ -960,8 +960,7 @@ class InteractionPrototype:
         if path is None or not generation:
             return
         try:
-            value = _read_registration_file(path)
-            if not isinstance(value, dict) or value.get("server_generation") != generation:
+            if _read_registration_generation(path) != generation:
                 return
             path.unlink()
         except (OSError, ValueError, TypeError, json.JSONDecodeError, RecursionError):
@@ -1107,10 +1106,34 @@ def _run_tmux_client(
         print(f"lease renewed {renewal_count}", flush=True)
 
 
+def _read_registration_generation(path: Path) -> str | None:
+    """Read only the cleanup guard, without trusting any capability in the file."""
+    if not stat.S_ISREG(path.lstat().st_mode):
+        raise ValueError("registration file must be regular")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(path, flags | getattr(os, "O_BINARY", 0))
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_REGISTRATION_BYTES:
+            raise ValueError("registration file must be regular and bounded")
+        raw = handle.read(MAX_REGISTRATION_BYTES + 1)
+    if len(raw) > MAX_REGISTRATION_BYTES:
+        raise ValueError("registration file exceeds byte limit")
+    value = json.loads(raw)
+    generation = value.get("server_generation") if isinstance(value, dict) else None
+    return generation if isinstance(generation, str) else None
+
+
+class RegistrationUnsupportedError(ValueError):
+    """The platform cannot verify private registration capabilities."""
+
+
 def _read_registration_file(path: Path) -> dict[str, Any]:
     """Read capabilities only from a private, owned, bounded regular file."""
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "getuid"):
-        raise ValueError("private registration files require POSIX ownership checks")
+        raise RegistrationUnsupportedError(
+            "private registration files require POSIX ownership checks"
+        )
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(descriptor, "rb") as handle:
         info = os.fstat(handle.fileno())
@@ -1145,6 +1168,9 @@ def _run_waiting_tmux_client(config_path: Path) -> int:
         cargento_session_id = value["cargento_session_id"]
         lease_sec = value["lease_sec"]
         require_session_environment = value["require_session_environment"]
+    except RegistrationUnsupportedError as exc:
+        print(f"terminal registration unsupported: {exc}", flush=True)
+        return 1
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         print("registration failed: malformed client configuration", flush=True)
         return 1
