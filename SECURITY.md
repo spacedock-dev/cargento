@@ -909,16 +909,20 @@ is still trusted code; replacing it as the owning user is outside this boundary.
 ### Cockpit dispatch and terminal reads
 
 Dispatch markdown is read from `XDG_RUNTIME_DIR/spacedock-dispatch` when available, with the
-legacy `/tmp/spacedock-dispatch` path retained for existing producers. Both use the same checks:
+legacy `/tmp/spacedock-dispatch` path retained for existing producers. The legacy location is in
+a shared temporary namespace where another local user can plant matching filenames; a filename
+match alone establishes neither ownership nor safe contents. Both use the same checks:
 `O_NOFOLLOW`, an anchored directory descriptor, realpath containment, regular files owned by the
 current uid, and refusal of group- or world-writable files. Files larger than **65,536 bytes** are
 refused, including growth during the bounded read. The directory must also belong to the current
 uid. Platforms without the POSIX no-follow and ownership checks refuse this source. The 32 MiB
-semantic backfill limit applies to transcripts, not dispatch artifacts.
+semantic backfill limit applies to transcripts, not dispatch artifacts: a dispatch is a short
+Markdown file, and a transcript-sized allowance would let a planted artifact force a large read.
 
 `SPACEDOCK_BIN`, when set, must be absolute; otherwise discovery resolves `spacedock` and also
-requires an absolute result. The child gets only `PATH` (the OS default), `HOME` and `LANG`, a fixed
-argv without a shell, and a two-second timeout. Discovery output over 64 KiB is rejected after
+requires an absolute result. Accepting a relative override or resolution could execute a planted
+program when the working directory is on `PATH`. The child gets only `PATH` (the OS default),
+`HOME` and `LANG`, a fixed argv without a shell, and a two-second timeout. Discovery output over 64 KiB is rejected after
 capture; that is a parsing cap, not a streaming bound on subprocess output allocation.
 
 The terminal registration file is created with mode **0600**. Its reader checks that exact mode,

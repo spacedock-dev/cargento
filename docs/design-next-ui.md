@@ -36,22 +36,31 @@ rule that every claim needs published evidence. The shared-label caveat stays wi
 
 Where the two designs had the same surface, the v2 renderer survives and the cockpit duplicate
 is removed. Its measured delegation and absence rules already had callers and tests; retaining a
-second rendering would give the same evidence two interpretations. Moving the full waiting queue
-into Console must not hide a project wait: COMMAND names a waiting project session above the tabs,
-with raise and copy-resume controls wherever supported. Decisions shows recorded decisions and
-application evidence, not an approval mechanism.
+second rendering would give the same evidence two interpretations. Decisions shows recorded
+decisions and application evidence, not an approval mechanism.
 
-The Scope rail gives harness names and session titles separate readable space at desktop widths
-and becomes a scope switcher on narrower screens. Missing terminal registration, evidence, history
+RC-1 protects [P3's promise of one queue of everything blocked on the reader](promise-map.md#p3-is-anything-waiting-on-me).
+Putting all waiting evidence behind the Console tab would weaken that promise: a reader returning
+to Now could miss a session that needs them. COMMAND therefore names a waiting project session
+above the tabs whenever one exists, with raise and copy-resume controls wherever supported.
+Console holds the full queue and its detail. Selecting another tab or focusing a non-waiting
+sibling must not hide the project wait. Both surfaces silent while a session waits is a defect;
+the cockpit regression test checks the briefing before the tab bar across tabs and scopes.
+
+The original review measured truncated harness names and titles even at 1954px. Keeping that rail
+would defeat its purpose as a way to choose a session. The Scope rail now has a 264px column at
+1280px and above, with separate readable space for harness names and session titles; below 1280px
+it becomes a scope switcher. Missing terminal registration, evidence, history
 or delegation renders the reason for the missing reading. Source strings use mono; sentences the
 board says use sans at 12.5px or larger. Evidence and More remain named disclosures.
 
 The terminal bridge, semantic history and model-assisted goal analysis remain prototypes.
 Human context and tripwires stay browser-local and deliver no instruction to an agent. Semantic
 history has its own server store and is not removed by the session-history `--forget` command.
-The optional observer model requires explicit enablement and scoped disclosure consent; the
-browser does not yet supply that consent, so UI reads remain local. Its prompt cap and the local
-dispatch and terminal trust boundaries belong to
+The optional observer model requires explicit enablement and scoped disclosure consent. Console
+reuses the quota disclosure pattern with a separate stored answer and an explicit Summarize this
+session action. Granting consent alone sends nothing, and passive refreshes remain local. Its
+prompt cap and the local dispatch and terminal trust boundaries belong to
 [SECURITY.md](../SECURITY.md#observer-model-calls).
 
 The [import review and captures](probes/project-cockpit/DESIGN_REVIEW.md) predate this reconciliation.

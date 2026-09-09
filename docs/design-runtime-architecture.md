@@ -83,7 +83,8 @@ Everything else lives in one file per responsibility:
 
 The prototype also gives `observer.CodexGoalModel` an optional goal-summary path through the
 installed Codex CLI. It is disabled by default and requires scoped disclosure consent for an
-explicit focused project-context refresh. The browser consent control remains unwired. The
+explicit focused project-context refresh. `web/next-render.js` owns the Console disclosure,
+separate consent state and explicit summary request; passive reads do not request the model. The
 redaction, prompt byte cap, executable resolution and concurrency limits are owned by
 [SECURITY.md](../SECURITY.md#observer-model-calls), alongside the dispatch and terminal boundaries.
 
