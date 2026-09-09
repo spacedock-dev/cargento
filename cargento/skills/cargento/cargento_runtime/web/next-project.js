@@ -186,13 +186,47 @@ function nextProjectDetailHeader(context){
     `<p class="next-project-detail-count">${esc(project.countLine)}</p>${shared}</header>`;
 }
 
-function nextProjectGoal(project){
+/* STATED GOAL is a list, not a field: zero to n rows, each with its own tag and
+   its own source line. The reader's typed words are rows above the harness's,
+   never merged with them, because "what I asked for" and "what the harness
+   published" are different claims and one string cannot carry both.
+
+   `annotation` is the focused session's, or null at project scope where there
+   is no one session to have typed anything. The project-scope count line the
+   design also draws is C4's subject (DRC-4023) and is deliberately not here. */
+function nextProjectGoalRow(tag, text, src, known = true){
+  return '<div class="next-project-goal-row">' +
+    `<span class="next-project-goal-tag">${esc(tag)}</span>` +
+    nextProjectValue(text, known, "next-project-goal-text") +
+    (src ? `<span class="next-project-goal-source">${esc(src)}</span>` : "") + '</div>';
+}
+
+function nextProjectGoal(project, annotation){
   const source = project.goalKnown
     ? `<span class="next-project-goal-source">${esc(project.goalSrcText)}</span>` : "";
   const gap = project.goalGapKnown
     ? `<p class="next-project-goal-gap">${esc(project.goalGapText)}</p>` : "";
-  return '<section class="next-project-goal"><header><h2>STATED GOAL</h2>' + source + '</header>' +
-    nextProjectValue(project.goalText, project.goalKnown, "next-project-goal-text") + gap + '</section>';
+  const typed = annotation || null;
+  const revision = typed && typed.revision
+    ? `revision ${typed.revision} of ${typed.revision_count}` : "";
+  let rows = "";
+  if(typed && typed.goal){
+    rows += nextProjectGoalRow("YOUR WORDS · GOAL", typed.goal, revision);
+  }
+  if(typed && typed.output){
+    rows += nextProjectGoalRow("YOUR WORDS · EXPECTED OUTPUT", typed.output, revision);
+  }
+  /* The binding sentence, not a decoration. A Claude row's session id is an
+     eight-character prefix, so another session sharing it would share these
+     words, and the reader is told rather than left to assume otherwise. */
+  const binding = typed && typed.binding_why
+    ? `<p class="next-project-goal-gap">${esc(typed.binding_why)}</p>` : "";
+  const derived = rows
+    ? nextProjectGoalRow("DERIVED FROM THE HARNESS", project.goalText,
+        project.goalKnown ? project.goalSrcText : "", project.goalKnown)
+    : nextProjectValue(project.goalText, project.goalKnown, "next-project-goal-text");
+  return '<section class="next-project-goal"><header><h2>STATED GOAL</h2>' +
+    (rows ? "" : source) + '</header>' + rows + derived + binding + gap + '</section>';
 }
 
 function nextProjectPlanStatus(context){

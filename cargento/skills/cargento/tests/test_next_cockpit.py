@@ -264,6 +264,46 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
         self.assertIn("consumed/applied 1", out["html"])
         self.assertEqual(["unbound-decision", "gate-a"], out["rows"])
 
+    def test_the_typed_words_render_above_the_goal_the_harness_published(self) -> None:
+        # DRC-4509. STATED GOAL is a list, not a field: the reader's words are
+        # their own rows with their own tags, never merged into the harness's
+        # line, because the two are different claims.
+        out = self.run_fixture(r"""
+__dashboard.sessions[0].annotation = {goal:"Ship the cockpit", goal_why:"",
+  output:"A merged PR", output_why:"", revision:2, revision_count:2, at:104,
+  binding_why:"Bound by an eight-character identity prefix."};
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        html = out["html"]
+        self.assertIn("YOUR WORDS \u00b7 GOAL", html)
+        self.assertIn("Ship the cockpit", html)
+        self.assertIn("A merged PR", html)
+        self.assertIn("DERIVED FROM THE HARNESS", html)
+        self.assertIn("revision 2 of 2", html)
+        # The binding is reported rather than assumed exact.
+        self.assertIn("eight-character identity prefix", html)
+        # The harness published no goal here, so its row keeps its absence
+        # styling rather than being dressed as a value because it sits in a list.
+        self.assertIn(
+            'next-project-value--absent next-project-goal-text">'
+            "No assignment or workflow goal published",
+            html,
+        )
+
+    def test_a_session_with_no_typed_words_shows_the_harness_goal_alone(self) -> None:
+        # No rows, no tags, and nothing implying the reader typed something.
+        out = self.run_fixture(r"""
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertNotIn("YOUR WORDS", out["html"])
+        self.assertNotIn("DERIVED FROM THE HARNESS", out["html"])
+
     def test_a_rendered_decision_is_not_duplicated_by_its_steering_link(self) -> None:
         out = self.run_fixture(r"""
 __semantic.facts.push({fact_id:"linked-decision",at:104,type:"decision",

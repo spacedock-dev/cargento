@@ -45,6 +45,14 @@ function nextCockpitReadMemo(key){
   }
 }
 
+/* The focused session's annotation, or null at project scope. Null is not an
+   error: with no one session selected there is nobody whose words these would
+   be, and STATED GOAL falls back to the harness row alone. */
+function nextCockpitFocusedAnnotation(group){
+  const session = nextCockpitFocusedSession(group);
+  return (session && session.annotation) || null;
+}
+
 function nextCockpitFocusedSession(group){
   if(!nextRoute || nextRoute.view !== "project" || !nextRoute.focus) return null;
   return group.sessions.find(session => sessKey(session) === nextRoute.focus) || null;
@@ -815,7 +823,7 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
     `<div data-next-cockpit-task${taskAttrs}><span>ASSIGNMENT</span>` +
     `<strong>${esc(taskText)}</strong>` +
     `${assignmentEffect}${assignmentEvidence}` +
-    (project ? nextProjectGoal(project) : "") + '</div>' +
+    (project ? nextProjectGoal(project, nextCockpitFocusedAnnotation(group)) : "") + '</div>' +
     `<div><span>EXECUTION</span>${nextCockpitRecoveryExecution(group, briefing, compactIdle)}</div>` +
     `<div><span>COMMAND</span>` +
     nextCockpitWaitingCommand(project) +

@@ -181,6 +181,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-goal-text{max-width:640px;font-size:14.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
 .next-project-goal-text.next-project-value--known{color:var(--ink)}
 .next-project-goal-gap{margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
+.next-project-goal-row{display:flex;flex-direction:column;gap:5px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-project-goal-row+.next-project-goal-row{margin-top:2px}
+.next-project-goal-tag{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
 .next-project-activity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
 .next-project-activity{min-width:0}
 .next-project-activity>h2{margin-bottom:11px}
