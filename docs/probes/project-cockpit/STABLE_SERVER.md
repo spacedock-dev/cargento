@@ -46,7 +46,13 @@ After the accepted push, record the exact remote checkpoint:
 
 The watcher fetches the remote branch.
 It changes the source only after the branch contains `<pushed-sha>`.
-This explicit step supports an accepted change that has a new SHA after a rebase.
+This explicit step also supports a separately accepted remote checkpoint. For PR #312, merge
+main into the prototype branch; do not rebase the three imported commits or rewrite their authorship.
+
+Backends start with `--no-usage` and without observer-model or interaction flags. Local
+project-context reads can still write semantic history under the server's private `CARGENTO_HOME`.
+The observer model and terminal remain disabled. The proxy's git fetch is review machinery,
+separate from the dashboard's outbound-data contract.
 
 ## Stop the server
 

@@ -1,7 +1,10 @@
 # Operator cockpit: design review
 
-This branch imports the three commits from `clkao/cargento` at `3ed3209` and merges
-Cargento main through `58caa25`. It preserves the prototype for a later design pass.
+This review records the original import of three commits from `clkao/cargento` at `3ed3209`,
+merged with Cargento main through `58caa25`. The captures and final design questions below
+predate the v2 reconciliation. The current layout and the decision to keep the cockpit while
+retaining v2's evidence rules are recorded in the
+[reconciliation rationale](../../design-next-ui.md#cockpit-reconciliation).
 
 The project page now opens with a recovery briefing: the assignment, who is working,
 what needs attention, and the latest evidence. A scope rail switches between the
@@ -23,7 +26,9 @@ python3 cargento/skills/cargento/server.py --port 18886 --no-usage --no-git
 ```
 
 Open `http://127.0.0.1:18886/`. The two switches keep quota fetching and git probes
-off during a design review; they do not disable project-context analysis.
+off during a design review; they do not disable local project-context analysis. Observer model
+calls are off by default and separately gated by enablement and disclosure consent. The browser
+does not yet send that consent, so opening these views cannot invoke the model.
 
 | Need | Path through the UI | Value and limit |
 |---|---|---|
@@ -32,7 +37,7 @@ off during a design review; they do not disable project-context analysis.
 | Understand a change of direction | Project > Course > Evidence or Other directions | See source-backed state changes and supporting directions. It is a bounded history, not a complete transcript. |
 | Check prior decisions | Project > Decisions | Inspect recorded decisions and their application state. This view does not itself grant approval. |
 | Add human context or hand off | Now > + Add human context, or More > Add human context; More > Copy briefing | Save context in this browser and copy the current briefing. Notes do not instruct an agent. |
-| Inspect operational detail | Project > Console; select one exact session for its console | Keep raw status, activity, delegation, and local controls together. Terminal output requires explicit registration; typing into an agent is unsupported. |
+| Inspect operational detail | Project > Console; select one exact session for its console | Read Delegation, Waiting on you, Capacity and Tripwires. Current activity and observed endings are in Now. Terminal output requires explicit registration; typing into an agent is unsupported. |
 
 The terminal is an optional prototype path. Start with both
 `--interaction-origin-session <harness:sid>` and
@@ -49,7 +54,8 @@ Captured on 2026-09-08 in Chrome at its existing 1954 x 1066 viewport. Main and 
 branch use the same synthetic Codex, Claude, and Pi sessions, derived from
 `NextCockpitCompositionTest.FIXTURE`. No local transcript content or live terminal
 output is included. The Console images show project and exact-session scope with
-no registered terminal. These are prototype review evidence, not a completed design.
+no registered terminal. These captures predate the v2 reconciliation and do not show its current
+layout, wider Scope rail, retained v2 panels, or corrected absence states.
 
 Main: project activity, observed state changes, and local controls.
 
@@ -75,7 +81,8 @@ Branch: Console after selecting one exact session.
 
 ![Session Console view](screenshots/06-cockpit-console-session.png)
 
-For the design pass, the narrow scope rail truncates labels even at this viewport,
+At the original import, the narrow scope rail truncated labels even at this viewport,
 and the project briefing remains prominent when a session is selected. Review that
 hierarchy alongside the discoverability of Evidence and the More menu. Registration,
-missing evidence, empty history, and unmeasured delegation each need a clear state.
+missing evidence, empty history, and unmeasured delegation each needed a clear state. These
+findings motivated the reconciliation; they are retained here as historical review evidence.

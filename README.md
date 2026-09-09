@@ -114,16 +114,22 @@ launcher, and the dashboard itself lives in the importable `cargento_runtime` pa
 server reads local harness session stores read-only, meaning transcripts, task files, and SQLite
 databases, and assembles the HTML, CSS and JavaScript under `cargento_runtime/web/` into a
 self-refreshing dashboard at `http://127.0.0.1:4553/`. The server binds to 127.0.0.1 unless you ask
-for another address with `--host`, which has no authentication behind it. Your session data stays on
-the machine: the one request that leaves it is the quota poll, which carries a vendor token out and
-quota numbers back and no session content, and `--no-usage` turns it off. A second pathway is
-documented and unused: Cargento asking a harness a bounded question, which would carry
-session-derived text and is opt-in for that reason. A third is documented and unused too: a nudge to
-an endpoint you supply, carrying counts and nothing that names a session. See
-[SECURITY.md](SECURITY.md) for all three, and before you use `--host`.
+for another address with `--host`, which has no authentication behind it. Session content stays on
+the machine by default. The quota poll requires disclosure consent, carries a vendor token and no
+session content, and can be disabled with `--no-usage`. The optional observer model is the one path
+that can send session content off the machine through the installed Codex CLI. It requires
+`--observer-model` and separate disclosure consent; `--no-observer-model` overrides enablement.
+The browser consent control is not wired yet, so model summaries remain unavailable through the UI.
+Dashboard assets, including the optional terminal's vendored xterm files, need no external fetch.
+A third outbound pathway, counts-only nudges to an operator-supplied endpoint, remains documented
+and unimplemented. See [SECURITY.md](SECURITY.md) for all three, and before you use `--host`.
 
-The dashboard opens on Projects, grouping sessions by the label their harness publishes. Sessions
-puts active work above recent history and gives each active session the same four facts: where it
+The dashboard opens on Projects, grouping sessions by the label their harness publishes. Each
+project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
+and Now, Course, Decisions and Console tabs. Console collects delegation, waiting requests,
+capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
+the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
+Sessions puts active work above recent history and gives each active session the same four facts: where it
 is, what it is doing now, what it does next, and whether it is blocked.
 Attention collects what needs a human. Keyboard shortcuts `s`, `p` and `a` switch between them.
 `Escape` returns from a session to its project and otherwise to Projects. The route lives in the
