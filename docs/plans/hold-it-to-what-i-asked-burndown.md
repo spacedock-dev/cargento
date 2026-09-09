@@ -353,6 +353,12 @@ journal named under Recovery handles. Read them before building an issue rather 
   has a floor under it. And four contract gates fired and all four were right: the reviewed import
   graph, the POST-route inventory, the `--no-*` flag oracle, and SECURITY.md's capability count.
   Next: item 3, the web half. That is where the byte pins and the design fidelity bite.
+- 2026-09-10 03:01: **PR #317 opened** against `proto/operator-cockpit`, deliberately early so the
+  deliverable exists regardless of what happens to the rest of the night. It grows as commits land.
+  DEC-17 filed as DRC-4532 and linked as a blocker on DRC-4511, which is the honest alternative to
+  inventing the rubric that issue needs.
+  The cron's stop condition is a PR **and** a Progress section saying complete. A PR alone must not
+  stop it, and this line is not that.
 
 ## Owed to Linear
 
