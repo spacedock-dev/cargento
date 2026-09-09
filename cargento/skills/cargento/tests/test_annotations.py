@@ -345,10 +345,26 @@ class AnnotationWiringTest(unittest.TestCase):
     would notice `annotations_enabled=not args.no_dismiss`.
     """
 
+    NOW = 1_800_000_000.0
+
     def test_the_flag_reaches_the_config(self) -> None:
+        """Through `build_runtime`, not through argparse.
+
+        An earlier version of this test asserted only that the parser sets
+        `args.no_annotations`, which argparse guarantees. The arbiter proved it
+        hollow by mutating line 381 to `annotations_enabled=not args.no_dismiss`
+        and watching the whole suite stay green. It reads the config now.
+        """
         parser = cli.build_parser()
-        self.assertFalse(parser.parse_args(["--no-annotations"]).no_annotations is False)
-        self.assertTrue(parser.parse_args([]).no_annotations is False)
+        off, _state = cli.build_runtime(parser.parse_args(["--no-annotations"]), started=self.NOW)
+        self.assertFalse(off.annotations_enabled)
+        # And not by accident of another flag: the plausible copy-paste is
+        # `not args.no_dismiss`, so pin that the two switches are independent.
+        self.assertTrue(off.dismissals_enabled)
+        on, _state2 = cli.build_runtime(parser.parse_args([]), started=self.NOW)
+        self.assertTrue(on.annotations_enabled)
+        dismiss_off, _s3 = cli.build_runtime(parser.parse_args(["--no-dismiss"]), started=self.NOW)
+        self.assertTrue(dismiss_off.annotations_enabled)
 
     def test_the_capability_is_published_only_when_the_store_is_live(self) -> None:
         """The flag's help text says the page offers no field to type them in,
