@@ -359,6 +359,12 @@ journal named under Recovery handles. Read them before building an issue rather 
   inventing the rubric that issue needs.
   The cron's stop condition is a PR **and** a Progress section saying complete. A PR alone must not
   stop it, and this line is not that.
+- 2026-09-10 03:3x: **the payload carries the annotation** (`52fc5c7`). `_attach_annotations` on
+  every published row, bound on the full sid, absence and reason where nothing was typed. This is
+  the transport the arbiter said to settle once, and it rides the session row. Three declaration
+  gates fired and all three were right; `sessions.base_session` declares the key as None because
+  that module has no runtime imports, and a new test proves the published value is never that None.
+  Backend complete. Next: adversarial review of the backend, then the web half.
 
 ## Owed to Linear
 
