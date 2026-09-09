@@ -11,7 +11,7 @@ from .test_next_projects import V2_MODEL_FIXTURE
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextActivityBehaviorTest(NextPageJsHarness):
     FIXTURE = """
-location.hash = "#n=project:alpha%2Frepo:console";
+location.hash = "#n=project:alpha%2Frepo:now";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   generated: 10000,
@@ -409,7 +409,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         html = self._run_page_js(
             "await __settle();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
             """
-location.hash = "#n=project:quiet%2Frepo:console";
+location.hash = "#n=project:quiet%2Frepo:now";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   generated: 10000, window_hours: 24,

@@ -77,6 +77,136 @@ __fetchImpl = async url => ({ok: true, json: async () =>
             storage_prelude(storage or {}) + self.FIXTURE,
         )
 
+    def test_scope_navigation_keeps_the_title_when_activity_is_published(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.sessions[0].state_detail = "running Bash";
+renderNext();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify(html.slice(html.indexOf('<nav class="next-cockpit-scope-tree"'),
+  html.indexOf('</nav>', html.indexOf('<nav class="next-cockpit-scope-tree"')))));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("Codex", out)
+        self.assertIn("Shape project cockpit", out)
+        self.assertNotIn("running Bash", out)
+
+    def test_a_missing_title_is_named_in_scope_navigation(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.sessions[0].title = null;
+__dashboard.sessions[0].state_detail = "running Bash";
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("Session title not published", out)
+
+    def test_course_names_missing_evidence_without_an_empty_disclosure(self) -> None:
+        out = self.run_fixture(
+            """
+__semantic.facts = [{type:"user_message",summary:"Check source evidence",at:104,
+  intent_promoted:true}];
+__semantic.projections = {};
+nextRoute = {view:"project",project:"cargento",tab:"course"};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML.slice(
+  __els.app.innerHTML.indexOf('<section class="next-cockpit-panel"'))));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("Evidence source not published", out)
+        self.assertIn("Evidence confidence not published", out)
+        self.assertIn("Fact identity not published", out)
+        self.assertNotIn('<details class="next-course-evidence"', out)
+
+    def test_unmeasured_delegation_keeps_the_shared_models_reason(self) -> None:
+        out = self.run_fixture(
+            """
+nextRoute = {view:"project",project:"cargento",tab:"console"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML,
+  reason:nextCurrentObserved().projects[0].delegation.noteText}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("no figure yet", out["html"])
+        self.assertIn(out["reason"], out["html"])
+        self.assertEqual(1, out["html"].count("data-next-delegation-withheld"))
+
+    def test_briefing_names_missing_readings_before_any_disclosure(self) -> None:
+        out = self.run_fixture(
+            """
+__semantic.facts = [];
+__semantic.projections = {};
+for(const session of __dashboard.sessions){
+  delete session.last_output;
+  session.subagent_hierarchy = [];
+}
+renderNext();
+const html = __els.app.innerHTML;
+const briefing = html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
+  html.indexOf('<nav class="next-cockpit-tabs"'));
+console.log(JSON.stringify(briefing.replace(/<details[^>]*>[\\s\\S]*?<\\/details>/g,"")));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("Assignment evidence not published", out)
+        self.assertIn("Actionable direction not captured", out)
+        self.assertIn("Session result not captured", out)
+        self.assertIn("Captain attention unavailable", out)
+        self.assertIn("project context coverage unavailable", out)
+
+    def test_a_result_does_not_hide_the_missing_direction_reading(self) -> None:
+        out = self.run_fixture(
+            """
+__semantic.facts = [{type:"result",summary:"Root finished",work_item_id:__task,at:104,
+  evidence:{source:"root transcript",confidence:"exact"}}];
+renderNext();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify(html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
+  html.indexOf('<nav class="next-cockpit-tabs"'))));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("LATEST EXACT RESULT", out)
+        self.assertIn("Root finished", out)
+        self.assertIn("Actionable direction not captured", out)
+
+    def test_scope_and_evidence_stay_open_through_a_redraw(self) -> None:
+        out = self.run_fixture(
+            """
+let markup = __els.app.innerHTML;
+let disclosures = [];
+__els.app.querySelectorAll = selector =>
+  selector === "[data-next-cockpit-disclosure]" ? disclosures : [];
+Object.defineProperty(__els.app, "innerHTML", {
+  get: () => markup,
+  set: value => {
+    markup = value;
+    disclosures = [...value.matchAll(/data-next-cockpit-disclosure="([^"]+)"/g)]
+      .map(match => ({key:match[1],open:false,
+        getAttribute: () => match[1],querySelector: () => ({setAttribute(){}})}));
+  }
+});
+__els.app.innerHTML = markup;
+const selected = disclosures.filter(row => /\\n(?:scope|attention)$/.test(row.key));
+selected.forEach(row => {row.open = true;});
+renderNext();
+const afterOpen = disclosures.filter(row => /\\n(?:scope|attention)$/.test(row.key));
+const kept = afterOpen.map(row => row.open);
+afterOpen.forEach(row => {row.open = false;});
+renderNext();
+console.log(JSON.stringify({kept,
+  closed:disclosures.filter(row => /\\n(?:scope|attention)$/.test(row.key)).map(row => row.open)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([True, True], out["kept"])
+        self.assertEqual([False, False], out["closed"])
+
     def test_v2_surfaces_mount_in_their_cockpit_panels_once(self) -> None:
         out = self.run_fixture(
             """
@@ -1200,7 +1330,10 @@ console.log(JSON.stringify({html, rows}));
         self.assertIn('data-object="Project cockpit"', out["rows"][0])
         self.assertIn('data-result="review → shaping"', out["rows"][0])
         self.assertIn("<strong>Approved</strong> Project cockpit · applied", out["rows"][0])
-        self.assertIn("<b>Decision mechanics</b> · review → shaping · applied", out["rows"][0])
+        self.assertIn(
+            '<div class="pc-source"><b>Decision mechanics</b> · review → shaping · applied</div>',
+            out["rows"][0],
+        )
         self.assertIn("data-next-cockpit-decision-summary", out["html"])
         self.assertIn("Decision application · consumed/applied 1", out["html"])
 

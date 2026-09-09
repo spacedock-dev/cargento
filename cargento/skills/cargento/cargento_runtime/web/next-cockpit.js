@@ -5,8 +5,19 @@ const nextCockpitRequests = new Map();
 const nextCockpitMemoDrafts = new Map();
 const nextCockpitMemoStates = new Map();
 const nextCockpitBriefingCopyStates = new Map();
+const nextCockpitDisclosureStates = new Map();
+let nextCockpitHadDisclosures = false;
 let nextCockpitTerminalScreen = null;
 let nextCockpitMemoEditingKey = null;
+
+function nextCockpitDisclosureAttr(control){
+  const key = [nextRoute && nextRoute.project || "", nextRoute && nextRoute.focus || "", control].join("\n");
+  return ` data-next-cockpit-disclosure="${esc(key)}"`;
+}
+
+function nextCockpitSourceText(value){
+  return `<span class="next-cockpit-source">${esc(value)}</span>`;
+}
 
 function nextCockpitStableKey(group){
   const keys = new Set(group.sessions.map(session => String(session.project_key || "")).filter(Boolean));
@@ -116,7 +127,8 @@ function nextCockpitScopeLinks(group, focus){
       nextCockpitScopeCue(Object.assign({}, scope, {detail:""})) +
       `<strong class="next-cockpit-scope-name">${esc(label)}</strong>` +
       (state ? `<span class="next-cockpit-scope-state">${esc(state)}</span>` : "") +
-      (subtitle ? `<small>${esc(String(subtitle).replace(/\s+/g, " ").slice(0, 90))}</small>` : "") +
+      (subtitle ? `<small${subtitle === "Session title not published" ? ' data-next-withheld' : ""}>` +
+        `${esc(String(subtitle).replace(/\s+/g, " ").slice(0, 90))}</small>` : "") +
       `</a>`;
   };
   const rows = [...group.sessions].sort((left, right) =>
@@ -129,7 +141,8 @@ function nextCockpitScopeLinks(group, focus){
       const harness = nextHarnessLabels().get(String(session.harness || "")) ||
         String(session.harness || "Session");
       return link(sessKey(session), harness, String(session.state || "unknown"),
-        nextCockpitSessionActivityDetail(session), nextCockpitSessionScopeKind(session));
+        String(session.title || "").trim() || "Session title not published",
+        nextCockpitSessionScopeKind(session));
     }).join("");
 }
 
@@ -144,7 +157,7 @@ function nextCockpitScopeSwitcher(group, focus){
     ? `Viewing session · ${nextCockpitSessionScopeKind(focus).detail || "Session"} · ` +
       String(focus.state || "state unavailable")
     : `Viewing project · ${nextCockpitScopeLabel(group)}`;
-  return '<details class="next-cockpit-scope-switcher">' +
+  return '<details class="next-cockpit-scope-switcher"' + nextCockpitDisclosureAttr("scope") + '>' +
     `<summary><span>${esc(selected)}</span><strong>Change scope</strong></summary>` +
     `<nav class="next-cockpit-scope-options" aria-label="Change project scope">` +
     nextCockpitScopeLinks(group, focus) + '</nav></details>';
@@ -453,7 +466,9 @@ function nextCockpitRecoveryAttention(group, observation, commandAttention){
     `<small data-next-cockpit-attention-coverage>${esc(coverage.label + " · " + coverage.source)}</small>`;
   return `<div class="next-cockpit-authority next-cockpit-authority--${state}" ` +
     `data-next-cockpit-authority-state="${state}"><span>${stateHeading}</span>${primary}` +
-    `<details><summary>Evidence</summary>${evidenceRows}</details></div>`;
+    (coverage.state !== "complete" ? `<p class="next-cockpit-evidence-missing">` +
+      `${esc(coverage.label + " · " + coverage.source)}</p>` : "") +
+    `<details${nextCockpitDisclosureAttr("attention")}><summary>Evidence · attention sources</summary>${evidenceRows}</details></div>`;
 }
 
 function nextCockpitRecoveryDecisions(semantic){
@@ -686,11 +701,22 @@ function nextCockpitRecoveryExecution(group, briefing, compactIdle = false){
   const sessions = group.sessions.filter(session => working.has(sessKey(session)) ||
     children.some(child => child.sourceSession === sessKey(session)));
   if(!sessions.length) return '<strong>No execution observed</strong>';
-  const childEvidence = child => '<details><summary>Evidence</summary>' +
-    `<small>${esc(child.assignment + (child.result ? " · " + child.result : "") +
-      " · source " + child.assignmentSource + " · source session " + child.sourceSession +
-      (child.lifecycle === "returned" ? ` · event ${child.at || "unavailable"} · age ` +
-        (child.age ? `${child.age} ago` : "unavailable") : ""))}</small>` +
+  const childEvidence = child =>
+    (child.assignment === "assignment unavailable" || child.result === "result unavailable"
+      ? `<p class="next-cockpit-evidence-missing">${esc([
+        child.assignment === "assignment unavailable" ? child.assignment : "",
+        child.result === "result unavailable" ? child.result : "",
+      ].filter(Boolean).join(" · "))}</p>` : "") +
+    `<details${nextCockpitDisclosureAttr("child:" + child.sourceSession + ":" + child.worker + ":" + child.lifecycle)}>` +
+    '<summary>Evidence · child handoff</summary>' +
+    `<small>${child.assignment === "assignment unavailable" ? esc(child.assignment) : nextCockpitSourceText(child.assignment)}` +
+    (child.result ? " · " + (child.result === "result unavailable" ? esc(child.result) : nextCockpitSourceText(child.result)) : "") +
+    " · " + (/unavailable/i.test(child.assignmentSource) ? esc("source " + child.assignmentSource) :
+      nextCockpitSourceText("source " + child.assignmentSource)) + " · " +
+    nextCockpitSourceText("source session " + child.sourceSession) +
+    (child.lifecycle === "returned" ? " · " + nextCockpitSourceText(`event ${child.at || "unavailable"}`) +
+      " · " + nextCockpitSourceText("age " + (child.age ? `${child.age} ago` : "unavailable")) : "") +
+    '</small>' +
     '</details>';
   return sessions.map(session => {
     const key = sessKey(session);
@@ -720,7 +746,7 @@ function nextCockpitWaitingCommand(project){
     `<a href="${esc(route)}" data-next-route="${esc(route.slice(3))}">` +
     nextProjectValue(session.titleText, session.titleKnown) + '</a>' +
     nextProjectValue(session.waitedText, session.waitedKnown) +
-    (session.askKnown ? `<p>${esc(session.askText)}</p>` : "") +
+    (session.askKnown ? `<p class="next-cockpit-source">${esc(session.askText)}</p>` : "") +
     '<div class="next-rail-wait-controls">' + nextSessionRaiseControl(session) +
     (nextSessionResumeControl(session) || nextSessionCopyControl(session)) + '</div></div>';
 }
@@ -754,15 +780,17 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
       : "";
   const taskText = briefing.task.known ? [briefing.task.label, briefing.task.stage]
     .filter(Boolean).join(" · ") : "Not observed";
-  const taskAttrs = briefing.task.id ? ` data-work-item="${esc(briefing.task.id)}"` : "";
+  const taskAttrs = (briefing.task.id ? ` data-work-item="${esc(briefing.task.id)}"` : "") +
+    (briefing.task.known ? ' data-next-cockpit-task-known' : "");
   const assignmentEffect = briefing.task.known && briefing.task.qualifier
     ? `<small>${esc(briefing.task.qualifier)}</small>` : "";
   const assignmentEvidence = briefing.task.known && briefing.task.provenance
-    ? '<details><summary>Evidence</summary>' +
-      `<small>${esc(briefing.task.provenance +
+    ? `<details${nextCockpitDisclosureAttr("assignment:" + (briefing.task.id || briefing.task.sourceSession))}>` +
+      '<summary>Evidence · assignment source</summary>' +
+      `<small class="next-cockpit-source">${esc(briefing.task.provenance +
         (briefing.task.sourceSession ? ` · source session ${briefing.task.sourceSession}` : "") +
         (briefing.task.fact && briefing.task.fact.at ? ` · event ${briefing.task.fact.at}` : ""))}</small>` +
-      '</details>' : "";
+      '</details>' : '<small class="next-cockpit-evidence-missing">Assignment evidence not published</small>';
   const latestCells = [
     briefing.latest.direction ? `<span>${exactLabel}</span>` +
       `<strong>${esc(briefing.latest.direction.summary)}</strong>` : "",
@@ -773,12 +801,18 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
     briefing.latest.result ? resultEvidence : ""].filter(Boolean);
   const latestCell = latestCells ? '<div class="next-cockpit-recovery-evidence">' +
     `<span>LATEST EVIDENCE</span>${latestCells}` +
-    '<details><summary>Evidence</summary>' + latestEvidence.map(value =>
-      `<small>${esc(value)}</small>`).join("") + '</details></div>' : "";
+    (!briefing.latest.direction ? '<p class="next-cockpit-evidence-missing">Actionable direction not captured</p>' : "") +
+    (!briefing.latest.result ? '<p class="next-cockpit-evidence-missing">Session result not captured</p>' : "") +
+    `<details${nextCockpitDisclosureAttr("latest")}><summary>Evidence · direction and result sources</summary>` + latestEvidence.map(value =>
+      `<small class="next-cockpit-source">${esc(value)}</small>`).join("") + '</details></div>' :
+    '<div class="next-cockpit-recovery-evidence"><span>LATEST EVIDENCE</span>' +
+    '<p class="next-cockpit-evidence-missing">Actionable direction not captured · ' +
+    'Session result not captured</p></div>';
   return '<section class="next-cockpit-recovery" aria-label="Recovery summary">' +
     '<header><strong>PROJECT RECOVERY BRIEFING</strong></header>' +
     `<div data-next-cockpit-task${taskAttrs}><span>ASSIGNMENT</span>` +
-    `<strong>${esc(taskText)}</strong>${assignmentEffect}${assignmentEvidence}` +
+    `<strong>${esc(taskText)}</strong>` +
+    `${assignmentEffect}${assignmentEvidence}` +
     (project ? nextProjectGoal(project) : "") + '</div>' +
     `<div><span>EXECUTION</span>${nextCockpitRecoveryExecution(group, briefing, compactIdle)}</div>` +
     `<div><span>COMMAND</span>` +
@@ -1098,14 +1132,27 @@ function nextCockpitReviewFindings(detail){
   return findings;
 }
 
-function nextCockpitCourseEvidence(fact, contributors){
+function nextCockpitCourseEvidence(fact, contributors, occurrence = ""){
   const evidence = fact.evidence || {};
+  const source = String(evidence.source || fact.source_kind || "").trim();
+  const confidence = String(evidence.confidence || "").trim();
+  const identity = String(fact.fact_id || "").trim();
+  const known = value => Boolean(value) && !/^(?:(?:source|confidence) )?(?:unavailable|unknown)$/i.test(value);
+  const missing = [!known(source) ? "Evidence source not published" : "",
+    !known(confidence) ? "Evidence confidence not published" : "",
+    !identity ? "Fact identity not published" : ""].filter(Boolean);
+  const absence = missing.length ? `<p class="next-cockpit-evidence-missing">` +
+    `${esc(missing.join(" · "))}</p>` : "";
+  if(!known(source) && !known(confidence) && !identity && !contributors.length) return absence;
   const names = contributors.length
     ? `<div><b>Contributors</b> · ${esc(contributors.join(" · "))}</div>` : "";
-  return '<details class="next-course-evidence"><summary>Evidence</summary>' +
-    `<div><b>Source</b> · ${esc(evidence.source || fact.source_kind || "source unavailable")} · ` +
-    `${esc(evidence.confidence || "confidence unavailable")}</div>` +
-    `<div><b>Fact</b> · ${esc(fact.fact_id || "identity unavailable")}</div>${names}</details>`;
+  return absence + '<details class="next-course-evidence"' +
+    nextCockpitDisclosureAttr("course:" + occurrence + ":" + (identity || source + ":" + fact.at)) + '>' +
+    '<summary>Evidence · source and confidence</summary>' +
+    (known(source) ? `<div><b>Source</b> · <span class="next-cockpit-source">${esc(source)}</span></div>` : "") +
+    (known(confidence) ? `<div><b>Confidence</b> · <span class="next-cockpit-source">${esc(confidence)}</span></div>` : "") +
+    (identity ? `<div><b>Fact</b> · <span class="next-cockpit-source">${esc(identity)}</span></div>` : "") +
+    `${names}</details>`;
 }
 
 function nextCockpitCourseRow(episode){
@@ -1121,7 +1168,8 @@ function nextCockpitCourseRow(episode){
     `<header>${nextCockpitScopeCue(scope)}<span>${esc(episode.badge)}</span></header>` +
     `<strong>${esc(episode.task + " · " + episode.label)}</strong>${direction}${body}` +
     nextCockpitCourseEvidence(episode.fact, episode.contributors || []) +
-    (episode.directionFact ? nextCockpitCourseEvidence(episode.directionFact, []) : "") +
+    (episode.directionFact ? nextCockpitCourseEvidence(episode.directionFact, [],
+      "direction-for:" + episode.fact.fact_id) : "") +
     '</article>';
 }
 
@@ -1318,11 +1366,23 @@ function nextProjectCockpit(context, observation, commandAttention){
 }
 
 function nextCockpitBeforeRender(){
+  const app = document.getElementById("app");
+  for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
+    nextCockpitDisclosureStates.set(details.getAttribute("data-next-cockpit-disclosure"), details.open === true);
+  }
   projectCaptureDisclosureStates();
   nextCockpitTerminalScreen = projectTerminalBeforeRender();
 }
 
 function nextCockpitAfterRender(){
+  const app = document.getElementById("app");
+  nextCockpitHadDisclosures = nextRoute && nextRoute.view === "project";
+  for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
+    const key = details.getAttribute("data-next-cockpit-disclosure");
+    details.open = nextCockpitDisclosureStates.get(key) === true;
+    const summary = details.querySelector("summary");
+    if(summary) summary.setAttribute("data-next-focus", "cockpit-disclosure:" + key);
+  }
   projectTerminalAfterRender(nextCockpitTerminalScreen);
   nextCockpitTerminalScreen = null;
 }
