@@ -197,6 +197,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual(os.path.realpath(repository), calls[0]["cwd"])
         self.assertFalse(calls[0].get("shell", False))
 
+    @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_project_workflow_discovery_caches_the_bounded_result(self) -> None:
         repository = self.root / "repository"
         (repository / ".git").mkdir(parents=True)
@@ -209,16 +210,27 @@ class ProjectContextTest(unittest.TestCase):
 
         state = build_runtime_state(self.config, started=self.NOW)
         first = project_context.discover_project_workflows(
-            self.config, state, str(repository), now=self.NOW, runner=runner
+            self.config,
+            state,
+            str(repository),
+            now=self.NOW,
+            runner=runner,
+            binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
         second = project_context.discover_project_workflows(
-            self.config, state, str(repository), now=self.NOW + 1, runner=runner
+            self.config,
+            state,
+            str(repository),
+            now=self.NOW + 1,
+            runner=runner,
+            binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
 
         self.assertEqual("none", first["state"])
         self.assertEqual(first, second)
         self.assertEqual(1, calls)
 
+    @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_project_workflow_discovery_reports_unavailable_and_error_honestly(self) -> None:
         repository = self.root / "repository"
         (repository / ".git").mkdir(parents=True)
@@ -235,6 +247,7 @@ class ProjectContextTest(unittest.TestCase):
             str(repository),
             now=self.NOW,
             runner=missing,
+            binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
         timeout_result = project_context.discover_project_workflows(
             self.config,
@@ -242,6 +255,7 @@ class ProjectContextTest(unittest.TestCase):
             str(repository),
             now=self.NOW,
             runner=timeout,
+            binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
 
         self.assertEqual("unavailable", missing_result["state"])
@@ -249,6 +263,27 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("error", timeout_result["state"])
         self.assertIn("timed out", timeout_result["reason"])
 
+    @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
+    def test_project_workflow_discovery_rejects_missing_or_relative_resolution(self) -> None:
+        for binary in (None, "spacedock", "bin/spacedock"):
+            with self.subTest(binary=binary):
+                runner = mock.Mock()
+                resolver = mock.Mock(return_value=binary)
+                result = project_context.discover_project_workflows(
+                    self.config,
+                    build_runtime_state(self.config, started=self.NOW),
+                    str(self.root),
+                    now=self.NOW,
+                    runner=runner,
+                    binary_resolver=resolver,
+                )
+
+                self.assertEqual("unavailable", result["state"])
+                self.assertIn("requires an absolute path", result["reason"])
+                resolver.assert_called_once_with("spacedock")
+                runner.assert_not_called()
+
+    @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_linked_worktree_session_discovers_from_the_canonical_checkout(self) -> None:
         checkout = self.root / "checkout"
         git_dir = checkout / ".git"
@@ -303,6 +338,7 @@ class ProjectContextTest(unittest.TestCase):
             now=self.NOW,
             refresh=False,
             runner=runner,
+            binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
 
         self.assertEqual([os.path.realpath(checkout)], calls)
@@ -310,6 +346,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual(["dev", "explore"], [row["workflow"] for row in result["workflows"]])
 
     @unittest.skipUnless(hasattr(os, "symlink"), "platform has no symlink")
+    @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_discovery_reads_only_project_local_linked_definitions(self) -> None:
         repository = self.root / "repository"
         definition_root = repository / ".spacedock"
@@ -338,6 +375,7 @@ class ProjectContextTest(unittest.TestCase):
             str(repository),
             now=self.NOW,
             runner=runner,
+            binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
 
         self.assertEqual("observed", result["state"])

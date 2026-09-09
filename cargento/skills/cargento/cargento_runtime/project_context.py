@@ -164,8 +164,9 @@ def _run_project_workflow_discovery(
     state: RuntimeState,
     root: str,
     runner: Any,
+    binary_resolver: Any = shutil.which,
 ) -> dict[str, Any]:
-    executable = os.environ.get("SPACEDOCK_BIN") or shutil.which("spacedock")
+    executable = os.environ.get("SPACEDOCK_BIN") or binary_resolver("spacedock")
     if not executable or not os.path.isabs(executable):
         return _discovery_result(
             "unavailable", "Spacedock discovery command requires an absolute path"
@@ -202,6 +203,7 @@ def discover_project_workflows(
     *,
     now: float,
     runner: Any = subprocess.run,
+    binary_resolver: Any = shutil.which,
     force: bool = False,
 ) -> dict[str, Any]:
     """Discover commissioned workflows from one verified project root.
@@ -221,7 +223,7 @@ def discover_project_workflows(
     if cached and not force and now - cached[0] < WORKFLOW_DISCOVERY_CACHE_SEC:
         return copy.deepcopy(cached[1])
 
-    result = _run_project_workflow_discovery(config, state, root, runner)
+    result = _run_project_workflow_discovery(config, state, root, runner, binary_resolver)
 
     detached = copy.deepcopy(result)
     with state.cache_lock:
@@ -258,6 +260,7 @@ def _project_workflow_discovery(
     now: float,
     refresh: bool,
     runner: Any = subprocess.run,
+    binary_resolver: Any = shutil.which,
 ) -> dict[str, Any]:
     for session in analysis_sessions:
         harness = str(session.get("harness") or "")
@@ -284,6 +287,7 @@ def _project_workflow_discovery(
             root,
             now=now,
             runner=runner,
+            binary_resolver=binary_resolver,
             force=refresh,
         )
     return _discovery_result("unavailable", "project root unavailable from observed sessions")
