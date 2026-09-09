@@ -734,6 +734,49 @@ class ObserverAnalyzerTest(unittest.TestCase):
         self.assertIn("Review the PR", result["goal"])
         self.assertIsNone(result["reason"])
 
+    def test_analyze_names_which_arm_produced_the_goal(self) -> None:
+        """The published goal says which arm derived it, and keeps the
+        deterministic line beside it.
+
+        Without this the model arm's reassignment is invisible: `goal` is one
+        string whether a transcript line or a model wrote it, so a reader told
+        the harness published this cannot be distinguished from one reading a
+        model's paraphrase. DRC-4509 renders exactly that distinction, so the
+        distinction has to survive as far as the payload.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp,
+                [
+                    _pi_session("provenance-001"),
+                    _pi_message("m1", None, "user", "Review the PR"),
+                    _pi_message("m2", "m1", "assistant", "Starting the review."),
+                ],
+            )
+
+            plain = self.analyze(path)
+            enhanced = self.analyze(path, model=lambda _head, _ctx: "Review the PR and land it")
+
+            def crashing_model(_head: str, _ctx: str) -> str:
+                raise RuntimeError("model unavailable")
+
+            degraded = self.analyze(path, model=crashing_model)
+
+        # No model ran, so the deterministic line is the published goal.
+        self.assertEqual("deterministic", plain["goal_source"])
+        self.assertEqual(plain["goal"], plain["deterministic_goal"])
+
+        # The model ran and replaced the goal. Both lines stay reachable, and
+        # the source names which one `goal` now holds.
+        self.assertEqual("model", enhanced["goal_source"])
+        self.assertIn("land it", enhanced["goal"])
+        self.assertIn("Review the PR", enhanced["deterministic_goal"])
+        self.assertNotEqual(enhanced["goal"], enhanced["deterministic_goal"])
+
+        # A model that failed did not produce the goal, so it is not credited.
+        self.assertEqual("deterministic", degraded["goal_source"])
+        self.assertEqual(degraded["goal"], degraded["deterministic_goal"])
+
     def test_codex_goal_model_pins_luna_max_and_runs_ephemerally(self) -> None:
         recorded: dict[str, Any] = {}
 

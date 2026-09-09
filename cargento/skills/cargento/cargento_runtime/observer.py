@@ -762,7 +762,10 @@ def analyze(
 ) -> dict[str, Any]:
     """Derive goal + stage + block from a session transcript, read-only.
 
-    Returns ``{"goal": str, "stage": str, "block": str, "reason": str | None}``.
+    Returns ``{"goal", "deterministic_goal", "goal_source", "stage", "block",
+    "reason"}``. ``goal_source`` is ``"deterministic"`` or ``"model"`` and says
+    which arm produced ``goal``; ``deterministic_goal`` is the pre-model line,
+    which the model arm would otherwise destroy.
     The goal is either a derived goal line or the literal ``"no goal derived"``
     sentinel. The stage comes from the entity dir's frontmatter ``status``.
     The block is one sentence from recent assistant text containing a block
@@ -775,6 +778,12 @@ def analyze(
     """
     messages = _extract_messages(config, transcript_path)
     goal, reason = _derive_goal_deterministic(config, messages)
+    # Kept beside the published goal rather than overwritten by the model arm
+    # below. A reader shown "this is what the harness published" has to be
+    # distinguishable from one shown a model's paraphrase, and one string
+    # cannot carry both (DRC-4509).
+    deterministic_goal = goal
+    goal_source = "deterministic"
     workflow_dir, entity_dir = resolve_workflow(config, state, transcript_path)
     # Once, not once per consumer. The two frontmatter reads are cached on
     # (path, mtime, size), but resolving twice also scanned the transcript head
@@ -796,9 +805,17 @@ def analyze(
             enhanced = None
         if isinstance(enhanced, str) and enhanced.strip() and not _is_no_goal_output(enhanced):
             goal = records.safe_text(enhanced.strip(), config.observer_goal_cap_chars)
+            goal_source = "model"
 
     block = _derive_block(config, messages)
-    return {"goal": goal, "stage": stage, "block": block, "reason": reason}
+    return {
+        "goal": goal,
+        "deterministic_goal": deterministic_goal,
+        "goal_source": goal_source,
+        "stage": stage,
+        "block": block,
+        "reason": reason,
+    }
 
 
 def derive_child_assignment(

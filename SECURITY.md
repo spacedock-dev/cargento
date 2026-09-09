@@ -1581,7 +1581,10 @@ its `@`.
 The card, the browser notification body and the native popup are pixels, and a screenshot is what
 each of them risks. The fourth thing carrying this text is a file: the observer sidecar under
 `~/.cargento/observer/`, one JSON file per session holding the derived goal, which is the operator's
-own words. It is redacted on the way in like everything else, and it is
+own words. Since goal provenance landed it holds two such lines rather than one: the published
+`goal` and the pre-model `deterministic_goal` the model arm would otherwise have overwritten. They
+are the same class of text and carry the same risk, so the count changes and nothing else does.
+Both are redacted on the way in like everything else, and the file is
 written owner-only through a temp file and a rename, so a reader mid-write sees the old file or the
 new one and neither is ever briefly world-readable. The mode is advisory and Windows ignores it, the
 same caveat the state file and the dismissal store carry.

@@ -306,6 +306,11 @@ def _transcript_signature(transcript_path: str) -> dict[str, int] | None:
     return {"size": info.st_size, "mtime_ns": info.st_mtime_ns}
 
 
+# Which arm produced a published goal. "unknown" is for a sidecar written
+# before the field existed, and is never inferred into one of the other two.
+_GOAL_SOURCES = frozenset({"deterministic", "model"})
+
+
 def _observe_session(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -332,8 +337,15 @@ def _observe_session(
         model_metadata["status"] = (
             "cached" if cached_payload.get("transcript") == signature else "cached-stale"
         )
+        # A sidecar written before goal provenance existed carries neither
+        # field. "unknown" rather than "deterministic": defaulting to the
+        # latter would relabel every already-cached model goal as something a
+        # source published, which is the one substitution DRC-4509 forbids.
+        cached_source = cached_payload.get("goal_source")
         return {
             "goal": goal,
+            "deterministic_goal": cached_payload.get("deterministic_goal"),
+            "goal_source": cached_source if cached_source in _GOAL_SOURCES else "unknown",
             "stage": cached_payload.get("stage"),
             "block": cached_payload.get("block"),
             "reason": cached_payload.get("reason"),
@@ -361,6 +373,9 @@ def _observe_session(
         result["goal"] = observer.derive_child_assignment(config, transcript_path, model)
         if result["goal"] != observer.NO_GOAL:
             result["reason"] = "derived-from-readable-child-activity"
+            # A third writer of `goal`, and a model wrote it: this arm is only
+            # reached with a caller in hand.
+            result["goal_source"] = "model"
     model_metadata = caller.metadata()
     sidecar = {
         **result,

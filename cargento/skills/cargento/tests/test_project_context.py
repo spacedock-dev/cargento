@@ -2203,6 +2203,51 @@ class ProjectContextTest(unittest.TestCase):
 
         self.assertEqual(1, len(spacedock.boot_records(self.config, record)))
 
+    def test_a_cached_goal_says_which_arm_wrote_it_and_never_guesses(self) -> None:
+        """A sidecar written before goal provenance existed reads back as
+        unknown, not as the harness talking.
+
+        The cached branch published `goal` with no source at all, so a model
+        paraphrase and a transcript line were one indistinguishable string.
+        Defaulting the missing field to "deterministic" would be worse than
+        omitting it: it relabels every already-cached model goal as something a
+        source published, which is the substitution DRC-4509 forbids.
+        """
+        state = build_runtime_state(self.config, started=self.NOW)
+        identity = ("pi", "cached-provenance")
+
+        # A sidecar from before the field existed.
+        observer.write_sidecar(
+            self.config,
+            *identity,
+            {"goal": "Ship the cockpit", "observed_at": 10.0, "transcript": "sig"},
+        )
+        legacy = project_context._observe_session(
+            self.config, state, str(self.transcript), identity, now=self.NOW, refresh=False
+        )
+        assert legacy is not None
+        self.assertEqual("unknown", legacy["goal_source"])
+
+        # A sidecar that recorded the model arm keeps that attribution, and the
+        # deterministic line it displaced stays reachable beside it.
+        observer.write_sidecar(
+            self.config,
+            *identity,
+            {
+                "goal": "Ship the cockpit, reworded",
+                "deterministic_goal": "Ship the cockpit",
+                "goal_source": "model",
+                "observed_at": 11.0,
+                "transcript": "sig",
+            },
+        )
+        remembered = project_context._observe_session(
+            self.config, state, str(self.transcript), identity, now=self.NOW, refresh=False
+        )
+        assert remembered is not None
+        self.assertEqual("model", remembered["goal_source"])
+        self.assertEqual("Ship the cockpit", remembered["deterministic_goal"])
+
 
 @unittest.skipUnless(
     hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"), "requires POSIX file ownership"
