@@ -1568,10 +1568,11 @@ function projectGlobalEventDetails(event, lane){
     const author = fact.by === "person:captain" ? "Captain" : fact.by;
     return `<div><b>Decision author</b> · ` +
       projectPublishedValue(author, "Decision author not published.") + `</div>` +
-      `<div><b>Decision mechanics</b> · ` +
-      projectPublishedValue(path, "Decision stage not published.") +
+      `<div${path.trim() ? ' class="pc-source"' : ""}><b>Decision mechanics</b> · ` +
+      (path.trim() ? esc(path) : projectPublishedValue(null, "Decision stage not published.")) +
       (!stage && fact.target_stage ? ` Target stage: ` + projectPublishedValue(fact.target_stage, "") : "") + ` · ` +
-      `${esc(projectGateApplicationDisposition(fact))}</div>`;
+      (fact.application_state ? esc(projectGateApplicationDisposition(fact)) :
+        `<span class="pc-substrate-reason">${esc(projectGateApplicationDisposition(fact))}</span>`) + `</div>`;
   })() : "";
   const suppressedDetails = suppressed.length ? projectDisclosure(
     `timeline-suppressed:${event.eventId}`, `Source-only messages · ${suppressed.length}`,
