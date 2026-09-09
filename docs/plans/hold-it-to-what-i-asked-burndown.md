@@ -338,6 +338,12 @@ journal named under Recovery handles. Read them before building an issue rather 
 - 2026-09-09: survey workflow completed, 6 agents, 1.05M tokens. Build plan written above.
   It corrected two errors in this file: there are three byte-pin oracles not four, and the
   DRC-4509 container is on this branch rather than pending. Nothing built yet.
+- 2026-09-10 02:xx: **build order item 1 done** (`f1ae38c`). Goal provenance: `analyze` returns
+  `deterministic_goal` and `goal_source`; the cached read defaults a missing source to `unknown`
+  rather than `deterministic`; the child-activity fallback credits the model. Two new tests, both
+  red first. Full suite 2693 OK. SECURITY.md's sidecar paragraph updated to say the file holds two
+  goal lines. DRC-4508 moved to `In Progress` in Linear.
+  Next: item 2, the annotation store and its endpoint.
 
 ## Owed to Linear
 
