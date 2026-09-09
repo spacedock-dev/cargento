@@ -498,6 +498,12 @@ def _redact_published_text(rows: list[Session]) -> list[Session]:
     return rows
 
 
+# The width `sessions.base_session` truncates a display id to. An identity no
+# longer than this is display-length, which is not proof it was truncated but is
+# proof it cannot be shown to be unique.
+_DISPLAY_ID_FLOOR = 8
+
+
 def _attach_annotations(
     rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
 ) -> None:
@@ -521,11 +527,16 @@ def _attach_annotations(
         # claimed away.
         sid = row.get("sid")
         resume = row.get("resume_id")
-        by_prefix = (
-            isinstance(sid, str)
-            and isinstance(resume, str)
-            and len(resume) > len(sid)
-            and resume.startswith(sid)
+        # Two ways an identity fails to be provably unique, and the second is
+        # the one the length comparison alone missed. A Claude row that reached
+        # the collector loop from the task store has no transcript and therefore
+        # no `resume_id`, which that collector records as the None case, while
+        # its sid is still the display prefix. `base_session` publishes
+        # `session` as `sid[:8]`, so an identity at most that long is
+        # display-length and cannot be shown to name one session.
+        by_prefix = isinstance(sid, str) and (
+            (isinstance(resume, str) and len(resume) > len(sid) and resume.startswith(sid))
+            or len(sid) <= _DISPLAY_ID_FLOOR
         )
         row["annotation"] = annotation_store.published(
             annotation_store.find(entries, row.get("harness"), sid),

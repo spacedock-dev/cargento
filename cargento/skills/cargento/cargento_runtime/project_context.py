@@ -306,6 +306,16 @@ def _transcript_signature(transcript_path: str) -> dict[str, int] | None:
     return {"size": info.st_size, "mtime_ns": info.st_mtime_ns}
 
 
+def _cached_text(value: Any) -> str | None:
+    """One re-read sidecar string, or nothing.
+
+    Not `safe_text`: these three are already-bounded strings the observer wrote,
+    and coercing a container into its repr is the failure being closed here
+    rather than a shape to preserve.
+    """
+    return value if isinstance(value, str) else None
+
+
 # Which arm produced a published goal. "unknown" is for a sidecar written
 # before the field existed, and is never inferred into one of the other two.
 _GOAL_SOURCES = frozenset({"deterministic", "model"})
@@ -342,13 +352,24 @@ def _observe_session(
         # latter would relabel every already-cached model goal as something a
         # source published, which is the one substitution DRC-4509 forbids.
         cached_source = cached_payload.get("goal_source")
+        # Every one of these is re-read from a file any local process could have
+        # rewritten, so each is checked on the way out rather than only on the
+        # way in. `goal` above was already checked and `goal_source` is checked
+        # against a frozen set; these four were not, and a dict here reaches the
+        # served payload verbatim. `deterministic_goal` is a goal line, so it
+        # carries the same bound a freshly derived one does.
+        raw_deterministic = cached_payload.get("deterministic_goal")
         return {
             "goal": goal,
-            "deterministic_goal": cached_payload.get("deterministic_goal"),
+            "deterministic_goal": (
+                records.safe_text(raw_deterministic, config.observer_goal_cap_chars)
+                if isinstance(raw_deterministic, str)
+                else None
+            ),
             "goal_source": cached_source if cached_source in _GOAL_SOURCES else "unknown",
-            "stage": cached_payload.get("stage"),
-            "block": cached_payload.get("block"),
-            "reason": cached_payload.get("reason"),
+            "stage": _cached_text(cached_payload.get("stage")),
+            "block": _cached_text(cached_payload.get("block")),
+            "reason": _cached_text(cached_payload.get("reason")),
             "model": model_metadata,
             "observed_at": observed_at,
             "snapshot_status": model_metadata["status"],
@@ -2154,6 +2175,25 @@ def _semantic_topology_relations(
     ]
 
 
+# What an observer snapshot may claim about its own authorship. Read from the
+# row's `goal_source` rather than assumed: the deterministic arm is the default
+# and stamping every snapshot model-derived put a false claim in a durable store
+# (DRC-4533). "unknown" is a sidecar written before the field existed, and it
+# claims neither rather than defaulting to the one that is wrong more often.
+_OBSERVER_ACTOR_CLAIMS = {
+    "model": "model-derived observer snapshot",
+    "deterministic": "deterministically derived observer snapshot",
+}
+_OBSERVER_ACTOR_CLAIM_UNKNOWN = "observer snapshot, derivation not recorded"
+
+
+def _observer_actor_claim(goal_source: object) -> str:
+    """What this snapshot may say about who derived it."""
+    if isinstance(goal_source, str):
+        return _OBSERVER_ACTOR_CLAIMS.get(goal_source, _OBSERVER_ACTOR_CLAIM_UNKNOWN)
+    return _OBSERVER_ACTOR_CLAIM_UNKNOWN
+
+
 def _semantic_observer_facts(observers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     facts: list[dict[str, Any]] = []
     for observer_row in observers:
@@ -2173,7 +2213,7 @@ def _semantic_observer_facts(observers: list[dict[str, Any]]) -> list[dict[str, 
             "type": "observer_snapshot",
             "summary": goal,
             "scope": "session",
-            "actor_claim": "model-derived observer snapshot",
+            "actor_claim": _observer_actor_claim(observer_row.get("goal_source")),
             "work_item_id": None,
             "evidence": {
                 "source": observer_row.get("source"),

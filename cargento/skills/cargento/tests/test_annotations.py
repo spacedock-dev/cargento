@@ -15,8 +15,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from cargento_runtime import aggregate, cli
+from cargento_runtime import aggregate, cli, project_context
 from cargento_runtime import annotations as annotation_store
+from cargento_runtime import observer as runtime_observer
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -194,6 +195,24 @@ class AnnotationStoreTest(unittest.TestCase):
         aggregate._attach_annotations(rows, ())
         self.assertTrue(rows[0]["annotation"]["binding_why"], "a truncated identity said nothing")
         self.assertEqual("", rows[1]["annotation"]["binding_why"])
+
+    def test_a_display_length_identity_says_so_even_with_no_resume_id(self) -> None:
+        """DRC-4533, second item. The length proxy missed the case the Claude
+        collector documents.
+
+        A Claude row that reached the loop from the task store alone has no
+        transcript and therefore no `resume_id`, which that collector records as
+        the None case. Its sid is still the eight-character prefix, so the row
+        claimed an exact binding it never had.
+        """
+        rows: list[Any] = [
+            {"harness": "claude", "session": "77aa41c2", "sid": "77aa41c2", "resume_id": None},
+        ]
+        aggregate._attach_annotations(rows, ())
+        self.assertTrue(
+            rows[0]["annotation"]["binding_why"],
+            "a display-length identity with no resume id claimed exact binding",
+        )
 
     def test_a_saved_revision_that_repeats_the_last_one_is_not_appended(self) -> None:
         """Re-saving unchanged text is not a new request, so it is not a revision.
@@ -439,6 +458,115 @@ class AnnotationOnTheRowTest(unittest.TestCase):
         aggregate._attach_annotations(rows, entries)
         self.assertEqual("", rows[0]["annotation"]["goal"])
         self.assertTrue(rows[0]["annotation"]["goal_why"])
+
+
+class ProvenanceReachesTheDurableRecordTest(unittest.TestCase):
+    """DRC-4533, first item. The record must not say a model wrote a line a
+    transcript wrote.
+
+    `goal_source` was added so the two can be told apart. The writer that
+    persists an observer goal into semantic work history did not read it, and
+    stamped every one of them as model-derived including the deterministic ones
+    that are the default.
+    """
+
+    def test_a_deterministic_goal_is_not_recorded_as_model_derived(self) -> None:
+        rows = [
+            {
+                "harness": "pi",
+                "sid": "a",
+                "observed_at": 10.0,
+                "goal": "From the transcript",
+                "goal_source": "deterministic",
+                "source": "observer",
+            },
+            {
+                "harness": "pi",
+                "sid": "b",
+                "observed_at": 11.0,
+                "goal": "Reworded",
+                "goal_source": "model",
+                "source": "observer",
+            },
+            {
+                "harness": "pi",
+                "sid": "c",
+                "observed_at": 12.0,
+                "goal": "Older sidecar",
+                "source": "observer",
+            },
+        ]
+        facts = project_context._semantic_observer_facts(rows)
+        claims = [f["actor_claim"] for f in facts]
+        self.assertEqual(3, len(claims))
+        self.assertNotIn("model", claims[0], "a transcript line recorded as model-derived")
+        self.assertIn("model", claims[1])
+        # A sidecar predating the field claims neither, rather than defaulting
+        # to the one that is wrong more often.
+        self.assertNotIn("model", claims[2])
+        self.assertNotEqual(claims[0], claims[2], "unknown provenance read as deterministic")
+
+
+class CachedSidecarIsUntrustedTest(unittest.TestCase):
+    """DRC-4533, third item. The cached branch republishes fields nothing checks.
+
+    Any local process can rewrite a sidecar. `goal` is type-checked and
+    `goal_source` is checked against a frozen set; the four beside them are not.
+    """
+
+    def test_a_rewritten_sidecar_cannot_publish_a_non_string_or_an_unbounded_goal(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        state = build_runtime_state(config, started=1.0)
+        transcript = root / "t.jsonl"
+        transcript.write_text("{}\n", encoding="utf-8")
+
+        runtime_observer.write_sidecar(
+            config,
+            "pi",
+            "hostile",
+            {
+                "goal": "ok",
+                "observed_at": 10.0,
+                "transcript": "sig",
+                "deterministic_goal": {"k": "AKIAQQQQQQQQQQQQQQQQ"},
+                "stage": ["not", "a", "string"],
+                "block": {"nested": True},
+                "reason": 12345,
+            },
+        )
+        out = project_context._observe_session(
+            config, state, str(transcript), ("pi", "hostile"), now=20.0, refresh=False
+        )
+        assert out is not None
+        for field in ("deterministic_goal", "stage", "block", "reason"):
+            self.assertNotIsInstance(out[field], (dict, list), f"{field} published a container")
+
+        # And a plausible but enormous string is bounded like every other
+        # published goal line.
+        runtime_observer.write_sidecar(
+            config,
+            "pi",
+            "hostile",
+            {
+                "goal": "ok",
+                "observed_at": 11.0,
+                "transcript": "sig",
+                "deterministic_goal": "x" * 5_000,
+            },
+        )
+        out2 = project_context._observe_session(
+            config, state, str(transcript), ("pi", "hostile"), now=20.0, refresh=False
+        )
+        assert out2 is not None
+        self.assertLessEqual(len(out2["deterministic_goal"]), config.observer_goal_cap_chars + 1)
 
 
 if __name__ == "__main__":
