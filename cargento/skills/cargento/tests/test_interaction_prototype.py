@@ -277,6 +277,7 @@ class InteractionPrototypeHTTPTest(unittest.TestCase):
             self.httpd.interaction_prototype = prototype
 
     def test_asset_refuses_a_nonloopback_peer_even_with_local_host_header(self) -> None:
+        # Given: a nonloopback peer passes the mocked local-host check.
         handler = object.__new__(http_api._RequestHandler)
         handler.client_address = ("192.0.2.1", 3000)
         handler.headers = http.client.HTTPMessage()
@@ -285,7 +286,10 @@ class InteractionPrototypeHTTPTest(unittest.TestCase):
             mock.patch.object(handler, "send_error") as error,
             mock.patch.object(handler, "_send") as send,
         ):
+            # When: request the vendored terminal asset.
             handler._interaction_asset("/assets/xterm.js")
+
+        # Then
         error.assert_called_once_with(403)
         send.assert_not_called()
 
@@ -501,13 +505,18 @@ class InteractionPrototypeHTTPTest(unittest.TestCase):
 
 class InteractionPrototypeDisabledTest(unittest.TestCase):
     def test_normal_dashboard_has_no_prototype_routes(self) -> None:
+        # Given: the normal dashboard server has no interaction prototype.
         httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
             connection = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+
+            # When: request the interaction-state route.
             connection.request("GET", "/api/interaction/state")
             response = connection.getresponse()
+
+            # Then
             self.assertEqual(404, response.status)
             response.read()
             connection.close()
@@ -825,9 +834,14 @@ class RegistrationFileCleanupTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def test_stop_removes_own_file_without_posix_ownership_checks(self) -> None:
+        # Given: the registration file exists and POSIX ownership reads are unsupported.
         with self.assertRaisesRegex(ValueError, "POSIX ownership checks"):
             interaction._read_registration_file(self.path)
+
+        # When: stop the prototype.
         self.prototype.stop()
+
+        # Then
         self.assertFalse(self.path.exists())
 
     def test_stop_preserves_newer_generation_without_posix_ownership_checks(self) -> None:
@@ -844,31 +858,50 @@ class RegistrationFileCleanupTest(unittest.TestCase):
         self.assertFalse(self.path.exists())
 
     def test_stop_preserves_oversized_and_malformed_files(self) -> None:
+        # Given: the registration path contains each oversized or malformed payload.
         for payload in (self.bootstrap + b" " * 16384, b"{", b"[]"):
             with self.subTest(payload_size=len(payload)):
                 self.path.write_bytes(payload)
+
+                # When: stop the prototype.
                 self.prototype.stop()
+
+                # Then
                 self.assertEqual(payload, self.path.read_bytes())
 
     def test_stop_preserves_nonregular_file(self) -> None:
+        # Given: the registration path has been replaced by a directory.
         self.path.unlink()
         self.path.mkdir()
+
+        # When: stop the prototype.
         self.prototype.stop()
+
+        # Then
         self.assertTrue(self.path.is_dir())
 
     @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "requires symlink support")
     def test_stop_preserves_symlink_without_posix_ownership_checks(self) -> None:
+        # Given: the registration path is a symlink to the original bootstrap.
         target = self.path.with_name("target.json")
         self.path.rename(target)
         self.path.symlink_to(target)
+
+        # When: stop the prototype.
         self.prototype.stop()
+
+        # Then
         self.assertTrue(self.path.is_symlink())
         self.assertEqual(self.bootstrap, target.read_bytes())
 
     def test_waiting_client_explains_unavailable_posix_checks(self) -> None:
+        # Given: POSIX registration checks are unavailable and stdout is captured.
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
+            # When: run the waiting terminal client.
             result = interaction._run_waiting_tmux_client(self.path)
+
+        # Then
         self.assertEqual(1, result)
         self.assertIn("terminal registration unsupported", output.getvalue())
         self.assertIn("POSIX ownership checks", output.getvalue())
@@ -907,12 +940,17 @@ class RegistrationFileSecurityTest(unittest.TestCase):
                 interaction._read_registration_file(path)
 
     def test_disposable_client_writer_produces_a_private_readable_file(self) -> None:
+        # Given: the adapter has an exact origin and a temporary client-config path.
         with tempfile.TemporaryDirectory() as tmp:
             adapter = interaction.TmuxAdapter()
             adapter._client_config = Path(tmp) / "client.json"
             origin = FakeTmuxAdapter().prepare()
             adapter._origin = origin
+
+            # When: start the disposable client.
             adapter.start_client(4553, "token", "codex:one", 15, origin)
+
+            # Then
             self.assertEqual(0o600, stat.S_IMODE(adapter._client_config.stat().st_mode))
             self.assertEqual(
                 "token",
@@ -942,6 +980,7 @@ class RegistrationFileSecurityTest(unittest.TestCase):
 
 class ControlModeBufferSecurityTest(unittest.TestCase):
     def test_unterminated_control_line_is_bounded_before_next_read(self) -> None:
+        # Given: control output fills the line limit without a terminator.
         adapter = interaction.TmuxAdapter()
         output, disconnected = mock.Mock(), mock.Mock()
         with (
@@ -952,7 +991,10 @@ class ControlModeBufferSecurityTest(unittest.TestCase):
                 side_effect=[b"x" * 65536, b"y", AssertionError("unbounded pending line")],
             ),
         ):
+            # When: read the control-mode stream.
             adapter._read_control_mode(1, output, disconnected)
+
+        # Then
         output.assert_not_called()
         disconnected.assert_called_once()
 

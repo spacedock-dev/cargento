@@ -153,7 +153,11 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("stalled", pending)
 
     def test_now_plan_status_withholds_estimates_and_counts_unhealthy_entities(self) -> None:
+        # Given: the shared project has two unhealthy entities across its plans.
+        # When: render the default Now cockpit.
         html = self.render()
+
+        # Then
         assert isinstance(html, str)
         status = re.search(r'<div class="next-project-detail-status"[\s\S]*?</div>', html)
 
@@ -234,14 +238,14 @@ console.log(JSON.stringify({fresh, stale, older, floor: NEXT_PROJECT_STALLED_SEC
     def test_project_discovery_renders_two_workflows_without_session_attachment_metadata(
         self,
     ) -> None:
+        # Given: a plain session has no attachment metadata and discovery returns two workflows.
         checks = """
 await __settle();
 await __settle();
 console.log(JSON.stringify(__els.app.innerHTML));
 """
-        html = self._run_page_js(
-            checks,
-            """
+
+        fixture = """
 location.hash = "#n=project:plain%2Frepo";
 __els.app = {innerHTML: ""};
 const dashboard = {
@@ -258,8 +262,15 @@ __fetchImpl = async url => ({ok: true, json: async () =>
       {workflow: "explore", goal: "Explore safely", stages: ["discovery", "shaping"]}
     ]}, semantic: {facts: [], work_items: [], projections: {}}
   } : dashboard});
-""",
+"""
+
+        # When: render the project and settle workflow discovery.
+        html = self._run_page_js(
+            checks,
+            fixture,
         )
+
+        # Then
         assert isinstance(html, str)
 
         self.assertEqual(2, html.count("data-next-workflow-definition="))
@@ -272,10 +283,13 @@ __fetchImpl = async url => ({ok: true, json: async () =>
 
     def test_workflow_observation_states_keep_their_sources_distinct(self) -> None:
         checks = """
+// Given: three projects have distinct attachment and discovery states.
 await __settle();
 const cases = {};
 for(const project of ["plain/repo", "empty/fo", "worker/repo"]){
   nextRoute = {view: "project", project, session: null};
+
+  // When: render each project and settle its context requests.
   renderNext();
   await __settle();
   await __settle();
@@ -314,6 +328,8 @@ __fetchImpl = async url => ({ok: true, json: async () => {
 }});
 """,
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertNotIn("no commissioned workflow directories", out["plain/repo"])
@@ -352,15 +368,20 @@ class NextProjectV2Test(NextPageJsHarness):
         out = self._run_page_js(
             V2_MODEL_FIXTURE
             + """
+// Given: the V2 project identity has retained raw plan records without a raw label.
 nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
 // Retain the raw-record adapter assertion while the cockpit owns composition.
 nextProjectCockpit = context => nextProjectPlanBlock(context) + nextProjectDone(context);
 nextData = {generated: 10000, sessions: [{sid: "live", harness: "codex", total: 3, done: 2,
   spacedock: {role: "first-officer", workflows: [{workflow: "Retained plan", goal: "Keep the plan", stages: [], entities: []}]}
 }]};
+
+// When: render the project through the retained plan adapter.
 console.log(JSON.stringify(nextProjectView("alpha/repo")));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Retained plan", out)
         self.assertIn("2 of 3 done", out)

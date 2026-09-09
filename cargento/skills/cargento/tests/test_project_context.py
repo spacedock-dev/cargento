@@ -156,6 +156,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("application consumed", events[0]["phase"].split(" · ")[-1])
 
     def test_project_workflows_are_discovered_without_session_attachment_metadata(self) -> None:
+        # Given: a checkout contains dev and explore workflow definitions.
         repository = self.root / "repository"
         (repository / ".git").mkdir(parents=True)
         workflow_dirs = [repository / ".spacedock" / name for name in ("dev", "explore")]
@@ -180,6 +181,7 @@ class ProjectContextTest(unittest.TestCase):
 
         state = build_runtime_state(self.config, started=self.NOW)
         with mock.patch.dict(os.environ, {"SPACEDOCK_BIN": "/opt/bin/spacedock"}):
+            # When: discover workflows with the bounded runner.
             result = project_context.discover_project_workflows(
                 self.config,
                 state,
@@ -188,6 +190,7 @@ class ProjectContextTest(unittest.TestCase):
                 runner=runner,
             )
 
+        # Then
         self.assertEqual("observed", result["state"])
         self.assertEqual(["dev", "explore"], [row["workflow"] for row in result["workflows"]])
         self.assertEqual(["shaping", "review"], result["workflows"][0]["stages"])
@@ -199,6 +202,7 @@ class ProjectContextTest(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_project_workflow_discovery_caches_the_bounded_result(self) -> None:
+        # Given: the first discovery has cached an empty result.
         repository = self.root / "repository"
         (repository / ".git").mkdir(parents=True)
         calls = 0
@@ -217,6 +221,8 @@ class ProjectContextTest(unittest.TestCase):
             runner=runner,
             binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
+
+        # When: discover again one second later.
         second = project_context.discover_project_workflows(
             self.config,
             state,
@@ -226,6 +232,7 @@ class ProjectContextTest(unittest.TestCase):
             binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
 
+        # Then
         self.assertEqual("none", first["state"])
         self.assertEqual(first, second)
         self.assertEqual(1, calls)
@@ -265,10 +272,13 @@ class ProjectContextTest(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_project_workflow_discovery_rejects_missing_or_relative_resolution(self) -> None:
+        # Given: the resolver returns a missing or relative binary path.
         for binary in (None, "spacedock", "bin/spacedock"):
             with self.subTest(binary=binary):
                 runner = mock.Mock()
                 resolver = mock.Mock(return_value=binary)
+
+                # When: attempt workflow discovery for that resolution.
                 result = project_context.discover_project_workflows(
                     self.config,
                     build_runtime_state(self.config, started=self.NOW),
@@ -278,6 +288,7 @@ class ProjectContextTest(unittest.TestCase):
                     binary_resolver=resolver,
                 )
 
+                # Then
                 self.assertEqual("unavailable", result["state"])
                 self.assertIn("requires an absolute path", result["reason"])
                 resolver.assert_called_once_with("spacedock")
@@ -285,6 +296,7 @@ class ProjectContextTest(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {"SPACEDOCK_BIN": ""})
     def test_linked_worktree_session_discovers_from_the_canonical_checkout(self) -> None:
+        # Given: a session transcript points to a linked worktree.
         checkout = self.root / "checkout"
         git_dir = checkout / ".git"
         worktree = checkout / ".worktrees" / "prototype"
@@ -323,6 +335,7 @@ class ProjectContextTest(unittest.TestCase):
                 stderr="",
             )
 
+        # When: discover its workflows from the project identity.
         result = project_context._project_workflow_discovery(
             self.config,
             build_runtime_state(self.config, started=self.NOW),
@@ -341,6 +354,7 @@ class ProjectContextTest(unittest.TestCase):
             binary_resolver=lambda _name: str(self.root / "spacedock"),
         )
 
+        # Then
         self.assertEqual([os.path.realpath(checkout)], calls)
         self.assertEqual("observed", result["state"])
         self.assertEqual(["dev", "explore"], [row["workflow"] for row in result["workflows"]])
@@ -398,6 +412,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual(0, empty["sources"]["steer"]["live"])
 
     def test_bound_omissions_are_not_reported_as_unreadable_transcripts(self) -> None:
+        # Given: active sessions exceed the observer cap and have missing transcripts.
         state = build_runtime_state(self.config, started=self.NOW)
         sessions = [
             {
@@ -410,6 +425,7 @@ class ProjectContextTest(unittest.TestCase):
             for index in range(project_context.MAX_PROJECT_OBSERVERS + 1)
         ]
 
+        # When: collect project context.
         result = project_context.collect(
             self.config,
             state,
@@ -418,12 +434,14 @@ class ProjectContextTest(unittest.TestCase):
             now=self.NOW,
         )
 
+        # Then
         self.assertEqual(
             project_context.MAX_PROJECT_OBSERVERS, len(result["sources"]["observer"]["unavailable"])
         )
         self.assertEqual(1, len(result["sources"]["observer"]["omitted"]))
 
     def test_attention_scan_includes_fourth_active_session_beyond_observer_cap(self) -> None:
+        # Given: a fourth active session has an exact authorization request.
         state = build_runtime_state(self.config, started=self.NOW)
         sessions = [
             {
@@ -452,18 +470,22 @@ class ProjectContextTest(unittest.TestCase):
             }
         )
 
+        # When: collect automatic project context.
         result = project_context.collect(
             self.config, state, sessions, "repo/proj", now=self.NOW, refresh=False
         )
 
         attention = result["semantic"]["projections"]["command_attention"]
         coverage = result["semantic"]["projections"]["command_attention_coverage"]
+
+        # Then
         self.assertEqual(1, len(attention))
         self.assertEqual("Exact fourth-session authorization", attention[0]["label"])
         self.assertEqual("complete", coverage["state"])
         self.assertEqual(4, coverage["scanned"])
 
     def test_attention_scan_reports_incomplete_bounded_coverage(self) -> None:
+        # Given: active sessions exceed the attention-scan cap by one.
         state = build_runtime_state(self.config, started=self.NOW)
         sessions = [
             {
@@ -477,16 +499,20 @@ class ProjectContextTest(unittest.TestCase):
             for index in range(project_context.MAX_PROJECT_ATTENTION_SESSIONS + 1)
         ]
 
+        # When: collect automatic project context.
         result = project_context.collect(
             self.config, state, sessions, "repo/proj", now=self.NOW, refresh=False
         )
 
         coverage = result["semantic"]["projections"]["command_attention_coverage"]
+
+        # Then
         self.assertEqual("incomplete", coverage["state"])
         self.assertEqual(project_context.MAX_PROJECT_ATTENTION_SESSIONS, coverage["scanned"])
         self.assertEqual(1, coverage["omitted"])
 
     def test_focus_identity_excludes_surrounding_sessions_from_analysis(self) -> None:
+        # Given: the selected session is older than surrounding active sessions.
         state = build_runtime_state(self.config, started=self.NOW)
         sessions = [
             {
@@ -508,6 +534,7 @@ class ProjectContextTest(unittest.TestCase):
             }
         )
 
+        # When: collect context focused on its exact identity.
         result = project_context.collect(
             self.config,
             state,
@@ -518,6 +545,7 @@ class ProjectContextTest(unittest.TestCase):
             focus=("pi", self.SID),
         )
 
+        # Then
         self.assertEqual(self.SID, result["observers"][0]["sid"])
         self.assertTrue(result["focus"]["observed"])
         self.assertEqual([], result["sources"]["observer"]["omitted"])
@@ -528,9 +556,13 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_refresh_without_model_consent_uses_local_analysis(self) -> None:
+        # Given: model analysis is enabled but no consent was supplied.
         self.config = dataclasses.replace(self.config, observer_model_enabled=True)
         with mock.patch.object(observer.CodexGoalModel, "__call__") as model:
+            # When: refresh project context.
             result = self.collect()
+
+        # Then
         model.assert_not_called()
         self.assertEqual("Follow the captain revision", result["observers"][0]["goal"])
         self.assertEqual("consent-required", result["observers"][0]["model"]["status"])
@@ -539,26 +571,32 @@ class ProjectContextTest(unittest.TestCase):
         self.assertIn("transcript", result["observer_model"]["disclosure"])
 
     def test_automatic_context_uses_stale_cache_without_model_wait(self) -> None:
+        # Given: a cached observation predates a changed transcript.
         refreshed = self.collect()
         observed_at = refreshed["observers"][0]["observed_at"]
         self._write_transcript("A newer steering record", "2026-08-24T20:20:00Z")
 
         with mock.patch.object(observer.CodexGoalModel, "__call__") as model:
+            # When: collect automatic context without refresh.
             automatic = self.collect(refresh=False)
 
+        # Then
         model.assert_not_called()
         self.assertEqual(observed_at, automatic["observers"][0]["observed_at"])
         self.assertEqual("cached-stale", automatic["observers"][0]["snapshot_status"])
         self.assertEqual("A newer steering record", automatic["events"][0]["title"])
 
     def test_automatic_context_without_cache_returns_timeline_only(self) -> None:
+        # Given: the observer sidecar is absent.
         path = observer.sidecar_path(self.config, "pi", self.SID)
         if path is not None:
             Path(path).unlink(missing_ok=True)
 
         with mock.patch.object(observer.CodexGoalModel, "__call__") as model:
+            # When: collect automatic project context without refresh.
             automatic = self.collect(refresh=False, focused=False)
 
+        # Then
         model.assert_not_called()
         self.assertEqual([], automatic["observers"])
         self.assertEqual(["gate", "steer"], [event["kind"] for event in automatic["events"]])
@@ -579,17 +617,22 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("timestamped non-meta user-role record", event["source"])
 
     def test_instruction_is_condensed_and_tagged_only_by_explicit_wording(self) -> None:
+        # Given: a user message includes explicit clarification and trailing prose.
+        record = codex_message(
+            "Captain clarification: Keep the graph concise.\n"
+            "Infrastructure prose that must not become the directive.",
+            "2026-08-24T20:10:00Z",
+        )
+
+        # When: extract the instruction event.
         event = project_context._instruction_event(
             self.config,
-            codex_message(
-                "Captain clarification: Keep the graph concise.\n"
-                "Infrastructure prose that must not become the directive.",
-                "2026-08-24T20:10:00Z",
-            ),
+            record,
             "codex",
             self.SID,
         )
 
+        # Then
         self.assertIsNotNone(event)
         assert event is not None
         self.assertEqual("Keep the graph concise.", event["title"])
@@ -598,6 +641,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertNotIn("Infrastructure prose", event["title"])
 
     def test_pi_work_events_normalize_dispatch_and_subagent_results(self) -> None:
+        # Given: the transcript contains dispatch, subagent, status, and result records.
         records = [
             {
                 "type": "message",
@@ -666,8 +710,10 @@ class ProjectContextTest(unittest.TestCase):
             "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8"
         )
 
+        # When: read normalized work events.
         events = project_context.work_events(self.config, str(self.transcript), "pi", self.SID)
 
+        # Then
         self.assertEqual(
             [
                 "prepared_dispatch",
@@ -686,6 +732,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertNotIn("preparing", json.dumps(events))
 
     def test_semantic_layers_keep_work_items_distinct_from_contributors(self) -> None:
+        # Given: two contributors share work and one also has a separate request.
         events = [
             {
                 "at": 1.0,
@@ -729,6 +776,7 @@ class ProjectContextTest(unittest.TestCase):
             },
         ]
 
+        # When: build the semantic model.
         model = project_context._semantic_model(events, [])
         shared = next(
             item
@@ -742,6 +790,7 @@ class ProjectContextTest(unittest.TestCase):
         prepared = next(item for item in model["work_items"] if item["label"] == "workflow-task")
         contributors = {item["source_label"]: item for item in model["contributors"]}
 
+        # Then
         self.assertEqual(
             [
                 contributors["worker-a"]["contributor_id"],
@@ -770,6 +819,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual([], model["projections"]["candidate_goal_shifts"])
 
     def test_dispatch_topology_is_separate_from_membership_and_counts_attempts(self) -> None:
+        # Given: three exact dispatch attempts target the same workflow task.
         common = {
             "kind": "prepared_dispatch",
             "title": "project-cockpit → shaping",
@@ -782,6 +832,7 @@ class ProjectContextTest(unittest.TestCase):
         }
         events = [{**common, "at": float(at)} for at in (1, 2, 3)]
 
+        # When: build the semantic model.
         model = project_context._semantic_model(events, [])
         work_item = model["work_items"][0]
         work_item_id = work_item["work_item_id"]
@@ -789,6 +840,7 @@ class ProjectContextTest(unittest.TestCase):
         branches = [row for row in relations if row["type"] == "dispatches_to"]
         memberships = [row for row in relations if row["type"] == "binds_to"]
 
+        # Then
         self.assertEqual(3, len(memberships))
         self.assertEqual(3, len(branches))
         self.assertEqual({f"fo:codex:{self.SID}"}, {row["from"] for row in branches})
@@ -798,47 +850,58 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual(3, head["dispatch_count"])
 
     def test_task_state_fact_not_contributor_supplies_stage(self) -> None:
+        # Given: a task has a prepared dispatch and a later stage-transition fact.
         task_id = "workflow:task"
+
+        facts_by_task = {
+            task_id: [
+                {
+                    "fact_id": "dispatch",
+                    "at": 1,
+                    "type": "prepared_dispatch",
+                    "source_kind": "prepared_dispatch",
+                },
+                {
+                    "fact_id": "state",
+                    "at": 2,
+                    "type": "stage_transition",
+                    "source_kind": "child_assignment",
+                    "stage": "shaping",
+                },
+            ]
+        }
+
+        # When: derive its trail head.
         heads = project_context._semantic_trail_heads(
-            {
-                task_id: [
-                    {
-                        "fact_id": "dispatch",
-                        "at": 1,
-                        "type": "prepared_dispatch",
-                        "source_kind": "prepared_dispatch",
-                    },
-                    {
-                        "fact_id": "state",
-                        "at": 2,
-                        "type": "stage_transition",
-                        "source_kind": "child_assignment",
-                        "stage": "shaping",
-                    },
-                ]
-            },
+            facts_by_task,
             [],
         )
 
+        # Then
         self.assertEqual("shaping", heads[0]["stage"])
         self.assertEqual("state", heads[0]["state_fact"])
         self.assertEqual("current stage", heads[0]["status"])
         self.assertEqual(1, heads[0]["dispatch_count"])
 
     def test_birth_only_is_requested_history_not_demonstrated_current_work(self) -> None:
+        # Given: a historical task-start label claims that the task is done.
+        events = [
+            {
+                "at": 2.0,
+                "kind": "task_started",
+                "title": "task is DONE",
+                "source": "historical subagent call",
+                "lineage": "old-call:0",
+            }
+        ]
+
+        # When: build the semantic model.
         model = project_context._semantic_model(
-            [
-                {
-                    "at": 2.0,
-                    "kind": "task_started",
-                    "title": "task is DONE",
-                    "source": "historical subagent call",
-                    "lineage": "old-call:0",
-                }
-            ],
+            events,
             [],
         )
 
+        # Then
         self.assertEqual("requested", model["projections"]["trail_heads"][0]["status"])
         self.assertFalse(
             any(
@@ -914,6 +977,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertFalse(any(relation["type"] == "elicits" for relation in model["relations"]))
 
     def test_pi_turn_identity_reaches_a_descendant_subagent_call(self) -> None:
+        # Given: the transcript links a user turn through preflight to a descendant call.
         rows = [
             {"type": "session", "id": self.SID, "cwd": str(self.root)},
             {
@@ -976,10 +1040,13 @@ class ProjectContextTest(unittest.TestCase):
         instructions = project_context.instruction_events(
             self.config, str(self.transcript), "pi", self.SID
         )
+
+        # When: read the work evidence for that transcript.
         work, _stats = project_context._work_evidence(
             self.config, str(self.transcript), "pi", self.SID
         )
 
+        # Then
         self.assertEqual("user-redispatch", instructions[0]["record_id"])
         started = next(event for event in work if event["kind"] == "task_started")
         self.assertEqual("assistant-dispatch", started["record_id"])
@@ -988,21 +1055,27 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("assistant-preflight", started["branch_id"])
 
     def test_activity_floor_uses_collection_time_not_newest_work(self) -> None:
+        # Given: an unmatched dispatch is older than the current-work horizon.
+        events = [
+            {
+                "at": self.NOW - (42 * 60),
+                "kind": "task_started",
+                "title": "Stale unmatched ASR dispatch",
+                "source": "Pi subagent task label",
+                "lineage": "old-call:0",
+            }
+        ]
+
+        # When: build the semantic model at collection time.
         model = project_context._semantic_model(
-            [
-                {
-                    "at": self.NOW - (42 * 60),
-                    "kind": "task_started",
-                    "title": "Stale unmatched ASR dispatch",
-                    "source": "Pi subagent task label",
-                    "lineage": "old-call:0",
-                }
-            ],
+            events,
             [],
             now=self.NOW,
         )
 
         activity = model["projections"]["activity"]
+
+        # Then
         self.assertEqual([], activity["nodes"])
         self.assertEqual(1, activity["historical_unresolved"])
         self.assertEqual(
@@ -1010,6 +1083,7 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_primary_activity_collapses_dispatch_burst_and_old_retry(self) -> None:
+        # Given: old dispatches precede a retry burst and later conversation.
         events = [
             {
                 "at": 1.0,
@@ -1052,8 +1126,10 @@ class ProjectContextTest(unittest.TestCase):
             }
         )
 
+        # When: derive current activity from the semantic model.
         activity = project_context._semantic_model(events, [])["projections"]["activity"]
 
+        # Then
         self.assertEqual(1, len(activity["nodes"]))
         self.assertEqual("burst", activity["nodes"][0]["kind"])
         self.assertEqual(8, activity["nodes"][0]["count"])
@@ -1079,6 +1155,7 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_primary_steering_prefers_directives_to_recent_questions(self) -> None:
+        # Given: directives are followed by newer questions and a repeated directive.
         intents = [
             {"at": 1.0, "summary": "before running benchmark, validate model size"},
             {"at": 2.0, "summary": "redispatch the causal bug fix worker"},
@@ -1087,8 +1164,10 @@ class ProjectContextTest(unittest.TestCase):
             {"at": 4.0, "summary": "is this a raw subagent?"},
         ]
 
+        # When: select recent steering nodes.
         steering = project_context._recent_steering_nodes(intents)
 
+        # Then
         self.assertEqual(
             [
                 "please redispatch the causal bug fix worker again",
@@ -1109,42 +1188,46 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual([], steering)
 
     def test_exact_dispatch_artifact_binds_spawn_and_result_to_workflow_item(self) -> None:
+        # Given: an exact artifact connects prepared dispatch, spawn, and result records.
         artifact = "/tmp/spacedock-dispatch/spacedock-ensign-search-review.md"
+
+        events = [
+            {
+                "at": 1.0,
+                "kind": "prepared_dispatch",
+                "title": "search → review",
+                "source": "build call",
+                "workflow_binding": "/workflow/asr",
+                "entity": "search",
+                "stage": "",
+                "dispatch_artifact": "",
+                "dispatch_artifact_prefix": ("/tmp/spacedock-dispatch/spacedock-ensign-search-"),
+            },
+            {
+                "at": 2.0,
+                "kind": "task_started",
+                "title": f"Read {artifact} and treat its content as your assignment.",
+                "source": "Pi subagent task label",
+                "lineage": "spawn:0",
+                "dispatch_artifact": artifact,
+            },
+            {
+                "at": 3.0,
+                "kind": "task_result",
+                "title": "Dispatch result returned",
+                "source": "Pi subagent paired result",
+                "lineage": "spawn:0",
+                "dispatch_artifact": artifact,
+            },
+        ]
+
+        # When: build the semantic model.
         model = project_context._semantic_model(
-            [
-                {
-                    "at": 1.0,
-                    "kind": "prepared_dispatch",
-                    "title": "search → review",
-                    "source": "build call",
-                    "workflow_binding": "/workflow/asr",
-                    "entity": "search",
-                    "stage": "",
-                    "dispatch_artifact": "",
-                    "dispatch_artifact_prefix": (
-                        "/tmp/spacedock-dispatch/spacedock-ensign-search-"
-                    ),
-                },
-                {
-                    "at": 2.0,
-                    "kind": "task_started",
-                    "title": f"Read {artifact} and treat its content as your assignment.",
-                    "source": "Pi subagent task label",
-                    "lineage": "spawn:0",
-                    "dispatch_artifact": artifact,
-                },
-                {
-                    "at": 3.0,
-                    "kind": "task_result",
-                    "title": "Dispatch result returned",
-                    "source": "Pi subagent paired result",
-                    "lineage": "spawn:0",
-                    "dispatch_artifact": artifact,
-                },
-            ],
+            events,
             [],
         )
 
+        # Then
         self.assertEqual(1, len(model["work_items"]))
         self.assertEqual("workflow_item", model["work_items"][0]["kind"])
         self.assertEqual("search · review", model["work_items"][0]["label"])
@@ -1155,6 +1238,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertFalse(any("/tmp/spacedock-dispatch" in str(value) for value in summaries))
 
     def test_dispatch_artifact_binding_rejects_ambiguous_or_similar_labels(self) -> None:
+        # Given: two workflows share an artifact and another task has only a similar label.
         artifact = "/tmp/spacedock-dispatch/spacedock-ensign-shared-review.md"
         events = [
             {
@@ -1189,8 +1273,10 @@ class ProjectContextTest(unittest.TestCase):
             ]
         )
 
+        # When: build the semantic model.
         model = project_context._semantic_model(events, [])
 
+        # Then
         self.assertEqual(4, len(model["work_items"]))
         self.assertEqual(1, sum(item["kind"] == "one_off" for item in model["work_items"]))
 
@@ -1459,6 +1545,7 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_persisted_intent_flag_survives_restart_without_promoting_envelopes(self) -> None:
+        # Given: human, rejected, and collaboration facts have been persisted.
         human = {
             "at": 10.0,
             "kind": "steer",
@@ -1498,6 +1585,8 @@ class ProjectContextTest(unittest.TestCase):
             [],
             now=20.0,
         )
+
+        # When: reload and merge history into an empty semantic model.
         replay = project_context._merge_semantic_history(
             project_context._semantic_model([], []),
             semantic_history.read(
@@ -1506,6 +1595,7 @@ class ProjectContextTest(unittest.TestCase):
             now=20.0,
         )
 
+        # Then
         self.assertTrue(persisted["persisted"])
         self.assertEqual(3, len(replay["facts"]))
         self.assertEqual(
@@ -1517,6 +1607,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertFalse(by_summary[collaboration["title"]]["intent_promoted"])
 
     def test_semantic_ids_include_workflow_and_survive_order_changes(self) -> None:
+        # Given: a model contains two workflows with the same entity slug.
         first = {
             "at": 2.0,
             "kind": "gate",
@@ -1536,11 +1627,14 @@ class ProjectContextTest(unittest.TestCase):
             "decision": "revise",
         }
         model = project_context._semantic_model([first, second], [])
+
+        # When: rebuild after reordering the gates and adding an earlier steer.
         reordered = project_context._semantic_model(
             [second, {"at": 1.0, "kind": "steer", "title": "Earlier", "source": "row"}, first],
             [],
         )
 
+        # Then
         self.assertEqual(2, len(model["work_items"]))
         self.assertTrue(all(fact["scope"] == "project" for fact in model["facts"]))
         fact_ids = {fact["fact_id"] for fact in model["facts"]}
@@ -1558,26 +1652,33 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_transcript_facts_keep_source_session_without_branch_records(self) -> None:
+        # Given: a Codex user fact has exact session identity but no branch records.
+        events = [
+            {
+                "at": 2.0,
+                "kind": "steer",
+                "title": "Keep the selected project as the context boundary.",
+                "source": "Codex user message",
+                "harness": "codex",
+                "sid": "codex-root",
+                "intent_promotable": True,
+            }
+        ]
+
+        # When: build the semantic model.
         model = project_context._semantic_model(
-            [
-                {
-                    "at": 2.0,
-                    "kind": "steer",
-                    "title": "Keep the selected project as the context boundary.",
-                    "source": "Codex user message",
-                    "harness": "codex",
-                    "sid": "codex-root",
-                    "intent_promotable": True,
-                }
-            ],
+            events,
             [],
         )
 
         fact = model["facts"][0]
+
+        # Then
         self.assertEqual({"harness": "codex", "sid": "codex-root"}, fact["source_session"])
         self.assertNotIn("branch", fact)
 
     def test_gate_metadata_credentials_never_reach_semantic_publication(self) -> None:
+        # Given: each gate metadata field contains a synthetic credential in turn.
         secret = "sk-ant-api03-" + "a" * 93
         for field in ("stage", "decision", "target-stage", "by", "state"):
             with self.subTest(field=field):
@@ -1602,10 +1703,14 @@ class ProjectContextTest(unittest.TestCase):
                     f"    state: {values['state']}",
                     f"    target-stage: {values['target-stage']}",
                 ]
+
+                # When: parse the gate and build its semantic publication.
                 events, _ = project_context.gate_events(
                     self.config, lines, "synthetic", "/workflow", "codex", self.SID
                 )
                 model = project_context._semantic_model(events, [], now=105)
+
+                # Then
                 self.assertEqual(1, len(model["facts"]))
                 self.assertNotIn(secret, json.dumps(events))
                 self.assertNotIn(secret, json.dumps(model))
@@ -1659,6 +1764,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual("Project cockpit", combined["work_items"][0]["label"])
 
     def test_exact_gate_entity_binds_artifact_only_start_to_canonical_title(self) -> None:
+        # Given: a gate and artifact-only start refer to the same exact entity.
         gate = {
             "at": 1.0,
             "kind": "gate",
@@ -1683,8 +1789,10 @@ class ProjectContextTest(unittest.TestCase):
             "dispatch_artifact": "/tmp/spacedock-dispatch/spacedock-ensign-abcdefghjk-implementation.md",
         }
 
+        # When: build the semantic model.
         model = project_context._semantic_model([gate, started], [])
 
+        # Then
         self.assertEqual(1, len(model["work_items"]))
         self.assertEqual("Human task title", model["work_items"][0]["label"])
         self.assertEqual(
@@ -1693,6 +1801,7 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_focused_history_keeps_exact_session_and_project_facts_only(self) -> None:
+        # Given: history contains the selected session, a peer, and a project fact.
         history = {
             "events": [
                 {
@@ -1719,16 +1828,19 @@ class ProjectContextTest(unittest.TestCase):
             "cursors": {"codex:root": {}, "pi:other": {}},
         }
 
+        # When: filter history to the exact session and bound work.
         focused = project_context._focused_semantic_history(
             history,
             ("codex", "root"),
             {"workflow:kept"},
         )
 
+        # Then
         self.assertEqual(["codex", "gate"], [row["event_id"] for row in focused["events"]])
         self.assertEqual(history["cursors"], focused["cursors"])
 
     def test_focused_history_excludes_unrelated_project_gate(self) -> None:
+        # Given: project gates belong to selected and unrelated work items.
         history = {
             "events": [
                 {
@@ -1752,17 +1864,20 @@ class ProjectContextTest(unittest.TestCase):
             ]
         }
 
+        # When: filter history to the selected work binding.
         focused = project_context._focused_semantic_history(
             history,
             ("codex", "root"),
             {"workflow:kept"},
         )
 
+        # Then
         self.assertEqual(["kept"], [row["event_id"] for row in focused["events"]])
 
     def test_focused_semantic_graph_keeps_exact_owner_children_and_bound_project_facts(
         self,
     ) -> None:
+        # Given: the semantic graph contains a root, its exact child, and peer work.
         root = {"harness": "codex", "sid": self.SID}
         child = {"harness": "codex", "sid": "child-thread"}
         peer = {"harness": "pi", "sid": "peer-thread"}
@@ -1828,6 +1943,7 @@ class ProjectContextTest(unittest.TestCase):
             "history": {"events": []},
         }
 
+        # When: focus the graph on the root and its child binding.
         focused = project_context._focused_semantic_graph(
             semantic,
             ("codex", self.SID),
@@ -1842,6 +1958,7 @@ class ProjectContextTest(unittest.TestCase):
             now=6.0,
         )
 
+        # Then
         self.assertEqual(
             {"root-direction", "child-result", "root-gate"},
             {row["fact_id"] for row in focused["facts"]},
@@ -1893,6 +2010,7 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual([], project_context._command_attention_projection(semantic))
 
     def test_bound_result_makes_one_task_returned_not_simultaneously_unreturned(self) -> None:
+        # Given: a prepared dispatch has a later result on the same work item.
         work_item_id = "workflow:task"
         dispatch = {
             "fact_id": "dispatch",
@@ -1908,15 +2026,18 @@ class ProjectContextTest(unittest.TestCase):
             "work_item_id": work_item_id,
         }
 
+        # When: derive the trail heads.
         trails = project_context._semantic_trail_heads(
             {work_item_id: [dispatch, result]}, [dispatch, result]
         )
 
+        # Then
         self.assertEqual(1, len(trails))
         self.assertEqual("returned", trails[0]["status"])
         self.assertEqual("result", trails[0]["latest_meaningful_event"])
 
     def test_focused_gates_require_exact_current_child_or_persisted_identity(self) -> None:
+        # Given: gates have current, child, persisted, peer, and cross-workflow identities.
         workflow = "/repo/docs/dev"
 
         def gate(entity: str, slug: str, binding: str = workflow) -> dict[str, str]:
@@ -1974,6 +2095,7 @@ class ProjectContextTest(unittest.TestCase):
             gate("explore-alias-id", "shared-slug", "/repo/docs/explore"),
         ]
 
+        # When: select gates for the exact focused session.
         kept, work_items = project_context._focused_gate_events(
             transcript,
             gates,
@@ -1982,6 +2104,7 @@ class ProjectContextTest(unittest.TestCase):
             ("codex", "root"),
         )
 
+        # Then
         self.assertEqual(
             ["session-id", "child-id", "persisted-id", "dev-alias-id"],
             [row["entity"] for row in kept],
@@ -1992,6 +2115,7 @@ class ProjectContextTest(unittest.TestCase):
         )
 
     def test_focused_gate_context_reads_project_peer_without_foreign_transcript_facts(self) -> None:
+        # Given: a project peer exposes a gate through its transcript context.
         focused = {
             "harness": "codex",
             "sid": "root",
@@ -2009,6 +2133,7 @@ class ProjectContextTest(unittest.TestCase):
             mock.patch.object(observer, "resolve_transcript", return_value="/tmp/peer.jsonl"),
             mock.patch.object(project_context, "_gate_context", return_value=([gate], 2)) as read,
         ):
+            # When: read peer gate context for the focused root.
             rows, briefings = project_context._project_peer_gate_context(
                 self.config,
                 mock.Mock(),
@@ -2017,21 +2142,27 @@ class ProjectContextTest(unittest.TestCase):
                 ("codex", "root"),
             )
 
+        # Then
         self.assertEqual([gate], rows)
         self.assertEqual(2, briefings)
         read.assert_called_once_with(self.config, mock.ANY, "/tmp/peer.jsonl", "claude", "peer")
 
     def test_environment_context_is_not_steering(self) -> None:
+        # Given: the user record contains an environment-context envelope.
+        record = codex_message(
+            "<environment_context>\n  <cwd>/private/project</cwd>\n</environment_context>",
+            "2026-08-24T20:10:00Z",
+        )
+
+        # When: attempt to extract an instruction event.
         event = project_context._instruction_event(
             self.config,
-            codex_message(
-                "<environment_context>\n  <cwd>/private/project</cwd>\n</environment_context>",
-                "2026-08-24T20:10:00Z",
-            ),
+            record,
             "codex",
             self.SID,
         )
 
+        # Then
         self.assertIsNone(event)
 
     def test_codex_function_output_can_supply_boot_provenance(self) -> None:
@@ -2201,6 +2332,7 @@ class DispatchSecurityTest(unittest.TestCase):
 
 class SpacedockExecutableSecurityTest(unittest.TestCase):
     def test_relative_override_is_refused_without_running(self) -> None:
+        # Given: the configured executable override is relative.
         config = build_runtime_config(
             environ={}, platform_name="linux", os_name="posix", launcher_path=Path("/server.py")
         )
@@ -2208,11 +2340,15 @@ class SpacedockExecutableSecurityTest(unittest.TestCase):
         for value in ("spacedock", "./spacedock", "bin/spacedock"):
             runner = mock.Mock()
             with mock.patch.dict(os.environ, {"SPACEDOCK_BIN": value}):
+                # When: attempt bounded workflow discovery.
                 result = project_context._run_project_workflow_discovery(config, state, "/", runner)
+
+            # Then
             runner.assert_not_called()
             self.assertEqual("unavailable", result["state"])
 
     def test_absolute_override_uses_minimal_environment_and_existing_bounds(self) -> None:
+        # Given: an absolute executable override accompanies untrusted environment values.
         config = build_runtime_config(
             environ={}, platform_name="linux", os_name="posix", launcher_path=Path("/server.py")
         )
@@ -2226,7 +2362,10 @@ class SpacedockExecutableSecurityTest(unittest.TestCase):
                 "PYTHONPATH": "/evil",
             },
         ):
+            # When: run bounded workflow discovery.
             project_context._run_project_workflow_discovery(config, state, "/", runner)
+
+        # Then
         self.assertEqual(["/opt/bin/spacedock", "status", "--discover"], runner.call_args.args[0])
         options = runner.call_args.kwargs
         self.assertEqual(2, options["timeout"])

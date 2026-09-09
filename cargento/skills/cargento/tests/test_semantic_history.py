@@ -78,6 +78,7 @@ class SemanticHistoryTest(unittest.TestCase):
             self.assertEqual("person:captain", rewritten["events"][0]["fact"]["by"])
 
     def test_restart_dedupes_replaces_progress_and_suppresses_lifecycle_only(self) -> None:
+        # Given: history already contains assignments, progress, a checkpoint, and final output.
         work_item_id = "workflow:project-cockpit"
         facts = [
             self._fact("assign", 10, "work_birth", "task_started", "Shape cockpit", work_item_id),
@@ -117,6 +118,8 @@ class SemanticHistoryTest(unittest.TestCase):
             semantic,
             [session],
         )
+
+        # When: update the same project from a restarted runtime.
         restarted = semantic_history.update(
             self.config,
             build_runtime_state(self.config, started=2),
@@ -124,6 +127,8 @@ class SemanticHistoryTest(unittest.TestCase):
             semantic,
             [session],
         )
+
+        # Then
         self.assertEqual(first["events"], restarted["events"])
         event_types = [event["event_type"] for event in restarted["events"]]
         self.assertNotIn("task_complete", event_types)
@@ -257,34 +262,40 @@ class SemanticHistoryTest(unittest.TestCase):
         self.assertTrue(all(len(event["summary"]) <= 240 for event in changed["events"]))
 
     def test_current_workflow_and_generic_children_share_assignment_vocabulary(self) -> None:
+        # Given: one exact child has a workflow stage and another has a generic assignment.
+        assignments = [
+            {
+                "name": "Einstein",
+                "observer_sid": "child-one",
+                "assignment": "Shape cockpit",
+                "confidence": "exact",
+                "source": "structured dispatch artifact",
+                "workflow_entity": "project-cockpit",
+                "workflow_stage": "shaping",
+                "workflow_binding": "/repo/.spacedock/explore",
+            },
+            {
+                "name": "James",
+                "observer_sid": "child-two",
+                "assignment": "Review navigation",
+                "confidence": "exact",
+                "source": "exact parent dispatch",
+            },
+        ]
+
+        # When: publish both child assignments to semantic history.
         result = semantic_history.update(
             self.config,
             build_runtime_state(self.config, started=1),
             "git:project",
             {"facts": [], "work_items": []},
             [],
-            [
-                {
-                    "name": "Einstein",
-                    "observer_sid": "child-one",
-                    "assignment": "Shape cockpit",
-                    "confidence": "exact",
-                    "source": "structured dispatch artifact",
-                    "workflow_entity": "project-cockpit",
-                    "workflow_stage": "shaping",
-                    "workflow_binding": "/repo/.spacedock/explore",
-                },
-                {
-                    "name": "James",
-                    "observer_sid": "child-two",
-                    "assignment": "Review navigation",
-                    "confidence": "exact",
-                    "source": "exact parent dispatch",
-                },
-            ],
+            assignments,
             now=100,
         )
         events = result["events"]
+
+        # Then
         self.assertEqual(
             ["stage_transition", "assignment"],
             [event["event_type"] for event in events],
@@ -298,32 +309,38 @@ class SemanticHistoryTest(unittest.TestCase):
         self.assertEqual("one_off", generic["work_item"]["kind"])
 
     def test_child_assignment_keeps_verified_child_parent_and_task_identity(self) -> None:
+        # Given: an exact child assignment names its parent and workflow task.
+        assignments = [
+            {
+                "name": "Banach",
+                "observer_sid": "child-one",
+                "parent_session": {"harness": "codex", "sid": "root"},
+                "assignment": "Shape cockpit",
+                "confidence": "exact",
+                "source": "structured dispatch artifact",
+                "workflow_entity": "project-cockpit",
+                "workflow_stage": "shaping",
+                "workflow_binding": "/repo/.spacedock/explore",
+                "work_item_id": semantic_history.workflow_work_item_id(
+                    "/repo/.spacedock/explore", "project-cockpit"
+                ),
+            }
+        ]
+
+        # When: publish the assignment to semantic history.
         result = semantic_history.update(
             self.config,
             build_runtime_state(self.config, started=1),
             "git:project",
             {"facts": [], "work_items": []},
             [],
-            [
-                {
-                    "name": "Banach",
-                    "observer_sid": "child-one",
-                    "parent_session": {"harness": "codex", "sid": "root"},
-                    "assignment": "Shape cockpit",
-                    "confidence": "exact",
-                    "source": "structured dispatch artifact",
-                    "workflow_entity": "project-cockpit",
-                    "workflow_stage": "shaping",
-                    "workflow_binding": "/repo/.spacedock/explore",
-                    "work_item_id": semantic_history.workflow_work_item_id(
-                        "/repo/.spacedock/explore", "project-cockpit"
-                    ),
-                }
-            ],
+            assignments,
             now=100,
         )
 
         fact = result["events"][0]["fact"]
+
+        # Then
         self.assertEqual({"harness": "codex", "sid": "child-one"}, fact["source_session"])
         self.assertEqual({"harness": "codex", "sid": "root"}, fact["parent_session"])
         self.assertEqual(
@@ -336,6 +353,7 @@ class SemanticHistoryTest(unittest.TestCase):
         )
 
     def test_same_entity_slug_in_two_workflows_retains_distinct_exact_bindings(self) -> None:
+        # Given: two workflow directories share the same entity slug.
         assignments = [
             {
                 "name": name,
@@ -352,6 +370,8 @@ class SemanticHistoryTest(unittest.TestCase):
                 ("Legacy", "dev-child", "dev"),
             )
         ]
+
+        # When: publish both assignments to semantic history.
         result = semantic_history.update(
             self.config,
             build_runtime_state(self.config, started=1),
@@ -362,6 +382,8 @@ class SemanticHistoryTest(unittest.TestCase):
             now=100,
         )
         bindings = {event["work_binding"] for event in result["events"]}
+
+        # Then
         self.assertEqual(2, len(bindings))
         self.assertTrue(all(binding.endswith(":project-cockpit") for binding in bindings))
         sources = {event["work_item"]["source_bindings"][0]["value"] for event in result["events"]}
@@ -431,6 +453,7 @@ class SemanticHistoryTest(unittest.TestCase):
         self.assertEqual(semantic_history.HISTORY_WINDOW_SEC, restarted["window_sec"])
 
     def test_operator_promotion_and_gate_application_fields_survive_restart(self) -> None:
+        # Given: an unpromoted direction and pending gate have been persisted.
         direction = self._fact(
             "direction", 10, "user_message", "steer", "Keep exact evidence", None
         )
@@ -456,11 +479,13 @@ class SemanticHistoryTest(unittest.TestCase):
             now=20,
         )
 
+        # When: read history from a restarted runtime.
         restarted = semantic_history.read(
             self.config, build_runtime_state(self.config, started=2), "git:project"
         )
         facts = {event["event_id"]: event["fact"] for event in restarted["events"]}
 
+        # Then
         self.assertFalse(facts["direction"]["intent_promoted"])
         self.assertEqual("pending", facts["gate"]["application_state"])
         self.assertEqual("review", facts["gate"]["target_stage"])

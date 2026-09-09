@@ -107,8 +107,11 @@ renderNext();
         out = self.run_fixture(
             self.FOCUS_DOM
             + """
+// Given: the Now tab has keyboard focus in the focusable cockpit DOM.
 controls.find(control => control.dataset.nextCockpitAction === "tab" && control.dataset.arg === "now").focus();
 const states = [];
+
+// When: advance through the tabs with consecutive ArrowRight keys.
 for(let index = 0; index < 2; index++){
   __fire("keydown", {target:document.activeElement,key:"ArrowRight",preventDefault(){}});
   states.push({tab:nextRoute.tab,focused:document.activeElement?.dataset.arg || null});
@@ -116,6 +119,8 @@ for(let index = 0; index < 2; index++){
 console.log(JSON.stringify(states));
 """
         )
+
+        # Then
         self.assertEqual(
             [{"tab": "course", "focused": "course"}, {"tab": "decisions", "focused": "decisions"}],
             out,
@@ -125,36 +130,49 @@ console.log(JSON.stringify(states));
         out = self.run_fixture(
             self.FOCUS_DOM
             + """
+// Given: the exact Codex scope link has focus.
 controls.find(control => control.dataset.nextCockpitScope === "codex:focus-1").focus();
+
+// When: refresh the dashboard.
 await refreshNext();
 console.log(JSON.stringify(document.activeElement?.dataset.nextCockpitScope || null));
 """
         )
+
+        # Then
         self.assertEqual("codex:focus-1", out)
 
     def test_opening_human_context_moves_focus_to_the_editor(self) -> None:
         out = self.run_fixture(
             self.FOCUS_DOM
             + """
+// Given: the human-context edit control has focus.
 const edit = controls.find(control => control.dataset.nextCockpitAction === "memo-edit");
 edit.focus();
+
+// When: click the edit control.
 __fire("click", {target:edit,preventDefault(){}});
 console.log(JSON.stringify({tag:document.activeElement?.tagName || null,
   key:document.activeElement?.dataset.nextCockpitMemoKey || null,expected:edit.dataset.arg}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertEqual("TEXTAREA", out["tag"])
         self.assertEqual(out["expected"], out["key"])
 
     def test_console_screen_survives_navigation_away_and_back(self) -> None:
         out = self.run_fixture("""
+// Given: the console owns a mounted terminal screen.
 const original = {textContent:"Delivered terminal output"};
 let screen = original;
 const getElement = document.getElementById;
 document.getElementById = id => id === "pc-terminal-screen" ? screen : getElement(id);
 projectTerminal = {dispose(){}};
 projectTerminalKey = projectTerminalOpenKey = "codex:focus-1";
+
+// When: navigate away from the console and back through its render lifecycle.
 nextCockpitBeforeRender();
 screen = null;
 nextCockpitAfterRender();
@@ -163,32 +181,44 @@ screen = {textContent:"Loading the local terminal renderer.",replaceWith(node){ 
 nextCockpitAfterRender();
 console.log(JSON.stringify({same:screen === original,text:screen.textContent}));
 """)
+
+        # Then
         self.assertEqual({"same": True, "text": "Delivered terminal output"}, out)
 
     def test_working_root_prevents_no_execution_claim(self) -> None:
         out = self.run_fixture("""
+// Given: one working root has no children or semantic activity.
 __dashboard.sessions = __dashboard.sessions.slice(0, 1);
 __dashboard.sessions[0].subagent_hierarchy = [];
 __semantic.facts = [];
 __semantic.projections = {command_attention:[],command_attention_coverage:{
   state:"complete",scanned:1,total:1,omitted:0}};
+
+// When: redraw the cockpit.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """)
+
+        # Then
         assert isinstance(out, str)
         self.assertNotIn("No execution observed", out)
         self.assertIn("Codex · working", out)
 
     def test_assignment_direction_remains_available_in_latest_evidence(self) -> None:
         out = self.run_fixture("""
+// Given: the latest direction repeats the active assignment.
 __semantic.facts = [{fact_id:"direction",type:"user_message",at:104,
   summary:"Fix the completion guard",intent_promoted:true,
   source_session:{harness:"codex",sid:"focus-1"},
   evidence:{source:"root transcript",confidence:"exact"}}];
 __semantic.projections = {};
+
+// When: redraw the cockpit.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """)
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Exact operator direction", out)
         self.assertNotIn("Actionable direction not captured", out)
@@ -198,14 +228,19 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self,
     ) -> None:
         out = self.run_fixture("""
+// Given: a pending decision has an unknown author.
 __semantic.facts.push({...__semantic.facts.find(f => f.type === "gate_decision"),
   fact_id:"unknown-author",at:101,by:"",decision:"hold",summary:"Pending hold",
   application_state:"pending"});
 nextRoute = {view:"project",project:"cargento",tab:"decisions"};
+
+// When: render the Decisions tab and its counts.
 renderNext();
 console.log(JSON.stringify({counts:nextCockpitCaptainDecisionCounts(__semantic),
   html:__els.app.innerHTML}));
 """)
+
+        # Then
         assert isinstance(out, dict)
         self.assertEqual({"pending": 1, "unknown": 0, "superseded": 0, "applied": 1}, out["counts"])
         self.assertIn("Decision author not published", out["html"])
@@ -214,29 +249,39 @@ console.log(JSON.stringify({counts:nextCockpitCaptainDecisionCounts(__semantic),
 
     def test_session_scoped_now_discloses_project_wide_contents(self) -> None:
         out = self.run_fixture("""
+// Given: a Claude session is selected on Now.
 nextRoute = {view:"project",project:"cargento",focus:"claude:claude-idle",tab:"now"};
+
+// When: render the selected scope.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML.slice(
   __els.app.innerHTML.indexOf('<section class="next-cockpit-panel"'))));
 """)
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Now remains project-wide", out)
         self.assertIn("Shape project cockpit", out)
 
     def test_empty_course_and_decisions_keep_history_window(self) -> None:
         out = self.run_fixture("""
+// Given: Course and Decisions have no facts in a published 24-hour window.
 __semantic.facts = [];
 __semantic.projections = {};
 __semantic.history = {events:[],event_count:0,window_sec:86400,persisted:true};
 const views = {};
 for(const tab of ["course","decisions"]){
   nextRoute = {view:"project",project:"cargento",tab};
+
+  // When: render each empty history tab.
   renderNext();
   views[tab] = __els.app.innerHTML.slice(
     __els.app.innerHTML.indexOf('<section class="next-cockpit-panel"'));
 }
 console.log(JSON.stringify(views));
 """)
+
+        # Then
         assert isinstance(out, dict)
         for tab, html in out.items():
             with self.subTest(tab=tab):
@@ -244,6 +289,7 @@ console.log(JSON.stringify(views));
 
     def test_missing_plan_attachment_and_discovery_explanations_reach_now(self) -> None:
         out = self.run_fixture("""
+// Given: an attached first officer exposes no plan and discovery finds no workflows.
 __dashboard.sessions = __dashboard.sessions.slice(0,1);
 __dashboard.sessions[0].spacedock = {role:"first-officer",workflows:[]};
 for(const entry of nextCockpitContexts.values())
@@ -251,9 +297,13 @@ for(const entry of nextCockpitContexts.values())
 __semantic.facts = [];
 __semantic.work_items = [];
 __semantic.projections = {};
+
+// When: redraw the cockpit.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """)
+
+        # Then
         assert isinstance(out, str)
         self.assertIn(
             "A first-officer attachment was observed, but it exposed no current plan", out
@@ -264,14 +314,19 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
     def test_zero_completed_tasks_retain_published_progress_in_course(self) -> None:
         out = self.run_fixture("""
+// Given: three tracked tasks are pending and zero are done.
 __dashboard.sessions = __dashboard.sessions.slice(0,1);
 __dashboard.sessions[0].tasks = ["alpha","beta","gamma"].map(subject => ({subject,status:"pending"}));
 __dashboard.sessions[0].total = 3;
 __dashboard.sessions[0].done = 0;
 nextRoute = {view:"project",project:"cargento",tab:"course"};
+
+// When: render Course.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """)
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("0 of 3 done", out)
         self.assertIn("No completed tracked tasks in this payload", out)
@@ -279,13 +334,18 @@ console.log(JSON.stringify(__els.app.innerHTML));
     def test_scope_navigation_keeps_the_title_when_activity_is_published(self) -> None:
         out = self.run_fixture(
             """
+// Given: the root publishes both a title and current activity.
 __dashboard.sessions[0].state_detail = "running Bash";
+
+// When: redraw the scope navigation.
 renderNext();
 const html = __els.app.innerHTML;
 console.log(JSON.stringify(html.slice(html.indexOf('<nav class="next-cockpit-scope-tree"'),
   html.indexOf('</nav>', html.indexOf('<nav class="next-cockpit-scope-tree"')))));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Codex", out)
         self.assertIn("Shape project cockpit", out)
@@ -294,27 +354,37 @@ console.log(JSON.stringify(html.slice(html.indexOf('<nav class="next-cockpit-sco
     def test_a_missing_title_is_named_in_scope_navigation(self) -> None:
         out = self.run_fixture(
             """
+// Given: the root has activity but no title.
 __dashboard.sessions[0].title = null;
 __dashboard.sessions[0].state_detail = "running Bash";
+
+// When: redraw the scope navigation.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Session title not published", out)
 
     def test_course_names_missing_evidence_without_an_empty_disclosure(self) -> None:
         out = self.run_fixture(
             """
+// Given: a Course direction lacks source, confidence, and fact identity.
 __semantic.facts = [{type:"user_message",summary:"Check source evidence",at:104,
   intent_promoted:true}];
 __semantic.projections = {};
 nextRoute = {view:"project",project:"cargento",tab:"course"};
+
+// When: render Course.
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML.slice(
   __els.app.innerHTML.indexOf('<section class="next-cockpit-panel"'))));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Evidence source not published", out)
         self.assertIn("Evidence confidence not published", out)
@@ -324,12 +394,17 @@ console.log(JSON.stringify(__els.app.innerHTML.slice(
     def test_unmeasured_delegation_keeps_the_shared_models_reason(self) -> None:
         out = self.run_fixture(
             """
+// Given: the Console route uses the shared delegation model.
 nextRoute = {view:"project",project:"cargento",tab:"console"};
+
+// When: render Console.
 renderNext();
 console.log(JSON.stringify({html:__els.app.innerHTML,
   reason:nextCurrentObserved().projects[0].delegation.noteText}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertIn("no figure yet", out["html"])
         self.assertIn(out["reason"], out["html"])
@@ -338,12 +413,15 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
     def test_briefing_names_missing_readings_before_any_disclosure(self) -> None:
         out = self.run_fixture(
             """
+// Given: the fixture has no directions, results, or child assignments.
 __semantic.facts = [];
 __semantic.projections = {};
 for(const session of __dashboard.sessions){
   delete session.last_output;
   session.subagent_hierarchy = [];
 }
+
+// When: redraw the briefing.
 renderNext();
 const html = __els.app.innerHTML;
 const briefing = html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
@@ -351,6 +429,8 @@ const briefing = html.slice(html.indexOf('<section class="next-cockpit-recovery"
 console.log(JSON.stringify(briefing.replace(/<details[^>]*>[\\s\\S]*?<\\/details>/g,"")));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Assignment evidence not published", out)
         self.assertIn("Actionable direction not captured", out)
@@ -361,14 +441,19 @@ console.log(JSON.stringify(briefing.replace(/<details[^>]*>[\\s\\S]*?<\\/details
     def test_a_result_does_not_hide_the_missing_direction_reading(self) -> None:
         out = self.run_fixture(
             """
+// Given: an exact result is present without an actionable direction.
 __semantic.facts = [{type:"result",summary:"Root finished",work_item_id:__task,at:104,
   evidence:{source:"root transcript",confidence:"exact"}}];
+
+// When: redraw the briefing.
 renderNext();
 const html = __els.app.innerHTML;
 console.log(JSON.stringify(html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
   html.indexOf('<nav class="next-cockpit-tabs"'))));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("LATEST EXACT RESULT", out)
         self.assertIn("Root finished", out)
@@ -409,6 +494,7 @@ console.log(JSON.stringify({kept,
     def test_v2_surfaces_mount_in_their_cockpit_panels_once(self) -> None:
         out = self.run_fixture(
             """
+// Given: the fixture publishes an instruction, an ended session, and a workflow.
 __dashboard.sessions[0].instruction = {label:"asked",text:"Ship <the cockpit>"};
 __dashboard.sessions[1].ended_at = 100;
 __dashboard.sessions[0].spacedock = {workflows:[{workflow:"cockpit",goal:"Build cockpit",
@@ -416,6 +502,8 @@ __dashboard.sessions[0].spacedock = {workflows:[{workflow:"cockpit",goal:"Build 
 const views = {};
 for(const tab of ["now", "course", "decisions", "console"]){
   nextRoute = nextRouteFromFragment("#n=project:cargento:" + tab);
+
+  // When: render each cockpit tab.
   renderNext();
   const html = __els.app.innerHTML;
   views[tab] = {briefing:html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
@@ -425,6 +513,8 @@ for(const tab of ["now", "course", "decisions", "console"]){
 console.log(JSON.stringify(views));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         for tab, view in out.items():
             with self.subTest(tab=tab):
@@ -452,6 +542,7 @@ console.log(JSON.stringify(views));
     def test_waiting_session_never_leaves_command_and_console_both_silent(self) -> None:
         out = self.run_fixture(
             """
+// Given: each waiting-state variant is viewed across tabs and scopes.
 document.querySelector = () => ({getAttribute: () => "test-capability"});
 const waiting = __dashboard.sessions[1];
 Object.assign(waiting, {harness:"codex", title:"Waiting <peer>",
@@ -466,6 +557,8 @@ for(const kind of ["state", "ask", "harnessless-ask"]){
     for(const tab of ["now", "course", "decisions", "console"]){
       nextRoute = {view:"project",project:"cargento",tab,
         focus:focus ? "codex:focus-1" : null};
+
+      // When: render the selected waiting-session view.
       renderNext();
       const html = __els.app.innerHTML;
       const briefing = html.slice(html.indexOf('<section class="next-cockpit-recovery"'),
@@ -478,6 +571,8 @@ for(const kind of ["state", "ask", "harnessless-ask"]){
 console.log(JSON.stringify(views));
 """
         )
+
+        # Then
         assert isinstance(out, list)
         for view in out:
             with self.subTest(kind=view["kind"], tab=view["tab"], focus=view["focus"]):
@@ -520,6 +615,7 @@ console.log(JSON.stringify({kept,expired:__els.app.innerHTML}));
     def test_waiting_summary_uses_exact_model_ownership_without_semantic_context(self) -> None:
         out = self.run_fixture(
             """
+// Given: the rendered baseline has an unowned ask shared by two harnesses.
 __dashboard.sessions = [
   {sid:"shared",harness:"codex",project:"cargento",state:"idle",title:"Ambiguous Codex"},
   {sid:"shared",harness:"claude",project:"cargento",state:"idle",title:"Ambiguous Claude"},
@@ -534,12 +630,16 @@ const withoutOwner = __els.app.innerHTML;
 const needsWithoutOwner = nextCockpitProjectNeeds(nextProjectGroups().find(g => g.label === "cargento"));
 __dashboard.asks[0].harness = "claude";
 nextCockpitContexts.clear();
+
+// When: redraw the exactly owned ask without semantic context.
 renderNext();
 const group = nextProjectGroups().find(g => g.label === "cargento");
 console.log(JSON.stringify({withoutOwner,needsWithoutOwner,withOwner:__els.app.innerHTML,
   needsWithOwner:nextCockpitProjectNeeds(group)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertEqual(0, out["needsWithoutOwner"])
         self.assertNotIn("data-next-cockpit-waiting", out["withoutOwner"])
@@ -555,7 +655,10 @@ console.log(JSON.stringify({withoutOwner,needsWithoutOwner,withOwner:__els.app.i
     def test_ended_working_session_does_not_remain_in_recovery_execution(self) -> None:
         out = self.run_fixture(
             """
+// Given: the working root has an end timestamp.
 __dashboard.sessions[0].ended_at = 100;
+
+// When: redraw the cockpit and read its recovery execution.
 renderNext();
 const group = nextProjectGroups()[0];
 const briefing = nextCockpitRecoveryBriefing(group, null, {semantic:__semantic}, []);
@@ -563,6 +666,8 @@ console.log(JSON.stringify({active:briefing.active,children:briefing.children.ac
   execution:nextCockpitRecoveryExecution(group, briefing),html:__els.app.innerHTML}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertEqual("No active sessions or exact assignments observed", out["active"])
         self.assertEqual([], out["children"])
@@ -573,7 +678,10 @@ console.log(JSON.stringify({active:briefing.active,children:briefing.children.ac
     def test_upstream_project_detail_hosts_focus_semantics_and_no_duplicate_shell(self) -> None:
         out = self.run_fixture(
             """
+// Given: the Course route is selected in the shared project fixture.
 nextRoute = nextRouteFromFragment("#n=project:cargento:course");
+
+// When: render Course and settle context requests.
 renderNext();
 await __settle();await __settle();
 const html = __els.app.innerHTML;
@@ -582,6 +690,8 @@ const rows = [...html.matchAll(/<article class="next-course-episode"[\\s\\S]*?<\
 console.log(JSON.stringify({html, rows}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         html = out["html"]
 
@@ -604,6 +714,7 @@ console.log(JSON.stringify({html, rows}));
     def test_finished_teammates_are_not_active_work_or_assignment_gaps(self) -> None:
         out = self.run_fixture(
             """
+// Given: Claude publishes one finished and one active teammate.
 const session = __dashboard.sessions[0];
 session.harness = "claude";
 session.subagent_hierarchy = null;
@@ -611,6 +722,8 @@ session.subagents = [
   {name:"Finished teammate",active:false,parent:null},
   {name:"Live teammate",active:true,parent:null,assignment:"Check the merged cockpit"}
 ];
+
+// When: redraw the cockpit and settle its context.
 renderNext();
 await __settle();
 const group = nextProjectGroups()[0];
@@ -618,6 +731,8 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
   briefing:nextCockpitRecoveryBriefing(group).text}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertNotIn("Finished teammate · active", out["html"])
         self.assertNotIn("inspect Finished teammate assignment", out["html"])
@@ -626,6 +741,8 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
         self.assertIn("Live teammate", out["briefing"])
 
     def test_task_subject_and_four_tabs_own_one_operator_question_each(self) -> None:
+        # Given: the shared project fixture includes two assigned workers and a workflow stage.
+        # When: render the default cockpit.
         out = self.run_fixture(
             """
 const html = __els.app.innerHTML;
@@ -635,6 +752,8 @@ const panel = (html.match(/<section[^>]*role="tabpanel"[\\s\\S]*?<\\/section>/) 
 console.log(JSON.stringify({html,tabs,panel}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn(
@@ -665,6 +784,7 @@ console.log(JSON.stringify({html,tabs,panel}));
     def test_now_is_a_calm_command_briefing_not_the_old_dashboard(self) -> None:
         out = self.run_fixture(
             """
+// Given: captain authorization and FO recovery are both pending.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention=[
@@ -677,6 +797,8 @@ semantic.projections.command_attention=[
 ];
 const observation={semantic,workflow_discovery:{state:"error",reason:"timed out"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,revision:105});
+
+// When: redraw Now with that context.
 renderNext();
 const html=__els.app.innerHTML;
 const panel=(html.match(/<section class="next-cockpit-panel"[\\s\\S]*<\\/section>/)||[""])[0];
@@ -689,6 +811,8 @@ console.log(JSON.stringify({html,panel,mirror,visible,visibleWords:visible ? vis
   primary:(html.match(/data-next-cockpit-primary/g)||[]).length}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         panel = out["panel"]
 
@@ -763,7 +887,10 @@ console.log(JSON.stringify({project,session,narrowest}));
     def test_selected_session_keeps_project_briefing_ownership_explicit(self) -> None:
         out = self.run_fixture(
             """
+// Given: the exact Codex session route is selected.
 nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1");
+
+// When: render the session view and settle its context.
 renderNext();await __settle();await __settle();
 const html=__els.app.innerHTML;
 const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
@@ -772,6 +899,8 @@ const switcher=(html.match(/<details class="next-cockpit-scope-switcher"[\\s\\S]
 console.log(JSON.stringify({html,recovery,task,switcher}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("Viewing session · Codex · working", out["html"])
@@ -790,6 +919,7 @@ console.log(JSON.stringify({html,recovery,task,switcher}));
     def test_course_interleaves_project_session_and_unknown_provenance_cues(self) -> None:
         out = self.run_fixture(
             """
+// Given: Course contains facts with project, session, and unknown provenance.
 nextCockpitContexts.clear();
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push(
@@ -802,6 +932,8 @@ semantic.facts.push(
 );
 __fetchImpl=async()=>({ok:true,json:async()=>({semantic,child_assignments:[],observers:[]})});
 nextRoute=nextRouteFromFragment("#n=project:cargento:course");
+
+// When: render Course and settle its context.
 renderNext();await __settle();await __settle();await __settle();
 const html=__els.app.innerHTML;
 const rows=[...html.matchAll(/<article class="next-course-episode"[\\s\\S]*?<\\/article>/g)]
@@ -811,6 +943,8 @@ const directions=[...html.matchAll(/<article class="next-course-direction"[\\s\\
 console.log(JSON.stringify({html,rows,directions}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         session_rows = [row for row in out["directions"] if "Newest direction" in row]
@@ -831,6 +965,7 @@ console.log(JSON.stringify({html,rows,directions}));
     def test_paired_direction_stays_with_its_change_and_is_not_duplicated(self) -> None:
         out = self.run_fixture(
             """
+// Given: a direction and result have an exact task binding and a steering episode.
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts.find(fact=>fact.fact_id==="fo-a").work_item_id=__task;
 semantic.facts.push({fact_id:"paired-result",at:106,type:"result",summary:"Layout corrected",
@@ -839,6 +974,8 @@ semantic.facts.push({fact_id:"paired-result",at:106,type:"result",summary:"Layou
   evidence:{source:"assistant result",confidence:"exact"}});
 semantic.projections.steering_episodes=[{episode_id:"pair-a",intent_id:"intent-a",
   adaptation_fact:"paired-result",confidence:"structural"}];
+
+// When: render Course.
 const html=nextCockpitCourse(nextProjectGroups()[0],semantic,[]);
 const primary=(html.match(/<article class="next-course-episode"[\\s\\S]*?<\\/article>/g)||[])
   .find(row=>row.includes("Layout corrected"))||"";
@@ -846,6 +983,8 @@ const other=(html.match(/<details class="next-course-directions"[\\s\\S]*?<\\/de
 console.log(JSON.stringify({html,primary,other}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("Newest direction", out["primary"])
@@ -905,6 +1044,7 @@ console.log(JSON.stringify({unbound,inverted,mismatched,positive}));
     def test_sixteen_exact_directions_fold_when_no_course_change_is_observed(self) -> None:
         out = self.run_fixture(
             """
+// Given: sixteen exact directions have no associated course change.
 const facts=Array.from({length:16},(_,index)=>({fact_id:`direction-${index+1}`,
   at:index+1,type:"user_message",intent_promoted:true,summary:`Direction ${index+1}`,
   source_session:{harness:"codex",sid:"focus-1"},
@@ -913,11 +1053,15 @@ const semantic={facts,work_items:[],relations:[],projections:{
   operator_intents:facts.map((fact,index)=>({projection_id:`intent-${index+1}`,
     at:fact.at,summary:fact.summary,derived_from:fact.fact_id})),
   steering_episodes:[],trail_heads:[]}};
+
+// When: render Course.
 const html=nextCockpitCourse(nextProjectGroups()[0],semantic,[]);
 const primary=[...html.matchAll(/<article class="next-course-episode"/g)].length;
 console.log(JSON.stringify({html,primary}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(0, out["primary"])
@@ -931,15 +1075,20 @@ console.log(JSON.stringify({html,primary}));
     def test_completed_tracked_work_lives_only_in_course(self) -> None:
         out = self.run_fixture(
             """
+// Given: completed work has been rendered on Now.
 const claude=__dashboard.sessions.find(session=>session.harness==="claude");
 claude.tasks=[{status:"completed",subject:"Verify accepted project cockpit"}];
 renderNext();await __settle();
 const now=__els.app.innerHTML;
+
+// When: navigate to Course and render it.
 nextRoute=nextRouteFromFragment("#n=project:cargento:course");
 renderNext();await __settle();await __settle();
 console.log(JSON.stringify({now,course:__els.app.innerHTML}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertNotIn("Verify accepted project cockpit", out["now"])
@@ -949,6 +1098,7 @@ console.log(JSON.stringify({now,course:__els.app.innerHTML}));
     def test_decisions_use_fact_scope_not_selected_session(self) -> None:
         out = self.run_fixture(
             """
+// Given: project and session decisions coexist while Pi is selected.
 nextCockpitContexts.clear();
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push({fact_id:"session-decision",at:100.5,type:"gate_decision",
@@ -958,12 +1108,16 @@ semantic.facts.push({fact_id:"session-decision",at:100.5,type:"gate_decision",
   evidence:{source:"session gate",confidence:"exact"}});
 __fetchImpl=async()=>({ok:true,json:async()=>({semantic,child_assignments:[],observers:[]})});
 nextRoute=nextRouteFromFragment("#n=project:cargento:pi%3Api-idle:decisions");
+
+// When: render Decisions and settle its context.
 renderNext();await __settle();await __settle();await __settle();
 const rows=[...__els.app.innerHTML.matchAll(/<article class="pc-graph-row[\\s\\S]*?<\\/article>/g)]
   .map(match=>match[0]);
 console.log(JSON.stringify({rows,html:__els.app.innerHTML}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         project_rows = [row for row in out["rows"] if 'data-action="approved"' in row]
@@ -978,15 +1132,20 @@ console.log(JSON.stringify({rows,html:__els.app.innerHTML}));
     def test_console_names_session_scope_and_project_root_stays_non_session(self) -> None:
         out = self.run_fixture(
             """
+// Given: the Console has rendered at project scope.
 nextRoute=nextRouteFromFragment("#n=project:cargento:console");
 renderNext();await __settle();
 const project=__els.app.innerHTML;
+
+// When: navigate to the exact Codex session Console.
 nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
 renderNext();await __settle();
 const session=__els.app.innerHTML;
 console.log(JSON.stringify({project,session}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         project_panel = out["project"][out["project"].index('data-next-cockpit-panel="console"') :]
@@ -1007,6 +1166,7 @@ console.log(JSON.stringify({project,session}));
     def test_local_tab_permalink_and_arrow_keys_preserve_project_session_route(self) -> None:
         out = self.run_fixture(
             """
+// Given: a session Course permalink has been parsed and rendered.
 const parsed = nextRouteFromFragment("#n=project:cargento:pi%3Api-idle:course");
 const roundTrip = nextFragmentForRoute(parsed);
 nextRoute = parsed;
@@ -1015,11 +1175,15 @@ await __settle();await __settle();
 const course = __els.app.innerHTML;
 const target = {dataset:{nextCockpitAction:"tab",arg:"course"},
   closest(selector){ return selector === "[data-next-cockpit-action]" ? this : null; }};
+
+// When: press ArrowRight on its Course tab.
 __fire("keydown", {target,key:"ArrowRight",preventDefault(){}});
 const afterKey = __els.app.innerHTML;
 console.log(JSON.stringify({parsed,roundTrip,course,afterKey,hash:location.hash}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("pi:pi-idle", out["parsed"]["focus"])
@@ -1033,6 +1197,7 @@ console.log(JSON.stringify({parsed,roundTrip,course,afterKey,hash:location.hash}
     def test_console_waits_for_origin_lookup_then_opens_read_only_terminal(self) -> None:
         out = self.run_fixture(
             """
+// Given: the selected Console has resolved its exact registered terminal origin.
 __fetchImpl = async url => String(url).startsWith("/api/interaction/origin")
   ? ({ok:true,json:async()=>({state:"registered",origin:{session_name:"Cargento",
       window_index:1,pane_index:1},origin_id_hint:"origin-1"})})
@@ -1044,11 +1209,15 @@ await __settle();
 const available = __els.app.innerHTML;
 const open = {dataset:{nextCockpitAction:"terminal-open",arg:"codex:focus-1"},
   closest(selector){ return selector === "[data-next-cockpit-action]" ? this : null; }};
+
+// When: click Open terminal.
 __fire("click", {target:open,preventDefault(){}});
 const opened = __els.app.innerHTML;
 console.log(JSON.stringify({pending,available,opened}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn('data-next-cockpit-panel="console"', out["pending"])
@@ -1065,6 +1234,7 @@ console.log(JSON.stringify({pending,available,opened}));
     def test_terminal_absence_explains_registration_and_preserves_the_server_reason(self) -> None:
         out = self.run_fixture(
             """
+// Given: the selected terminal has each refusal or lookup failure in turn.
 nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
 const views = {};
 for(const reason of ["unregistered-origin", "stale-registration", "origin-disconnected",
@@ -1075,6 +1245,8 @@ for(const reason of ["unregistered-origin", "stale-registration", "origin-discon
     return {ok:reason !== "disabled",status:reason === "disabled" ? 404 : 200,
       json:async()=>({state:"refused",reason})};
   };
+
+  // When: render Console and settle the origin lookup.
   renderNext();
   views.pending = __els.app.innerHTML;
   await __settle(); await __settle();
@@ -1083,6 +1255,8 @@ for(const reason of ["unregistered-origin", "stale-registration", "origin-discon
 console.log(JSON.stringify(views));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertIn("Checking terminal registration for this exact session.", out["pending"])
         self.assertIn("Terminal not registered for this session.", out["unregistered-origin"])
@@ -1104,16 +1278,21 @@ console.log(JSON.stringify(views));
     def test_terminal_identity_keeps_zero_indices_and_names_missing_coordinates(self) -> None:
         out = self.run_fixture(
             """
+// Given: the terminal has either zero indices or missing coordinates.
 const session = __dashboard.sessions[0];
 const views = [];
 projectTerminalOpenKey = "codex:focus-1";
 for(const origin of [{session_name:"Pane <one>",window_index:0,pane_index:0},{}]){
   projectTerminalBySession[projectTerminalOpenKey] = {state:"registered",data:{origin}};
+
+  // When: render the registered terminal surface.
   views.push(projectTerminalSurface(session));
 }
 console.log(JSON.stringify(views));
 """
         )
+
+        # Then
         assert isinstance(out, list)
         self.assertIn("Pane &lt;one&gt;:0.0", out[0])
         self.assertIn("Tmux session name not published.", out[1])
@@ -1124,16 +1303,21 @@ console.log(JSON.stringify(views));
     def test_substrate_empty_history_names_its_published_window_and_filter(self) -> None:
         out = self.run_fixture(
             """
+// Given: empty history has each published window and filter combination.
 const views = {};
 for(const [name,history,mode] of [["day",{window_sec:86400},"all"],
     ["short",{window_sec:5400},"decisions"],["unknown",{},"all"],
     ["active",{window_sec:86400},"active"]]){
+
+  // When: render the semantic timeline for that case.
   views[name] = projectSemanticTimeline(__dashboard,
     {facts:[],work_items:[],projections:{},history},[],null,[],{mode});
 }
 console.log(JSON.stringify(views));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertIn("No semantic events observed in the last 24 hours.", out["day"])
         self.assertIn("No decisions observed in the last 90 minutes.", out["short"])
@@ -1147,6 +1331,7 @@ console.log(JSON.stringify(views));
     def test_terminal_assets_load_from_loopback_and_name_either_local_load_failure(self) -> None:
         out = self.run_fixture(
             """
+// Given: the terminal assets are unloaded and the DOM records inserted nodes.
 const cases = [];
 for(const failure of ["script", "link", "none"]){
   projectTerminalXtermPromise = null;
@@ -1155,6 +1340,8 @@ for(const failure of ["script", "link", "none"]){
   document.querySelector = () => null;
   document.createElement = tag => ({tag,dataset:{},remove(){}});
   document.head = {append(node){nodes.push(node);}};
+
+  // When: load the local assets with each simulated load outcome.
   const loaded = projectTerminalLoadXterm().then(()=>"loaded",error=>error.message);
   await __settle();
   for(const node of nodes){
@@ -1169,6 +1356,8 @@ for(const failure of ["script", "link", "none"]){
 console.log(JSON.stringify(cases));
 """
         )
+
+        # Then
         assert isinstance(out, list)
         for case in out:
             assets = {node["tag"]: node for node in case["nodes"]}
@@ -1186,8 +1375,11 @@ console.log(JSON.stringify(cases));
     def test_substrate_evidence_names_missing_readings_and_separates_source_strings(self) -> None:
         out = self.run_fixture(
             """
+// Given: the evidence registry has one lane and missing or explicit source fields.
 const lane = {key:"fo:codex:focus-1",kind:"fo",label:"Codex",index:0,events:[]};
 const registry = {lanes:[lane]};
+
+// When: render the evidence surfaces for those records.
 console.log(JSON.stringify({
   absent:projectGlobalEventDetails({kind:"decision",fact:{}},lane),
   present:projectGlobalEventDetails({kind:"result",fact:{at:100,
@@ -1198,6 +1390,8 @@ console.log(JSON.stringify({
 }));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertIn("Decision author not published.", out["absent"])
         self.assertIn("Decision stage not published.", out["absent"])
@@ -1213,17 +1407,22 @@ console.log(JSON.stringify({
     def test_substrate_does_not_turn_a_missing_event_time_into_epoch_history(self) -> None:
         out = self.run_fixture(
             """
+// Given: facts and operator intents have no event times.
 const model = JSON.parse(JSON.stringify(__semantic));
 model.facts.forEach(fact => delete fact.at);
 model.projections.operator_intents.forEach(intent => delete intent.at);
 const registry = projectLaneRegistry(model,[],null,__dashboard.sessions);
 const events = projectGlobalEvents(model,registry,null);
+
+// When: render history and its evidence readings.
 console.log(JSON.stringify({html:projectSemanticTimeline(__dashboard,model,[],null,
   __dashboard.sessions,{mode:"all"}),span:projectHistorySpan(events),
   partial:projectGlobalEventDetails({kind:"decision",fact:{target_stage:"review"}},
     {kind:"fo",events:[]})}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         self.assertIn("Event time not published.", out["html"])
         self.assertNotIn("ago</time>", out["html"])
@@ -1256,6 +1455,7 @@ console.log(JSON.stringify({short,follows,bottom,paused:!projectTerminalFollowLi
     def test_course_is_task_first_source_labeled_and_omits_future_history(self) -> None:
         out = self.run_fixture(
             """
+// Given: Course has exact results, a derived change, and proposed future text.
 nextCockpitContexts.clear();
 const semantic = JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push(
@@ -1273,11 +1473,15 @@ __fetchImpl = async url => ({ok:true,json:async() => ({semantic,
   child_assignments:[{name:"Banach",workItemId:__task,source:"structured assignment"}],
   observers:[]})});
 nextRoute = nextRouteFromFragment("#n=project:cargento:course");
+
+// When: render Course and settle its context.
 renderNext();
 await __settle();await __settle();await __settle();
 console.log(JSON.stringify({html:__els.app.innerHTML}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         html = out["html"]
 
@@ -1301,12 +1505,16 @@ console.log(JSON.stringify({html:__els.app.innerHTML}));
         self.assertNotIn("CURRENT FOCUS · DERIVED", html)
 
     def test_defaults_to_all_sessions_and_links_every_idle_peer(self) -> None:
+        # Given: the shared fixture contains active and idle sessions from three harnesses.
+        # When: render the default project scope.
         out = self.run_fixture(
             """
 const html = __els.app.innerHTML;
 console.log(JSON.stringify({html, query:[...nextCockpitContexts.keys()]}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
         html = out["html"]
 
@@ -1323,6 +1531,8 @@ console.log(JSON.stringify({html, query:[...nextCockpitContexts.keys()]}));
         self.assertTrue(any(key.endswith("\n") for key in out["query"]))
 
     def test_all_sessions_aggregates_exact_running_workers_with_parent_and_task(self) -> None:
+        # Given: two workers have exact assignments under the Codex root.
+        # When: render the default project briefing.
         out = self.run_fixture(
             """
 const html = __els.app.innerHTML;
@@ -1330,6 +1540,8 @@ const task = (html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/se
 console.log(JSON.stringify({html, task}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("Banach", out["task"])
@@ -1346,12 +1558,17 @@ console.log(JSON.stringify({html, task}));
     def test_active_work_does_not_promote_an_unassigned_child(self) -> None:
         out = self.run_fixture(
             """
+// Given: an active child has no assignment.
 const group=nextProjectGroups()[0];
 group.sessions[0].subagent_hierarchy=[{name:"Unbound",observer_sid:"child-x",depth:1}];
+
+// When: render active delegation.
 const html=nextCockpitActiveDelegation(group,{semantic:__semantic});
 console.log(JSON.stringify({html}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("assignment unavailable", out["html"])
@@ -1361,6 +1578,7 @@ console.log(JSON.stringify({html}));
     def test_missing_task_identity_keeps_exact_working_activity_without_invention(self) -> None:
         out = self.run_fixture(
             """
+// Given: a working root and child have no task identity or published title.
 nextData.sessions=[{sid:"focus-1",harness:"codex",project:"cargento",
   project_key:"spacedock-research/cargento",state:"working",active:true,
   last_activity:104,title:null,state_detail:"running 1 subagent",
@@ -1371,6 +1589,8 @@ const observation={semantic:{facts:[],work_items:[],relations:[],projections:{
 nextCockpitContexts.clear();nextCockpitRequests.clear();
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,revision:nextData.generated});
 nextRoute=nextRouteFromFragment("#n=project:cargento");
+
+// When: render the project cockpit.
 renderNext();await __settle();await __settle();
 const html=__els.app.innerHTML;
 const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
@@ -1383,6 +1603,8 @@ console.log(JSON.stringify({html,recovery,task,scope,visibleWords:visible?visibl
   primary:(html.match(/data-next-cockpit-primary/g)||[]).length}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(0, out["primary"])
@@ -1432,6 +1654,7 @@ console.log(JSON.stringify({
     def test_focus_keeps_project_status_and_canonical_labels_from_all_context(self) -> None:
         out = self.run_fixture(
             """
+// Given: focused facts have opaque labels and project context has canonical labels.
 nextCockpitContexts.clear();
 const focused = {facts:[
   {fact_id:"task-focus",at:110,type:"prepared_dispatch",summary:"Opaque dispatch",
@@ -1450,12 +1673,16 @@ __fetchImpl = async url => ({ok:true,json:async() => ({
   child_assignments:[],observers:[]
 })});
 nextRoute = nextRouteFromFragment("#n=project:cargento:pi%3Api-idle:decisions");
+
+// When: render focused Decisions and settle both context requests.
 renderNext();
 await __settle();await __settle();await __settle();
 const html=__els.app.innerHTML;
 console.log(JSON.stringify({html,requests:[...nextCockpitContexts.keys()]}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertTrue(any(key.endswith("\n") for key in out["requests"]))
@@ -1474,7 +1701,10 @@ console.log(JSON.stringify({html,requests:[...nextCockpitContexts.keys()]}));
     def test_session_permalink_selects_exact_focus_and_decisions_filter_is_present(self) -> None:
         out = self.run_fixture(
             """
+// Given: the exact Pi session permalink is selected.
 nextRoute = nextRouteFromFragment("#n=project:cargento:pi%3Api-idle");
+
+// When: render the focused cockpit.
 renderNext();
 await __settle();
 await __settle();
@@ -1483,6 +1713,8 @@ console.log(JSON.stringify({html, focus:nextCockpitFocusedSession(nextProjectGro
   sessKey(nextCockpitFocusedSession(nextProjectGroups()[0]))}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("pi:pi-idle", out["focus"])
@@ -1493,12 +1725,17 @@ console.log(JSON.stringify({html, focus:nextCockpitFocusedSession(nextProjectGro
     def test_stale_exact_session_permalink_never_falls_back_to_project_scope(self) -> None:
         out = self.run_fixture(
             """
+// Given: the permalink names a session absent from the payload.
 nextData.sessions=nextData.sessions.filter(session=>sessKey(session)!=="pi:pi-idle");
 nextRoute=nextRouteFromFragment("#n=project:cargento:pi%3Api-idle:course");
+
+// When: render the stale session route.
 renderNext();await __settle();
 console.log(JSON.stringify({html:__els.app.innerHTML,route:nextFragmentForRoute(nextRoute)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("#n=project:cargento:pi%3Api-idle:course", out["route"])
@@ -1511,7 +1748,10 @@ console.log(JSON.stringify({html:__els.app.innerHTML,route:nextFragmentForRoute(
     def test_decisions_view_preserves_canonical_metadata_and_compacts_scan_line(self) -> None:
         out = self.run_fixture(
             """
+// Given: the project Decisions route is selected.
 nextRoute = nextRouteFromFragment("#n=project:cargento:decisions");
+
+// When: render Decisions and settle its context.
 renderNext();
 await __settle();await __settle();
 const html = __els.app.innerHTML;
@@ -1520,6 +1760,8 @@ const rows = [...html.matchAll(/<article class="pc-graph-row[\\s\\S]*?<\\/articl
 console.log(JSON.stringify({html, rows}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(1, len(out["rows"]))
@@ -1539,11 +1781,14 @@ console.log(JSON.stringify({html, rows}));
     def test_gate_application_state_controls_completed_transition_wording(self) -> None:
         out = self.run_fixture(
             """
+// Given: one gate has each application state in turn.
 const lane = {kind:"task", label:"project-cockpit"};
 const sentence = application_state => projectGlobalEventSentence({kind:"decision", fact:{
   type:"gate_decision", by:"person:captain", decision:"approve", stage:"review",
   target_stage:"shaping", application_state
 }}, lane);
+
+// When: derive its decision sentence.
 console.log(JSON.stringify({
   consumed:sentence("consumed"), applied:sentence("applied"),
   pending:sentence("pending"), unspent:sentence("unspent"),
@@ -1551,6 +1796,8 @@ console.log(JSON.stringify({
 }));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("review → shaping", out["consumed"]["result"])
@@ -1569,12 +1816,15 @@ console.log(JSON.stringify({
     def test_unpromoted_user_fact_never_becomes_a_you_direction(self) -> None:
         out = self.run_fixture(
             """
+// Given: a collaboration envelope is explicitly excluded from intent promotion.
 const semantic = JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push({fact_id:"injected",at:106,type:"user_message",
   summary:"Message Type: MESSAGE Sender: /root Payload: keep working",
   intent_promoted:false,source_session:{harness:"codex",sid:"focus-1"},
   evidence:{source:"injected collaboration envelope",confidence:"exact"}});
 const registry = projectLaneRegistry(semantic, [], null, __dashboard.sessions);
+
+// When: derive the global events and their sentences.
 const events = projectGlobalEvents(semantic, registry, null);
 console.log(JSON.stringify({
   ids:events.map(event => event.eventId),
@@ -1583,6 +1833,8 @@ console.log(JSON.stringify({
 }));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertNotIn("injected", out["ids"])
@@ -1600,6 +1852,7 @@ console.log(JSON.stringify({
     ) -> None:
         out = self.run_fixture(
             """
+// Given: captain decisions include a duplicate, older decisions, and an FO decision.
 const facts = [
   {fact_id:"new",at:50,type:"gate_decision",by:"person:captain",decision:"approve",
     stage:"ideation",application_state:"consumed",target_stage:"implementation",work_item_id:"workflow:a"},
@@ -1616,9 +1869,13 @@ const semantic = {facts, work_items:[
   {work_item_id:"workflow:a",label:"alpha"},{work_item_id:"workflow:b",label:"beta"},
   {work_item_id:"workflow:c",label:"gamma"},{work_item_id:"workflow:d",label:"delta"}
 ]};
+
+// When: render project status.
 console.log(JSON.stringify({html:nextCockpitProjectStatus(nextProjectGroups()[0], semantic)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("No gate or ask observed", out["html"])
@@ -1697,6 +1954,7 @@ console.log(JSON.stringify({html:nextCockpitRecoveryStrip(group, observation)}))
     def test_command_attention_leads_with_exact_authorization_and_assigns_fo_recovery(self) -> None:
         out = self.run_fixture(
             """
+// Given: exact captain authorization coexists with FO recovery conditions.
 const group = nextProjectGroups()[0];
 const semantic = JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention = [{projection_id:"auth",at:109,
@@ -1708,10 +1966,14 @@ semantic.facts.push({fact_id:"pending",at:108,type:"gate_decision",by:"person:ca
 semantic.projections.trail_heads.push({work_item_id:"workflow:return",status:"prepared",
   dispatch_count:2,latest_meaningful_event:"return"});
 const observation = {semantic,workflow_discovery:{state:"error",reason:"timed out"},sources:{}};
+
+// When: derive command attention and render the recovery strip.
 const items = nextCockpitCommandAttention(group, observation);
 console.log(JSON.stringify({items,html:nextCockpitRecoveryStrip(group, observation, items)}));
 """,
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("CAPTAIN", out["items"][0]["owner"])
@@ -1726,16 +1988,21 @@ console.log(JSON.stringify({items,html:nextCockpitRecoveryStrip(group, observati
     def test_incomplete_attention_coverage_suppresses_nothing_needs_you(self) -> None:
         out = self.run_fixture(
             """
+// Given: the captain-attention scan omits one of 65 active sessions.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention=[];
 semantic.projections.command_attention_coverage={state:"incomplete",scanned:64,total:65,
   omitted:1,source:"bounded active-session final-output scan"};
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive attention and render Needs you.
 const items=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({items,html:nextCockpitNeedsYou(items)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertTrue(
@@ -1798,6 +2065,7 @@ console.log(JSON.stringify({loading,failed,missing,incomplete,complete,
     def test_recovery_briefing_is_mounted_above_tabs_with_observed_handoff(self) -> None:
         out = self.run_fixture(
             """
+// Given: fresh direction, result, decision, and browser memos are in context.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push(
@@ -1815,6 +2083,8 @@ nextCockpitMemoDrafts.set(nextCockpitMemoKey(group,null,"outcome"),"Recover afte
 nextCockpitMemoDrafts.set(nextCockpitMemoKey(group,null,"focus"),"Verify authoritative state");
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
+
+// When: redraw the cockpit briefing.
 renderNext();
 const html=__els.app.innerHTML;
 const recovery=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
@@ -1823,6 +2093,8 @@ console.log(JSON.stringify({html,recovery,strip:html.indexOf("next-cockpit-recov
   copyCount:(html.match(/data-next-cockpit-action="copy-briefing"/g)||[]).length}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertGreaterEqual(out["strip"], 0)
@@ -1844,6 +2116,7 @@ console.log(JSON.stringify({html,recovery,strip:html.indexOf("next-cockpit-recov
     def test_recovery_preserves_active_child_with_unavailable_assignment(self) -> None:
         out = self.run_fixture(
             """
+// Given: an active child has a name but no assignment evidence.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
 group.sessions[0].subagent_hierarchy=[{name:"Hooke",observer_sid:"child-hooke",depth:1,
@@ -1851,12 +2124,16 @@ group.sessions[0].subagent_hierarchy=[{name:"Hooke",observer_sid:"child-hooke",d
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
+
+// When: derive attention and render recovery.
 const attention=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({attention,
   briefing:nextCockpitRecoveryBriefing(group,null,observation,attention),
   html:nextCockpitRecoveryStrip(group,observation,attention)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for text in ("Hooke", "active", "assignment unavailable", "codex:focus-1"):
@@ -1872,6 +2149,7 @@ console.log(JSON.stringify({attention,
     def test_recovery_preserves_bounded_latest_return_with_unavailable_result(self) -> None:
         out = self.run_fixture(
             """
+// Given: two children have returned without result evidence.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
 group.sessions[0].subagent_events=[
@@ -1881,12 +2159,16 @@ group.sessions[0].subagent_events=[
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
+
+// When: derive attention and render recovery.
 const attention=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({attention,
   briefing:nextCockpitRecoveryBriefing(group,null,observation,attention),
   html:nextCockpitRecoveryStrip(group,observation,attention)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for text in (
@@ -1909,16 +2191,21 @@ console.log(JSON.stringify({attention,
     def test_copy_briefing_names_bounded_attention_coverage_source(self) -> None:
         out = self.run_fixture(
             """
+// Given: the shared context includes the bounded attention-scan source.
 const group=nextProjectGroups()[0];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
+
+// When: build the copyable briefing and rendered strip.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,
   nextCockpitCommandAttention(group,observation));
 console.log(JSON.stringify({text:briefing.text,
   html:nextCockpitRecoveryStrip(group,observation,[])}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["text"], out["html"]):
@@ -1928,6 +2215,7 @@ console.log(JSON.stringify({text:briefing.text,
     def test_failed_refresh_marks_retained_exact_facts_stale(self) -> None:
         out = self.run_fixture(
             """
+// Given: retained direction and result facts belong to a failed context refresh.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push(
@@ -1941,12 +2229,16 @@ semantic.facts.push(
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated,error:true});
+
+// When: build the briefing and rendered strip.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,
   nextCockpitCommandAttention(group,observation));
 console.log(JSON.stringify({text:briefing.text,
   html:nextCockpitRecoveryStrip(group,observation)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["text"], out["html"]):
@@ -1958,6 +2250,7 @@ console.log(JSON.stringify({text:briefing.text,
     def test_command_attention_sorts_captain_before_fo_independent_of_payload_order(self) -> None:
         out = self.run_fixture(
             """
+// Given: the payload lists FO recovery before captain authorization.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention=[
@@ -1967,11 +2260,15 @@ semantic.projections.command_attention=[
     evidence:{source:"captain gate",confidence:"exact"}}
 ];
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive and render command attention.
 const items=nextCockpitCommandAttention(group,observation);
 const html=nextCockpitRecoveryAttention(group,observation,items);
 console.log(JSON.stringify({items,html}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("CAPTAIN", out["items"][0]["owner"])
@@ -1983,6 +2280,7 @@ console.log(JSON.stringify({items,html}));
     ) -> None:
         out = self.run_fixture(
             """
+// Given: an actionable direction precedes an unpromoted acknowledgment.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts.push(
@@ -1996,11 +2294,15 @@ semantic.facts.push(
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
+
+// When: build the briefing and rendered strip.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,[]);
 console.log(JSON.stringify({text:briefing.text,
   html:nextCockpitRecoveryStrip(group,observation,[])}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["text"], out["html"]):
@@ -2011,6 +2313,7 @@ console.log(JSON.stringify({text:briefing.text,
     def test_recovery_assignment_prefers_substantive_root_work_over_later_mechanism(self) -> None:
         out = self.run_fixture(
             """
+// Given: substantive root work precedes a mechanism correction and acknowledgment.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.trail_heads=[];
@@ -2028,11 +2331,15 @@ semantic.facts.push(
     evidence:{source:"root transcript",confidence:"exact"}}
 );
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: build the briefing and rendered strip.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,[]);
 console.log(JSON.stringify({briefing,
   html:nextCockpitRecoveryStrip(group,observation,[])}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["briefing"]["text"], out["html"]):
@@ -2045,6 +2352,7 @@ console.log(JSON.stringify({briefing,
     def test_deterministic_assignment_recovery_does_not_create_fo_verification(self) -> None:
         out = self.run_fixture(
             """
+// Given: working sessions have a recoverable directive and no child gaps.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){
   session.state="working";session.last_activity=nextData.generated;
@@ -2058,11 +2366,15 @@ semantic.facts.push({fact_id:"substantive",at:110,type:"user_message",
   source_session:{harness:"codex",sid:"focus-1"},
   evidence:{source:"root transcript",confidence:"exact"}});
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive attention and render recovery.
 const attention=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({attention,
   html:nextCockpitRecoveryStrip(group,observation,attention)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("Restart 5-round review loop", out["html"])
@@ -2073,6 +2385,7 @@ console.log(JSON.stringify({attention,
     def test_named_missing_child_handoff_gets_one_concrete_fo_inspection(self) -> None:
         out = self.run_fixture(
             """
+// Given: Harvey returned with an assignment but no handoff result.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
 group.sessions[0].subagent_events=[
@@ -2080,11 +2393,15 @@ group.sessions[0].subagent_events=[
     source:"Codex child rollout lifecycle"}
 ];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive and render command attention.
 const attention=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({attention,
   html:nextCockpitRecoveryAttention(group,observation,attention)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         harvey = [row for row in out["attention"] if "Harvey" in row["label"]]
@@ -2123,12 +2440,15 @@ console.log(JSON.stringify({attention,
     def test_authority_cell_has_one_of_three_explicit_states(self) -> None:
         out = self.run_fixture(
             """
+// Given: current workers have complete attention coverage.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){
   session.state="working";session.last_activity=nextData.generated;
   session.subagent_hierarchy=[];session.subagent_events=[];
 }
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: render authority for no action, FO inspection, and captain authorization.
 const continues=nextCockpitRecoveryAttention(group,observation,[]);
 const inspecting=nextCockpitRecoveryAttention(group,observation,[
   {owner:"FO",kind:"recovery",label:"inspect Harvey handoff",
@@ -2141,6 +2461,8 @@ const needed=nextCockpitRecoveryAttention(group,observation,[
 console.log(JSON.stringify({continues,inspecting,needed}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn('data-next-cockpit-authority-state="fo-continues"', out["continues"])
@@ -2154,6 +2476,7 @@ console.log(JSON.stringify({continues,inspecting,needed}));
     def test_captain_attention_preserves_kind_and_renders_compact_verbs(self) -> None:
         out = self.run_fixture(
             """
+// Given: captain requests carry four distinct kinds.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention=[
@@ -2167,10 +2490,14 @@ semantic.projections.command_attention=[
     evidence:{source:"review",confidence:"exact"}}
 ];
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive and render command attention.
 const items=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({items,html:nextCockpitRecoveryAttention(group,observation,items)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(
@@ -2183,14 +2510,19 @@ console.log(JSON.stringify({items,html:nextCockpitRecoveryAttention(group,observ
     def test_source_unavailable_is_fo_inspection_evidence_not_an_actor(self) -> None:
         out = self.run_fixture(
             """
+// Given: Harvey is active without assignment evidence.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
 group.sessions[0].subagent_hierarchy=[{name:"Harvey",observer_sid:"child-h",depth:1}];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive and render command attention.
 const items=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({items,html:nextCockpitRecoveryAttention(group,observation,items)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertFalse(any(row["owner"] == "SOURCE" for row in out["items"]))
@@ -2206,6 +2538,7 @@ console.log(JSON.stringify({items,html:nextCockpitRecoveryAttention(group,observ
     def test_authority_cell_shows_all_captain_one_fo_and_discloses_remainder(self) -> None:
         out = self.run_fixture(
             """
+// Given: two captain requests precede three FO actions.
 const group=nextProjectGroups()[0];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
 const items=[
@@ -2217,9 +2550,13 @@ const items=[
   {owner:"FO",kind:"recovery",label:"inspect second",evidence:{source:"two",confidence:"exact"}},
   {owner:"FO",kind:"recovery",label:"inspect third",evidence:{source:"three",confidence:"exact"}}
 ];
+
+// When: render the authority cell.
 console.log(JSON.stringify({html:nextCockpitRecoveryAttention(group,observation,items)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         primary = out["html"].split("<details", maxsplit=1)[0]
@@ -2259,6 +2596,7 @@ console.log(JSON.stringify({failedItems,failed,incompleteItems,incomplete}));
     def test_pending_decision_is_fo_application_until_a_fresh_question_exists(self) -> None:
         out = self.run_fixture(
             """
+// Given: a recorded hold has produced FO application attention.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention=[
@@ -2273,11 +2611,15 @@ semantic.projections.command_attention=[
     question:"Revise the assignment boundary?",
     evidence:{source:"fresh review question",confidence:"exact"}}
 ];
+
+// When: derive attention for the fresh captain question.
 const freshItems=nextCockpitCommandAttention(group,observation);
 const fresh=nextCockpitRecoveryAttention(group,observation,freshItems);
 console.log(JSON.stringify({pendingItems,pending,freshItems,fresh}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual([], [row for row in out["pendingItems"] if row["owner"] == "CAPTAIN"])
@@ -2294,6 +2636,7 @@ console.log(JSON.stringify({pendingItems,pending,freshItems,fresh}));
     def test_stage_link_copy_states_only_proven_operational_effect(self) -> None:
         out = self.run_fixture(
             """
+// Given: missing stage linkage permits current work in the baseline strip.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.trail_heads=[];
@@ -2307,11 +2650,15 @@ const continues=nextCockpitRecoveryStrip(group,observation,[]);
 semantic.projections.command_attention=[{owner:"FO",kind:"stage_link_required",
   label:"link stage",blocked_step:"dispatch reviewer",
   evidence:{source:"workflow handoff",confidence:"exact"}}];
+
+// When: render the stage link required for the named dispatch step.
 const blocked=nextCockpitRecoveryStrip(group,observation,
   nextCockpitCommandAttention(group,observation));
 console.log(JSON.stringify({continues,blocked}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         continues_task = out["continues"].split("MISSING / NEXT ACTION", maxsplit=1)[0]
@@ -2327,6 +2674,7 @@ console.log(JSON.stringify({continues,blocked}));
     def test_fresh_return_age_moves_to_evidence_while_stale_age_remains_primary(self) -> None:
         out = self.run_fixture(
             """
+// Given: the baseline execution has a fresh returned child.
 const group=nextProjectGroups()[0];
 nextData.generated=1000;
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
@@ -2337,11 +2685,15 @@ const fresh=nextCockpitRecoveryExecution(group,
   nextCockpitRecoveryBriefing(group,null,observation,[]));
 group.sessions[0].subagent_events=[{at:1,kind:"subagent_complete",name:"Harvey",
   assignment:"Review mirror",result:"Returned",source:"lifecycle"}];
+
+// When: render execution for the old return.
 const stale=nextCockpitRecoveryExecution(group,
   nextCockpitRecoveryBriefing(group,null,observation,[]));
 console.log(JSON.stringify({fresh,stale}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         fresh_primary = out["fresh"].split("<details", maxsplit=1)[0]
@@ -2353,12 +2705,15 @@ console.log(JSON.stringify({fresh,stale}));
     def test_returned_handoff_unavailable_is_inline_and_commands_recovery(self) -> None:
         out = self.run_fixture(
             """
+// Given: one root has a returned child without handoff evidence.
 const group=nextProjectGroups()[0];
 group.sessions=[group.sessions[0]];
 group.sessions[0].subagent_hierarchy=[];
 group.sessions[0].subagent_events=[{at:112,kind:"subagent_complete",name:"Harvey",
   source:"Codex child rollout lifecycle"}];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive attention and render execution and command.
 const attention=nextCockpitCommandAttention(group,observation);
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,attention);
 console.log(JSON.stringify({attention,
@@ -2366,6 +2721,8 @@ console.log(JSON.stringify({attention,
   command:nextCockpitRecoveryAttention(group,observation,attention)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertTrue(any(row["label"] == "recover Harvey handoff" for row in out["attention"]))
@@ -2375,6 +2732,7 @@ console.log(JSON.stringify({attention,
     def test_recovery_cells_put_situation_before_command_with_four_truths_inline(self) -> None:
         out = self.run_fixture(
             """
+// Given: a root directive, missing stage link, and returned child need recovery.
 const group=nextProjectGroups()[0];
 group.sessions=[group.sessions[0]];
 group.sessions[0].subagent_hierarchy=[];
@@ -2390,12 +2748,16 @@ semantic.facts.push({fact_id:"direction",at:110,type:"user_message",
 semantic.projections.command_attention_coverage={state:"complete",scanned:1,total:1,
   omitted:0,source:"bounded attention scan"};
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive attention and render the recovery strip.
 const attention=nextCockpitCommandAttention(group,observation);
 const html=nextCockpitRecoveryStrip(group,observation,attention);
 const primary=html.replace(/<details[^>]*>[\\s\\S]*?<\\/details>/g,"");
 console.log(JSON.stringify({html,primary}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         positions = [
@@ -2416,6 +2778,7 @@ console.log(JSON.stringify({html,primary}));
     def test_idle_fo_continues_collapses_to_two_truthful_handoff_lines(self) -> None:
         out = self.run_fixture(
             """
+// Given: one idle root has complete coverage and no child activity.
 const group=nextProjectGroups()[0];
 group.sessions=[group.sessions[0]];
 group.sessions[0].state="idle";
@@ -2424,11 +2787,15 @@ const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.command_attention_coverage={state:"complete",scanned:1,total:1,
   omitted:0,source:"bounded attention scan"};
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: render recovery without pending attention.
 const html=nextCockpitRecoveryStrip(group,observation,[]);
 const primary=html.replace(/<details[^>]*>[\\s\\S]*?<\\/details>/g,"");
 console.log(JSON.stringify({primary}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("FO CONTINUES · Continue current assignment", out["primary"])
@@ -2489,6 +2856,8 @@ console.log(JSON.stringify({quiet,planned,incomplete}));
         self.assertIn("+ Add human context · this browser", out["incomplete"])
 
     def test_project_utilities_demote_copy_global_count_and_duplicate_breadcrumb(self) -> None:
+        # Given: the shared project fixture has the default cockpit utilities.
+        # When: render the project header and briefing.
         out = self.run_fixture(
             """
 const html=__els.app.innerHTML;
@@ -2498,6 +2867,8 @@ const beforeMenu=header.split('<details class="next-menu"',1)[0];
 console.log(JSON.stringify({html,header,recovery,beforeMenu}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn('data-next-cockpit-action="copy-briefing"', out["header"])
@@ -2511,6 +2882,7 @@ console.log(JSON.stringify({html,header,recovery,beforeMenu}));
     def test_result_fallback_requires_same_session_affinity(self) -> None:
         out = self.run_fixture(
             """
+// Given: the root has attributable output and newer peer results are unrelated.
 const group=nextProjectGroups()[0];
 group.sessions[0].last_output="Linked root result";group.sessions[0].last_activity=110;
 group.sessions[1].last_output="Unrelated Pi output";group.sessions[1].last_activity=120;
@@ -2526,11 +2898,15 @@ semantic.facts.push(
     evidence:{source:"assistant final",confidence:"exact"}}
 );
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: build the briefing and rendered strip.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,[]);
 console.log(JSON.stringify({text:briefing.text,
   html:nextCockpitRecoveryStrip(group,observation,[])}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["text"], out["html"]):
@@ -2541,6 +2917,7 @@ console.log(JSON.stringify({text:briefing.text,
     def test_ancient_returned_child_is_qualified_stale(self) -> None:
         out = self.run_fixture(
             """
+// Given: Harvey returned long before the payload clock.
 const group=nextProjectGroups()[0];
 nextData.generated=1000;
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
@@ -2549,11 +2926,15 @@ group.sessions[0].subagent_events=[
     result:"Review returned",source:"Codex child rollout lifecycle"}
 ];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: build the briefing and render execution.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,[]);
 console.log(JSON.stringify({text:briefing.text,
   html:nextCockpitRecoveryExecution(group,briefing)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["text"], out["html"]):
@@ -2565,6 +2946,7 @@ console.log(JSON.stringify({text:briefing.text,
     ) -> None:
         out = self.run_fixture(
             """
+// Given: the root has attributable output but no semantic result.
 const group=nextProjectGroups()[0];
 group.sessions[0].last_output="Candidate verification completed\\n\\nDetailed verification transcript";
 group.sessions[0].last_activity=120;
@@ -2573,11 +2955,15 @@ semantic.facts=semantic.facts.filter(fact=>fact.type!=="result");
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
 nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,
   revision:nextData.generated});
+
+// When: build the briefing and rendered strip.
 const briefing=nextCockpitRecoveryBriefing(group,null,observation,[]);
 console.log(JSON.stringify({text:briefing.text,
   html:nextCockpitRecoveryStrip(group,observation,[])}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         for value in (out["text"], out["html"]):
@@ -2600,6 +2986,7 @@ console.log(JSON.stringify({text:briefing.text,
     def test_recovery_promotes_first_fo_action_when_captain_is_empty(self) -> None:
         out = self.run_fixture(
             """
+// Given: FO attention contains a missing handoff followed by source verification.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){
   session.state="working";session.last_activity=1000;
@@ -2612,10 +2999,14 @@ const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sou
 const items=nextCockpitCommandAttention(group,observation);
 items.push({owner:"FO",label:"verify source refresh",
   evidence:{source:"context",confidence:"exact"}});
+
+// When: render recovery attention.
 const html=nextCockpitRecoveryAttention(group,observation,items);
 console.log(JSON.stringify({items,html}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual("recover Hooke handoff", out["items"][0]["label"])
@@ -2641,6 +3032,8 @@ console.log(JSON.stringify({recovery,
         self.assertNotIn("Add human context", out["recovery"])
 
     def test_recovery_reading_order_puts_assignment_action_and_execution_first(self) -> None:
+        # Given: the shared project fixture has assignments and active execution.
+        # When: render the recovery briefing.
         out = self.run_fixture(
             """
 const recovery=(__els.app.innerHTML.match(
@@ -2648,6 +3041,8 @@ const recovery=(__els.app.innerHTML.match(
 console.log(JSON.stringify({recovery}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         ordered = [
@@ -2663,6 +3058,7 @@ console.log(JSON.stringify({recovery}));
     def test_missing_child_evidence_is_consolidated_into_owned_actions(self) -> None:
         out = self.run_fixture(
             """
+// Given: one child is active and another returned, both with missing evidence.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){
   session.state="idle";session.subagent_hierarchy=[];session.subagent_events=[];
@@ -2675,11 +3071,15 @@ group.sessions[0].subagent_events=[
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.projections.trail_heads=[];
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: render the recovery strip with its owned actions.
 const html=nextCockpitRecoveryStrip(group,observation,
   nextCockpitCommandAttention(group,observation));
 console.log(JSON.stringify({html}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertNotIn("task, outcome, stage, done condition", out["html"])
@@ -2711,14 +3111,19 @@ console.log(JSON.stringify({recovery,
     def test_empty_decisions_are_subtracted_from_recovery_primary_cells(self) -> None:
         out = self.run_fixture(
             """
+// Given: the semantic context contains no gate decisions.
 const group=nextProjectGroups()[0];
 const semantic=JSON.parse(JSON.stringify(__semantic));
 semantic.facts=semantic.facts.filter(fact=>fact.type!=="gate_decision");
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: render the recovery strip.
 const recovery=nextCockpitRecoveryStrip(group,observation,[]);
 console.log(JSON.stringify({recovery}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertNotIn("<span>DECISIONS</span>", out["recovery"])
@@ -2727,6 +3132,7 @@ console.log(JSON.stringify({recovery}));
     def test_execution_groups_plain_child_rows_under_one_root(self) -> None:
         out = self.run_fixture(
             """
+// Given: one root has both an active child and a returned child.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
 group.sessions[0].subagent_hierarchy=[{name:"Ohm",observer_sid:"child-ohm",depth:1}];
@@ -2734,12 +3140,16 @@ group.sessions[0].subagent_events=[
   {at:112,kind:"subagent_complete",name:"Harvey",source:"Codex child rollout lifecycle"}
 ];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: render the recovery strip.
 const html=nextCockpitRecoveryStrip(group,observation,
   nextCockpitCommandAttention(group,observation));
 const execution=html.slice(html.indexOf("EXECUTION"),html.indexOf("LATEST EVIDENCE"));
 console.log(JSON.stringify({execution}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(1, out["execution"].count("Codex · working"))
@@ -2751,12 +3161,15 @@ console.log(JSON.stringify({execution}));
     def test_returned_child_primary_hides_identifiers_and_discloses_evidence(self) -> None:
         out = self.run_fixture(
             """
+// Given: Harvey returned without assignment or result evidence.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.subagent_hierarchy=[];session.subagent_events=[];}
 group.sessions[0].subagent_events=[
   {at:112,kind:"subagent_complete",name:"Harvey",source:"Codex child rollout lifecycle"}
 ];
 const observation={semantic:__semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: render the recovery strip.
 const html=nextCockpitRecoveryStrip(group,observation,
   nextCockpitCommandAttention(group,observation));
 const start=html.indexOf("Harvey · returned");
@@ -2766,6 +3179,8 @@ console.log(JSON.stringify({primary:html.slice(start,disclosure),
   evidence:html.slice(disclosure,end)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertNotIn("assignment/result missing", out["primary"])
@@ -2776,6 +3191,8 @@ console.log(JSON.stringify({primary:html.slice(start,disclosure),
         self.assertIn("codex:focus-1", out["evidence"])
 
     def test_mounted_briefing_subtracts_duplicate_now_cards(self) -> None:
+        # Given: the shared project fixture mounts the default Now briefing.
+        # When: render the cockpit.
         out = self.run_fixture(
             """
 const html=__els.app.innerHTML;
@@ -2786,6 +3203,8 @@ console.log(JSON.stringify({html,recovery,panel,
   memoEdits:(recovery.match(/data-next-cockpit-action="memo-edit"/g)||[]).length}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(1, out["recoveryCount"])
@@ -2804,6 +3223,7 @@ console.log(JSON.stringify({html,recovery,panel,
     def test_prepared_trail_is_fo_follow_up_not_current_task(self) -> None:
         out = self.run_fixture(
             """
+// Given: idle sessions have a prepared dispatch but no current stage.
 const group=nextProjectGroups()[0];
 for(const session of group.sessions){session.state="idle";session.subagent_hierarchy=[];}
 const semantic={facts:[{fact_id:"prepared",at:100,type:"prepared_dispatch",
@@ -2815,11 +3235,15 @@ const semantic={facts:[{fact_id:"prepared",at:100,type:"prepared_dispatch",
     command_attention_coverage:{state:"complete",scanned:3,total:3,omitted:0,
       source:"bounded active-session final-output scan"}}};
 const observation={semantic,workflow_discovery:{state:"observed"},sources:{}};
+
+// When: derive the task, attention, and active-work readings.
 const task=nextCockpitTaskSubject(observation);
 const attention=nextCockpitCommandAttention(group,observation);
 console.log(JSON.stringify({task,attention,active:nextCockpitRecoveryActive(group)}));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("WORKFLOW TASK", out["task"])
@@ -2844,6 +3268,7 @@ console.log(JSON.stringify({task,attention,active:nextCockpitRecoveryActive(grou
         }
         out = self.run_fixture(
             """
+// Given: browser memos and exact facts are mounted with a recording clipboard.
 let __copied="";
 navigator.clipboard={writeText:async value=>{__copied=String(value);}};
 const group=nextProjectGroups()[0];
@@ -2863,6 +3288,8 @@ renderNext();
 const before=__fetchCalls.length;
 const target={dataset:{nextCockpitAction:"copy-briefing"},
   closest(selector){return selector==="[data-next-cockpit-action]"?this:null;}};
+
+// When: click Copy briefing and settle the clipboard write.
 __fire("click",{target,preventDefault(){}});
 await __settle();await __settle();
 console.log(JSON.stringify({copied:__copied,html:__els.app.innerHTML,before,
@@ -2871,6 +3298,8 @@ console.log(JSON.stringify({copied:__copied,html:__els.app.innerHTML,before,
 """,
             storage=storage,
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertEqual(out["before"], out["after"])
@@ -2962,13 +3391,18 @@ console.log(JSON.stringify({normalized,aliased,value:nextCockpitReadMemo(corrupt
         key = "cargento.cockpit.memo.v2:spacedock-research%2Fcargento:project:outcome"
         out = self.run_fixture(
             """
+// Given: the project memo is restored from storage in the project view.
 const project=__els.app.innerHTML;
+
+// When: navigate to the exact Pi session and render it.
 nextRoute=nextRouteFromFragment("#n=project:cargento:pi%3Api-idle");
 renderNext();await __settle();await __settle();
 console.log(JSON.stringify({project,session:__els.app.innerHTML}));
 """,
             storage={key: "Remember the accepted cockpit"},
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("Remember the accepted cockpit", out["project"])
@@ -2979,6 +3413,8 @@ console.log(JSON.stringify({project,session:__els.app.innerHTML}));
     def test_next_bundle_keeps_steer_local_and_terminal_input_absent(self) -> None:
         out = self.run_fixture(
             """
+// Given: the shared bundle exposes local steering and terminal functions.
+// When: inspect the rendered steer, terminal functions, and page markup.
 console.log(JSON.stringify({
   steer: nextProjectSteer("cargento", {steers:[]}),
   terminalPower: projectTerminalMount.toString(),
@@ -2987,6 +3423,8 @@ console.log(JSON.stringify({
 }));
 """
         )
+
+        # Then
         assert isinstance(out, dict)
 
         self.assertIn("STEER · LOCAL ONLY", out["steer"])
