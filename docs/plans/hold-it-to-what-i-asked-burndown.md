@@ -344,6 +344,15 @@ journal named under Recovery handles. Read them before building an issue rather 
   red first. Full suite 2693 OK. SECURITY.md's sidecar paragraph updated to say the file holds two
   goal lines. DRC-4508 moved to `In Progress` in Linear.
   Next: item 2, the annotation store and its endpoint.
+- 2026-09-10 03:xx: **build order item 2 done** (`a3048f0`, `2158516`). `annotations.py`, a leaf on
+  the `dismissals` pattern with no watermark, two count bounds, immutable numbered revisions, and
+  the absence sentences in one place. `POST /api/annotate` with `--no-annotations`. 17 tests, red
+  first. Full suite 2710 OK.
+  Two things worth carrying forward. The store's own `annotate` was stringifying a non-string field
+  through `safe_text`, which would have published a dict's repr; the endpoint now 400s and the store
+  has a floor under it. And four contract gates fired and all four were right: the reviewed import
+  graph, the POST-route inventory, the `--no-*` flag oracle, and SECURITY.md's capability count.
+  Next: item 3, the web half. That is where the byte pins and the design fidelity bite.
 
 ## Owed to Linear
 
