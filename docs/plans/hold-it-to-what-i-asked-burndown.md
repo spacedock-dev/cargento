@@ -65,6 +65,18 @@ DRC-4511 needs. Anything beyond that is a bonus, not the bar.
 
 - **Exactly one PR may touch `cargento_runtime/web/`.** All of these do, so all of them ride this
   one PR. That is `AGENTS.md`, Parallel Work, and it is why this is one branch.
+> **Do not copy a byte-pin figure out of this file.** Every web commit moves them, and the numbers
+> quoted further down were correct when the survey ran and are stale now. Recompute from the assets
+> with the command in the byte-pin section and read the current pins out of the test files. As of
+> commit `fcfa528` the assembled page is 708_735 and styles.css is 89_083, and that will be wrong
+> again after the next web commit.
+>
+> **Two further corrections measured 2026-09-10.** `NEXT_PROJECT_TABS` has **13** read sites across
+> `next-boot.js` and `next-cockpit.js`, not the eight recorded below: the keyboard-wrap function
+> alone holds six. And `nextCockpitMemoFields` is **dead code** with no production caller, so only
+> one typed-field surface ships (`nextCockpitRecoveryMemoCell`) and the collision is two bounds
+> rather than three.
+
 - **Frontend byte pins: three oracles, not four.** `tests/test_next_page.py`,
   `tests/test_next_flag.py` and `tests/test_focus.py`. An earlier version of this file named
   `tests/test_next_cockpit.py` as a fourth; it holds no digest. Recompute from the assets, never
