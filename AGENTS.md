@@ -37,6 +37,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── mcp_server.py           # stdio MCP server: the one tool a session calls to ask the reader
         ├── cargento_runtime/       # importable dashboard runtime package
         │   ├── aggregate.py        # harness registry, failure boundary, and the application
+        │   ├── annotations.py      # the goal and expected output the reader typed, as revisions
         │   ├── asks.py             # outstanding questions and their answer mailboxes, a leaf
         │   ├── claude_data.py      # Claude transcript reads shared by the collector and hooks
         │   ├── cli.py              # argument parsing, runtime assembly, and the serve branches

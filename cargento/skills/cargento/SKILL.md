@@ -194,9 +194,10 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes five files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes six files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
 detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
+`cargento-annotations.json`, the goal and expected output you typed against a session;
 `observer/<harness>_<sid>.json`, the sidecar an observer panel records when a reader opens one; and
 `cargento-history.json`, the history of what the server observed, kept for up to 14 days. A store
 that cannot be read is discarded rather than repaired, the board starts empty, and the header names
@@ -211,6 +212,23 @@ handled controls. A mark made through `POST /api/dismiss` removes that session f
 counts until anything in it writes again; a subagent write counts. Marks live in
 `cargento-dismissals.json`. Delete that file to clear them all, call the endpoint with
 `{"clear": false}` to restore one, or run with `--no-dismiss` to leave the store unread for a run.
+
+### Recording what a session should achieve
+
+You can record a goal and an expected output against one session, in your own words. Both are
+optional and set independently, bounded at 240 characters each, and saving one leaves the other
+alone. `POST /api/annotate` with a harness, a session id and either field writes a numbered
+revision; an earlier revision is never edited, so anything citing revision 1 still means what it
+meant. Send `{"clear": true}` to forget a session's words entirely.
+
+They are held in `cargento-annotations.json`, bounded by how many sessions carry words and how many
+revisions each keeps rather than by age, because a session still on the board should not lose what
+you asked of it because time passed. Delete that file to clear them all, or run with
+`--no-annotations` to leave the store unread and unwritten for a run.
+
+Binding is per session, and the board says when it is not exact. Where a harness publishes only a
+short identity prefix, another session sharing that prefix would share these words, and the row says
+so rather than leaving you to assume otherwise.
 
 ## Notifications
 
@@ -358,6 +376,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
+| `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the page offers no field. The rollback switch for the one store holding prose you composed. |
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
