@@ -704,6 +704,20 @@ function nextCockpitHeldCap(){
    `clear` appears only where there is text to clear and `save` only where the
    box and the store disagree, both per the design; a save control standing on
    an unchanged field invites a revision number that records nothing. */
+/* Rendered either way and hidden when it does not apply, because the input
+   handler above cannot redraw and has to reach an element that is already
+   there. `hidden` rather than a class: it is the attribute that means this,
+   and `styles.css` is where it is made to stick. */
+function nextCockpitHeldControl(action, label, kind, shown){
+  return `<button type="button" data-next-cockpit-action="${action}" data-arg="${kind}"` +
+    `${shown ? "" : " hidden"}>${label}</button>`;
+}
+
+function nextCockpitHeldToggle(field, action, shown){
+  const control = field.querySelector(`[data-next-cockpit-action="${action}"]`);
+  if(control) control.hidden = !shown;
+}
+
 function nextCockpitHeldField(session, annotation, spec, cap){
   const [kind, label, valueKey, whyKey, placeholder] = spec;
   const key = nextCockpitHeldKey(session, kind);
@@ -718,14 +732,12 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `<span class="next-cockpit-held-label">${label}</span>` +
     '<span class="next-cockpit-held-sub">your words</span>' +
     `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
-    `data-next-cockpit-held-key="${esc(key)}" ` +
+    `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
     `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
     `<span class="next-cockpit-held-count" data-next-cockpit-held-count="${kind}">` +
     `${draft.length}/${cap}</span>` +
-    (draft ? '<button type="button" data-next-cockpit-action="held-clear" ' +
-      `data-arg="${kind}">clear</button>` : "") +
-    (draft === saved ? "" : '<button type="button" data-next-cockpit-action="held-save" ' +
-      `data-arg="${kind}">save</button>`) +
+    nextCockpitHeldControl("held-clear", "clear", kind, Boolean(draft)) +
+    nextCockpitHeldControl("held-save", "save", kind, draft !== saved) +
     (!saved && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }
@@ -775,8 +787,18 @@ function nextCockpitWorkEntries(session, semantic){
     });
 }
 
+/* How many entries the block draws. Nothing upstream caps the semantic facts:
+   measured on a real board, one project held 26 and one eleven-hour session
+   named 7 of them, and a session ten times as long would draw ten times as
+   many. This is a readability bound rather than a measurement, which is
+   exactly why the count it hid is stated under the rows: a silent cap reads
+   as the whole record. */
+const NEXT_COCKPIT_WORK_ROWS = 20;
+
 function nextCockpitWorkEvidence(session, entries){
-  const rows = entries.map(entry => {
+  // The most recent, in the order they happened, so the window reads forward.
+  const shown = entries.slice(-NEXT_COCKPIT_WORK_ROWS);
+  const rows = shown.map(entry => {
     const at = nextDurationSince(entry.at);
     return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(entry.type)}">` +
       `<span class="next-cockpit-work-type">${esc(entry.type)}</span>` +
@@ -789,6 +811,9 @@ function nextCockpitWorkEvidence(session, entries){
     '<header><h2>WORK EVIDENCE</h2></header>' +
     (rows || '<p class="next-cockpit-work-absent">No entry in the observed record names ' +
       'this session.</p>') +
+    (shown.length < entries.length
+      ? `<p class="next-cockpit-work-dropped">Showing the ${shown.length} most recent of ` +
+        `${entries.length} observed entries.</p>` : "") +
     '<p class="next-cockpit-work-limit">' +
     `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
 }
@@ -1898,18 +1923,30 @@ document.addEventListener("input", event => {
     ? "Saved in this browser" : "Browser storage unavailable";
 });
 
+/* No redraw on a keystroke, and this is measured rather than copied from the
+   memo lane beside it. A first version called `renderNext` here, and every
+   character typed landed at offset 0: the field is a new element after the
+   replacement and the named-focus lane restores the caret a beat late, so
+   " and green" arrived as "neerg dna" in front of the saved value. The three
+   things an edit changes are updated in place instead, which is also why both
+   controls are rendered and hidden rather than rendered conditionally. */
 document.addEventListener("input", event => {
   const input = event.target && event.target.closest
     ? event.target.closest("[data-next-cockpit-held-key]") : null;
   if(!input) return;
   const key = String(input.dataset.nextCockpitHeldKey || "");
   if(!key) return;
-  // Redraw rather than mutate the counter in place: the `clear` and `save`
-  // controls appear and vanish on the same edit, so one render owns all three.
-  // The draft is in the Map before the redraw reads it.
-  nextCockpitHeldDrafts.set(key, String(input.value || "").slice(0, nextCockpitHeldCap()));
+  const value = String(input.value || "").slice(0, nextCockpitHeldCap());
+  if(value !== input.value) input.value = value;
+  nextCockpitHeldDrafts.set(key, value);
   nextCockpitHeldStates.delete(key);
-  renderNext({named: key});
+  const field = input.closest ? input.closest("[data-next-cockpit-held-field]") : null;
+  if(!field || !field.querySelector) return;
+  const count = field.querySelector("[data-next-cockpit-held-count]");
+  if(count) count.textContent = `${value.length}/${nextCockpitHeldCap()}`;
+  nextCockpitHeldToggle(field, "held-clear", Boolean(value));
+  nextCockpitHeldToggle(field, "held-save",
+    value !== String(input.dataset.nextCockpitHeldSaved || ""));
 });
 
 document.addEventListener("click", event => {

@@ -861,6 +861,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:14px/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink3);font-family:var(--mono);font-size:10px}
 .next-cockpit-held-field button{border:0;background:none;color:var(--ink2);font:var(--fs-xs) var(--mono);cursor:pointer}
+.next-cockpit-held-field button[hidden]{display:none}
 .next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink3);font-size:var(--fs-xs)}
 /* DRC-4509's work evidence. Mono throughout: every string in a row is one a
@@ -875,7 +876,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-work-summary{font:var(--fs-xs)/1.55 var(--mono);overflow-wrap:anywhere}
 .next-cockpit-work-at{color:var(--ink3);font-family:var(--mono);font-size:10px}
 .next-cockpit-work-source{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px}
-.next-cockpit-work-absent,.next-cockpit-work-limit{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 /* The third treatment, for a model reading: italic Space Grotesk on the
    secondary ink over a dotted rule, so it reads as neither a published string
    nor the board stating a fact. No colour under any result, ever, because

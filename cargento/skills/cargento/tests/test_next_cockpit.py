@@ -3556,26 +3556,54 @@ class CockpitHeldToTabTest(NextPageJsHarness):
     # cannot see a textarea's own input hook.
     FOCUS_DOM = r"""
 let controls = [];
+let spans = [];
 const decode = text => text.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 const camel = name => name.replace(/^data-/, "").replace(/-([a-z])/g,
   (_, letter) => letter.toUpperCase());
+// Every replacement is counted. A keystroke that redraws is the defect this
+// class exists to hold shut, and counting is how the test sees one.
+__els.renders = 0;
 __els.app = {
   get innerHTML(){ return this.html || ""; },
   set innerHTML(html){
     this.html = html;
+    __els.renders += 1;
     document.activeElement = null;
     controls = [...html.matchAll(/<(button|a|textarea)\b([^>]*)>/g)].map(match => {
       const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
         .map(attr => [attr[1], decode(attr[2])]));
       const dataset = Object.fromEntries(Object.entries(attrs)
         .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]));
-      return {dataset, tagName:match[1].toUpperCase(), value:"", attrs,
+      return {dataset, tagName:match[1].toUpperCase(), value:"", attrs, hidden:"hidden" in attrs,
         getAttribute(name){ return attrs[name] || null; },
         focus(){ document.activeElement = this; },
         closest(selector){
+          // The field container the input handler reaches for, synthesised
+          // from the kind the element already carries. Without it the handler
+          // returns early and a redraw put back into it would go unseen.
+          if(selector === "[data-next-cockpit-held-field]"){
+            const kind = dataset.nextCockpitHeldKind || dataset.arg;
+            return kind === undefined ? null : {
+              querySelector(inner){
+                if(inner === "[data-next-cockpit-held-count]"){
+                  return spans.find(span => span.dataset.nextCockpitHeldCount === kind) || null;
+                }
+                const action = /action="([a-z-]+)"/.exec(inner);
+                return action ? controls.find(control =>
+                  control.dataset.nextCockpitAction === action[1] &&
+                  control.dataset.arg === kind) || null : null;
+              }};
+          }
           const bare = /^\[(data-[\w-]+)\]$/.exec(selector);
           return bare && dataset[camel(bare[1])] !== undefined ? this : null;
         }};
+    });
+    spans = [...html.matchAll(/<span\b([^>]*)>([^<]*)</g)].map(match => {
+      const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      return {textContent: decode(match[2]), dataset: Object.fromEntries(
+        Object.entries(attrs).filter(([key]) => key.startsWith("data-"))
+          .map(([key, value]) => [camel(key), value]))};
     });
   },
   querySelectorAll(selector){
@@ -3620,8 +3648,8 @@ for(const focus of [null, "codex:focus-1"]){
     revision: html.includes("revision 2 of 2"),
     absence: html.includes("No expected output typed."),
     counters: (html.match(/data-next-cockpit-held-count="[a-z]+"/g) || []).length,
-    clears: (html.match(/data-next-cockpit-action="held-clear"/g) || []).length,
-    saves: (html.match(/data-next-cockpit-action="held-save"/g) || []).length,
+    clears: (html.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
+    saves: (html.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
   };
 }
 // The memo cell is asked directly, with a briefing that has something to show:
@@ -3675,7 +3703,7 @@ const html = __els.app.innerHTML;
 console.log(JSON.stringify({
   goalWhy: html.includes("No goal typed for this session."),
   outputWhy: html.includes("No expected output typed."),
-  clears: (html.match(/data-next-cockpit-action="held-clear"/g) || []).length,
+  clears: (html.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
   revision: html.includes("No revision saved yet"),
   counts: [...html.matchAll(/data-next-cockpit-held-count="[a-z]+">([^<]*)</g)].map(m => m[1]),
 }));
@@ -3690,7 +3718,66 @@ console.log(JSON.stringify({
         self.assertTrue(out["revision"])
         self.assertEqual(["0/240", "0/240"], out["counts"])
 
-    def test_typing_offers_a_save_and_escape_puts_the_draft_back(self) -> None:
+    def test_a_keystroke_updates_the_draft_and_does_not_redraw(self) -> None:
+        """The live defect, and the reason the memo lane beside this one does
+        not redraw either.
+
+        A first version called `renderNext` from the input handler. Measured in
+        a browser against a real session: the field is a new element after the
+        replacement and the named-focus lane restores the caret a beat late, so
+        typing " and green" put "neerg dna" in front of the saved value. The
+        counter and the two controls are updated in place instead.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const before = __els.renders;
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+input.value = "Six screenshots";
+__fire("input", {target:input});
+await __settle();
+const field = input.closest("[data-next-cockpit-held-field]");
+console.log(JSON.stringify({
+  redraws: __els.renders - before,
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  // Updated in place, which is the whole of what replaces the redraw.
+  liveCount: field.querySelector("[data-next-cockpit-held-count]").textContent,
+  liveSave: field.querySelector('[data-next-cockpit-action="held-save"]').hidden,
+  liveClear: field.querySelector('[data-next-cockpit-action="held-clear"]').hidden,
+  // What the field renders from that draft, on the next redraw the reader
+  // does cause. Both controls exist either way; only their hidden state moves.
+  next: (() => { renderNext();
+    const html = __els.app.innerHTML;
+    return {
+      count: (html.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+      save: /data-next-cockpit-action="held-save" data-arg="output">/.test(html),
+      clear: /data-next-cockpit-action="held-clear" data-arg="output">/.test(html),
+      // The saved value rides on each field, because the handler compares
+      // against it without a payload to hand. Both are read: the untouched
+      // one carries the store's text, the edited one carries the empty string
+      // it was saved with, and a save control appears only where they differ.
+      saved: [...html.matchAll(/data-next-cockpit-held-saved="([^"]*)"/g)].map(m => m[1]),
+    }; })(),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["redraws"])
+        self.assertEqual("Six screenshots", out["draft"])
+        self.assertEqual("15/240", out["liveCount"])
+        self.assertFalse(out["liveSave"])
+        self.assertFalse(out["liveClear"])
+        self.assertEqual("15/240", out["next"]["count"])
+        self.assertTrue(out["next"]["save"])
+        self.assertTrue(out["next"]["clear"])
+        self.assertEqual(["Capture every screen with live sessions", ""], out["next"]["saved"])
+
+    def test_escape_puts_the_saved_value_back(self) -> None:
         out = self.run_fixture(
             self.FOCUS_DOM
             + self.ANNOTATED
@@ -3700,20 +3787,21 @@ await __settle();
 const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
 input.value = "Six screenshots";
 __fire("input", {target:input});
-await __settle();
+renderNext();
 const typed = __els.app.innerHTML;
 
-// When: Escape on the field the draft belongs to.
-controls.find(control => control.dataset.nextCockpitHeldKind === "output").focus();
-__fire("keydown", {target:document.activeElement, key:"Escape", preventDefault(){}});
+// When: Escape on the field the draft belongs to. This one redraws, because
+// it is a discrete action rather than a keystroke.
+__fire("keydown", {target:input, key:"Escape", preventDefault(){}});
 await __settle();
 const reverted = __els.app.innerHTML;
 console.log(JSON.stringify({
-  typedSaves: (typed.match(/data-next-cockpit-action="held-save"/g) || []).length,
+  typedSaves: (typed.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
   typedCount: (typed.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
-  typedClears: (typed.match(/data-next-cockpit-action="held-clear"/g) || []).length,
-  revertedSaves: (reverted.match(/data-next-cockpit-action="held-save"/g) || []).length,
+  typedClears: (typed.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
+  revertedSaves: (reverted.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
   revertedCount: (reverted.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+  draft: nextCockpitHeldDrafts.has("held:codex:focus-1:output"),
 }));
 """
         )
@@ -3723,9 +3811,11 @@ console.log(JSON.stringify({
         self.assertEqual(1, out["typedSaves"])
         self.assertEqual("15/240", out["typedCount"])
         self.assertEqual(2, out["typedClears"])
-        # Escape reverts the draft, so the save goes away with it.
+        # Escape drops the draft rather than writing the saved value into it,
+        # so the render reads the store and the save goes away with it.
         self.assertEqual(0, out["revertedSaves"])
         self.assertEqual("0/240", out["revertedCount"])
+        self.assertFalse(out["draft"])
 
     def test_the_work_evidence_keeps_each_entry_type_and_states_its_limit(self) -> None:
         """DRC-4509. What the record lets a reader inspect, beside their words.
@@ -3767,6 +3857,39 @@ console.log(JSON.stringify({
             "deliverable.",
             out["limit"],
         )
+
+    def test_a_long_record_is_bounded_and_says_what_it_left_out(self) -> None:
+        # Measured against a real session: 26 facts in one project, 7 naming
+        # one session after eleven hours, and nothing upstream caps them. A
+        # tab that grows without limit is one nobody scrolls, and a cap nobody
+        # is told about reads as the whole record.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+for(let n = 0; n < 40; n++){
+  __semantic.facts.push({fact_id:`bulk-${n}`, at:200 + n, type:"user_message",
+    summary:`Direction ${n}`, source_session:{harness:"codex", sid:"focus-1"},
+    evidence:{source:"root transcript", confidence:"exact"}});
+}
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  rows: (html.match(/data-next-cockpit-work-type=/g) || []).length,
+  // Oldest first inside the window, so the rows read forward.
+  first: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
+  last: [...html.matchAll(/class="next-cockpit-work-summary">([^<]*)</g)].pop()[1],
+  dropped: (html.match(/class="next-cockpit-work-dropped">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(20, out["rows"])
+        self.assertEqual("Direction 20", out["first"])
+        self.assertEqual("Direction 39", out["last"])
+        self.assertEqual("Showing the 20 most recent of 43 observed entries.", out["dropped"])
 
     def test_a_session_the_record_says_nothing_about_says_so(self) -> None:
         out = self.run_fixture(
@@ -3835,7 +3958,7 @@ const html = __els.app.innerHTML;
 console.log(JSON.stringify({posts,
   kept: html.includes("A different goal"),
   cue: html.includes("Not saved. The server refused the write"),
-  stillOffersSave: (html.match(/data-next-cockpit-action="held-save"/g) || []).length}));
+  stillOffersSave: (html.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length}));
 """
         )
 
