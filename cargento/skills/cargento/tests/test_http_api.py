@@ -2678,6 +2678,40 @@ class AnnotateRouteTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_an_unwritable_store_answers_ok_with_persisted_false(self) -> None:
+        """DRC-4533: the reply the page's `unpersisted` cue is written against.
+
+        Both existing assertions on this key are `True`. The endpoint answers
+        `persisted` honestly and the page treats a false as "held for this run
+        and about to go", so the false arm is the one carrying a promise to a
+        reader, and it was the untested one.
+        """
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        # The server keeps a usable state_dir; only the annotation store's home
+        # is a file, so `save()`'s makedirs fails while everything else serves.
+        blocked = Path(home) / "annotation-home"
+        blocked.write_text("not a directory", encoding="utf-8")
+        config, state = make_runtime(state_home=str(blocked), state_dir=Path(home))
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+
+        self.assertEqual(200, status)
+        answer = json.loads(body)
+        # `ok` is not a claim the write landed, and the page reads them apart.
+        self.assertIs(True, answer["ok"])
+        self.assertIs(False, answer["persisted"])
+        # The revision is still minted and served, because this process holds it.
+        self.assertEqual(1, answer["revision"])
+        # And nothing reached disk, which is what makes the cue's wording true.
+        self.assertEqual((), annotation_store.load(config))
+
     def test_a_typed_goal_reaches_the_store_and_drops_the_published_body(self) -> None:
         config, state = self._runtime()
         application = cli.build_application(config, state, clock=time.time)

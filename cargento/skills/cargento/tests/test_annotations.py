@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import re
 import shutil
 import tempfile
@@ -355,6 +356,125 @@ class AnnotationStoreTest(unittest.TestCase):
         # Numbering keeps counting, so a dropped revision reads as dropped
         # rather than as one that never existed.
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
+
+
+class AnUnwritableStoreIsReportedRatherThanSwallowedTest(unittest.TestCase):
+    """DRC-4533: `save()`'s failure arm and the `persisted:false` it feeds.
+
+    Both were untested. The diagnostic sentence was corrected on this branch
+    from "next restart" to "next collection" and was then defended by nothing,
+    which is the shape of a claim that quietly goes stale.
+
+    What the arm has to get right is narrow and easy to get wrong: the write
+    fails, the words stay in this process, the caller is told, and the next
+    collection reloads from disk and drops them. The page's cue says exactly
+    that, so if this arm changes, that sentence becomes a lie.
+    """
+
+    NOW = 1_800_000_000.0
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        # A FILE where the state home has to be a directory. `os.makedirs` then
+        # raises FileExistsError, which is an OSError, on a real filesystem
+        # rather than through a patched-out `open`: the arm under test is the
+        # one a full disk or a read-only home reaches, and a mock of the write
+        # would not prove `os.replace` and the temp-file cleanup are inside it.
+        self.blocked = self.root / "state"
+        self.blocked.write_text("not a directory", encoding="utf-8")
+        self.config = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(self.blocked)},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+        )
+        self.state = build_runtime_state(self.config, started=self.NOW)
+        self.said: list[str] = []
+
+    def test_the_write_fails_loudly(self) -> None:
+        landed = annotation_store.save(self.config, (), diagnostic_sink=self.said.append)
+
+        self.assertFalse(landed)
+        self.assertTrue(
+            any("could not write the annotation store" in line for line in self.said),
+            self.said,
+        )
+        # The sentence names the collection, not a restart. A reader who is told
+        # the wrong horizon plans around the wrong one.
+        self.assertTrue(any("gone at the next collection" in line for line in self.said), self.said)
+
+    def test_a_write_that_fails_after_the_temp_file_exists_cleans_it_up(self) -> None:
+        """The cleanup arm, which needs a failure LATER than the first one.
+
+        Written as its own case because the obvious fixture cannot reach it: an
+        unwritable home fails at `makedirs`, before `os.open` has made anything
+        to clean up, so a leftover assertion there passes with the cleanup
+        deleted. Measured: that mutation survived. Here the home is real and the
+        TARGET is a directory, so the temp file is written and `os.replace` is
+        what fails.
+        """
+        home = self.root / "writable"
+        home.mkdir()
+        config = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(home)},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+        )
+        # A directory exactly where the store file goes.
+        pathlib.Path(annotation_store.store_path(config)).mkdir(parents=True)
+
+        landed = annotation_store.save(config, (), diagnostic_sink=self.said.append)
+
+        self.assertFalse(landed)
+        strays = [name for name in os.listdir(home) if ".tmp" in name]
+        self.assertEqual([], strays, "the partial write was left behind")
+
+    def test_annotate_reports_the_failure_while_this_process_keeps_the_words(self) -> None:
+        landed = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "sess-1",
+            goal="Ship the cockpit",
+            now=self.NOW,
+            diagnostic_sink=self.said.append,
+        )
+
+        # False, and that is what the endpoint publishes as `persisted`.
+        self.assertFalse(landed)
+        # And yet the revision IS in this process: `annotate` sets
+        # `state.annotations` before it writes, inside the lock. That is the
+        # whole reason the page may not treat a false here as a lost save
+        # without also saying the words are about to go.
+        held = annotation_store.find(
+            annotation_store.active(self.config, self.state), "pi", "sess-1"
+        )
+        assert held is not None
+        self.assertEqual("Ship the cockpit", held["revisions"][-1]["goal"])
+
+    def test_the_next_collection_is_what_actually_takes_the_words(self) -> None:
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "sess-1",
+            goal="Ship the cockpit",
+            now=self.NOW,
+            diagnostic_sink=self.said.append,
+        )
+
+        # `aggregate` calls this on every collection. It reloads from disk, and
+        # disk never got the write, so the words go here rather than at a
+        # restart. The page's `unpersisted` cue is written against this fact.
+        annotation_store.refresh(self.config, self.state)
+
+        gone = annotation_store.find(
+            annotation_store.active(self.config, self.state), "pi", "sess-1"
+        )
+        self.assertIsNone(gone)
 
 
 class TheSaveReadsTheAnswerTheEndpointSendsTest(unittest.TestCase):

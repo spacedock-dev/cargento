@@ -586,6 +586,69 @@ reads as a real blocker.
 The rejected alternative, recorded so it is not rebuilt as a proposal: board only raises with no
 push at all. It was my recommendation and the captain chose full push.
 
+## THE ORDER TO FINISH (2026-09-10, after DEC-18)
+
+Ratified by the captain after three antagonistic lenses attacked an earlier draft. Four things that
+draft got wrong are under "What the review overturned" below, because each is a trap the next reader
+would otherwise fall into again.
+
+**Stage 0, the captain's, and it gates everything.** PR #317 targets `proto/operator-cockpit`, which
+is itself open **draft** PR #312 against `main`. Merging #317 lands nothing on `main`, so under the
+`burndown` skill's rule no issue here reaches `Done` and no reconcile runs. When #312 lands is the
+real finalisation event, and it decides whether Stage 4 is a new PR or more commits on #317.
+
+**Track P, starts now, blocks nothing.** All three need a build that can type a Goal, which exists
+only on this branch, so they run the dashboard from this worktree and record which build produced
+each session.
+
+- DRC-4542's corpus and expectations. Synthesised cases admissible under cross-agent verification.
+- DEC-17's abstention corpus. A **separate** corpus: recorded sessions only, marked by a second
+  person. DRC-4542 refuses the conflation in terms and the corpora genuinely differ.
+- DRC-4508's resume-capture criterion. Capture work, not code, needing live Claude and Codex
+  sessions resumed and observed.
+
+**Stage 1, in #317, repair what the branch shipped.** The false comment at `next-cockpit.js:1337`;
+a contract test coupling the enabled path to the handler's existence. Two DRC-4533 items ride free
+because the suite re-runs for the byte re-pin anyway: `save()`'s failure arm, and SECURITY.md naming
+the semantic-history store as a carrier of goal text.
+
+**Stage 2, in #317, what DEC-18 unblocked.** The baseline-conflict block, then the Intent log. The
+Intent log **is** DRC-4533's read-surface item; fold it and close it there rather than answering one
+question twice. Settle its retention bound in the same PR or it silently loses rows.
+
+**Stage 3, in #317, remainders.** The re-entry limit beside the block; DRC-4533's newline product
+call, dead `holds()`, and the off-switch absence reason.
+
+**Stage 4, the overlay, in this strict internal order.** Producer and handler, then publish the five
+`assessment_*` fields on the row, then admit them to the allowlist with `SCHEMA_VERSION` 2 to 3 and
+`READABLE_VERSIONS = (1, 2, SCHEMA_VERSION)`. Then DEC-17's count surface and DRC-4512's disclosure.
+Walk the **enabled** state during this PR behind a local, uncommitted flip of `ABSTENTION_CHECK`:
+Mode 2 cannot walk a disabled control, and this branch's record is five defects found by looking at
+the board and none by CI.
+
+**Stage 5, after #312 lands, captain-gated.** Run the abstention check and flip the constant; move
+the issues to `Done`; `sync-project`; the promise-map half of the reconcile in a docs PR, for four
+`extend` and two `new` issues; stamp `docs-synced-through` once from `main`.
+
+**Stage 6, the away case.** DRC-4540, built so adding a lane adds a value rather than changing the
+record's shape, then DRC-4328, DRC-4034 and DRC-4032, then DRC-4541, then DRC-4514.
+
+### What the review overturned, so it is not re-derived
+
+- **Merging #317 finalises nothing.** The #312 draft sits between it and `main`. An earlier draft of
+  this order ended Stage 1 in "merge", which the captain had also forbidden.
+- **A parallel DRC-4533 PR is impossible, not merely conflict-prone.** `annotations.py` does not
+  exist on `proto/operator-cockpit`; six of the nine items edit code this branch adds. A branch cut
+  from the base cannot touch them.
+- **Three of the nine DRC-4533 items are already done** and recorded as ratified step 1 above. Three
+  remain, plus the read-surface item folded into the Intent log.
+- **The two gates are not one.** DEC-17's abstention check takes recorded sessions marked by a
+  second person; DRC-4542's case set admits synthesised cases under cross-agent verification.
+  Sharing one corpus would let a synthesised fixture satisfy a gate written for recorded sessions.
+- **`READABLE_VERSIONS = (1, SCHEMA_VERSION)` re-arms the hazard this branch just fixed.** Bumping to
+  3 yields `(1, 3)` and refuses every v2 store. A test pins `(1, 2)` so it will not pass silently,
+  but the obvious repair is to update the pin to `(1, 3)`, which is the bug. Append, never replace.
+
 ## Owed to Linear
 
 Nothing yet. Every issue this run touches needs, at minimum: a move to `In Progress` when started,

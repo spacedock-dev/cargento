@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, http_api, notifications, observation, records
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
@@ -24,6 +25,7 @@ from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import gemini as gemini_collector
+from cargento_runtime.web import page as frontend_page
 
 from .fixtures import (
     CURSOR_MODEL,
@@ -627,6 +629,57 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(["[broken] collector error: RuntimeError: broken store"], diagnostics)
         # The surviving harness still contributes its sessions.
         self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
+
+
+class ReadingControlIsWiredTest(unittest.TestCase):
+    """The `Ask for a reading` control may not enable without a handler.
+
+    DEC-17 gates the control on a recorded abstention check, and the runtime
+    comment beside it argued one gate was enough: the check cannot be run
+    without a producer, so a recorded pass implies one exists. True, and not
+    the whole implication. A pass implies a producer; it does not imply the
+    button is wired to it.
+
+    Measured on this branch: the control shipped with no `reading-ask` arm in
+    the click dispatcher, and `test_next_cockpit` asserted the enabled state
+    renders. So the branch held a tested path to an inert enabled control, and
+    flipping one Python constant would have shipped it. This is the coupling
+    that argument needs, and it is a lexical gate rather than a behavioural one
+    for the same reason the flag oracle is: the page is a string of JavaScript
+    to Python, and the cheap check that cannot go stale beats the rich one that
+    needs a browser.
+    """
+
+    def test_the_enabled_path_is_unreachable_while_no_handler_exists(self) -> None:
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        # Three facts, and only their conjunction is forbidden. Written this way
+        # rather than as an assertion about today's constant so that suppressing
+        # the control, or wiring it, each satisfy the gate without editing it.
+        control = 'data-next-cockpit-action="reading-ask"' in source
+        wired = 'action === "reading-ask"' in source
+        reachable = annotation_store.ABSTENTION_CHECK == annotation_store.ABSTENTION_CHECK_PASSED
+        self.assertFalse(
+            control and reachable and not wired,
+            "next-cockpit.js renders the `Ask for a reading` control and "
+            "annotations.ABSTENTION_CHECK is `passed`, but the click dispatcher has no "
+            "`reading-ask` arm: the control would enable and do nothing. Wire the handler "
+            "in the same change that records the pass, or suppress the control.",
+        )
+
+    def test_the_gate_fires_when_the_check_passes_with_no_handler(self) -> None:
+        # The mutation, run rather than described: the test above is a tripwire
+        # and a tripwire nobody has stepped on is not known to work. This walks
+        # the forbidden state deliberately and asserts the assertion fails.
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        if 'action === "reading-ask"' in source:
+            self.skipTest("the handler now exists, so the forbidden state is unreachable")
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            self.test_the_enabled_path_is_unreachable_while_no_handler_exists()
 
 
 class LauncherContractTest(unittest.TestCase):

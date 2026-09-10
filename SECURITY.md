@@ -1545,6 +1545,13 @@ under the configured state directory, and can invoke the installed Codex CLI for
 This is separate from quota fetching and from the session-history switch. The prototype retains
 its own semantic-history store; `--forget` continues to delete only the session-history store.
 
+That store carries session text in both directions, and this document did not say so until the
+annotation work re-counted which files hold what a person typed. A fact's `summary` is bounded at
+240 characters and holds the operator's own directive where the fact is a steer or an observer goal;
+a result fact's `detail` holds up to 4096 characters of the assistant's final answer. So the file is
+a carrier of typed words as well as generated ones, in the same content class as the observer
+sidecar's goal line, and the redaction paragraph below is what stands between it and a credential.
+
 Semantic history redacts recognized credential shapes before publication and persistence.
 Loading an older store also redacts nested values and, if any changed, immediately replaces
 the file atomically with an owner-only copy under the history lock. A read may be the only
