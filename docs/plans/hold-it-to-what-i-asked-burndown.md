@@ -640,9 +640,21 @@ record's shape, then DRC-4328, DRC-4034 and DRC-4032, then DRC-4541, then DRC-45
   after the fact, which found three more gaps and endorsed two choices.
 - **Stage 3: DONE.** `440f302` the re-entry limits, `effe25a` DRC-4533's newline call, dead
   `holds()` and the refutation of its off-switch item.
-- **Stage 2: half done.** `ec3eb48` the baseline-conflict block. The Intent log is what remains of
-  Stages 1 to 3, and its spec is written and adversarially verified.
-- Suite 2782 to 2812 across the run. Every fix mutation-verified.
+- **Stage 2: DONE.** `ec3eb48` the baseline-conflict block, `b1f73db` the Intent log.
+- **Stages 1 to 3 are complete.** What is left of the milestone is Stage 4, the overlay, and it is
+  a captain's call whether it rides #317 or a new PR, which follows from Stage 0.
+- Suite 2782 to 2824 across the run. Every fix mutation-verified.
+
+Three rulings this run made that were not in any issue, recorded because the next reader will hit
+them:
+
+- **The baseline-conflict block detects that you gave a later direction and refuses to say whether
+  it conflicts.** Recorded under DEC-16 in `docs/design-reading-a-session.md`.
+- **The two annotation fields are single-line, on a security argument.** Admitting newlines would
+  have relaxed the control-character scrub that stops a pasted PEM body surviving.
+- **The Intent log reads the annotation store and never session history.** `clear` removes an
+  entry; a history observation is never retro-deleted, so a history-backed log would republish
+  words the reader withdrew. Both halves are now asserted in `test_next_intent`.
 
 ### What the review overturned, so it is not re-derived
 
