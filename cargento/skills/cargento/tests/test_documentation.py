@@ -2013,12 +2013,13 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 self.assertIn(lane, self.DOC)
 
     def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
-        # The test above derives only `Capture`/`Restore` names, so these two
-        # survive a redraw with nothing deriving their rows. Renaming either
+        # The test above derives only `Capture`/`Restore` names, so these
+        # three survive a redraw with nothing deriving their rows. Renaming any
         # would otherwise leave the table citing a symbol that is gone.
         for name, lane in (
             ("next-controls.js", "nextControlsProjectState"),
             ("next-workstream.js", "nextWorkstreamCollapsed"),
+            ("next-cockpit.js", "nextCockpitHeldDrafts"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
