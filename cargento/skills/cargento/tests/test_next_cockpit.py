@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import shutil
 import unittest
 from typing import Any
@@ -4688,6 +4689,13 @@ __dashboard.sessions[0].annotation_revision = 2;
 __dashboard.sessions[0].annotation_revision_count = 2;
 __dashboard.sessions[0].annotation_at = 100;
 __dashboard.sessions[0].annotation_binding_why = "";
+// Settled, so the baseline block is closed and this test measures the stale
+// line rather than the suppression. Without it the fixture's own user_message
+// facts at 102 and 104 are later directions against an annotation stamped 100,
+// and the departure is correctly demoted - which is a different test's job.
+__dashboard.sessions[0].annotation_settled_at = 300;
+__dashboard.sessions[0].annotation_settled_through = 300;
+__dashboard.sessions[0].annotation_settled_revision = 2;
 // Not a published field: nothing produces a reading, so the backend declares
 // none and the renderer reads whatever a producer would put here.
 __dashboard.sessions[0].annotation_assessment = {
@@ -5128,6 +5136,196 @@ console.log(JSON.stringify(scopes));
         # about. Asserted rather than assumed: it is the reason the empty case
         # above is legal.
         self.assertEqual([], out["codex:gone"]["rendered"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitBaselineConflictTest(NextPageJsHarness):
+    """DRC-4508's baseline-conflict block, and the departure it suppresses.
+
+    The block DETECTS that a later direction exists and refuses to say whether
+    it conflicts. Deciding that is a reading of two prose strings, which DEC-15
+    refused and DEC-18 permits only behind preconditions that are not met, so
+    the reader settles it and the reading is demoted until they do.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    # The fixture's own facts: user_message fo-a at 104 and fo-b at 102 for
+    # codex:focus-1, so an annotation stamped 100 has two later directions and
+    # one stamped 200 has none.
+    def held(self, *, at: float, settled: str = "", assessment: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            f"""
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = {at};
+__dashboard.sessions[0].annotation_binding_why = "";
+{settled}
+{assessment}
+navigateNext({{view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"}});
+await __settle();
+const html = __els.app.innerHTML;
+const block = (html.match(
+  /<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({{
+  block,
+  rows: (block.match(/class="next-cockpit-conflict-row"/g) || []).length,
+  settle: (block.match(/data-arg="([0-9.]+)"/) || [])[1] || "",
+  result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1] || "",
+}}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    ASSESSMENT = """
+__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
+  goal:{result:"departure", detail:"It changed the board.", cites:["fo-a"]}}};
+"""
+
+    def test_nothing_typed_renders_no_block_at_all(self) -> None:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_at = null;
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+console.log(JSON.stringify({has: __els.app.innerHTML.includes("A LATER DIRECTION")}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # No baseline, so no question about one. It falls out of the layout
+        # rather than needing a rule.
+        self.assertFalse(out["has"])
+
+    def test_a_later_direction_is_counted_and_shown_without_being_judged(self) -> None:
+        out = self.held(at=100)
+
+        block = out["block"]
+        assert isinstance(block, str)
+        self.assertIn("2 directions you gave after you saved the words above", block)
+        self.assertEqual(2, out["rows"])
+        # Detected, not judged. The block must never claim the later direction
+        # conflicts, because nothing here can read that.
+        self.assertIn("Nothing here decides whether it changes what you are asking for", block)
+        # On the visible text, not the markup: the class names carry the word
+        # `conflict` and a reader never sees those. What the reader must never
+        # be told is that Cargento found one, because nothing here can read
+        # that.
+        visible = re.sub(r"<[^>]*>", " ", block).lower()
+        self.assertNotIn("conflict", visible)
+        # Both choices, and the honest note about the one that mints nothing.
+        self.assertIn("The baseline still applies", block)
+        self.assertIn("Retype the baseline", block)
+        self.assertIn("Retyping clears this only if the words change", block)
+
+    def test_the_settle_choice_carries_the_moment_the_reader_was_shown(self) -> None:
+        out = self.held(at=100)
+        # The newest candidate's own time, not the clock: the mark has to be
+        # the moment they actually looked at.
+        self.assertEqual("104", out["settle"])
+
+    def test_a_later_direction_demotes_a_departure_rather_than_filtering_it(self) -> None:
+        open_case = self.held(at=100, assessment=self.ASSESSMENT)
+        settled = self.held(
+            at=100,
+            assessment=self.ASSESSMENT,
+            settled="__dashboard.sessions[0].annotation_settled_through = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_revision = 1;\n",
+        )
+
+        # Demoted in the row, not filtered from the departures list: filtering
+        # would leave the word `departure` rendered above it, which is the
+        # drift verdict DRC-4511 forbids.
+        self.assertEqual("not verifiable from available evidence", open_case["result"])
+        self.assertEqual("departure", settled["result"])
+
+    def test_a_settled_baseline_says_when_and_against_which_revision(self) -> None:
+        out = self.held(
+            at=100,
+            settled="__dashboard.sessions[0].annotation_settled_through = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_revision = 1;\n",
+        )
+
+        block = out["block"]
+        assert isinstance(block, str)
+        self.assertIn("You settled this", block)
+        self.assertIn("against revision 1", block)
+        # And it says the question can come back.
+        self.assertIn("A direction given after that will raise it again", block)
+
+    def test_nothing_said_since_is_not_the_same_as_nothing_read(self) -> None:
+        quiet = self.held(at=200)
+
+        block = quiet["block"]
+        assert isinstance(block, str)
+        self.assertIn("Nothing you have said since you saved these words", block)
+        self.assertNotIn("unknown, not none", block)
+
+    def test_an_unread_record_says_unknown_rather_than_none_and_still_demotes(self) -> None:
+        """The three-state distinction the record block already draws.
+
+        The block must not read an unread record as a quiet one. Checked here
+        because a reader is owed the difference, and because the review of this
+        design asked whether the two halves of the tab could disagree: the
+        block saying "unread" while the reading still carried a departure.
+
+        They cannot, and the reason is worth stating rather than assuming. It
+        is not this gate. With the context never fetched `entries` is empty, so
+        there are no candidates and the baseline gate stays shut; what demotes
+        the departure is DEC-17's rule 3, because a citation resolves against
+        the entries the page holds and there are none. The gate is for a record
+        that WAS read and holds a later direction. Two rules, one outcome, and
+        neither is doing the other's job.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
+  goal:{result:"departure", detail:"It changed the board.", cites:["fo-a"]}}};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+// The context never came back, which is the state the record block already
+// separates from an empty one.
+nextCockpitContexts.clear();
+renderNext();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  block: (html.match(/<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0],
+  result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1] || "",
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        block = out["block"]
+        assert isinstance(block, str)
+        self.assertIn("has not been read yet", block)
+        self.assertIn("unknown, not none", block)
+        # And the departure does not stand on a record nobody read.
+        self.assertEqual("not verifiable from available evidence", out["result"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

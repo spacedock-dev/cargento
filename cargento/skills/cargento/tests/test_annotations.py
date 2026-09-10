@@ -402,6 +402,152 @@ class AnnotationStoreTest(unittest.TestCase):
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
 
 
+class SettlingALaterDirectionTest(unittest.TestCase):
+    """The reader's answer to an unresolved baseline conflict.
+
+    DEC-16 forbids writing into a session, so the annotation store is the only
+    place Cargento holds a decision the reader made. The mark is three scalars
+    and no prose, which is what keeps it out of DEC-15b's admission path.
+    """
+
+    NOW = 1_800_000_000.0
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.config = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(self.root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+        )
+        self.state = build_runtime_state(self.config, started=self.NOW)
+
+    def _typed(self) -> None:
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s1", goal="Ship the cockpit", now=self.NOW
+        )
+
+    def _published(self) -> dict[str, Any]:
+        return annotation_store.published(
+            annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s1")
+        )
+
+    def test_a_settlement_records_what_it_answered_and_the_revision_it_rested_on(self) -> None:
+        self._typed()
+
+        landed = annotation_store.settle(
+            self.config,
+            self.state,
+            "pi",
+            "s1",
+            through=self.NOW + 60,
+            now=self.NOW + 120,
+        )
+
+        self.assertTrue(landed)
+        published = self._published()
+        self.assertEqual(self.NOW + 120, published["settled_at"])
+        self.assertEqual(self.NOW + 60, published["settled_through"])
+        # The baseline it answered about. A settlement that does not carry it
+        # cannot be understood on return, which is DEC-18's amendment.
+        self.assertEqual(1, published["settled_revision"])
+
+        # Again at a LATER revision, because asserting only against revision 1
+        # cannot tell "the revision it rested on" from a hardcoded 1 — measured:
+        # that mutation survived a version of this test that stopped above.
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s1", goal="Ship it twice", now=self.NOW + 200
+        )
+        annotation_store.settle(
+            self.config, self.state, "pi", "s1", through=self.NOW + 300, now=self.NOW + 300
+        )
+
+        self.assertEqual(2, self._published()["settled_revision"])
+
+    def test_the_client_cannot_settle_the_future(self) -> None:
+        self._typed()
+
+        annotation_store.settle(
+            self.config,
+            self.state,
+            "pi",
+            "s1",
+            through=self.NOW + 10_000_000,
+            now=self.NOW + 5,
+        )
+
+        # Clamped to now. Unclamped, one local POST would disable the block for
+        # this session forever; clamped, the damage is "settled as of now" and
+        # any later direction re-opens it.
+        self.assertEqual(self.NOW + 5, self._published()["settled_through"])
+
+    def test_settling_a_session_with_nothing_typed_is_refused(self) -> None:
+        landed = annotation_store.settle(
+            self.config, self.state, "pi", "s1", through=self.NOW, now=self.NOW
+        )
+
+        self.assertFalse(landed)
+        self.assertIsNone(self._published()["settled_at"])
+
+    def test_a_non_numeric_through_is_refused_including_a_bool(self) -> None:
+        self._typed()
+
+        for value in (True, "now", None, {"at": 1}):
+            with self.subTest(value=value):
+                self.assertFalse(
+                    annotation_store.settle(
+                        self.config, self.state, "pi", "s1", through=value, now=self.NOW
+                    )
+                )
+        self.assertIsNone(self._published()["settled_at"])
+
+    def test_a_new_revision_carries_the_settlement_rather_than_discarding_it(self) -> None:
+        self._typed()
+        annotation_store.settle(self.config, self.state, "pi", "s1", through=self.NOW, now=self.NOW)
+
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s1", goal="Ship it twice", now=self.NOW + 200
+        )
+
+        published = self._published()
+        self.assertEqual(2, published["revision"])
+        # The mark survives and still names revision 1, which is what it
+        # answered about. The block clears by the new revision's own stamp.
+        self.assertEqual(self.NOW, published["settled_through"])
+        self.assertEqual(1, published["settled_revision"])
+
+    def test_a_settlement_written_by_hand_into_the_file_is_not_trusted(self) -> None:
+        self._typed()
+        path = Path(annotation_store.store_path(self.config))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["entries"][0]["settled"] = {"at": True, "through": 1.0, "revision": 1}
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        # A fresh process: nothing cached.
+        restarted = build_runtime_state(self.config, started=self.NOW)
+        entry = annotation_store.find(annotation_store.active(self.config, restarted), "pi", "s1")
+
+        assert entry is not None
+        # `isinstance(True, int)` is true, so a bool would otherwise become a
+        # settlement at the epoch. The words survive; only the mark is dropped.
+        self.assertIsNone(annotation_store.published(entry)["settled_at"])
+        self.assertEqual("Ship the cockpit", entry["revisions"][-1]["goal"])
+
+    def test_the_mark_survives_a_restart(self) -> None:
+        self._typed()
+        annotation_store.settle(
+            self.config, self.state, "pi", "s1", through=self.NOW, now=self.NOW + 1
+        )
+
+        restarted = build_runtime_state(self.config, started=self.NOW + 9)
+        entry = annotation_store.find(annotation_store.active(self.config, restarted), "pi", "s1")
+
+        assert entry is not None
+        self.assertEqual(self.NOW + 1, annotation_store.published(entry)["settled_at"])
+
+
 class AnUnwritableStoreIsReportedRatherThanSwallowedTest(unittest.TestCase):
     """DRC-4533: `save()`'s failure arm and the `persisted:false` it feeds.
 

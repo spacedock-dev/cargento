@@ -2678,6 +2678,55 @@ class AnnotateRouteTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_settling_a_later_direction_is_a_third_arm_on_this_route(self) -> None:
+        """DRC-4508's baseline-conflict block writes its answer here.
+
+        A third arm rather than a route of its own: the subject is the same
+        session's annotation and the reply shape is the same, so the POST
+        inventory's width is unchanged.
+        """
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            typed, _ = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+            settled, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "settle_through": 1.0}
+                ).encode(),
+            )
+
+        self.assertEqual((200, 200), (typed, settled))
+        self.assertIs(True, json.loads(body)["persisted"])
+        entry = annotation_store.find(annotation_store.load(config), "claude", "abcd1234")
+        assert entry is not None
+        mark = entry.get("settled")
+        assert mark is not None
+        self.assertEqual(1.0, mark["through"])
+        self.assertEqual(1, mark["revision"])
+
+    def test_settling_a_session_nobody_annotated_answers_persisted_false(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "settle_through": 1.0}
+                ).encode(),
+            )
+
+        self.assertEqual(200, status)
+        # There is no baseline to answer about, so nothing is written and the
+        # reply says so rather than minting an empty annotation to hang a mark on.
+        self.assertIs(False, json.loads(body)["persisted"])
+        self.assertEqual((), annotation_store.load(config))
+
     def test_an_unwritable_store_answers_ok_with_persisted_false(self) -> None:
         """DRC-4533: the reply the page's `unpersisted` cue is written against.
 

@@ -85,6 +85,42 @@ the steer box holds a note in the reader's browser rather than sending one. Auto
 withheld, including when a later instruction contradicts the annotation: that is an unresolved
 baseline conflict for the person to settle, not agent drift for the board to declare.
 
+### What is detected, and what is not
+
+Built 2026-09-10. The distinction is the whole of the block, so it is written down rather than left
+in the code.
+
+**Detected: that you gave a later direction.** A person-authored entry in the observed record whose
+time is after the revision you last saved and after anything you have already settled. Both halves
+are available without a model: the annotation carries an epoch, every fact carries its own, and
+`nextReadingPersonAuthored` already owns the authorship question, so rule 7 and this cannot
+disagree about who wrote a row.
+
+**Not detected: whether it conflicts.** Deciding that a later instruction contradicts a typed goal
+is a reading of two prose strings, which DEC-15 refused and DEC-18 permits only behind four
+preconditions that are not met. So the block asks and the reader answers. A block that claimed to
+have found a conflict would be the false claim this whole tab exists to avoid, and the word
+conflict does not appear in anything a reader sees.
+
+**The suppression keys on the detected superset**, not on a declared conflict. Any unsettled later
+direction demotes a departure to `not verifiable from available evidence`, inside
+`nextCockpitReadingCriterion` with every other rule rather than as a filter over the departures
+list: filtering would leave the word `departure` rendered in the row above, which is the verdict
+DRC-4511 forbids, on screen. Over-suppression is the safe direction, and the cost is a suppressed
+departure on a session where the reader steered without contradicting themselves, which one click
+clears.
+
+**The answer is a settlement**, three scalars in the annotation store: when the reader answered,
+what they answered through, and the revision it rested on. Not a revision field, because a revision
+is immutable so an assessment citing revision 1 cannot be re-pointed. Not in the session, because
+this ruling forbids that. `through` comes from the client, since the moment settled is the one the
+reader was looking at, and is clamped to now so a forged value cannot disable the block forever.
+
+**The window is the record's own.** A direction older than the tail `io.read_tail` keeps is not in
+the entries and cannot be counted, so on a long session the suppression can release because the
+evidence aged out rather than because the question was answered. The block states what it read
+rather than implying it read everything.
+
 ## DEC-17: the shape contract
 
 DEC-15 requires an evaluation rubric "before automatic assessments are enabled". A reader requested

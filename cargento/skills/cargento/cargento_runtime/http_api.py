@@ -1112,9 +1112,26 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(400)
             return
         state = application.state
+        settle_through = payload.get("settle_through")
         if payload.get("clear") is True:
             persisted = annotation_store.clear(
                 config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
+            )
+        elif settle_through is not None:
+            # A third arm on this route rather than a route of its own: the
+            # subject is the same session's annotation, the reply shape is the
+            # same, and `test_history`'s POST inventory is a contract on the
+            # surface's WIDTH. The store clamps `settle_through` to now and
+            # refuses a bool, so nothing here needs to re-check the number
+            # beyond refusing what is not one.
+            persisted = annotation_store.settle(
+                config,
+                state,
+                harness,
+                sid,
+                through=settle_through,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
             )
         else:
             persisted = annotation_store.annotate(

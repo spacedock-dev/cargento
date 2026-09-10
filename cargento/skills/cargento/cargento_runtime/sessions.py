@@ -533,6 +533,13 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_revision_count": 0,
         "annotation_at": None,
         "annotation_binding_why": "",
+        # The reader's answer to "does a later direction change what you asked
+        # for", as three scalars: when they answered, what they answered
+        # through, and the revision it rested on. None is nobody having
+        # answered, which is the ordinary case and not an error.
+        "annotation_settled_at": None,
+        "annotation_settled_through": None,
+        "annotation_settled_revision": None,
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and

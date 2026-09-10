@@ -35,7 +35,7 @@ import contextlib
 import json
 import os
 import time
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import records
@@ -107,12 +107,40 @@ class Revision(TypedDict):
     output: str
 
 
+class Settlement(TypedDict):
+    """The reader's answer to "does a later direction change what you asked for".
+
+    Not a `Revision` field, because a revision is immutable so that an
+    assessment citing revision 1 cannot be re-pointed at text it never saw. A
+    settlement is about a revision rather than part of one, so it sits beside
+    them and carries the revision it rested on: a settlement that does not
+    record its own baseline cannot be understood on return, which is the
+    amendment made by
+    [DEC-18](docs/design-reading-a-session.md#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first)
+    to every raise.
+
+    `through` is a moment, not a fact id. The reader is settling everything
+    they had said by the time they looked, and a list of ids would go stale
+    against a record whose window moves.
+
+    Called a settlement rather than a reconciliation deliberately. `reconcile`
+    already names two unrelated things in this runtime, `reconcile_interval_sec`
+    and the event lane's `reconcile_required`, and a third meaning would send
+    a reader grepping into the wrong subsystem.
+    """
+
+    at: float
+    through: float
+    revision: int
+
+
 class Annotation(TypedDict):
     """One session's words, newest revision last."""
 
     harness: str
     sid: str
     revisions: tuple[Revision, ...]
+    settled: NotRequired[Settlement]
 
 
 def store_path(config: RuntimeConfig) -> str:
@@ -151,6 +179,27 @@ def _revision(value: Any, cap: int) -> Revision | None:
     }
 
 
+def _settlement(value: Any) -> Settlement | None:
+    """One untrusted settlement, or nothing.
+
+    Bools are refused before the numbers are read, for `_revision`'s reason:
+    `isinstance(True, int)` is true, so a `true` in the file would otherwise
+    become revision 1 settled at the epoch.
+    """
+    if not isinstance(value, dict):
+        return None
+    at = value.get("at")
+    through = value.get("through")
+    revision = value.get("revision")
+    if isinstance(at, bool) or isinstance(through, bool) or isinstance(revision, bool):
+        return None
+    if not isinstance(at, (int, float)) or not isinstance(through, (int, float)):
+        return None
+    if not isinstance(revision, int) or revision < 1:
+        return None
+    return {"at": float(at), "through": float(through), "revision": revision}
+
+
 def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None:
     """One untrusted record as an annotation, or nothing.
 
@@ -171,7 +220,11 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     kept = tuple(sorted(parsed, key=lambda rev: rev["n"])[-revision_cap:]) if revision_cap else ()
     if not kept:
         return None
-    return {"harness": harness, "sid": sid, "revisions": kept}
+    entry: Annotation = {"harness": harness, "sid": sid, "revisions": kept}
+    settled = _settlement(value.get("settled"))
+    if settled is not None:
+        entry["settled"] = settled
+    return entry
 
 
 def _bounded(entries: Iterable[Annotation], limit: int) -> tuple[Annotation, ...]:
@@ -321,6 +374,7 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
     reads as a revision rather than as none.
     """
     latest: Revision | None = entry["revisions"][-1] if entry else None
+    settled = entry.get("settled") if entry else None
     goal = latest["goal"] if latest else ""
     output = latest["output"] if latest else ""
     return {
@@ -332,6 +386,12 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "revision_count": len(entry["revisions"]) if entry else 0,
         "at": latest["at"] if latest else None,
         "binding_why": binding_why,
+        # Three scalars and no prose, which is what keeps this out of DEC-15b's
+        # admission path: `history.OBSERVATION_FIELDS` is a closed tuple and a
+        # new published field does not enter the store by being published.
+        "settled_at": settled["at"] if settled else None,
+        "settled_through": settled["through"] if settled else None,
+        "settled_revision": settled["revision"] if settled else None,
     }
 
 
@@ -414,6 +474,13 @@ def annotate(
                 "sid": key[1],
                 "revisions": tuple(kept_revisions),
             }
+            # Carried, not cleared. A settlement records what the reader had
+            # already answered, and retyping the baseline clears the block by
+            # its own stamp rather than by discarding that history: the new
+            # revision's `at` is later than the directions that raised it.
+            carried = existing.get("settled")
+            if carried is not None:
+                updated["settled"] = carried
         else:
             updated = {
                 "harness": key[0],
@@ -434,6 +501,65 @@ def annotate(
         # one session both read the pre-write store, both mint revision n+1, and
         # the later write erases the earlier one. Holding the lock across the
         # write costs one file write and closes the whole in-process window.
+        return save(config, bounded, diagnostic_sink=diagnostic_sink)
+
+
+def settle(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    harness: Any,
+    sid: Any,
+    *,
+    through: Any,
+    now: float | None = None,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> bool:
+    """Record that the reader has answered a later direction. Returns whether it landed.
+
+    `through` comes from the client, because the moment being settled is the
+    one the reader was looking at and this process has no access to the
+    project-context facts that produced it. It is clamped to `now`: unclamped,
+    a single local POST with a far-future value would silently disable the
+    block for that session forever, and clamping bounds the damage to "settled
+    as of now", which any later direction re-opens.
+
+    Settling a session with nothing typed is refused. The mark is an answer
+    about a baseline, and there is no baseline to answer about.
+    """
+    if not config.annotations_enabled:
+        return False
+    key = _key(harness, sid)
+    if not key[0] or not key[1]:
+        return False
+    if isinstance(through, bool) or not isinstance(through, (int, float)):
+        return False
+    stamp = time.time() if now is None else now
+
+    with state.annotation_lock:
+        # From disk under the lock, for `annotate`'s reason: a save made by a
+        # second dashboard since this one's last collection is carried forward
+        # rather than written away.
+        current = load(config)
+        existing = find(current, *key)
+        if existing is None:
+            return False
+        updated: Annotation = {
+            "harness": existing["harness"],
+            "sid": existing["sid"],
+            "revisions": existing["revisions"],
+            "settled": {
+                "at": stamp,
+                "through": min(float(through), stamp),
+                "revision": existing["revisions"][-1]["n"],
+            },
+        }
+        others = [e for e in current if (e["harness"], e["sid"]) != key]
+        bounded = _bounded([*others, updated], config.annotation_max_sessions)
+        # Before the write and inside the lock, as `annotate` and `clear` both
+        # do. `active()` serves the cached copy when it is not None, and the
+        # endpoint reads back through it on the same request, so a settle that
+        # skipped this would answer with the mark it had just written missing.
+        state.annotations = _stored(bounded)
         return save(config, bounded, diagnostic_sink=diagnostic_sink)
 
 

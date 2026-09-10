@@ -61,7 +61,8 @@ function nextCockpitAnnotation(session){
      producer ever fills it, and `base_session` is not asked to declare a
      field for an object that does not exist. */
   const fields = ["goal", "goal_why", "output", "output_why", "revision",
-    "revision_count", "at", "binding_why", "assessment"];
+    "revision_count", "at", "binding_why", "settled_at", "settled_through",
+    "settled_revision", "assessment"];
   const known = fields.some(name => {
     const value = session[`annotation_${name}`];
     return value !== undefined && value !== null && value !== "" && value !== 0;
@@ -1111,6 +1112,9 @@ const NEXT_READING_ASSISTANT_ONLY =
   "that the requested output exists.";
 const NEXT_READING_UNCITED =
   "Nothing resolvable was cited, so there is no entry to read this against.";
+const NEXT_READING_BASELINE_OPEN =
+  "You have given a later direction that is still unsettled, so this reads against a baseline " +
+  "that may not be the one you want.";
 const NEXT_READING_MALFORMED =
   "The reading did not return a usable result for this constraint.";
 
@@ -1134,7 +1138,36 @@ function nextReadingCitations(raw, entries){
     entry && String(entry.type || "").trim() && String(entry.source || "").trim());
 }
 
-function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit){
+/* What a later direction is, and what it is not.
+
+   DETECTED: that you gave one. A person-authored entry in the observed record
+   whose time is after the revision you last saved, and after anything you have
+   already settled. Both halves are available — `annotation_at` is an epoch and
+   every fact carries its own — and `nextReadingPersonAuthored` already owns
+   the authorship question, so rule 7 and this cannot disagree about who wrote
+   a row.
+
+   NOT DETECTED: whether it conflicts. Deciding that a later instruction
+   contradicts your typed goal is a reading of two prose strings, which is
+   exactly the model evaluation refused by
+   [DEC-15](docs/design-reading-a-session.md#dec-15-the-floor-and-the-overlay)
+   and permitted only behind four unmet preconditions by
+   [DEC-18](docs/design-reading-a-session.md#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first). So the block asks
+   rather than answers, and the reader settles it. A block that claimed to
+   detect a semantic conflict would be the false claim this whole tab exists to
+   avoid. */
+function nextCockpitConflictCandidates(annotation, entries){
+  const typedAt = nextNumber(annotation && annotation.at);
+  if(typedAt == null) return [];
+  const settled = nextNumber(annotation && annotation.settled_through);
+  const after = settled == null ? typedAt : Math.max(typedAt, settled);
+  return (entries || []).filter(entry => {
+    const at = nextNumber(entry && entry.at);
+    return at != null && at > after && nextReadingPersonAuthored(entry);
+  });
+}
+
+function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled){
   const citations = nextReadingCitations(raw, entries);
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
   let result = NEXT_READING_RESULTS.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
@@ -1163,6 +1196,22 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit){
     // printed the identical sentence twice, the second time prefixed
     // `limit ·`.
     why = "";
+  }
+  if(result !== NEXT_READING_UNVERIFIABLE && unsettled){
+    /* DRC-4511: an unresolved baseline conflict never becomes an agent-drift
+       verdict. A demotion rather than a filter over `shape.departures`, for
+       the reason the shape-contract comment above gives: filtering would
+       leave the word `departure` rendered in the row above it, which is the
+       verdict the rule forbids, on screen.
+
+       Keyed on the detected superset — any unsettled later direction — rather
+       than on a declared conflict, because over-suppression is the safe
+       direction argued for everywhere else by
+       [DEC-17](docs/design-reading-a-session.md#dec-17-the-shape-contract). The cost is a suppressed
+       departure on a session where the reader steered without contradicting
+       themselves, and one click clears it. */
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_BASELINE_OPEN;
   }
   const fromPerson = citations.filter(nextReadingPersonAuthored);
   if(key === "output" && result !== NEXT_READING_UNVERIFIABLE && !fromPerson.length){
@@ -1209,7 +1258,7 @@ function nextCockpitReadingClause(key, row, annotation, historical){
   return String(annotation && annotation[key] || "").trim();
 }
 
-function nextCockpitReadingShape(raw, annotation, entries, limit){
+function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
   const source = raw && typeof raw === "object" ? raw : {};
   const rows = source.criteria && typeof source.criteria === "object" ? source.criteria : {};
   const revisionRead = nextNumber(source.revision_read);
@@ -1224,7 +1273,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit){
     .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
     .map(([key, label]) => nextCockpitReadingCriterion(
       key, label, nextCockpitReadingClause(key, rows[key], annotation, historical),
-      rows[key], entries, key === "output" ? limit : ""));
+      rows[key], entries, key === "output" ? limit : "", unsettled));
   return {
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
@@ -1326,7 +1375,7 @@ function nextCockpitDepartures(shape){
     `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p></section>`;
 }
 
-function nextCockpitReading(session, annotation, entries, model, observed){
+function nextCockpitReading(session, annotation, entries, model, observed, unsettled){
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = String(session.harness || "") === "pi"
     ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
@@ -1365,7 +1414,7 @@ function nextCockpitReading(session, annotation, entries, model, observed){
         'requires has not been run, so a reading cannot be asked for yet. The evidence above ' +
         'stays readable without one.</p>') + '</section>' + nextCockpitDepartures(null);
   }
-  const shape = nextCockpitReadingShape(raw, annotation, entries, limit);
+  const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
   /* Journey step 3: a reading offered before the session ended says so. The
      end evidence is the two-axis derivation next door, so the scope sentence
      and the HOW IT LANDED cards cannot disagree about whether it ended. */
@@ -1440,6 +1489,74 @@ function nextCockpitLanded(observed){
    `nextSessionRaiseControl`, said here because a single session is the whole
    subject of this tab and rendering nothing reads as "no limit" rather than as
    "not this session". */
+/* The block, gated on the annotation alone rather than on a reading existing,
+   so a later direction that raises no departure falls out of the layout rather
+   than needing a rule. It sits above the reading because it constrains one,
+   and below the observed record because it cites rows from it.
+
+   The window is the record's own. A direction older than the tail
+   `io.read_tail` keeps is not in `entries` and cannot be counted here, so the
+   block says what it read rather than implying it read everything: on a long
+   session the suppression can release because the evidence aged out, and that
+   is a limit to state rather than a bug to hide.
+
+   Three states, and the unread one is not silence. `nextCockpitWorkAbsence`
+   owns that wording so the two blocks cannot word it differently. */
+function nextCockpitConflict(session, annotation, source){
+  const typed = String(annotation && annotation.goal || "").trim() ||
+    String(annotation && annotation.output || "").trim();
+  if(!typed) return "";
+  const header = '<section class="next-cockpit-conflict"><header>' +
+    '<h2>A LATER DIRECTION</h2></header>';
+  const steer = '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
+    'what you are asking for. That is yours, and Cargento does not write into the session ' +
+    'either way.</p></section>';
+  if(source.state !== "read" && source.state !== "empty"){
+    return `${header}<p class="next-cockpit-conflict-why">` +
+      `${esc(nextCockpitWorkAbsence(source))} So whether you have given a later direction is ` +
+      'unknown, not none.</p>' + steer;
+  }
+  const pending = nextCockpitConflictCandidates(annotation, source.all || source.entries);
+  const settledAt = nextNumber(annotation && annotation.settled_at);
+  if(!pending.length){
+    if(settledAt == null){
+      return `${header}<p class="next-cockpit-conflict-why">Nothing you have said since you ` +
+        'saved these words is in the record read above.</p>' + steer;
+    }
+    const age = nextDurationSince(settledAt);
+    const revision = nextNumber(annotation && annotation.settled_revision);
+    return `${header}<p class="next-cockpit-conflict-settled">You settled this` +
+      `${age == null ? "" : ` ${esc(age)} ago`}` +
+      `${revision == null ? "" : `, against revision ${revision}`}. A direction given after ` +
+      'that will raise it again.</p>' + steer;
+  }
+  const rows = pending.slice(-NEXT_COCKPIT_WORK_ROWS).map(entry => {
+    const age = nextDurationSince(entry.at);
+    return '<div class="next-cockpit-conflict-row">' +
+      `<span class="next-cockpit-conflict-text">${esc(entry.summary)}</span>` +
+      `<span class="next-cockpit-conflict-at">${esc(age == null ? "time not published" :
+        `${age} ago`)}</span></div>`;
+  }).join("");
+  const count = pending.length;
+  return `${header}<p class="next-cockpit-conflict-open">${count} ` +
+    `${count === 1 ? "direction" : "directions"} you gave after you saved the words above, ` +
+    'in the part of the record read here.</p>' + rows +
+    '<div class="next-cockpit-conflict-choices">' +
+    '<button type="button" data-next-cockpit-action="conflict-settle" ' +
+    `data-arg="${esc(String(pending[pending.length - 1].at || 0))}" ` +
+    `data-next-focus="conflict-settle:${esc(sessKey(session))}">The baseline still applies` +
+    '</button>' +
+    '<button type="button" data-next-cockpit-action="conflict-retype" ' +
+    `data-next-focus="conflict-retype:${esc(sessKey(session))}">Retype the baseline</button>` +
+    '</div>' +
+    /* Said plainly because the store mints no revision for unchanged text, so
+       a reader who re-reads their goal, decides it still stands and saves it
+       again would find the block unmoved and no way out of it. The other
+       button is that way out. */
+    '<p class="next-cockpit-conflict-why">Retyping clears this only if the words change. If ' +
+    'they still stand, say so with the other choice.</p>' + steer;
+}
+
 function nextCockpitHeldReEntry(session){
   if(!session) return "";
   const harness = String(session.harness || "");
@@ -1496,8 +1613,15 @@ function nextCockpitHeldTo(group, observation){
   const observed = nextCockpitFocusedObserved(group, nextCockpitObservedProject(group));
   /* The design's order inside this tab: what you asked for, then the reading
      of it, then the departures it raised, then how it landed. */
+  /* Above the reading because it constrains one, below the record because it
+     cites rows from it. The same open set gates both, so the block and the
+     demotion cannot disagree about whether a baseline is settled. */
+  const unsettled = Boolean(
+    nextCockpitConflictCandidates(annotation, workSource.all || entries).length);
   const evidence = nextCockpitWorkEvidence(session, workSource) +
-    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group), observed) +
+    nextCockpitConflict(session, annotation, workSource) +
+    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group), observed,
+      unsettled) +
     nextCockpitLanded(observed);
   const cap = nextCockpitHeldCap();
   const revision = nextProjectRevisionLine(annotation) || "No revision saved yet";
@@ -1522,6 +1646,29 @@ function nextCockpitHeldTo(group, observation){
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
     binding + ended + nextCockpitHeldReEntry(session) + '</section>' + evidence;
+}
+
+/* The reader's answer, posted to the same route their words go to. `through`
+   is the newest direction they were shown, not `Date.now()`: the mark has to
+   be the moment they actually looked at, and the store clamps it to now so a
+   forged value cannot disable the block forever. */
+async function nextCockpitConflictSettle(session, through){
+  try{
+    const response = await fetch("/api/annotate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid,
+        settle_through: through}),
+    });
+    if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
+    const saved = await response.json();
+    if(!saved || saved.ok !== true) throw new Error("settle not confirmed");
+    await refreshNext();
+  }catch(_error){
+    // The block stays open, which is the safe direction: a settlement that did
+    // not land must not read as one that did.
+    renderNext();
+  }
 }
 
 async function nextCockpitHeldSave(session, kind){
@@ -2390,6 +2537,21 @@ document.addEventListener("click", event => {
     event.preventDefault();
     navigateNext({view:"project",project:group.label,focus:nextRoute.focus || null,tab});
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
+    return;
+  }
+  if(action === "conflict-settle" || action === "conflict-retype"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    if(action === "conflict-retype"){
+      /* No write. Cargento cannot author the reader's words, and prefilling
+         the field from a fact summary would put a harness-published string in
+         the box the stylesheet labels "your words". Moving the caret there is
+         the whole of it. */
+      nextRestoreFocus({named: nextCockpitHeldKey(session, "goal")}, nextAttention);
+      return;
+    }
+    nextCockpitConflictSettle(session, Number(target.dataset.arg || 0));
     return;
   }
   if(action === "held-clear" || action === "held-save"){
