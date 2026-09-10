@@ -4660,6 +4660,9 @@ __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
 __dashboard.sessions[0].annotation_binding_why = "";
 __dashboard.sessions[0].annotation_assessment = {revision_read:1,
+  scope:"mid-flight",
+  scope_text:"This covers only the work so far. The session is still running, so nothing " +
+    "here is a reading of how it ended.",
   criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]}}};
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
@@ -4671,10 +4674,14 @@ console.log(JSON.stringify({running, ended:
 """
         )
 
-        # Then: said while it runs, and not said once it has ended.
+        # Then: said while it runs, and STILL said once the session ends,
+        # because the sentence is the reading's own and a reading describes
+        # the moment it was taken. Keying it on the live row meant a stored
+        # mid-flight reading silently started claiming to cover an ending it
+        # never saw, the instant the session stopped.
         assert isinstance(out, dict)
         self.assertTrue(out["running"])
-        self.assertFalse(out["ended"])
+        self.assertTrue(out["ended"])
 
     def test_a_reading_that_read_an_older_revision_says_so(self) -> None:
         out = self.run_fixture(
@@ -4874,8 +4881,12 @@ console.log(JSON.stringify({
             self.ENTRIES
             + """
 // A reading of revision 1 that found a departure on the expected output.
+// `a1` and not `u1`: an Expected Output verdict needs an entry that
+// DEMONSTRATES work since rule 7 was re-keyed, and the reader's own request
+// is not one. This test is about clauses and revisions, so it cites the
+// entry that lets it be about those.
 const reading = {revision_read:1, criteria:{
-  output:{result:"departure", clause:"six screenshots", detail:"Three exist.", cites:["u1"]}}};
+  output:{result:"departure", clause:"six screenshots", detail:"Three exist.", cites:["a1"]}}};
 // Revision 2 cleared that field and changed the goal.
 const now = {goal:"a different goal", output:"", revision:2};
 const read = nextCockpitReadingShape(reading, now, entries, "");
@@ -4916,7 +4927,10 @@ console.log(JSON.stringify({
 const html = [
   {goal:{result:"met", cites:["u1"]}},
   {goal:{result:"departure", detail:"met the wrong thing", cites:["u1"]}},
-  {goal:{result:"consistent with the evidence read", cites:["u1"]}},
+  // `a1`: a `consistent` citing only the reader's own request is circular
+  // and demotes now. This case exists to show the third result string
+  // rendering, so it cites something that corroborates.
+  {goal:{result:"consistent with the evidence read", cites:["a1"]}},
 ].map(criteria => shape(criteria).criteria.map(nextCockpitReadingCriterionRow).join("")).join("");
 console.log(JSON.stringify({
   // The detail is the producer's prose and is escaped, not filtered: the rule
@@ -4950,8 +4964,8 @@ console.log(JSON.stringify({
             self.ENTRIES
             + """
 const limit = nextCockpitWorkEvidenceLimit("codex");
-const rows = shape({goal:{result:"consistent with the evidence read", cites:["u1"]},
-  output:{result:"departure", cites:["u1"]}}, limit).criteria;
+const rows = shape({goal:{result:"consistent with the evidence read", cites:["a1"]},
+  output:{result:"departure", cites:["a1"]}}, limit).criteria;
 console.log(JSON.stringify({
   limited: Object.fromEntries(rows.map(row => [row.key, row.result])),
   // Mutually exclusive per row: it states its evidence or states its limit.
@@ -4971,7 +4985,7 @@ console.log(JSON.stringify({
             out["limited"],
         )
         self.assertEqual(
-            {"goal": ["user_message · root transcript · exact"], "output": []}, out["evidence"]
+            {"goal": ["result · dispatch artifact · exact"], "output": []}, out["evidence"]
         )
         self.assertEqual("", out["limits"]["goal"])
         self.assertIn("publishes no demonstrated work results", out["limits"]["output"])
@@ -5002,59 +5016,62 @@ console.log(JSON.stringify({
         # A constraint nobody typed is not read, rather than read and passed.
         self.assertEqual(["goal"], out["goalOnly"])
 
-    def test_rule_7_is_asymmetric_on_who_wrote_the_evidence(self) -> None:
+    def test_rule_7_asks_whether_an_entry_shows_work_not_who_typed_it(self) -> None:
+        """Amended 2026-09-10: the test is demonstrated work, not authorship.
+
+        As written, rule 7 keyed the Expected Output verdict on WHO wrote a
+        cited entry, and that inverted its own reason. The reason is that
+        self-report is not evidence of a deliverable -- and a REQUEST is not
+        evidence of one either, so citing the reader's own words licensed a
+        verdict about her own deliverable while citing the actual work result
+        demoted. Seven adversaries found it; the captain re-keyed it.
+        """
         out = self.run_fixture(
             self.ENTRIES
             + """
-const assistant = ["a1"];
-const person = ["u1"];
-const gate = ["g1"];
+const shows = ["a1"];      // type `result`: an entry that demonstrates work
+const asked = ["u1"];      // the reader's own request
+const gate = ["g1"];       // a person's gate decision, but not work
 console.log(JSON.stringify({
-  // Expected Output on self-report alone: nothing but not verifiable.
-  outputAssistant: results({output:{result:"departure", cites:assistant}}),
-  outputConsistent: results({output:{result:"consistent with the evidence read",
-    cites:assistant}}),
-  outputPerson: results({output:{result:"departure", cites:person}}),
-  // Goal keeps a departure on the agent's own narration.
-  goalAssistant: results({goal:{result:"departure", cites:assistant}}),
-  // And a consistent resting only on it says so.
-  narration: shape({goal:{result:"consistent with the evidence read",
-    cites:assistant}}).criteria[0].narration,
-  corroborated: shape({goal:{result:"consistent with the evidence read",
-    cites:person}}).criteria[0].narration,
-  // A gate decision counts as a person's only where the source records one.
-  gateIsPerson: shape({output:{result:"departure", cites:gate}}).criteria
+  outputOnWork: results({output:{result:"departure", cites:shows}}),
+  outputConsistentOnWork: results({output:{result:"consistent with the evidence read",
+    cites:shows}}),
+  outputOnRequest: results({output:{result:"departure", cites:asked}}),
+  outputOnGate: shape({output:{result:"departure", cites:gate}}).criteria
     .find(row => row.key === "output").result,
-  why: shape({output:{result:"departure", cites:assistant}}).criteria
+  // Goal keeps a departure on the agent's own narration.
+  goalOnAgent: results({goal:{result:"departure", cites:shows}}),
+  // A goal `consistent` resting only on the agent says so...
+  narration: shape({goal:{result:"consistent with the evidence read",
+    cites:shows}}).criteria[0].narration,
+  // ...and one resting only on the reader's own request is circular.
+  goalConsistentOnRequest: shape({goal:{result:"consistent with the evidence read",
+    cites:asked}}).criteria[0].result,
+  why: shape({output:{result:"departure", cites:asked}}).criteria
     .find(row => row.key === "output").why,
 }));
 """
         )
         assert isinstance(out, dict)
         unverifiable = "not verifiable from available evidence"
-        self.assertEqual(unverifiable, out["outputAssistant"]["output"])
-        self.assertEqual(unverifiable, out["outputConsistent"]["output"])
-        self.assertEqual("departure", out["outputPerson"]["output"])
-        self.assertEqual("departure", out["goalAssistant"]["goal"])
-        self.assertEqual("Rests on the agent's own account alone.", out["narration"])
-        self.assertEqual("", out["corroborated"])
-        self.assertEqual("departure", out["gateIsPerson"])
+        # An entry that shows work carries a verdict about the deliverable.
+        self.assertEqual("departure", out["outputOnWork"]["output"])
         self.assertEqual(
-            "Every entry cited here was written by the agent, which is not evidence "
-            "that the requested output exists.",
-            out["why"],
+            "consistent with the evidence read", out["outputConsistentOnWork"]["output"]
         )
+        # The reader's own request does not, whoever typed it, and neither
+        # does a person's gate decision: neither shows the thing exists.
+        self.assertEqual(unverifiable, out["outputOnRequest"]["output"])
+        self.assertEqual(unverifiable, out["outputOnGate"])
+        # Goal is unchanged: a stated change of direction is exactly what the
+        # agent's own account is good for.
+        self.assertEqual("departure", out["goalOnAgent"]["goal"])
+        self.assertEqual("Rests on the agent's own account alone.", out["narration"])
+        # But agreeing with the request is agreeing with yourself.
+        self.assertEqual(unverifiable, out["goalConsistentOnRequest"])
 
 
 class CockpitTabsAreOneDecisionTest(unittest.TestCase):
-    """The tab set is about to depend on scope, so it may be decided once.
-
-    Thirteen sites read the tab list and six of them are the keyboard wrap
-    alone. A wrap computed over a list the nav did not render is what sends a
-    reader to a tab that is not on their screen, and nothing in the suite would
-    have said so, because at one scope the two lists agree.
-    """
-
     WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
 
     def test_the_tab_list_is_read_through_one_function(self) -> None:
@@ -5574,29 +5591,44 @@ console.log(JSON.stringify({
         self.assertIn("It changed the board.", out["departures"])
         self.assertNotIn("raised no departure", out["departures"])
 
-    def test_a_turn_stop_is_not_a_session_end_for_the_reading_scope(self) -> None:
-        """The qualifier read `endKnown`, which a turn stop also sets.
+    def test_a_turn_stop_withholds_a_reading_and_says_why(self) -> None:
+        """Replaces the qualifier test. The ruling changed underneath it.
 
-        The card beside it says "A turn stop was observed; no session end was",
-        so suppressing "this covers only the work so far" on the same evidence
-        made the two halves of one tab disagree about whether the session had
-        ended.
+        The captain ruled on 2026-09-10 that an ending with no supported end
+        evidence gets NO reading at all -- not a provisional one. A turn stop
+        is not a session end, so the producer withholds and the page renders
+        the reason it chose from a closed set. This used to render a full
+        reading with "This covers only the work so far" appended, which is
+        exactly the provisional reading the ruling refuses.
+
+        A RUNNING session is a different thing and keeps its reading: it
+        claims no finality, so there is nothing to withhold.
         """
         out = self.run_fixture(
             """
 const session = {harness:"codex", sid:"focus-1", state:"idle"};
-const annotation = {goal:"do not change the board", revision:1};
+const model = {enabled:true};
 const entries = [{id:"u1", type:"user_message", by:"", source:"root transcript · exact"}];
-const reading = {revision_read:1, criteria:{goal:{result:"departure",
-  detail:"It changed the board.", cites:["u1"]}}};
-const render = kind => nextCockpitReading(session,
-  Object.assign({}, annotation, {assessment: reading}), entries, null,
-  {landing: nextObservedLanding({state:"idle", harness:"codex"},
-    kind === "session-end", kind === "turn-stop")});
+const withheld = {goal:"do not change the board", revision:1, reading_count:1,
+  reading_withheld:"A turn stop was observed and no session end was, so there is no end " +
+    "for a reading to rest on. Nothing partial is offered instead."};
+const html = nextCockpitReading(session, withheld, entries, model, null, false,
+  {state:"read", entries:entries});
 console.log(JSON.stringify({
-  running: render("running"),
-  stop: render("turn-stop"),
-  end: render("session-end"),
+  html,
+  says: html.includes("no end for a reading to rest on"),
+  // No verdict of any kind: the result element is the only place the three
+  // sentences can appear.
+  results: (html.match(/class="next-cockpit-reading-result"/g) || []).length,
+  // The control stays on the page, so the reader can ask again.
+  control: html.includes('data-next-cockpit-action="reading-ask"'),
+  count: html.includes("1 reading asked for"),
+  // And the departures block says no reading was made, rather than that a
+  // reading raised nothing.
+  noReading: html.includes("No reading has been made"),
+  noDeparture: html.includes("raised no departure"),
+  // The landing axis is untouched: this narrows what the READING does and
+  // must not quietly rewrite what HOW IT LANDED says.
   landing: {
     stop: nextObservedLanding({state:"idle", harness:"codex"}, false, true),
     end: nextObservedLanding({state:"idle", harness:"codex"}, true, false),
@@ -5605,18 +5637,12 @@ console.log(JSON.stringify({
 """
         )
         assert isinstance(out, dict)
-        qualifier = "This covers only the work so far."
-        # A running session has always said it, and still does.
-        self.assertIn(qualifier, out["running"])
-        # A turn stop is not a session end, so the qualifier stands, and the
-        # sentence beside it names the event the card next door names.
-        self.assertIn(qualifier, out["stop"])
-        self.assertIn("A turn stop was observed; no session end was", out["stop"])
-        # Only an observed session end retires it.
-        self.assertNotIn(qualifier, out["end"])
-        # Both events are still reported as observed ends by the landing
-        # axis: the fix narrows what the READING keys on, and must not
-        # quietly rewrite what HOW IT LANDED says.
+        self.assertTrue(out["says"])
+        self.assertEqual(0, out["results"], "a withheld reading drew a verdict")
+        self.assertTrue(out["control"], "the reader cannot ask again")
+        self.assertTrue(out["count"], "the press that produced nothing was not counted")
+        self.assertTrue(out["noReading"])
+        self.assertFalse(out["noDeparture"], "a withheld reading claimed nothing departed")
         self.assertTrue(out["landing"]["stop"]["endKnown"])
         self.assertTrue(out["landing"]["end"]["endKnown"])
 

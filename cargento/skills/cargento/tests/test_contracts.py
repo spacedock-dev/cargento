@@ -5,6 +5,7 @@ import contextlib
 import http.client
 import json
 import os
+import pathlib
 import re
 import runpy
 import subprocess
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, http_api, notifications, observation, records
+from cargento_runtime import aggregate, cli, http_api, notifications, observation, reading, records
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
@@ -671,6 +672,79 @@ def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
     return unwired
 
 
+class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
+    """The producer and the page must agree on every key and every sentence.
+
+    This is the measured biggest risk in the reading surface, and it fails
+    silently and confidently. The page reads snake_case `source.revision_read`
+    and derives its stale-revision warning from it, so a producer emitting
+    `revisionRead` yields no amber line PLUS every criterion captioned with
+    today's typed words under a reading of an older revision. Nothing else in
+    the tree compares the two spellings.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    @property
+    def source(self) -> str:
+        return (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
+
+    @staticmethod
+    def _js_list(source: str, name: str) -> set[str]:
+        start = source.index(f"const {name} = [")
+        body = source[start + len(f"const {name} = [") : source.index("]", start)]
+        return {part.strip().strip('"') for part in body.split(",") if part.strip()}
+
+    def test_the_page_and_the_producer_name_the_same_assessment_fields(self) -> None:
+        self.assertEqual(
+            set(reading.ASSESSMENT_KEYS),
+            self._js_list(self.source, "NEXT_READING_ASSESSMENT_KEYS"),
+        )
+
+    def test_the_page_and_the_producer_name_the_same_criterion_fields(self) -> None:
+        self.assertEqual(
+            set(reading.CRITERION_KEYS),
+            self._js_list(self.source, "NEXT_READING_CRITERION_KEYS"),
+        )
+
+    def test_the_page_reads_the_revision_key_the_producer_actually_writes(self) -> None:
+        # The specific spelling, because this is the pair that fails silently.
+        self.assertIn("source.revision_read", self.source)
+        self.assertNotIn("source.revisionRead", self.source)
+
+    def test_all_three_results_a_reader_can_see_are_spelt_the_same_on_both_sides(self) -> None:
+        for sentence in reading.RESULTS:
+            with self.subTest(result=sentence):
+                self.assertIn(f'"{sentence}"', self.source)
+
+    def test_the_two_kinds_of_nothing_never_render_alike(self) -> None:
+        # "Nothing departed" and "nothing was checked" are the pair this
+        # milestone says must never read the same.
+        self.assertNotEqual(reading.NO_READING_YET, reading.WITHHELD[reading.WITHHELD_LEDGER_EMPTY])
+        self.assertIn("No reading has been made", self.source)
+        self.assertIn("verified neither constraint", self.source)
+
+
+class TheAnnotationFieldListIsDerivedTest(unittest.TestCase):
+    """The page's annotation field list, against what Python publishes.
+
+    A three-defect site, and every defect was the same shape: the page
+    reading a field nothing publishes. The list was hand-kept and its own
+    comment had gone stale twice. This derives it.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    def test_the_page_reads_exactly_the_fields_the_store_publishes(self) -> None:
+        source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
+        start = source.index("  const fields = [")
+        body = source[start : source.index("];", start)]
+        rendered = {
+            part.strip().strip('"') for part in body.split("[", 1)[1].split(",") if part.strip()
+        }
+        self.assertEqual(set(annotation_store.published(None)), rendered)
+
+
 class AnnotationFieldCollapseTest(unittest.TestCase):
     """The box and the store must strip the same characters.
 
@@ -735,6 +809,20 @@ class ReadingControlIsWiredTest(unittest.TestCase):
             "a cockpit control renders an action the click dispatcher does not handle. "
             "Wire it in the same change that makes it reachable, or stop rendering it.",
         )
+
+    def test_the_reading_arm_exists_whether_or_not_the_control_is_enabled(self) -> None:
+        """The exemption above is now dead, and this is what proves it.
+
+        `unwired_cockpit_actions` forgives `reading-ask` while the abstention
+        check has not passed, which was right while the control was
+        deliberately inert with nothing behind it. A producer exists now and
+        the arm is wired, so the forgiving branch must not be what keeps this
+        green: asserted with `reachable=True` unconditionally, so deleting
+        the arm is red on this branch rather than only after the check
+        eventually passes.
+        """
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        self.assertEqual(set(), unwired_cockpit_actions(source, reachable=True))
 
     def test_the_predicate_itself_holds_in_every_state(self) -> None:
         """The gate proven on synthetic sources, so it never stops being proven.
