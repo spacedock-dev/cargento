@@ -1410,6 +1410,54 @@ function nextCockpitLanded(observed){
     '</div><p class="next-cockpit-reading-why">Neither card implies the other.</p></section>';
 }
 
+/* DRC-4509's fourth criterion and DRC-4511's third: where re-entry is
+   supported, expose the route and state its limits. The route was already
+   reachable and the limits were not, which is the half the pull request
+   conceded rather than half-built.
+
+   A link rather than a fifth copy of the two controls. `next-session.js`
+   renders both unconditionally on the session view and `nextSessionHeldLink`
+   links that view to this tab; this is the return leg, and the criterion
+   verifies with a navigation check, which is what a link is.
+
+   Two limits, not one, and split by cause. A harness outside
+   `NEXT_RESUME_COMMANDS` has no re-entry command and never will; one inside it
+   with no usable id has none THIS RUN. `nextResumeCommand` collapses both to
+   "", which is the same conflation journey-review finding C fixed on the
+   observed record. The raise's limit is the standing one recorded beside
+   `nextSessionRaiseControl`, said here because a single session is the whole
+   subject of this tab and rendering nothing reads as "no limit" rather than as
+   "not this session". */
+function nextCockpitHeldReEntry(session){
+  if(!session) return "";
+  const harness = String(session.harness || "");
+  const project = String(session.project == null ? "" : session.project);
+  const raise = !nextFocusCapability()
+    ? NEXT_FOCUS_OFF_LINE
+    : session.focusable === true
+      ? "Its terminal can be raised, and that control is offered while the session is waiting " +
+        "on you. A raise switches what the terminal displays; its window may still be behind " +
+        "others."
+      : "No terminal was reported for this session, so it cannot be raised. That is the " +
+        "ordinary answer outside tmux, for a session older than this server run, and on " +
+        "Linux and Windows.";
+  const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
+  const resume = !NEXT_RESUME_COMMANDS.has(harness)
+    ? `${label} publishes no re-entry command, so there is none to copy.`
+    : nextResumeCommand(session)
+      ? "A re-entry command for it is on the session page."
+      : "This session published no usable id this run, so there is no re-entry command to copy.";
+  /* `data-next-focus` because keyboard focus here is a managed lane
+     ([reader state](docs/design-reader-state.md#the-inventory)); an
+     anchor without it loses focus on every redraw. */
+  const link = project
+    ? `<a href="${esc(nextFragmentForRoute({view: "session", project, harness,
+        session: String(session.sid == null ? "" : session.sid)}))}" ` +
+      'data-next-focus="cockpit-held-reentry">Open this session</a> to re-enter it. '
+    : "";
+  return `<p class="next-cockpit-held-reentry">${link}${esc(raise)} ${esc(resume)}</p>`;
+}
+
 function nextCockpitHeldTo(group, observation){
   const session = nextCockpitFocusedSession(group);
   if(!session){
@@ -1461,7 +1509,7 @@ function nextCockpitHeldTo(group, observation){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    binding + ended + '</section>' + evidence;
+    binding + ended + nextCockpitHeldReEntry(session) + '</section>' + evidence;
 }
 
 async function nextCockpitHeldSave(session, kind){

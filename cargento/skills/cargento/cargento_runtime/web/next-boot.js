@@ -287,6 +287,11 @@ function nextSessionResumeControl(session){
 // renders no control rather than one whose request could only be refused.
 const NEXT_FOCUS_META = 'meta[name="cargento-focus"]';
 
+// One fact about the process, stated at two scopes: the fleet coverage line on
+// Attention and the per-session limit in the Held to tab. Hoisted rather than
+// spelled twice, because two spellings of one fact drift.
+const NEXT_FOCUS_OFF_LINE = "Terminal raise: off for this run.";
+
 function nextFocusCapability(){
   if(typeof document === "undefined" || typeof document.querySelector !== "function") return "";
   let meta = null;
@@ -317,6 +322,13 @@ function nextFocusCapability(){
 // run, and every Linux and Windows session, where the contract's own device
 // grammar refuses `/dev/pts/N` — so the coverage line says how far the feature
 // reaches once, where a per-row note would print forever and say nothing.
+//
+// That holds for a QUEUE of rows and is why Attention states it once. It does not
+// hold where one session is the whole subject: the Held to tab is about the
+// session on screen, a reader there is asking whether they can get back into that
+// one, and "nothing at all" is the answer that reads as "no limit" rather than as
+// "not this session". `nextCockpitHeldReEntry` states it for that scope, which is
+// a second place and not a per-row note.
 function nextSessionRaiseControl(session){
   if(!session || session.focusable !== true) return "";
   const sid = String(session.sid == null ? "" : session.sid).trim();

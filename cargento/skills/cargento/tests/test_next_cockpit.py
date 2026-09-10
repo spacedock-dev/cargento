@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import unittest
+from typing import Any
 
 from .next_harness import NextPageJsHarness, storage_prelude
 
@@ -5086,6 +5088,115 @@ console.log(JSON.stringify(scopes));
         # about. Asserted rather than assumed: it is the reason the empty case
         # above is legal.
         self.assertEqual([], out["codex:gone"]["rendered"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitHeldReEntryTest(NextPageJsHarness):
+    """DRC-4509 AC4 and DRC-4511 AC3: the route exposed WITH its limits.
+
+    The route was always reachable. Its limits were stated in one place, the
+    Attention view's coverage disclosure, which a reader in the Held to tab is
+    not looking at. A raise control that silently does not render states no
+    limit at all, and on this tab a single session is the whole subject, so
+    rendering nothing reads as "no limit" rather than as "not this session".
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    # The capability is read through document.querySelector, not off a payload
+    # field, so a test that sets a field measures nothing. Copied from
+    # test_next_attention.FOCUS_META_PRELUDE.
+    FOCUS_ON = """
+document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
+  ? {getAttribute: name => (name === "content" ? "0a1b2c3d" : null)}
+  : null;
+"""
+
+    ANNOTATED = """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+"""
+
+    def render(self, extra: str, *, focus: str = "codex:focus-1") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.ANNOTATED
+            + extra
+            + "navigateNext({view:'project', project:'cargento', focus:"
+            + json.dumps(focus)
+            + ", tab:'held-to'});\n"
+            + """
+await __settle();
+const html = __els.app.innerHTML;
+const held = html.indexOf('class="next-cockpit-held"');
+const closes = html.indexOf("</section>", held);
+const at = html.indexOf('class="next-cockpit-held-reentry"');
+console.log(JSON.stringify({
+  note: (html.match(/class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/p>/) || [])[1] || "",
+  // Inside the WHAT YOU ASKED FOR section, not merely after its header.
+  // Asserted against that section's own closing tag, because "after the bound
+  // header" is also true of a paragraph that escaped the section entirely.
+  inside: at > held && at < closes,
+  offLine: NEXT_FOCUS_OFF_LINE,
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_reachable_terminal_says_so_and_says_what_a_raise_does_not_do(self) -> None:
+        out = self.render(
+            self.FOCUS_ON
+            + "__dashboard.sessions[0].focusable = true;\n"
+            + '__dashboard.sessions[0].resume_id = "abc123";\n'
+        )
+        note = out["note"]
+        assert isinstance(note, str)
+        self.assertTrue(out["inside"], "the note rendered outside the block it describes")
+        self.assertIn("Open this session", note)
+        # The route back, which is what the criterion's navigation check needs.
+        self.assertIn("#n=session:cargento:codex:focus-1", note)
+        # Keyboard focus here is a managed lane; an anchor without this loses
+        # focus on every redraw.
+        self.assertIn("cockpit-held-reentry", note)
+        # A raise is not a window manager, and the hedge matches the one the
+        # status line already uses after a raise is sent.
+        self.assertIn("its window may still be behind others", note)
+        self.assertIn("re-entry command for it is on the session page", note)
+
+    def test_no_reported_terminal_is_a_different_sentence_from_the_run_being_off(self) -> None:
+        absent = self.render(self.FOCUS_ON)
+        off = self.render("__dashboard.sessions[0].focusable = true;\n")
+
+        # Capability on, this session not focusable: about the session.
+        self.assertIn("No terminal was reported for this session", absent["note"])
+        self.assertNotIn("off for this run", absent["note"])
+        # No capability at all: about the run, in the words Attention uses.
+        self.assertIn(off["offLine"], off["note"])
+        self.assertNotIn("No terminal was reported", off["note"])
+        self.assertEqual("Terminal raise: off for this run.", off["offLine"])
+
+    def test_a_harness_with_no_resume_command_says_so_rather_than_saying_nothing(self) -> None:
+        # `pi` is not in NEXT_RESUME_COMMANDS; `codex` is, so an absent id
+        # there is a different fact. `nextResumeCommand` collapses both to "".
+        never = self.render(
+            self.FOCUS_ON + '__dashboard.sessions[0].harness = "pi";\n',
+            focus="pi:focus-1",
+        )
+        this_run = self.render(self.FOCUS_ON)
+
+        self.assertIn("publishes no re-entry command", never["note"])
+        self.assertIn("no usable id this run", this_run["note"])
+        self.assertNotIn("no usable id this run", never["note"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
