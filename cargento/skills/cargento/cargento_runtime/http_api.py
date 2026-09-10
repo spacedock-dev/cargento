@@ -560,28 +560,38 @@ class _RequestHandler(BaseHTTPRequestHandler):
         observer route took the single method to mccabe 11 against ruff's cap
         of 10, and this file has never needed a complexity exemption. The
         split keeps the next route free rather than buying it one.
+
+        The exact matches are a table now, for the reason `do_POST` gives at
+        its own: adding `/api/annotations` took the ladder back to 11, and a
+        table adds the route after it for nothing. The two prefix arms stay
+        ahead of it so they cannot be shadowed by an exact key.
         """
-        if url.path == "/api/data":
-            self._data(url)
-        elif url.path == "/api/overlays":
-            self._overlays()
-        elif url.path == "/api/cleared":
-            self._cleared()
-        elif url.path.startswith("/api/interaction/"):
+        if url.path.startswith("/api/interaction/"):
             self._interaction_get(url)
-        elif url.path.startswith("/api/ask/"):
-            # Prefix-matched, so it cannot join the exact-match arms above.
+            return True
+        if url.path.startswith("/api/ask/"):
             self._ask_poll(url.path[len("/api/ask/") :])
-        elif url.path == "/api/stream":
-            self._stream()
-        elif url.path == "/api/health":
-            self._health()
-        elif url.path == "/api/observe":
-            self._observe(url)
-        elif url.path == "/api/project-context":
-            self._project_context(url)
-        else:
+            return True
+        # Two tables, split by whether the handler reads the query rather than
+        # by anything about the route, so neither grows a branch per entry.
+        with_url = {
+            "/api/data": self._data,
+            "/api/observe": self._observe,
+            "/api/project-context": self._project_context,
+        }.get(url.path)
+        if with_url is not None:
+            with_url(url)
+            return True
+        bare = {
+            "/api/overlays": self._overlays,
+            "/api/cleared": self._cleared,
+            "/api/annotations": self._annotations,
+            "/api/stream": self._stream,
+            "/api/health": self._health,
+        }.get(url.path)
+        if bare is None:
             return False
+        bare()
         return True
 
     def _interaction_get(self, url: ParseResult) -> None:
@@ -920,6 +930,46 @@ class _RequestHandler(BaseHTTPRequestHandler):
         entries = dismissals.active(application.config, application.state)
         self._send(
             json.dumps({"cleared": dismissals.rows(entries)}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
+    def _annotations(self) -> None:
+        """Every session the reader has typed words against, including departed ones.
+
+        Strictly same-origin, like `/api/cleared`: nothing navigates here.
+
+        A route of its own for `_cleared`'s reason, and for one more. The Intent
+        log is a top-level view, so it has no project key to hand
+        `/api/project-context`, which is the fact that settled a question the
+        plan left open between those two shapes. Folding the rows into
+        `/api/data` would also put up to 256 sessions of the reader's own prose
+        on a body polled every few seconds; here the words leave the server when
+        someone opens the log.
+
+        The store's rows and only the store's. Session history keeps a copy of
+        the same two fields for fourteen days, and reading the log out of that
+        instead would resurrect words a reader withdrew: `annotations.clear`
+        removes the entry because clearing the field is withdrawing the request,
+        while a history observation already appended is never retro-deleted.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        application = self.server.application
+        if not application.config.annotations_enabled:
+            self.send_error(503, "annotations are disabled on this server")
+            return
+        entries = annotation_store.active(application.config, application.state)
+        rows = [
+            {
+                "harness": entry["harness"],
+                "sid": entry["sid"],
+                **annotation_store.published(entry),
+            }
+            for entry in entries
+        ]
+        self._send(
+            json.dumps({"annotations": rows}, separators=(",", ":")).encode(),
             "application/json",
         )
 

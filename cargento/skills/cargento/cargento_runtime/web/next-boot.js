@@ -1,7 +1,13 @@
 const nextQuery = new URLSearchParams(location.search);
 const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same directory: the label is the" +
   " last two segments of each session's path, so sibling worktrees read alike.";
-const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
+/* The load-bearing half of what a reading is not, owned here because two
+   surfaces state it and a second wording would be a second promise. The
+   reading block says it about the reading it is offering; the Intent log says
+   it about every row it lists. */
+const NEXT_READING_NOT_A_VERIFICATION =
+  "A reading is never a verification that the work was done.";
+const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions", "intent"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
 /* Tabs that exist only while one session is in focus. Empty at project scope
    rather than disabled there, because a tab about one session's words has

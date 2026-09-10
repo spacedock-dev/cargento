@@ -657,6 +657,65 @@ class DismissEndpointTest(RuntimeTestCase):
             get_status, _ = self._get(port, "/api/cleared")
         self.assertEqual((503, 503), (post_status, get_status))
 
+    def test_the_annotation_reveal_serves_the_store_including_departed_sessions(self) -> None:
+        """`GET /api/annotations`, the Intent log's source.
+
+        The store's rows and only the store's: session history keeps a copy of
+        the same two fields for fourteen days, and serving the log from there
+        would republish words a reader withdrew, because `clear` removes the
+        entry while a history observation is never retro-deleted.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "departed", goal="Prove it landed")
+        annotation_store.annotate(config, state, "claude", "abcd1234", goal="Ship the cockpit")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        rows = json.loads(body)["annotations"]
+        by_key = {f"{row['harness']}:{row['sid']}": row for row in rows}
+        # Neither session is on the board in this runtime; both are served,
+        # which is the whole point of the surface.
+        self.assertEqual({"pi:departed", "claude:abcd1234"}, set(by_key))
+        self.assertEqual("Prove it landed", by_key["pi:departed"]["goal"])
+        # The published shape, so the page's existing revision helper reads it
+        # without a second wording of the same fact.
+        self.assertEqual(1, by_key["pi:departed"]["revision"])
+        self.assertEqual(1, by_key["pi:departed"]["revision_count"])
+
+    def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "s1", goal="withdraw me")
+        annotation_store.clear(config, state, "pi", "s1")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        self.assertEqual([], json.loads(body)["annotations"])
+
+    def test_the_annotation_reveal_is_503_under_the_off_switch(self) -> None:
+        config, state = self._runtime(annotations_enabled=False)
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._get(port, "/api/annotations")
+
+        # The route exists and the store does not, which a 404 would read as a
+        # build too old to have it.
+        self.assertEqual(503, status)
+
+    def test_the_annotation_reveal_refuses_a_cross_site_navigation(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._get(
+                port,
+                "/api/annotations",
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+        self.assertEqual(403, status)
+
     def test_the_reveal_refuses_a_cross_site_navigation_unlike_api_data(self) -> None:
         # Same reasoning as `/api/overlays`: nothing navigates here, so `do_GET`'s
         # relaxation for document navigations has no reason to reach it.

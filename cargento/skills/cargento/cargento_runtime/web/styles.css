@@ -936,6 +936,17 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    rows, which are. No amber, deliberately - the rule two blocks down says the
    one warm ink allowed near a reading is the revision line, and this sits
    above the reading rather than inside it precisely so it needs no exception. */
+/* The Intent log. A list of the reader's own words, so the words take the
+   published-string register and everything the board says about them is sans. */
+.next-intent{display:flex;flex-direction:column;gap:10px}
+.next-intent-note{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-intent-row{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-intent-key{font-family:var(--mono);font-size:10px;color:var(--ink3);letter-spacing:.08em}
+.next-intent-key a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-intent-key a:hover{text-decoration-color:var(--accent)}
+.next-intent-gone{color:var(--ink3)}
+.next-intent-words{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
+.next-intent-revision,.next-intent-why{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-conflict{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line2);background:var(--panel)}
 .next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-conflict-open{margin:0;color:var(--ink);font:var(--fs-xs)/1.5 var(--sans)}

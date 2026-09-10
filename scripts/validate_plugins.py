@@ -208,6 +208,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/next-controls.js",
     "skills/cargento/cargento_runtime/web/next-cockpit.js",
     "skills/cargento/cargento_runtime/web/next-render.js",
+    "skills/cargento/cargento_runtime/web/next-intent.js",
     "skills/cargento/cargento_runtime/web/next-live.js",
     "skills/cargento/cargento_runtime/web/vendor/xterm.js",
     "skills/cargento/cargento_runtime/web/vendor/xterm.css",

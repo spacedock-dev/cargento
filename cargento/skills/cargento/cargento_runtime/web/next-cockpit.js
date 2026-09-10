@@ -1405,8 +1405,8 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     return `${header}</header>` +
       '<p class="next-cockpit-reading-why">A reading is a model’s account of the evidence ' +
       'on this page: the observed record above and the words you typed, and nothing else. It ' +
-      'does not read a diff, a file, a test or a deliverable, and it is never a verification ' +
-      'that the work was done.</p>' +
+      'does not read a diff, a file, a test or a deliverable. ' +
+      `${NEXT_READING_NOT_A_VERIFICATION}</p>` +
       '<button type="button" data-next-cockpit-action="reading-ask" ' +
       `data-next-focus="reading:${esc(sessKey(session))}"${passed ? "" : " disabled"}>` +
       'Ask for a reading</button>' +
