@@ -1625,11 +1625,11 @@ written owner-only through a temp file and a rename, so a reader mid-write sees 
 new one and neither is ever briefly world-readable. The mode is advisory and Windows ignores it, the
 same caveat the state file and the dismissal store carry.
 
-The second is the prototype's semantic-history store, and this document did not name it here until
-the annotation work re-counted which files hold typed words. The Operator-cockpit prototype section
-above has its fields and its deletion behaviour; what belongs in this inventory is that it is a
-file, that it holds the operator's own directive as well as the assistant's answer, and that it is
-redacted on the way in and again on the way out.
+The second is the prototype's semantic-history store, `~/.cargento/semantic-work-history.json`. It
+holds the operator's own directive as well as the assistant's answer, it is redacted on the way in
+and again on every read, and it is written owner-only through a temp file and a rename like the
+sidecar above. The Operator-cockpit prototype section has its fields and its deletion behaviour,
+including that `--forget` does not reach it.
 
 This reduces the exposure and does not close it, and both directions of error are real. A shape list
 covers the formats it was measured against, so a credential in a format nobody has seen goes through

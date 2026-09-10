@@ -650,10 +650,11 @@ def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
     which is the one control DEC-17 ships deliberately inert. Every other
     rendered action must be dispatched.
 
-    The dispatched set is read from the listener alone and with comments
-    stripped, because the comment beside the reading control discusses that
-    control by name and a gate that greps the whole file would accept prose as
-    a handler.
+    The dispatched set is read from the listener alone, which already excludes
+    the comment beside the reading control, and with comments stripped on top
+    of that, which excludes a comment inside the listener body naming an arm it
+    does not have. Defence in depth, and cheap: a gate that accepted prose as a
+    handler would be worse than no gate.
 
     Known limit, stated rather than discovered: an action rendered through a
     variable is invisible here. `nextCockpitHeldControl` renders `held-clear`

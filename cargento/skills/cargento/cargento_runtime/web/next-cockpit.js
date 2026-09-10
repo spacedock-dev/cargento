@@ -1338,7 +1338,8 @@ function nextCockpitReading(session, annotation, entries, model, observed){
        without one to run it on. It does not imply this button is wired to
        that producer, and an earlier version of this comment said it did.
        `ReadingControlIsWiredTest` holds the difference: a rendered action
-       with no dispatch arm may not become reachable. */
+       with no dispatch arm may not become reachable, and no arm exists for
+       this one yet. */
     const passed = nextData && nextData.reading_check === "passed";
     return `${header}</header>` +
       '<p class="next-cockpit-reading-why">A reading is a model’s account of the evidence ' +
