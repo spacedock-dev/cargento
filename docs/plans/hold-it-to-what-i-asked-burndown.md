@@ -633,6 +633,17 @@ the issues to `Done`; `sync-project`; the promise-map half of the reconcile in a
 **Stage 6, the away case.** DRC-4540, built so adding a lane adds a value rather than changing the
 record's shape, then DRC-4328, DRC-4034 and DRC-4032, then DRC-4541, then DRC-4514.
 
+### Progress against this order (2026-09-10)
+
+- **Stage 1: DONE.** `442e5ac`, `44bcb83`, `c3e235d`. The dead control's wiring gate, `save()`'s
+  failure arm, the `persisted:false` reply, SECURITY.md's carrier paragraph. Adversarially verified
+  after the fact, which found three more gaps and endorsed two choices.
+- **Stage 3: DONE.** `440f302` the re-entry limits, `effe25a` DRC-4533's newline call, dead
+  `holds()` and the refutation of its off-switch item.
+- **Stage 2: half done.** `ec3eb48` the baseline-conflict block. The Intent log is what remains of
+  Stages 1 to 3, and its spec is written and adversarially verified.
+- Suite 2782 to 2812 across the run. Every fix mutation-verified.
+
 ### What the review overturned, so it is not re-derived
 
 - **Merging #317 finalises nothing.** The #312 draft sits between it and `main`. An earlier draft of
