@@ -20,9 +20,26 @@ PR #317, which is kept OPEN for the captain to test and is NOT to be merged.
 | 6 | The reader-state row for the new 240-char lane | DONE |
 | 7 | DRC-4511: the reader-requested reading, built around DEC-17 rules 3, 4 and 7 | DONE |
 | 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | DONE (migration only; no field named, no producer) |
-| 9 | Recompute the three byte pins once, full pre-PR suite, `sync-docs` | TODO |
+| 9 | Recompute the three byte pins once, full pre-PR suite, `sync-docs` | DONE |
 
 Update the Status column as each lands, and commit that update with the work.
+
+**All nine landed, 2026-09-10.** PR #317 is open against `proto/operator-cockpit` and is not to be
+merged. The full pre-PR suite is green on the branch tip and a live walk against a real board with
+32 sessions found three defects the suite did not: a keystroke that reversed the characters typed,
+a save reading a key the endpoint never sends, and an unbounded work-evidence list. All three are
+fixed with tests that fail on the mutation.
+
+What is still owed, and none of it is buildable without a ruling or a capture:
+
+- A producer for a reading. DEC-18 (DRC-4534) owns the automatic half; the reader-requested half
+  needs DEC-17's abstention check, which needs recorded sessions across Claude and Codex and a
+  second person marking each constraint's expected abstention in advance.
+- The assessment fields in history. The migration is in, so naming them later costs a reader
+  nothing, but nothing produces an assessment to store.
+- DRC-4508's resume captures, DRC-4508 AC5's conflict detection, and DRC-4509's supported-re-entry
+  criterion.
+- DRC-4514, blocked by DEC-18.
 
 ### Rulings that now govern
 
