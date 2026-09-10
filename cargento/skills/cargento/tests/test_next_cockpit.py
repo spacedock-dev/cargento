@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib
 import shutil
 import unittest
 
@@ -3508,6 +3509,95 @@ console.log(JSON.stringify({
         self.assertIn("/api/interaction/origin", out["originPath"])
         self.assertNotIn("/api/interaction/input", out["parts"])
         self.assertNotIn("/api/interaction/control", out["parts"])
+
+
+class CockpitTabsAreOneDecisionTest(unittest.TestCase):
+    """The tab set is about to depend on scope, so it may be decided once.
+
+    Thirteen sites read the tab list and six of them are the keyboard wrap
+    alone. A wrap computed over a list the nav did not render is what sends a
+    reader to a tab that is not on their screen, and nothing in the suite would
+    have said so, because at one scope the two lists agree.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    def test_the_tab_list_is_read_through_one_function(self) -> None:
+        stray = []
+        for name in ("next-boot.js", "next-cockpit.js"):
+            owner = ""
+            for number, line in enumerate(
+                (self.WEB / name).read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if line.startswith("function "):
+                    owner = line[len("function ") :].split("(", 1)[0]
+                if "NEXT_PROJECT_TABS" not in line:
+                    continue
+                # The declaration and the one reader are the whole allowance.
+                if line.startswith("const NEXT_PROJECT_TABS") or owner == "nextCockpitTabs":
+                    continue
+                stray.append(f"{name}:{number} ({owner or 'top level'})")
+        self.assertEqual([], stray, "these read the tab list instead of nextCockpitTabs")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitTabKeyboardWrapTest(NextPageJsHarness):
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    FOCUS_DOM = NextCockpitCompositionTest.FOCUS_DOM
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_wrap_reaches_exactly_the_tabs_the_nav_rendered(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+// Given: the cockpit at project scope, and again with one session focused.
+const scopes = {};
+for(const focus of [null, "codex:focus-1", "codex:gone"]){
+  navigateNext({view:"project", project:"cargento", focus, tab:"now"});
+  await __settle();
+  const html = __els.app.innerHTML;
+  const start = html.indexOf('<nav class="next-cockpit-tabs"');
+  const rendered = start < 0 ? []
+    : [...html.slice(start).matchAll(/data-next-cockpit-action="tab" data-arg="([a-z-]+)"/g)]
+      .map(match => match[1]);
+
+  // When: walk right once per rendered tab, starting from the first.
+  const walked = [];
+  if(rendered.length){
+    controls.find(control => control.dataset.arg === rendered[0]).focus();
+    for(let step = 0; step < rendered.length; step++){
+      __fire("keydown", {target:document.activeElement, key:"ArrowRight", preventDefault(){}});
+      walked.push(nextRoute.tab || "now");
+    }
+  }
+  scopes[focus || "project"] = {rendered, walked};
+}
+console.log(JSON.stringify(scopes));
+"""
+        )
+
+        # Then: the walk visits every rendered tab in order and comes back.
+        assert isinstance(out, dict)
+        self.assertEqual(3, len(out))
+        for scope, seen in out.items():
+            with self.subTest(scope=scope):
+                rendered = seen["rendered"]
+                self.assertEqual(rendered[1:] + rendered[:1], seen["walked"])
+        # Today both scopes that draw a cockpit hold the same four tabs. The
+        # point of the test is that they keep agreeing when they stop.
+        for scope in ("project", "codex:focus-1"):
+            with self.subTest(scope=scope):
+                self.assertEqual(["now", "course", "decisions", "console"], out[scope]["rendered"])
+        # A route whose focus names no session in the payload draws the stale
+        # filter surface instead of a cockpit, so it has no tabs to disagree
+        # about. Asserted rather than assumed: it is the reason the empty case
+        # above is legal.
+        self.assertEqual([], out["codex:gone"]["rendered"])
 
 
 if __name__ == "__main__":

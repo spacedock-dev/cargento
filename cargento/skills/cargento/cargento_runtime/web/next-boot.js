@@ -3,6 +3,11 @@ const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same director
   " last two segments of each session's path, so sibling worktrees read alike.";
 const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
+/* Tabs that exist only while one session is in focus. Empty at project scope
+   rather than disabled there, because a tab about one session's words has
+   nothing to show when no session is selected. DRC-4508's `Held to` is the
+   first entry and lands next. */
+const NEXT_SESSION_TABS = [];
 const NEXT_OBSERVER_CONSENT_KEY = "cargento.observer-model-consent.v1";
 let nextObserverConsentMemo = null;
 const nextObserverRequests = new Set();
@@ -11,6 +16,19 @@ const nextObserverRequestStates = new Map();
 const qs = name => nextQuery.get(name);
 const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g,
   char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+
+/* Which cockpit tabs exist, given the session a project view is narrowed to.
+   `focus` is `nextRoute.focus`, and falsy is project scope.
+
+   One reader in place of the thirteen sites that read the list directly, and
+   it takes the scope now while both scopes still answer the same, so this
+   change moves nothing a reader sees. Six of those thirteen were the keyboard
+   wrap alone, which computes an index and a length against the list: a wrap
+   over a list the nav did not render moves focus to a tab that is not on the
+   reader's screen, and it does it silently. */
+function nextCockpitTabs(focus){
+  return focus ? [...NEXT_PROJECT_TABS, ...NEXT_SESSION_TABS] : NEXT_PROJECT_TABS;
+}
 
 function nextDecodeRoutePart(value){
   try{
@@ -35,7 +53,7 @@ function nextRouteFromFragment(fragment){
   if(parts.length === 3 && parts[0] === "project"){
     const project = nextDecodeRoutePart(parts[1]);
     const value = nextDecodeRoutePart(parts[2]);
-    if(project && NEXT_PROJECT_TABS.includes(value)){
+    if(project && nextCockpitTabs(null).includes(value)){
       return {view:"project",project,session:null,tab:value};
     }
     if(project && value) return {view:"project",project,session:null,focus:value};
@@ -44,7 +62,7 @@ function nextRouteFromFragment(fragment){
     const project = nextDecodeRoutePart(parts[1]);
     const focus = nextDecodeRoutePart(parts[2]);
     const tab = nextDecodeRoutePart(parts[3]);
-    if(project && focus && NEXT_PROJECT_TABS.includes(tab)){
+    if(project && focus && nextCockpitTabs(focus).includes(tab)){
       return {view:"project",project,session:null,focus,tab};
     }
   }
@@ -72,7 +90,7 @@ function nextFragmentForRoute(route){
   }
   if(route && route.view === "project" && route.project){
     const focus = route.focus ? `:${encodeURIComponent(route.focus)}` : "";
-    const tab = NEXT_PROJECT_TABS.includes(route.tab) && route.tab !== "now"
+    const tab = nextCockpitTabs(route.focus).includes(route.tab) && route.tab !== "now"
       ? `:${encodeURIComponent(route.tab)}` : "";
     return `#n=project:${encodeURIComponent(route.project)}${focus}${tab}`;
   }

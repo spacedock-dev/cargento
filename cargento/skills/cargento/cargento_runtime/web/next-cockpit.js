@@ -988,10 +988,10 @@ function nextCockpitViewingSession(focus){
 }
 
 function nextCockpitTabList(){
-  const selected = NEXT_PROJECT_TABS.includes(nextRoute && nextRoute.tab)
-    ? nextRoute.tab : "now";
+  const tabs = nextCockpitTabs(nextRoute && nextRoute.focus);
+  const selected = tabs.includes(nextRoute && nextRoute.tab) ? nextRoute.tab : "now";
   return '<nav class="next-cockpit-tabs" role="tablist" aria-label="Project cockpit views">' +
-    NEXT_PROJECT_TABS.map(tab => {
+    tabs.map(tab => {
       const label = nextCockpitHumanLabel(tab);
       const current = tab === selected;
       return `<button type="button" role="tab" data-next-cockpit-action="tab" ` +
@@ -1349,7 +1349,12 @@ function nextCockpitTerminal(group, focus){
 }
 
 function nextCockpitPanel(context, focus, observation, commandAttention){
-  const tab = NEXT_PROJECT_TABS.includes(nextRoute && nextRoute.tab) ? nextRoute.tab : "now";
+  /* The route's `focus`, not this function's resolved `focus` session. Every
+     other site that needs the tab set has only the route: the keydown handler
+     has no group, and `next-boot.js` runs before there is one. One source, so
+     the nav, the panel and the wrap cannot answer differently. */
+  const tab = nextCockpitTabs(nextRoute && nextRoute.focus).includes(nextRoute && nextRoute.tab)
+    ? nextRoute.tab : "now";
   let body = "";
   if(tab === "now"){
     body = (focus ? '<p class="next-cockpit-scope-note">Now remains project-wide, ' +
@@ -1445,7 +1450,7 @@ document.addEventListener("click", event => {
     ? nextProjectGroups().find(candidate => candidate.label === nextRoute.project) : null;
   if(action === "tab"){
     const tab = String(target.dataset.arg || "");
-    if(!group || !NEXT_PROJECT_TABS.includes(tab)) return;
+    if(!group || !nextCockpitTabs(nextRoute.focus).includes(tab)) return;
     event.preventDefault();
     navigateNext({view:"project",project:group.label,focus:nextRoute.focus || null,tab});
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
@@ -1533,13 +1538,14 @@ function nextCockpitHandleKeydown(event){
   if(!target || String(target.dataset.nextCockpitAction || "") !== "tab") return false;
   if(!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return false;
   const current = String(target.dataset.arg || "now");
-  const index = Math.max(0, NEXT_PROJECT_TABS.indexOf(current));
-  const next = event.key === "Home" ? 0 : event.key === "End" ? NEXT_PROJECT_TABS.length - 1 :
-    (index + (event.key === "ArrowRight" ? 1 : -1) + NEXT_PROJECT_TABS.length) %
-      NEXT_PROJECT_TABS.length;
+  /* The one list, so the wrap cannot reach past what the nav drew. */
+  const tabs = nextCockpitTabs(nextRoute.focus);
+  const index = Math.max(0, tabs.indexOf(current));
+  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
+    (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
   event.preventDefault();
   navigateNext({view:"project",project:nextRoute.project,focus:nextRoute.focus || null,
-    tab:NEXT_PROJECT_TABS[next]});
-  nextRestoreFocus({named:"cockpit-tab:" + NEXT_PROJECT_TABS[next]}, nextAttention);
+    tab:tabs[next]});
+  nextRestoreFocus({named:"cockpit-tab:" + tabs[next]}, nextAttention);
   return true;
 }
