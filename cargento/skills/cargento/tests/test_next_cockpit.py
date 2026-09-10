@@ -4200,6 +4200,12 @@ console.log(JSON.stringify({unread, failed, partial, empty: absence()}));
         out = self.run_fixture(
             self.ANNOTATED
             + """
+// A real payload stamps `actor_claim` on every fact, and on most types it IS
+// the evidence source. Measured on a live board: every `user_message` carried
+// actor_claim === evidence.source, and appending it printed the clause twice.
+for(const fact of __semantic.facts){
+  fact.actor_claim = (fact.evidence || {}).source || "";
+}
 __semantic.facts.push({fact_id:"snap", at:106, type:"observer_snapshot",
   summary:"The session appears to be capturing screens",
   actor_claim:"model-derived observer snapshot", scope:"session",
@@ -4211,6 +4217,8 @@ const html = __els.app.innerHTML;
 console.log(JSON.stringify({
   derived: (html.match(/class="next-cockpit-work-derived">([^<]*)</) || [])[1],
   claimShown: html.includes("model-derived observer snapshot"),
+  // A claim the source line already carries is not repeated beside it.
+  sources: [...html.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
   // A published line keeps the mono register beside it.
   published: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
   mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
@@ -4222,6 +4230,10 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertEqual("The session appears to be capturing screens", out["derived"])
         self.assertTrue(out["claimShown"])
+        for line in out["sources"]:
+            with self.subTest(source=line):
+                halves = line.split(" · ")
+                self.assertEqual(len(halves), len(set(halves)), "a repeated clause")
         # A published line keeps mono, and it is not the paraphrase.
         self.assertTrue(out["published"])
         self.assertNotEqual(out["derived"], out["published"])

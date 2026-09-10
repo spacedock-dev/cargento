@@ -953,7 +953,12 @@ function nextCockpitWorkEvidence(session, source){
     return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(entry.type)}">` +
       `<span class="next-cockpit-work-type">${esc(entry.type)}</span>${summary}` +
       `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}` +
-      `${entry.actorClaim ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
+      /* Only where it says something the source line does not. On most fact
+         types `actor_claim` IS the evidence source, and appending it printed
+         "timestamped non-meta user-role record · exact · timestamped non-meta
+         user-role record". Caught by walking the board, not by the suite. */
+      `${entry.actorClaim && !entry.source.includes(entry.actorClaim)
+        ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
       '</span></div>';
   }).join("");
