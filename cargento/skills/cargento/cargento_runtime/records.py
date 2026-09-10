@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import string
 from datetime import UTC, datetime
@@ -513,7 +514,18 @@ def parse_utc_sql(value: Any) -> float:
 
 
 def norm_epoch(value: Any) -> float:
-    if not isinstance(value, (int, float)) or value <= 0:
+    """One record's timestamp in seconds, or 0 for "not observed".
+
+    Bools and non-finite floats are refused alongside the obvious rubbish, and
+    both were reachable. `isinstance(True, int)` is true and `True <= 0` is
+    false, so a JSON `true` in a store file became the epoch 1. A NaN passes
+    every comparison it is given, so it walked through both guards a reading
+    uses to decide whether a session had settled and published a final verdict
+    on a session that had not ended.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    if not math.isfinite(value) or value <= 0:
         return 0
     return value / 1000 if value > 1e12 else value
 

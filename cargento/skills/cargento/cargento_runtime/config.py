@@ -401,6 +401,12 @@ class RuntimeConfig:
     observer_goal_cap_chars: int
     observer_block_cap_chars: int
     observer_model_context_chars: int
+    # How long after an observed session end a reading may call it final.
+    # The measurement is 5.581 s, the slowest clean end recorded after its
+    # final `Stop`; the headroom above it is judgement, because event delivery
+    # is at-least-once and reorderable and a reading composed on the instant
+    # of the end can be contradicted by a `turn_started` already in flight.
+    reading_settle_sec: float
 
 
 def resolve_store_roots(
@@ -708,6 +714,7 @@ def build_runtime_config(
         observer_goal_cap_chars=200,
         observer_block_cap_chars=200,
         observer_model_context_chars=8_192,
+        reading_settle_sec=8.0,
     )
 
 

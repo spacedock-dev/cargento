@@ -1382,6 +1382,15 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # dir. `spacedock` provides the read-only entity-dir frontmatter reader;
         # `transcripts` provides the first-line metadata reader the path
         # resolver uses. Both are lower-level modules that do not import back.
+        # A leaf. It reads the reader's words and the observed facts the caller
+        # hands it, and calls one sandboxed subprocess through `observer` --
+        # deliberately through it rather than beside it, so a second model lane
+        # cannot drift from the first one's flags.
+        "cargento_runtime.reading": {
+            "cargento_runtime.config",
+            "cargento_runtime.observer",
+            "cargento_runtime.records",
+        },
         "cargento_runtime.observer": {
             "cargento_runtime.config",
             "cargento_runtime.io",
