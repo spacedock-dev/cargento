@@ -318,6 +318,32 @@ Fix, in C5: `nextCockpitDepartures(shape, source)` with five states — no readi
 
 ---
 
+## 11a. Settled 2026-09-10, before C2: the ledger derives in Python
+
+Section 11 below asked whether `reading.build_ledger` can reproduce
+`nextCockpitWorkEntries`, and named taking the entry list from the page as the fallback. Settled by
+reading both sides:
+
+`nextCockpitWorkEntries` (next-cockpit.js:954-977) is a pure transform over `semantic.facts` that
+reads only `fact_id`, `type`, `by`, `summary`, `at`, `actor_claim`, `evidence.source`,
+`evidence.confidence` and `source_session.{harness,sid}` — every one of them a field
+`project_context` already puts on the fact dict (project_context.py:1981-1989, :2209-2218). The
+filter is `source_session.harness:sid` equality (:555-560) and the sort is ascending `at`. A Python
+reconstruction over the same list is the same data, not a second derivation of it.
+
+The genuine risk is narrower than section 11 states, and it is not about the transform: it is
+**which collection**. `nextCockpitWorkSource` prefers the focus-scoped fetch where it has landed and
+falls back to the project-scoped one (:891-895), so the page can be looking at a different
+collection from the one the producer read seconds earlier. When that happens the model cites a
+`fact_id` the page cannot resolve, rule 3 demotes it, and the reader gets an abstention nothing on
+screen explains.
+
+**That case is already closed by section 9's third state** — the `source.state !== "read"` arm and
+the all-unverifiable arm both render a sentence naming the reason. No further work, and no fallback
+to page-supplied entries.
+
+The parity test in section 11 is still written, as a guard rather than as a gamble.
+
 ## 11. Riskiest assumption, and how to settle it before C4
 
 **That `reading.build_ledger` (Python) reproduces `nextCockpitWorkEntries` (next-cockpit.js:955-983) exactly** — the same session-key filter, the same ascending sort by `at`, the same `id` from `fact_id`, and the same `source` composed as `evidence.source · evidence.confidence`. If any of those diverges, the model cites an id that resolves in the producer and not on the page, rule 3 demotes it, and the reader sees a reading that abstains for a reason nothing on screen explains. It fails toward safe, so review will not catch it — it will just quietly make the feature useless.
