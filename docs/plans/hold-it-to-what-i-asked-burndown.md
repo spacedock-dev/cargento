@@ -626,12 +626,47 @@ Walk the **enabled** state during this PR behind a local, uncommitted flip of `A
 Mode 2 cannot walk a disabled control, and this branch's record is five defects found by looking at
 the board and none by CI.
 
-**Stage 5, after #312 lands, captain-gated.** Run the abstention check and flip the constant; move
-the issues to `Done`; `sync-project`; the promise-map half of the reconcile in a docs PR, for four
-`extend` and two `new` issues; stamp `docs-synced-through` once from `main`.
+**Stage 5, captain-gated. #312 landed on 2026-09-10 and #317 now targets `main`.** Run the
+abstention check and flip the constant; move the issues to `Done`; `sync-project`; the promise-map
+half of the reconcile in a docs PR; stamp `docs-synced-through` once from `main`.
+
+The accounting in an earlier draft of this line was wrong both ways. **Four** `extend` issues will
+close (DRC-4508, 4509, 4511, 4512). There are **three** `move:new` in the milestone (DRC-4534,
+4540, 4541) and **none ships in this PR**, so none triggers the promise-map step and no sixth board
+column is due.
+
+**The promise-map cost forks, and the fork is a decision.** The wording lives in three places:
+`docs/promise-map.md`, `docs/visibility-2x2/items.json`'s `columns[].promise`, and the Linear
+overview. Only the first two are checked, by `validate_promise_parity`. If a P5 clause lands under
+`Backed by` or `Where it stops` — which is what the P2 edit here did, leaving the bold sentence
+alone — it is a ONE-place change and no validator sees it. If it changes P5's bold sentence it is a
+THREE-place change, and missing the third is silent. Decide which before writing the docs PR.
 
 **Stage 6, the away case.** DRC-4540, built so adding a lane adds a value rather than changing the
 record's shape, then DRC-4328, DRC-4034 and DRC-4032, then DRC-4541, then DRC-4514.
+
+### Reconcile obligations this plan did not carry
+
+Found by a completeness audit on 2026-09-10, after Stages 1 to 3 shipped.
+
+- **DRC-4023 (C4, My goals across sessions) is in a different milestone and this branch shipped
+  it.** Its user value is "you can see each session's stated goal in one place", which is the
+  Intent log. It sits in `Steer before waste`, still listed there as unbuilt. The reconcile lands
+  on that milestone too, not only this one.
+- **The milestone description carries a ruling DEC-18 reversed.** It says automatic evaluation is
+  refused until a rubric exists; DEC-18 made it permitted behind four preconditions. That is a live
+  falsehood rather than accretion, so `sync-project` must rewrite it rather than trim it. It also
+  says two rulings were settled where there are now four, that `## Waits on` is nothing when
+  DRC-4514 waits on DRC-4541, and that four of five issues have a half unmerged in #312.
+- **DRC-4508 AC5's conflict-DETECTION half shipped**, contrary to four lines in this file that call
+  it unbuildable. What shipped is honest detection of a later direction, not of a conflict: the
+  block asks and the reader settles. The lines saying a semantic conflict needs a reading remain
+  true and are the reason the block refuses to judge.
+- **Burndown step 4 is six parts and a receipt.** An issue moved to `Done` with no receipt comment
+  is invisible to the next run's pick filter permanently.
+- `COMPATIBILITY.md` owes nothing: the annotation store copies `lifecycle.write_state`'s pattern
+  exactly, no Python floor moves and no capability row is warranted. Its `docs-synced-through`
+  marker is stale but is stamped once from `main` after the merges, not from here.
 
 ### Progress against this order (2026-09-10)
 
