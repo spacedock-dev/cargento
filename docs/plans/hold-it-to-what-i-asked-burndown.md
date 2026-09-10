@@ -75,6 +75,42 @@ Refuted and NOT to be rebuilt: 32 findings, including every claim that the missi
 the missing write path into a session, and DRC-4514's history are defects. Those are closed
 rulings.
 
+### THE VERIFICATION ROUND (2026-09-10) — and what it cost to check it
+
+All nineteen above were fixed and re-checked by two harnesses. The two reports were not worth the
+same.
+
+**Antigravity** reported all nineteen FIXED and no new problems, and quoted as evidence a fallback
+sentence, "Select a session in the scope rail to record what you asked of it.", that does not exist
+anywhere in the tree. The verdicts happened to be right. The report could not carry them.
+
+**Codex** refused to mark anything on its first re-check because its sandbox could not bind a port,
+which is the better failure. Given a server started outside its sandbox it came back with six
+PARTIALs and five new problems. Every one of the ten was validated against the tree and every one
+was real. Five were introduced or first exposed by the review's own fixes.
+
+| # | Finding | Where | Status |
+| -- | -- | -- | -- |
+| T | A citation resolves against the 20 rows the block DRAWS, not the facts the payload holds, so a departure citing anything older is demoted as the session grows | `nextCockpitWorkSource` | DONE |
+| U | "covers only the work so far" keys on `endKnown`, which a turn stop sets, so it vanishes while the card beside it says no session end was observed | `nextCockpitReading` | DONE |
+| V | Only one of `_OBSERVER_ACTOR_CLAIMS`'s three derivations starts `model-derived`, so a deterministic paraphrase of the goal counts as "observed of what it did" | `nextCockpitWorkMix` | DONE |
+| W | The board's sentence about a revision whose words are not retained wears the reader's mono register; `clauseKnown` was computed for this and never read | `nextCockpitReadingCriterionRow` | DONE |
+| X | "1 changed entries were observed" — the copy predates the branch, and HOW IT LANDED gave it its first surface | `nextObservedLanding` | DONE |
+| Y | `persisted:false` drops the draft and then refreshes, and every collection reloads the store from disk, so the warning describes a refresh already running | `nextCockpitHeldSave` | DONE |
+| Z | Unread-vs-empty read `command_attention_coverage`, a different sweep bounded at 64; the scan that produces these facts is bounded at 3 and names its omissions in `sources.work.omitted` | `nextCockpitWorkSource` | DONE |
+| AA | The reading's cutoff renders inside each departure row, so never when there are none | `nextCockpitDepartures` | DONE |
+| AB | A keystroke does not redraw, so the absence sentence sits under the half-typed draft | the `input` handler | DONE |
+| AC | Two sessions of one harness, one state and one title render byte-identical scope links | `nextCockpitScopeLinks` | DONE |
+
+Fixed in `6ea3706`. Eleven mutations, one per fix plus the directions half of V, each verified to
+fail a test. Three existing tests asserted the behaviour Codex refuted and were corrected rather
+than the fixes; the stub DOM gained paragraph parsing, because the input handler now touches one
+and a test of it would otherwise pass on a `querySelector` that returned null.
+
+**The rule this round earned.** A re-check is not a second opinion unless you check it. Grep one
+quoted string from any review before relying on its verdicts, and prefer a reviewer that refuses
+over one that reasons from the diff and calls it a walk.
+
 ### Rulings that now govern
 
 - **DEC-17 (DRC-4532), decided.** The evaluation rubric gates AUTOMATIC evaluation only. A
