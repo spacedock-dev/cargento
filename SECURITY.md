@@ -66,7 +66,19 @@ The posture rests on two invariants:
    `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
    redacted on the way in like every other prompt-derived string, written owner-only through a temp
    file and a rename, and turned off entirely by `--no-annotations`. It is the only store holding
-   prose you composed rather than anything a harness published. One forwarder writes too:
+   prose you composed rather than anything a harness published, and since 2026-09-10 it also holds
+   a **reading**: a model's account of that session against those words. A reading carries one
+   model-authored string, a departure's `detail`, and it goes through the same
+   redact-before-clip scrub the two prose fields do, on the way in and again on the way out,
+   because any local process can rewrite the file. Everything else a reading holds is a value the
+   code selected from a closed set or composed from counts it measured.
+
+   Two consequences of storing it here rather than in session history, both accepted rather than
+   discovered. `--forget` deletes session history alone and **does not reach this file**, so a
+   reader who wants a model-authored reading gone clears that session's annotation, which deletes
+   the reading with the words that produced it. And there is no fourteen-day expiry: a reading is
+   evicted when its annotation is, oldest-save-first at the session count above. One forwarder
+   writes too:
    `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
    name and a timestamp and nothing about the session's content.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the

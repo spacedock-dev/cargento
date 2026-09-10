@@ -1,6 +1,6 @@
 """One reader-requested reading of a session against the words they typed.
 
-A leaf over `config`, `records` and `observer`. Nothing here reaches a store, a
+Over `config`, `records` and `observer`. Nothing here reaches a store, a
 route or a collection: the caller hands in a published row, an annotation and
 the observed facts, and gets back an assessment or a reason there is none.
 

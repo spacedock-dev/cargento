@@ -38,7 +38,7 @@ import time
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import records
+from cargento_runtime import reading, records
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -142,12 +142,29 @@ class Settlement(TypedDict):
 
 
 class Annotation(TypedDict):
-    """One session's words, newest revision last."""
+    """One session's words, newest revision last.
+
+    A reading lives here rather than in session history. DEC-15b named history
+    and gave its reason in the same sentence -- so both reopen after a restart
+    and after the live row disappears -- and this store already does both: it
+    is bounded by two counts with no time-to-live, and an annotation is keyed
+    on `(harness, sid)` and carries no project, so it outlives the row by
+    construction. The captain amended the ruling on 2026-09-10 once that was
+    measured rather than assumed.
+
+    The price is real and recorded rather than hidden: `--forget` deletes
+    session history alone and does not reach this store, so a reader who wants
+    a model-authored reading gone uses `clear()` on that session. There is no
+    fourteen-day expiry either; a reading is evicted when its annotation is.
+    """
 
     harness: str
     sid: str
     revisions: tuple[Revision, ...]
     settled: NotRequired[Settlement]
+    assessment: NotRequired[reading.Assessment]
+    readings: NotRequired[int]
+    withheld: NotRequired[str]
 
 
 def store_path(config: RuntimeConfig) -> str:
@@ -183,6 +200,72 @@ def _revision(value: Any, cap: int) -> Revision | None:
         # arriving over the endpoint would.
         "goal": records.safe_text(raw_goal, cap) if isinstance(raw_goal, str) else "",
         "output": records.safe_text(raw_output, cap) if isinstance(raw_output, str) else "",
+    }
+
+
+def _criterion(value: Any, cap: int) -> reading.Criterion | None:
+    """One untrusted criterion of a stored reading, or nothing.
+
+    `result` absent and `result` present are both legal and they mean
+    different things -- the reading could not be read, versus the evidence
+    does not settle it -- so absence is preserved rather than defaulted.
+    """
+    if not isinstance(value, dict) or set(value) - set(reading.CRITERION_KEYS):
+        return None
+    result = value.get("result")
+    if result is not None and result not in reading.RESULTS:
+        return None
+    cites = value.get("cites")
+    if not isinstance(cites, (list, tuple)) or not all(isinstance(c, str) for c in cites):
+        return None
+    criterion: reading.Criterion = {
+        "cites": tuple(records.safe_text(c, KEY_CAP_CHARS) for c in cites),
+        "detail": records.safe_text(value.get("detail"), cap),
+        "clause": records.safe_text(value.get("clause"), cap),
+    }
+    if result is not None:
+        criterion["result"] = result
+    return criterion
+
+
+def _assessment(value: Any, cap: int) -> reading.Assessment | None:
+    """One untrusted reading, or nothing at all.
+
+    Dropped WHOLE on any failure. A half-parsed reading is the worst of the
+    three outcomes: the page renders whatever survived, and what survives is
+    whichever half happened to be well-formed rather than whichever half is
+    true. Nothing here repairs a field.
+
+    Type-checked on the way out as well as on the way in, for `_revision`'s
+    reason: any local process can rewrite this file, and a dict arriving here
+    would publish its repr exactly as one arriving over the endpoint would.
+    """
+    if not isinstance(value, dict) or set(value) - set(reading.ASSESSMENT_KEYS):
+        return None
+    revision = value.get("revision_read")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        return None
+    scope = value.get("scope")
+    if scope not in reading.SCOPE_TEXT:
+        return None
+    raw_criteria = value.get("criteria")
+    if not isinstance(raw_criteria, dict) or set(raw_criteria) != set(reading.CONSTRAINTS):
+        return None
+    criteria: dict[str, reading.Criterion] = {}
+    for name, raw in raw_criteria.items():
+        criterion = _criterion(raw, cap)
+        if criterion is None:
+            return None
+        criteria[name] = criterion
+    ended = value.get("ended_at_read")
+    return {
+        "revision_read": revision,
+        "stamp": records.safe_text(value.get("stamp"), cap),
+        "cutoff": records.safe_text(value.get("cutoff"), cap),
+        "scope": scope,
+        "scope_text": reading.SCOPE_TEXT[scope],
+        "ended_at_read": records.norm_epoch(ended) or None,
+        "criteria": criteria,
     }
 
 
@@ -231,6 +314,15 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     settled = _settlement(value.get("settled"))
     if settled is not None:
         entry["settled"] = settled
+    assessment = _assessment(value.get("assessment"), text_cap)
+    if assessment is not None:
+        entry["assessment"] = assessment
+    readings = value.get("readings")
+    if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
+        entry["readings"] = readings
+    withheld = value.get("withheld")
+    if isinstance(withheld, str) and withheld in reading.WITHHELD.values():
+        entry["withheld"] = withheld
     return entry
 
 
@@ -399,6 +491,14 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "settled_at": settled["at"] if settled else None,
         "settled_through": settled["through"] if settled else None,
         "settled_revision": settled["revision"] if settled else None,
+        # A reading, the count of presses that reached the model, and the
+        # reason there is no reading. Three keys and not one, because a reader
+        # who pressed and got nothing must be able to tell that from a reader
+        # who has not pressed: the count and the reason say different things
+        # and an absent reading says neither.
+        "assessment": entry.get("assessment") if entry else None,
+        "reading_count": entry.get("readings", 0) if entry else 0,
+        "reading_withheld": entry.get("withheld", "") if entry else "",
     }
 
 
@@ -408,6 +508,132 @@ def _key(harness: Any, sid: Any) -> tuple[str, str]:
         records.safe_text(harness, KEY_CAP_CHARS).strip(),
         records.safe_text(sid, KEY_CAP_CHARS).strip(),
     )
+
+
+def _carried(existing: Annotation, updated: Annotation) -> Annotation:
+    """Copy every optional field the caller did not set onto the new entry.
+
+    Three mutators rebuild this dict from scratch and each one must carry
+    every optional field, so the list lives once. A mutator that forgets one
+    silently discards the reader's reading, and nothing about the row would
+    look wrong afterwards.
+    """
+    for name in ("settled", "assessment", "readings", "withheld"):
+        if name not in updated and name in existing:
+            updated[name] = existing[name]
+    return updated
+
+
+def record_reading(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    harness: Any,
+    sid: Any,
+    *,
+    assessment: reading.Assessment,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> bool:
+    """Store one reading beside the words it read. Returns whether it landed.
+
+    The count goes up whether or not the reading is usable, because the
+    reader's capacity was spent either way and the control shows what they
+    have spent. Any previously withheld reason is cleared: a reading arrived,
+    so the sentence saying why one did not is no longer true.
+    """
+    return _record(
+        config,
+        state,
+        harness,
+        sid,
+        assessment=assessment,
+        withheld="",
+        spent=True,
+        diagnostic_sink=diagnostic_sink,
+    )
+
+
+def record_withheld(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    harness: Any,
+    sid: Any,
+    *,
+    reason: str,
+    spent: bool,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> bool:
+    """Store why there is no reading. Returns whether it landed.
+
+    `spent` is the difference between a press that reached the model and one
+    that never could. A missing Codex CLI costs nothing and must not count
+    against a reader who has spent nothing; a model call that started and then
+    failed has already cost them, and the count says so.
+
+    A previous reading is NOT cleared. It was true when it was made and it
+    still names the revision it read; a later press that could not produce one
+    does not retract it.
+    """
+    if reason not in reading.WITHHELD:
+        return False
+    return _record(
+        config,
+        state,
+        harness,
+        sid,
+        assessment=None,
+        withheld=reading.WITHHELD[reason],
+        spent=spent,
+        diagnostic_sink=diagnostic_sink,
+    )
+
+
+def _record(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    harness: Any,
+    sid: Any,
+    *,
+    assessment: reading.Assessment | None,
+    withheld: str,
+    spent: bool,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> bool:
+    """The shared write behind `record_reading` and `record_withheld`."""
+    if not config.annotations_enabled:
+        return False
+    key = _key(harness, sid)
+    if not key[0] or not key[1]:
+        return False
+    with state.annotation_lock:
+        # From disk under the lock, for `annotate`'s reason: a save made by a
+        # second dashboard since this one's last collection is carried forward
+        # rather than written away.
+        current = load(config)
+        existing = find(current, *key)
+        if existing is None:
+            # A reading of nothing is not a reading. There is no baseline to
+            # have read, and inventing an entry here would put a row on the
+            # board for a session nobody annotated.
+            return False
+        updated: Annotation = {
+            "harness": existing["harness"],
+            "sid": existing["sid"],
+            "revisions": existing["revisions"],
+        }
+        if assessment is not None:
+            updated["assessment"] = assessment
+        if withheld:
+            updated["withheld"] = withheld
+        elif "withheld" in existing:
+            # Cleared rather than carried: a reading arrived.
+            updated["withheld"] = ""
+        if spent:
+            updated["readings"] = existing.get("readings", 0) + 1
+        others = [e for e in current if (e["harness"], e["sid"]) != key]
+        bounded = _bounded([*others, _carried(existing, updated)], config.annotation_max_sessions)
+        # Before the write and inside the lock, as every other mutator does.
+        state.annotations = _stored(bounded)
+        return save(config, bounded, diagnostic_sink=diagnostic_sink)
 
 
 def annotate(
@@ -485,9 +711,7 @@ def annotate(
             # already answered, and retyping the baseline clears the block by
             # its own stamp rather than by discarding that history: the new
             # revision's `at` is later than the directions that raised it.
-            carried = existing.get("settled")
-            if carried is not None:
-                updated["settled"] = carried
+            updated = _carried(existing, updated)
         else:
             updated = {
                 "harness": key[0],
@@ -560,6 +784,7 @@ def settle(
                 "revision": existing["revisions"][-1]["n"],
             },
         }
+        updated = _carried(existing, updated)
         others = [e for e in current if (e["harness"], e["sid"]) != key]
         bounded = _bounded([*others, updated], config.annotation_max_sessions)
         # Before the write and inside the lock, as `annotate` and `clear` both

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
 from . import annotations as annotation_store
-from . import dismissals, notifications, quota, records, sessions
+from . import dismissals, notifications, quota, reading, records, sessions
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -504,6 +504,29 @@ def _redact_published_text(rows: list[Session]) -> list[Session]:
 _DISPLAY_ID_FLOOR = annotation_store.DISPLAY_ID_FLOOR
 
 
+def _withdraw_stale_finality(row: Session, assessment: object) -> None:
+    """Retract a `final` reading whose session end is no longer published.
+
+    Derived at publish time rather than stored, so it corrects itself in both
+    directions: `events.reduce_overlays` nulls `ended_at` on a working overlay
+    by design, and an `ended_at` that comes back restores finality on the next
+    collection. A stored flag would have to be un-stored by something, and
+    nothing would.
+
+    "Final" is a durable claim about a session id, not a terminal state of the
+    page. A reading that called a session finished, on a row that no longer
+    says it finished, is the one claim here a reader cannot check for
+    themselves.
+    """
+    if not isinstance(assessment, dict) or assessment.get("scope") != reading.SCOPE_FINAL:
+        return
+    ended = records.norm_epoch(row.get("ended_at"))
+    if ended and ended == records.norm_epoch(assessment.get("ended_at_read")):
+        return
+    assessment["scope"] = reading.SCOPE_WITHDRAWN
+    assessment["scope_text"] = reading.SCOPE_TEXT[reading.SCOPE_WITHDRAWN]
+
+
 def _attach_annotations(
     rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
 ) -> None:
@@ -544,6 +567,7 @@ def _attach_annotations(
                 annotation_store.BINDING_BY_PREFIX if by_prefix else annotation_store.BINDING_EXACT
             ),
         )
+        _withdraw_stale_finality(row, published.get("assessment"))
         # Prefixed and flat rather than nested, for the reason `base_session`
         # declares them that way: the history allowlist admits field names, and
         # a name cannot reach inside a mapping.

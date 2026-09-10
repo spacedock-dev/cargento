@@ -108,6 +108,9 @@ DECLARED_SESSION_FIELDS = frozenset(
         "annotation_settled_at",
         "annotation_settled_through",
         "annotation_settled_revision",
+        "annotation_assessment",
+        "annotation_reading_count",
+        "annotation_reading_withheld",
     }
 )
 

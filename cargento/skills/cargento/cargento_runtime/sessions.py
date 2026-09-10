@@ -540,6 +540,13 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_settled_at": None,
         "annotation_settled_through": None,
         "annotation_settled_revision": None,
+        # A reading of this session against those words, the number of presses
+        # that reached the model, and the reason there is no reading. Declared
+        # here at their absent values on the rule above: a missing key renders
+        # as `undefined`, and an absence has to arrive carrying its reason.
+        "annotation_assessment": None,
+        "annotation_reading_count": 0,
+        "annotation_reading_withheld": "",
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and

@@ -20,6 +20,7 @@ from typing import Any
 from cargento_runtime import aggregate, cli, project_context
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import observer as runtime_observer
+from cargento_runtime import reading as runtime_reading
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -998,6 +999,245 @@ class CachedSidecarIsUntrustedTest(unittest.TestCase):
             self.assertNotIn("\n", value, f"{field} kept a newline")
             self.assertNotIn("\r", value, f"{field} kept a carriage return")
             self.assertNotIn("\t", value, f"{field} kept a tab")
+
+
+class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
+    """DEC-15b as amended: the store is this one, not session history.
+
+    The ruling named history and gave its reason in the same sentence -- so
+    both reopen after a restart and after the live row disappears. This store
+    already did both, and the amendment followed the measurement.
+    """
+
+    def setUp(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        self.config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        self.state = build_runtime_state(self.config, started=1.0)
+        annotation_store.annotate(
+            self.config, self.state, "claude", "s1", goal="rename the flag", now=10.0
+        )
+
+    @staticmethod
+    def _assessment(**over: Any) -> Any:
+        base = {
+            "revision_read": 1,
+            "stamp": "read at 10:00",
+            "cutoff": "Read 1 of 1 entries",
+            "scope": runtime_reading.SCOPE_FINAL,
+            "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
+            "ended_at_read": 99.0,
+            "criteria": {
+                "goal": {
+                    "result": runtime_reading.RESULT_DEPARTURE,
+                    "cites": ("f1",),
+                    "detail": "it renamed a different flag",
+                    "clause": "rename the flag",
+                },
+                "output": {
+                    "result": runtime_reading.RESULT_UNVERIFIABLE,
+                    "cites": (),
+                    "detail": "",
+                    "clause": "",
+                },
+            },
+        }
+        base.update(over)
+        return base
+
+    def test_a_reader_who_restarts_still_has_the_reading_they_asked_for(self) -> None:
+        self.assertTrue(
+            annotation_store.record_reading(
+                self.config, self.state, "claude", "s1", assessment=self._assessment()
+            )
+        )
+        # A second process, reading the file the first one wrote.
+        reloaded = annotation_store.load(self.config)
+        entry = annotation_store.find(reloaded, "claude", "s1")
+        assert entry is not None
+        self.assertEqual(1, entry["assessment"]["revision_read"])
+        self.assertEqual(1, entry["readings"])
+        self.assertEqual(
+            runtime_reading.RESULT_DEPARTURE, entry["assessment"]["criteria"]["goal"]["result"]
+        )
+
+    def test_a_reader_typing_again_does_not_lose_the_reading_they_already_have(self) -> None:
+        annotation_store.record_reading(
+            self.config, self.state, "claude", "s1", assessment=self._assessment()
+        )
+        annotation_store.annotate(
+            self.config, self.state, "claude", "s1", goal="rename it properly", now=20.0
+        )
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        # Carried, not cleared. It named revision 1 and it still does; the
+        # board says so with the stale line rather than by discarding it.
+        self.assertEqual(1, entry["assessment"]["revision_read"])
+        self.assertEqual(2, len(entry["revisions"]))
+
+    def test_a_reader_clearing_their_words_clears_the_reading_of_them(self) -> None:
+        annotation_store.record_reading(
+            self.config, self.state, "claude", "s1", assessment=self._assessment()
+        )
+        annotation_store.clear(self.config, self.state, "claude", "s1")
+        self.assertIsNone(annotation_store.find(annotation_store.load(self.config), "claude", "s1"))
+
+    def test_a_half_written_reading_is_dropped_whole_rather_than_half_shown(self) -> None:
+        # The worst of the three outcomes is the middle one: the page renders
+        # whichever half happened to be well-formed rather than whichever half
+        # is true.
+        for broken in (
+            self._assessment(revision_read=0),
+            self._assessment(revision_read=True),
+            self._assessment(scope="invented"),
+            self._assessment(criteria={"goal": {}}),
+            self._assessment(smuggled="x"),
+        ):
+            with self.subTest(broken=sorted(broken)[:2]):
+                self.assertIsNone(annotation_store._assessment(broken, 240))
+
+    def test_a_rewritten_store_cannot_publish_a_result_the_board_does_not_own(self) -> None:
+        criteria = {
+            "goal": {"result": "met", "cites": (), "detail": "", "clause": "g"},
+            "output": {"result": None, "cites": (), "detail": "", "clause": ""},
+        }
+        self.assertIsNone(annotation_store._assessment(self._assessment(criteria=criteria), 240))
+
+    def test_a_reader_who_pressed_and_got_nothing_can_tell_that_from_not_pressing(self) -> None:
+        published = annotation_store.published(
+            annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        )
+        self.assertEqual(0, published["reading_count"])
+        self.assertEqual("", published["reading_withheld"])
+
+        annotation_store.record_withheld(
+            self.config,
+            self.state,
+            "claude",
+            "s1",
+            reason=runtime_reading.WITHHELD_TURN_STOP,
+            spent=False,
+        )
+        after = annotation_store.published(
+            annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        )
+        self.assertEqual(
+            runtime_reading.WITHHELD[runtime_reading.WITHHELD_TURN_STOP],
+            after["reading_withheld"],
+        )
+        # Nothing reached the model, so nothing was spent and the count that
+        # tells the reader what they have spent must not move.
+        self.assertEqual(0, after["reading_count"])
+
+    def test_a_model_call_that_started_and_failed_still_costs_the_reader_a_press(self) -> None:
+        annotation_store.record_withheld(
+            self.config,
+            self.state,
+            "claude",
+            "s1",
+            reason=runtime_reading.WITHHELD_MODEL_FAILED,
+            spent=True,
+        )
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        self.assertEqual(1, entry["readings"])
+
+    def test_a_reading_of_a_session_nobody_annotated_is_refused(self) -> None:
+        self.assertFalse(
+            annotation_store.record_reading(
+                self.config, self.state, "claude", "never-typed", assessment=self._assessment()
+            )
+        )
+
+
+class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.TestCase):
+    """`final` is a durable claim about a session id, not a state of the page."""
+
+    @staticmethod
+    def _row(**over: Any) -> Any:
+        row = {"harness": "claude", "sid": "s1", "ended_at": 99.0}
+        row.update(over)
+        return row
+
+    @staticmethod
+    def _assessment() -> Any:
+        return {
+            "revision_read": 1,
+            "stamp": "",
+            "cutoff": "",
+            "scope": runtime_reading.SCOPE_FINAL,
+            "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
+            "ended_at_read": 99.0,
+            # Both constraints, because the store validates the shape and a
+            # fixture that cannot round-trip would test the helper alone.
+            "criteria": {
+                name: {
+                    "result": runtime_reading.RESULT_UNVERIFIABLE,
+                    "cites": (),
+                    "detail": "",
+                    "clause": "",
+                }
+                for name in runtime_reading.CONSTRAINTS
+            },
+        }
+
+    def test_a_reader_returning_to_a_session_that_resumed_is_not_told_it_is_final(self) -> None:
+        for ended in (None, 0.0, 150.0):
+            with self.subTest(ended=ended):
+                assessment = self._assessment()
+                aggregate._withdraw_stale_finality(self._row(ended_at=ended), assessment)
+                self.assertEqual(runtime_reading.SCOPE_WITHDRAWN, assessment["scope"])
+                self.assertIn("no longer published", assessment["scope_text"])
+
+    def test_a_reading_of_a_session_that_really_ended_still_says_it_is_final(self) -> None:
+        assessment = self._assessment()
+        aggregate._withdraw_stale_finality(self._row(), assessment)
+        self.assertEqual(runtime_reading.SCOPE_FINAL, assessment["scope"])
+
+    def test_a_reader_looking_at_the_board_sees_the_retraction_not_just_the_helper(self) -> None:
+        """Through `_attach_annotations`, because the call site is the defect.
+
+        Measured: deleting the call left every direct test of the helper green
+        while no row on the board was ever retracted. A tested function
+        nothing reaches is the same failure as a test that never runs.
+        """
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        state = build_runtime_state(config, started=1.0)
+        annotation_store.annotate(config, state, "claude", "s1", goal="rename", now=10.0)
+        annotation_store.record_reading(
+            config, state, "claude", "s1", assessment=self._assessment()
+        )
+        entries = annotation_store.load(config)
+
+        rows: list[dict[str, object]] = [
+            {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None}
+        ]
+        aggregate._attach_annotations(rows, entries)
+
+        published = rows[0]["annotation_assessment"]
+        assert isinstance(published, dict)
+        self.assertEqual(runtime_reading.SCOPE_WITHDRAWN, published["scope"])
+        self.assertIn("no longer published", published["scope_text"])
+
+    def test_a_mid_flight_reading_is_never_retracted_by_this_rule(self) -> None:
+        assessment = self._assessment()
+        assessment["scope"] = runtime_reading.SCOPE_MID_FLIGHT
+        aggregate._withdraw_stale_finality(self._row(ended_at=None), assessment)
+        self.assertEqual(runtime_reading.SCOPE_MID_FLIGHT, assessment["scope"])
 
 
 if __name__ == "__main__":

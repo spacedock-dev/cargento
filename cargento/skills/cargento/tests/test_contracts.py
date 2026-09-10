@@ -1190,6 +1190,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.quota",
+            "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.snapshot",
@@ -1371,9 +1372,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # than over a mark, so it is a leaf on the same four and nothing else.
         # The one behavioural difference is the absent watermark, which costs no
         # edge: see that module's docstring for why an annotation does not lapse.
+        # `reading` for the shape of a stored assessment and the closed
+        # vocabularies that validate one. The arrow runs this way because the
+        # shape belongs with the producer, and it stays a DAG: `reading`
+        # imports neither this module nor `state`.
         "cargento_runtime.annotations": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.state",
         },
