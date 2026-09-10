@@ -770,6 +770,7 @@ class Application:
                     {
                         "annotate": True,
                         "annotate_cap": config.annotation_text_cap_chars,
+                        "reading_check": annotation_store.ABSTENTION_CHECK,
                     }
                     if config.annotations_enabled
                     else {}

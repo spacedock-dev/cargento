@@ -753,20 +753,35 @@ function nextCockpitWorkEvidenceLimit(harness){
       "alone, so nothing above is an inspected file, test or deliverable.";
 }
 
-function nextCockpitWorkEvidence(session, semantic){
+/* The entries, once. The rows below render them and a reading cites them, so
+   a citation resolves against the same list the reader is looking at rather
+   than against a second collection assembled from the same facts. */
+function nextCockpitWorkEntries(session, semantic){
   const key = sessKey(session);
-  const facts = (semantic && Array.isArray(semantic.facts) ? semantic.facts : [])
+  return (semantic && Array.isArray(semantic.facts) ? semantic.facts : [])
     .filter(fact => fact && nextCockpitFactSessionKey(fact) === key)
-    .sort((left, right) => Number(left.at || 0) - Number(right.at || 0));
-  const rows = facts.map(fact => {
-    const evidence = fact.evidence && typeof fact.evidence === "object" ? fact.evidence : {};
-    const source = [evidence.source, evidence.confidence].map(value =>
-      String(value == null ? "" : value).trim()).filter(Boolean).join(" · ");
-    const at = nextDurationSince(fact.at);
-    return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(fact.type)}">` +
-      `<span class="next-cockpit-work-type">${esc(fact.type)}</span>` +
-      `<span class="next-cockpit-work-summary">${esc(fact.summary || "No summary published")}</span>` +
-      `<span class="next-cockpit-work-source">${esc(source || "Source not published")}</span>` +
+    .sort((left, right) => Number(left.at || 0) - Number(right.at || 0))
+    .map(fact => {
+      const evidence = fact.evidence && typeof fact.evidence === "object" ? fact.evidence : {};
+      return {
+        id: String(fact.fact_id || ""),
+        type: String(fact.type || ""),
+        by: String(fact.by || ""),
+        summary: String(fact.summary || "No summary published"),
+        at: fact.at,
+        source: [evidence.source, evidence.confidence].map(value =>
+          String(value == null ? "" : value).trim()).filter(Boolean).join(" · "),
+      };
+    });
+}
+
+function nextCockpitWorkEvidence(session, entries){
+  const rows = entries.map(entry => {
+    const at = nextDurationSince(entry.at);
+    return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(entry.type)}">` +
+      `<span class="next-cockpit-work-type">${esc(entry.type)}</span>` +
+      `<span class="next-cockpit-work-summary">${esc(entry.summary)}</span>` +
+      `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
       '</span></div>';
   }).join("");
@@ -776,6 +791,260 @@ function nextCockpitWorkEvidence(session, semantic){
       'this session.</p>') +
     '<p class="next-cockpit-work-limit">' +
     `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
+}
+
+/* The observer model's availability for this project, or null when the
+   project context has not been read. Same entry `nextObserverModelControls`
+   reads, so the reading's disabled state and the Console's cannot disagree. */
+function nextCockpitObserverModel(group){
+  const focus = nextCockpitFocusedSession(group);
+  nextCockpitLoadContext(group, focus);
+  for(const scope of [focus, null]){
+    const entry = nextCockpitContexts.get(nextCockpitContextKey(group, scope));
+    const model = entry && entry.data && entry.data.observer_model;
+    if(model) return model;
+  }
+  return null;
+}
+
+/* The shape contract, as a producer rather than a checklist.
+   [DEC-17](docs/design-reading-a-session.md#dec-17-the-shape-contract)
+
+   A model was permitted to read a session against the reader's typed words on
+   explicit request, with nothing said about what makes the result sound
+   ([DEC-15](docs/design-reading-a-session.md#dec-15-the-floor-and-the-overlay)).
+   The ruling above closed that: the rubric named there gates AUTOMATIC
+   evaluation only, and a reader-requested reading is held to seven rules
+   instead. They remove failure classes rather than measuring a rate, which is
+   why they can stand where no rate has been measured.
+
+   They are built into `nextCockpitReadingCriterion` rather than asserted after
+   it, so the three worst outputs are unrenderable rather than rare: the word
+   "met", a departure citing nothing, and a deliverable claim on a harness that
+   publishes no work evidence. Every demotion here lands on `not verifiable
+   from available evidence`, which the ruling names as the safe direction.
+
+   Nothing produces a reading yet. The control below is disabled until the
+   abstention check has run, which is the condition on enabling rather than
+   on building, and the storage that will carry one is DRC-4512's. */
+const NEXT_READING_DEPARTURE = "departure";
+const NEXT_READING_CONSISTENT = "consistent with the evidence read";
+const NEXT_READING_UNVERIFIABLE = "not verifiable from available evidence";
+// Rule 1, as data. A result reaches the page only by being one of these.
+const NEXT_READING_RESULTS = [
+  NEXT_READING_DEPARTURE, NEXT_READING_CONSISTENT, NEXT_READING_UNVERIFIABLE,
+];
+// Rule 6: two constraints, each naming itself, never blended. Keyed on
+// identity so rule 7 needs no reading of the clause.
+const NEXT_READING_CONSTRAINTS = [
+  ["goal", "TYPED GOAL"],
+  ["output", "EXPECTED OUTPUT"],
+];
+const NEXT_READING_ASSISTANT_ONLY =
+  "Every entry cited here was written by the agent, which is not evidence " +
+  "that the requested output exists.";
+const NEXT_READING_UNCITED =
+  "Nothing resolvable was cited, so there is no entry to read this against.";
+const NEXT_READING_MALFORMED =
+  "The reading did not return a usable result for this constraint.";
+
+/* Who wrote an evidence entry. A closed set on the person side, because the
+   asymmetry in rule 7 turns on it and a truthy check would count every
+   unfamiliar type as a person's words. A gate decision is a person's only
+   where the source records one. */
+function nextReadingPersonAuthored(entry){
+  const type = String(entry && entry.type || "");
+  if(type === "user_message") return true;
+  return type === "gate_decision" && String(entry && entry.by || "").startsWith("person:");
+}
+
+/* Rule 3: a citation resolves only when it names an entry the page holds AND
+   that entry carries both a type and a source. A citation to nothing is the
+   shape an invented departure takes. */
+function nextReadingCitations(raw, entries){
+  const byId = new Map((entries || []).map(entry => [String(entry && entry.id || ""), entry]));
+  const cited = Array.isArray(raw && raw.cites) ? raw.cites : [];
+  return cited.map(id => byId.get(String(id))).filter(entry =>
+    entry && String(entry.type || "").trim() && String(entry.source || "").trim());
+}
+
+function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit){
+  const citations = nextReadingCitations(raw, entries);
+  const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
+  let result = NEXT_READING_RESULTS.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
+  // Rule 2, and it is the reason the default above is not `consistent`: a
+  // producer that returned nothing has said nothing, and silence is not a pass.
+  let why = result === declared ? "" : NEXT_READING_MALFORMED;
+  if(result !== NEXT_READING_UNVERIFIABLE && !citations.length){
+    // Rule 3 names the departure arm. A `consistent` resting on nothing is the
+    // same failure wearing the safer-looking face, so it is demoted too.
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_UNCITED;
+  }
+  if(result !== NEXT_READING_UNVERIFIABLE && limit){
+    /* Rule 5, and the limit reaches this row only because the caller decided
+       it bears on this constraint. What `_work_evidence` would have supplied
+       is deliverables, so its absence limits Expected Output and says nothing
+       about Goal: a transcript is exactly the evidence a change of direction
+       leaves, and it was read.
+
+       Rule 5 names `consistent`. A departure is demoted too, which is
+       stricter than the letter and is the direction the ruling calls safe: a
+       departure from a requested output, claimed where the thing itself was
+       never looked at, is the deliverable claim rule 7 exists to prevent. */
+    result = NEXT_READING_UNVERIFIABLE;
+    why = limit;
+  }
+  const fromPerson = citations.filter(nextReadingPersonAuthored);
+  if(key === "output" && result !== NEXT_READING_UNVERIFIABLE && !fromPerson.length){
+    // Rule 7, the Expected Output half. Self-report is not evidence of a
+    // deliverable, in either direction.
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_ASSISTANT_ONLY;
+  }
+  // Rule 7, the Goal half. A departure on the agent's own narration stands,
+  // because a stated change of direction is what that evidence is good for,
+  // and a `consistent` resting only on it says so rather than reading as
+  // corroborated.
+  const narration = result === NEXT_READING_CONSISTENT && !fromPerson.length
+    ? "Rests on the agent's own account alone." : "";
+  return {
+    key, label, clause, result,
+    detail: String(raw && raw.detail || ""),
+    why, narration, limit: limit || "",
+    // Mutually exclusive with `limit`, and never both blank: a row states its
+    // evidence or states why it has none.
+    evidence: limit ? [] : citations.map(entry =>
+      `${entry.type} · ${entry.source}`),
+  };
+}
+
+/* The reading, shaped. `raw` is whatever a producer returned; `annotation` is
+   what the reader typed; `entries` are the work-evidence rows already on the
+   page, so a citation resolves against the same list the reader can see. */
+function nextCockpitReadingShape(raw, annotation, entries, limit){
+  const source = raw && typeof raw === "object" ? raw : {};
+  const rows = source.criteria && typeof source.criteria === "object" ? source.criteria : {};
+  const criteria = NEXT_READING_CONSTRAINTS
+    .filter(([key]) => String(annotation && annotation[key] || "").trim())
+    .map(([key, label]) => nextCockpitReadingCriterion(
+      key, label, String(annotation[key]), rows[key], entries,
+      key === "output" ? limit : ""));
+  return {
+    criteria,
+    departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
+    revisionRead: nextNumber(source.revision_read),
+    stamp: String(source.stamp || ""),
+    cutoff: String(source.cutoff || ""),
+  };
+}
+
+/* The reading block, and its three states are all first class. A model
+   reading is neither a published string nor the board stating a fact, so it
+   takes the third treatment: italic, secondary ink, a dotted rule, and no
+   colour under any result. Accent on a reading would read as "met", which is
+   a claim about the reader's intent from partial evidence.
+
+   One stamp, in the header, rather than one per block. The design's notes ask
+   for one on every block and its markup carries one; a stamp repeated beside
+   each criterion says the same three facts three times and pushes the reading
+   itself further down a tab that is already the last thing on the page. */
+function nextCockpitReadingStates(annotation, model){
+  if(!String(annotation && annotation.goal || "").trim() &&
+      !String(annotation && annotation.output || "").trim()){
+    return "Nothing has been typed for this session, so there is nothing to read it against.";
+  }
+  if(!model) return "Observer model availability has not been read, so no reading can be offered.";
+  if(model.enabled !== true){
+    return "Observer model is disabled for this run, so no reading can be offered. " +
+      "Start with --observer-model to allow one; --no-observer-model refuses it.";
+  }
+  return "";
+}
+
+function nextCockpitReadingCriterionRow(row){
+  const tail = row.limit
+    ? `<span class="next-cockpit-reading-limit">limit · ${esc(row.limit)}</span>`
+    : row.evidence.map(line =>
+      `<span class="next-cockpit-reading-evidence">${esc(line)}</span>`).join("");
+  return '<div class="next-cockpit-reading-row">' +
+    `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
+    `<span class="next-cockpit-reading-clause">${esc(row.clause)}</span>` +
+    `<em class="next-cockpit-reading-result">${esc(row.result)}</em>` +
+    (row.detail ? `<em class="next-cockpit-reading-detail">${esc(row.detail)}</em>` : "") +
+    (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") +
+    (row.narration ? `<span class="next-cockpit-reading-why">${esc(row.narration)}</span>` : "") +
+    tail + '</div>';
+}
+
+function nextCockpitDepartures(shape){
+  const rows = shape.departures.map(row =>
+    '<div class="next-cockpit-departure">' +
+    `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
+    `<span class="next-cockpit-reading-clause">${esc(row.clause)}</span>` +
+    `<em class="next-cockpit-reading-detail">${esc(row.detail || row.result)}</em>` +
+    row.evidence.map(line =>
+      `<span class="next-cockpit-reading-evidence">${esc(line)}</span>`).join("") +
+    (shape.cutoff ? `<span class="next-cockpit-reading-evidence">${esc(shape.cutoff)}</span>` : "") +
+    '</div>').join("");
+  return '<section class="next-cockpit-departures"><header>' +
+    '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
+    (rows || '<p class="next-cockpit-reading-why">The reading raised no departure from the ' +
+      'revision it read.</p>') +
+    '<p class="next-cockpit-reading-why">Raised to you and nowhere else. Cargento does not ' +
+    'write into a session, so steering is by hand; the steer box in Console states the same ' +
+    'rule about notes you write there.</p></section>';
+}
+
+function nextCockpitReading(session, annotation, entries, model){
+  const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
+  const limit = String(session.harness || "") === "pi"
+    ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
+  const raw = annotation && annotation.assessment;
+  /* A reading already made renders whatever the model's state is now. The
+     three states below are about offering a NEW one, and DEC-15b's whole
+     point is that a retained reading outlives the run that produced it. */
+  if(!raw){
+    const reason = nextCockpitReadingStates(annotation, model);
+    if(reason){
+      return `${header}</header><p class="next-cockpit-reading-why">${esc(reason)}</p></section>`;
+    }
+    /* The offer. `Ask for a reading` reads the abstention check's recorded
+       result rather than a constant, which is the condition on enabling:
+       the reading is built now, the control waits on a check that needs
+       recorded sessions across two harnesses and a second person's
+       expectations marked in advance.
+
+       One gate rather than two, and it is not a dead control waiting for a
+       producer that might never come: the check cannot be run without a
+       producer to run it on, so a recorded pass implies one exists. */
+    const passed = nextData && nextData.reading_check === "passed";
+    return `${header}</header>` +
+      '<p class="next-cockpit-reading-why">A reading is a model’s account of the evidence ' +
+      'on this page: the observed record above and the words you typed, and nothing else. It ' +
+      'does not read a diff, a file, a test or a deliverable, and it is never a verification ' +
+      'that the work was done.</p>' +
+      '<button type="button" data-next-cockpit-action="reading-ask" ' +
+      `data-next-focus="reading:${esc(sessKey(session))}"${passed ? "" : " disabled"}>` +
+      'Ask for a reading</button>' +
+      (passed ? "" : '<p class="next-cockpit-reading-why">The abstention check this ruling ' +
+        'requires ' +
+        'has not been run, so a reading cannot be asked for yet. The evidence above stays ' +
+        'readable without one.</p>') + '</section>';
+  }
+  const shape = nextCockpitReadingShape(raw, annotation, entries, limit);
+  const current = nextNumber(annotation && annotation.revision);
+  /* The one warm ink the design allows near a reading, and it is not part of
+     one: which revision was read is an observation about revisions. */
+  const stale = shape.revisionRead != null && current != null && shape.revisionRead !== current
+    ? `<p class="next-cockpit-reading-stale">This reading read revision ${shape.revisionRead}. ` +
+      `Revision ${current} is current, so it does not describe what you are asking for now.</p>`
+    : "";
+  return header +
+    (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
+    '</header>' + stale +
+    shape.criteria.map(nextCockpitReadingCriterionRow).join("") + '</section>' +
+    nextCockpitDepartures(shape);
 }
 
 function nextCockpitHeldTo(group, observation){
@@ -794,6 +1063,12 @@ function nextCockpitHeldTo(group, observation){
       '--no-annotations to type a goal and an expected output here.</p></section>';
   }
   const annotation = session.annotation || null;
+  const entries = nextCockpitWorkEntries(session, (observation || {}).semantic);
+  /* The design's order inside this tab: what you asked for, then the reading
+     of it, then the departures it raised. Intent first, then a reading of the
+     intent, so nothing above the reading is a model's words. */
+  const evidence = nextCockpitWorkEvidence(session, entries) +
+    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group));
   const cap = nextCockpitHeldCap();
   const revision = annotation && annotation.revision
     ? `revision ${annotation.revision} of ${annotation.revision_count}`
@@ -812,8 +1087,7 @@ function nextCockpitHeldTo(group, observation){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    binding + ended + '</section>' +
-    nextCockpitWorkEvidence(session, (observation || {}).semantic);
+    binding + ended + '</section>' + evidence;
 }
 
 async function nextCockpitHeldSave(session, kind){

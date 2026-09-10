@@ -3861,6 +3861,116 @@ console.log(JSON.stringify({posts,
         self.assertTrue(out["cue"])
         self.assertEqual(1, out["stillOffersSave"])
 
+    def test_the_reading_has_three_states_and_the_control_waits_on_a_check(self) -> None:
+        """DRC-4511. Nothing typed, the model off, and the offer itself."""
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.reading_check = "not-run";
+const read = () => {
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('class="next-cockpit-reading"'));
+  return {
+    text: (block.match(/class="next-cockpit-reading-why">([^<]*)</) || [])[1],
+    control: block.includes('data-next-cockpit-action="reading-ask"'),
+    disabled: /data-next-cockpit-action="reading-ask"[^>]*disabled/.test(block),
+    departures: html.includes("DEPARTURES RAISED TO YOU"),
+  };
+};
+
+// Given: nothing typed.
+__dashboard.sessions[0].annotation = {goal:"", goal_why:"No goal typed for this session.",
+  output:"", output_why:"No expected output typed.", revision:null, revision_count:0,
+  at:null, binding_why:""};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const empty = read();
+
+// And: words typed, with the observer model unread for this project.
+__dashboard.sessions[0].annotation = {goal:"Ship the cockpit", goal_why:"", output:"",
+  output_why:"No expected output typed.", revision:1, revision_count:1, at:100,
+  binding_why:""};
+renderNext();
+const unread = read();
+
+// And: the model enabled, which is the offer.
+const key = nextCockpitContextKey(nextProjectGroups().find(g => g.label === "cargento"),
+  nextCockpitFocusedSession(nextProjectGroups().find(g => g.label === "cargento")));
+const entry = nextCockpitContexts.get(key);
+entry.data = Object.assign({}, entry.data, {observer_model:{enabled:true, disclosure:"x"}});
+renderNext();
+const offered = read();
+
+// And: the check recorded as passed, which is the only thing that enables it.
+__dashboard.reading_check = "passed";
+renderNext();
+const enabled = read();
+console.log(JSON.stringify({empty, unread, offered, enabled}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "Nothing has been typed for this session, so there is nothing to read it against.",
+            out["empty"]["text"],
+        )
+        self.assertFalse(out["empty"]["control"])
+        self.assertIn("Observer model availability has not been read", out["unread"]["text"])
+        self.assertFalse(out["unread"]["control"])
+        # The offer states what a reading may and may not read, before the
+        # control rather than after it.
+        self.assertIn("never a verification that the work was done", out["offered"]["text"])
+        self.assertTrue(out["offered"]["control"])
+        self.assertTrue(out["offered"]["disabled"])
+        # Enablement reads the recorded result, not a constant.
+        self.assertTrue(out["enabled"]["control"])
+        self.assertFalse(out["enabled"]["disabled"])
+        # No reading, so no departures block: an empty one would imply a
+        # reading had run and raised nothing.
+        self.assertFalse(out["offered"]["departures"])
+
+    def test_a_reading_that_read_an_older_revision_says_so(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation = {
+  goal:"do not change the board", goal_why:"", output:"", output_why:"No expected output typed.",
+  revision:2, revision_count:2, at:100, binding_why:"",
+  assessment:{revision_read:1, stamp:"observer model · consented at 13:36",
+    cutoff:"Evidence stops at 13:22.",
+    criteria:{goal:{result:"departure", detail:"Two turns edited the board.", cites:["fo-a"]}}}
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  stale: (html.match(/class="next-cockpit-reading-stale">([^<]*)</) || [])[1],
+  stamp: (html.match(/class="next-cockpit-reading-stamp">([^<]*)</) || [])[1],
+  stamps: (html.match(/class="next-cockpit-reading-stamp"/g) || []).length,
+  result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1],
+  departures: html.includes("DEPARTURES RAISED TO YOU"),
+  cutoff: html.includes("Evidence stops at 13:22."),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "This reading read revision 1. Revision 2 is current, so it does not describe "
+            "what you are asking for now.",
+            out["stale"],
+        )
+        # One stamp, in the header, rather than one per block.
+        self.assertEqual(1, out["stamps"])
+        self.assertEqual("observer model · consented at 13:36", out["stamp"])
+        self.assertEqual("departure", out["result"])
+        self.assertTrue(out["departures"])
+        self.assertTrue(out["cutoff"])
+
     def test_no_field_is_offered_when_the_store_is_off(self) -> None:
         out = self.run_fixture(
             """
@@ -3883,6 +3993,246 @@ console.log(JSON.stringify({
         self.assertTrue(out["tab"])
         self.assertEqual(0, out["inputs"])
         self.assertTrue(out["reason"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitReadingShapeTest(NextPageJsHarness):
+    """DEC-17's seven rules, one case each (DRC-4511 AC4).
+
+    Asserted against source-shaped fixtures rather than against expected
+    judgements, because there is no producer to judge and DEC-17 refuses a
+    rubric validated on fixtures the same pass wrote. What these hold is that
+    the three worst outputs cannot be rendered: the word "met", a departure
+    citing nothing, and a deliverable claim on a harness with no work
+    evidence.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ENTRIES = """
+const entries = [
+  {id:"u1", type:"user_message", by:"", source:"root transcript · exact"},
+  {id:"a1", type:"result", by:"", source:"dispatch artifact · exact"},
+  {id:"g1", type:"gate_decision", by:"person:captain", source:"entity gate · exact"},
+  {id:"empty", type:"", by:"", source:""}
+];
+const annotation = {goal:"do not change the board", output:"six screenshots"};
+const shape = (criteria, limit) => nextCockpitReadingShape({criteria}, annotation, entries,
+  limit || "");
+const results = (criteria, limit) => Object.fromEntries(
+  shape(criteria, limit).criteria.map(row => [row.key, row.result]));
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_rule_1_a_result_outside_the_closed_set_becomes_not_verifiable(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  met: results({goal:{result:"met", cites:["u1"]}, output:{result:"met", cites:["u1"]}}),
+  invented: results({goal:{result:"mostly on track", cites:["u1"]}}),
+  closed: NEXT_READING_RESULTS,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["met"])
+        self.assertEqual(unverifiable, out["invented"]["goal"])
+        self.assertEqual(
+            ["departure", "consistent with the evidence read", unverifiable], out["closed"]
+        )
+
+    def test_rule_2_absent_or_unparseable_output_falls_to_not_verifiable(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  missing: results({}),
+  garbage: results({goal:"a string, not a row", output:[]}),
+  noReading: nextCockpitReadingShape(null, annotation, entries, "").criteria.map(r => r.result),
+  why: shape({}).criteria[0].why,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["missing"])
+        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["garbage"])
+        self.assertEqual([unverifiable, unverifiable], out["noReading"])
+        self.assertEqual(
+            "The reading did not return a usable result for this constraint.", out["why"]
+        )
+
+    def test_rule_3_a_departure_needs_a_citation_that_resolves(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  none: results({goal:{result:"departure", detail:"It drifted."}}),
+  unknownId: results({goal:{result:"departure", cites:["nothing-here"]}}),
+  // An entry the page holds but that names no type or source is not a
+  // resolvable citation either.
+  blankEntry: results({goal:{result:"departure", cites:["empty"]}}),
+  resolvable: results({goal:{result:"departure", cites:["u1"]}}),
+  // A `consistent` resting on nothing is demoted by the same rule.
+  emptyConsistent: results({goal:{result:"consistent with the evidence read"}}),
+  why: shape({goal:{result:"departure"}}).criteria[0].why,
+  departures: shape({goal:{result:"departure", cites:["u1"]}}).departures.length,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual(unverifiable, out["none"]["goal"])
+        self.assertEqual(unverifiable, out["unknownId"]["goal"])
+        self.assertEqual(unverifiable, out["blankEntry"]["goal"])
+        self.assertEqual("departure", out["resolvable"]["goal"])
+        self.assertEqual(unverifiable, out["emptyConsistent"]["goal"])
+        self.assertEqual(
+            "Nothing resolvable was cited, so there is no entry to read this against.",
+            out["why"],
+        )
+        self.assertEqual(1, out["departures"])
+
+    def test_rule_4_the_word_met_cannot_reach_the_page(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+// Every reachable result string, rendered, plus a producer trying to say met.
+const html = [
+  {goal:{result:"met", cites:["u1"]}},
+  {goal:{result:"departure", detail:"met the wrong thing", cites:["u1"]}},
+  {goal:{result:"consistent with the evidence read", cites:["u1"]}},
+].map(criteria => shape(criteria).criteria.map(nextCockpitReadingCriterionRow).join("")).join("");
+console.log(JSON.stringify({
+  // The detail is the producer's prose and is escaped, not filtered: the rule
+  // is about the RESULT, which is only ever one of three constants.
+  resultStrings: [...html.matchAll(/class="next-cockpit-reading-result">([^<]*)</g)]
+    .map(m => m[1]),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        # Two rows per case, goal then output. The output row has no producer
+        # entry in any of the three, so it lands on the fallback each time.
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual(
+            [
+                unverifiable,
+                unverifiable,
+                "departure",
+                unverifiable,
+                "consistent with the evidence read",
+                unverifiable,
+            ],
+            out["resultStrings"],
+        )
+        for value in out["resultStrings"]:
+            with self.subTest(result=value):
+                self.assertNotEqual("met", value)
+
+    def test_rule_5_a_stated_limit_is_never_a_consistent(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const limit = nextCockpitWorkEvidenceLimit("codex");
+const rows = shape({goal:{result:"consistent with the evidence read", cites:["u1"]},
+  output:{result:"departure", cites:["u1"]}}, limit).criteria;
+console.log(JSON.stringify({
+  limited: Object.fromEntries(rows.map(row => [row.key, row.result])),
+  // Mutually exclusive per row: it states its evidence or states its limit.
+  evidence: Object.fromEntries(rows.map(row => [row.key, row.evidence])),
+  limits: Object.fromEntries(rows.map(row => [row.key, row.limit])),
+  why: rows.find(row => row.key === "output").why,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        # The limit is what `_work_evidence` would have supplied, which is
+        # deliverables. It bears on Expected Output and not on Goal: a
+        # transcript is exactly the evidence a change of direction leaves.
+        self.assertEqual(
+            {"goal": "consistent with the evidence read", "output": unverifiable},
+            out["limited"],
+        )
+        self.assertEqual(
+            {"goal": ["user_message · root transcript · exact"], "output": []}, out["evidence"]
+        )
+        self.assertEqual("", out["limits"]["goal"])
+        self.assertIn("publishes no demonstrated work results", out["limits"]["output"])
+        self.assertIn("publishes no demonstrated work results", out["why"])
+
+    def test_rule_6_the_two_constraints_stay_separate_and_name_themselves(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const one = nextCockpitReadingShape({criteria:{goal:{result:"departure", cites:["u1"]}}},
+  {goal:"do not change the board", output:""}, entries, "");
+console.log(JSON.stringify({
+  both: shape({}).criteria.map(row => [row.key, row.label, row.clause]),
+  goalOnly: one.criteria.map(row => row.key),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                ["goal", "TYPED GOAL", "do not change the board"],
+                ["output", "EXPECTED OUTPUT", "six screenshots"],
+            ],
+            out["both"],
+        )
+        # A constraint nobody typed is not read, rather than read and passed.
+        self.assertEqual(["goal"], out["goalOnly"])
+
+    def test_rule_7_is_asymmetric_on_who_wrote_the_evidence(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const assistant = ["a1"];
+const person = ["u1"];
+const gate = ["g1"];
+console.log(JSON.stringify({
+  // Expected Output on self-report alone: nothing but not verifiable.
+  outputAssistant: results({output:{result:"departure", cites:assistant}}),
+  outputConsistent: results({output:{result:"consistent with the evidence read",
+    cites:assistant}}),
+  outputPerson: results({output:{result:"departure", cites:person}}),
+  // Goal keeps a departure on the agent's own narration.
+  goalAssistant: results({goal:{result:"departure", cites:assistant}}),
+  // And a consistent resting only on it says so.
+  narration: shape({goal:{result:"consistent with the evidence read",
+    cites:assistant}}).criteria[0].narration,
+  corroborated: shape({goal:{result:"consistent with the evidence read",
+    cites:person}}).criteria[0].narration,
+  // A gate decision counts as a person's only where the source records one.
+  gateIsPerson: shape({output:{result:"departure", cites:gate}}).criteria
+    .find(row => row.key === "output").result,
+  why: shape({output:{result:"departure", cites:assistant}}).criteria
+    .find(row => row.key === "output").why,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual(unverifiable, out["outputAssistant"]["output"])
+        self.assertEqual(unverifiable, out["outputConsistent"]["output"])
+        self.assertEqual("departure", out["outputPerson"]["output"])
+        self.assertEqual("departure", out["goalAssistant"]["goal"])
+        self.assertEqual("Rests on the agent's own account alone.", out["narration"])
+        self.assertEqual("", out["corroborated"])
+        self.assertEqual("departure", out["gateIsPerson"])
+        self.assertEqual(
+            "Every entry cited here was written by the agent, which is not evidence "
+            "that the requested output exists.",
+            out["why"],
+        )
 
 
 class CockpitTabsAreOneDecisionTest(unittest.TestCase):
