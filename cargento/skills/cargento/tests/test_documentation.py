@@ -11,7 +11,15 @@ import unittest
 from pathlib import Path
 from typing import Any, ClassVar
 
-from cargento_runtime import aggregate, claude_data, cli, focus, git_status, history
+from cargento_runtime import (
+    aggregate,
+    claude_data,
+    cli,
+    focus,
+    git_status,
+    history,
+    semantic_history,
+)
 from cargento_runtime import config as runtime_config
 from cargento_runtime import events as runtime_events
 from cargento_runtime import transcripts as runtime_transcripts
@@ -1243,6 +1251,69 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
                 self.assertIn(name, self.SECURITY)
                 self.assertNotIn(name, history.OBSERVATION_FIELDS)
                 self.assertNotIn(name, history.PROMPT_TEXT_ALLOWLIST)
+
+
+class SemanticHistoryContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's semantic-history claims are a contract, so something must read them.
+
+    DRC-4533's ninth item asked whether SECURITY.md names the prototype's
+    semantic-work-history store. It does, and every sentence of it was true when
+    written — but nothing compared any of it to the code, so a moved store name
+    or a widened bound would have left the document asserting something false
+    with the whole suite green. That is the same shape as the drift
+    `HistoryStoreContractDocumentationTest` above exists to catch, and this file
+    is where the comparison belongs.
+
+    The store is the one carrier of typed words that `--forget` does not reach,
+    which is why the deletion sentence is asserted here rather than taken on
+    trust.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+    def test_the_document_names_the_store_the_code_actually_writes(self) -> None:
+        self.assertIn(semantic_history.STORE_NAME, self.SECURITY)
+        self.assertIn(f"`~/.cargento/{semantic_history.STORE_NAME}`", self.SECURITY)
+
+    def test_the_documented_summary_bound_is_the_bound_the_code_applies(self) -> None:
+        # Prose and a literal can only agree by accident. The constant exists so
+        # that widening the bound is a two-file change a reviewer sees, rather
+        # than a one-character edit that leaves the sentence quietly wrong.
+        self.assertEqual(240, semantic_history.SUMMARY_CAP_CHARS)
+        self.assertIn(
+            f"`summary` is bounded at {semantic_history.SUMMARY_CAP_CHARS} characters",
+            _flat_section(self.SECURITY, "## Operator-cockpit prototype"),
+        )
+
+    def test_the_documented_detail_bound_is_the_bound_the_code_applies(self) -> None:
+        self.assertEqual(4096, semantic_history.RESULT_DETAIL_CAP_CHARS)
+        self.assertIn(
+            f"holds up to {semantic_history.RESULT_DETAIL_CAP_CHARS} characters",
+            _flat_section(self.SECURITY, "## Operator-cockpit prototype"),
+        )
+
+    def test_forget_still_does_not_reach_this_store(self) -> None:
+        # The document says so twice, and it is the sentence most likely to
+        # become false: admitting this store to `--forget` is a natural-looking
+        # improvement that would silently contradict both paragraphs.
+        section = _flat_section(self.SECURITY, "## Operator-cockpit prototype")
+        self.assertIn("`--forget` continues to delete only the session-history store", section)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "history.py").read_text(
+            encoding="utf-8"
+        )
+        forget = source[source.index("def forget(") :]
+        forget = forget[: forget.index("\ndef ")]
+        self.assertNotIn("semantic", forget.lower())
+
+    def test_the_store_is_written_owner_only_through_a_rename(self) -> None:
+        section = _flat_section(self.SECURITY, "## Published text (credential redaction)")
+        self.assertIn("written owner-only through a temp file and a rename", section)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "semantic_history.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("0o600", source)
+        self.assertIn("os.replace", source)
 
 
 class LightHarnessUsageContractDocumentationTest(unittest.TestCase):

@@ -306,14 +306,18 @@ def _transcript_signature(transcript_path: str) -> dict[str, int] | None:
     return {"size": info.st_size, "mtime_ns": info.st_mtime_ns}
 
 
-def _cached_text(value: Any) -> str | None:
-    """One re-read sidecar string, or nothing.
+def _cached_text(value: Any, cap: int) -> str | None:
+    """One re-read sidecar string, bounded and scrubbed, or nothing.
 
-    Not `safe_text`: these three are already-bounded strings the observer wrote,
-    and coercing a container into its repr is the failure being closed here
-    rather than a shape to preserve.
+    The isinstance was once the whole check, on the argument that the observer
+    had already bounded what it wrote. That holds on the fresh path and not
+    here, where the sidecar is re-read under `state_read_cap_bytes` from a file
+    any local process could have rewritten: a type check is not a bound. One
+    cap for all three rather than a threshold each, because nobody would tune a
+    stage name apart from a reason literal and `config.py` grows a field per
+    feature as it is.
     """
-    return value if isinstance(value, str) else None
+    return records.safe_text(value, cap) if isinstance(value, str) else None
 
 
 # Which arm produced a published goal. "unknown" is for a sidecar written
@@ -367,9 +371,9 @@ def _observe_session(
                 else None
             ),
             "goal_source": cached_source if cached_source in _GOAL_SOURCES else "unknown",
-            "stage": _cached_text(cached_payload.get("stage")),
-            "block": _cached_text(cached_payload.get("block")),
-            "reason": _cached_text(cached_payload.get("reason")),
+            "stage": _cached_text(cached_payload.get("stage"), config.observer_block_cap_chars),
+            "block": _cached_text(cached_payload.get("block"), config.observer_block_cap_chars),
+            "reason": _cached_text(cached_payload.get("reason"), config.observer_block_cap_chars),
             "model": model_metadata,
             "observed_at": observed_at,
             "snapshot_status": model_metadata["status"],

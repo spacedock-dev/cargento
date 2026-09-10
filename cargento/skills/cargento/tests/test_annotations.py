@@ -908,6 +908,97 @@ class CachedSidecarIsUntrustedTest(unittest.TestCase):
         assert out2 is not None
         self.assertLessEqual(len(out2["deterministic_goal"]), config.observer_goal_cap_chars + 1)
 
+    def test_a_rewritten_sidecar_cannot_publish_a_huge_stage_block_or_reason(self) -> None:
+        """A type check is not a bound, and these three had only the type check.
+
+        The sidecar is read under `state_read_cap_bytes` (64 KiB), so a rewritten
+        one could publish a stage, block or reason of roughly that size straight
+        into the served payload. `deterministic_goal` beside them was already
+        bounded; these three were the half of the item that had not been done.
+        """
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        state = build_runtime_state(config, started=1.0)
+        transcript = root / "t.jsonl"
+        transcript.write_text("{}\n", encoding="utf-8")
+
+        runtime_observer.write_sidecar(
+            config,
+            "pi",
+            "huge",
+            {
+                "goal": "ok",
+                "observed_at": 10.0,
+                "transcript": "sig",
+                "stage": "s" * 5_000,
+                "block": "b" * 5_000,
+                "reason": "r" * 5_000,
+            },
+        )
+        out = project_context._observe_session(
+            config, state, str(transcript), ("pi", "huge"), now=20.0, refresh=False
+        )
+        assert out is not None
+        for field in ("stage", "block", "reason"):
+            value = out[field]
+            self.assertIsInstance(value, str, f"{field} lost its type check")
+            self.assertLessEqual(
+                len(value),
+                config.observer_block_cap_chars + 1,
+                f"{field} published {len(value)} characters from a rewritten sidecar",
+            )
+
+    def test_a_rewritten_sidecar_cannot_smuggle_a_control_character_onto_the_page(self) -> None:
+        """The same three fields carried no scrub either, only an isinstance.
+
+        `safe_text` is what collapses a C0 run to one space, and it is the
+        control the single-line annotation fields rest on. A sidecar is a file
+        any local process can rewrite, so the cached path needs it too.
+        """
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        state = build_runtime_state(config, started=1.0)
+        transcript = root / "t.jsonl"
+        transcript.write_text("{}\n", encoding="utf-8")
+
+        runtime_observer.write_sidecar(
+            config,
+            "pi",
+            "ctrl",
+            {
+                "goal": "ok",
+                "observed_at": 10.0,
+                "transcript": "sig",
+                "stage": "one\ntwo",
+                "block": "three\r\nfour",
+                "reason": "five\tsix",
+            },
+        )
+        out = project_context._observe_session(
+            config, state, str(transcript), ("pi", "ctrl"), now=20.0, refresh=False
+        )
+        assert out is not None
+        for field in ("stage", "block", "reason"):
+            value = out[field]
+            assert isinstance(value, str)
+            self.assertNotIn("\n", value, f"{field} kept a newline")
+            self.assertNotIn("\r", value, f"{field} kept a carriage return")
+            self.assertNotIn("\t", value, f"{field} kept a tab")
+
 
 if __name__ == "__main__":
     unittest.main()
