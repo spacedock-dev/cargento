@@ -1615,15 +1615,21 @@ fallen off no longer matches. A slice that ran first is what published a URL cre
 its `@`.
 
 The card, the browser notification body and the native popup are pixels, and a screenshot is what
-each of them risks. The fourth thing carrying this text is a file: the observer sidecar under
-`~/.cargento/observer/`, one JSON file per session holding the derived goal, which is the operator's
-own words. Since goal provenance landed it holds two such lines rather than one: the published
+each of them risks. Two of the things carrying this text are files. The first is the observer
+sidecar under `~/.cargento/observer/`, one JSON file per session holding the derived goal, which is
+the operator's own words. Since goal provenance landed it holds two such lines rather than one: the published
 `goal` and the pre-model `deterministic_goal` the model arm would otherwise have overwritten. They
 are the same class of text and carry the same risk, so the count changes and nothing else does.
 Both are redacted on the way in like everything else, and the file is
 written owner-only through a temp file and a rename, so a reader mid-write sees the old file or the
 new one and neither is ever briefly world-readable. The mode is advisory and Windows ignores it, the
 same caveat the state file and the dismissal store carry.
+
+The second is the prototype's semantic-history store, and this document did not name it here until
+the annotation work re-counted which files hold typed words. The Operator-cockpit prototype section
+above has its fields and its deletion behaviour; what belongs in this inventory is that it is a
+file, that it holds the operator's own directive as well as the assistant's answer, and that it is
+redacted on the way in and again on the way out.
 
 This reduces the exposure and does not close it, and both directions of error are real. A shape list
 covers the formats it was measured against, so a credential in a format nobody has seen goes through

@@ -1334,17 +1334,11 @@ function nextCockpitReading(session, annotation, entries, model, observed){
        recorded sessions across two harnesses and a second person's
        expectations marked in advance.
 
-       One gate rather than two, because the check cannot be run without a
-       producer to run it on: a recorded pass implies one exists.
-
-       That argument needs a third fact it did not have when it was written,
-       and this comment claimed the opposite. A pass implies a producer; it
-       does not imply this button is wired to one. There is no `reading-ask`
-       arm in the click dispatcher below, so flipping
-       `annotations.ABSTENTION_CHECK` today would enable a control that does
-       nothing. `ReadingControlIsWiredTest` now fails the moment the enabled
-       path becomes reachable without a handler, so the two land together or
-       neither does. */
+       A recorded pass implies a producer, because the check cannot be run
+       without one to run it on. It does not imply this button is wired to
+       that producer, and an earlier version of this comment said it did.
+       `ReadingControlIsWiredTest` holds the difference: a rendered action
+       with no dispatch arm may not become reachable. */
     const passed = nextData && nextData.reading_check === "passed";
     return `${header}</header>` +
       '<p class="next-cockpit-reading-why">A reading is a model’s account of the evidence ' +

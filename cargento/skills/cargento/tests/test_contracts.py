@@ -5,6 +5,7 @@ import contextlib
 import http.client
 import json
 import os
+import re
 import runpy
 import subprocess
 import sys
@@ -631,55 +632,98 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
 
 
-class ReadingControlIsWiredTest(unittest.TestCase):
-    """The `Ask for a reading` control may not enable without a handler.
+_COCKPIT_RENDERED_ACTION = re.compile(r'data-next-cockpit-action="([a-z-]+)"')
+_COCKPIT_DISPATCHED_ACTION = re.compile(r'action === "([a-z-]+)"')
+_COCKPIT_CLICK_LISTENER = 'document.addEventListener("click"'
 
-    DEC-17 gates the control on a recorded abstention check, and the runtime
-    comment beside it argued one gate was enough: the check cannot be run
-    without a producer, so a recorded pass implies one exists. True, and not
-    the whole implication. A pass implies a producer; it does not imply the
-    button is wired to it.
+
+def _without_comments(source: str) -> str:
+    """Block and line comments removed, so prose cannot satisfy a code gate."""
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    return re.sub(r"^\s*//.*$", "", source, flags=re.MULTILINE)
+
+
+def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
+    """Rendered cockpit actions with no arm in the click dispatcher.
+
+    `reading-ask` is exempt exactly while the abstention check has not passed,
+    which is the one control DEC-17 ships deliberately inert. Every other
+    rendered action must be dispatched.
+
+    The dispatched set is read from the listener alone and with comments
+    stripped, because the comment beside the reading control discusses that
+    control by name and a gate that greps the whole file would accept prose as
+    a handler.
+
+    Known limit, stated rather than discovered: an action rendered through a
+    variable is invisible here. `nextCockpitHeldControl` renders `held-clear`
+    and `held-save` that way, which is why they appear in the dispatched set
+    and not the rendered one. This catches a dead literal control, not a dead
+    computed one.
+    """
+    rendered = set(_COCKPIT_RENDERED_ACTION.findall(source))
+    listener = source[source.index(_COCKPIT_CLICK_LISTENER) :]
+    dispatched = set(_COCKPIT_DISPATCHED_ACTION.findall(_without_comments(listener)))
+    unwired = rendered - dispatched
+    if not reachable:
+        unwired.discard("reading-ask")
+    return unwired
+
+
+class ReadingControlIsWiredTest(unittest.TestCase):
+    """A rendered cockpit action may not become reachable with no handler.
+
+    DEC-17 gates the `Ask for a reading` control on a recorded abstention
+    check, and the comment beside it argued one gate was enough: the check
+    cannot be run without a producer, so a recorded pass implies one exists.
+    True, and not the whole implication. A pass implies a producer; it does not
+    imply the button is wired to it.
 
     Measured on this branch: the control shipped with no `reading-ask` arm in
-    the click dispatcher, and `test_next_cockpit` asserted the enabled state
-    renders. So the branch held a tested path to an inert enabled control, and
-    flipping one Python constant would have shipped it. This is the coupling
-    that argument needs, and it is a lexical gate rather than a behavioural one
-    for the same reason the flag oracle is: the page is a string of JavaScript
-    to Python, and the cheap check that cannot go stale beats the rich one that
-    needs a browser.
+    the dispatcher while `test_next_cockpit` asserted the enabled state
+    renders, commented "Enablement reads the recorded result, not a constant".
+    A tested path to an inert enabled control.
+
+    Written as an inventory rather than as a `reading-ask` special case,
+    following the POST-route gate in `test_history`: the general form costs
+    nothing today, because `reading-ask` is the only rendered literal with no
+    arm, and it catches the next dead control as well as this one.
     """
 
-    def test_the_enabled_path_is_unreachable_while_no_handler_exists(self) -> None:
+    def test_no_rendered_action_is_reachable_without_a_dispatch_arm(self) -> None:
         source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
-        # Three facts, and only their conjunction is forbidden. Written this way
-        # rather than as an assertion about today's constant so that suppressing
-        # the control, or wiring it, each satisfy the gate without editing it.
-        control = 'data-next-cockpit-action="reading-ask"' in source
-        wired = 'action === "reading-ask"' in source
         reachable = annotation_store.ABSTENTION_CHECK == annotation_store.ABSTENTION_CHECK_PASSED
-        self.assertFalse(
-            control and reachable and not wired,
-            "next-cockpit.js renders the `Ask for a reading` control and "
-            "annotations.ABSTENTION_CHECK is `passed`, but the click dispatcher has no "
-            "`reading-ask` arm: the control would enable and do nothing. Wire the handler "
-            "in the same change that records the pass, or suppress the control.",
+        self.assertEqual(
+            set(),
+            unwired_cockpit_actions(source, reachable=reachable),
+            "a cockpit control renders an action the click dispatcher does not handle. "
+            "Wire it in the same change that makes it reachable, or stop rendering it.",
         )
 
-    def test_the_gate_fires_when_the_check_passes_with_no_handler(self) -> None:
-        # The mutation, run rather than described: the test above is a tripwire
-        # and a tripwire nobody has stepped on is not known to work. This walks
-        # the forbidden state deliberately and asserts the assertion fails.
-        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
-        if 'action === "reading-ask"' in source:
-            self.skipTest("the handler now exists, so the forbidden state is unreachable")
-        with (
-            mock.patch.object(
-                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            self.test_the_enabled_path_is_unreachable_while_no_handler_exists()
+    def test_the_predicate_itself_holds_in_every_state(self) -> None:
+        """The gate proven on synthetic sources, so it never stops being proven.
+
+        An earlier version walked the real tree and skipped once a handler
+        existed, which retires the proof on exactly the tree where the gate
+        starts carrying weight. These four cases pin the predicate instead, and
+        the third is the false green the whole-file version would have had.
+        """
+        listener = _COCKPIT_CLICK_LISTENER
+        unwired = f'data-next-cockpit-action="reading-ask" {listener} action === "tab"'
+        wired = f'{unwired} action === "reading-ask"'
+        commented = (
+            f'data-next-cockpit-action="reading-ask" {listener} '
+            '/* no action === "reading-ask" arm yet */ action === "tab"'
+        )
+        other = f'data-next-cockpit-action="graph-mode" {listener} action === "tab"'
+
+        self.assertEqual({"reading-ask"}, unwired_cockpit_actions(unwired, reachable=True))
+        self.assertEqual(set(), unwired_cockpit_actions(unwired, reachable=False))
+        self.assertEqual(set(), unwired_cockpit_actions(wired, reachable=True))
+        # Prose naming the arm is not the arm.
+        self.assertEqual({"reading-ask"}, unwired_cockpit_actions(commented, reachable=True))
+        # And nothing else gets the exemption, in either state.
+        self.assertEqual({"graph-mode"}, unwired_cockpit_actions(other, reachable=False))
 
 
 class LauncherContractTest(unittest.TestCase):
