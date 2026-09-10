@@ -40,9 +40,7 @@ __fetchImpl = async url => String(url) === "/api/annotations"
 __els.app = {innerHTML: ""};
 """
 
-    def render(
-        self, annotations: list[dict[str, Any]], *, annotate: bool = True
-    ) -> dict[str, Any]:
+    def render(self, annotations: list[dict[str, Any]], *, annotate: bool = True) -> dict[str, Any]:
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             f"const __rows = {json.dumps(annotations)};\n"

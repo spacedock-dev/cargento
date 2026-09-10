@@ -1545,6 +1545,101 @@ class ObserverRouteTest(RuntimeTestCase):
         self.assertTrue(wrote_sidecar)
 
 
+class CodexExecArgvTest(unittest.TestCase):
+    """Every flag that sandboxes the model call, pinned.
+
+    Nothing in this suite asserted any of them before this class existed: a
+    change that dropped `--sandbox read-only`, `--ignore-user-config` or any of
+    the feature disables would have shipped green. That matters more now than
+    it did, because a second lane is about to call the same subprocess and a
+    lane that quietly ran unsandboxed would look exactly like one that did not.
+    """
+
+    def _capture(self) -> tuple[list[Any], observer.CodexGoalModel]:
+        seen: list[Any] = []
+
+        def runner(command: Any, **kwargs: Any) -> Any:
+            seen.append((command, kwargs))
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        config = dataclasses.replace(
+            make_config(), observer_model_enabled=True, state_dir=Path(tempfile.mkdtemp())
+        )
+        caller = observer.CodexGoalModel(
+            config,
+            runner=runner,
+            binary_resolver=mock.Mock(return_value="/usr/bin/codex"),
+            consent=True,
+            session_key="codex:one",
+        )
+        return seen, caller
+
+    def test_the_model_call_is_sandboxed_ephemeral_and_ignores_local_configuration(self) -> None:
+        seen, caller = self._capture()
+        caller("a transcript tail", "stage")
+
+        self.assertEqual(1, len(seen), "the model was not invoked exactly once")
+        command, kwargs = seen[0]
+
+        self.assertEqual("/usr/bin/codex", command[0])
+        self.assertEqual("exec", command[1])
+        self.assertEqual("-", command[-1], "the prompt must arrive on stdin, never as an argument")
+
+        for flag in (
+            "--ignore-user-config",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-rules",
+        ):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, command)
+
+        for pair in (
+            ("--sandbox", "read-only"),
+            ("--model", observer.OBSERVER_MODEL),
+            ("--config", 'web_search="disabled"'),
+            ("--config", "project_doc_max_bytes=0"),
+            ("--config", "skills.include_instructions=false"),
+            ("--config", f"model_reasoning_effort={observer.OBSERVER_MODEL_REASONING_EFFORT}"),
+        ):
+            with self.subTest(pair=pair):
+                # The VALUE that follows this flag, not merely the flag's
+                # presence: `--sandbox` with the wrong mode is the failure.
+                values = [command[i + 1] for i, tok in enumerate(command[:-1]) if tok == pair[0]]
+                self.assertIn(pair[1], values)
+
+        self.assertEqual(subprocess.DEVNULL, kwargs["stdout"])
+        self.assertEqual(subprocess.DEVNULL, kwargs["stderr"])
+        self.assertEqual(observer.OBSERVER_MODEL_TIMEOUT_SEC, kwargs["timeout"])
+        self.assertFalse(kwargs["check"], "a raising subprocess would crash a collection")
+        self.assertEqual(str(caller.config.state_dir), kwargs["cwd"])
+
+    def test_every_execution_and_integration_feature_is_disabled_on_the_command(self) -> None:
+        seen, caller = self._capture()
+        caller("a transcript tail", "stage")
+        command, _ = seen[0]
+
+        # Read-only sandboxing still permits reading files, and ignoring user
+        # config still leaves default-on hooks and plugin discovery available.
+        self.assertGreaterEqual(
+            len(observer._MODEL_DISABLED_FEATURES),
+            14,
+            "a feature was removed from the disable list rather than from Codex",
+        )
+        for feature in observer._MODEL_DISABLED_FEATURES:
+            with self.subTest(feature=feature):
+                self.assertIn(f"features.{feature}=false", command)
+
+    def test_the_prompt_reaches_the_model_on_stdin_and_never_on_disk(self) -> None:
+        seen, caller = self._capture()
+        caller("a transcript tail", "stage")
+        _, kwargs = seen[0]
+
+        self.assertIn("a transcript tail", kwargs["input"])
+        self.assertTrue(kwargs["text"])
+        self.assertEqual("utf-8", kwargs["encoding"])
+
+
 class ObserverModelSecurityTest(unittest.TestCase):
     def test_cli_requires_opt_in_and_rollback_always_wins(self) -> None:
         for flags, enabled in (
