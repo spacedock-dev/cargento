@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -354,6 +355,35 @@ class AnnotationStoreTest(unittest.TestCase):
         # Numbering keeps counting, so a dropped revision reads as dropped
         # rather than as one that never existed.
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
+
+
+class TheSaveReadsTheAnswerTheEndpointSendsTest(unittest.TestCase):
+    """The two halves of one save, held to the same key.
+
+    Measured: the page checked `saved.annotated`, which `/api/annotate` has
+    never sent. Every save would have landed on disk and shown the reader a
+    refusal with their words still in the box, and the test that covered it
+    stubbed the response itself, so it agreed with the page rather than with
+    the server. Two independent statements, compared here.
+    """
+
+    HANDLER = (Path(__file__).resolve().parents[1] / "cargento_runtime" / "http_api.py").read_text(
+        encoding="utf-8"
+    )
+    PAGE = (
+        Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "next-cockpit.js"
+    ).read_text(encoding="utf-8")
+
+    def test_the_page_reads_a_key_the_handler_writes(self) -> None:
+        body = self.HANDLER[self.HANDLER.index("    def _annotate(") :]
+        body = body[: body.index("\n    def ", 1)]
+        sent = set(re.findall(r'^\s+"([a-z_]+)": ', body, re.MULTILINE))
+        self.assertIn("ok", sent)
+        save = self.PAGE[self.PAGE.index("async function nextCockpitHeldSave(") :]
+        save = save[: save.index("\nfunction ")]
+        read = set(re.findall(r"\bsaved\.([a-z_]+)\b", save))
+        self.assertTrue(read, "the save reads nothing off the answer")
+        self.assertEqual(set(), read - sent, "the page reads a key the endpoint never sends")
 
 
 class AnnotationWiringTest(unittest.TestCase):

@@ -1105,7 +1105,10 @@ async function nextCockpitHeldSave(session, kind){
     });
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
     const saved = await response.json();
-    if(!saved || saved.annotated !== true) throw new Error("save not confirmed");
+    // `ok`, which is what `/api/annotate` answers with. `persisted` beside it
+    // is whether the write reached disk, and a false there is not a failed
+    // save: the words are held for this run and the store says so itself.
+    if(!saved || saved.ok !== true) throw new Error("save not confirmed");
     nextCockpitHeldDrafts.delete(key);
     nextCockpitHeldStates.set(key, "saved");
     await refreshNext();

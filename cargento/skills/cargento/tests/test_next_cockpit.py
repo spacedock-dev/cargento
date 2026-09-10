@@ -3801,8 +3801,12 @@ const upstream = __fetchImpl;
 __fetchImpl = async (url, init) => {
   if(String(url) !== "/api/annotate") return upstream(url, init);
   posts.push(JSON.parse(init.body));
+  // The shape `/api/annotate` actually answers with, not one invented here:
+  // an earlier version of this stub agreed with the page rather than with the
+  // server, and the page was reading a key the server never sends.
   return refuse ? {ok:false, status:503, json: async () => ({})}
-    : {ok:true, status:200, json: async () => ({annotated:true, persisted:true})};
+    : {ok:true, status:200, json: async () =>
+      ({ok:true, persisted:true, revision:3, revision_count:3})};
 };
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();

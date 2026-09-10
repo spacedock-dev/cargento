@@ -75,7 +75,9 @@ Backed by the current-turn elapsed and ETA estimate with its progress bar, the w
 when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its
 measured elapsed, its own model and its own liveness, with a teammate that has finished or gone
 quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
-session is running on, and desktop notifications on a state change.
+session is running on, desktop notifications on a state change, and a goal and an expected output
+you can type against one session and read back beside the goal its harness published, each on its
+own row with its own source, alongside every observed entry naming that session.
 
 Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
 contained only at the few places
@@ -85,6 +87,12 @@ plan title from Claude, and up to 64 plan steps with their statuses from Codex. 
 boundary in part on 2026-09-02 rather than confirming it, and SECURITY.md is where the current line
 is drawn.
 An ETA is an estimate, and it says so.
+
+Your words are yours, and nothing compares them to anything. A reading that would is asked for
+rather than running, and the control that asks is disabled until an abstention check has been run
+and recorded, so what ships today is the evidence side by side and the comparison is yours.
+Demonstrated work results are read on Pi alone, which the work evidence states under itself rather
+than leaving an empty list to read as no work done.
 
 ### P3. Is anything waiting on me?
 
