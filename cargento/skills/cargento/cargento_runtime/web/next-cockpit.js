@@ -730,7 +730,55 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }
 
-function nextCockpitHeldTo(group){
+/* DRC-4509's work evidence: what the observed record lets a reader inspect,
+   beside the words they typed. No judgement is attached and no model is
+   called; the comparison is theirs.
+
+   Each row keeps the fact's own `type` and the source that published it. The
+   issue's rule is that an entry is a decision only where the source records
+   one explicitly, and the cheapest way to keep that rule is never to rename a
+   type on the way to the screen.
+
+   The limit line is unconditional and it is the half a reader cannot infer.
+   Demonstrated work results come from `_work_evidence`, which returns nothing
+   for any harness but Pi, so on Claude and Codex the rows above are
+   instructions, dispatches and gate decisions and never an inspected file,
+   test or deliverable. Without the sentence an empty list reads as "no work
+   was done" rather than "that path was never taken here". */
+function nextCockpitWorkEvidenceLimit(harness){
+  const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
+  return harness === "pi"
+    ? `${label} publishes demonstrated work results, and they are read here.`
+    : `${label} publishes no demonstrated work results. Cargento reads those on Pi ` +
+      "alone, so nothing above is an inspected file, test or deliverable.";
+}
+
+function nextCockpitWorkEvidence(session, semantic){
+  const key = sessKey(session);
+  const facts = (semantic && Array.isArray(semantic.facts) ? semantic.facts : [])
+    .filter(fact => fact && nextCockpitFactSessionKey(fact) === key)
+    .sort((left, right) => Number(left.at || 0) - Number(right.at || 0));
+  const rows = facts.map(fact => {
+    const evidence = fact.evidence && typeof fact.evidence === "object" ? fact.evidence : {};
+    const source = [evidence.source, evidence.confidence].map(value =>
+      String(value == null ? "" : value).trim()).filter(Boolean).join(" · ");
+    const at = nextDurationSince(fact.at);
+    return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(fact.type)}">` +
+      `<span class="next-cockpit-work-type">${esc(fact.type)}</span>` +
+      `<span class="next-cockpit-work-summary">${esc(fact.summary || "No summary published")}</span>` +
+      `<span class="next-cockpit-work-source">${esc(source || "Source not published")}</span>` +
+      `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
+      '</span></div>';
+  }).join("");
+  return '<section class="next-cockpit-work" data-next-cockpit-work>' +
+    '<header><h2>WORK EVIDENCE</h2></header>' +
+    (rows || '<p class="next-cockpit-work-absent">No entry in the observed record names ' +
+      'this session.</p>') +
+    '<p class="next-cockpit-work-limit">' +
+    `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
+}
+
+function nextCockpitHeldTo(group, observation){
   const session = nextCockpitFocusedSession(group);
   if(!session){
     return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
@@ -764,7 +812,8 @@ function nextCockpitHeldTo(group){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    binding + ended + '</section>';
+    binding + ended + '</section>' +
+    nextCockpitWorkEvidence(session, (observation || {}).semantic);
 }
 
 async function nextCockpitHeldSave(session, kind){
@@ -1490,7 +1539,7 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
       nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
       nextProjectPlanStatus(context) + nextCockpitPlanDisclosure(context);
   }else if(tab === "held-to"){
-    body = nextCockpitHeldTo(context.group);
+    body = nextCockpitHeldTo(context.group, observation);
   }else if(tab === "course"){
     body = nextProjectChanges(context.project) +
       nextCockpitCoursePanel(context.group, focus) + nextCockpitCompletedWork(context);

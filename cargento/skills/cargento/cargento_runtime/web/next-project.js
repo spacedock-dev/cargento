@@ -201,9 +201,22 @@ function nextProjectGoalRow(tag, text, src, known = true){
     (src ? `<span class="next-project-goal-source">${esc(src)}</span>` : "") + '</div>';
 }
 
+/* The derived row's source line, with when the directive was observed
+   (DRC-4509). A typed row carries its time through the revision line and this
+   one carried none, so a four-minute-old directive and a four-hour-old one
+   read the same. The workflow arm publishes no stamp and says so rather than
+   leaving the row looking fresh. */
+function nextProjectGoalDerivedSource(project){
+  if(!project.goalKnown) return "";
+  const age = project.goalAt == null ? null : nextDurationSince(project.goalAt);
+  return `${project.goalSrcText} · ` +
+    (age == null ? "observation time not published" : `observed ${age} ago`);
+}
+
 function nextProjectGoal(project, annotation){
   const source = project.goalKnown
-    ? `<span class="next-project-goal-source">${esc(project.goalSrcText)}</span>` : "";
+    ? '<span class="next-project-goal-source">' +
+      `${esc(nextProjectGoalDerivedSource(project))}</span>` : "";
   const gap = project.goalGapKnown
     ? `<p class="next-project-goal-gap">${esc(project.goalGapText)}</p>` : "";
   const typed = annotation || null;
@@ -223,7 +236,7 @@ function nextProjectGoal(project, annotation){
     ? `<p class="next-project-goal-gap">${esc(typed.binding_why)}</p>` : "";
   const derived = rows
     ? nextProjectGoalRow("DERIVED FROM THE HARNESS", project.goalText,
-        project.goalKnown ? project.goalSrcText : "", project.goalKnown)
+        nextProjectGoalDerivedSource(project), project.goalKnown)
     : nextProjectValue(project.goalText, project.goalKnown, "next-project-goal-text");
   return '<section class="next-project-goal"><header><h2>STATED GOAL</h2>' +
     (rows ? "" : source) + '</header>' + rows + derived + binding + gap + '</section>';

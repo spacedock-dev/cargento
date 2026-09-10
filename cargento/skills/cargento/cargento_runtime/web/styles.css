@@ -863,6 +863,19 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-held-field button{border:0;background:none;color:var(--ink2);font:var(--fs-xs) var(--mono);cursor:pointer}
 .next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink3);font-size:var(--fs-xs)}
+/* DRC-4509's work evidence. Mono throughout: every string in a row is one a
+   source published, including the type. The limit line is the board talking,
+   so it is sans. */
+.next-cockpit-work{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-work>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-work h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
+.next-cockpit-work-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:3px 10px;padding-left:9px;border-left:1px solid var(--line)}
+.next-cockpit-work-row+.next-cockpit-work-row{margin-top:5px}
+.next-cockpit-work-type{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em}
+.next-cockpit-work-summary{font:var(--fs-xs)/1.55 var(--mono);overflow-wrap:anywhere}
+.next-cockpit-work-at{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-work-source{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-work-absent,.next-cockpit-work-limit{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-scope{display:flex;align-items:baseline;gap:12px;padding:7px 12px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
 .next-cockpit-scope strong{font-size:var(--fs-2xs);letter-spacing:.08em;color:var(--ink)}
 .next-cockpit-scope--project{border-bottom:1px solid var(--line)}

@@ -210,14 +210,20 @@ function nextObservedHistory(project, evidence){
   };
 }
 
+/* `at` is the observation time, and it is carried rather than derived: the
+   directive arm has one on the record and the workflow arm has none, so a
+   render that timestamped both would date the second from whenever the page
+   last drew (DRC-4509). Null is an absence with a reason, not "just now". */
 function nextObservedGoal(source){
   const instruction = source.instruction;
   if(instruction && instruction.label === "asked" && nextObservedString(instruction.text)){
-    return {text: instruction.text, src: `${source.harness} · latest assignment`};
+    return {text: instruction.text, src: `${source.harness} · latest assignment`,
+      at: nextNumber(instruction.at)};
   }
   const workflows = nextObservedRecords(source.spacedock && source.spacedock.workflows);
   const goals = workflows.filter(workflow => nextObservedString(workflow.goal));
-  return goals.length ? {text: goals.map(workflow => workflow.goal).join("\n"), src: "Spacedock · workflow goal"} : false;
+  return goals.length ? {text: goals.map(workflow => workflow.goal).join("\n"),
+    src: "Spacedock · workflow goal", at: null} : false;
 }
 
 function nextObservedProject(key, sessions, sources, evidence, risky){
@@ -244,6 +250,9 @@ function nextObservedProject(key, sessions, sources, evidence, risky){
     ...nextObservedPair("goal", goal && goal.text, "No assignment or workflow goal published"),
     goalSrcText: goal ? goal.src : "Goal source not published",
     goalSrcKnown: Boolean(goal),
+    // The raw stamp, not a formatted age: a duration derived here would be as
+    // old as the last derivation, and the render is what knows the clock.
+    goalAt: goal && goal.at != null ? goal.at : null,
     goalGapText: `${sessions.length - goals.length} of ${sessions.length} ${sessions.length === 1 ? "session publishes" : "sessions publish"} no goal.`,
     goalGapKnown: true,
     sessions, needs, working, ended, risky,

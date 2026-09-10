@@ -294,6 +294,34 @@ console.log(JSON.stringify({html:__els.app.innerHTML}));
             html,
         )
 
+    def test_the_derived_row_says_when_the_directive_was_observed(self) -> None:
+        # DRC-4509. A typed row carries its time through the revision line; the
+        # derived row carried a source and nothing else, so a reader could not
+        # tell a directive from four minutes ago from one from four hours ago.
+        out = self.run_fixture(r"""
+__dashboard.sessions[0].instruction = {label:"asked", text:"Ship the cockpit", at:45};
+__dashboard.sessions[0].annotation = {goal:"Ship the cockpit", goal_why:"",
+  output:"", output_why:"No expected output typed.", revision:1, revision_count:1,
+  at:104, binding_why:""};
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+const withTime = __els.app.innerHTML;
+
+// And: a project whose goal comes from a workflow, which publishes no time.
+__dashboard.sessions[0].instruction = null;
+__dashboard.sessions[0].spacedock = {workflows:[{goal:"Survey the layout"}]};
+renderNext();
+console.log(JSON.stringify({withTime, withoutTime:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("codex · latest assignment · observed 1m ago", out["withTime"])
+        # An absence states its reason rather than leaving the row looking
+        # freshly observed.
+        self.assertIn(
+            "Spacedock · workflow goal · observation time not published",
+            out["withoutTime"],
+        )
+
     def test_a_session_with_no_typed_words_shows_the_harness_goal_alone(self) -> None:
         # No rows, no tags, and nothing implying the reader typed something.
         out = self.run_fixture(r"""
@@ -3698,6 +3726,69 @@ console.log(JSON.stringify({
         # Escape reverts the draft, so the save goes away with it.
         self.assertEqual(0, out["revertedSaves"])
         self.assertEqual("0/240", out["revertedCount"])
+
+    def test_the_work_evidence_keeps_each_entry_type_and_states_its_limit(self) -> None:
+        """DRC-4509. What the record lets a reader inspect, beside their words.
+
+        No judgement and no model: the rows are the payload's own facts with
+        the payload's own type strings, and the reader makes the comparison.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const block = html.slice(html.indexOf('data-next-cockpit-work'));
+console.log(JSON.stringify({
+  rows: [...block.matchAll(/data-next-cockpit-work-type="([^"]+)"/g)].map(m => m[1]),
+  sources: [...block.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  limit: (block.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
+  heading: html.includes("WORK EVIDENCE"),
+}));
+"""
+        )
+
+        # Then: the fact's own type, never a relabelling. Nothing here is
+        # called a decision, because none of these sources records one.
+        assert isinstance(out, dict)
+        self.assertTrue(out["heading"])
+        self.assertEqual(["user_message", "prepared_dispatch", "user_message"], out["rows"])
+        self.assertEqual(
+            ["root transcript · exact", "dispatch artifact · exact", "root transcript · exact"],
+            out["sources"],
+        )
+        # The limit is unconditional on every harness but Pi, and it is the
+        # half a reader cannot infer: an absent row reads as "no work" unless
+        # the page says the path that would have found it was never taken.
+        self.assertEqual(
+            "Codex publishes no demonstrated work results. Cargento reads those "
+            "on Pi alone, so nothing above is an inspected file, test or "
+            "deliverable.",
+            out["limit"],
+        )
+
+    def test_a_session_the_record_says_nothing_about_says_so(self) -> None:
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+// Given: a session no semantic fact names.
+navigateNext({view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  rows: (html.match(/data-next-cockpit-work-type=/g) || []).length,
+  absent: (html.match(/class="next-cockpit-work-absent">([^<]*)</) || [])[1],
+  limit: (html.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["rows"])
+        self.assertEqual("No entry in the observed record names this session.", out["absent"])
+        self.assertIn("Claude publishes no demonstrated work results.", out["limit"])
 
     def test_saving_sends_only_the_field_that_changed_and_keeps_a_refusal(self) -> None:
         out = self.run_fixture(

@@ -615,8 +615,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "773df10e37644834b70029833f38e7d800418754b81c3abc444470ef4d4a0df5",
             ),
             "next-observed.js": (
-                29_647,
-                "bd905311bda8a2800a1f02e54ae489c0ed802add1cedae2b5e7667a9f856c6e7",
+                30_213,
+                "0b8259afbd480bd9bebcf2c2639f6f8e413c82a9ffca95e585292ea47b03bebe",
             ),
             "next-attention.js": (
                 56_348,
@@ -651,8 +651,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "0e270a7cecb33368ed71876fae7493104fe29027b695e100e6f24b5527820e0b",
             ),
             "next-project.js": (
-                15_236,
-                "ea730da3183b038d7fb7b1d58c829a31bc1cdff6c215cbbf1a44f8c5d6a6fffe",
+                15_885,
+                "3fd9677f7d53c53c4b6fac23e364a383d4c93248376b95dafed5891972a7a91b",
             ),
             "next-activity.js": (
                 6_632,
@@ -675,8 +675,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
-                91_129,
-                "1f9de29f713793a61299708c6b5204cb12b08fe7348e9262136b8959c340fef7",
+                94_043,
+                "1109f121eade73946e85f1bc24d4e2a4c78d6fc188517f9b57a10a029615ac45",
             ),
             "next-render.js": (
                 8_630,
@@ -695,16 +695,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(91_119, len(styles))
+        self.assertEqual(92_332, len(styles))
         self.assertEqual(
-            "d3fbc4bbc9090a116800ca17b784385feb089356e8619636d8007bd84e007dca",
+            "105f9b3aba17994ce1373d37fe8a3384fb51e08754f1ee45d1748db9a32fbb03",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(724_620, len(assembled))
+        self.assertEqual(729_962, len(assembled))
         self.assertEqual(
-            "2e55f081146e950d670ba227e7648f955a86b4ff69c368c7282b0c96ccbc9fd0",
+            "c7496af8b1bfdad6a05e696ff5037d7ae26df19255ff0066d15bbfae836c532e",
             hashlib.sha256(assembled).hexdigest(),
         )
 

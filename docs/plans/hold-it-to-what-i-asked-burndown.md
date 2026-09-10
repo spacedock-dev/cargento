@@ -16,7 +16,7 @@ PR #317, which is kept OPEN for the captain to test and is NOT to be merged.
 | 2 | DRC-4512a: the two-axis end-evidence lift in `next-observed.js` | DONE |
 | 3 | `nextCockpitTabs(focus)` pure refactor, routing all 13 tab call sites | DONE |
 | 4 | DRC-4508 input surface: the `Held to` tab, memo-cell conditional in the SAME commit | DONE |
-| 5 | DRC-4509 remainder: observation time on the derived row, work evidence | TODO |
+| 5 | DRC-4509 remainder: observation time on the derived row, work evidence | DONE |
 | 6 | The reader-state row for the new 240-char lane | TODO |
 | 7 | DRC-4511: the reader-requested reading, built around DEC-17 rules 3, 4 and 7 | TODO |
 | 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | TODO |
