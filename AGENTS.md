@@ -60,6 +60,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── observer.py        # one session's goal, stage and open block, on demand
         │   ├── probe.py            # the coarse store probe: a bounded stat sweep, a hint only
         │   ├── quota.py            # quota: per-vendor fetches, pushed receipts, and the cache
+        │   ├── reading.py          # one reader-requested reading: the ledger, the rules, the refusals
         │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── sessions.py         # session identity, shape, and deterministic aggregation
         │   ├── snapshot.py         # the published response bytes and their restart-qualified revision

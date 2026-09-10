@@ -41,6 +41,29 @@ history allowlist, appears in the prompt derived carrier inventory, is redacted 
 bounded, inherits the existing history bounds and retention, and is deleted by the existing forget
 path. No new store, and no field admitted by implication.
 
+### Amended 2026-09-10: the store is the annotation store
+
+The ruling above names session history and gives its reason in the same sentence, so both reopen
+after a restart and after the live row leaves the board. Measured afterwards, the annotation store
+already does both. It is bounded by two counts with no time to live, and an annotation is keyed on
+harness and session id with no project, so it outlives the row by construction. History was named
+before anyone checked.
+
+A reading is stored beside the revisions it read. Nothing in the paragraph above about redaction
+survives unchanged only by luck: the one model authored field goes through the same redact before
+clip scrub the two typed fields do, on the way in and again on the way out, because any local
+process can rewrite the file.
+
+Two consequences, both accepted rather than discovered. The forget command deletes session history
+alone and does not reach this file, so a reader who wants a model authored reading gone clears that
+session, which deletes the reading with the words that produced it. And there is no fourteen day
+expiry: a reading is evicted when its annotation is.
+
+What this avoided is worth recording because the alternative looked cheap. Admitting the five
+reserved names to history needed five new flat published row fields first, plus the allowlist
+entries, plus the schema bump. The obvious way to write that bump refuses every store already on
+disk, and one test would have caught it.
+
 One hazard was worth recording because nothing in the tree caught it, and it is now closed.
 `history.py` returned a reset whenever the stored version did not equal the running build's, unlike
 the dismissal store. The version bump that comes with the first admission would therefore have
@@ -146,8 +169,53 @@ Seven rules:
    evidence, because a stated change of direction is what that evidence is good for, and a
    `consistent` resting only on it must say so in its evidence line.
 
-Rules 3, 4 and 7 are load bearing: they make `met`, an uncited departure, and a deliverable claim on
-a harness with no work evidence unrenderable rather than rare.
+Rules 3 and 7 are load bearing: they make an uncited departure and a deliverable claim resting on
+nothing that shows work unrenderable rather than rare. Rule 4 is weaker than it reads, and the
+amendment below says so.
+
+### Amended 2026-09-10: rule 7 asks whether an entry shows work, not who typed it
+
+As written, rule 7 keys the Expected Output test on who wrote a cited entry, and that inverts its
+own reason. The reason is that self report is not evidence of a deliverable, and a request is not
+evidence of one either. Keyed on authorship, citing the reader's own words licensed a verdict about
+her own deliverable while citing the actual work result demoted. Seven adversaries found it running
+against the built producer; none of five reviewers reading the rule had.
+
+The test is now whether a cited entry demonstrates work. On Claude and Codex nothing does, so
+Expected Output stays not verifiable there, which is where it already was. The change only ever
+narrows what may be said.
+
+Two rules were added beside it, both from the same pass and both demoting on either constraint. A
+verdict resting only on entries Cargento itself derived is this board quoting itself: an observer
+snapshot is a paraphrase of the session, not evidence about it. And a `consistent` resting only on
+the reader's own request is agreeing with the question, which is the shape a reader is most likely
+to misread as corroboration because the words match. A departure on her own words is different and
+stands: a stated change of direction is exactly what that evidence is good for.
+
+### Amended 2026-09-10: rule 4 is a backstop and the word list has two halves
+
+One flat list of forbidden words demoted six of eight natural departure sentences. "The tests
+failed", "not done", "incomplete" are the ordinary vocabulary of saying a thing did not happen, so
+the guard against reassurance was the thing hiding departures.
+
+Success words always demote, because the model may never assert the work landed under any result.
+Failure words demote only under a `consistent`, where claiming failure while agreeing with the
+evidence is incoherent. A success word under a negator is a failure statement and keeps its
+departure.
+
+Rule 4's primitive is that the model emits a token rather than a sentence, and that prose renders
+only under a departure. The word list is the second line and it is a judgement rather than a
+measurement. Saying otherwise would be the same overstated claim the rule exists to stop the model
+making.
+
+### The two typed fields are one line each, and that is a security decision
+
+Recorded here because it had no durable home. The goal and the expected output are collapsed to a
+single line by the same control character scrub that stops a pasted private key body surviving into
+a published string, and it runs server side on write and again on read back. Admitting newlines
+means relaxing that scrub for two fields that a reader pastes into, which is the wrong two fields to
+relax it for. The browser collapses on input as well, so the reader watches it happen rather than
+finding out afterwards.
 
 ### What the contract does not remove
 
@@ -188,6 +256,23 @@ abstention is the safe direction.
 The check cannot be run without a producer to run it on, so a recorded pass implies one exists. That
 is why the control reads one gate rather than two.
 
+#### Amended 2026-09-10: the captain marks the corpus
+
+The second person requirement is removed. On this milestone the captain is that other person and
+there is no third, so holding the check as written left the constant at not run indefinitely, the
+control permanently disabled, and the promise unkept by anything the producer builds.
+
+Three things the requirement was protecting are not relaxed, because they are what makes a mark
+evidence rather than agreement. Marks are written before any producer runs against the corpus: a
+mark written after seeing an output is not a mark. The corpus is recorded sessions only, and stays
+separate from the synthesised case set, because sharing one would let a synthesised fixture satisfy
+a gate written for recorded sessions. And cross agent verification on that case set is untouched: a
+case whose generator and verifier are the same agent is not admitted.
+
+What this costs is that the marker is also the person who wants the feature, so a mark wrong in the
+permissive direction has nobody to catch it. The mitigation is the first of those three, and it is
+weaker than a second reader.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,
@@ -213,6 +298,16 @@ Automatic evaluation is permitted. A reading you have to ask for only helps some
 at the board, and the whole point is the person who set a session going and walked away.
 
 It is refused in practice until four things are true, in order.
+
+Amended 2026-09-10: the four preconditions gate the automatic switch's default, not the
+implementation. Read strictly they put three issues, two of them in another milestone, ahead of the
+work on the critical path for about thirty five hours that does not change what the work is. The
+delivery recording precondition stays a build gate and lands first, because a raise that records no
+delivery outcome is precisely the defect the review view exists to show. Native notifications on
+the other two platforms, the off machine lane, and quiet hours become follow ups that widen the
+lane and, together, permit the default to change. What that accepts is a capability which on Linux
+and Windows honestly reports that it cannot reach the reader, and it is defensible only while the
+report stays honest, which is what the three distinct delivery states are for.
 
 1. Delivery is real and recorded. DRC-4328 closes the Linux and Windows server side gap, DRC-4034
    owns the off machine lane, DRC-4540 records the outcome per raise.
