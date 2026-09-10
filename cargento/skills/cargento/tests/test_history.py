@@ -507,6 +507,39 @@ class UnreadableStoreIsDiscardedTest(HistoryStoreTestCase):
         self.assertEqual((), entries)
         self.assertEqual(history.RESET_VERSION, reset)
 
+    def test_every_version_this_build_names_is_read_rather_than_reset(self) -> None:
+        """DEC-15b's admission path, and the reason it is not an equality check.
+
+        Admitting an assessment field bumps the version, and under an equality
+        check that bump discarded fourteen days of every existing user's
+        history on upgrade. Nothing in the tree would have caught it: the store
+        rebuilds itself from the next collection, so a wiped history looks like
+        a quiet morning.
+        """
+        row = {
+            "harness": "codex",
+            "sid": "s1",
+            "project": "cargento",
+            "state": "idle",
+            "last_activity": 100.0,
+        }
+        for version in history.READABLE_VERSIONS:
+            with self.subTest(version=version):
+                self.write_store({"v": version, "entries": [row]})
+                entries, reset = history.load(self.config())
+                self.assertIsNone(reset)
+                self.assertEqual(1, len(entries))
+        self.assertIn(history.SCHEMA_VERSION, history.READABLE_VERSIONS)
+
+    def test_a_version_that_is_not_a_number_is_refused(self) -> None:
+        # `True in (1,)` is true in Python, so a boolean here read as version 1
+        # under both this check and the equality check it replaced. This file is
+        # one any local process could have written.
+        for version in (True, "1", None, [1]):
+            with self.subTest(version=version):
+                self.write_store({"v": version, "entries": []})
+                self.assertEqual(history.RESET_VERSION, history.load(self.config())[1])
+
     def test_a_store_larger_than_the_cap_is_discarded_unread(self) -> None:
         self.write_store({"v": history.SCHEMA_VERSION, "entries": []})
         entries, reset = history.load(self.config(history_max_bytes=4))

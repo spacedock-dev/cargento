@@ -50,6 +50,28 @@ if TYPE_CHECKING:
 # mis-parse ships.
 SCHEMA_VERSION: Final = 1
 
+# Every version this build can read, newest last, and the reason it is a tuple
+# rather than a single number.
+#
+# The paragraph above rejects a reader that tolerates every past shape forever,
+# and that reasoning stands. This is not that: it is a named, closed set, and a
+# version outside it still resets. What it removes is the other failure, which
+# is worse and which nothing in the tree would have caught.
+#
+# [DEC-15b](docs/design-reading-a-session.md#dec-15b-an-assessment-may-be-stored)
+# admits an outcome assessment into this store, one named field at a time. Every
+# such admission is additive: `_entry` re-validates each field on its own and
+# drops what it cannot read, so a record written before a field existed is a
+# record with that field absent. Under the equality check this replaced, the
+# version bump that accompanies the admission would have discarded fourteen days
+# of every existing user's history on upgrade, silently, and the only signal
+# would have been a reset reason nobody was looking at.
+#
+# An admission therefore bumps `SCHEMA_VERSION` and appends the old value here.
+# It never resets. A version this tuple does not name is still refused, which is
+# the case the header exists to report.
+READABLE_VERSIONS: Final[tuple[int, ...]] = (SCHEMA_VERSION,)
+
 STORE_FILENAME: Final = "cargento-history.json"
 
 # What a stored string may occupy. The identity fields are far shorter than this
@@ -403,8 +425,15 @@ def _decode(raw: bytes) -> tuple[tuple[Observation, ...], str | None]:
         return (), RESET_UNREADABLE
     if not isinstance(data, dict):
         return (), RESET_UNREADABLE
-    if data.get("v") != SCHEMA_VERSION:
-        # Enforced, unlike the dismissal store's: see SCHEMA_VERSION above.
+    version = data.get("v")
+    # Enforced, unlike the dismissal store's: see SCHEMA_VERSION above. A
+    # version this build knows is read rather than reset, and every other one
+    # is refused, which is the distinction READABLE_VERSIONS carries.
+    #
+    # `bool` is excluded by name because `True in (1,)` is true in Python, so a
+    # tampered `{"v": true}` read as version 1 under the equality check this
+    # replaced as readily as under the membership check.
+    if isinstance(version, bool) or version not in READABLE_VERSIONS:
         return (), RESET_VERSION
     entries = data.get("entries")
     if not isinstance(entries, list):

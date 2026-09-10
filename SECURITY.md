@@ -1130,7 +1130,15 @@ A field carrying prompt-derived text may be kept only when every one of these ho
    bounded and never after, the order Published text requires and for the reason given there;
 4. it is bounded to a cap this section states;
 5. it lives inside the retention window, the size cap, `--no-history` and `--forget` described
-   below, with no separate lifetime of its own.
+   below, with no separate lifetime of its own;
+6. its admission bumps `history.SCHEMA_VERSION` and appends the old value to
+   `history.READABLE_VERSIONS`, so an upgrade reads the records already on disk instead of
+   discarding them. Every admission is additive, because each field is re-validated on its own
+   and a record written before a field existed is a record with that field absent. The store
+   used to compare the version for equality, which meant the bump that came with the first
+   admission would have wiped fourteen days of history on upgrade with no signal but a reset
+   reason nobody reads. A version outside that tuple is still refused, which is the case the
+   header exists to report.
 
 The allowlist, one line per field:
 

@@ -41,10 +41,22 @@ history allowlist, appears in the prompt derived carrier inventory, is redacted 
 bounded, inherits the existing history bounds and retention, and is deleted by the existing forget
 path. No new store, and no field admitted by implication.
 
-One hazard is worth recording because nothing in the tree catches it: `history.py` returns a reset
-on a schema mismatch, unlike the dismissal store. Bumping the schema version to admit these fields
-would discard every existing user's history on upgrade, and no test would notice. Admission takes
-a migration that reads the old version.
+One hazard was worth recording because nothing in the tree caught it, and it is now closed.
+`history.py` returned a reset whenever the stored version did not equal the running build's, unlike
+the dismissal store. The version bump that comes with the first admission would therefore have
+discarded fourteen days of every existing user's history on upgrade, silently: the store rebuilds
+itself from the next collection, so a wiped history looks like a quiet morning.
+
+`history.READABLE_VERSIONS` is the closed set of versions the build can read. An admission bumps
+`SCHEMA_VERSION` and appends the old value there. Every admission is additive, because each field
+is re-validated on its own and a record written before a field existed is a record with that field
+absent. A version outside the set is still refused, which is the case the reset header exists to
+report.
+
+No field is named yet, and that is deliberate. Nothing produces a reading, so there is no assessment
+to store, and the baseline it would be read against already survives a restart in the annotation
+store rather than in history. Naming fields for an object that does not exist is how a store ends up
+carrying a shape nobody chose.
 
 ## DEC-16: Cargento does not write into a session
 

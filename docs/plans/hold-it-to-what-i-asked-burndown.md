@@ -19,7 +19,7 @@ PR #317, which is kept OPEN for the captain to test and is NOT to be merged.
 | 5 | DRC-4509 remainder: observation time on the derived row, work evidence | DONE |
 | 6 | The reader-state row for the new 240-char lane | DONE |
 | 7 | DRC-4511: the reader-requested reading, built around DEC-17 rules 3, 4 and 7 | DONE |
-| 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | TODO |
+| 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | DONE (migration only; no field named, no producer) |
 | 9 | Recompute the three byte pins once, full pre-PR suite, `sync-docs` | TODO |
 
 Update the Status column as each lands, and commit that update with the work.
