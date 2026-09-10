@@ -55,12 +55,12 @@ Antigravity (`agy -p`), and six Claude Code lenses with an adversarial verifier 
 | B | "revision 20 of 16" past the revision bound, in three places, with no sentence saying revisions were dropped | codex, claude x3 | DONE |
 | C | WORK EVIDENCE says "No entry in the observed record names this session" when the record was never read: in flight, errored, or the session was outside the server's 3-session scan | codex x2, claude x2 | DONE |
 | D | STATED GOAL pairs the focused session's typed words with the project's most-recently-active *sibling's* directive, stamped with that sibling's age | agy, codex, claude | DONE |
-| E | The two-axis end evidence (`landing`) renders nowhere | me, agy, codex | TODO |
-| F | The reading shape clauses on the *current* annotation, so a cleared field's departure vanishes and the empty state then claims none were raised | agy | TODO |
-| G | No "covers only the work so far" anywhere; the cutoff renders only inside departure cards | me, agy | TODO |
-| H | The reading limit line is mono, but the board is talking | agy | TODO |
+| E | The two-axis end evidence (`landing`) renders nowhere | me, agy, codex | DONE |
+| F | The reading shape clauses on the *current* annotation, so a cleared field's departure vanishes and the empty state then claims none were raised | agy | DONE |
+| G | No "covers only the work so far" anywhere; the cutoff renders only inside departure cards | me, agy | DONE |
+| H | The reading limit line is mono, but the board is talking | agy | DONE |
 | I | An observer snapshot renders as published source; the `actor_claim` this PR computes is rendered nowhere | codex, claude | DONE |
-| J | DEPARTURES RAISED TO YOU is omitted entirely when no assessment exists, so step 4 has no surface | codex | TODO |
+| J | DEPARTURES RAISED TO YOU is omitted entirely when no assessment exists, so step 4 has no surface | codex | DONE |
 | K | A criterion demoted by the harness limit prints the identical sentence twice | claude | DONE |
 | L | The absence sentence renders directly beneath the reader's own typed draft | claude | DONE |
 | M | `--no-annotations` still renders the prefix-binding caveat, a claim about words that cannot exist | claude | DONE |

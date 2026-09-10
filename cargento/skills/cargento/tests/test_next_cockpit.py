@@ -4435,9 +4435,101 @@ console.log(JSON.stringify({empty, unread, offered, enabled}));
         # Enablement reads the recorded result, not a constant.
         self.assertTrue(out["enabled"]["control"])
         self.assertFalse(out["enabled"]["disabled"])
-        # No reading, so no departures block: an empty one would imply a
-        # reading had run and raised nothing.
-        self.assertFalse(out["offered"]["departures"])
+        # The departures block renders whether or not a reading exists. It
+        # carried the DEC-16 sentence and the fact that nothing was raised,
+        # and both were reachable only through a reading nothing produces, so
+        # journey step 4 had no surface at all.
+        self.assertTrue(out["offered"]["departures"])
+        self.assertTrue(out["empty"]["departures"])
+
+    def test_how_it_landed_draws_the_two_axes_the_derivation_computes(self) -> None:
+        """Finding E, raised by all three harnesses.
+
+        Journey step 3 turns on whether Cargento has evidence the session
+        ended. `nextObservedLanding` derived it and nothing consumed it, so a
+        reader in this tab could not see whether it did.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + r"""
+const read = () => {
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('class="next-cockpit-landed"'));
+  return {
+    cards: [...block.matchAll(/landed-label">([^<]*)<\/span><span class="([^"]*)">([^<]*)</g)]
+      .map(m => [m[1], m[3], m[2].includes("--absent")]),
+    note: (block.match(/class="next-cockpit-landed-note">([^<]*)</) || [])[1],
+    axes: block.includes("two axes, read separately"),
+    provisional: html.includes("This covers only the work so far"),
+  };
+};
+
+// Given: a session still running.
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const running = read();
+
+// And: the same session, observed to have ended with uncommitted work.
+__dashboard.sessions[0].ended_at = 104;
+__dashboard.sessions[0].dirty = true;
+__dashboard.sessions[0].changed = 3;
+renderNext();
+console.log(JSON.stringify({running, ended: read()}));
+"""
+        )
+
+        # Then: two cards, never one verdict, and the end axis moves with the
+        # evidence while the claim axis does not follow it.
+        assert isinstance(out, dict)
+        self.assertTrue(out["running"]["axes"])
+        self.assertEqual(
+            [
+                ["END EVIDENCE", "No stop or end observed while the session is running", True],
+                ["WHO CLAIMS IT FINISHED", "Nothing has claimed this session finished", True],
+            ],
+            out["running"]["cards"],
+        )
+        self.assertEqual(
+            [
+                ["END EVIDENCE", "A session end was observed", False],
+                ["WHO CLAIMS IT FINISHED", "The agent reported it finished", False],
+            ],
+            out["ended"]["cards"],
+        )
+        # The independent-evidence limit rides with the claim card.
+        self.assertIn("3 changed entries were observed", out["ended"]["note"])
+
+    def test_a_reading_before_the_end_says_what_it_covers(self) -> None:
+        # Journey step 3: "If it offers one earlier at your request, it says
+        # that this covers only the work so far." Nothing said it, anywhere.
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[0].annotation_assessment = {revision_read:1,
+  criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]}}};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const running = __els.app.innerHTML.includes("This covers only the work so far");
+__dashboard.sessions[0].ended_at = 104;
+renderNext();
+console.log(JSON.stringify({running, ended:
+  __els.app.innerHTML.includes("This covers only the work so far")}));
+"""
+        )
+
+        # Then: said while it runs, and not said once it has ended.
+        assert isinstance(out, dict)
+        self.assertTrue(out["running"])
+        self.assertFalse(out["ended"])
 
     def test_a_reading_that_read_an_older_revision_says_so(self) -> None:
         out = self.run_fixture(
@@ -4615,6 +4707,54 @@ console.log(JSON.stringify({
             out["why"],
         )
         self.assertEqual(1, out["departures"])
+
+    def test_a_reading_reports_the_revision_it_read_not_the_one_typed_since(self) -> None:
+        """Finding F, raised by Antigravity.
+
+        The shape filtered and clauseed on the CURRENT annotation. A reading
+        of revision 1 therefore displayed revision 2's text as the clause it
+        judged, and a constraint cleared since dropped its row and its
+        departure with it, after which the block rendered "The reading raised
+        no departure from the revision it read" about a revision whose
+        departure had just been deleted.
+        """
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+// A reading of revision 1 that found a departure on the expected output.
+const reading = {revision_read:1, criteria:{
+  output:{result:"departure", clause:"six screenshots", detail:"Three exist.", cites:["u1"]}}};
+// Revision 2 cleared that field and changed the goal.
+const now = {goal:"a different goal", output:"", revision:2};
+const read = nextCockpitReadingShape(reading, now, entries, "");
+const row = key => read.criteria.find(candidate => candidate.key === key);
+console.log(JSON.stringify({
+  keys: read.criteria.map(candidate => candidate.key),
+  clause: row("output").clause,
+  result: row("output").result,
+  departures: read.departures.length,
+  // The goal row has no entry in this reading and its clause must not be
+  // today's text presented as what a past reading judged.
+  goalClause: row("goal").clause,
+  goalClauseKnown: row("goal").clauseKnown,
+}));
+"""
+        )
+
+        # Then: the cleared constraint keeps its row, its clause and its
+        # departure, all as the reading read them.
+        assert isinstance(out, dict)
+        self.assertIn("output", out["keys"])
+        self.assertEqual("six screenshots", out["clause"])
+        self.assertEqual("departure", out["result"])
+        self.assertEqual(1, out["departures"])
+        # And a constraint the reading did not carry does not borrow today's
+        # words: that would be the historical reading describing the current
+        # request, which the amber line beside it exists to deny.
+        self.assertFalse(out["goalClauseKnown"])
+        self.assertEqual(
+            "the words of the revision this reading read are not retained", out["goalClause"]
+        )
 
     def test_rule_4_the_word_met_cannot_reach_the_page(self) -> None:
         out = self.run_fixture(

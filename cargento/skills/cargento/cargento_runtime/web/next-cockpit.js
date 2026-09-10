@@ -1105,7 +1105,10 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit){
   const narration = result === NEXT_READING_CONSISTENT && !fromPerson.length
     ? "Rests on the agent's own account alone." : "";
   return {
-    key, label, clause, result,
+    key, label,
+    clause: clause || "the words of the revision this reading read are not retained",
+    clauseKnown: Boolean(clause),
+    result,
     detail: String(raw && raw.detail || ""),
     why, narration, limit: limit || "",
     // Mutually exclusive with `limit`, and never both blank: a row states its
@@ -1118,18 +1121,41 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit){
 /* The reading, shaped. `raw` is whatever a producer returned; `annotation` is
    what the reader typed; `entries` are the work-evidence rows already on the
    page, so a citation resolves against the same list the reader can see. */
+/* The words the reading was read against.
+
+   The producer carries them, because only it knows what the revision it read
+   actually said. The current annotation is a legitimate fallback only while
+   the reading read the current revision; once a later revision exists,
+   showing today's text as the clause a past reading judged is the historical
+   reading claiming to describe the current request, which is precisely what
+   the amber line beside it exists to deny. */
+function nextCockpitReadingClause(key, row, annotation, historical){
+  const carried = String(row && row.clause || "").trim();
+  if(carried) return carried;
+  if(historical) return "";
+  return String(annotation && annotation[key] || "").trim();
+}
+
 function nextCockpitReadingShape(raw, annotation, entries, limit){
   const source = raw && typeof raw === "object" ? raw : {};
   const rows = source.criteria && typeof source.criteria === "object" ? source.criteria : {};
+  const revisionRead = nextNumber(source.revision_read);
+  const current = nextNumber(annotation && annotation.revision);
+  const historical = revisionRead != null && current != null && revisionRead !== current;
+  /* Which constraints the READING read, not which are typed now. Filtering on
+     the current annotation meant a field cleared since the reading dropped
+     its row and its departure with it, after which the departures block
+     rendered "The reading raised no departure from the revision it read" —
+     a sentence about a revision whose departure had just been deleted. */
   const criteria = NEXT_READING_CONSTRAINTS
-    .filter(([key]) => String(annotation && annotation[key] || "").trim())
+    .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
     .map(([key, label]) => nextCockpitReadingCriterion(
-      key, label, String(annotation[key]), rows[key], entries,
-      key === "output" ? limit : ""));
+      key, label, nextCockpitReadingClause(key, rows[key], annotation, historical),
+      rows[key], entries, key === "output" ? limit : ""));
   return {
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
-    revisionRead: nextNumber(source.revision_read),
+    revisionRead,
     stamp: String(source.stamp || ""),
     cutoff: String(source.cutoff || ""),
   };
@@ -1173,7 +1199,27 @@ function nextCockpitReadingCriterionRow(row){
     tail + '</div>';
 }
 
+/* One sentence, two places. Note 4 of the design records that the steer box
+   and this panel both say steering is manual in different words; this is the
+   half that references the other rather than restating the ruling
+   ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
+const NEXT_COCKPIT_STEER_BY_HAND = "Raised to you and nowhere else. Cargento does not write " +
+  "into a session, so steering is by hand; the steer box in Console states the same rule " +
+  "about notes you write there.";
+
 function nextCockpitDepartures(shape){
+  /* Rendered whether or not a reading exists. It carried the ruling's
+     sentence that steering is manual and the fact that nothing was raised, and
+     both were reachable only through a reading nothing produces, so journey
+     step 4 had no surface at all. Saying "no reading has been made, so
+     nothing has been raised" needs no model. */
+  if(!shape){
+    return '<section class="next-cockpit-departures"><header>' +
+      '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
+      '<p class="next-cockpit-reading-why">No reading has been made, so nothing has been ' +
+      'raised. Nothing watches for a departure on its own.</p>' +
+      `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p></section>`;
+  }
   const rows = shape.departures.map(row =>
     '<div class="next-cockpit-departure">' +
     `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
@@ -1187,12 +1233,10 @@ function nextCockpitDepartures(shape){
     '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
     (rows || '<p class="next-cockpit-reading-why">The reading raised no departure from the ' +
       'revision it read.</p>') +
-    '<p class="next-cockpit-reading-why">Raised to you and nowhere else. Cargento does not ' +
-    'write into a session, so steering is by hand; the steer box in Console states the same ' +
-    'rule about notes you write there.</p></section>';
+    `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p></section>`;
 }
 
-function nextCockpitReading(session, annotation, entries, model){
+function nextCockpitReading(session, annotation, entries, model, observed){
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = String(session.harness || "") === "pi"
     ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
@@ -1203,7 +1247,8 @@ function nextCockpitReading(session, annotation, entries, model){
   if(!raw){
     const reason = nextCockpitReadingStates(annotation, model);
     if(reason){
-      return `${header}</header><p class="next-cockpit-reading-why">${esc(reason)}</p></section>`;
+      return `${header}</header><p class="next-cockpit-reading-why">${esc(reason)}</p>` +
+        '</section>' + nextCockpitDepartures(null);
     }
     /* The offer. `Ask for a reading` reads the abstention check's recorded
        result rather than a constant, which is the condition on enabling:
@@ -1224,11 +1269,17 @@ function nextCockpitReading(session, annotation, entries, model){
       `data-next-focus="reading:${esc(sessKey(session))}"${passed ? "" : " disabled"}>` +
       'Ask for a reading</button>' +
       (passed ? "" : '<p class="next-cockpit-reading-why">The abstention check this ruling ' +
-        'requires ' +
-        'has not been run, so a reading cannot be asked for yet. The evidence above stays ' +
-        'readable without one.</p>') + '</section>';
+        'requires has not been run, so a reading cannot be asked for yet. The evidence above ' +
+        'stays readable without one.</p>') + '</section>' + nextCockpitDepartures(null);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit);
+  /* Journey step 3: a reading offered before the session ended says so. The
+     end evidence is the two-axis derivation next door, so the scope sentence
+     and the HOW IT LANDED cards cannot disagree about whether it ended. */
+  const provisional = observed && observed.landing && !observed.landing.endKnown
+    ? '<p class="next-cockpit-reading-why">This covers only the work so far. ' +
+      `${esc(observed.landing.endText)}, so nothing here is a reading of how it ended.</p>`
+    : "";
   const current = nextNumber(annotation && annotation.revision);
   /* The one warm ink the design allows near a reading, and it is not part of
      one: which revision was read is an observation about revisions. */
@@ -1238,9 +1289,39 @@ function nextCockpitReading(session, annotation, entries, model){
     : "";
   return header +
     (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
-    '</header>' + stale +
+    '</header>' + stale + provisional +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") + '</section>' +
     nextCockpitDepartures(shape);
+}
+
+/* HOW IT LANDED: the two axes `nextObservedLanding` derives, drawn where the
+   reader is comparing the work to what they asked for.
+
+   The derivation shipped with no consumer, and all three reviewing harnesses
+   found the same hole: journey step 3 turns on whether Cargento has evidence
+   the session ended, and a reader in this tab could not see whether it did.
+   Two cards and never one verdict, because what ended and who says the work
+   finished are different questions with different answers. */
+function nextCockpitLanded(observed){
+  if(!observed || !observed.landing){
+    return '<section class="next-cockpit-landed"><header><h2>HOW IT LANDED</h2></header>' +
+      '<p class="next-cockpit-reading-why">This session was not in the observed payload, ' +
+      'so nothing here says how it ended.</p></section>';
+  }
+  const landing = observed.landing;
+  const card = (title, text, known, note) =>
+    '<div class="next-cockpit-landed-card">' +
+    `<span class="next-cockpit-landed-label">${title}</span>` +
+    `<span class="next-cockpit-landed-value${known ? "" : " next-cockpit-landed-value--absent"}">` +
+    `${esc(text)}</span>` +
+    (note ? `<span class="next-cockpit-landed-note">${esc(note)}</span>` : "") + '</div>';
+  return '<section class="next-cockpit-landed"><header><h2>HOW IT LANDED</h2>' +
+    '<span class="next-cockpit-landed-axes">two axes, read separately</span></header>' +
+    '<div class="next-cockpit-landed-cards">' +
+    card("END EVIDENCE", landing.endText, landing.endKnown, "") +
+    card("WHO CLAIMS IT FINISHED", landing.claimText, landing.claimKnown,
+      landing.independentText) +
+    '</div><p class="next-cockpit-reading-why">Neither card implies the other.</p></section>';
 }
 
 function nextCockpitHeldTo(group, observation){
@@ -1264,8 +1345,12 @@ function nextCockpitHeldTo(group, observation){
   /* The design's order inside this tab: what you asked for, then the reading
      of it, then the departures it raised. Intent first, then a reading of the
      intent, so nothing above the reading is a model's words. */
+  const observed = nextCockpitFocusedObserved(group, nextCockpitObservedProject(group));
+  /* The design's order inside this tab: what you asked for, then the reading
+     of it, then the departures it raised, then how it landed. */
   const evidence = nextCockpitWorkEvidence(session, workSource) +
-    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group));
+    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group), observed) +
+    nextCockpitLanded(observed);
   const cap = nextCockpitHeldCap();
   const revision = nextProjectRevisionLine(annotation) || "No revision saved yet";
   const binding = annotation && annotation.binding_why && (annotation.goal || annotation.output)
