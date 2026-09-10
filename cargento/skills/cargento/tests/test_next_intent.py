@@ -40,7 +40,9 @@ __fetchImpl = async url => String(url) === "/api/annotations"
 __els.app = {innerHTML: ""};
 """
 
-    def render(self, annotations: list[dict[str, Any]]) -> dict[str, Any]:
+    def render(
+        self, annotations: list[dict[str, Any]], *, annotate: bool = True
+    ) -> dict[str, Any]:
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             f"const __rows = {json.dumps(annotations)};\n"
@@ -58,7 +60,9 @@ console.log(JSON.stringify({
   visible: html.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " "),
 }));
 """,
-            storage_prelude({}) + "let __annotations = [];\n" + self.FIXTURE,
+            storage_prelude({})
+            + "let __annotations = [];\n"
+            + self.FIXTURE.replace("annotate: true", f"annotate: {str(annotate).lower()}"),
         )
         assert isinstance(out, dict)
         return out
@@ -161,6 +165,18 @@ console.log(JSON.stringify({
 
         self.assertIn("Nothing has been typed against any session yet", empty["visible"])
         self.assertEqual(0, empty["rows"])
+
+        # The half this test was named for and did not check. Measured while
+        # closing DRC-4533: the fixture hardcoded `annotate: true`, so deleting
+        # the off branch entirely left the suite green and told a
+        # `--no-annotations` reader that nothing had been typed -- which is the
+        # one thing this surface must never say when it cannot know.
+        off = self.render([], annotate=False)
+
+        self.assertIn("Annotations are off for this run", off["visible"])
+        self.assertIn("--no-annotations", off["visible"])
+        self.assertNotIn("Nothing has been typed against any session yet", off["visible"])
+        self.assertEqual(0, off["rows"])
 
 
 class TheIntentLogReadsTheStoreAndNotHistoryTest(unittest.TestCase):
