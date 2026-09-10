@@ -5,9 +5,15 @@ const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
 /* Tabs that exist only while one session is in focus. Empty at project scope
    rather than disabled there, because a tab about one session's words has
-   nothing to show when no session is selected. DRC-4508's `Held to` is the
-   first entry and lands next. */
-const NEXT_SESSION_TABS = [];
+   nothing to show when no session is selected, and an always-empty tab
+   teaches a reader not to click the one that will matter.
+
+   Not gated on the annotation store being live. This list is read by
+   `nextRouteFromFragment` at boot, before any payload has arrived, and a
+   capability-gated list would refuse to parse a bookmarked `:held-to` link on
+   first load and drop the reader on the projects index. The panel says the
+   store is off; the route stays readable either way. */
+const NEXT_SESSION_TABS = ["held-to"];
 const NEXT_OBSERVER_CONSENT_KEY = "cargento.observer-model-consent.v1";
 let nextObserverConsentMemo = null;
 const nextObserverRequests = new Set();

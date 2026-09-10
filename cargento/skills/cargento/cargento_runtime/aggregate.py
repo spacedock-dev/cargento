@@ -762,7 +762,18 @@ class Application:
         # every save answers 503.
         collection.update(
             {
-                **({"annotate": True} if config.annotations_enabled else {}),
+                # The bound rides with the flag rather than being repeated
+                # in the bundle: the counter beside each field says how
+                # much room is left, and a page guessing that number tells
+                # the reader their words fit when the store will clip them.
+                **(
+                    {
+                        "annotate": True,
+                        "annotate_cap": config.annotation_text_cap_chars,
+                    }
+                    if config.annotations_enabled
+                    else {}
+                ),
                 **self._ask_cards(now),
                 **history_fields,
             }

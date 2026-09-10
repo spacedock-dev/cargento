@@ -3511,6 +3511,289 @@ console.log(JSON.stringify({
         self.assertNotIn("/api/interaction/control", out["parts"])
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitHeldToTabTest(NextPageJsHarness):
+    """DRC-4508's input surface: two fields, at session scope, in the cockpit.
+
+    The store, the endpoint and the read-only rows already ship. This is the
+    place a person types into, and the acceptance criterion it carries is that
+    a session with neither field renders an absence with its reason rather
+    than a blank or a placeholder.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    # A DOM stub whose `closest` answers any `[data-*]` selector from the
+    # element's own dataset. `NextCockpitCompositionTest.FOCUS_DOM` answers
+    # only the action selector, which is right for the tests that use it and
+    # cannot see a textarea's own input hook.
+    FOCUS_DOM = r"""
+let controls = [];
+const decode = text => text.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+const camel = name => name.replace(/^data-/, "").replace(/-([a-z])/g,
+  (_, letter) => letter.toUpperCase());
+__els.app = {
+  get innerHTML(){ return this.html || ""; },
+  set innerHTML(html){
+    this.html = html;
+    document.activeElement = null;
+    controls = [...html.matchAll(/<(button|a|textarea)\b([^>]*)>/g)].map(match => {
+      const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      const dataset = Object.fromEntries(Object.entries(attrs)
+        .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]));
+      return {dataset, tagName:match[1].toUpperCase(), value:"", attrs,
+        getAttribute(name){ return attrs[name] || null; },
+        focus(){ document.activeElement = this; },
+        closest(selector){
+          const bare = /^\[(data-[\w-]+)\]$/.exec(selector);
+          return bare && dataset[camel(bare[1])] !== undefined ? this : null;
+        }};
+    });
+  },
+  querySelectorAll(selector){
+    return selector === "[data-next-focus]" ? controls.filter(control => control.dataset.nextFocus) : [];
+  }
+};
+renderNext();
+"""
+    ANNOTATED = """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation = {
+  goal: "Capture every screen with live sessions",
+  goal_why: "",
+  output: "",
+  output_why: "No expected output typed.",
+  revision: 2, revision_count: 2, at: 100,
+  binding_why: ""
+};
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_tab_and_its_fields_exist_only_at_session_scope(self) -> None:
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+const seen = {};
+for(const focus of [null, "codex:focus-1"]){
+  navigateNext({view:"project", project:"cargento", focus, tab:focus ? "held-to" : "now"});
+  await __settle();
+  const html = __els.app.innerHTML;
+  seen[focus || "project"] = {
+    tab: html.includes('data-arg="held-to"'),
+    asked: html.includes("WHAT YOU ASKED FOR"),
+
+    goal: html.includes("Capture every screen with live sessions"),
+    revision: html.includes("revision 2 of 2"),
+    absence: html.includes("No expected output typed."),
+    counters: (html.match(/data-next-cockpit-held-count="[a-z]+"/g) || []).length,
+    clears: (html.match(/data-next-cockpit-action="held-clear"/g) || []).length,
+    saves: (html.match(/data-next-cockpit-action="held-save"/g) || []).length,
+  };
+}
+// The memo cell is asked directly, with a briefing that has something to show:
+// with both notes unset and the task known it renders nothing at either scope,
+// which would make the scope rule untestable through the page.
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const briefing = {...nextCockpitRecoveryBriefing(group), outcome:"Ship the cockpit"};
+seen.memo = {
+  project: nextCockpitRecoveryMemoCell(group, null, briefing).length > 0,
+  session: nextCockpitRecoveryMemoCell(group, nextCockpitFocusedSession(group),
+    briefing).length > 0,
+};
+console.log(JSON.stringify(seen));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        project, session = out["project"], out["codex:focus-1"]
+        self.assertFalse(project["tab"])
+        self.assertFalse(project["asked"])
+        self.assertTrue(session["tab"])
+        self.assertTrue(session["asked"])
+        # The memo cell moves to project scope in the same commit that adds
+        # these two fields: four typed fields on one session-scope page, at two
+        # bounds and two save semantics, is the collision this avoids.
+        self.assertEqual({"project": True, "session": False}, out["memo"])
+        # What was typed, and the named reason for what was not.
+        self.assertTrue(session["goal"])
+        self.assertTrue(session["revision"])
+        self.assertTrue(session["absence"])
+        self.assertEqual(2, session["counters"])
+        # `clear` only where there is text; `save` only where the draft differs
+        # from what is saved, and nothing has been typed yet.
+        self.assertEqual(1, session["clears"])
+        self.assertEqual(0, session["saves"])
+
+    def test_an_unannotated_session_states_both_reasons_and_offers_no_clear(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation = {
+  goal: "", goal_why: "No goal typed for this session.",
+  output: "", output_why: "No expected output typed.",
+  revision: null, revision_count: 0, at: null, binding_why: ""
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  goalWhy: html.includes("No goal typed for this session."),
+  outputWhy: html.includes("No expected output typed."),
+  clears: (html.match(/data-next-cockpit-action="held-clear"/g) || []).length,
+  revision: html.includes("No revision saved yet"),
+  counts: [...html.matchAll(/data-next-cockpit-held-count="[a-z]+">([^<]*)</g)].map(m => m[1]),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertTrue(out["goalWhy"])
+        self.assertTrue(out["outputWhy"])
+        self.assertEqual(0, out["clears"])
+        self.assertTrue(out["revision"])
+        self.assertEqual(["0/240", "0/240"], out["counts"])
+
+    def test_typing_offers_a_save_and_escape_puts_the_draft_back(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+input.value = "Six screenshots";
+__fire("input", {target:input});
+await __settle();
+const typed = __els.app.innerHTML;
+
+// When: Escape on the field the draft belongs to.
+controls.find(control => control.dataset.nextCockpitHeldKind === "output").focus();
+__fire("keydown", {target:document.activeElement, key:"Escape", preventDefault(){}});
+await __settle();
+const reverted = __els.app.innerHTML;
+console.log(JSON.stringify({
+  typedSaves: (typed.match(/data-next-cockpit-action="held-save"/g) || []).length,
+  typedCount: (typed.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+  typedClears: (typed.match(/data-next-cockpit-action="held-clear"/g) || []).length,
+  revertedSaves: (reverted.match(/data-next-cockpit-action="held-save"/g) || []).length,
+  revertedCount: (reverted.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then: one save, for the field that changed, and a live counter.
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["typedSaves"])
+        self.assertEqual("15/240", out["typedCount"])
+        self.assertEqual(2, out["typedClears"])
+        # Escape reverts the draft, so the save goes away with it.
+        self.assertEqual(0, out["revertedSaves"])
+        self.assertEqual("0/240", out["revertedCount"])
+
+    def test_saving_sends_only_the_field_that_changed_and_keeps_a_refusal(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+const posts = [];
+let refuse = false;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => {
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  posts.push(JSON.parse(init.body));
+  return refuse ? {ok:false, status:503, json: async () => ({})}
+    : {ok:true, status:200, json: async () => ({annotated:true, persisted:true})};
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+
+// When: type into Expected Output alone and save it.
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+
+// And: a save the server refuses.
+refuse = true;
+type("goal", "A different goal");
+await __settle();
+save("goal");
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({posts,
+  kept: html.includes("A different goal"),
+  cue: html.includes("Not saved. The server refused the write"),
+  stillOffersSave: (html.match(/data-next-cockpit-action="held-save"/g) || []).length}));
+"""
+        )
+
+        # Then: the untouched field goes as null, which is "leave it alone" at
+        # the endpoint, so a stale draft of one cannot overwrite the other.
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {
+                    "harness": "codex",
+                    "sid": "focus-1",
+                    "goal": None,
+                    "output": "Six screenshots",
+                },
+                {
+                    "harness": "codex",
+                    "sid": "focus-1",
+                    "goal": "A different goal",
+                    "output": None,
+                },
+            ],
+            out["posts"],
+        )
+        # A refused write keeps what was typed. Losing it to report the failure
+        # is the one outcome worse than the failure.
+        self.assertTrue(out["kept"])
+        self.assertTrue(out["cue"])
+        self.assertEqual(1, out["stillOffersSave"])
+
+    def test_no_field_is_offered_when_the_store_is_off(self) -> None:
+        out = self.run_fixture(
+            """
+// Given: --no-annotations, so the payload carries no capability at all.
+delete __dashboard.annotate;
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  tab: html.includes('data-arg="held-to"'),
+  inputs: (html.match(/data-next-cockpit-held-key/g) || []).length,
+  reason: html.includes("Annotations are off for this run"),
+}));
+"""
+        )
+
+        # Then: the tab still parses from a bookmarked link, and it carries
+        # the reason instead of a field whose every save would answer 503.
+        assert isinstance(out, dict)
+        self.assertTrue(out["tab"])
+        self.assertEqual(0, out["inputs"])
+        self.assertTrue(out["reason"])
+
+
 class CockpitTabsAreOneDecisionTest(unittest.TestCase):
     """The tab set is about to depend on scope, so it may be decided once.
 
@@ -3588,11 +3871,14 @@ console.log(JSON.stringify(scopes));
             with self.subTest(scope=scope):
                 rendered = seen["rendered"]
                 self.assertEqual(rendered[1:] + rendered[:1], seen["walked"])
-        # Today both scopes that draw a cockpit hold the same four tabs. The
-        # point of the test is that they keep agreeing when they stop.
-        for scope in ("project", "codex:focus-1"):
-            with self.subTest(scope=scope):
-                self.assertEqual(["now", "course", "decisions", "console"], out[scope]["rendered"])
+        # The two scopes no longer hold the same tabs, which is what the walk
+        # above exists to survive: `Held to` is session scope only, so a wrap
+        # computed over the project list would skip it on the reader's screen.
+        self.assertEqual(["now", "course", "decisions", "console"], out["project"]["rendered"])
+        self.assertEqual(
+            ["now", "course", "decisions", "console", "held-to"],
+            out["codex:focus-1"]["rendered"],
+        )
         # A route whose focus names no session in the payload draws the stale
         # filter surface instead of a cockpit, so it has no tabs to disagree
         # about. Asserted rather than assumed: it is the reason the empty case

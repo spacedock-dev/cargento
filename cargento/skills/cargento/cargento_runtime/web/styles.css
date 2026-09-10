@@ -843,6 +843,26 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-child-row+.next-cockpit-child-row{padding-top:7px;border-top:1px solid var(--line)}
 .next-cockpit-execution-root+.next-cockpit-execution-root{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 .next-cockpit-execution-root>.next-cockpit-child-row{padding-left:10px}
+/* DRC-4508's typed fields. Note 7 of the design notes: every label around the
+   two boxes is mono although it names the reader's field rather than a string
+   a source published, and the values inside them are sans. Recorded there as a
+   known compromise, taken here rather than inventing a fourth register. The
+   fields sit on a solid hairline, not the dashed one the steer box carries:
+   dashed marks a control that reaches nothing outside this browser, and these
+   words reach the server. */
+.next-cockpit-held{display:flex;flex-direction:column;gap:11px;padding:14px 16px}
+.next-cockpit-held>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-held h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
+.next-cockpit-held-revision{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-cockpit-held-label{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
+.next-cockpit-held-sub{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:14px/1.55 var(--sans)}
+.next-cockpit-held-count{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-field button{border:0;background:none;color:var(--ink2);font:var(--fs-xs) var(--mono);cursor:pointer}
+.next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
+.next-cockpit-held-cue{grid-column:1/-1;color:var(--ink3);font-size:var(--fs-xs)}
 .next-cockpit-scope{display:flex;align-items:baseline;gap:12px;padding:7px 12px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
 .next-cockpit-scope strong{font-size:var(--fs-2xs);letter-spacing:.08em;color:var(--ink)}
 .next-cockpit-scope--project{border-bottom:1px solid var(--line)}

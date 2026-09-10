@@ -667,7 +667,135 @@ function nextCockpitRecoveryBriefing(group, focus, observation, commandAttention
   return {outcome,currentFocus,task,active,children,latest,decisions,coverage,text:lines.join("\n")};
 }
 
+/* Project scope only, since DRC-4508. The `Held to` tab put two more typed
+   fields on the session-scope page, and four of them across two bounds (240
+   here, 500 there) and two save semantics (a numbered revision on the server,
+   autosave into this browser) is a surface nobody can read the rules off. The
+   memo cell keeps the scope where it has no rival; nothing is deleted, and
+   whether the two should merge is a decision worth filing rather than
+   guessing. */
+/* DRC-4508's input surface: the two fields a person types their own intent
+   into, at session scope, saved as numbered revisions on the server.
+
+   Drafts live in a module Map rather than in the DOM, the way
+   `nextCockpitMemoDrafts` does, so a redraw between keystrokes cannot lose
+   what is half-typed. `next-chrome.js` puts the caret and the internal scroll
+   back for any `[data-next-focus]` input, which is why every field carries
+   one. See docs/design-reader-state.md. */
+const nextCockpitHeldDrafts = new Map();
+const nextCockpitHeldStates = new Map();
+const NEXT_COCKPIT_HELD_CAP = 240;
+const NEXT_COCKPIT_HELD_FIELDS = [
+  ["goal", "TYPED GOAL", "goal", "goal_why", "what you are after, in one line"],
+  ["output", "EXPECTED OUTPUT", "output", "output_why", "what should exist when it is done"],
+];
+
+function nextCockpitHeldKey(session, kind){
+  return `held:${String(session && session.harness || "")}:` +
+    `${String(session && session.sid || "")}:${kind}`;
+}
+
+function nextCockpitHeldCap(){
+  const cap = nextNumber(nextData && nextData.annotate_cap);
+  return cap != null && cap > 0 ? Math.round(cap) : NEXT_COCKPIT_HELD_CAP;
+}
+
+/* One field. `saved` is what the server holds, `draft` is what is in the box.
+   `clear` appears only where there is text to clear and `save` only where the
+   box and the store disagree, both per the design; a save control standing on
+   an unchanged field invites a revision number that records nothing. */
+function nextCockpitHeldField(session, annotation, spec, cap){
+  const [kind, label, valueKey, whyKey, placeholder] = spec;
+  const key = nextCockpitHeldKey(session, kind);
+  const saved = String(annotation && annotation[valueKey] || "");
+  const draft = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : saved;
+  const why = String(annotation && annotation[whyKey] || "");
+  const state = nextCockpitHeldStates.get(key);
+  const cue = state === "error"
+    ? "Not saved. The server refused the write, and your words are still in the box."
+    : state === "saved" ? "Saved as a new revision." : "";
+  return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
+    `<span class="next-cockpit-held-label">${label}</span>` +
+    '<span class="next-cockpit-held-sub">your words</span>' +
+    `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
+    `data-next-cockpit-held-key="${esc(key)}" ` +
+    `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
+    `<span class="next-cockpit-held-count" data-next-cockpit-held-count="${kind}">` +
+    `${draft.length}/${cap}</span>` +
+    (draft ? '<button type="button" data-next-cockpit-action="held-clear" ' +
+      `data-arg="${kind}">clear</button>` : "") +
+    (draft === saved ? "" : '<button type="button" data-next-cockpit-action="held-save" ' +
+      `data-arg="${kind}">save</button>`) +
+    (!saved && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
+    (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
+}
+
+function nextCockpitHeldTo(group){
+  const session = nextCockpitFocusedSession(group);
+  if(!session){
+    return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
+      '<p class="next-cockpit-held-absent">No session is selected, so there is nobody ' +
+      'whose words these would be.</p></section>';
+  }
+  /* No field at all when the store is off, which is what `--no-annotations`
+     promises. A box whose every save answers 503 is worse than none, and the
+     reason is on screen rather than left to the reader. */
+  if(!(nextData && nextData.annotate === true)){
+    return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
+      '<p class="next-cockpit-held-absent">Annotations are off for this run. Start without ' +
+      '--no-annotations to type a goal and an expected output here.</p></section>';
+  }
+  const annotation = session.annotation || null;
+  const cap = nextCockpitHeldCap();
+  const revision = annotation && annotation.revision
+    ? `revision ${annotation.revision} of ${annotation.revision_count}`
+    : "No revision saved yet";
+  const binding = annotation && annotation.binding_why
+    ? `<p class="next-cockpit-held-absent">${esc(annotation.binding_why)}</p>` : "";
+  /* An ended session may still be annotated, and the store will keep it. What
+     is unsettled is whether anything should then read it, so the line says
+     that rather than disabling a control over an open question. */
+  const ended = nextSessionEndedAt(session) != null
+    ? '<p class="next-cockpit-held-absent">This session has ended. Annotating a finished ' +
+      'session is an open proposal: your words are kept, and nothing is promised to read ' +
+      'them.</p>' : "";
+  return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
+    `<span class="next-cockpit-held-revision">${esc(revision)}</span></header>` +
+    '<div class="next-cockpit-held-fields">' +
+    NEXT_COCKPIT_HELD_FIELDS.map(spec =>
+      nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
+    binding + ended + '</section>';
+}
+
+async function nextCockpitHeldSave(session, kind){
+  const key = nextCockpitHeldKey(session, kind);
+  // Only the field that changed. `null` is "leave this one alone" at the
+  // endpoint, and "" is "clear it": sending both every time would let a stale
+  // draft of one field overwrite a save of the other.
+  const body = {harness: session.harness, sid: session.sid, goal: null, output: null};
+  body[kind] = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : null;
+  try{
+    const response = await fetch("/api/annotate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
+    const saved = await response.json();
+    if(!saved || saved.annotated !== true) throw new Error("save not confirmed");
+    nextCockpitHeldDrafts.delete(key);
+    nextCockpitHeldStates.set(key, "saved");
+    await refreshNext();
+  }catch(_error){
+    // The draft stays. Losing what someone typed to report a failure is the
+    // one outcome worse than the failure.
+    nextCockpitHeldStates.set(key, "error");
+    renderNext({named: key});
+  }
+}
+
 function nextCockpitRecoveryMemoCell(group, focus, briefing){
+  if(focus) return "";
   const outcomeKey = nextCockpitMemoKey(group, focus, "outcome");
   const focusKey = nextCockpitMemoKey(group, focus, "focus");
   if(briefing.outcome === "Not set" && briefing.currentFocus === "Not set" &&
@@ -1361,6 +1489,8 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
       'including activity from other sessions.</p>' : "") +
       nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
       nextProjectPlanStatus(context) + nextCockpitPlanDisclosure(context);
+  }else if(tab === "held-to"){
+    body = nextCockpitHeldTo(context.group);
   }else if(tab === "course"){
     body = nextProjectChanges(context.project) +
       nextCockpitCoursePanel(context.group, focus) + nextCockpitCompletedWork(context);
@@ -1442,6 +1572,20 @@ document.addEventListener("input", event => {
     ? "Saved in this browser" : "Browser storage unavailable";
 });
 
+document.addEventListener("input", event => {
+  const input = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-held-key]") : null;
+  if(!input) return;
+  const key = String(input.dataset.nextCockpitHeldKey || "");
+  if(!key) return;
+  // Redraw rather than mutate the counter in place: the `clear` and `save`
+  // controls appear and vanish on the same edit, so one render owns all three.
+  // The draft is in the Map before the redraw reads it.
+  nextCockpitHeldDrafts.set(key, String(input.value || "").slice(0, nextCockpitHeldCap()));
+  nextCockpitHeldStates.delete(key);
+  renderNext({named: key});
+});
+
 document.addEventListener("click", event => {
   const target = nextCockpitActionTarget(event);
   if(!target) return;
@@ -1454,6 +1598,24 @@ document.addEventListener("click", event => {
     event.preventDefault();
     navigateNext({view:"project",project:group.label,focus:nextRoute.focus || null,tab});
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
+    return;
+  }
+  if(action === "held-clear" || action === "held-save"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    const kind = String(target.dataset.arg || "");
+    const key = nextCockpitHeldKey(session, kind);
+    if(action === "held-save"){
+      nextCockpitHeldSave(session, kind);
+      return;
+    }
+    // Emptying the box is an edit, not a save. The cleared field then differs
+    // from the store, so `save` appears and the person commits the clearing
+    // deliberately.
+    nextCockpitHeldDrafts.set(key, "");
+    nextCockpitHeldStates.delete(key);
+    renderNext({named: key});
     return;
   }
   if(action === "memo-edit"){
@@ -1518,6 +1680,19 @@ document.addEventListener("click", event => {
 });
 
 function nextCockpitHandleKeydown(event){
+  const held = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-held-key]") : null;
+  if(event.key === "Escape" && held){
+    event.preventDefault();
+    const key = String(held.dataset.nextCockpitHeldKey || "");
+    // Drop the draft rather than write the saved value back into it: the
+    // render reads the store whenever the Map has no entry, so this is the
+    // one place the two cannot disagree.
+    nextCockpitHeldDrafts.delete(key);
+    nextCockpitHeldStates.delete(key);
+    renderNext({named: key});
+    return true;
+  }
   const field = event.target && event.target.closest
     ? event.target.closest("[data-next-cockpit-memo-field]") : null;
   if(event.key === "Escape" && field && nextCockpitMemoEditingKey){
