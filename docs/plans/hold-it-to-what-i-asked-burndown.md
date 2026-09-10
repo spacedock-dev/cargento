@@ -573,8 +573,13 @@ Three things the ruling turned up that were not in any issue:
   or title. So an off machine departure signal can say a count changed and nothing more. That is a
   closed ruling and DEC-18 did not lift it.
 
-Two issues filed from the ruling: **DRC-4540** (record whether a raise reached you) and
-**DRC-4541** (the implementation, carrying all five blocking edges, blocking DRC-4514). DEC-18's
+Three issues filed from the ruling: **DRC-4540** (record whether a raise reached you),
+**DRC-4541** (the implementation, carrying all five blocking edges, blocking DRC-4514) and
+**DRC-4542** (the rubric and its case set, startable today, waiting on nothing).
+
+DRC-4542 turned up a fourth thing nobody had noticed: the case set is by construction a corpus of
+real session text, and `docs/captures/README.md` bans exactly that from this repository. Where the
+cases live is settled on that issue before any session is read. DEC-18's
 own `blocks` edge on DRC-4514 became `relatedTo`, because a closed decision holding a live gate
 reads as a real blocker.
 

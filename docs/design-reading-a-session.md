@@ -210,3 +210,13 @@ agent's own narration. What bounded it was that a reading was produced once per 
 aggregated and never pushed. This decision breaks all three, which is why the rubric's acceptance
 thresholds gate the switch defaulting to anything other than off. The case set is written in
 parallel rather than after the build, because cases need no producer and only a threshold does.
+DRC-4542 owns it.
+
+One thing the ruling did not anticipate, found while filing that issue. A case set of source shaped
+records is by construction a corpus of real session text, and `docs/captures/README.md` bans exactly
+that from this repository: no prompt text, no tool input, no tool output, no file path, and never a
+value a person or a model wrote. So where the cases live and what they may contain is settled on
+DRC-4542 before any session is read, and it may need a ruling of its own. Synthesising the cases
+instead is cheaper and carries no disclosure risk, but DEC-17 warns that a rubric validated on
+fixtures the same pass writes is not validated, so the two pull opposite ways and the answer is
+written down rather than settled by convenience.
