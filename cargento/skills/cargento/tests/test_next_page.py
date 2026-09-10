@@ -680,8 +680,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
-                144_300,
-                "004cb1b7e7e0ac1aa58d1faa26a984fcd375ce13bb44445347c9d3f5335ed9ab",
+                144_723,
+                "c268aab642486e7b6c22d93df4e245991519a70e38c811eb1321592e4862f8e4",
             ),
             "next-render.js": (
                 8_901,
@@ -707,9 +707,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(799_192, len(assembled))
+        self.assertEqual(799_615, len(assembled))
         self.assertEqual(
-            "d26c9ff27dc197618a3361c4f039da77172c9be7b2a9f9932efd6da38163da76",
+            "2f813e6a16e57f98602442c90da2ae9e65226730de50fd0b2f7a2ffdab6c7aa6",
             hashlib.sha256(assembled).hexdigest(),
         )
 

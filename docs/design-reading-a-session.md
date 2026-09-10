@@ -157,6 +157,24 @@ into a count and never pushed, so exposure does not compound. That bound holds o
 no cadence, no aggregation and no notification, and the full rubric becomes owed the moment any of
 the three changes.
 
+### The contract is built and unexercised
+
+Recorded 2026-09-10, because a reader of this section otherwise concludes the seven rules are held
+and they are not yet held against anything real.
+
+No producer writes an assessment, and `annotations.published` emits no field for one, so
+`annotation.assessment` is undefined for every row a server has ever served. About 120 lines of the
+renderer, the criterion rows and the departures list among them, are reached only by tests that
+inject a shape directly. Every assertion about these seven rules is therefore evidence that the
+renderer is self-consistent, not that the contract is right, which is the fixture-as-specification
+failure this repository has already measured once.
+
+Whoever adds the producer adds the published field in the same change and re-derives those
+assertions from it. One trap in particular: the `assessment` entry in the page's annotation rebuild
+list is the only production mention of the field, and two defects on this branch have already
+landed in that list. Publishing an assessment without adding it there reproduces the defect and the
+suite stays green, because the fixtures bypass the rebuild.
+
 ### The condition on enabling, not on building
 
 The reading is built now. The `Ask for a reading` control is not enabled until an abstention check

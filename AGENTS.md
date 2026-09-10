@@ -198,7 +198,8 @@ coverage run -a -m unittest \
   scripts.tests.test_capture_hook scripts.tests.test_bench_event_latency \
   scripts.tests.test_derive_prompt_shapes scripts.tests.test_capture_team_registry \
   scripts.tests.test_capture_terminal_identity \
-  scripts.tests.test_capture_focus_raise
+  scripts.tests.test_capture_focus_raise \
+  scripts.tests.test_serve_operator_cockpit
 coverage report   # enforces the fail_under threshold from pyproject.toml
 # Those last two modules exercise AppleScript against Terminal.app, and this
 # suite now sends nothing. It used to: measured on a macOS desk with Terminal

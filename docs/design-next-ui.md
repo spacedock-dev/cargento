@@ -154,7 +154,7 @@ installed copy is complete rather than relying on recursive copying to conceal a
 The header counts running sessions and all observed subagents from the shared derivation,
 including quiet subagents. Running requires working state, no observed end, and the published
 `active` flag. A reported-block button appears while a session is waiting on the reader in that
-model. Projects, Sessions and Attention all have primary navigation links. Shortcuts `p`, `s`, and
+model. Projects, Sessions, Attention and Intent log all have primary navigation links; the fourth arrived with the annotation work, which needed a surface whose rows outlive the board. Shortcuts `p`, `s`, and
 `a` are case-insensitive and do not run while a form control or editable content owns focus or
 Meta, Control, or Alt is held. `Escape` follows the same restrictions and returns from session
 detail to its project, and from any other view to Projects. In a tripwire draft it cancels the

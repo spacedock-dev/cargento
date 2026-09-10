@@ -55,7 +55,7 @@ function nextCockpitReadMemo(key){
    unannotated row carries its absence sentences. */
 function nextCockpitAnnotation(session){
   if(!session) return null;
-  /* Eight published fields plus `assessment`, which is not one. Nothing
+  /* Eleven published fields plus `assessment`, which is not one. Nothing
      produces a reading, so no collector declares that key and no row carries
      it; it is read here so the renderer has one shape whether or not a
      producer ever fills it, and `base_session` is not asked to declare a
@@ -1258,6 +1258,12 @@ function nextCockpitReadingClause(key, row, annotation, historical){
   return String(annotation && annotation[key] || "").trim();
 }
 
+/* Built and unexercised, and the tests below are not the contract they look
+   like: nothing publishes an `assessment`, so every assertion about these
+   seven rules is against an injected fixture rather than a payload
+   ([the shape contract](docs/design-reading-a-session.md#dec-17-the-shape-contract)).
+   Whoever adds a producer adds the published field with it and re-derives
+   these assertions from that field. */
 function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
   const source = raw && typeof raw === "object" ? raw : {};
   const rows = source.criteria && typeof source.criteria === "object" ? source.criteria : {};

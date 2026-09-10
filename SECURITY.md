@@ -69,6 +69,16 @@ The posture rests on two invariants:
    prose you composed rather than anything a harness published. One forwarder writes too:
    `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
    name and a timestamp and nothing about the session's content.
+   One `GET` reads wider than the rest, and is named here for that reason rather than for the
+   count above. `GET /api/annotations` serves the prose you composed, for every session you have
+   annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
+   ever had, which serves only what is live. It is same-origin only, refuses a cross-site
+   navigation, answers 503 under `--no-annotations`, and reads the annotation store alone rather
+   than session history, so words you withdrew with a clear are gone from it. It is not on the
+   refresh loop: the words leave the server when the Intent log is opened, and the route's own
+   docstring records that reasoning. The POST-route inventory in the test suite cannot see a `GET`,
+   so this paragraph is the accounting for it.
+
    One `GET` writes as well, which is why it is named here rather than left to the count above.
    `GET /api/observe` is a trigger rather than a poll: it derives one session's goal, stage and open
    block and records the answer as a sidecar under `~/.cargento/observer/`, again Cargento's own
