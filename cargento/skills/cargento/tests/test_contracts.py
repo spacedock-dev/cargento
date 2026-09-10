@@ -1469,6 +1469,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.observer",
             "cargento_runtime.project_context",
             "cargento_runtime.quota",
+            "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",

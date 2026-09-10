@@ -26,6 +26,7 @@ from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
+from cargento_runtime import reading as runtime_reading
 
 from .support import (
     PAGE_BYTES,
@@ -2712,6 +2713,177 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "broken store"):
                 collect_json(24, False)
             self.assertEqual(good, json.loads(collect_json(24, False)))
+
+
+class ReadingRouteTest(unittest.TestCase):
+    """POST /api/reading over a real socket, and what it refuses to spend.
+
+    Its own class rather than a home in `AnnotateRouteTest`: that one builds
+    an annotations-only application with no observer model, so a reading test
+    placed there would answer 503 forever and read as a pass.
+
+    Every refusal asserts the status AND that the model was never invoked.
+    The second half is the load-bearing one. A gate that answers 503 after
+    spending the reader's own capacity has not held, and a status code alone
+    cannot tell those apart.
+    """
+
+    def _runtime(self, **changes: Any) -> Any:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        changes.setdefault("annotations_enabled", True)
+        changes.setdefault("observer_model_enabled", True)
+        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+
+    @contextlib.contextmanager
+    def _serving(self, application: Any) -> Any:
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    @staticmethod
+    def _post(port: int, payload: Any, **headers: str) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/api/reading",
+                body=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", **headers},
+            )
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    @contextlib.contextmanager
+    def _counting_model(self) -> Any:
+        """A CodexReadingModel that records every invocation and runs none."""
+        calls: list[str] = []
+
+        class _Model:
+            def __init__(self, _config: Any, **_kw: Any) -> None:
+                pass
+
+            def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+                calls.append(prompt)
+                return "{}", "ok"
+
+        with mock.patch.object(runtime_reading, "CodexReadingModel", _Model):
+            yield calls
+
+    def _press(self, **over: Any) -> dict[str, Any]:
+        body = {"harness": "pi", "sid": "s1", "press": True, "observer_model": 1}
+        body.update(over)
+        return body
+
+    def test_a_reader_pressing_while_the_check_has_not_run_spends_nothing(self) -> None:
+        """The condition on enabling, asserted where a curl would try it."""
+        config, state = self._runtime()
+        with (
+            self._counting_model() as calls,
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+        ):
+            status, _ = self._post(port, self._press())
+        self.assertEqual(503, status)
+        self.assertEqual([], calls, "the model ran behind a closed gate")
+
+    def test_every_closed_gate_refuses_before_the_model_is_reached(self) -> None:
+        cases: tuple[tuple[str, dict[str, Any], dict[str, Any], int], ...] = (
+            ("annotations off", {"annotations_enabled": False}, {}, 503),
+            ("model off", {"observer_model_enabled": False}, {}, 503),
+            ("no disclosure echo", {}, {"observer_model": 0}, 400),
+            ("no press", {}, {"press": False}, 400),
+            ("press absent", {}, {"press": None}, 400),
+            ("no harness", {}, {"harness": ""}, 400),
+            ("no sid", {}, {"sid": ""}, 400),
+            ("harness not a string", {}, {"harness": 7}, 400),
+        )
+        for label, runtime_changes, body_changes, expected in cases:
+            with self.subTest(gate=label):
+                config, state = self._runtime(**runtime_changes)
+                with (
+                    mock.patch.object(
+                        annotation_store,
+                        "ABSTENTION_CHECK",
+                        annotation_store.ABSTENTION_CHECK_PASSED,
+                    ),
+                    self._counting_model() as calls,
+                    self._serving(cli.build_application(config, state, clock=time.time)) as port,
+                ):
+                    status, _ = self._post(port, self._press(**body_changes))
+                self.assertEqual(expected, status, label)
+                self.assertEqual([], calls, f"{label}: the model ran behind a closed gate")
+
+    def test_a_lured_request_cannot_spend_a_readers_capacity(self) -> None:
+        """Each shape this route refuses that `_local_ok` alone would admit.
+
+        `do_POST` already refuses `cross-site`, so asserting only that proves
+        nothing about this route's own gate: measured, deleting the gate's
+        navigation clause left a cross-site-only test green. `same-site` and a
+        same-origin document navigation are the two shapes `_local_ok` admits
+        and `_loopback_resource_ok` does not, and they are what this asserts.
+        """
+        cases = (
+            ("same-site fetch", {"Sec-Fetch-Site": "same-site"}),
+            (
+                "same-origin navigation",
+                {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"},
+            ),
+            ("cross-site navigation", {"Sec-Fetch-Site": "cross-site"}),
+        )
+        for label, headers in cases:
+            with self.subTest(shape=label):
+                config, state = self._runtime()
+                with (
+                    mock.patch.object(
+                        annotation_store,
+                        "ABSTENTION_CHECK",
+                        annotation_store.ABSTENTION_CHECK_PASSED,
+                    ),
+                    self._counting_model() as calls,
+                    self._serving(cli.build_application(config, state, clock=time.time)) as port,
+                ):
+                    status, _ = self._post(port, self._press(), **headers)
+                self.assertEqual(403, status, label)
+                self.assertEqual([], calls, label)
+
+    def test_a_session_nobody_annotated_is_not_confirmed_to_exist(self) -> None:
+        """200 and never 404: a harness name is public and a session id is not."""
+        config, state = self._runtime()
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+        ):
+            status, body = self._post(port, self._press(sid="never-seen"))
+        self.assertEqual(200, status)
+        answer = json.loads(body)
+        self.assertFalse(answer["produced"])
+        self.assertEqual([], calls)
+
+    def test_an_oversized_body_is_refused_before_it_is_read(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model() as calls,
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                conn.putrequest("POST", "/api/reading")
+                conn.putheader("Content-Length", "999999")
+                conn.endheaders()
+                status = conn.getresponse().status
+            finally:
+                conn.close()
+        self.assertEqual(413, status)
+        self.assertEqual([], calls)
 
 
 class AnnotateRouteTest(unittest.TestCase):

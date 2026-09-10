@@ -973,7 +973,7 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
             for key in tables[0].keys
             if isinstance(key, ast.Constant) and isinstance(key.value, str)
         ]
-        self.assertEqual(9, len(routes))
+        self.assertEqual(10, len(routes))
         prefixes = [
             node
             for node in ast.walk(post)

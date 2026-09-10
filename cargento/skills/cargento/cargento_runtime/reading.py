@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from . import observer, records
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from .config import RuntimeConfig
 
@@ -993,6 +993,97 @@ def resolve(
             detail_cap_chars=detail_cap_chars,
         )
     return out
+
+
+def _readable(
+    config: RuntimeConfig,
+    row: Mapping[str, Any],
+    revisions: Sequence[Mapping[str, Any]],
+    *,
+    now: float,
+) -> tuple[str, str, str, str]:
+    """(goal, output, scope, withheld). A withheld reason means stop here.
+
+    Every check in this function is cheaper than the subprocess and comes
+    before it, which is the whole point: a gate that answers after spending
+    the reader's capacity has not held.
+    """
+    if not revisions:
+        return "", "", "", WITHHELD_NOTHING_TYPED
+    latest = revisions[-1]
+    goal = str(latest.get("goal") or "")
+    output = str(latest.get("output") or "")
+    if not goal.strip() and not output.strip():
+        return "", "", "", WITHHELD_NOTHING_TYPED
+    scope, withheld = eligibility(
+        row,
+        latest_revision_at=records.norm_epoch(latest.get("at")),
+        now=now,
+        settle_sec=config.reading_settle_sec,
+    )
+    return goal, output, scope, withheld
+
+
+def produce(
+    config: RuntimeConfig,
+    row: Mapping[str, Any],
+    revisions: Sequence[Mapping[str, Any]],
+    facts: Iterable[Mapping[str, Any]],
+    *,
+    now: float,
+    stamp_text: str,
+    model: Callable[..., tuple[str, str]],
+) -> tuple[Assessment | None, str, bool]:
+    """One reading, or the reason there is none. Returns (assessment, why, spent).
+
+    Exactly one of the first two is set. `spent` says whether the reader's own
+    capacity went, which is not the same question as whether a reading came
+    back: a missing Codex CLI costs nothing, and a call that started and then
+    failed has already cost them.
+
+    Every refusal here happens BEFORE the subprocess. A gate that answers after
+    spending the reader's capacity has not held.
+    """
+    goal, output, scope, withheld = _readable(config, row, revisions, now=now)
+    if withheld:
+        return None, withheld, False
+    latest = revisions[-1]
+    ledger = build_ledger(facts, str(row.get("harness") or ""), str(row.get("sid") or ""))
+    if not ledger:
+        return None, WITHHELD_LEDGER_EMPTY, False
+    prompt, selected = build_prompt(
+        ledger,
+        goal=goal,
+        output=output,
+        harness=str(row.get("harness") or ""),
+        max_bytes=observer.OBSERVER_MODEL_MAX_PROMPT_BYTES,
+    )
+    if not selected:
+        return None, WITHHELD_LEDGER_EMPTY, False
+    raw, status = model(prompt, output_cap_bytes=config.annotation_text_cap_chars * 8)
+    if status == "unavailable":
+        return None, WITHHELD_MODEL_UNAVAILABLE, False
+    if status != "ok":
+        return None, WITHHELD_MODEL_FAILED, True
+    criteria = resolve(
+        parse_reply(raw),
+        selected,
+        goal=goal,
+        output=output,
+        harness=str(row.get("harness") or ""),
+        detail_cap_chars=config.annotation_text_cap_chars,
+    )
+    revision = latest.get("n")
+    assessment: Assessment = {
+        "revision_read": revision if isinstance(revision, int) and revision > 0 else 1,
+        "stamp": stamp_text,
+        "cutoff": cutoff_text(selected, len(ledger), now),
+        "scope": scope,
+        "scope_text": SCOPE_TEXT[scope],
+        "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
+        "criteria": criteria,
+    }
+    return assessment, "", True
 
 
 class CodexReadingModel:

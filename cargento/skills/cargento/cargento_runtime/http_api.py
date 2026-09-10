@@ -26,6 +26,7 @@ from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import project_context as runtime_project_context
+from cargento_runtime import reading as runtime_reading
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
@@ -1227,6 +1228,179 @@ class _RequestHandler(BaseHTTPRequestHandler):
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
+    def _reading_refusal(self, payload: dict[str, Any]) -> int | None:
+        """The status this press must be refused with, or None to proceed.
+
+        Its own function rather than a ladder inside the handler, because
+        `http_api.py` carries no complexity exemption in `pyproject.toml` and
+        because every condition here is then unit-testable without a socket.
+
+        Ordered cheapest-first and ALL of it before anything reaches the
+        model. A gate that answers 503 after spending the reader's own
+        capacity has not held, which is the property the route's tests assert
+        by counting invocations rather than by reading status codes.
+
+        Nine conditions against `/api/project-context`'s five. The two this
+        adds beyond that route are the last two: a reading is the first thing
+        in this product a reader spends capacity on by pressing a button, so
+        the press is asserted rather than assumed, and nothing on render,
+        poll, reconnect, resume, focus change or revision save carries it.
+        """
+        config = self.server.application.config
+        # A table rather than a ladder, for the reason the POST routes below
+        # are one: six conditions read as a list of what must be true, and a
+        # ladder of early returns puts this function over ruff's return cap
+        # without making any of them clearer. Every condition is a pure read,
+        # so evaluating all six costs nothing and the order is documentation.
+        checks: tuple[tuple[bool, int], ...] = (
+            # 503 rather than 404, for `_annotate`'s reason: under
+            # `--no-annotations` the route exists and the store does not.
+            (not config.annotations_enabled, 503),
+            (not config.observer_model_enabled, 503),
+            # The button and this route read the same constant, so they agree
+            # by construction and a local `curl` cannot outrun the check.
+            (
+                annotation_store.ABSTENTION_CHECK != annotation_store.ABSTENTION_CHECK_PASSED,
+                503,
+            ),
+            # A lured navigation reads nothing back, but it would still spend
+            # the reader's capacity, which is the harm this route carries.
+            (self._is_document_navigation() or not self._loopback_resource_ok(), 403),
+            (payload.get("observer_model") != 1, 400),
+            (payload.get("press") is not True, 400),
+        )
+        for failed, status in checks:
+            if failed:
+                return status
+        return None
+
+    def _reading(self) -> None:
+        """Read one session against the words typed against it.
+
+        No capability token. The precedent is the quota fetch rather than the
+        event ingress: the harm is a side effect on the reader's own capacity
+        rather than a forged claim about a session, and it is held by the
+        same-origin and navigation refusals above. The accepted exposure -- a
+        local process with no fetch metadata can spend one reading -- is in
+        SECURITY.md rather than left to be discovered.
+
+        An unknown session answers 200 with `produced: false` and never 404,
+        for `_focus`'s ruling: a harness name is public and a session id is
+        not, so a 404 here would be an existence oracle.
+        """
+        application = self.server.application
+        config = application.config
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        refusal = self._reading_refusal(payload)
+        if refusal is not None:
+            self._reject(refusal)
+            return
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not isinstance(harness, str) or not isinstance(sid, str) or not harness or not sid:
+            self._reject(400)
+            return
+        self._send_reading(harness, sid)
+
+    def _send_reading(self, harness: str, sid: str) -> None:
+        """Produce, store and answer. Split for the complexity cap alone."""
+        application = self.server.application
+        config = application.config
+        state = application.state
+        _revision, body = application.collect_json(show_all=False)
+        rows = [
+            row
+            for row in json.loads(body)["sessions"]
+            if row.get("harness") == harness and row.get("sid") == sid
+        ]
+        entry = annotation_store.find(annotation_store.active(config, state), harness, sid)
+        if not rows or entry is None:
+            self._send(
+                json.dumps(
+                    {"ok": True, "produced": False, "reason": "no annotated session by that name"},
+                    separators=(",", ":"),
+                ).encode(),
+                "application/json",
+            )
+            return
+        key = f"{harness}:{sid}"
+        if not runtime_reading.claim(config, key):
+            # One in flight per session, and no retry: a second press answers
+            # 409 and calls nothing.
+            self._reject(409)
+            return
+        try:
+            assessment, why, spent = self._compose_reading(rows[0], entry)
+        finally:
+            runtime_reading.release(config, key)
+        if assessment is not None:
+            annotation_store.record_reading(
+                config,
+                state,
+                harness,
+                sid,
+                assessment=assessment,
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        else:
+            annotation_store.record_withheld(
+                config,
+                state,
+                harness,
+                sid,
+                reason=why,
+                spent=spent,
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        # Dropped rather than waited out, for `_annotate`'s reason: the next
+        # GET would otherwise serve the pre-write payload.
+        state.snapshot.clear()
+        self._send(
+            json.dumps(
+                {"ok": True, "produced": assessment is not None, "reason": why},
+                separators=(",", ":"),
+            ).encode(),
+            "application/json",
+        )
+
+    def _compose_reading(
+        self, row: dict[str, Any], entry: annotation_store.Annotation
+    ) -> tuple[runtime_reading.Assessment | None, str, bool]:
+        """The model lane, with the observed record it reads."""
+        application = self.server.application
+        context = runtime_project_context.collect(
+            application.config,
+            application.state,
+            [row],
+            str(row.get("project_key") or row.get("project") or ""),
+            now=application.clock(),
+            refresh=False,
+            focus=(str(row.get("harness")), str(row.get("sid"))),
+            model_consent=False,
+        )
+        semantic = context.get("semantic") if isinstance(context, dict) else None
+        facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
+        return runtime_reading.produce(
+            application.config,
+            row,
+            entry["revisions"],
+            facts,
+            now=application.clock(),
+            stamp_text=runtime_reading.PROVIDER_NOTE,
+            model=runtime_reading.CodexReadingModel(application.config),
+        )
+
     def _events(self, harness: str) -> None:
         """A harness's lifecycle events, forwarded by its own hook.
 
@@ -1367,6 +1541,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
             "/api/annotate": self._annotate,
+            "/api/reading": self._reading,
             "/api/focus": self._focus,
             "/api/ask": self._ask,
             "/api/ask/withdraw": self._withdraw,
