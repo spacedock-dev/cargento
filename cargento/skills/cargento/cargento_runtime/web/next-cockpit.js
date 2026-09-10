@@ -45,12 +45,36 @@ function nextCockpitReadMemo(key){
   }
 }
 
+/* The row's eight flat `annotation_*` fields as one object, or null when the
+   row carries none. The payload is flat because `history.PROMPT_TEXT_ALLOWLIST`
+   admits field names and a name cannot reach inside a mapping; the renderers
+   want an object, so the seam is here and they are unchanged.
+
+   Null when nothing was ever typed AND no reason was published, which is a row
+   from a build older than the field set rather than an unannotated session: an
+   unannotated row carries its absence sentences. */
+function nextCockpitAnnotation(session){
+  if(!session) return null;
+  /* Eight published fields plus `assessment`, which is not one. Nothing
+     produces a reading, so no collector declares that key and no row carries
+     it; it is read here so the renderer has one shape whether or not a
+     producer ever fills it, and `base_session` is not asked to declare a
+     field for an object that does not exist. */
+  const fields = ["goal", "goal_why", "output", "output_why", "revision",
+    "revision_count", "at", "binding_why", "assessment"];
+  const known = fields.some(name => {
+    const value = session[`annotation_${name}`];
+    return value !== undefined && value !== null && value !== "" && value !== 0;
+  });
+  if(!known) return null;
+  return Object.fromEntries(fields.map(name => [name, session[`annotation_${name}`]]));
+}
+
 /* The focused session's annotation, or null at project scope. Null is not an
    error: with no one session selected there is nobody whose words these would
    be, and STATED GOAL falls back to the harness row alone. */
 function nextCockpitFocusedAnnotation(group){
-  const session = nextCockpitFocusedSession(group);
-  return (session && session.annotation) || null;
+  return nextCockpitAnnotation(nextCockpitFocusedSession(group));
 }
 
 function nextCockpitFocusedSession(group){
@@ -1087,7 +1111,7 @@ function nextCockpitHeldTo(group, observation){
       '<p class="next-cockpit-held-absent">Annotations are off for this run. Start without ' +
       '--no-annotations to type a goal and an expected output here.</p></section>';
   }
-  const annotation = session.annotation || null;
+  const annotation = nextCockpitAnnotation(session);
   const entries = nextCockpitWorkEntries(session, (observation || {}).semantic);
   /* The design's order inside this tab: what you asked for, then the reading
      of it, then the departures it raised. Intent first, then a reading of the

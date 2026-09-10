@@ -506,16 +506,33 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # rows makes every consumer test for presence rather than for a value. It
         # went undeclared until the declared-field-set check reached a published
         # row rather than this function's return value (DRC-4473).
-        # What the reader typed this session should achieve. Declared here so
-        # every constructed row carries the key, and left None here for the
-        # reason the two fields below are: this module has no runtime imports
-        # and is not going to gain one for a default. Every published row goes
-        # through `Application._attach_annotations`, which replaces this with
-        # `annotations.published(...)` — the stored revision, or the absence and
-        # its reason. A None reaching a reader would be a blank where the
-        # board's first rule wants a sentence, and the payload field-set test is
-        # what proves it does not.
-        "annotation": None,
+        # What the reader typed this session should achieve, and what they
+        # typed it should produce. Declared here so every constructed row
+        # carries the keys, and left empty here for the reason the two fields
+        # below are: this module has no runtime imports and is not going to
+        # gain one for a default. Every published row goes through
+        # `Application._attach_annotations`, which fills all eight from
+        # `annotations.published(...)` — the stored revision, or the absence
+        # and its reason. A blank reaching a reader is what the board's first
+        # rule forbids, and the payload field-set test is what proves one does
+        # not (DRC-4508).
+        #
+        # Flat, not one nested mapping, and the reason is the history store
+        # rather than the page. DEC-15b admits an outcome baseline into session
+        # history one NAMED field at a time, and `history.PROMPT_TEXT_ALLOWLIST`
+        # is a tuple of field names: it cannot say "the goal inside this dict
+        # but not the rest of it". A nested carrier is also exactly the shape
+        # `test_history` bans for `tasks`, `subagents` and `spacedock`. One
+        # helper in the bundle rebuilds the object the renderers read, so the
+        # page paid for this once.
+        "annotation_goal": "",
+        "annotation_goal_why": "",
+        "annotation_output": "",
+        "annotation_output_why": "",
+        "annotation_revision": None,
+        "annotation_revision_count": 0,
+        "annotation_at": None,
+        "annotation_binding_why": "",
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and

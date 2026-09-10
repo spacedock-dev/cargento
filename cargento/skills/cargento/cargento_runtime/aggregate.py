@@ -538,12 +538,17 @@ def _attach_annotations(
             (isinstance(resume, str) and len(resume) > len(sid) and resume.startswith(sid))
             or len(sid) <= _DISPLAY_ID_FLOOR
         )
-        row["annotation"] = annotation_store.published(
+        published = annotation_store.published(
             annotation_store.find(entries, row.get("harness"), sid),
             binding_why=(
                 annotation_store.BINDING_BY_PREFIX if by_prefix else annotation_store.BINDING_EXACT
             ),
         )
+        # Prefixed and flat rather than nested, for the reason `base_session`
+        # declares them that way: the history allowlist admits field names, and
+        # a name cannot reach inside a mapping.
+        for name, value in published.items():
+            row[f"annotation_{name}"] = value
 
 
 def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:

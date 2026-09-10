@@ -1217,13 +1217,32 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
             with self.subTest(field=carrier):
                 self.assertNotIn(carrier, history.OBSERVATION_FIELDS)
 
-    def test_the_allowlist_is_empty_and_the_contract_says_so(self) -> None:
-        # The two have to agree about emptiness as well as about contents,
-        # because "nothing yet" is the claim a reader of this contract acts on.
-        self.assertEqual((), history.PROMPT_TEXT_ALLOWLIST)
+    def test_the_allowlist_holds_the_two_fields_the_baseline_needs(self) -> None:
+        # The two have to agree about the count as well as about the contents.
+        # This replaces an emptiness assertion: "nothing yet" was the claim a
+        # reader of this contract acted on until DEC-15b earned the first two
+        # entries, and a list that grew without this line moving would leave
+        # the contract claiming an exposure it no longer has.
+        self.assertEqual(("annotation_goal", "annotation_output"), history.PROMPT_TEXT_ALLOWLIST)
         entries = self.bullets(self.SECURITY, "The allowlist, one line per field:\n\n")
-        self.assertEqual(1, len(entries))
-        self.assertIn("Nothing yet. No feature has earned an entry", entries[0])
+        self.assertEqual(2, len(entries))
+
+    def test_a_reserved_name_is_not_an_admitted_one(self) -> None:
+        # The contract names five assessment fields it has NOT admitted, so a
+        # later change does not re-argue the naming. A reserved name that
+        # reached the record without its own allowlist line would be the
+        # admission happening by accident.
+        for name in (
+            "assessment_at",
+            "assessment_cutoff",
+            "assessment_revision_read",
+            "assessment_goal_result",
+            "assessment_output_result",
+        ):
+            with self.subTest(field=name):
+                self.assertIn(name, self.SECURITY)
+                self.assertNotIn(name, history.OBSERVATION_FIELDS)
+                self.assertNotIn(name, history.PROMPT_TEXT_ALLOWLIST)
 
 
 class LightHarnessUsageContractDocumentationTest(unittest.TestCase):

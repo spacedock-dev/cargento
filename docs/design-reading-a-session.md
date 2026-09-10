@@ -53,10 +53,30 @@ is re-validated on its own and a record written before a field existed is a reco
 absent. A version outside the set is still refused, which is the case the reset header exists to
 report.
 
-No field is named yet, and that is deliberate. Nothing produces a reading, so there is no assessment
-to store, and the baseline it would be read against already survives a restart in the annotation
-store rather than in history. Naming fields for an object that does not exist is how a store ends up
-carrying a shape nobody chose.
+Two fields are admitted, and five more are named without being admitted.
+
+Admitted: `annotation_goal` and `annotation_output`, the words the reader typed, with
+`annotation_revision` beside them. That is the baseline a reading is read against, and it is what
+lets the baseline reopen after a restart and after the live row leaves the board. The annotation
+store keeps the current annotation, bounded by a session count and a revision count; history keeps
+what was true at each transition, bounded by fourteen days. Those are different questions and the
+second is the one a retained assessment needs.
+
+Admitting them cost a published-row change first, because this store may hold nothing the live
+snapshot does not already serve and the allowlist admits field names rather than paths into a
+mapping. The row published `annotation` as one nested object; it now publishes eight flat
+`annotation_*` fields, and one helper in the bundle rebuilds the object the renderers read. A
+nested carrier is also the shape the store's own tests ban for `tasks`, `subagents` and
+`spacedock`, and for the same reason: a name cannot reach inside one.
+
+The transition comparison widened with them. History appends on a change rather than on a sample,
+and comparing `state` alone would have held the old words until the session happened to move again,
+which makes the store's copy stale by construction.
+
+Named and not admitted: `assessment_at`, `assessment_cutoff`, `assessment_revision_read`,
+`assessment_goal_result` and `assessment_output_result`. Nothing produces a reading, so no row
+serves them and the store may not hold them. The names are recorded here and in SECURITY.md so the
+change that admits them does not re-argue the naming, and each still needs its own allowlist line.
 
 ## DEC-16: Cargento does not write into a session
 

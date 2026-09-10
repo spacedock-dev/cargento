@@ -270,9 +270,15 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
         # their own rows with their own tags, never merged into the harness's
         # line, because the two are different claims.
         out = self.run_fixture(r"""
-__dashboard.sessions[0].annotation = {goal:"Ship the cockpit", goal_why:"",
-  output:"A merged PR", output_why:"", revision:2, revision_count:2, at:104,
-  binding_why:"Bound by an eight-character identity prefix."};
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "A merged PR";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 2;
+__dashboard.sessions[0].annotation_revision_count = 2;
+__dashboard.sessions[0].annotation_at = 104;
+__dashboard.sessions[0].annotation_binding_why = "Bound by an eight-character identity prefix.";
+
 nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
 renderNext();
 console.log(JSON.stringify({html:__els.app.innerHTML}));
@@ -300,9 +306,15 @@ console.log(JSON.stringify({html:__els.app.innerHTML}));
         # tell a directive from four minutes ago from one from four hours ago.
         out = self.run_fixture(r"""
 __dashboard.sessions[0].instruction = {label:"asked", text:"Ship the cockpit", at:45};
-__dashboard.sessions[0].annotation = {goal:"Ship the cockpit", goal_why:"",
-  output:"", output_why:"No expected output typed.", revision:1, revision_count:1,
-  at:104, binding_why:""};
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 104;
+__dashboard.sessions[0].annotation_binding_why = "";
+
 nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
 renderNext();
 const withTime = __els.app.innerHTML;
@@ -3615,14 +3627,15 @@ renderNext();
     ANNOTATED = """
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
-__dashboard.sessions[0].annotation = {
-  goal: "Capture every screen with live sessions",
-  goal_why: "",
-  output: "",
-  output_why: "No expected output typed.",
-  revision: 2, revision_count: 2, at: 100,
-  binding_why: ""
-};
+__dashboard.sessions[0].annotation_goal = "Capture every screen with live sessions";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 2;
+__dashboard.sessions[0].annotation_revision_count = 2;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+
 """
 
     def run_fixture(self, checks: str) -> object:
@@ -3692,11 +3705,15 @@ console.log(JSON.stringify(seen));
             """
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
-__dashboard.sessions[0].annotation = {
-  goal: "", goal_why: "No goal typed for this session.",
-  output: "", output_why: "No expected output typed.",
-  revision: null, revision_count: 0, at: null, binding_why: ""
-};
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const html = __els.app.innerHTML;
@@ -4007,17 +4024,29 @@ const read = () => {
 };
 
 // Given: nothing typed.
-__dashboard.sessions[0].annotation = {goal:"", goal_why:"No goal typed for this session.",
-  output:"", output_why:"No expected output typed.", revision:null, revision_count:0,
-  at:null, binding_why:""};
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const empty = read();
 
 // And: words typed, with the observer model unread for this project.
-__dashboard.sessions[0].annotation = {goal:"Ship the cockpit", goal_why:"", output:"",
-  output_why:"No expected output typed.", revision:1, revision_count:1, at:100,
-  binding_why:""};
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+
 renderNext();
 const unread = read();
 
@@ -4063,13 +4092,22 @@ console.log(JSON.stringify({empty, unread, offered, enabled}));
             """
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
-__dashboard.sessions[0].annotation = {
-  goal:"do not change the board", goal_why:"", output:"", output_why:"No expected output typed.",
-  revision:2, revision_count:2, at:100, binding_why:"",
-  assessment:{revision_read:1, stamp:"observer model · consented at 13:36",
-    cutoff:"Evidence stops at 13:22.",
-    criteria:{goal:{result:"departure", detail:"Two turns edited the board.", cites:["fo-a"]}}}
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 2;
+__dashboard.sessions[0].annotation_revision_count = 2;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+// Not a published field: nothing produces a reading, so the backend declares
+// none and the renderer reads whatever a producer would put here.
+__dashboard.sessions[0].annotation_assessment = {
+  revision_read:1, stamp:"observer model · consented at 13:36",
+  cutoff:"Evidence stops at 13:22.",
+  criteria:{goal:{result:"departure", detail:"Two turns edited the board.", cites:["fo-a"]}}
 };
+
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const html = __els.app.innerHTML;

@@ -94,8 +94,17 @@ DECLARED_SESSION_FIELDS = frozenset(
         # Same provenance as the two above: written onto every row by
         # `Application._attach_annotations` after `base_session` returns. Every
         # row and not only the annotated ones, because a missing key renders as
-        # `undefined` where an absence has to state its reason.
-        "annotation",
+        # `undefined` where an absence has to state its reason. Eight flat
+        # fields and not one mapping, because `history.PROMPT_TEXT_ALLOWLIST`
+        # admits field names and a name cannot reach inside a dict.
+        "annotation_goal",
+        "annotation_goal_why",
+        "annotation_output",
+        "annotation_output_why",
+        "annotation_revision",
+        "annotation_revision_count",
+        "annotation_at",
+        "annotation_binding_why",
     }
 )
 
@@ -1362,20 +1371,19 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 self.assertSetEqual(set(DECLARED_SESSION_FIELDS), set(rows[0]))
 
     def test_the_published_annotation_is_never_the_constructor_default(self) -> None:
-        # `base_session` declares `annotation` as None, the way it declares
-        # `acquisition`, because that module has no runtime imports. The comment
-        # there claims a None never reaches a reader, and this is what makes the
-        # claim checkable: the payload carries the absence and its reason, which
-        # is a sentence the board can print, rather than a null it would print
-        # as a blank.
+        # `base_session` declares these empty, the way it declares
+        # `acquisition` as None, because that module has no runtime imports.
+        # The comment there claims a blank never reaches a reader, and this is
+        # what makes the claim checkable: the payload carries the absence and
+        # its reason, which is a sentence the board can print.
         for key, build in HARNESSES:
             with self.subTest(harness=key, fixture=build.__name__):
                 rows = self.sessions_for(self.collect(build, when=self.NOW), key)
-                annotation = rows[0]["annotation"]
-                self.assertIsInstance(annotation, dict)
-                self.assertEqual("", annotation["goal"])
-                self.assertTrue(annotation["goal_why"], "an absence with no reason")
-                self.assertEqual(0, annotation["revision_count"])
+                self.assertEqual("", rows[0]["annotation_goal"])
+                self.assertTrue(rows[0]["annotation_goal_why"], "an absence with no reason")
+                self.assertTrue(rows[0]["annotation_output_why"], "an absence with no reason")
+                self.assertEqual(0, rows[0]["annotation_revision_count"])
+                self.assertIsNone(rows[0]["annotation_revision"])
 
     def test_a_stored_annotation_reaches_the_published_row_through_collect(self) -> None:
         # The wiring nothing else covered. `AnnotationOnTheRowTest` calls the
@@ -1392,9 +1400,9 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
             # sibling asserting an unannotated row would see these words.
             self.addCleanup(annotation_store.clear, config, _state, key, self.SID)
             rows = self.sessions_for(self.collect(build, when=self.NOW), key)
-            self.assertEqual("Ship the cockpit", rows[0]["annotation"]["goal"])
-            self.assertEqual(1, rows[0]["annotation"]["revision"])
-            self.assertEqual("", rows[0]["annotation"]["goal_why"])
+            self.assertEqual("Ship the cockpit", rows[0]["annotation_goal"])
+            self.assertEqual(1, rows[0]["annotation_revision"])
+            self.assertEqual("", rows[0]["annotation_goal_why"])
 
     def test_every_field_an_event_may_patch_is_a_declared_field(self) -> None:
         # The reachable-by-an-envelope half, which no store fixture can produce:

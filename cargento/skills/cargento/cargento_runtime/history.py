@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 # grow a second inert version field is that it already has one: a fourteen-day
 # time series whose reader must tolerate every past shape forever is how a silent
 # mis-parse ships.
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 
 # Every version this build can read, newest last, and the reason it is a tuple
 # rather than a single number.
@@ -70,7 +70,7 @@ SCHEMA_VERSION: Final = 1
 # An admission therefore bumps `SCHEMA_VERSION` and appends the old value here.
 # It never resets. A version this tuple does not name is still refused, which is
 # the case the header exists to report.
-READABLE_VERSIONS: Final[tuple[int, ...]] = (SCHEMA_VERSION,)
+READABLE_VERSIONS: Final[tuple[int, ...]] = (1, SCHEMA_VERSION)
 
 STORE_FILENAME: Final = "cargento-history.json"
 
@@ -116,6 +116,9 @@ class Observation(TypedDict):
     project: str
     state: str
     last_activity: float
+    annotation_goal: str
+    annotation_output: str
+    annotation_revision: float | None
 
 
 # Written out rather than derived from `Observation.__annotations__`, so the
@@ -127,6 +130,9 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
     "project",
     "state",
     "last_activity",
+    "annotation_goal",
+    "annotation_output",
+    "annotation_revision",
 )
 
 # The carriers of prompt-derived text the board publishes. Named here so the
@@ -142,6 +148,8 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
 # test. Keeping it in step with what the board publishes is part of adding a
 # published field, which is why the names are here rather than inferred.
 PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
+    "annotation_goal",
+    "annotation_output",
     "goal",
     "instruction",
     "last_prompt",
@@ -159,15 +167,23 @@ PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
 # publishes, redacted before it is bounded, and inside this store's existing
 # retention and delete.
 #
-# Empty is the enforceable state, not a placeholder. `test_documentation` binds
-# this tuple to the contract's own allowlist block and to `OBSERVATION_FIELDS`:
-# an entry with no record behind it fails, and no carrier named in
-# `PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. What that
-# cannot do is recognise a carrier the tuple above does not name, so the check
-# closes the named holes and the contract closes the rest. A ban that lived only
-# in prose was how the asymmetry the ruling removed went unnoticed for as long as
-# it did.
-PROMPT_TEXT_ALLOWLIST: Final[tuple[str, ...]] = ()
+# Two entries, and they are the words the reader typed rather than anything a
+# harness or a model produced. DEC-15b admits an outcome baseline so it reopens
+# after a restart, and the baseline is the goal and the expected output the
+# reading was read against. The revision beside them is a number and needs no
+# entry here.
+#
+# `test_documentation` binds this tuple to the contract's own allowlist block
+# and to `OBSERVATION_FIELDS`: an entry with no record behind it fails, and no
+# carrier named in `PROMPT_DERIVED_CARRIERS` may enter the record without an
+# entry here. What that cannot do is recognise a carrier the tuple above does
+# not name, so the check closes the named holes and the contract closes the
+# rest. A ban that lived only in prose was how the asymmetry the ruling removed
+# went unnoticed for as long as it did.
+PROMPT_TEXT_ALLOWLIST: Final[tuple[str, ...]] = (
+    "annotation_goal",
+    "annotation_output",
+)
 
 
 def store_path(config: RuntimeConfig) -> str:
@@ -212,7 +228,28 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
         "project": _bounded_project(project) if isinstance(project, str) else "",
         "state": str(state),
         "last_activity": stamp,
+        # The baseline an assessment is read against
+        # ([DEC-15b](docs/design-reading-a-session.md#dec-15b-an-assessment-may-be-stored)).
+        # Already redacted: `annotations.annotate` runs `records.safe_text`
+        # before it bounds, so what reaches this row has been through the
+        # redaction the contract's third condition requires, in the order it
+        # requires. `_text` here only strips reordering characters and applies
+        # this store's own cap, which is wider than the annotation's 240.
+        "annotation_goal": _annotation_text(row.get("annotation_goal")),
+        "annotation_output": _annotation_text(row.get("annotation_output")),
+        "annotation_revision": _finite(row.get("annotation_revision")),
     }
+
+
+def _annotation_text(value: Any) -> str:
+    """One annotation field as the store keeps it, or empty.
+
+    Empty rather than the absence sentence beside it on the row. The sentence
+    is the board's wording for a reader, and storing it would put a string
+    nobody typed in a store whose whole rule is that it holds what a source
+    published.
+    """
+    return _text(value) if isinstance(value, str) else ""
 
 
 def _bounded_project(label: str) -> str:
@@ -290,6 +327,12 @@ def _entry(value: Any) -> Observation | None:
         "project": _text(project),
         "state": _text(state),
         "last_activity": stamp,
+        # Absent on every record written before version 2, which is why they
+        # are read one at a time and default rather than dropping the record:
+        # a v1 entry is a v2 entry with these three empty.
+        "annotation_goal": _annotation_text(value.get("annotation_goal")),
+        "annotation_output": _annotation_text(value.get("annotation_output")),
+        "annotation_revision": _finite(value.get("annotation_revision")),
     }
 
 
@@ -482,6 +525,18 @@ def save(
     return True
 
 
+# What makes one collection's row a new record rather than the same one again.
+# `last_activity` is deliberately not here: it moves on every collection, and
+# comparing it would put the per-cycle append back that this dedupe exists to
+# refuse.
+_TRANSITION_FIELDS: Final[tuple[str, ...]] = (
+    "state",
+    "annotation_goal",
+    "annotation_output",
+    "annotation_revision",
+)
+
+
 def appended(
     held: tuple[Observation, ...],
     rows: Iterable[Mapping[str, Any]],
@@ -514,7 +569,15 @@ def appended(
         if observed is None:
             continue
         previous = latest.get((observed["harness"], observed["sid"]))
-        if previous is not None and previous["state"] == observed["state"]:
+        # State, and now the baseline beside it. Editing a goal is a reader's
+        # deliberate act and there are few of them, where a state comparison
+        # alone would hold the old words until the session happened to move
+        # again. Without this the store's copy is stale by construction, which
+        # is worse than not keeping one.
+        if previous is not None and all(
+            previous[field] == observed[field]  # type: ignore[literal-required]
+            for field in _TRANSITION_FIELDS
+        ):
             continue
         latest[(observed["harness"], observed["sid"])] = observed
         fresh.append(observed)

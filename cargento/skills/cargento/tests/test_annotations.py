@@ -194,8 +194,8 @@ class AnnotationStoreTest(unittest.TestCase):
             {"harness": "pi", "sid": "full-identity", "resume_id": None, "state": "x"},
         ]
         aggregate._attach_annotations(rows, ())
-        self.assertTrue(rows[0]["annotation"]["binding_why"], "a truncated identity said nothing")
-        self.assertEqual("", rows[1]["annotation"]["binding_why"])
+        self.assertTrue(rows[0]["annotation_binding_why"], "a truncated identity said nothing")
+        self.assertEqual("", rows[1]["annotation_binding_why"])
 
     def test_a_display_length_identity_says_so_even_with_no_resume_id(self) -> None:
         """DRC-4533, second item. The length proxy missed the case the Claude
@@ -211,7 +211,7 @@ class AnnotationStoreTest(unittest.TestCase):
         ]
         aggregate._attach_annotations(rows, ())
         self.assertTrue(
-            rows[0]["annotation"]["binding_why"],
+            rows[0]["annotation_binding_why"],
             "a display-length identity with no resume id claimed exact binding",
         )
 
@@ -461,16 +461,16 @@ class AnnotationOnTheRowTest(unittest.TestCase):
         )
         aggregate._attach_annotations(rows, entries)
 
-        self.assertEqual("Ship it", rows[0]["annotation"]["goal"])
-        self.assertEqual(2, rows[0]["annotation"]["revision"])
-        self.assertEqual("", rows[0]["annotation"]["goal_why"])
+        self.assertEqual("Ship it", rows[0]["annotation_goal"])
+        self.assertEqual(2, rows[0]["annotation_revision"])
+        self.assertEqual("", rows[0]["annotation_goal_why"])
         # The expected output was never typed, so it names its absence.
-        self.assertTrue(rows[0]["annotation"]["output_why"])
+        self.assertTrue(rows[0]["annotation_output_why"])
 
         # Present, not absent: the key exists so the render has something to ask.
-        self.assertEqual("", rows[1]["annotation"]["goal"])
-        self.assertTrue(rows[1]["annotation"]["goal_why"])
-        self.assertEqual(0, rows[1]["annotation"]["revision_count"])
+        self.assertEqual("", rows[1]["annotation_goal"])
+        self.assertTrue(rows[1]["annotation_goal_why"])
+        self.assertEqual(0, rows[1]["annotation_revision_count"])
 
     def test_binding_on_the_row_is_the_full_sid_not_the_display_prefix(self) -> None:
         """`sessions.py` publishes both. Keying on `session` would let one
@@ -486,8 +486,8 @@ class AnnotationOnTheRowTest(unittest.TestCase):
             },
         )
         aggregate._attach_annotations(rows, entries)
-        self.assertEqual("", rows[0]["annotation"]["goal"])
-        self.assertTrue(rows[0]["annotation"]["goal_why"])
+        self.assertEqual("", rows[0]["annotation_goal"])
+        self.assertTrue(rows[0]["annotation_goal_why"])
 
 
 class ProvenanceReachesTheDurableRecordTest(unittest.TestCase):

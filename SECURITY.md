@@ -1142,13 +1142,29 @@ A field carrying prompt-derived text may be kept only when every one of these ho
 
 The allowlist, one line per field:
 
-- Nothing yet. No feature has earned an entry, so the store's records carry no prompt-derived text
-  today and `history.PROMPT_TEXT_ALLOWLIST` is empty. A test binds that tuple to this block and to
-  the record's own field set: an entry with no record behind it fails, and none of the carriers
-  named in `history.PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. That tuple
-  is a hand-kept list of names, so a carrier it does not yet name is held out by this section and by
-  review rather than by the test. Adding a prompt-derived field to the record means adding its name
-  there in the same change.
+- `annotation_goal`, for the outcome baseline DEC-15b admits. What the reader typed one session
+  should achieve, at most 240 characters as the annotation store bounds it and at most 256 as this
+  store does. Published on every row, redacted by `records.safe_text` inside
+  `annotations.annotate` before either bound is applied, and kept so the words a reading was read
+  against reopen after a restart and after the live row leaves the board.
+- `annotation_output`, the same field's other half: what the reader typed the session should
+  produce. Same bound, same redaction, same reason.
+
+The revision number beside them, `annotation_revision`, is in the record and not on this list. It
+is an integer the board derives, not text anybody typed.
+
+Reserved and deliberately not admitted, because nothing produces one and this store may not hold
+what the live snapshot does not already serve: `assessment_at`, `assessment_cutoff`,
+`assessment_revision_read`, `assessment_goal_result` and `assessment_output_result`. The names are
+recorded so the admission that adds them does not re-argue the naming, and each still needs its own
+line here.
+
+A test binds this list to `history.PROMPT_TEXT_ALLOWLIST` and to the record's own field set: an
+entry with no record behind it fails, and none of the carriers named in
+`history.PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. That tuple is a
+hand-kept list of names, so a carrier it does not yet name is held out by this section and by
+review rather than by the test. Adding a prompt-derived field to the record means adding its name
+there in the same change.
 
 The store may never widen the set of fields it keeps otherwise: a field that is not already
 published on the live board is not a field history may keep. That condition used to run one way

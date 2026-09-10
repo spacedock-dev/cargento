@@ -19,7 +19,7 @@ PR #317, which is kept OPEN for the captain to test and is NOT to be merged.
 | 5 | DRC-4509 remainder: observation time on the derived row, work evidence | DONE |
 | 6 | The reader-state row for the new 240-char lane | DONE |
 | 7 | DRC-4511: the reader-requested reading, built around DEC-17 rules 3, 4 and 7 | DONE |
-| 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | DONE (migration only; no field named, no producer) |
+| 8 | DRC-4512b: the assessment half, WITH a schema migration, never a version reset | DONE |
 | 9 | Recompute the three byte pins once, full pre-PR suite, `sync-docs` | DONE |
 
 Update the Status column as each lands, and commit that update with the work.
@@ -35,8 +35,10 @@ What is still owed, and none of it is buildable without a ruling or a capture:
 - A producer for a reading. DEC-18 (DRC-4534) owns the automatic half; the reader-requested half
   needs DEC-17's abstention check, which needs recorded sessions across Claude and Codex and a
   second person marking each constraint's expected abstention in advance.
-- The assessment fields in history. The migration is in, so naming them later costs a reader
-  nothing, but nothing produces an assessment to store.
+- The assessment's own result fields in history. The baseline half is admitted (`annotation_goal`,
+  `annotation_output`, `annotation_revision`) and the five result fields are named in SECURITY.md
+  and reserved, because nothing produces a reading and the store may hold nothing the live snapshot
+  does not already serve.
 - DRC-4508's resume captures, DRC-4508 AC5's conflict detection, and DRC-4509's supported-re-entry
   criterion.
 - DRC-4514, blocked by DEC-18.
