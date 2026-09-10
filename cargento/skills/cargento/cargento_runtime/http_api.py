@@ -964,7 +964,26 @@ class _RequestHandler(BaseHTTPRequestHandler):
             {
                 "harness": entry["harness"],
                 "sid": entry["sid"],
-                **annotation_store.published(entry),
+                # The binding caveat, or the log claims exact binding for every
+                # row. `published`'s default is BINDING_EXACT, which is a claim
+                # and not an absence: on Claude the store keys on the eight
+                # characters the harness publishes, so two sessions sharing
+                # them share the words, and the tab that shows one session says
+                # so while a list of many did not.
+                #
+                # Length alone here, unlike `_attach_annotations`, which also
+                # reads `resume_id` off the live row. A departed session has no
+                # row to read, and the whole point of this route is that it
+                # serves those. Over-disclosing the caveat on a genuinely short
+                # identity is the safe direction.
+                **annotation_store.published(
+                    entry,
+                    binding_why=(
+                        annotation_store.BINDING_BY_PREFIX
+                        if len(entry["sid"]) <= annotation_store.DISPLAY_ID_FLOOR
+                        else annotation_store.BINDING_EXACT
+                    ),
+                ),
             }
             for entry in entries
         ]

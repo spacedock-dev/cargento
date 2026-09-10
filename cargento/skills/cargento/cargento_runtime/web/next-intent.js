@@ -76,7 +76,13 @@ function nextIntentRow(row, live){
     `<span class="next-intent-words">${label}</span>` +
     `<span class="next-intent-revision">${esc(revision)}</span>` +
     (reachable ? "" : '<span class="next-intent-why">Not on the board now, so there is ' +
-      'nowhere to open. The words are here.</span>') + '</div>';
+      'nowhere to open. The words are here.</span>') +
+    /* The binding caveat, because a list of many sessions is where a shared
+       prefix would actually bite and an absent caveat here reads as exact
+       binding. Found by walking the board: the Held to tab says it for one
+       session and this said nothing for all of them. */
+    (row.binding_why ? `<span class="next-intent-why">${esc(row.binding_why)}</span>` : "") +
+    '</div>';
 }
 
 function nextIntentView(){

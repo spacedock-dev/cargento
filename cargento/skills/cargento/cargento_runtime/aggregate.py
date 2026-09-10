@@ -501,7 +501,7 @@ def _redact_published_text(rows: list[Session]) -> list[Session]:
 # The width `sessions.base_session` truncates a display id to. An identity no
 # longer than this is display-length, which is not proof it was truncated but is
 # proof it cannot be shown to be unique.
-_DISPLAY_ID_FLOOR = 8
+_DISPLAY_ID_FLOOR = annotation_store.DISPLAY_ID_FLOOR
 
 
 def _attach_annotations(

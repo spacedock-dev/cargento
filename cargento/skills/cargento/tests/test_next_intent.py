@@ -109,6 +109,30 @@ console.log(JSON.stringify({
         # And it offers no link that would land on the stale-filter surface.
         self.assertNotIn("gone-9:held-to", out["html"])
 
+    def test_a_prefix_bound_row_says_so_here_too(self) -> None:
+        """Found by walking the board, not by the suite.
+
+        The Held to tab tells a reader that Claude's eight-character identity
+        means another session sharing it would share these words. This list is
+        where many sessions are on screen at once, which is where a shared
+        prefix would actually bite, and it said nothing. Worse than nothing:
+        `published`'s default is `BINDING_EXACT`, so an absent caveat is a
+        claim of exact binding rather than an absence of information.
+        """
+        out = self.render(
+            [
+                self._row(sid="bbc131ca", binding_why=annotation_store.BINDING_BY_PREFIX),
+                self._row(sid="a-full-length-identity", goal="Whole id", binding_why=""),
+            ]
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("Another session sharing it would share these words", visible)
+        # Once, for the row it is true of. A caveat on every row would be the
+        # same overclaim in the other direction.
+        self.assertEqual(1, visible.count("Another session sharing it"))
+
     def test_the_bound_is_a_count_and_the_copy_does_not_deny_history_holds_them(self) -> None:
         out = self.render([self._row()])
 

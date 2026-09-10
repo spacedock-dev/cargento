@@ -559,7 +559,14 @@ class UsageReceiptOptOutTest(RuntimeTestCase):
 
 
 class DismissEndpointTest(RuntimeTestCase):
-    """POST /api/dismiss and GET /api/cleared over a real socket.
+    """The reveal routes over a real socket, and the writes beside them.
+
+    `POST /api/dismiss` with `GET /api/cleared`, and `GET /api/annotations`,
+    which is the annotation store's reveal and is here rather than beside
+    `/api/annotate` because it is the same shape of route as `/api/cleared`:
+    strictly same-origin, 503 behind its own switch, and serving a store rather
+    than the live board. The class keeps its name because renaming it moves
+    every reference for no behavioural gain.
 
     `test_dismissals` covers the store and the subtraction. This covers the
     wiring, which is the half that breaks silently: the request has to reach the
@@ -682,6 +689,28 @@ class DismissEndpointTest(RuntimeTestCase):
         # without a second wording of the same fact.
         self.assertEqual(1, by_key["pi:departed"]["revision"])
         self.assertEqual(1, by_key["pi:departed"]["revision_count"])
+
+    def test_the_reveal_carries_the_binding_caveat_rather_than_claiming_exact(self) -> None:
+        """`published`'s default is BINDING_EXACT, which is a claim.
+
+        Measured by walking the board: every Intent log row served an empty
+        `binding_why`, so a list of Claude sessions asserted exact binding on
+        identities that are eight published characters. Length alone here,
+        because a departed session has no live row to read `resume_id` off and
+        those are exactly the rows this route exists to serve.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "claude", "abcd1234", goal="Short id")
+        annotation_store.annotate(config, state, "codex", "a-much-longer-identity", goal="Whole id")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        by_sid = {row["sid"]: row for row in json.loads(body)["annotations"]}
+        self.assertEqual(annotation_store.BINDING_BY_PREFIX, by_sid["abcd1234"]["binding_why"])
+        # And not on an identity long enough to be whole, or the caveat is
+        # noise on every row and stops being read.
+        self.assertEqual("", by_sid["a-much-longer-identity"]["binding_why"])
 
     def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
         config, state = self._runtime()

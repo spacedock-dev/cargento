@@ -84,6 +84,13 @@ NO_OUTPUT_TYPED = "No expected output typed."
 # Two sessions sharing those eight characters share an annotation, and the
 # honest answer is to say so on the row rather than to claim an exactness the
 # identity does not have.
+# How short an identity has to be before it is a display prefix rather than a
+# whole one. Claude publishes eight characters and the store keys on what it
+# publishes, so two sessions sharing them share the words. Owned here beside
+# the sentence that says so, because two surfaces now need the same test and a
+# second copy of the number is how they come to disagree.
+DISPLAY_ID_FLOOR = 8
+
 BINDING_EXACT = ""
 BINDING_BY_PREFIX = (
     "Bound by an eight-character identity prefix, which is all this harness "
