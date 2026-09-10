@@ -115,7 +115,8 @@ mass rename; they do not indicate a second bundle.
 | `web/next-controls.js` | Browser-local steer receipts and tripwire preferences, with no delivery or enforcement. |
 | `web/next-cockpit-compat.js` | Compatibility helpers for the prototype substrate. |
 | `web/project.js` | Semantic timeline, project-context reads and exact-session terminal substrate; lazily loads vendored xterm from loopback. |
-| `web/next-cockpit.js` | Scope tree and switcher, recovery briefing, Now / Course / Decisions / Console panels, and browser-local context. |
+| `web/next-cockpit.js` | Scope tree and switcher, recovery briefing, Now / Course / Decisions / Console panels, and browser-local context. Also the `Held to` tab, which appears only at session scope: the two typed fields and their store round trip, the observed record beside them, the baseline question a later direction raises, the reading block and its shape contract, the two landing axes, and the re-entry limits. |
+| `web/next-intent.js` | The Intent log, a fourth top-level view listing every session the reader has typed words against, including ones that have left the board. Reads `GET /api/annotations` once on arrival rather than on the refresh loop, and reads the annotation store alone: session history keeps a copy of the same two fields, and listing from there would republish words a reader withdrew with a clear. |
 | `web/next-render.js` | View dispatch, payload fetch, refresh serialization, failure state, and the separately consented explicit observer-model request in Console. |
 | `web/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery, and fallback polling. It is last in `APP_PARTS` and starts refresh. |
 | `web/fonts/` | Embedded Space Grotesk and Space Mono subsets, licenses, and source hashes. |

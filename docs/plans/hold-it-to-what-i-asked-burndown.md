@@ -5,7 +5,7 @@ work ships.
 
 **If you are a fresh session picking this up, read this file first and trust it over your memory.**
 
-## THE RATIFIED ORDER (2026-09-10) — read this before anything else
+## THE RATIFIED ORDER (2026-09-10). Read this before anything else
 
 The captain ratified DEC-17 and this order on 2026-09-10. Work it in sequence. Everything lands in
 PR #317, which is kept OPEN for the captain to test and is NOT to be merged.
@@ -43,7 +43,7 @@ What is still owed, and none of it is buildable without a ruling or a capture:
   criterion.
 - DRC-4514, blocked by DEC-18.
 
-## THE JOURNEY REVIEW (2026-09-10) — findings to clear before this PR is done
+## THE JOURNEY REVIEW (2026-09-10). Findings to clear before this PR is done
 
 Three harnesses reviewed PR #317 against the milestone's four-step journey: Codex (`codex exec`),
 Antigravity (`agy -p`), and six Claude Code lenses with an adversarial verifier per finding
@@ -75,7 +75,7 @@ Refuted and NOT to be rebuilt: 32 findings, including every claim that the missi
 the missing write path into a session, and DRC-4514's history are defects. Those are closed
 rulings.
 
-### THE VERIFICATION ROUND (2026-09-10) — and what it cost to check it
+### THE VERIFICATION ROUND (2026-09-10), and what it cost to check it
 
 All nineteen above were fixed and re-checked by two harnesses. The two reports were not worth the
 same.
@@ -95,7 +95,7 @@ was real. Five were introduced or first exposed by the review's own fixes.
 | U | "covers only the work so far" keys on `endKnown`, which a turn stop sets, so it vanishes while the card beside it says no session end was observed | `nextCockpitReading` | DONE |
 | V | Only one of `_OBSERVER_ACTOR_CLAIMS`'s three derivations starts `model-derived`, so a deterministic paraphrase of the goal counts as "observed of what it did" | `nextCockpitWorkMix` | DONE |
 | W | The board's sentence about a revision whose words are not retained wears the reader's mono register; `clauseKnown` was computed for this and never read | `nextCockpitReadingCriterionRow` | DONE |
-| X | "1 changed entries were observed" — the copy predates the branch, and HOW IT LANDED gave it its first surface | `nextObservedLanding` | DONE |
+| X | "1 changed entries were observed". The copy predates the branch, and HOW IT LANDED gave it its first surface | `nextObservedLanding` | DONE |
 | Y | `persisted:false` drops the draft and then refreshes, and every collection reloads the store from disk, so the warning describes a refresh already running | `nextCockpitHeldSave` | DONE |
 | Z | Unread-vs-empty read `command_attention_coverage`, a different sweep bounded at 64; the scan that produces these facts is bounded at 3 and names its omissions in `sources.work.omitted` | `nextCockpitWorkSource` | DONE |
 | AA | The reading's cutoff renders inside each departure row, so never when there are none | `nextCockpitDepartures` | DONE |
@@ -638,8 +638,8 @@ column is due.
 **The promise-map cost forks, and the fork is a decision.** The wording lives in three places:
 `docs/promise-map.md`, `docs/visibility-2x2/items.json`'s `columns[].promise`, and the Linear
 overview. Only the first two are checked, by `validate_promise_parity`. If a P5 clause lands under
-`Backed by` or `Where it stops` — which is what the P2 edit here did, leaving the bold sentence
-alone — it is a ONE-place change and no validator sees it. If it changes P5's bold sentence it is a
+`Backed by` or `Where it stops`, which is what the P2 edit here did while leaving the bold
+sentence alone, it is a ONE-place change and no validator sees it. If it changes P5's bold sentence it is a
 THREE-place change, and missing the third is silent. Decide which before writing the docs PR.
 
 **Stage 6, the away case.** DRC-4540, built so adding a lane adds a value rather than changing the
