@@ -742,16 +742,53 @@ function nextCockpitHeldToggle(field, action, shown){
   if(control) control.hidden = !shown;
 }
 
+/* What the last save attempt is still worth saying, and for how long.
+   Stamped and expiring, because an unstamped cue survives every redraw and a
+   navigation away and back, so "Saved as a new revision." greets a reader
+   returning hours later as though they had just pressed it. The row controls
+   next door already expire their confirmation for that reason.
+
+   `persisted:false` is its own cue and not a success. The endpoint answers it
+   honestly when the store could not be written, and the annotation is then
+   held only in this process: the next collection reloads the store from disk
+   and the words are gone. An earlier version of this code read only `ok` and
+   called that a save, with a comment claiming the store said so itself. It
+   does not; the only report went to a diagnostic sink no reader sees. */
+const NEXT_COCKPIT_HELD_CUE_LIMIT = 16;
+const NEXT_COCKPIT_HELD_CUES = {
+  error: "Not saved. The server refused the write, and your words are still in the box.",
+  unpersisted: "Saved for this run only. The store could not be written, so these words will " +
+    "be gone at the next refresh.",
+  saved: "Saved as a new revision.",
+};
+
+function nextCockpitHeldCue(key){
+  const held = nextCockpitHeldStates.get(key);
+  if(!held) return "";
+  // The same clock and the same window the row controls use, so two cues on
+  // one page do not disagree about how long a confirmation is worth.
+  if(Date.now() - held.at >= NEXT_CONTROL_STATE_TTL_MS){
+    nextCockpitHeldStates.delete(key);
+    return "";
+  }
+  return NEXT_COCKPIT_HELD_CUES[held.kind] || "";
+}
+
+function nextCockpitHeldMark(key, kind){
+  nextCockpitHeldStates.delete(key);
+  nextCockpitHeldStates.set(key, {kind, at: Date.now()});
+  while(nextCockpitHeldStates.size > NEXT_COCKPIT_HELD_CUE_LIMIT){
+    nextCockpitHeldStates.delete(nextCockpitHeldStates.keys().next().value);
+  }
+}
+
 function nextCockpitHeldField(session, annotation, spec, cap){
   const [kind, label, valueKey, whyKey, placeholder] = spec;
   const key = nextCockpitHeldKey(session, kind);
   const saved = String(annotation && annotation[valueKey] || "");
   const draft = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : saved;
   const why = String(annotation && annotation[whyKey] || "");
-  const state = nextCockpitHeldStates.get(key);
-  const cue = state === "error"
-    ? "Not saved. The server refused the write, and your words are still in the box."
-    : state === "saved" ? "Saved as a new revision." : "";
+  const cue = nextCockpitHeldCue(key);
   return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
     `<span class="next-cockpit-held-label">${label}</span>` +
     '<span class="next-cockpit-held-sub">your words</span>' +
@@ -762,7 +799,11 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `${draft.length}/${cap}</span>` +
     nextCockpitHeldControl("held-clear", "clear", kind, Boolean(draft)) +
     nextCockpitHeldControl("held-save", "save", kind, draft !== saved) +
-    (!saved && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
+    /* The absence sentence answers "why is this empty", so it goes when the
+       box stops being empty. It read the SERVER value alone, which put "No
+       goal typed for this session." directly under the sentence the reader
+       was in the middle of typing. */
+    (!draft && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }
 
@@ -1119,10 +1160,8 @@ function nextCockpitHeldTo(group, observation){
   const evidence = nextCockpitWorkEvidence(session, entries) +
     nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group));
   const cap = nextCockpitHeldCap();
-  const revision = annotation && annotation.revision
-    ? `revision ${annotation.revision} of ${annotation.revision_count}`
-    : "No revision saved yet";
-  const binding = annotation && annotation.binding_why
+  const revision = nextProjectRevisionLine(annotation) || "No revision saved yet";
+  const binding = annotation && annotation.binding_why && (annotation.goal || annotation.output)
     ? `<p class="next-cockpit-held-absent">${esc(annotation.binding_why)}</p>` : "";
   /* An ended session may still be annotated, and the store will keep it. What
      is unsettled is whether anything should then read it, so the line says
@@ -1145,7 +1184,8 @@ async function nextCockpitHeldSave(session, kind){
   // endpoint, and "" is "clear it": sending both every time would let a stale
   // draft of one field overwrite a save of the other.
   const body = {harness: session.harness, sid: session.sid, goal: null, output: null};
-  body[kind] = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : null;
+  const sent = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : null;
+  body[kind] = sent;
   try{
     const response = await fetch("/api/annotate", {
       method: "POST",
@@ -1158,13 +1198,17 @@ async function nextCockpitHeldSave(session, kind){
     // is whether the write reached disk, and a false there is not a failed
     // save: the words are held for this run and the store says so itself.
     if(!saved || saved.ok !== true) throw new Error("save not confirmed");
-    nextCockpitHeldDrafts.delete(key);
-    nextCockpitHeldStates.set(key, "saved");
+    /* Only when the box still holds what was sent. A reader who kept typing
+       while the request was open has a newer instruction in there, and
+       dropping the draft would revert the field to the older text they just
+       watched leave. */
+    if(nextCockpitHeldDrafts.get(key) === sent) nextCockpitHeldDrafts.delete(key);
+    nextCockpitHeldMark(key, saved.persisted === true ? "saved" : "unpersisted");
     await refreshNext();
   }catch(_error){
     // The draft stays. Losing what someone typed to report a failure is the
     // one outcome worse than the failure.
-    nextCockpitHeldStates.set(key, "error");
+    nextCockpitHeldMark(key, "error");
     renderNext({named: key});
   }
 }

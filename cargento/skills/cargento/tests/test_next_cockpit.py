@@ -3834,6 +3834,184 @@ console.log(JSON.stringify({
         self.assertEqual("0/240", out["revertedCount"])
         self.assertFalse(out["draft"])
 
+    def test_a_save_the_store_could_not_write_says_so(self) -> None:
+        """Finding A, raised by all three reviewing harnesses.
+
+        `/api/annotate` answers `persisted` honestly, and the page read only
+        `ok`. A write that never reached disk showed "Saved as a new revision."
+        and the very next collection reloaded the store and took the words out
+        of the box. The comment justifying that claimed the store said so
+        itself; nothing on screen said anything.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+let persisted = true;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => String(url) === "/api/annotate"
+  ? {ok:true, status:200, json: async () => ({ok:true, persisted, revision:2, revision_count:2})}
+  : upstream(url, init);
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+const cue = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1];
+
+// Given: the store cannot be written.
+persisted = false;
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+const unwritable = cue();
+
+// And: a run where it can.
+persisted = true;
+type("output", "Six screenshots again");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({unwritable, written: cue()}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "Saved for this run only. The store could not be written, so these words "
+            "will be gone at the next refresh.",
+            out["unwritable"],
+        )
+        self.assertEqual("Saved as a new revision.", out["written"])
+
+    def test_a_draft_typed_while_the_save_was_open_is_not_reverted(self) -> None:
+        # Finding raised by Codex. The success handler dropped the draft
+        # unconditionally, so a reader who kept typing watched their newer
+        # instruction be replaced by the one they had just sent.
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+let release;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => {
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  await new Promise(resolve => { release = resolve; });
+  return {ok:true, status:200, json: async () =>
+    ({ok:true, persisted:true, revision:2, revision_count:2})};
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const input = () => controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const type = value => { const box = input(); box.value = value; __fire("input", {target:box}); };
+
+// Given: the reader saves, then keeps typing while the request is open.
+type("Six screenshots");
+await __settle();
+__fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "output"),
+  preventDefault(){}});
+type("Six screenshots, one per screen");
+
+// When: the save lands.
+release();
+await __settle();
+console.log(JSON.stringify({
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+}));
+"""
+        )
+
+        # Then: the newer instruction stands.
+        assert isinstance(out, dict)
+        self.assertEqual("Six screenshots, one per screen", out["draft"])
+
+    def test_the_revision_line_never_prints_an_impossible_pair(self) -> None:
+        """Finding B, raised by all three harnesses.
+
+        `revision` is a save counter that keeps climbing so a dropped revision
+        reads as dropped; `revision_count` is how many the store's bound keeps.
+        Read as "N of M" the pair goes impossible the moment they diverge.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+const lines = () => {
+  const html = __els.app.innerHTML;
+  return {
+    header: (html.match(/class="next-cockpit-held-revision">([^<]*)</) || [])[1],
+    rows: [...html.matchAll(/class="next-project-goal-source">([^<]*)</g)].map(m => m[1]),
+  };
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const within = lines();
+__dashboard.sessions[0].annotation_revision = 20;
+__dashboard.sessions[0].annotation_revision_count = 16;
+renderNext();
+const past = lines();
+console.log(JSON.stringify({within, past}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual("revision 2 of 2", out["within"]["header"])
+        self.assertEqual("revision 20, 16 kept · older revisions dropped", out["past"]["header"])
+        # And the same sentence wherever it renders, not three spellings.
+        for line in out["past"]["rows"]:
+            with self.subTest(row=line):
+                self.assertNotIn(" of 16", line)
+
+    def test_an_absence_reason_gives_way_to_what_is_being_typed(self) -> None:
+        # The sentence answers "why is this empty", and it read the server
+        # value alone, so "No goal typed for this session." rendered directly
+        # under the sentence the reader was in the middle of writing.
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_binding_why = "Bound by an eight-character prefix.";
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const empty = __els.app.innerHTML;
+const box = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
+box.value = "Ship the cockpit";
+__fire("input", {target:box});
+renderNext();
+console.log(JSON.stringify({
+  emptyShowsReason: empty.includes("No goal typed for this session."),
+  // The binding caveat is a claim about words. With none typed there are none.
+  emptyShowsBinding: empty.includes("eight-character prefix"),
+  typedShowsReason: __els.app.innerHTML.includes("No goal typed for this session."),
+  typedShowsOtherReason: __els.app.innerHTML.includes("No expected output typed."),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertTrue(out["emptyShowsReason"])
+        self.assertFalse(out["emptyShowsBinding"])
+        self.assertFalse(out["typedShowsReason"])
+        # The other field is still empty, so its reason stays.
+        self.assertTrue(out["typedShowsOtherReason"])
+
     def test_the_work_evidence_keeps_each_entry_type_and_states_its_limit(self) -> None:
         """DRC-4509. What the record lets a reader inspect, beside their words.
 

@@ -194,6 +194,24 @@ function nextProjectDetailHeader(context){
    `annotation` is the focused session's, or null at project scope where there
    is no one session to have typed anything. The project-scope count line the
    design also draws is C4's subject (DRC-4023) and is deliberately not here. */
+/* "revision 4 of 4", or "revision 20, 16 kept" once the store has started
+   dropping the oldest.
+
+   `revision` is a save counter that keeps climbing so a dropped revision reads
+   as dropped, and `revision_count` is how many survive the store's bound. Read
+   as "N of M" the pair goes arithmetically impossible the moment they diverge,
+   which is a count that does not derive from the collection it describes. Past
+   the bound the sentence names both numbers for what they are and says the
+   older ones are gone, the way the work-evidence block names what it hid. */
+function nextProjectRevisionLine(annotation){
+  const revision = nextNumber(annotation && annotation.revision);
+  const count = nextNumber(annotation && annotation.revision_count);
+  if(revision == null || count == null || count <= 0) return "";
+  return revision > count
+    ? `revision ${revision}, ${count} kept · older revisions dropped`
+    : `revision ${revision} of ${count}`;
+}
+
 function nextProjectGoalRow(tag, text, src, known = true){
   return '<div class="next-project-goal-row">' +
     `<span class="next-project-goal-tag">${esc(tag)}</span>` +
@@ -220,8 +238,7 @@ function nextProjectGoal(project, annotation){
   const gap = project.goalGapKnown
     ? `<p class="next-project-goal-gap">${esc(project.goalGapText)}</p>` : "";
   const typed = annotation || null;
-  const revision = typed && typed.revision
-    ? `revision ${typed.revision} of ${typed.revision_count}` : "";
+  const revision = nextProjectRevisionLine(typed);
   let rows = "";
   if(typed && typed.goal){
     rows += nextProjectGoalRow("YOUR WORDS · GOAL", typed.goal, revision);
@@ -232,7 +249,11 @@ function nextProjectGoal(project, annotation){
   /* The binding sentence, not a decoration. A Claude row's session id is an
      eight-character prefix, so another session sharing it would share these
      words, and the reader is told rather than left to assume otherwise. */
-  const binding = typed && typed.binding_why
+  /* Only where there are words for it to be about. The sentence says another
+     session sharing this prefix "would share these words", and with nothing
+     typed, and on a run started with --no-annotations where nothing can be,
+     it is a caveat about a binding that does not exist. */
+  const binding = typed && typed.binding_why && (typed.goal || typed.output)
     ? `<p class="next-project-goal-gap">${esc(typed.binding_why)}</p>` : "";
   const derived = rows
     ? nextProjectGoalRow("DERIVED FROM THE HARNESS", project.goalText,
