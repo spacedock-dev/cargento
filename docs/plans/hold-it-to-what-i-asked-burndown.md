@@ -65,9 +65,9 @@ Antigravity (`agy -p`), and six Claude Code lenses with an adversarial verifier 
 | L | The absence sentence renders directly beneath the reader's own typed draft | claude | DONE |
 | M | `--no-annotations` still renders the prefix-binding caveat, a claim about words that cannot exist | claude | DONE |
 | N | `annotation_at` is published, read into the object, and rendered nowhere; a comment added by this PR claims otherwise | claude | DONE |
-| O | SKILL.md says the counter shows "what is left of its 240 characters"; it shows characters used | claude | TODO |
-| P | Held to is unreachable from the dedicated session page every session link points at | claude | TODO |
-| Q | Sessions sharing a title are indistinguishable in the scope tree, and Held to names no session | claude | TODO |
+| O | SKILL.md says the counter shows "what is left of its 240 characters"; it shows characters used | claude | DONE |
+| P | Held to is unreachable from the dedicated session page every session link points at | claude | DONE |
+| Q | Sessions sharing a title are indistinguishable in the scope tree, and Held to names no session | claude | DONE |
 | R | "Saved as a new revision." never expires and reads as fresh hours later | claude | DONE |
 | S | WORK EVIDENCE on Claude is the reader's own prompts: `_SEMANTIC_FACT_TYPES` maps `steer` to `user_message` and a Claude session promotes nothing else | me | DONE |
 

@@ -4442,6 +4442,22 @@ console.log(JSON.stringify({empty, unread, offered, enabled}));
         self.assertTrue(out["offered"]["departures"])
         self.assertTrue(out["empty"]["departures"])
 
+    def test_the_block_names_the_session_its_words_are_bound_to(self) -> None:
+        # Two sessions publishing one title are indistinguishable in the scope
+        # rail, and this block said nothing about which of them it was binding
+        # to. The harness and session id are what the store keys on.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+console.log(JSON.stringify({bound: (__els.app.innerHTML
+  .match(/class="next-cockpit-held-bound">([^<]*)</) || [])[1]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("codex:focus-1", out["bound"])
+
     def test_how_it_landed_draws_the_two_axes_the_derivation_computes(self) -> None:
         """Finding E, raised by all three harnesses.
 

@@ -1362,7 +1362,13 @@ function nextCockpitHeldTo(group, observation){
     ? '<p class="next-cockpit-held-absent">This session has ended. Annotating a finished ' +
       'session is an open proposal: your words are kept, and nothing is promised to read ' +
       'them.</p>' : "";
+  /* Named, because the reader has to know whose words these are. Two sessions
+     that publish one title are indistinguishable in the scope rail, and this
+     block said nothing at all about which of them it was binding to. The
+     harness and the session id are what the store keys on, so they are what
+     is shown. */
   return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
+    `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span>` +
     `<span class="next-cockpit-held-revision">${esc(revision)}</span></header>` +
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>

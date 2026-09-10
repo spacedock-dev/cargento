@@ -221,7 +221,7 @@ You can record a goal and an expected output against one session, in your own wo
 optional and set independently, bounded at 240 characters each, and saving one leaves the other
 alone. Select a session in the project view and open its `Held to` tab, which appears only when a
 session is selected because there is nobody whose words these would be otherwise. Each field shows
-what is left of its 240 characters as you type, offers `clear` only when there is text and `save`
+how many of its 240 characters you have used as you type, offers `clear` only when there is text and `save`
 only when the box differs from what is stored, and Escape puts the stored value back.
 
 `POST /api/annotate` with a harness, a session id and either field does the same thing without the

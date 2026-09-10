@@ -11,6 +11,50 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextSessionBehaviorTest(NextPageJsHarness):
+    def test_the_session_page_points_at_the_words_you_typed_for_it(self) -> None:
+        """Finding P, raised by a Claude lens.
+
+        Every session link on the board lands on this page, and the surface
+        holding what the reader typed for this session sits on a route it
+        never named. The input surface existed on exactly one route and
+        nothing pointed at it.
+        """
+        out = self._run_page_js("""
+__els.app = {innerHTML: ""};
+const base = {generated: 10000, annotate: true, sessions: [
+  {harness: "claude", sid: "a1b2c3d4", project: "recce/cargento", state: "working",
+   annotation_goal: "", annotation_output: ""}
+]};
+nextData = JSON.parse(JSON.stringify(base));
+nextRoute = {view: "session", project: "recce/cargento", harness: "claude", session: "a1b2c3d4"};
+renderNext();
+const untyped = __els.app.innerHTML;
+
+// With words already typed the invitation becomes a way back to them.
+nextData = JSON.parse(JSON.stringify(base));
+nextData.sessions[0].annotation_goal = "Ship the cockpit";
+renderNext();
+const typed = __els.app.innerHTML;
+
+// With the store off there is nothing to point at.
+nextData = JSON.parse(JSON.stringify(base));
+delete nextData.annotate;
+renderNext();
+console.log(JSON.stringify({
+  untypedLabel: (untyped.match(/class="next-session-held-link"><a href="([^"]*)">([^<]*)</) || [])
+    .slice(1),
+  typedLabel: (typed.match(/class="next-session-held-link"><a href="[^"]*">([^<]*)</) || [])[1],
+  offHasLink: __els.app.innerHTML.includes("next-session-held-link"),
+}));
+""")
+        assert isinstance(out, dict)
+        href, label = out["untypedLabel"]
+        self.assertEqual("#n=project:recce%2Fcargento:claude%3Aa1b2c3d4:held-to", href)
+        self.assertEqual("Record what you asked of this session", label)
+        self.assertEqual("What you asked of this session", out["typedLabel"])
+        # `--no-annotations` promises no field, so it gets no invitation either.
+        self.assertFalse(out["offHasLink"])
+
     def test_absent_facts_are_reasons_and_never_placeholder_values(self) -> None:
         out = self._run_page_js("""
 __els.app = {innerHTML: ""};

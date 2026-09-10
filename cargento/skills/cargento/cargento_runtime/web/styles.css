@@ -913,6 +913,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-landed>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-cockpit-landed h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
 .next-cockpit-landed-axes{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-bound{margin-left:auto;color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-session-held-link{margin:10px 0 0;font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--line2)}
 .next-cockpit-landed-label{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
