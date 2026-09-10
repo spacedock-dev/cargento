@@ -4029,7 +4029,8 @@ console.log(JSON.stringify({
   rows: [...block.matchAll(/data-next-cockpit-work-type="([^"]+)"/g)].map(m => m[1]),
   sources: [...block.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
   limit: (block.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
-  heading: html.includes("WORK EVIDENCE"),
+  heading: html.includes("OBSERVED RECORD"),
+  mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
 }));
 """
         )
@@ -4039,6 +4040,12 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertTrue(out["heading"])
         self.assertEqual(["user_message", "prepared_dispatch", "user_message"], out["rows"])
+        # The heading names the record, and this line says what is in it: on
+        # Claude and Codex every entry can be a direction the reader gave, and
+        # the old WORK EVIDENCE heading read those back as the agent's work.
+        self.assertEqual(
+            "3 entries · 2 directions you gave · 1 observed of what it did.", out["mix"]
+        )
         self.assertEqual(
             ["root transcript · exact", "dispatch artifact · exact", "root transcript · exact"],
             out["sources"],
@@ -4052,6 +4059,108 @@ console.log(JSON.stringify({
             "deliverable.",
             out["limit"],
         )
+
+    def test_the_absence_says_which_absence_it_is(self) -> None:
+        """Finding C, the review's only blocker, raised by Codex and two lenses.
+
+        "No entry in the observed record names this session" is a claim ABOUT
+        a record. The block printed it while the fetch was in flight, after
+        the fetch had failed, and for a session the server said in the same
+        payload it had not scanned. Three different facts wearing one
+        sentence, and the least true of them read as the most reassuring.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+const absence = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-work-absent">([^<]*)</) || [])[1];
+const route = () => navigateNext({view:"project", project:"cargento",
+  focus:"claude:claude-idle", tab:"held-to"});
+
+// Given: the project context has not come back yet.
+const contexts = new Map(nextCockpitContexts);
+nextCockpitContexts.clear();
+route();
+renderNext();
+const unread = absence();
+
+// And: it came back an error.
+nextCockpitContexts.clear();
+for(const [key] of contexts) nextCockpitContexts.set(key, {data:null, revision:1, error:true});
+renderNext();
+const failed = absence();
+
+// And: it came back, but the server says it scanned only some sessions.
+nextCockpitContexts.clear();
+for(const [key, entry] of contexts){
+  const data = JSON.parse(JSON.stringify(entry.data));
+  data.semantic.projections.command_attention_coverage =
+    {state:"incomplete", scanned:3, total:5, omitted:2, source:"bounded scan"};
+  nextCockpitContexts.set(key, {data, revision:entry.revision});
+}
+renderNext();
+const partial = absence();
+
+// And: it came back complete, and really names nothing.
+nextCockpitContexts.clear();
+for(const [key, entry] of contexts) nextCockpitContexts.set(key, entry);
+renderNext();
+console.log(JSON.stringify({unread, failed, partial, empty: absence()}));
+"""
+        )
+
+        # Then: four different facts, four different sentences.
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "The observed record for this session has not been read yet.", out["unread"]
+        )
+        self.assertEqual(
+            "The observed record could not be read, so nothing here says what this "
+            "session has been doing.",
+            out["failed"],
+        )
+        self.assertEqual(
+            "This session was outside the observed-record scan, which covered 3 of the "
+            "sessions in this project and left 2 out. Its record is unread rather than empty.",
+            out["partial"],
+        )
+        self.assertEqual("No entry in the observed record names this session.", out["empty"])
+        self.assertEqual(4, len({out["unread"], out["failed"], out["partial"], out["empty"]}))
+
+    def test_a_model_paraphrase_does_not_wear_the_register_of_a_published_line(self) -> None:
+        # Finding I, raised by Codex and a lens. `actor_claim` is the string
+        # the runtime computes to say who derived a snapshot, and making it
+        # honest was the first fix on this branch. Dropping it at the render
+        # undid that.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+__semantic.facts.push({fact_id:"snap", at:106, type:"observer_snapshot",
+  summary:"The session appears to be capturing screens",
+  actor_claim:"model-derived observer snapshot", scope:"session",
+  source_session:{harness:"codex", sid:"focus-1"},
+  evidence:{source:"observer sidecar", confidence:"derived"}});
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  derived: (html.match(/class="next-cockpit-work-derived">([^<]*)</) || [])[1],
+  claimShown: html.includes("model-derived observer snapshot"),
+  // A published line keeps the mono register beside it.
+  published: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
+  mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual("The session appears to be capturing screens", out["derived"])
+        self.assertTrue(out["claimShown"])
+        # A published line keeps mono, and it is not the paraphrase.
+        self.assertTrue(out["published"])
+        self.assertNotEqual(out["derived"], out["published"])
+        self.assertIn("1 model-derived", out["mix"])
 
     def test_a_long_record_is_bounded_and_says_what_it_left_out(self) -> None:
         # Measured against a real session: 26 facts in one project, 7 naming
@@ -4509,7 +4618,9 @@ console.log(JSON.stringify({
         )
         self.assertEqual("", out["limits"]["goal"])
         self.assertIn("publishes no demonstrated work results", out["limits"]["output"])
-        self.assertIn("publishes no demonstrated work results", out["why"])
+        # The limit has its own row. Setting `why` to the same string printed
+        # the identical sentence twice, the second prefixed `limit ·`.
+        self.assertEqual("", out["why"])
 
     def test_rule_6_the_two_constraints_stay_separate_and_name_themselves(self) -> None:
         out = self.run_fixture(

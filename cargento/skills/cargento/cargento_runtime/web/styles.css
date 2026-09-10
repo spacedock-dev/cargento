@@ -874,6 +874,10 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-work-row+.next-cockpit-work-row{margin-top:5px}
 .next-cockpit-work-type{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em}
 .next-cockpit-work-summary{font:var(--fs-xs)/1.55 var(--mono);overflow-wrap:anywhere}
+/* A model's paraphrase inside the observed record takes the same third
+   treatment a reading does: italic sans on a dotted rule, no colour. */
+.next-cockpit-work-derived{font:italic 13px/1.55 var(--sans);color:var(--ink2);padding-left:7px;border-left:1px dotted var(--line2);overflow-wrap:anywhere}
+.next-cockpit-work-mix{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-work-at{color:var(--ink3);font-family:var(--mono);font-size:10px}
 .next-cockpit-work-source{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px}
 .next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
@@ -893,7 +897,10 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-reading-name{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
 .next-cockpit-reading-clause{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
 .next-cockpit-reading-result,.next-cockpit-reading-detail{font:italic 13.5px/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
-.next-cockpit-reading-evidence,.next-cockpit-reading-limit{color:var(--ink3);font-family:var(--mono);font-size:10px;overflow-wrap:anywhere}
+.next-cockpit-reading-evidence{color:var(--ink3);font-family:var(--mono);font-size:10px;overflow-wrap:anywhere}
+/* The board talking, not a string a source published, so sans. The
+   evidence line above it names a type and a source and stays mono. */
+.next-cockpit-reading-limit{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans);overflow-wrap:anywhere}
 .next-cockpit-reading-why{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-reading-stale{margin:0;color:var(--amber);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-reading button{align-self:flex-start;padding:5px 10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans);cursor:pointer}

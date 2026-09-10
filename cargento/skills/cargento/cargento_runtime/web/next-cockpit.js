@@ -833,6 +833,66 @@ function nextCockpitWorkEvidenceLimit(harness){
 /* The entries, once. The rows below render them and a reading cites them, so
    a citation resolves against the same list the reader is looking at rather
    than against a second collection assembled from the same facts. */
+/* Where the observed record for one session comes from, and how far the page
+   can be trusted to have it.
+
+   Two contexts exist: the project one, which the server bounds to its most
+   recently active sessions, and a focus-scoped one it fetches for the session
+   the reader selected. The focused fetch is the one that names this session on
+   purpose, so it wins where it has landed.
+
+   The state matters as much as the entries. "No entry in the observed record
+   names this session" is a claim ABOUT a record, and the block printed it
+   while the fetch was still in flight, after the fetch had failed, and for a
+   session the server had said in the same payload it did not scan. Three
+   different facts wearing one sentence, and the least true of them read as
+   the most reassuring. */
+function nextCockpitWorkSource(group, session){
+  const key = sessKey(session);
+  const focused = nextCockpitContexts.get(nextCockpitContextKey(group, session));
+  const project = nextCockpitContexts.get(nextCockpitContextKey(group, null));
+  const entry = focused && focused.data ? focused : project;
+  if(!entry) return {entries: [], state: "unread"};
+  if(!entry.data) return {entries: entry.error ? [] : [], state: entry.error ? "error" : "unread"};
+  const all = nextCockpitWorkEntries(session, entry.data.semantic);
+  // The most recent, in the order they happened. Nothing upstream caps the
+  // semantic facts, so a long session draws as many rows as it has entries.
+  const entries = all.slice(-NEXT_COCKPIT_WORK_ROWS);
+  if(entries.length){
+    return {entries, state: "read", shown: entries.length, total: all.length};
+  }
+  if(entry.error) return {entries, state: "error"};
+  // The server says how many sessions it scanned and how many it left out. A
+  // session it did not reach has an unknown record, not an empty one.
+  const coverage = entry.data.semantic && entry.data.semantic.projections &&
+    entry.data.semantic.projections.command_attention_coverage || {};
+  const omitted = nextNumber(coverage.omitted);
+  const scanned = nextNumber(coverage.scanned);
+  const named = new Set((entry.data.semantic && entry.data.semantic.facts || [])
+    .map(nextCockpitFactSessionKey).filter(Boolean));
+  if(omitted != null && omitted > 0 && !named.has(key)){
+    return {entries, state: "partial", scanned, omitted};
+  }
+  return {entries, state: "empty"};
+}
+
+function nextCockpitWorkAbsence(source){
+  if(source.state === "unread"){
+    return "The observed record for this session has not been read yet.";
+  }
+  if(source.state === "error"){
+    return "The observed record could not be read, so nothing here says what this session " +
+      "has been doing.";
+  }
+  if(source.state === "partial"){
+    const scanned = source.scanned == null ? "the most recently active" : `${source.scanned}`;
+    return `This session was outside the observed-record scan, which covered ${scanned} ` +
+      `of the sessions in this project and left ${source.omitted} out. Its record is ` +
+      "unread rather than empty.";
+  }
+  return "No entry in the observed record names this session.";
+}
+
 function nextCockpitWorkEntries(session, semantic){
   const key = sessKey(session);
   return (semantic && Array.isArray(semantic.facts) ? semantic.facts : [])
@@ -840,12 +900,19 @@ function nextCockpitWorkEntries(session, semantic){
     .sort((left, right) => Number(left.at || 0) - Number(right.at || 0))
     .map(fact => {
       const evidence = fact.evidence && typeof fact.evidence === "object" ? fact.evidence : {};
+      /* `actor_claim` is the string `project_context` computes to say who
+         derived a snapshot, and it was dropped here, so a model's paraphrase
+         of the goal rendered in the same mono register as a line a harness
+         published. Making that field honest was the first fix on this branch;
+         throwing it away at the last step undid it. */
       return {
         id: String(fact.fact_id || ""),
         type: String(fact.type || ""),
         by: String(fact.by || ""),
         summary: String(fact.summary || "No summary published"),
         at: fact.at,
+        actorClaim: String(fact.actor_claim || ""),
+        modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
         source: [evidence.source, evidence.confidence].map(value =>
           String(value == null ? "" : value).trim()).filter(Boolean).join(" · "),
       };
@@ -860,32 +927,56 @@ function nextCockpitWorkEntries(session, semantic){
    as the whole record. */
 const NEXT_COCKPIT_WORK_ROWS = 20;
 
-function nextCockpitWorkEvidence(session, entries){
-  // The most recent, in the order they happened, so the window reads forward.
-  const shown = entries.slice(-NEXT_COCKPIT_WORK_ROWS);
-  const rows = shown.map(entry => {
+function nextCockpitWorkEvidence(session, source){
+  const entries = source.entries;
+  const rows = entries.map(entry => {
     const at = nextDurationSince(entry.at);
+    /* A model's paraphrase takes the third treatment, not the mono of a
+       string a source published. It is the same rule the reading block
+       follows, and the reason is the same: the reader must be able to tell
+       the record from an account of it. */
+    const summary = entry.modelDerived
+      ? `<em class="next-cockpit-work-derived">${esc(entry.summary)}</em>`
+      : `<span class="next-cockpit-work-summary">${esc(entry.summary)}</span>`;
     return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(entry.type)}">` +
-      `<span class="next-cockpit-work-type">${esc(entry.type)}</span>` +
-      `<span class="next-cockpit-work-summary">${esc(entry.summary)}</span>` +
-      `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}</span>` +
+      `<span class="next-cockpit-work-type">${esc(entry.type)}</span>${summary}` +
+      `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}` +
+      `${entry.actorClaim ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
       '</span></div>';
   }).join("");
   return '<section class="next-cockpit-work" data-next-cockpit-work>' +
-    '<header><h2>WORK EVIDENCE</h2></header>' +
-    (rows || '<p class="next-cockpit-work-absent">No entry in the observed record names ' +
-      'this session.</p>') +
-    (shown.length < entries.length
-      ? `<p class="next-cockpit-work-dropped">Showing the ${shown.length} most recent of ` +
-        `${entries.length} observed entries.</p>` : "") +
+    '<header><h2>OBSERVED RECORD</h2></header>' +
+    (rows || '<p class="next-cockpit-work-absent">' +
+      `${esc(nextCockpitWorkAbsence(source))}</p>`) +
+    (entries.length ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(entries))}</p>`
+      : "") +
+    (source.shown != null && source.shown < source.total
+      ? `<p class="next-cockpit-work-dropped">Showing the ${source.shown} most recent of ` +
+        `${source.total} observed entries.</p>` : "") +
     '<p class="next-cockpit-work-limit">' +
     `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
 }
 
-/* The observer model's availability for this project, or null when the
-   project context has not been read. Same entry `nextObserverModelControls`
-   reads, so the reading's disabled state and the Console's cannot disagree. */
+/* What the rows actually are, counted from the rows themselves.
+
+   The block was headed WORK EVIDENCE, and on Claude and Codex every entry is
+   a `user_message`: `project_context._SEMANTIC_FACT_TYPES` maps `steer` to
+   that type and a session with no workflow promotes nothing else. So a reader
+   comparing their words against "work evidence" was reading their own
+   sentences back on both sides of the comparison. The heading now names the
+   record rather than the work, and this line says what is in it. */
+function nextCockpitWorkMix(entries){
+  const directions = entries.filter(entry => entry.type === "user_message").length;
+  const derived = entries.filter(entry => entry.modelDerived).length;
+  const rest = entries.length - directions - derived;
+  const parts = [`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`];
+  if(directions) parts.push(`${directions} ${directions === 1 ? "direction" : "directions"} you gave`);
+  if(derived) parts.push(`${derived} model-derived`);
+  parts.push(`${rest} observed of what it did`);
+  return `${parts.join(" · ")}.`;
+}
+
 function nextCockpitObserverModel(group){
   const focus = nextCockpitFocusedSession(group);
   nextCockpitLoadContext(group, focus);
@@ -983,7 +1074,10 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit){
        departure from a requested output, claimed where the thing itself was
        never looked at, is the deliverable claim rule 7 exists to prevent. */
     result = NEXT_READING_UNVERIFIABLE;
-    why = limit;
+    // Not `why = limit`: the limit has its own row below, and setting both
+    // printed the identical sentence twice, the second time prefixed
+    // `limit ·`.
+    why = "";
   }
   const fromPerson = citations.filter(nextReadingPersonAuthored);
   if(key === "output" && result !== NEXT_READING_UNVERIFIABLE && !fromPerson.length){
@@ -1153,11 +1247,12 @@ function nextCockpitHeldTo(group, observation){
       '--no-annotations to type a goal and an expected output here.</p></section>';
   }
   const annotation = nextCockpitAnnotation(session);
-  const entries = nextCockpitWorkEntries(session, (observation || {}).semantic);
+  const workSource = nextCockpitWorkSource(group, session);
+  const entries = workSource.entries;
   /* The design's order inside this tab: what you asked for, then the reading
      of it, then the departures it raised. Intent first, then a reading of the
      intent, so nothing above the reading is a model's words. */
-  const evidence = nextCockpitWorkEvidence(session, entries) +
+  const evidence = nextCockpitWorkEvidence(session, workSource) +
     nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group));
   const cap = nextCockpitHeldCap();
   const revision = nextProjectRevisionLine(annotation) || "No revision saved yet";
