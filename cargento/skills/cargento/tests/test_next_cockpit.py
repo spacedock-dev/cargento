@@ -3952,6 +3952,43 @@ console.log(JSON.stringify({unwritable, written: cue()}));
         )
         self.assertEqual("Saved as a new revision.", out["written"])
 
+    def test_the_saved_cue_expires_and_the_map_stays_bounded(self) -> None:
+        # Finding R. The cue was unstamped, so it survived every redraw and a
+        # navigation away and back: a reader returning hours later read
+        # "Saved as a new revision." as though they had just pressed it.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const key = "held:codex:focus-1:goal";
+const cue = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1];
+
+nextCockpitHeldMark(key, "saved");
+renderNext();
+const fresh = cue();
+
+// Wind the stamp back past the window the row controls next door use.
+const held = nextCockpitHeldStates.get(key);
+nextCockpitHeldStates.set(key, {kind: held.kind, at: held.at - NEXT_CONTROL_STATE_TTL_MS - 1});
+renderNext();
+const stale = cue();
+
+// And the map is bounded, like every other module-level map here.
+for(let n = 0; n < 40; n++) nextCockpitHeldMark(`held:codex:focus-1:k${n}`, "saved");
+console.log(JSON.stringify({fresh, stale: stale === undefined ? null : stale,
+  size: nextCockpitHeldStates.size, ttl: NEXT_CONTROL_STATE_TTL_MS}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual("Saved as a new revision.", out["fresh"])
+        self.assertIsNone(out["stale"])
+        self.assertEqual(30_000, out["ttl"])
+        self.assertLessEqual(out["size"], 16)
+
     def test_a_draft_typed_while_the_save_was_open_is_not_reverted(self) -> None:
         # Finding raised by Codex. The success handler dropped the draft
         # unconditionally, so a reader who kept typing watched their newer
