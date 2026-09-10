@@ -372,6 +372,8 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
         # runtime's own filtered reading of the same prompt sits beside it.
         html = self.render(
             """
+// The cockpit's assignment fold follows this merge; keep v2's goal contract callable.
+nextProjectCockpit = context => nextProjectGoal(context.project);
 const gate = nextData.sessions.find(session => session.sid === "alpha-gate");
 gate.instruction = {label: "asked", text: "Cut the release branch", at: 9900};
 const beta = nextData.sessions.find(session => session.sid === "beta-work");

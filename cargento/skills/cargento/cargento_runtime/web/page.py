@@ -12,6 +12,8 @@ APP_PARTS: tuple[str, ...] = (
     "next-observed.js",
     "next-attention.js",
     "next-notify.js",
+    "next-cockpit-compat.js",
+    "project.js",  # semantic timeline and exact-session terminal substrate
     "next-chrome.js",
     "next-capacity.js",
     "next-sessions.js",
@@ -22,6 +24,7 @@ APP_PARTS: tuple[str, ...] = (
     "next-workstream.js",
     "next-delegation.js",
     "next-controls.js",
+    "next-cockpit.js",
     "next-render.js",
     "next-live.js",  # namespaced leader election starts the refresh loop last
 )

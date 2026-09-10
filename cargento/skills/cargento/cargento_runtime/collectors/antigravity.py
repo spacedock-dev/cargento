@@ -715,6 +715,7 @@ def collect(
         cwd = str(meta.get("cwd") or "").strip()
         project = sessions.project_from_cwd(config, cwd) or "antigravity"
         session = sessions.base_session("antigravity", sid, project)
+        sessions.apply_project_identity(config, session, cwd)
         session.update(
             {
                 # `provider` stays None: the only vendor-adjacent fields in the

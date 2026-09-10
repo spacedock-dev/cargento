@@ -93,10 +93,10 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
         self.assertIn('data-next-view-body="project"', html)
         self.assertIn('data-next-project-detail="alpha/repo"', html)
-        self.assertIn("data-next-project-main", html)
-        self.assertIn("data-next-project-rail", html)
-        self.assertIn('<div class="next-project-detail-main" data-next-project-main>', html)
-        self.assertNotIn("<main", html)
+        self.assertNotIn("data-next-project-main", html)
+        self.assertNotIn("data-next-project-rail", html)
+        self.assertIn("data-next-cockpit-plan-details", html)
+        self.assertIn("<summary>Show project plan</summary>", html)
         self.assertIn('class="next-project-detail-name">alpha/repo</', html)
         self.assertIn("launch", html)
         self.assertIn("audit", html)
@@ -152,8 +152,12 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("blocked on you", pending)
         self.assertNotIn("stalled", pending)
 
-    def test_the_header_estimate_is_withheld_and_the_unhealthy_entity_count_is_real(self) -> None:
+    def test_now_plan_status_withholds_estimates_and_counts_unhealthy_entities(self) -> None:
+        # Given: the shared project has two unhealthy entities across its plans.
+        # When: render the default Now cockpit.
         html = self.render()
+
+        # Then
         assert isinstance(html, str)
         status = re.search(r'<div class="next-project-detail-status"[\s\S]*?</div>', html)
 
@@ -163,6 +167,10 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             "2 entities unhealthy — <span data-next-withheld>estimate withheld",
             status_html,
         )
+        self.assertIn("no estimate left", status_html)
+        self.assertIn("no confidence", status_html)
+        self.assertEqual(1, html.count('class="next-project-detail-status"'))
+        self.assertGreater(html.index(status_html), html.index('data-next-cockpit-panel="now"'))
 
     def test_the_unhealthy_entity_label_uses_the_singular(self) -> None:
         html = self.render(
@@ -227,13 +235,64 @@ console.log(JSON.stringify({fresh, stale, older, floor: NEXT_PROJECT_STALLED_SEC
         self.assertNotIn("in review", plans)
         self.assertNotIn("failed", plans)
 
-    def test_workflow_region_requires_positive_spacedock_evidence(self) -> None:
+    def test_project_discovery_renders_two_workflows_without_session_attachment_metadata(
+        self,
+    ) -> None:
+        # Given: a plain session has no attachment metadata and discovery returns two workflows.
         checks = """
+await __settle();
+await __settle();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+
+        fixture = """
+location.hash = "#n=project:plain%2Frepo";
+__els.app = {innerHTML: ""};
+const dashboard = {
+  generated: 10000, rate_window_sec: 600, window_hours: 24,
+  summary: {working: 0, needs_input: 0}, harnesses: [], sessions: [
+    {sid: "plain", harness: "codex", project: "plain/repo", project_key: "git:plain",
+     state: "idle", active: true, spacedock: null, subagents: []}
+  ]
+};
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context") ? {
+    workflow_discovery: {state: "observed", source: "spacedock status --discover", workflows: [
+      {workflow: "dev", goal: "Build safely", stages: ["shaping", "review"]},
+      {workflow: "explore", goal: "Explore safely", stages: ["discovery", "shaping"]}
+    ]}, semantic: {facts: [], work_items: [], projections: {}}
+  } : dashboard});
+"""
+
+        # When: render the project and settle workflow discovery.
+        html = self._run_page_js(
+            checks,
+            fixture,
+        )
+
+        # Then
+        assert isinstance(html, str)
+
+        self.assertEqual(2, html.count("data-next-workflow-definition="))
+        self.assertIn('data-next-workflow-definition="dev"', html)
+        self.assertIn('data-next-workflow-definition="explore"', html)
+        self.assertIn("Build safely", html)
+        self.assertIn("Explore safely", html)
+        self.assertNotIn("declares no workflow", html)
+        self.assertNotIn("data-next-plan=", html)
+
+    def test_workflow_observation_states_keep_their_sources_distinct(self) -> None:
+        checks = """
+// Given: three projects have distinct attachment and discovery states.
 await __settle();
 const cases = {};
 for(const project of ["plain/repo", "empty/fo", "worker/repo"]){
   nextRoute = {view: "project", project, session: null};
+
+  // When: render each project and settle its context requests.
   renderNext();
+  await __settle();
+  await __settle();
   cases[project] = __els.app.innerHTML;
 }
 console.log(JSON.stringify(cases));
@@ -243,7 +302,7 @@ console.log(JSON.stringify(cases));
             """
 location.hash = "#n=project:plain%2Frepo";
 __els.app = {innerHTML: ""};
-__fetchImpl = async () => ({ok: true, json: async () => ({
+const dashboard = {
   generated: 10000, rate_window_sec: 600, window_hours: 24,
   summary: {working: 0, needs_input: 0}, harnesses: [], sessions: [
     {sid: "plain", project: "plain/repo", state: "idle", spacedock: null, subagents: []},
@@ -252,19 +311,38 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
     {sid: "worker", project: "worker/repo", state: "working",
      spacedock: {role: "ensign", workflows: []}, subagents: []}
   ]
-})});
+};
+const contexts = {
+  "plain/repo": {workflow_discovery: {state: "none", workflows: []},
+    semantic: {facts: [], work_items: [], projections: {}}},
+  "empty/fo": {workflow_discovery: {state: "unavailable", reason: "project root unavailable", workflows: []},
+    semantic: {facts: [], work_items: [], projections: {}}},
+  "worker/repo": {workflow_discovery: {state: "error", reason: "discovery timed out", workflows: []},
+    semantic: {facts: [], work_items: [{kind: "workflow_item"}], projections: {}}}
+};
+__fetchImpl = async url => ({ok: true, json: async () => {
+  const value = String(url);
+  if(!value.startsWith("/api/project-context")) return dashboard;
+  const project = decodeURIComponent((value.match(/[?&]project=([^&]+)/) || [])[1] || "");
+  return contexts[project];
+}});
 """,
         )
+
+        # Then
         assert isinstance(out, dict)
 
-        self.assertNotIn('data-next-project-section="plan"', out["plain/repo"])
-        self.assertNotIn("Workflow source unavailable", out["plain/repo"])
-        self.assertIn('data-next-project-section="plan"', out["empty/fo"])
-        self.assertIn('data-next-project-section="plan"', out["worker/repo"])
-        self.assertIn("nothing is fresh enough to show", out["empty/fo"])
-        self.assertIn("plan lives with its first officer", out["worker/repo"])
+        self.assertNotIn("no commissioned workflow directories", out["plain/repo"])
+        self.assertIn("first-officer attachment", out["empty/fo"])
+        self.assertIn("project root unavailable", out["empty/fo"])
+        self.assertIn("semantic timeline", out["worker/repo"])
+        self.assertIn("discovery timed out", out["worker/repo"])
+        self.assertNotIn("Show project plan", out["plain/repo"])
+        self.assertIn("Show project plan", out["empty/fo"])
+        self.assertIn("Show project plan", out["worker/repo"])
         for html in out.values():
             self.assertNotIn("data-next-plan=", html)
+            self.assertNotIn("declares no workflow", html)
             self.assertNotIn("unhealthy", html)
             self.assertNotIn("next-project-detail-divider", html)
 
@@ -290,14 +368,20 @@ class NextProjectV2Test(NextPageJsHarness):
         out = self._run_page_js(
             V2_MODEL_FIXTURE
             + """
+// Given: the V2 project identity has retained raw plan records without a raw label.
 nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
-nextProjectRail = () => "";
+// Retain the raw-record adapter assertion while the cockpit owns composition.
+nextProjectCockpit = context => nextProjectPlanBlock(context) + nextProjectDone(context);
 nextData = {generated: 10000, sessions: [{sid: "live", harness: "codex", total: 3, done: 2,
   spacedock: {role: "first-officer", workflows: [{workflow: "Retained plan", goal: "Keep the plan", stages: [], entities: []}]}
 }]};
+
+// When: render the project through the retained plan adapter.
 console.log(JSON.stringify(nextProjectView("alpha/repo")));
 """
         )
+
+        # Then
         assert isinstance(out, str)
         self.assertIn("Retained plan", out)
         self.assertIn("2 of 3 done", out)
@@ -336,9 +420,8 @@ console.log(JSON.stringify({goal: nextProjectGoal(v2Project), changes: nextProje
             V2_MODEL_FIXTURE
             + """
 nextObserved = () => ({...v2Model, sessions: [], totals: {running: 0, subagents: 0}});
-nextProjectRail = context => '<div data-rail-project="' + context.project.key + '">rail</div>';
 nextData = {generated: 10000, sessions: []};
-nextRoute = {view: "project", project: "alpha/repo", session: null};
+nextRoute = {view: "project", project: "alpha/repo", session: null, tab: "course"};
 __els.app = {innerHTML: ""};
 nextWorkstreamCollapsed = false;
 renderNext();
@@ -358,7 +441,7 @@ console.log(JSON.stringify({open, closed, reopened: __els.app.innerHTML}));
             self.assertIn("Exact location not published", html)
             self.assertIn("1 of 1 sessions publish no goal.", html)
             self.assertIn("no state changes observed in the last 3m", html)
-            self.assertIn('data-rail-project="alpha/repo"', html)
+            self.assertIn('data-next-cockpit-panel="course"', html)
         self.assertIn('aria-expanded="true"', out["open"])
         self.assertIn('aria-expanded="false"', out["closed"])
         self.assertNotIn('class="next-workstream-empty"', out["closed"])

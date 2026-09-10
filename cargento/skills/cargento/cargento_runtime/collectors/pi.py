@@ -560,8 +560,10 @@ def collect(
         elif fresh:
             session_state = "working"
             state_detail = sessions.working_detail(info, [])
-        project = sessions.project_from_cwd(config, meta.get("cwd") or "") or "pi"
+        cwd = str(meta.get("cwd") or "")
+        project = sessions.project_from_cwd(config, cwd) or "pi"
         session = sessions.base_session("pi", sid, project)
+        sessions.apply_project_identity(config, session, cwd)
         session.update(
             {
                 "title": (info or {}).get("title"),

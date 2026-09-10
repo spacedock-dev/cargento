@@ -22,7 +22,7 @@ const nextAttentionExpandedSections = new Set();
 
    The list is closed, so an attribute the page never wrote cannot grow the
    set -- the same guard the section keys beside it get. */
-const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "session-source-coverage"];
+const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "session-source-coverage", "more"];
 const nextOpenDisclosures = new Set();
 
 function nextDisclosureAttr(key, open){
@@ -87,15 +87,18 @@ function nextFocusKey(app, active){
   return "";
 }
 
-function nextFocusNamed(app, key, options){
+function nextFocusNamed(app, key, options, input){
   for(const target of app.querySelectorAll("[data-next-focus]")){
     if(String(target.dataset && target.dataset.nextFocus || "") !== key) continue;
     if(typeof target.focus !== "function") return false;
     target.focus(options);
-    // A draft input carries an offset as well as an identity. The lane's other
-    // two elements are `<summary>`, where there is nothing to place, so this is
-    // a no-op for them.
-    nextControlsApplyCaret(target);
+    if(input && typeof target.setSelectionRange === "function"){
+      target.setSelectionRange(input.start, input.end);
+      target.scrollTop = input.top;
+      target.scrollLeft = input.left;
+    }else{
+      nextControlsApplyCaret(target);
+    }
     return true;
   }
   return false;
@@ -122,7 +125,13 @@ function nextCaptureFocus(){
   // of it, so a control whose row has ended still falls back to the row's own
   // restoration. See [reader state](docs/design-reader-state.md#the-inventory).
   const control = nextRowControlKey(app, active);
-  if(named) return control ? {named, control, ...viewport} : {named, ...viewport};
+  if(named){
+    const input = typeof active.selectionStart === "number" ? {
+      start:active.selectionStart, end:active.selectionEnd,
+      top:active.scrollTop || 0, left:active.scrollLeft || 0,
+    } : null;
+    return control ? {named, control, input, ...viewport} : {named, input, ...viewport};
+  }
   for(const session of app.querySelectorAll("[data-next-session]")){
     if(typeof session.contains !== "function" || !session.contains(active)) continue;
     const sid = String(session.dataset && session.dataset.nextSession || "");
@@ -145,6 +154,39 @@ function nextCaptureFocus(){
   return control ? {control, ...viewport} : null;
 }
 
+function nextCaptureInputState(app){
+  const inputs = new Map();
+  if(typeof app.querySelectorAll !== "function") return inputs;
+  for(const input of app.querySelectorAll("[data-next-focus]")){
+    if(typeof input.selectionStart !== "number") continue;
+    inputs.set(String(input.dataset.nextFocus), {
+      start:input.selectionStart, end:input.selectionEnd,
+      top:input.scrollTop || 0, left:input.scrollLeft || 0,
+      height:input.style && input.style.height || "",
+      width:input.style && input.style.width || "",
+      focused:input === document.activeElement,
+    });
+  }
+  return inputs;
+}
+
+function nextRestoreInputState(app, inputs){
+  if(typeof app.querySelectorAll !== "function") return;
+  for(const input of app.querySelectorAll("[data-next-focus]")){
+    const state = inputs.get(String(input.dataset.nextFocus));
+    if(!state) continue;
+    if(input.style){
+      input.style.height = state.height;
+      input.style.width = state.width;
+    }
+    if(!state.focused && typeof input.setSelectionRange === "function"){
+      input.setSelectionRange(state.start, state.end);
+    }
+    input.scrollTop = state.top;
+    input.scrollLeft = state.left;
+  }
+}
+
 function nextRestoreFocus(snapshot, model){
   if(!snapshot) return;
   const app = document.getElementById("app");
@@ -154,7 +196,7 @@ function nextRestoreFocus(snapshot, model){
   // revision — and the live lane raises one whenever anything on the machine
   // moves. See [reader state](docs/design-reader-state.md#the-inventory).
   const options = {preventScroll: snapshot.preventScroll === true};
-  if(snapshot.named && nextFocusNamed(app, snapshot.named, options)) return;
+  if(snapshot.named && nextFocusNamed(app, snapshot.named, options, snapshot.input)) return;
   if(snapshot.control && nextFocusRowControl(app, snapshot.control, options)) return;
   if(snapshot.session){
     for(const session of app.querySelectorAll("[data-next-session]")){
@@ -587,6 +629,8 @@ function nextHistoryResetNotice(){
 function renderNext(focus = nextCaptureFocus()){
   const app = document.getElementById("app");
   if(!app) return;
+  const inputs = nextCaptureInputState(app);
+  nextCockpitBeforeRender();
   // Before the assignment below discards the DOM, which is the ordering rule in
   // docs/design-reader-state.md and the reason a draft is read first: it is the
   // one lane that cannot be rebuilt from a key.
@@ -602,15 +646,28 @@ function renderNext(focus = nextCaptureFocus()){
   const notification = nextNotifyControl(nextData);
   const stalled = nextRefreshNotice() + nextHistoryResetNotice();
   const breadcrumb = nextBreadcrumb();
+  const running = `${nextStatusDot("live")} ${counts.running} running` +
+    ` · ${counts.subagents} ${subagentLabel}`;
+  const projectDetail = nextRoute.view === "project";
+  const utility = projectDetail && typeof nextCockpitUtilityMenuItems === "function"
+    ? nextCockpitUtilityMenuItems() : "";
   app.innerHTML = '<header class="next-header">' +
     '<div class="next-header-left">' +
     nextPrimaryNavigation() +
     "</div>" +
     '<div class="next-header-right">' +
-    `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} ${subagentLabel}</span>` +
-    gate + notification + "</div></header>" +
+    (projectDetail ? "" : `<span class="next-running next-live">${running}</span>`) +
+    gate + notification +
+    (projectDetail ? '<details class="next-menu"' + nextDisclosureAttr("more", nextOpenDisclosures) +
+      '><summary aria-label="More" data-next-disclosure="more" data-next-focus="more">···</summary>' +
+      '<div class="next-menu-items">' +
+      `<span class="next-menu-status">All projects · ${counts.running} running · ${counts.subagents} ${subagentLabel}</span>` +
+      `${utility}</div></details>` : "") +
+    "</div></header>" +
     (breadcrumb ? `<nav class="next-breadcrumb" aria-label="Breadcrumb">${breadcrumb}</nav>` : "") +
     stalled + nextViewBody(counts);
+  nextCockpitAfterRender();
+  nextRestoreInputState(app, inputs);
   nextAttentionStatus(app);
   nextRestoreFocus(focus, nextAttention);
   nextRenderObserved = null;
@@ -720,6 +777,7 @@ document.addEventListener("keydown", event => {
     return;
   }
   if(nextControlsHandleKeydown(event)) return;
+  if(nextCockpitHandleKeydown(event)) return;
   if(nextWorkstreamToggleTarget(event) && ["Enter", " ", "Spacebar"].includes(event.key)){
     event.preventDefault();
     nextWorkstreamToggle();

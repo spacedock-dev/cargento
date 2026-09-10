@@ -123,7 +123,10 @@ console.log(JSON.stringify(__els.app.innerHTML));
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextDelegationBehaviorTest(NextPageJsHarness):
     FIXTURE = """
-location.hash = "#n=project:alpha%2Frepo";
+// The cockpit fold is a later session; exercise v2's measured rail directly.
+nextProjectView = project => nextCurrentObserved().projects.some(item => item.key === project)
+  ? nextProjectRail({group: {label: project}}) : "";
+location.hash = "#n=project:alpha%2Frepo:console";
 __els.app = {innerHTML: ""};
 let __delegationPayload = {
   generated: 1000,

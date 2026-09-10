@@ -47,6 +47,12 @@ The terminal raise is recorded only on the platform the case was measured on, so
 
 Notification delivery is best-effort by design, on every platform. The exit criterion is graceful degradation plus a reported delivery status, not a guarantee: browser notifications need the user's permission and an open tab, `notify-send` needs a graphical user D-Bus session, and a Windows toast needs an interactive session (and, from WSL, enabled interop). A backend that cannot deliver must no-op quietly, never raise.
 
+The operator-cockpit prototype's terminal registration is unsupported on native Windows. Its
+tmux bridge consumes registration capabilities only after POSIX ownership, mode and no-follow
+checks; Windows cannot pass those checks. The registration client reports this platform
+restriction. Shutdown can still remove its own registration file on every platform: a separate
+bounded regular-file read compares the server generation without trusting any capabilities.
+
 Verified by hand: on macOS, a `--daemon` server delivers the native notification with no browser tab
 open at all, since the double-fork keeps the daemon in the user's own login session rather than
 moving it to a new one, which is the main reason daemon mode is worth having. That confirms `osascript`

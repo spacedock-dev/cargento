@@ -42,11 +42,15 @@ DECLARED_SESSION_FIELDS = frozenset(
         "sid",
         "harness",
         "project",
+        "project_key",
+        "project_name",
+        "project_identity_source",
         "provider",
         "model",
         "consumption",
         "title",
         "last_prompt",
+        "last_output",
         "instruction",
         "state",
         "state_detail",
@@ -71,6 +75,8 @@ DECLARED_SESSION_FIELDS = frozenset(
         "loop",
         "resume_id",
         "subagents",
+        "subagent_hierarchy",
+        "subagent_events",
         "tasks",
         "spacedock",
         "source_gaps",
@@ -88,6 +94,33 @@ DECLARED_SESSION_FIELDS = frozenset(
 
 
 class CargentoServerTest(RuntimeTestCase):
+    def test_git_identity_collapses_main_and_worktree_without_basename_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = root / "one" / "cargento"
+            worktree = root / "worktrees" / "feature"
+            unrelated = root / "two" / "cargento"
+            (main / ".git" / "worktrees" / "feature").mkdir(parents=True)
+            (worktree / "src").mkdir(parents=True)
+            unrelated.joinpath(".git").mkdir(parents=True)
+            worktree.joinpath(".git").write_text(
+                f"gitdir: {main / '.git' / 'worktrees' / 'feature'}\n",
+                encoding="utf-8",
+            )
+            (main / ".git" / "worktrees" / "feature" / "commondir").write_text(
+                "../..\n", encoding="utf-8"
+            )
+            config = make_config()
+
+            main_identity = runtime_sessions.project_identity(config, str(main))
+            worktree_identity = runtime_sessions.project_identity(config, str(worktree / "src"))
+            unrelated_identity = runtime_sessions.project_identity(config, str(unrelated))
+
+        self.assertEqual(main_identity, worktree_identity)
+        self.assertEqual("cargento", main_identity["name"])
+        self.assertNotEqual(main_identity["key"], unrelated_identity["key"])
+        self.assertEqual("cargento", unrelated_identity["name"])
+
     def test_large_transcript_recovers_turn_start_before_bounded_tail(self) -> None:
         prompt_time = "2026-01-01T00:00:00Z"
         prompt = {

@@ -192,6 +192,7 @@ def _collect_db(
                     r["id"],
                     sessions.project_from_cwd(config, r["working_dir"] or "") or "goose",
                 )
+                sessions.apply_project_identity(config, s, str(r["working_dir"] or ""))
                 s.update(
                     {
                         "title": records.redact_clip(

@@ -31,6 +31,7 @@ class CodexCollectorTest(RuntimeTestCase):
             "type": "session_meta",
             "payload": {
                 "id": "child-thread",
+                "session_id": "root-session",
                 "thread_source": "subagent",
                 "agent_nickname": "reviewer",
                 "source": {"subagent": {"thread_spawn": {"parent_thread_id": "parent-thread"}}},
@@ -43,8 +44,10 @@ class CodexCollectorTest(RuntimeTestCase):
             meta = runtime_transcripts.codex_meta(config, state, str(path))
 
         self.assertTrue(meta["subagent"])
-        self.assertEqual("child-thread", meta["session_id"])
+        self.assertEqual("root-session", meta["session_id"])
+        self.assertEqual("child-thread", meta["thread_id"])
         self.assertEqual("parent-thread", meta["parent_session_id"])
+        self.assertIsNone(meta["agent_path"])
 
     def test_codex_subagent_usage_is_added_after_own_start_boundary(self) -> None:
         now = time.time()
@@ -131,6 +134,346 @@ class CodexCollectorTest(RuntimeTestCase):
         )
         self.assertEqual(runtime_records.parse_ts(timestamp(-10)), sessions[0]["started_at"])
         self.assertIsNone(sessions[0]["model"])
+
+    def test_completed_or_interrupted_child_clears_before_freshness_expires(self) -> None:
+        now = time.time()
+        parent_id = "33333333-3333-3333-3333-333333333333"
+
+        def event(kind: str, offset: float) -> dict[str, Any]:
+            return {
+                "type": "event_msg",
+                "timestamp": datetime.fromtimestamp(now + offset, UTC).isoformat(),
+                "payload": {"type": kind, "started_at": now + offset},
+            }
+
+        def write(path: Path, entries: list[dict[str, Any]], mtime: float) -> None:
+            path.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
+            os.utime(path, (mtime, mtime))
+
+        for terminal in ("task_complete", "turn_aborted"):
+            with self.subTest(terminal=terminal), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "2026" / "01" / "01"
+                root.mkdir(parents=True)
+                write(
+                    root / "rollout-parent.jsonl",
+                    [
+                        {"type": "session_meta", "payload": {"id": parent_id, "cwd": "/tmp/p"}},
+                        event("task_started", -30),
+                    ],
+                    now - 10,
+                )
+                write(
+                    root / "rollout-child.jsonl",
+                    [
+                        {
+                            "type": "session_meta",
+                            "payload": {
+                                "id": "child",
+                                "thread_source": "subagent",
+                                "agent_nickname": "canary",
+                                "source": {
+                                    "subagent": {"thread_spawn": {"parent_thread_id": parent_id}}
+                                },
+                            },
+                        },
+                        event("task_started", -20),
+                        event(terminal, -2),
+                    ],
+                    now,
+                )
+                with store_patch(CODEX_SESSIONS_DIR=tmp):
+                    config, state = runtime()
+                    (session,) = codex_collector.collect(config, state, now, 24, False)
+
+                self.assertEqual([], session["subagents"])
+                self.assertNotIn("subagent", session["state_detail"])
+                self.assertEqual(now, session["last_activity"])
+
+    def test_final_answer_and_task_complete_awaits_with_bounded_last_output(self) -> None:
+        now = time.time()
+        sid = "33333333-3333-3333-3333-333333333334"
+        answer = "Ready for review.\n\n`<checkpoint>` is preserved."
+        entries = [
+            {"type": "session_meta", "payload": {"id": sid, "cwd": "/tmp/project"}},
+            _task_started(now - 20),
+            {
+                "timestamp": _stamp(now - 10),
+                "type": "response_item",
+                "payload": {"type": "function_call", "name": "exec"},
+            },
+            {
+                "timestamp": _stamp(now - 2),
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": answer}],
+                },
+            },
+            {
+                "timestamp": _stamp(now - 1),
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026" / "08" / "25" / "rollout-complete.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_text("".join(json.dumps(row) + "\n" for row in entries))
+            os.utime(path, (now, now))
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                (session,) = codex_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual(
+            ("idle", "awaiting your message"), (session["state"], session["state_detail"])
+        )
+        self.assertEqual(answer, session["last_output"])
+
+    def test_task_started_without_terminal_source_remains_working(self) -> None:
+        now = time.time()
+        sid = "33333333-3333-3333-3333-333333333335"
+        entries = [
+            {"type": "session_meta", "payload": {"id": sid, "cwd": "/tmp/project"}},
+            _task_started(now - 20),
+            {
+                "timestamp": _stamp(now - 1),
+                "type": "response_item",
+                "payload": {"type": "function_call", "name": "bash"},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026" / "08" / "25" / "rollout-open.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_text("".join(json.dumps(row) + "\n" for row in entries))
+            os.utime(path, (now, now))
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                (session,) = codex_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual(("working", "running bash"), (session["state"], session["state_detail"]))
+        self.assertIsNone(session["last_output"])
+
+    def test_nested_child_attaches_to_top_level_and_retires_on_completion(self) -> None:
+        now = time.time()
+        root_id = "33333333-3333-3333-3333-333333333333"
+        worker_id = "44444444-4444-4444-4444-444444444444"
+
+        def event(kind: str, offset: float) -> dict[str, Any]:
+            return {
+                "type": "event_msg",
+                "timestamp": datetime.fromtimestamp(now + offset, UTC).isoformat(),
+                "payload": {"type": kind, "started_at": now + offset},
+            }
+
+        def meta(sid: str, parent: str | None = None, name: str | None = None) -> dict[str, Any]:
+            payload: dict[str, Any] = {"id": sid, "cwd": "/tmp/project"}
+            if parent is not None:
+                payload.update(
+                    {
+                        "session_id": root_id,
+                        "thread_source": "subagent",
+                        "agent_nickname": name,
+                        "source": {
+                            "subagent": {
+                                "thread_spawn": {
+                                    "parent_thread_id": parent,
+                                    "agent_path": f"/root/{str(name).casefold()}",
+                                }
+                            }
+                        },
+                    }
+                )
+            return {"type": "session_meta", "payload": payload}
+
+        def collect_with_nested(terminal: bool) -> dict[str, Any]:
+            def write(root: Path, name: str, entries: list[dict[str, Any]]) -> None:
+                path = root / name
+                path.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
+                os.utime(path, (now, now))
+
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "2026" / "01" / "01"
+                root.mkdir(parents=True)
+                write(root, "rollout-root.jsonl", [meta(root_id), event("task_started", -40)])
+                write(
+                    root,
+                    "rollout-worker.jsonl",
+                    [meta(worker_id, root_id, "Volta"), event("task_started", -30)],
+                )
+                nested = [meta("nested", worker_id, "Turing"), event("task_started", -20)]
+                if terminal:
+                    nested.append(event("task_complete", -1))
+                write(root, "rollout-nested.jsonl", nested)
+                with store_patch(CODEX_SESSIONS_DIR=tmp):
+                    config, state = runtime()
+                    (session,) = codex_collector.collect(config, state, now, 24, False)
+            return session
+
+        running = collect_with_nested(False)
+        self.assertEqual({"Volta", "Turing"}, {a["name"] for a in running["subagents"]})
+        self.assertEqual("running 2 subagents", running["state_detail"])
+        worker_started = datetime.fromisoformat(
+            datetime.fromtimestamp(now - 30, UTC).isoformat()
+        ).timestamp()
+        nested_started = datetime.fromisoformat(
+            datetime.fromtimestamp(now - 20, UTC).isoformat()
+        ).timestamp()
+        self.assertEqual(
+            [
+                {
+                    "name": "Volta",
+                    "model": None,
+                    "started_at": worker_started,
+                    "depth": 1,
+                    "parent_name": None,
+                    "assignment": None,
+                    "assignment_status": "unavailable",
+                    "observer_sid": worker_id,
+                },
+                {
+                    "name": "Turing",
+                    "model": None,
+                    "started_at": nested_started,
+                    "depth": 2,
+                    "parent_name": "Volta",
+                    "assignment": None,
+                    "assignment_status": "unavailable",
+                    "observer_sid": "nested",
+                },
+            ],
+            running["subagent_hierarchy"],
+        )
+        self.assertEqual(
+            ["subagent_task_started", "subagent_task_started"],
+            [event["kind"] for event in running["subagent_events"]],
+        )
+
+        completed = collect_with_nested(True)
+        self.assertEqual(["Volta"], [a["name"] for a in completed["subagents"]])
+        self.assertEqual("running 1 subagent", completed["state_detail"])
+        self.assertEqual(["Volta"], [a["name"] for a in completed["subagent_hierarchy"]])
+        self.assertEqual(
+            ["subagent_task_started", "subagent_task_started", "subagent_complete"],
+            [event["kind"] for event in completed["subagent_events"]],
+        )
+        terminal = completed["subagent_events"][-1]
+        self.assertEqual("Turing", terminal["name"])
+        self.assertEqual("Volta", terminal["parent_name"])
+        self.assertEqual(2, terminal["depth"])
+        self.assertEqual("Codex child rollout lifecycle", terminal["source"])
+
+    def test_live_child_assignment_requires_latest_exact_plaintext_parent_call(self) -> None:
+        now = time.time()
+        root_id = "55555555-5555-5555-5555-555555555555"
+
+        def event(kind: str) -> dict[str, Any]:
+            return {
+                "type": "event_msg",
+                "timestamp": datetime.fromtimestamp(now - 1, UTC).isoformat(),
+                "payload": {"type": kind, "started_at": now - 1},
+            }
+
+        def call(message: str) -> dict[str, Any]:
+            return {
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "arguments": json.dumps(
+                        {
+                            "task_name": "roster_worker",
+                            "message": message,
+                        }
+                    ),
+                },
+            }
+
+        def collect_with(
+            message: str,
+            *,
+            artifact_lines: tuple[str, ...] = (),
+            agent_path: str = "/root/roster_worker",
+        ) -> dict[str, Any]:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "2026" / "01" / "01"
+                root.mkdir(parents=True)
+                parent = root / "rollout-parent.jsonl"
+                child = root / "rollout-child.jsonl"
+                parent.write_text(
+                    "".join(
+                        json.dumps(row) + "\n"
+                        for row in [
+                            {"type": "session_meta", "payload": {"id": root_id, "cwd": "/tmp/p"}},
+                            call(message),
+                            event("task_started"),
+                        ]
+                    )
+                )
+                child.write_text(
+                    "".join(
+                        json.dumps(row) + "\n"
+                        for row in [
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "child",
+                                    "session_id": root_id,
+                                    "thread_source": "subagent",
+                                    "agent_nickname": "Volta",
+                                    "source": {
+                                        "subagent": {
+                                            "thread_spawn": {
+                                                "parent_thread_id": root_id,
+                                                "agent_path": agent_path,
+                                            }
+                                        }
+                                    },
+                                },
+                            },
+                            event("task_started"),
+                        ]
+                    )
+                )
+                os.utime(parent, (now, now))
+                os.utime(child, (now, now))
+                with (
+                    store_patch(CODEX_SESSIONS_DIR=tmp),
+                    mock.patch.object(
+                        runtime_io,
+                        "iter_bounded_text_lines",
+                        return_value=iter(artifact_lines),
+                    ),
+                ):
+                    config, state = runtime()
+                    (session,) = codex_collector.collect(config, state, now, 24, False)
+            row = session["subagent_hierarchy"][0]
+            self.assertIsInstance(row, dict)
+            return dict(row)
+
+        visible = collect_with("Make subagent and ensign assignments visible. Preserve evidence.")
+        unavailable = collect_with("gAAAA-encrypted")
+        recovered = collect_with(
+            "gAAAA-encrypted",
+            artifact_lines=(
+                "You are working on: Project cockpit and remembered goal\n",
+                "Stage: shaping\n",
+                "spacedock dispatch show-stage-def --workflow-dir /repo/.spacedock/explore --stage shaping\n",
+            ),
+            agent_path="/root/spacedock_ensign_project_cockpit_shaping_cycle2",
+        )
+        self.assertEqual("Make subagent and ensign assignments visible", visible["assignment"])
+        self.assertEqual("exact parent dispatch", visible["assignment_status"])
+        self.assertIsNone(unavailable["assignment"])
+        self.assertEqual("unavailable", unavailable["assignment_status"])
+        self.assertEqual("Project cockpit and remembered goal", recovered["assignment"])
+        self.assertEqual("structured dispatch artifact", recovered["assignment_status"])
+        self.assertEqual("project-cockpit", recovered["workflow_entity"])
+        self.assertEqual("shaping", recovered["workflow_stage"])
+        self.assertEqual(
+            os.path.realpath("/repo/.spacedock/explore"), recovered["workflow_binding"]
+        )
 
     def test_codex_meta_tolerates_malformed_payload_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

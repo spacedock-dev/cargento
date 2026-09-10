@@ -50,6 +50,9 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── history.py          # the local history of what was observed, a leaf over config
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
+        │   ├── interaction_prototype.py # optional registered-session terminal output
+        │   ├── project_context.py   # prototype project evidence and semantic projections
+        │   ├── semantic_history.py  # prototype semantic event history
         │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown

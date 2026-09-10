@@ -23,6 +23,7 @@ from cargento_runtime import (
     observation,
 )
 from cargento_runtime import config as runtime_config
+from cargento_runtime import interaction_prototype as runtime_interaction
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
 from cargento_runtime.web import page as frontend_page
@@ -43,6 +44,52 @@ JSON at /api/data.
 """
 
 LAUNCHER_PATH = Path(__file__).resolve().parents[1] / "server.py"
+
+
+def collected_session_ids(application: aggregate.Application) -> frozenset[str]:
+    """Freeze collected identities before registration can cause effects."""
+    _revision, body = application.collect_json(show_all=True)
+    try:
+        payload = json.loads(body)
+    except (ValueError, json.JSONDecodeError):
+        return frozenset()
+    rows = payload.get("sessions") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return frozenset()
+    return frozenset(
+        f"{row['harness']}:{row['sid']}"
+        for row in rows
+        if isinstance(row, dict)
+        and isinstance(row.get("harness"), str)
+        and isinstance(row.get("sid"), str)
+    )
+
+
+def build_server(
+    address: tuple[str, int],
+    application: aggregate.Application,
+    page_bytes: bytes,
+    coordinator: observation.Observation | None,
+    *,
+    interaction_session: str | None,
+    interaction_registration_file: Path | None,
+) -> http_api.CargentoHTTPServer:
+    """Attach the opt-in collected-session origin without changing normal serving."""
+    prototype = None
+    if interaction_session is not None:
+        known_sessions = collected_session_ids(application)
+        prototype = runtime_interaction.InteractionPrototype(
+            collected_session_id=interaction_session,
+            session_exists=known_sessions.__contains__,
+            registration_file=interaction_registration_file,
+        )
+    return http_api.CargentoHTTPServer(
+        address,
+        application,
+        page_bytes,
+        coordinator,
+        interaction_prototype=prototype,
+    )
 
 
 def runtime_environ(home: str | None = None) -> dict[str, str]:
@@ -149,6 +196,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="report where each harness's data is searched for, and exit",
     )
+    parser.add_argument(
+        "--observer-model",
+        action="store_true",
+        help="offer model goal summaries; requires disclosure consent on refresh",
+    )
+    parser.add_argument(
+        "--no-observer-model",
+        "--no-harness-usage",
+        action="store_true",
+        help="refuse observer model calls for this run, overriding --observer-model",
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
     parser.add_argument(
         "--no-spacedock",
@@ -251,6 +309,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="sessions with no activity in this window are hidden (default 24)",
     )
     parser.add_argument(
+        "--interaction-origin-session",
+        help="bind one explicitly registered collected harness:sid to read-only output",
+    )
+    parser.add_argument(
+        "--interaction-origin-registration-file",
+        type=Path,
+        help="write the one-use session-side tmux registration capability here",
+    )
+    parser.add_argument(
         "--history-days",
         type=positive_float,
         default=runtime_config.HISTORY_RETENTION_DEFAULT_DAYS,
@@ -296,6 +363,7 @@ def build_runtime(
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
         usage_fetch_enabled=not args.no_usage,
+        observer_model_enabled=args.observer_model and not args.no_observer_model,
         git_probe_enabled=not args.no_git,
         focus_enabled=not args.no_focus,
         dismissals_enabled=not args.no_dismiss,
@@ -365,6 +433,15 @@ def load_frontend_page() -> bytes | None:
             file=sys.stderr,
         )
         return None
+
+
+def validate_interaction_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject a partial collected-session registration boundary."""
+    if bool(args.interaction_origin_session) != bool(args.interaction_origin_registration_file):
+        parser.error(
+            "--interaction-origin-session and --interaction-origin-registration-file "
+            "must be used together"
+        )
 
 
 FOCUS_META_NAME = "cargento-focus"
@@ -474,6 +551,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Each of those four exits without serving, so --daemon cannot apply.
         # Accepting it silently would teach that it had been honored.
         parser.error("--daemon cannot be combined with --diagnose, --stop, --status or --forget")
+    validate_interaction_args(parser, args)
     config, state = build_runtime(args, started=started)
 
     one_shot = run_one_shot(args, config, state)
@@ -535,11 +613,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             # coordinator to mint one, which is the second off switch the focus
             # contract names.
             page_bytes = inject_focus_capability(page_bytes, coordinator.focus_capability())
-        server = http_api.CargentoHTTPServer(
+        server = build_server(
             (args.host, args.port),
             application,
             page_bytes,
             coordinator,
+            interaction_session=args.interaction_origin_session,
+            interaction_registration_file=args.interaction_origin_registration_file,
         )
     except OSError as exc:
         runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)

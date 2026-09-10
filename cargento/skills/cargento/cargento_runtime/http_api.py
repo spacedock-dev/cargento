@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import errno
+import hashlib
 import ipaddress
 import json
 import os
+import select
 import socket
 import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import ParseResult, parse_qs, urlparse
 
@@ -20,12 +24,38 @@ from cargento_runtime import dismissals, notifications, quota, records
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
+from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
+_WEBSOCKET_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
 if TYPE_CHECKING:
     from cargento_runtime.aggregate import Application
+    from cargento_runtime.interaction_prototype import InteractionPrototype
     from cargento_runtime.observation import Observation
+
+
+def _websocket_accept(value: str) -> str | None:
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except ValueError:
+        return None
+    if len(raw) != 16:
+        return None
+    digest = hashlib.sha1(value.encode("ascii") + _WEBSOCKET_GUID, usedforsecurity=False).digest()
+    return base64.b64encode(digest).decode("ascii")
+
+
+def _websocket_frame(opcode: int, payload: bytes) -> bytes:
+    length = len(payload)
+    if length < 126:
+        header = bytes((0x80 | opcode, length))
+    elif length <= 65_535:
+        header = bytes((0x80 | opcode, 126)) + length.to_bytes(2, "big")
+    else:
+        header = bytes((0x80 | opcode, 127)) + length.to_bytes(8, "big")
+    return header + payload
 
 
 def normalize_host(value: str) -> str:
@@ -109,6 +139,8 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         application: Application,
         page_bytes: bytes,
         observation: Observation | None = None,
+        *,
+        interaction_prototype: InteractionPrototype | None = None,
     ) -> None:
         self.application = application
         self.page_bytes = page_bytes
@@ -116,6 +148,7 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         # need a page and an application. `serve` reads it to decide whether to
         # run the coordinator or the older periodic producer.
         self.observation = observation
+        self.interaction_prototype = interaction_prototype
         # Instance attribute, set before the bind that reads it: the class
         # default would be sampled from the host os.name at import, which is
         # the ambient read
@@ -127,6 +160,11 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         # (--host 0.0.0.0) rather than a DNS-rebinding probe.
         self.bound_host = address[0]
         super().__init__(address, _RequestHandler)
+
+    def server_close(self) -> None:
+        if self.interaction_prototype is not None:
+            self.interaction_prototype.stop()
+        super().server_close()
 
     def server_bind(self) -> None:
         # Windows-only socket option, and the complement of the reuse policy
@@ -461,6 +499,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # decline the contract promises it.
         with contextlib.suppress(Exception):
             self.server.application.state.asks.decline_all()
+        if self.server.interaction_prototype is not None:
+            with contextlib.suppress(Exception):
+                self.server.interaction_prototype.stop()
         try:
             self._send(b'{"ok":true,"stopping":true}', "application/json")
             with contextlib.suppress(OSError, ValueError):
@@ -479,8 +520,37 @@ class _RequestHandler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/" and "next" not in parse_qs(url.query, keep_blank_values=True):
             self._send(self.server.page_bytes, "text/html; charset=utf-8")
+        elif url.path.startswith("/assets/"):
+            self._interaction_asset(url.path)
         elif not self._get_api(url):
             self.send_error(404)
+
+    def _loopback_resource_ok(self) -> bool:
+        site = (self.headers.get("Sec-Fetch-Site") or "").lower()
+        return (
+            ipaddress.ip_address(self.client_address[0]).is_loopback
+            and site not in {"same-site", "cross-site"}
+            and self._local_ok()
+        )
+
+    def _interaction_asset(self, path: str) -> None:
+        if not self._loopback_resource_ok():
+            self.send_error(403)
+            return
+        asset = {
+            "/assets/xterm.js": ("xterm.js", "text/javascript"),
+            "/assets/xterm.css": ("xterm.css", "text/css"),
+        }.get(path)
+        if self.server.interaction_prototype is None or asset is None:
+            self.send_error(404)
+            return
+        name, content_type = asset
+        try:
+            body = (Path(__file__).parent / "web" / "vendor" / name).read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        self._send(body, content_type)
 
     def _get_api(self, url: ParseResult) -> bool:
         """Route one GET API path, or return False so `do_GET` can 404 it.
@@ -496,6 +566,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._overlays()
         elif url.path == "/api/cleared":
             self._cleared()
+        elif url.path.startswith("/api/interaction/"):
+            self._interaction_get(url)
         elif url.path.startswith("/api/ask/"):
             # Prefix-matched, so it cannot join the exact-match arms above.
             self._ask_poll(url.path[len("/api/ask/") :])
@@ -505,9 +577,143 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._health()
         elif url.path == "/api/observe":
             self._observe(url)
+        elif url.path == "/api/project-context":
+            self._project_context(url)
         else:
             return False
         return True
+
+    def _interaction_get(self, url: ParseResult) -> None:
+        prototype = self.server.interaction_prototype
+        if prototype is None:
+            self.send_error(404)
+            return
+        route = url.path[len("/api/interaction/") :]
+        query = parse_qs(url.query)
+        if route == "origin":
+            self._interaction_origin(prototype, query)
+            return
+        if query:
+            self._reject(400)
+            return
+        if route == "stream":
+            self._interaction_stream(prototype)
+            return
+        handler = {"state": prototype.state, "view": prototype.view}.get(route)
+        if handler is None:
+            self.send_error(404)
+            return
+        result = handler(self.server.server_port)
+        self._send(json.dumps(result, separators=(",", ":")).encode(), "application/json")
+
+    def _interaction_origin(
+        self, prototype: InteractionPrototype, query: dict[str, list[str]]
+    ) -> None:
+        if set(query) != {"harness", "sid"}:
+            self._reject(400)
+            return
+        harness, sid = query["harness"], query["sid"]
+        if len(harness) != 1 or len(sid) != 1 or not harness[0] or not sid[0]:
+            self._reject(400)
+            return
+        result = prototype.resolve_session(self.server.server_port, f"{harness[0]}:{sid[0]}")
+        self._send(json.dumps(result, separators=(",", ":")).encode(), "application/json")
+
+    def _interaction_stream(self, prototype: InteractionPrototype) -> None:
+        """Upgrade one output-only socket; any client frame revokes the connection."""
+        if self.headers.get("Upgrade", "").lower() != "websocket":
+            self._reject(426)
+            return
+        connections = (
+            value.strip() for value in self.headers.get("Connection", "").lower().split(",")
+        )
+        if "upgrade" not in connections or self.headers.get("Sec-WebSocket-Version") != "13":
+            self._reject(400)
+            return
+        accept = _websocket_accept(self.headers.get("Sec-WebSocket-Key", ""))
+        if accept is None:
+            self._reject(400)
+            return
+        self.send_response(101)
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+        self.close_connection = True
+        sequence = 0
+        try:
+            while True:
+                readable, _, _ = select.select([self.connection], [], [], 0)
+                if readable:
+                    self.connection.recv(2)
+                    reason = b"read-only-capability"
+                    payload = (1008).to_bytes(2, "big") + reason
+                    self.connection.sendall(_websocket_frame(8, payload))
+                    break
+                frame = prototype.wait_stream(self.server.server_port, sequence, 0.2)
+                if frame.get("state") != "streamed":
+                    payload = json.dumps(frame, separators=(",", ":")).encode()
+                    self.connection.sendall(_websocket_frame(1, payload))
+                    break
+                next_sequence = frame.get("sequence")
+                if isinstance(next_sequence, int) and next_sequence > sequence:
+                    payload = json.dumps(frame, separators=(",", ":")).encode()
+                    self.connection.sendall(_websocket_frame(1, payload))
+                    sequence = next_sequence
+        except (ConnectionError, OSError, ValueError):
+            pass
+
+    def _project_context(self, url: ParseResult) -> None:
+        """Read the observer and timestamped event sources for one project."""
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        project = parse_qs(url.query).get("project", [""])[0]
+        application = self.server.application
+        if not project or len(project) > application.config.ask_project_cap_chars:
+            self.send_error(400, "a bounded project label is required")
+            return
+        focus_raw = parse_qs(url.query).get("session", [""])[0]
+        focus: tuple[str, str] | None = None
+        if focus_raw:
+            harness, separator, sid = focus_raw.partition(":")
+            if (
+                not separator
+                or not harness
+                or not sid
+                or len(focus_raw) > application.config.ask_project_cap_chars
+            ):
+                self.send_error(400, "a bounded harness:session identity is required")
+                return
+            focus = (harness, sid)
+        refresh = parse_qs(url.query).get("refresh", ["0"])[0] == "1"
+        if refresh and focus is None:
+            self.send_error(400, "observer refresh requires an exact focused session")
+            return
+        _revision, body = application.collect_json(show_all=False)
+        collected = json.loads(body)
+        result = runtime_project_context.collect(
+            application.config,
+            application.state,
+            collected["sessions"],
+            project,
+            now=application.clock(),
+            refresh=refresh,
+            focus=focus,
+            # As with usage=1, the page sends this only after disclosure consent.
+            # Quota consent does not authorize sending transcript content.
+            model_consent=(
+                refresh
+                and parse_qs(url.query).get("observer_model") == ["1"]
+                and not self._is_document_navigation()
+                and self._loopback_resource_ok()
+            ),
+        )
+        self._send(
+            json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
+            "application/json",
+        )
 
     def _data(self, url: ParseResult) -> None:
         query = parse_qs(url.query)
@@ -983,6 +1189,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/events/"):
             self._events(path[len("/api/events/") :])
             return
+        if path.startswith("/api/interaction/"):
+            self._interaction_post(path[len("/api/interaction/") :])
+            return
         # A table rather than a ladder of ifs: every entry is one route to one
         # handler, and the ladder had grown to the point where the last branch
         # carried a whole request body inline while the ones above it did not.
@@ -1000,6 +1209,101 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(404)
             return
         route()
+
+    def _interaction_post(self, route: str) -> None:
+        prototype = self.server.interaction_prototype
+        if prototype is None:
+            self._reject(404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= 8_192:
+            self._reject(413)
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"null")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            body = None
+        if not isinstance(body, dict):
+            self._reject(400)
+            return
+        handler = {
+            "register": self._interaction_register,
+            "renew": self._interaction_renew,
+            "probe-unregistered": self._interaction_probe,
+            "probe-spoofed": self._interaction_probe_spoofed,
+            "control": self._interaction_reject_control,
+            "input": self._interaction_reject_control,
+            "expire": self._interaction_expire,
+            "disconnect": self._interaction_disconnect,
+            "reconnect": self._interaction_reconnect,
+            "reset": self._interaction_reset,
+        }.get(route)
+        if handler is None:
+            self._reject(404)
+            return
+        result = handler(prototype, body)
+        if result is None:
+            self._reject(400)
+            return
+        self._send(json.dumps(result, separators=(",", ":")).encode(), "application/json")
+
+    def _interaction_register(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        if set(body) != {"registration_token", "cargento_session_id", "origin"}:
+            return None
+        token, session_id = body.get("registration_token"), body.get("cargento_session_id")
+        if not isinstance(token, str) or not isinstance(session_id, str):
+            return None
+        return prototype.register(token, session_id, body.get("origin"), now=time.monotonic())
+
+    def _interaction_renew(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        if set(body) != {"origin_id", "lease_token"}:
+            return None
+        origin_id, lease_token = body.get("origin_id"), body.get("lease_token")
+        if not isinstance(origin_id, str) or not isinstance(lease_token, str):
+            return None
+        return prototype.renew(origin_id, lease_token, now=time.monotonic())
+
+    def _interaction_reject_control(
+        self, _prototype: InteractionPrototype, _body: dict[str, Any]
+    ) -> dict[str, str]:
+        return {"state": "refused", "reason": "read-only-capability"}
+
+    def _interaction_probe(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return prototype.probe_unregistered() if not body else None
+
+    def _interaction_probe_spoofed(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return prototype.probe_spoofed() if not body else None
+
+    def _interaction_expire(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return prototype.expire(self.server.server_port) if not body else None
+
+    def _interaction_disconnect(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return prototype.disconnect(self.server.server_port) if not body else None
+
+    def _interaction_reconnect(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return prototype.reconnect(self.server.server_port) if not body else None
+
+    def _interaction_reset(
+        self, prototype: InteractionPrototype, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return prototype.reset(self.server.server_port) if not body else None
 
     def _notify(self) -> None:
         """Claude Code's Notification hook: {"session_id": ..., "message": ..., ...}."""

@@ -753,6 +753,7 @@ class _Chat(NamedTuple):
     mtime: float
     title: str | None
     project: str
+    cwd: str
     model: str | None
     parent_id: str
     type_name: str
@@ -803,6 +804,7 @@ def collect(
                 mtime,
                 title,
                 sessions.project_from_cwd(config, cwd) or "cursor",
+                cwd,
                 model,
                 parent_id,
                 type_name,
@@ -918,6 +920,7 @@ def collect(
             ]
             state_detail = sessions.working_detail(None, running)
         s = sessions.base_session("cursor", chat.sid, chat.project)
+        sessions.apply_project_identity(config, s, chat.cwd)
         s.update(
             {
                 "title": chat.title if active else None,

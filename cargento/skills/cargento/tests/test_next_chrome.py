@@ -1341,6 +1341,7 @@ __els.app = {
             all(
                 selector
                 in {
+                    "details[data-pc-disclosure]",
                     # The row controls are swept by the same fixed selectors the
                     # render and the state stamp use, and the key is compared
                     # against a dataset rather than interpolated into a selector —
@@ -1359,7 +1360,8 @@ __els.app = {
                     "[data-next-draft]",
                 }
                 for selector in out["selectors"]
-            )
+            ),
+            out["selectors"],
         )
 
     def test_focus_on_a_disclosure_summary_survives_a_render(self) -> None:
@@ -1786,6 +1788,36 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
 
+    def test_all_projects_header_counts_observed_children_including_finished_teammates(
+        self,
+    ) -> None:
+        out = self._run_page_js(
+            """
+await __settle();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            """
+location.hash = "#n=project:recce";
+__els.app = {innerHTML: ""};
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {semantic:{projections:{command_attention:[],command_attention_coverage:{
+        state:"complete",scanned:1,total:1,omitted:0,source:"bounded scan"}}}}
+    : ({window_hours:24,summary:{working:1,needs_input:0},
+      harnesses:[{key:"codex",label:"Codex"}],sessions:[{
+        sid:"root",harness:"codex",project:"recce",project_key:"org/recce",
+        state:"working",active:true,last_activity:10,
+        subagents:[{name:"Ohm",active:null},{name:"Finished",active:false}],
+        subagent_hierarchy:[{name:"Ohm",observer_sid:"child-ohm",depth:1}]
+      }]})});
+""",
+        )
+
+        self.assertIn("All projects · 1 running · 2 subagents observed", out)
+        self.assertNotIn("0 subagents", out)
+        self.assertIn('<h1 class="next-project-detail-name">recce</h1>', out)
+        self.assertNotIn("org/recce", out)
+
     def test_the_need_you_pill_opens_the_session_queue(self) -> None:
         out = self._run_page_js(
             """
@@ -2060,7 +2092,10 @@ __fetchImpl = async () => {
         self.assertEqual(2, out["during"]["failures"])
         self.assertEqual(1000, out["during"]["generated"])
         self.assertIn('data-next-action="retry-refresh" disabled', out["during"]["html"])
-        self.assertIn('aria-label="live">●</span> 1 running', out["during"]["html"])
+        self.assertIn(
+            'aria-label="live">●</span> 1 running',
+            out["during"]["html"],
+        )
         self.assertNotIn('data-next-state="stalled"', out["recovered"])
         self.assertIn('aria-label="live">●</span> 2 running', out["recovered"])
         self.assertEqual(0, out["recoveredFailures"])

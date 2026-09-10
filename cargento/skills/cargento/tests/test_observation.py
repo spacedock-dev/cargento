@@ -1973,7 +1973,10 @@ class WiringTest(unittest.TestCase):
                 application: Any,
                 _page: bytes,
                 coordinator: Any = None,
+                *,
+                interaction_prototype: Any = None,
             ) -> None:
+                del interaction_prototype
                 captured["application"] = application
                 captured["coordinator"] = coordinator
 
@@ -1997,7 +2000,10 @@ class WiringTest(unittest.TestCase):
                 application: Any,
                 _page: bytes,
                 coordinator: Any = None,
+                *,
+                interaction_prototype: Any = None,
             ) -> None:
+                del interaction_prototype
                 captured["application"] = application
                 captured["coordinator"] = coordinator
 

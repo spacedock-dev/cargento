@@ -9,8 +9,9 @@ residual exposure live in [`SECURITY.md`](../SECURITY.md).
 
 A harness transcript records what the operator typed, verbatim. Cargento reads those transcripts and
 publishes prompt text. As fields rather than as prose, since a prose alias is a name no test can
-check, the carriers that reach the page raw are these seven: `title`, `last_prompt`, `state_detail`,
-`tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and `subagents[].parent`. More reaches
+check, the carriers that reach the page raw are these nine: `title`, `last_prompt`, `state_detail`,
+`project_key`, `project_name`, `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and
+`subagents[].parent`. More reaches
 the page through `records.safe_text`, including the observer's derived goal and a Codex `title`,
 which comes from a prompt because Codex writes no generated title at all. The swept set below adds
 the instruction line's own `text` to those seven. If a key was ever pasted into a prompt, the store
@@ -149,7 +150,8 @@ to join at all, and it was not taken here: it changes what every collector retur
 contract says, on a branch already touching ten collectors. It is the right next step, not the right
 same step.
 
-The swept set is `title`, `last_prompt`, `state_detail`, the instruction line's `text`,
+The swept set is `title`, `last_prompt`, `state_detail`, `project_key`, `project_name`,
+the instruction line's `text`,
 `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and `subagents[].parent`. Task subjects
 are there because an agent's todo written from a prompt that held a key can quote it. Three of them
 joined after the first version shipped without them, and the first two were measured publishing a

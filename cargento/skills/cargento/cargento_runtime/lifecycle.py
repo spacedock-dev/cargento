@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import config as runtime_config
 from cargento_runtime import http_api
+from cargento_runtime import interaction_prototype as runtime_interaction
 from cargento_runtime import io as runtime_io
 
 if TYPE_CHECKING:
@@ -793,6 +794,17 @@ def serve(
     first, and this listener is IPv4-only, so the literal address is the one
     that always connects.
     """
+    prototype = getattr(server, "interaction_prototype", None)
+    if prototype is not None:
+        try:
+            prototype.start(port)
+        except runtime_interaction.OriginUnavailableError as exc:
+            runtime_io.diag(
+                f"Cargento: interaction bootstrap unavailable ({exc}).",
+                diagnostic_sink,
+            )
+            server.server_close()
+            return
     runtime_io.diag(f"Cargento: http://127.0.0.1:{port}/", diagnostic_sink)
     observation = getattr(server, "observation", None)
     write_state(

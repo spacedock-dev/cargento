@@ -9,7 +9,7 @@ import unicodedata
 from typing import TYPE_CHECKING, Any, Final
 
 from . import io as runtime_io
-from . import records
+from . import records, sessions
 from . import state as runtime_state
 
 if TYPE_CHECKING:
@@ -60,7 +60,7 @@ def codex_meta(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[st
             records.as_dict(records.as_dict(p.get("source")).get("subagent")).get("thread_spawn")
         )
         nickname = p.get("agent_nickname")
-        agent_path = p.get("agent_path")
+        agent_path = p.get("agent_path") or spawn.get("agent_path")
         label = (
             nickname
             if isinstance(nickname, str) and nickname
@@ -73,12 +73,17 @@ def codex_meta(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[st
         )
         return {
             "session_id": p.get("session_id") or p.get("id"),
+            # Current Codex subagent metadata carries two identities: session_id
+            # is the top-level root and id is this rollout thread. Collection
+            # groups on the former; nested-parent traversal needs the latter.
+            "thread_id": p.get("id") or p.get("session_id"),
             "parent_session_id": (
                 spawn.get("parent_thread_id") if isinstance(spawn, dict) else None
             ),
             "cwd": p.get("cwd"),
             "subagent": p.get("thread_source") == "subagent",
             "agent_label": label or None,
+            "agent_path": agent_path if isinstance(agent_path, str) and agent_path else None,
         }
 
     return first_line_meta(config, state, path, parse)
@@ -577,6 +582,7 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
     off the one user record shape that CLI 0.149 no longer writes.
     """
     info: dict[str, Any] = {
+        "last_output": None,
         "usage_events": [],
         "last_tool": None,
         "last_event_ts": 0,
@@ -607,8 +613,27 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
                 held = info["rate_limits"]
                 if ep and limits and (held is None or ep >= held[0]):
                     info["rate_limits"] = (ep, limits)
-        elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
-            info["last_tool"] = p.get("name")
+        elif t == "response_item":
+            if p.get("type") in ("function_call", "custom_tool_call"):
+                info["last_tool"] = p.get("name")
+            elif (
+                p.get("type") == "message"
+                and p.get("role") == "assistant"
+                and p.get("phase") == "final_answer"
+            ):
+                chunks = [
+                    str(block["text"])
+                    for block in records.as_list(p.get("content"))
+                    if isinstance(block, dict)
+                    and block.get("type") == "output_text"
+                    and isinstance(block.get("text"), str)
+                ]
+                raw = "\n".join(chunks)
+                bounded = "\n".join(
+                    records.safe_text(line, sessions.LAST_OUTPUT_CAP_CHARS)
+                    for line in raw.split("\n")
+                )[: sessions.LAST_OUTPUT_CAP_CHARS]
+                info["last_output"] = bounded or None
     return info
 
 

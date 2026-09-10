@@ -197,18 +197,26 @@ class DroidVerificationFixTest(unittest.TestCase):
             os.utime(main, (self.FUTURE, self.FUTURE))
             child = day / "rollout-child.jsonl"
             child.write_text(
-                json.dumps(
-                    {
-                        "type": "session_meta",
-                        "payload": {
-                            "id": "K",
-                            "thread_source": "subagent",
-                            "source": {"subagent": {"thread_spawn": {"parent_thread_id": "S"}}},
-                            "agent_nickname": "reviewer",
+                "\n".join(
+                    json.dumps(record)
+                    for record in (
+                        {
+                            "type": "session_meta",
+                            "payload": {
+                                "id": "K",
+                                "thread_source": "subagent",
+                                "source": {"subagent": {"thread_spawn": {"parent_thread_id": "S"}}},
+                                "agent_nickname": "reviewer",
+                            },
                         },
-                    }
+                        {
+                            "type": "event_msg",
+                            "timestamp": "2023-11-14T22:13:20Z",
+                            "payload": {"type": "task_started", "started_at": self.NOW},
+                        },
+                    )
                 )
-                + "\n"
+                + "\n",
             )
             os.utime(child, (self.NOW, self.NOW))
             with (
@@ -226,7 +234,7 @@ class DroidVerificationFixTest(unittest.TestCase):
                 {
                     "name": "reviewer",
                     "model": None,
-                    "started_at": None,
+                    "started_at": self.NOW,
                     "active": None,
                     "parent": None,
                 }

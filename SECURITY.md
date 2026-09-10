@@ -6,8 +6,11 @@ Cargento ships three kinds of component that touch the network. The dashboard se
 (`cargento/skills/cargento/server.py`, whose code is the `cargento_runtime` package beside it)
 reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
-makes one kind of outbound request, the quota poll described in Usage quota reads (the quota
-fetcher); it carries no session data. The opt-in UI's Space fonts are packaged into its page, so
+makes the quota poll described in Usage quota reads (the quota fetcher); it carries no session
+data. The observer model is the one path that can send session content off this machine. It is
+off unless explicitly enabled and disclosure consent accompanies a focused refresh.
+[Observer model calls](#observer-model-calls) states its bounds. The opt-in UI's Space fonts are
+packaged into its page, so
 loading either interface makes no request to a font provider. Four small forwarders ship beside it,
 each wired into a harness's own configuration by the user or by the plugin: `notify_hook.py` POSTs
 a Claude `Notification` payload to the dashboard, `event_hook.py` posts command-hook lifecycle
@@ -34,15 +37,15 @@ The posture rests on two invariants:
    and the MCP server refuse to reach anywhere but loopback, ignore proxy environment variables, and
    do not follow redirects. `--host` is the one way that first clause moves, it is an explicit
    argument nothing sets for you, and what it costs is under Known and accepted.
-   Three kinds of outbound request are in scope, one shipped and two written down before they
-   exist, and they are named apart rather than counted together because they are not the same
+   Three kinds of outbound request are in scope, two implemented and one written down before it
+   exists, and they are named apart rather than counted together because they are not the same
    exposure. The quota poll carries a vendor token out and quota numbers back, and no session
-   content whatever. A harness invocation, described in Light harness usage below, would carry
+   content whatever. A harness invocation, described in Light harness usage below, can carry
    session-derived text: it is the one pathway by which the operator's own words may leave this
    machine. A nudge to an endpoint the operator supplies, described in Off-machine nudges below,
-   would carry two counts and nothing that names a session. Neither of the second two is used by
-   any shipped feature, so nothing travels by either today, and those sections are the contracts the
-   first feature to use each has to satisfy, `--no-harness-usage` and `--no-reach` included.
+   would carry two counts and nothing that names a session. The observer model implements the
+   second pathway behind explicit enablement and consent. Nudges remain unbuilt; these are the
+   contracts the first feature to use each has to satisfy, `--no-harness-usage` and `--no-reach` included.
    Nothing else Cargento does reaches the network. One further pathway is written down and reaches
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
@@ -720,7 +723,7 @@ one live candidate, a raise on a lookup that reported more than one attached cli
 
 ## Usage quota reads (the quota fetcher)
 
-One feature makes outbound network requests. When the usage feature is on, the server polls each
+The quota feature sends credentials but no session content. When the usage feature is on, the server polls each
 supported vendor's usage endpoint so the dashboard can show quota windows: how much of the 5-hour
 and weekly limits is used and when they reset, or for a vendor that meters spend rather than
 requests, how much of the monthly billing period's allowance is used and when the cycle ends.
@@ -820,9 +823,8 @@ the operator was away, what a session's actual goal is rather than its opening i
 each of those shipped withholding its answer instead. Cargento may now ask a harness a bounded
 question and consume a little of the operator's own capacity doing it.
 
-This is the section to read before adding such a feature, and it grants nothing on its own. No
-shipped feature uses this pathway today. Each one arrives with its own entry here naming what it
-sends, what it asks, and what it caps.
+The observer model is the first implementation of this pathway. Its entry below names what it
+sends, what it asks, and what it caps. Future harness callers need their own entry.
 
 What makes this different from every other boundary in this document: it is the only one that sends
 the operator's own words off this machine. The quota poll carries a token and numbers. A harness
@@ -836,14 +838,13 @@ The bounds, all of which hold together:
   is disclosed the way the quota fetch is disclosed, and for a stronger reason: this one spends
   their capacity rather than reading a number. A run with the setting unanswered makes no
   invocation.
-- The operator causes it, and a caller cannot. An invocation starts from Cargento's own
-  observation lane or from an operator action, never as a side effect of an unauthenticated
-  request. Loopback is not a per-user boundary and `--host` widens it further, both of which Known
-  and accepted describes, so a trigger-shaped route with no authority behind it, the shape
-  `GET /api/observe` has, would let any other account on the machine spend the operator's capacity
-  by calling it in a loop. A feature that must be request-triggered carries the per-run capability
-  `POST /api/events/<harness>` uses, plus a floor and an in-flight gate the way the quota poll's
-  polling posture does, so a repeated request cannot repeat the spend.
+- The observer uses the quota disclosure pattern: the browser supplies consent on the focused
+  refresh request, and a document navigation never authorizes a call. Quota consent alone is not
+  consent to send transcripts. This request parameter is not per-user authentication; a local
+  process can imitate it once the operator has enabled the model for this run. The startup flag
+  and the per-session in-flight gate bound that exposure. This prototype follows the cockpit's
+  consent ruling; it does not implement the earlier proposed per-run event capability for this
+  route.
 - The operator's own harness, never a Cargento credential. Cargento invokes the harness the
   operator has already installed and signed in, non-interactively. It holds no API key, reads no
   new secret, and adds no endpoint to the list in Usage quota reads. Nothing about token handling
@@ -853,30 +854,92 @@ The bounds, all of which hold together:
   through `records.redact_secrets` first and the bound second, the same order and for the same
   reason Published text gives. A key pasted into a prompt must not be handed to a subprocess any
   more than it may be published to the page.
-- One bounded question, no tools, no recursion. A single prompt under a stated cap, a timeout,
-  no tool access granted to the invoked harness, and a guard against invoking a harness that is
-  itself running Cargento's hooks, which would have Cargento observing the session it just
-  created.
-- Visible spend. A feature that consumes capacity states what it consumed. Cargento already
-  renders quota windows; its own share of one is not allowed to be the invisible part.
-- Off switch. The first feature to use this pathway ships `--no-harness-usage` with it: a flag
-  that disables the pathway for a run regardless of the stored setting, mirroring `--no-usage` and
-  `--no-history` at every one of their sites, including the branch that forwards flags to a
-  respawned daemon, so a restart cannot re-enable what the operator disabled. That flag does not
-  exist yet, and this document does not claim it does. No feature uses the pathway, so there is
-  nothing to switch off. A test holds those two statements together: it asserts this section still
-  says the pathway is unused *and* that the parser still has no such flag, so whoever adds the flag
-  is failed here until they amend this section too. The rule is the ND-1 lesson, which this
-  repository learned by documenting configurable bounds that the config builder would not accept.
+- One bounded question. The generated prompt has a byte cap and the subprocess has a timeout.
+  Codex is invoked ephemerally with user configuration and rules ignored, in a read-only sandbox.
+  Explicit CLI overrides disable shell execution, hooks, plugins, apps, subagents, browser and
+  computer tools, image generation, web search, and automatic project/skill instructions.
+  These flags are not a proof of an empty tool set across Codex versions. The installed CLI and
+  its provider remain a trust boundary; live tool suppression and provider retention are not
+  verified by the dashboard's tests.
+- Visible spend. Model metadata records whether a call ran or was refused. Provider token usage
+  is not measured by this prototype; it must not present a zero cost as if it had measured one.
+- Off switch. `--no-observer-model` disables calls for a run regardless of consent and overrides
+  `--observer-model`. `--no-harness-usage` is an alias for that rollback. Both default to disabled
+  without the opt-in flag. Windows daemon respawn currently omits the opt-in flag, so the model
+  remains disabled there.
 
 A violation of any of those is a security bug: an invocation with the setting off or unanswered, an
 invocation carrying unredacted text, a credential read that this section does not name, tool access
-granted to an invoked harness, or an unbounded or untimed call.
+beyond the documented CLI boundary, or an unbounded or untimed call.
 
 What is accepted rather than solved: the invoked harness is another program with its own logging and
 its own retention, and what it does with a prompt is outside Cargento's control. That is the same
 trust the operator already extends to that harness by running it, but it is a real transfer and it is
 stated here rather than implied.
+
+### Observer model calls
+
+`observer.CodexGoalModel` sends a generated prompt to the installed Codex CLI, which uses its
+own authentication to reach OpenAI. This is the one path that can send session content off the
+machine. It is off unless `--observer-model` was supplied. `--no-observer-model` always wins.
+
+A focused `/api/project-context` refresh can summarize the focused session and up to three active
+children whose assignment is unavailable. Merely opening a panel does not call the model. The
+server also requires `observer_model=1` on that refresh, following the quota consent pattern;
+the page must send it only after presenting the observer disclosure and storing its answer.
+Only loopback peers can authorize a model call, and cross-origin Fetch Metadata is refused.
+The response publishes the disclosure and byte cap. The backend does not treat `usage=1` as
+observer consent. Console presents that disclosure for an exact session and stores the answer separately from
+quota consent. Allowing summaries sends no request: each call requires the reader to choose
+Summarize this session. Passive refreshes never carry model consent. Storage failure retains
+the answer only for the current tab, using the same fallback as quota consent.
+
+Transcript message content is redacted before extraction can clip credential shapes. The complete
+generated prompt, including workflow stage, then goes through `records.redact_secrets` again
+before UTF-8 clipping to **16,384 bytes (16 KiB)**. This caps the prompt Cargento hands to Codex,
+not the CLI's added protocol or system instructions. Redaction recognizes credential shapes;
+it does not remove arbitrary private prose. One call per session may be in flight, including
+concurrent HTTP refreshes; the slot is released on failure. Each invocation has a **60-second**
+timeout and returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal line.
+A failed call falls back to local analysis. No raw model stdout or stderr is served or logged.
+
+An absent or relative `shutil.which("codex")` result is refused. An absolute installed executable
+is still trusted code; replacing it as the owning user is outside this boundary.
+
+### Cockpit dispatch and terminal reads
+
+Dispatch markdown is read from `XDG_RUNTIME_DIR/spacedock-dispatch` when available, with the
+legacy `/tmp/spacedock-dispatch` path retained for existing producers. The legacy location is in
+a shared temporary namespace where another local user can plant matching filenames; a filename
+match alone establishes neither ownership nor safe contents. Both use the same checks:
+`O_NOFOLLOW`, an anchored directory descriptor, realpath containment, regular files owned by the
+current uid, and refusal of group- or world-writable files. Files larger than **65,536 bytes** are
+refused, including growth during the bounded read. The directory must also belong to the current
+uid. Platforms without the POSIX no-follow and ownership checks refuse this source. The 32 MiB
+semantic backfill limit applies to transcripts, not dispatch artifacts: a dispatch is a short
+Markdown file, and a transcript-sized allowance would let a planted artifact force a large read.
+
+`SPACEDOCK_BIN`, when set, must be absolute; otherwise discovery resolves `spacedock` and also
+requires an absolute result. Accepting a relative override or resolution could execute a planted
+program when the working directory is on `PATH`. The child gets only `PATH` (the OS default),
+`HOME` and `LANG`, a fixed argv without a shell, and a two-second timeout. Discovery output over 64 KiB is rejected after
+capture; that is a parsing cap, not a streaming bound on subprocess output allocation.
+
+The terminal registration file is created with mode **0600**. Its reader checks that exact mode,
+uid, regular-file type and a **16 KiB** limit on the opened descriptor, refusing symlinks.
+This capability trust check is POSIX-only; platforms without `O_NOFOLLOW` or `getuid`, including
+native Windows, refuse terminal registration and report why. Shutdown uses a separate bounded
+regular-file read of `server_generation` solely to decide whether to remove its own file. That
+cleanup read does not require ownership or mode checks and never consumes a token, port or lease;
+it preserves files with a different generation, nonregular files and files over the byte cap. The tmux
+adapter attaches with `-r`; it exposes no pane-input method, HTTP input/control requests refuse,
+and any client WebSocket frame closes the connection. Control lines and queued output each have
+a **64 KiB** byte cap; overlong frames disconnect instead of growing the buffer. The snapshot
+retains at most 12,000 characters. These bounds supplement the 512-frame limit.
+
+The optional xterm JavaScript and CSS are vendored and served at `/assets/xterm.js` and
+`/assets/xterm.css`. Only loopback peers with the ordinary origin checks can receive them, and
+both return 404 unless the interaction feature is enabled. Serving an asset starts no terminal.
 
 ## Off-machine nudges (reaching the operator away from the desk)
 
@@ -887,7 +950,7 @@ Cargento posts a count to it.
 
 This is the section to read before building that, and it grants nothing on its own. No shipped
 feature posts to an endpoint the operator supplies; H2 (DRC-4034) is the first one that would.
-Until it lands, the outbound surface is the quota poll and nothing else.
+Until it lands, the outbound surface is the quota poll and the explicitly enabled observer model.
 
 Why this needs its own section rather than an entry under Usage quota reads: that section's
 endpoint list is closed, and every entry on it is a vendor Cargento chose and verified. Here the
@@ -1044,8 +1107,8 @@ of decisions rather than a category.
 
 The reason the ban became an allowlist is that it was stricter than the product around it and the
 asymmetry was doing no work. The dashboard already publishes prompt text. Published text below owns
-the enumeration, and the carriers that reach the page raw are these seven: `title`, `last_prompt`,
-`state_detail`, `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and
+the enumeration, and the carriers that reach the page raw are these nine: `title`, `last_prompt`, `state_detail`,
+`project_key`, `project_name`, `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and
 `subagents[].parent`. More reaches the page through `records.safe_text`, including the observer's
 derived goal and Codex's `title`, which is a prompt because Codex writes no generated title. And
 `GET /api/observe` already writes prompt-derived text to disk as a sidecar under
@@ -1167,9 +1230,19 @@ tool Cargento owns rather than one it observed, and The ask lane states its boun
   160 characters. Codex caps its own plan well below both, and the record is untrusted input, so the
   bound is against a malformed one rather than against ordinary use.
 
-Nothing else in the runtime reads a tool call's input. That is a claim about a set rather than a
-sentiment, so it is worth saying how it was established: three expressions in `cargento_runtime`
-reach an input payload, and all three are named above.
+The operator-cockpit prototype also reads dispatch evidence:
+
+- `collectors.codex._child_assignment` reads `spawn_agent` and `followup_task` arguments from
+  the bounded transcript tail, matching a child task or target before summarizing its message.
+- `project_context._tool_call_events` and `project_context._tool_support` read Pi `bash` and
+  `subagent` arguments for dispatch events, assignment summaries, and counts.
+- `project_context.codex_dispatch_events` reads `spawn_agent` arguments to join a task name to
+  a readable dispatch artifact. Its backward scan is capped at 32 MiB by default; project event
+  output is capped at 100 rows and semantic lines at 112 characters.
+
+These are evidence reads, not command execution. In total, seven expressions in `cargento_runtime`
+reach an input payload. The counts and module names are checked by `test_documentation`.
+The prototype has no additional switch that disables just these dispatch reads.
 
 A shape match would be a different kind of read from either of those. It happens in the hook, inside
 the operator's own harness process, against a payload that process already has, and what it keeps is
@@ -1435,13 +1508,44 @@ trust boundary for the reason Known and accepted gives for the rest of this docu
 process can read the operator's secret material directly, and it is the same limit the ask lane
 already accepts on loopback.
 
+## Operator-cockpit prototype
+
+The `proto/operator-cockpit` branch adds project context and an optional read-only terminal.
+`GET /api/project-context` reads bounded transcript and workflow evidence, stores semantic history
+under the configured state directory, and can invoke the installed Codex CLI for a derived goal.
+This is separate from quota fetching and from the session-history switch. The prototype retains
+its own semantic-history store; `--forget` continues to delete only the session-history store.
+
+Semantic history redacts recognized credential shapes before publication and persistence.
+Loading an older store also redacts nested values and, if any changed, immediately replaces
+the file atomically with an owner-only copy under the history lock. A read may be the only
+activity after an upgrade, so waiting for a later history update would retain known secrets
+unnecessarily. If replacement fails, the read still publishes redacted values, logs a warning
+without their contents, and retries the repair on the next load. Original bytes can remain
+until the filesystem permits replacement; this does not erase filesystem snapshots or backups.
+
+The terminal is off unless both `--interaction-origin-session` and
+`--interaction-origin-registration-file` are supplied. When enabled, ten POST operations under
+`/api/interaction/` join the ordinary routes: `register`, `renew`, `probe-unregistered`,
+`probe-spoofed`, `control`, `input`, `expire`, `disconnect`, `reconnect`, and `reset`.
+Registration requires the session-side registration token; renewal requires the lease token.
+The probe and lifecycle controls have the normal loopback/origin checks, with no additional
+capability. `control` and `input` always refuse. Normal serving returns 404 for this prefix.
+
+`interaction_prototype.py` joins `focus.py` as a module allowed to invoke tmux. It validates the
+registered pane identity before capturing output and attaches a read-only control-mode client.
+The WebSocket at `/api/interaction/stream` carries output only; receiving a client frame ends the
+connection. Its upgrade response carries the same framing header as ordinary responses. Terminal
+output is a separate exposure from the redacted session summaries: a person or local process that
+can read the registered terminal can see its captured text.
+
 ## Published text (credential redaction)
 
 A harness transcript records what the operator typed, verbatim, so if a key was ever pasted into a
 prompt the store holds it. The dashboard reads those stores and publishes prompt text. Named as
-fields rather than glossed, because a prose alias is a name no test can check, the carriers that
-reach the page raw are these seven: `title`, `last_prompt`, `state_detail`, `tasks[].subject`,
-`tasks[].activeForm`, `subagents[].name` and `subagents[].parent`. Those are the two tables in
+fields rather than glossed, because a prose alias is a name no test can check, the carriers that reach the page raw are these nine: `title`, `last_prompt`, `state_detail`,
+`project_key`, `project_name`, `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and
+`subagents[].parent`. Those are the two tables in
 `aggregate`, and the instruction line's own `text` passes the same sweep beside them. It is a list
 of carriers rather than a list of every published string that could hold what the operator typed:
 more prompt text reaches the page through `records.safe_text` on the way, including the observer's
@@ -1505,7 +1609,7 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the nine POST routes, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the nine POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
 somebody other than you. There is nothing to authenticate with on seven of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.

@@ -267,6 +267,7 @@ def collect(
                         r["id"],
                         sessions.project_from_cwd(config, r["directory"] or "") or "opencode",
                     )
+                    sessions.apply_project_identity(config, s, str(r["directory"] or ""))
                     s.update(
                         {
                             "title": records.redact_clip(

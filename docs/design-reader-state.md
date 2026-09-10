@@ -27,9 +27,19 @@ For where these files sit and which way their dependencies run, see
 | Keyboard focus | Restored, with scrolling conditional on visibility at capture | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it; see [Document scroll](#document-scroll) |
 | A row control's confirmation cue | Restored for 30 seconds | `nextControlStates` in `next-boot.js`, keyed rather than held by node, and expiring at `NEXT_CONTROL_STATE_TTL_MS`; `NEXT_ROW_CONTROL_LANES` keys the focus lane, not this one |
 | A typed and unsent draft | Restored | `nextControlsCaptureDrafts` in `next-controls.js`, called by `renderNext` before the assignment |
-| That draft's caret offset | Restored | `nextControlsApplyCaret`, applied by the focus lane once it has landed on the element |
+| That draft's caret offset | Restored | `nextCaptureFocus` / `nextFocusNamed`, with `nextControlsApplyCaret` as the control-state fallback |
 | The `+ set a tripwire` box, once opened | Kept open | `nextControlsProjectState(project).adding` in `next-controls.js`, held per project for the life of the tab |
-| The workstream panel's collapse | Kept collapsed | `nextWorkstreamCollapsed` in `next-workstream.js`, and the one restored lane that is persisted to `localStorage` |
+| The workstream panel's collapse | Kept collapsed | `nextWorkstreamCollapsed` in `next-workstream.js`, persisted to `localStorage` |
+| The prototype terminal viewport scroll offset | Restored, or follows live output | `projectTerminalScrollTop` and `projectTerminalFollowLive`, restored by `projectTerminalBindViewport` in `project.js` |
+| Cockpit scope and selected tab | Preserved through redraw, reload and browser navigation | `nextRoute` and the fragment helpers in `next-boot.js`; changing scope retains the current tab |
+| Cockpit disclosures and the mounted terminal | Captured before replacement and restored afterward; the terminal screen survives navigation away from Console until disposal | `nextCockpitBeforeRender` and `nextCockpitAfterRender` in `next-cockpit.js`; `projectTerminalScreen` retains the mounted screen in `project.js` and `projectTerminalDispose` clears it |
+| Cockpit human context | Bounded to 500 characters per field, saved on input, and retained in memory if storage fails | `nextCockpitMemoDrafts` and `cargento.cockpit.memo.v2:` storage keys in `next-cockpit.js`, keyed by project, scope and field |
+| Context editor focus, caret and internal scroll | Restored by the named-focus lane; Escape in the field or Done control restores the value from when editing began and closes the editor | `nextCaptureFocus` / `nextFocusNamed` in `next-chrome.js`, memo focus keys and `nextCockpitMemoOriginal` in `next-cockpit.js` |
+| A draft input's internal scroll and resized dimensions, even after focus leaves it | Restored by the input's named key; unfocused caret offsets are restored too | `nextCaptureInputState` before replacement and `nextRestoreInputState` after it in `next-chrome.js` |
+| The More menu | Restored, including summary focus | The `more` disclosure key in `next-chrome.js` |
+| Project plan, raw status, earlier Course entries and other directions | Restored independently by project and selected scope | `nextCockpitDisclosureAttr` in `next-cockpit.js` |
+| Project-level semantic timeline disclosures | Restored independently per project when no session is selected; summary focus restored | `projectDisclosure` and `projectCaptureDisclosureStates` in `project.js` |
+| Observer model consent and request status | Consent survives reload with an in-memory fallback; per-session pending and result state survives redraw | `nextObserverConsent`, `nextObserverRequests` and `nextObserverRequestStates` in `next-render.js` / `next-boot.js`; controls use `data-next-focus` |
 | The document scroll offset | Clamped by the browser; focus restoration may move it only when the old target intersected the viewport | No lane of its own; `nextRestoreFocus` passes `preventScroll` for offscreen captured focus, see [Document scroll](#document-scroll) |
 | A text selection over rendered text | **Not managed** | Nothing; see [Text selection](#text-selection) |
 
@@ -47,12 +57,10 @@ the caret's case, on the wrong element.
 Three per-row decisions do not follow from either rule and are recorded here rather than in the
 code, which cites this file instead:
 
-- **A restored lane is held per tab, not in `localStorage`.** Two of the three reader preferences
-  that do reach browser storage are answers a reader gave deliberately: a consent, a guardrail added
-  on purpose. A panel opened to read once and a half-typed sentence are not decisions, so reviving
-  either in a new tab hours later is a different feature from surviving a render. The third stored
-  preference, the workstream panel's collapse, is a panel and so sits on the wrong side of that
-  line; it is recorded here as the exception rather than restated as the rule.
+- **Ordinary disclosure and draft restoration lasts for the tab.** Quota consent and tripwire
+  preferences deliberately reach browser storage. Cockpit human context does too: it is saved on
+  each input, so even an unfinished field can return in a fresh tab. Workstream collapse is another
+  stored preference. These are distinct from restoring the current DOM after a redraw.
 - **A draft's caret offset travels with the draft.** Restoring the text without the offset is a
   worse failure than losing both: the reader carries on typing at the start of their own sentence
   and cannot see why. The offset is applied by the focus lane once it has landed on the element, so
@@ -157,19 +165,17 @@ holding across a shortening revision, in a real browser with the live lane runni
 above are a real browser, but they are the arm with nothing focused, and the issue defers AC2 for
 the jump itself. Nothing here has run it.
 
-**What would change this.** The guarantee is about the *document's* scroll offset, and it holds
-because the document is the only scroll container on the page. Every `overflow` declaration in
-`styles.css` is `overflow:hidden` or `overflow-wrap:anywhere`, and a live sweep of `#app` found no
-element whose `scrollHeight` exceeded its `clientHeight`. An `overflow:ellipsis` was counted here as
-a third form and is not one: it is the tail of `text-overflow:ellipsis`, which sets no overflow
-behaviour at all. Introduce one `overflow:auto` pane and that pane's scroll position becomes reader
-state with no row in the table above: a replaced node starts at zero, and no clamp applies because
-the container itself is new.
-Anything that adds a scroll container adds a row here and the capture-and-restore lane to go with
-it. `tests/test_documentation.py` fails when the stylesheet grows a third `overflow` form, so this
-paragraph cannot go quietly stale. That guard reads the whole declaration value, case-folded,
-because `overflow: auto`, `overflow:AUTO`, `overflow:hidden auto` and `overflow-y: scroll` were each
-measured slipping past the narrower pattern that held this before.
+**The prototype terminal is a separate scroll container.** The document's clamp still governs
+page scrolling. `styles.css` uses `overflow:auto` on `.pc-terminal-viewport`, whose own
+scroll position is captured on scroll and restored by `projectTerminalBindViewport` after the
+cockpit redraws. When follow-live is enabled, the restored viewport follows its newest output.
+That state has its own row in the inventory above.
+
+The other overflow forms remain `overflow:hidden` and `overflow-wrap:anywhere`.
+The reconciled stylesheet declares auto scrolling only on the terminal. Native textareas also
+scroll internally; their viewport and user-resized dimensions have a separate inventory row. Adding another scroll
+container requires its own state owner and an inventory update. `text-overflow:ellipsis` is a text
+rendering rule, not a scroll container.
 
 ## Text selection
 

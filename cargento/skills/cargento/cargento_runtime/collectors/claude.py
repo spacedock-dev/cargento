@@ -604,6 +604,7 @@ def collect(
         if not (active or show_all):
             continue
 
+        cwd = claude_data.session_cwd(config, state, transcript) if transcript else ""
         # Registered, joined long enough ago that a healthy agent would have
         # written its first record, and still holding no transcript anywhere.
         # Sandwiched between two windows that already exist rather than a
@@ -714,9 +715,7 @@ def collect(
 
         project = (
             (
-                runtime_sessions.project_from_cwd(
-                    config, claude_data.session_cwd(config, state, transcript)
-                )
+                runtime_sessions.project_from_cwd(config, cwd)
                 # Lossy fallback: the encoded name cannot be split back into
                 # segments, so it is capped at two rather than published whole.
                 or runtime_sessions.bounded_project_label(
@@ -782,7 +781,11 @@ def collect(
         elif pending_members:
             session_state = "needs_input"
             blocked_since = pending_members[0]["joined"]
-            waited = runtime_sessions.fmt_duration(runtime_sessions.age(config, now, blocked_since))
+            wait_age = runtime_sessions.age(config, now, blocked_since)
+            # joinedAt has millisecond precision, so absorb only float conversion noise.
+            waited = runtime_sessions.fmt_duration(
+                wait_age + 1e-6 if wait_age is not None else None
+            )
             state_detail = (
                 # The label arrives unbounded (see `load_team_members`), and
                 # this is the one place besides the element where a registry
@@ -870,6 +873,7 @@ def collect(
             else None
         )
         s = runtime_sessions.base_session("claude", prefix, project)
+        runtime_sessions.apply_project_identity(config, s, cwd)
         s.update(
             {
                 # The transcript's own stem is the session id `claude --resume`

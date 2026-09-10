@@ -392,9 +392,15 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
 # `state_detail` earns its place twice over. It is built by hand from the same
 # transcript text — an in-progress task's `activeForm` is copied into it BEFORE
 # the sweep runs — and it is read at ten render sites across six web files,
-# including notification text, which can leave the page through the native
-# notifier.
-_RAW_ROW_TEXT: Final = ("title", "last_prompt", "state_detail")
+# including notification text, which can leave the page through the native or
+# browser notifier.
+_RAW_ROW_TEXT: Final = (
+    "title",
+    "last_prompt",
+    "state_detail",
+    "project_key",
+    "project_name",
+)
 
 # `(the row field holding a list of dicts, the keys inside each one)`.
 #

@@ -1,0 +1,124 @@
+{
+  "active_sessions": {
+    "active": 13,
+    "active_states": {
+      "idle": 12,
+      "working": 1
+    },
+    "identity": "(harness, sid); display session id is non-authoritative",
+    "newest_active_age_sec": 0,
+    "oldest_active_age_sec": 48814,
+    "rows": 13,
+    "source": "/api/data sessions[]",
+    "status": "observed"
+  },
+  "browser_project_goal": {
+    "declared_keys": [
+      "cargento.displayMode",
+      "cargento.leader",
+      "cargento.projectFilter",
+      "cargento.revision",
+      "cargento.usageCfg",
+      "cargento.usageEnabled",
+      "cargento.usageModalSeen",
+      "cargento.usageOpen"
+    ],
+    "failure": "no shipped project-goal storage key, schema, writer, or conflict rule",
+    "project_goal_keys": [],
+    "source": "shipped browser JavaScript localStorage declarations",
+    "status": "unavailable",
+    "trust_boundary": "browser origin; server cannot read localStorage"
+  },
+  "dashboard": {
+    "capabilities": [
+      "ask",
+      "dismiss",
+      "usage"
+    ],
+    "harness_errors": {},
+    "port": 4553,
+    "snapshot_age_sec": 0
+  },
+  "measured_at": 1787631353,
+  "observer_output": {
+    "block_available": true,
+    "entity_mapping_available": false,
+    "goal_state": "deterministic",
+    "harness": "pi",
+    "memory_available": false,
+    "persistence": "probe is read-only; /api/observe would write a session sidecar",
+    "session": "s09",
+    "source": "real local transcript through observer.analyze; model callers disabled",
+    "stage_available": false,
+    "status": "observed",
+    "transcript_age_sec": 275
+  },
+  "outstanding_asks": {
+    "capability": true,
+    "count": 0,
+    "entries": [],
+    "persistence": "process memory only; registration supplies project and session labels",
+    "source": "running process AskRegistry via /api/data asks[]",
+    "status": "observed_empty"
+  },
+  "project_grouping": {
+    "empty_project_labels": 0,
+    "identity_note": "project is a display label; session identity is (harness, sid)",
+    "project_count": 7,
+    "projects": [
+      {
+        "active": 1,
+        "harnesses": ["claude"],
+        "newest_activity_age_sec": 1551,
+        "project": "p01",
+        "sessions": 1
+      },
+      {
+        "active": 6,
+        "harnesses": ["pi"],
+        "newest_activity_age_sec": 275,
+        "project": "p02",
+        "sessions": 6
+      },
+      {
+        "active": 1,
+        "harnesses": ["codex"],
+        "newest_activity_age_sec": 20342,
+        "project": "p03",
+        "sessions": 1
+      },
+      {
+        "active": 1,
+        "harnesses": ["codex"],
+        "newest_activity_age_sec": 40197,
+        "project": "p04",
+        "sessions": 1
+      },
+      {
+        "active": 2,
+        "harnesses": ["claude"],
+        "newest_activity_age_sec": 1498,
+        "project": "p05",
+        "sessions": 2
+      },
+      {
+        "active": 1,
+        "harnesses": ["codex"],
+        "newest_activity_age_sec": 0,
+        "project": "p06",
+        "sessions": 1
+      },
+      {
+        "active": 1,
+        "harnesses": ["claude"],
+        "newest_activity_age_sec": 111,
+        "project": "p07",
+        "sessions": 1
+      }
+    ],
+    "session_identity_collisions": 0,
+    "source": "/api/data sessions[].project",
+    "status": "observed"
+  },
+  "schema": 1
+}

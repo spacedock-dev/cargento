@@ -188,7 +188,7 @@ console.log(JSON.stringify({html: __els.app.innerHTML, ranges}));
     PROJECT = "alpha/repo"
     STORAGE_KEY = "cargento.next.guardrails.alpha%2Frepo"
     FIXTURE = """
-location.hash = "#n=project:alpha%2Frepo";
+location.hash = "#n=project:alpha%2Frepo:console";
 __els.app = {innerHTML: ""};
 const __controlsPayload = {
   generated: 1000,

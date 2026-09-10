@@ -114,6 +114,7 @@ def collect(
             config, os.path.basename(os.path.dirname(os.path.dirname(fp)))
         )
         s = sessions.base_session("gemini", sid, project)
+        sessions.apply_project_identity(config, s, cwd or "")
         scan = turns.scan_turns(config, state, fp, "gemini") if info else None
         s.update(
             {

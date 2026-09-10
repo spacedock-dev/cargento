@@ -10,7 +10,7 @@ from .next_harness import NextPageJsHarness
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextWorkstreamBehaviorTest(NextPageJsHarness):
     FIXTURE = """
-location.hash = "#n=project:alpha%2Frepo";
+location.hash = "#n=project:alpha%2Frepo:console";
 __els.app = {innerHTML: ""};
 let __workstreamPayload = {
   generated: 1000,
@@ -49,7 +49,7 @@ console.log(JSON.stringify({
     at: event.at, from: event.fromState, state: event.state, to: event.toState
   })),
   samples: window.samples.map(sample => sample.rate),
-  html: __els.app.innerHTML
+  html: nextProjectWorkstream({group:{label:"alpha/repo"}})
 }));
 """
         )
@@ -85,7 +85,8 @@ for(const generated of [1600, 2200]){
 const window = nextWorkstreamProjectWindow("alpha/repo");
 nextWorkstreamCollapsed = true;
 renderNext();
-console.log(JSON.stringify({event: window.events[0], html: __els.app.innerHTML}));
+console.log(JSON.stringify({event: window.events[0],
+  html:nextProjectWorkstream({group:{label:"alpha/repo"}}) + __els.app.innerHTML}));
 """
         )
         assert isinstance(out, dict)
@@ -135,7 +136,7 @@ await refreshNext();
 const window = nextWorkstreamProjectWindow("alpha/repo");
 console.log(JSON.stringify({
   events: window.events.map(event => ({at: event.at, kind: event.kind, right: event.right})),
-  html: __els.app.innerHTML
+  html:nextProjectWorkstream({group:{label:"alpha/repo"}})
 }));
 """
         )
@@ -162,7 +163,7 @@ __workstreamPayload = {
   sessions: [{...__workstreamPayload.sessions[0], state: "working"}]
 };
 await refreshNext();
-console.log(JSON.stringify(__els.app.innerHTML));
+console.log(JSON.stringify(nextProjectWorkstream({group:{label:"alpha/repo"}})));
 """
         )
         assert isinstance(out, str)
@@ -262,7 +263,7 @@ __workstreamPayload = {
   sessions: [{...__workstreamPayload.sessions[0], state: "working"}]
 };
 await refreshNext();
-console.log(JSON.stringify(__els.app.innerHTML));
+console.log(JSON.stringify(nextProjectWorkstream({group:{label:"alpha/repo"}})));
 """
         )
         assert isinstance(out, str)
@@ -279,9 +280,9 @@ const toggle = {dataset: {nextWorkstreamToggle: ""}, closest(selector){
   return selector === "[data-next-workstream-toggle]" ? this : null;
 }};
 __fire("click", {target: toggle, preventDefault(){}});
-const afterClick = __els.app.innerHTML;
+const afterClick = nextProjectWorkstream({group:{label:"alpha/repo"}});
 __fire("keydown", {target: toggle, key: "Enter", preventDefault(){}});
-const afterKeyboard = __els.app.innerHTML;
+const afterKeyboard = nextProjectWorkstream({group:{label:"alpha/repo"}});
 console.log(JSON.stringify({afterClick, afterKeyboard, writes: __storageWrites}));
 """,
             """
@@ -318,7 +319,7 @@ const localStorage = {
         out = self._run_page_js(
             """
 await __settle();
-console.log(JSON.stringify(__els.app.innerHTML));
+console.log(JSON.stringify(nextProjectWorkstream({group:{label:"alpha/repo"}})));
 """,
             """
 const localStorage = {
@@ -369,7 +370,7 @@ console.log(JSON.stringify({{
   )),
   startedAt: window.startedAt,
   label: nextWorkstreamWindowLabel(window),
-  html: __els.app.innerHTML
+  html: nextProjectWorkstream({{group:{{label:"alpha/repo"}}}})
 }}));
 """
 

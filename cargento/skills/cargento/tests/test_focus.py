@@ -1009,7 +1009,7 @@ class CapabilityDeliveryTest(unittest.TestCase):
         # would fail on the reader rather than on an injected token.
         self.assertNotIn(b'<meta name="cargento-focus"', assembled)
         self.assertEqual(
-            "d3001047ec7f4017fbc4dcbf91e64c177bc1c525fbcd5a1c8628f7341776c2bf",
+            "0f37e44f9a153483066060877df396aacad27f9ac69487e4396740ef6ba8793f",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1077,12 +1077,11 @@ def _namespace(**overrides: object) -> argparse.Namespace:
 class SingleInvocationTest(unittest.TestCase):
     """The runtime builds a tmux subprocess at exactly one site.
 
-    The `test_git_status.SingleInvocationTest` shape: before this feature that
-    count was zero, so "exactly one" is a baseline this test establishes rather
-    than one it inherits.
+    The focus command and opt-in prototype terminal are the two tmux owners.
+    The invocation inventory must grow explicitly if another owner is added.
     """
 
-    def test_only_focus_constructs_a_tmux_subprocess(self) -> None:
+    def test_only_focus_and_the_opt_in_terminal_construct_tmux_subprocesses(self) -> None:
         runtime = Path(__file__).resolve().parent.parent / "cargento_runtime"
         pattern = re.compile(r"""["']tmux["']""")
         offenders = sorted(
@@ -1090,7 +1089,7 @@ class SingleInvocationTest(unittest.TestCase):
             for path in runtime.rglob("*.py")
             if pattern.search(path.read_text(encoding="utf-8"))
         )
-        self.assertEqual(["focus.py"], offenders)
+        self.assertEqual(["focus.py", "interaction_prototype.py"], offenders)
 
     def test_every_argv_template_is_a_tuple_a_caller_cannot_extend(self) -> None:
         for template in (

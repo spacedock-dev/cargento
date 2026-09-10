@@ -816,7 +816,18 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
             for node in ast.walk(post)
             if isinstance(node, ast.Attribute) and node.attr == "startswith"
         ]
-        self.assertEqual(1, len(prefixes))
+        self.assertEqual(2, len(prefixes))
+        self.assertEqual(
+            {"/api/events/", "/api/interaction/"},
+            {
+                node.args[0].value
+                for node in ast.walk(post)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "startswith"
+                and isinstance(node.args[0], ast.Constant)
+            },
+        )
         for route in routes:
             self.assertNotIn("history", route)
             self.assertNotIn("forget", route)

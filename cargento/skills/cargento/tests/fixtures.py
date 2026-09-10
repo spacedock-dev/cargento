@@ -103,6 +103,11 @@ def build_codex(root: Path, when: float, sid: str, title: str) -> dict[str, str]
             {
                 "type": "event_msg",
                 "timestamp": _iso(when),
+                "payload": {"type": "task_started", "started_at": when},
+            },
+            {
+                "type": "event_msg",
+                "timestamp": _iso(when),
                 "payload": {"type": "user_message", "message": title},
             },
         ],

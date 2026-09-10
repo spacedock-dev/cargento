@@ -532,6 +532,7 @@ def collect(
         s = sessions.base_session(
             "copilot", sid, sessions.project_from_cwd(config, cwd or "") or "copilot"
         )
+        sessions.apply_project_identity(config, s, str(cwd or ""))
         scan = turns.scan_turns(config, state, fp, "copilot") if info else None
         s.update(
             {

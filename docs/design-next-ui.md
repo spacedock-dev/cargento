@@ -17,8 +17,54 @@ designed in, not as a description of it:
 views and
 [`cargento-observed.js`](future-ui-exploration/v2-prototype/cargento-observed.js) the data shape
 they read. Both are design artifacts rather than code, and two of their claims did not survive
-contact with the runtime — the end-outcome vocabulary and the delegation floor. Where the
+contact with the runtime: the end-outcome vocabulary and the delegation floor. Where the
 prototype and this document disagree, this document is what shipped.
+
+## Cockpit reconciliation
+
+The project page uses the cockpit's information architecture: a left Scope rail, a persistent
+ASSIGNMENT / EXECUTION / COMMAND briefing with latest evidence and direction, and Now / Course /
+Decisions / Console tabs beneath it. This preserves the recovery briefing while retaining v2's
+rule that every claim needs published evidence. The shared-label caveat stays with project identity.
+
+| Retained v2 surface | Cockpit home |
+|---|---|
+| Stated goal, source, and goal-gap reason | ASSIGNMENT in the briefing |
+| Going on and observed endings, including six outcomes, glyphs and git readings | Now, alongside workflow evidence |
+| Observed state changes and unattended count | Course, beside semantic history and completed tasks |
+| Delegation, Waiting on you, Capacity, Tripwires | Console |
+
+Where the two designs had the same surface, the v2 renderer survives and the cockpit duplicate
+is removed. Its measured delegation and absence rules already had callers and tests; retaining a
+second rendering would give the same evidence two interpretations. Decisions shows recorded
+decisions and application evidence, not an approval mechanism.
+
+RC-1 protects [P3's promise of one queue of everything blocked on the reader](promise-map.md#p3-is-anything-waiting-on-me).
+Putting all waiting evidence behind the Console tab would weaken that promise: a reader returning
+to Now could miss a session that needs them. COMMAND therefore names a waiting project session
+above the tabs whenever one exists, with raise and copy-resume controls wherever supported.
+Console holds the full queue and its detail. Selecting another tab or focusing a non-waiting
+sibling must not hide the project wait. Both surfaces silent while a session waits is a defect;
+the cockpit regression test checks the briefing before the tab bar across tabs and scopes.
+
+The original review measured truncated harness names and titles even at 1954px. Keeping that rail
+would defeat its purpose as a way to choose a session. The Scope rail now has a 264px column at
+1280px and above, with separate readable space for harness names and session titles; below 1280px
+it becomes a scope switcher. Missing terminal registration, evidence, history
+or delegation renders the reason for the missing reading. Source strings use mono; sentences the
+board says use sans at 12.5px or larger. Evidence and More remain named disclosures.
+
+The terminal bridge, semantic history and model-assisted goal analysis remain prototypes.
+Human context and tripwires stay browser-local and deliver no instruction to an agent. Semantic
+history has its own server store and is not removed by the session-history `--forget` command.
+The optional observer model requires explicit enablement and scoped disclosure consent. Console
+reuses the quota disclosure pattern with a separate stored answer and an explicit Summarize this
+session action. Granting consent alone sends nothing, and passive refreshes remain local. Its
+prompt cap and the local dispatch and terminal trust boundaries belong to
+[SECURITY.md](../SECURITY.md#observer-model-calls).
+
+The [import review and captures](probes/project-cockpit/DESIGN_REVIEW.md) predate this reconciliation.
+They record the original design, including the truncation and absence states that prompted it.
 
 ## NUI-1: promotion leaves one precomputed page
 
@@ -45,17 +91,19 @@ replaces `--warn`, `--clay` replaces `--alert`, and `--ink` replaces `--accent-i
 `--warnink`. Selection still uses `--sel-bg` and `--sel-bd`, and reduced motion disables pulses.
 
 The stylesheet stays one file because splitting it would change the loader, linter and asset
-contracts. Seven banner-delimited regions divide ownership instead:
+contracts. Nine banner-delimited regions divide ownership instead:
 
 | Banner | Owns |
 |---|---|
 | `FOUNDATION` | Tokens, reset, type scale, fonts and shared motion rules |
 | `CHROME` | Navigation, breadcrumbs, live summary, notices and shared row controls |
 | `PROJECTS` | Projects overview, project detail and its main column |
-| `RAIL` | The project detail right rail |
+| `RAIL` | The v2 operations panels now composed in Console |
 | `SESSIONS` | Session operations and its capacity strip |
 | `ATTENTION` | Attention |
 | `SESSION` | Session detail |
+| `COCKPIT` | Scope rail, briefing, tab bar and cockpit panels |
+| `SUBSTRATE` | Semantic timeline and terminal substrate in `project.js` |
 
 Assign one owner to each region during parallel work. Keep media queries at the end of their own
 region; a shared responsive block would make every view edit the same tail. Moving a rule between
@@ -89,8 +137,14 @@ stale `cargento.leader` records written by the removed dashboard. The current le
 
 `cli.main` assembles one required page before creating a daemon log, binding, forking, or spawning a
 Windows child. Failure in the shell, stylesheet, any script part, or any embedded font is fatal and
-reported as a frontend asset error. Requests never read source files, and each server instance owns
-its already assembled bytes.
+reported as a frontend asset error. Each server instance owns its already assembled page bytes.
+
+The optional terminal adds two local asset routes, `/assets/xterm.js` and `/assets/xterm.css`.
+They read the vendored files only for loopback peers under the normal origin checks, and return
+404 unless interaction is enabled. Inlining the terminal library was rejected because it would
+roughly double the page for a feature disabled by default. A CDN fetch was rejected because
+dashboard assets must not require an external request. The vendored bytes are pinned by size and
+digest, with license and provenance beside them; no browser SRI or cross-origin attribute remains.
 
 The runtime inventory and copied-plugin tests enumerate the root assets explicitly. They prove an
 installed copy is complete rather than relying on recursive copying to conceal an omitted file.
@@ -151,9 +205,9 @@ The payload does not distinguish an initial entity from a completed one, and it 
 request state. PLAN therefore has no completion glyph, completion count, merge state or review
 state. No Spacedock declaration omits the wrapper. A first officer whose workflow has no fresh
 entities and an ensign whose plan lives with its first officer keep distinct empty messages. The
-main column holds the stated goal, current activity, observed endings, state changes, plans and
-completed tasks. The right rail holds waiting requests, delegation, capacity and browser-local
-controls.
+cockpit keeps plans in Now alongside current activity and observed endings. Completed tasks and
+state changes live in Course. The stated goal stays in the briefing, and Console holds waiting
+requests, delegation, capacity and browser-local controls.
 
 ## NUI-7: project activity is a current-payload answer
 
@@ -357,7 +411,7 @@ happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-The project rail includes STEER and TRIPWIRES because the dashboard needs the interaction shape,
+Console includes STEER and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
@@ -386,7 +440,7 @@ the direction invariant do not change.
 
 ## NUI-11: delegation is wall time inside the observed evidence
 
-The project rail's delegation figure integrates adjacent sample batches from the workstream ledger,
+Console's delegation figure integrates adjacent sample batches from the workstream ledger,
 whether they came from this tab's own polls or from the store NUI-9 seeds it with. A batch owns the wall-clock interval until the next advancing payload, clipped to the
 displayed window. That makes an irregular refresh cost the time it actually spans instead of one
 vote in a poll-count average. A non-empty interval with at least one working session and no gate

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import ntpath
+import os
 import posixpath
 import re
 from datetime import UTC, datetime
@@ -129,6 +131,98 @@ def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:
     return "/".join(parts[-2:])
 
 
+def _project_identity_key(prefix: str, path: str) -> str:
+    canonical = os.path.normcase(os.path.realpath(path))
+    digest = hashlib.blake2b(canonical.encode("utf-8", "surrogatepass"), digest_size=12)
+    return f"{prefix}{digest.hexdigest()}"
+
+
+def _git_identity_root(cwd: str) -> str | None:
+    cursor = os.path.realpath(cwd)
+    repo_root: str | None = None
+    git_dir: str | None = None
+    for _ in range(64):
+        marker = os.path.join(cursor, ".git")
+        if os.path.isdir(marker):
+            repo_root, git_dir = cursor, marker
+            break
+        if os.path.isfile(marker):
+            try:
+                with open(marker, encoding="utf-8", errors="replace") as handle:
+                    pointer = handle.read(4096)
+            except OSError:
+                pointer = ""
+            prefix, separator, value = pointer.partition(":")
+            if separator and prefix.strip().casefold() == "gitdir" and value.strip():
+                repo_root = cursor
+                git_dir = os.path.realpath(os.path.join(cursor, value.strip()))
+            break
+        parent = os.path.dirname(cursor)
+        if parent == cursor:
+            break
+        cursor = parent
+    if not git_dir:
+        return repo_root
+    common_file = os.path.join(git_dir, "commondir")
+    try:
+        with open(common_file, encoding="utf-8", errors="replace") as handle:
+            common = handle.read(4096).strip()
+    except OSError:
+        common = ""
+    if not common:
+        return repo_root
+    common_dir = os.path.realpath(os.path.join(git_dir, common))
+    return os.path.dirname(common_dir) if os.path.basename(common_dir) == ".git" else repo_root
+
+
+def project_root(cwd: str) -> str | None:
+    """Canonical project root for a measured absolute working directory."""
+    if not cwd or not os.path.isabs(cwd):
+        return None
+    canonical = os.path.realpath(cwd)
+    if not os.path.isdir(canonical):
+        return None
+    return _git_identity_root(canonical) or canonical
+
+
+def project_identity(config: RuntimeConfig, cwd: str) -> dict[str, str]:
+    """Stable local project key and basename from a measured working directory.
+
+    A linked worktree's ``.git`` file points at a per-worktree gitdir whose
+    ``commondir`` points back to the main checkout's ``.git``. Following those
+    two bounded plaintext pointers makes the main checkout and every worktree
+    one project without invoking Git during collection. The key is a digest of
+    that canonical root: unrelated repositories with the same basename remain
+    distinct without publishing an absolute path.
+
+    A non-Git directory has no stronger identity source. It gets a path-derived
+    key and its own basename; callers retain their existing display fallback if
+    the cwd is unusable.
+    """
+    if not cwd or not os.path.isabs(cwd):
+        return {}
+    if not os.path.isdir(os.path.realpath(cwd)):
+        return {}
+    repo_root = _git_identity_root(cwd)
+    root = repo_root or os.path.realpath(cwd)
+    name = os.path.basename(root.rstrip(os.sep)) or project_from_cwd(config, root)
+    return {
+        "key": _project_identity_key("git:" if repo_root else "path:", root),
+        "name": name,
+        "source": "git common directory" if repo_root else "working directory path",
+    }
+
+
+def apply_project_identity(config: RuntimeConfig, session: Session, cwd: str) -> None:
+    """Attach a measured hidden key and short name without replacing legacy display data."""
+    identity = project_identity(config, cwd)
+    if not identity:
+        return
+    session["project_key"] = identity["key"]
+    session["project_name"] = identity["name"]
+    session["project_identity_source"] = identity["source"]
+
+
 def fmt_duration(seconds: float | None) -> str:
     if seconds is None or seconds < 0:
         return "–"
@@ -241,6 +335,12 @@ MODEL_CAP_CHARS = 40
 # them to 40 here would cut the half that says which tool ran.
 TOOL_NAME_CAP_CHARS = 60
 
+# A final answer is useful as session context, but it is transcript-authored
+# text crossing into the dashboard payload. Four KiB preserves ordinary
+# Markdown answers while keeping one pathological response from dominating a
+# poll or an expanded project strip.
+LAST_OUTPUT_CAP_CHARS = 4096
+
 
 # The readings a collector may disclose it could not take from a store that
 # opened. Named constants and not literals at each site: this text reaches the
@@ -339,11 +439,15 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "sid": str(sid),
         "harness": harness,
         "project": project,
+        "project_key": project,
+        "project_name": project.rsplit("/", 1)[-1] or project,
+        "project_identity_source": "collector project label",
         "provider": None,
         "model": None,
         "consumption": None,
         "title": None,
         "last_prompt": "",
+        "last_output": None,
         # The second line beneath the title. A mapping of label, text and at, or
         # None. The label is one of "asked", "agent" or "earlier", and the page
         # renders it with the age of the stamp in front of the text.
@@ -522,6 +626,8 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # frontend, because both views need it and a re-derivation is how they
         # would come to disagree.
         "subagents": [],
+        "subagent_hierarchy": None,
+        "subagent_events": None,
         "tasks": [],
         "spacedock": None,
         # The readings this row's collector could not take from a store it

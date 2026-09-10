@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import heapq
+import json
 import math
 import os
+import re
+import shlex
 from typing import TYPE_CHECKING, Any
 
 # Absolute on the canonical top-level package: a sub-package cannot use
@@ -27,6 +30,30 @@ def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
 # events are frequent, so the snapshot is almost always in the newest file;
 # the rest of the budget covers a file that was only just created.
 _USAGE_FILE_CAP = 8
+_CHILD_LIFECYCLE_FILE_CAP = 24
+_CHILD_LIFECYCLE_BYTES = 128 * 1024
+_CHILD_LIFECYCLE_EVENT_CAP = 12
+_CHILD_ASSIGNMENT_CAP = 140
+_ENSIGN_AGENT_PATH_RE = re.compile(
+    r"^/root/spacedock_ensign_([a-z0-9][a-z0-9_]*?)(?:_cycle[0-9]+)?$"
+)
+_DISPATCH_DIRECTORY = "/tmp/spacedock-dispatch"  # noqa: S108
+
+
+def _dispatch_workflow_dir(line: str) -> str:
+    """Return only an absolute workflow directory explicitly named by a dispatch."""
+    if "--workflow-dir" not in line:
+        return ""
+    try:
+        parts = shlex.split(line)
+    except ValueError:
+        return ""
+    if "--workflow-dir" not in parts:
+        return ""
+    index = parts.index("--workflow-dir") + 1
+    if index >= len(parts) or not os.path.isabs(parts[index]):
+        return ""
+    return records.safe_text(os.path.realpath(parts[index]), 1024)
 
 
 def _usage_window(now: float, raw: Any) -> tuple[str, dict[str, Any]] | None:
@@ -137,18 +164,189 @@ def _subagent_rate(
     return round(recent / (config.rate_window_sec / 60))
 
 
-def collect(
+def _child_lineage(
+    sid: str,
+    parent_sid: str,
+    top_level: dict[str, tuple[float, str]],
+    meta_by_sid: dict[str, dict[str, Any]],
+) -> tuple[str, int, str | None]:
+    """Resolve a child root, depth, and immediate named parent from recorded links."""
+    immediate_parent = parent_sid
+    depth = 1
+    seen = {sid}
+    while parent_sid not in top_level:
+        parent_meta = meta_by_sid.get(parent_sid)
+        next_parent = parent_meta.get("parent_session_id") if parent_meta is not None else None
+        if not next_parent or next_parent in seen:
+            break
+        seen.add(parent_sid)
+        parent_sid = next_parent
+        depth += 1
+    immediate_meta = meta_by_sid.get(immediate_parent)
+    parent_name = (
+        records.safe_text(immediate_meta.get("agent_label") or "subagent", 70)
+        if depth > 1 and immediate_meta is not None
+        else None
+    )
+    return parent_sid, depth, parent_name
+
+
+def _child_lifecycle(
+    config: RuntimeConfig,
+    path: str,
+    name: str,
+    model: Any,
+    depth: int,
+    parent_name: str | None,
+) -> list[dict[str, Any]]:
+    """Bounded lifecycle signals written by one real Codex child rollout."""
+    kinds = {
+        "task_started": "subagent_task_started",
+        "task_complete": "subagent_complete",
+        "turn_aborted": "subagent_interrupted",
+    }
+    events: list[dict[str, Any]] = []
+    for raw in runtime_io.reverse_lines(
+        config,
+        path,
+        max_bytes=_CHILD_LIFECYCLE_BYTES,
+        contains=b'"type"',
+    ):
+        try:
+            row = records.as_dict(json.loads(raw))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        payload = records.as_dict(row.get("payload"))
+        payload_type = payload.get("type")
+        kind = (
+            kinds.get(payload_type)
+            if row.get("type") == "event_msg" and isinstance(payload_type, str)
+            else None
+        )
+        at = records.parse_ts(row.get("timestamp"))
+        if kind is None or at is None:
+            continue
+        events.append(
+            {
+                "at": at,
+                "kind": kind,
+                "name": name,
+                "model": model,
+                "depth": depth,
+                "parent_name": parent_name,
+                "source": "Codex child rollout lifecycle",
+            }
+        )
+        if len(events) >= _CHILD_LIFECYCLE_EVENT_CAP:
+            break
+    return list(reversed(events))
+
+
+def _assignment_summary(message: str) -> str:
+    for raw in message.splitlines():
+        line = raw.strip().lstrip("#*- ").strip()
+        if not line or line.startswith(("<", "```", "Message Type:", "Task name:", "Sender:")):
+            continue
+        sentence = line.split(". ", 1)[0].strip().rstrip(".")
+        return records.safe_text(sentence, _CHILD_ASSIGNMENT_CAP)
+    return ""
+
+
+def _ensign_dispatch_metadata(agent_path: str) -> tuple[str, str, str, str]:
+    """Human title plus exact workflow/entity/stage identity from one ensign artifact."""
+    match = _ENSIGN_AGENT_PATH_RE.fullmatch(agent_path)
+    if match is None or not match.group(1):
+        return "", "", "", ""
+    slug = match.group(1).replace("_", "-")
+    artifact = f"{_DISPATCH_DIRECTORY}/spacedock-ensign-{slug}.md"
+    title = ""
+    stage = ""
+    workflow = ""
+    for raw in runtime_io.iter_bounded_text_lines(
+        artifact,
+        max_lines=40,
+        per_line_bytes=2048,
+    ):
+        line = raw.strip()
+        if line.startswith("You are working on:"):
+            title = records.safe_text(
+                line[len("You are working on:") :].strip(),
+                _CHILD_ASSIGNMENT_CAP,
+            )
+        elif line.startswith("Stage:"):
+            candidate = line[len("Stage:") :].strip()
+            if re.fullmatch(r"[a-z0-9][a-z0-9-]*", candidate):
+                stage = candidate
+        workflow = workflow or _dispatch_workflow_dir(line)
+        if title and stage and workflow:
+            break
+    suffix = f"-{stage}" if stage else ""
+    entity = slug[: -len(suffix)] if suffix and slug.endswith(suffix) else ""
+    return title, entity, stage, workflow
+
+
+def _child_assignment(
+    config: RuntimeConfig,
+    parent_path: str,
+    agent_path: str,
+) -> tuple[str | None, str, str, str, str]:
+    """Latest exact plaintext parent assignment for one child path."""
+    if not agent_path:
+        return None, "unavailable", "", "", ""
+    artifact_assignment, workflow_entity, workflow_stage, workflow_binding = (
+        _ensign_dispatch_metadata(agent_path)
+    )
+    task_name = agent_path.rstrip("/").rsplit("/", 1)[-1]
+    latest: str | None = None
+    for raw in runtime_io.read_tail(config, parent_path) if parent_path else ():
+        try:
+            row = records.as_dict(json.loads(raw))
+        except (ValueError, json.JSONDecodeError):
+            continue
+        payload = records.as_dict(row.get("payload"))
+        if row.get("type") != "response_item" or payload.get("type") != "function_call":
+            continue
+        name = payload.get("name")
+        arguments = payload.get("arguments")
+        try:
+            args = records.as_dict(json.loads(arguments)) if isinstance(arguments, str) else {}
+        except (ValueError, json.JSONDecodeError):
+            continue
+        matches = (name == "spawn_agent" and args.get("task_name") == task_name) or (
+            name == "followup_task" and args.get("target") == agent_path
+        )
+        if not matches:
+            continue
+        message = args.get("message")
+        if not isinstance(message, str) or message.startswith("gAAAA"):
+            latest = None
+            continue
+        latest = _assignment_summary(message) or None
+    if latest:
+        return latest, "exact parent dispatch", workflow_entity, workflow_stage, workflow_binding
+    if artifact_assignment:
+        return (
+            artifact_assignment,
+            "structured dispatch artifact",
+            workflow_entity,
+            workflow_stage,
+            workflow_binding,
+        )
+    return None, "unavailable", "", "", ""
+
+
+def _rollouts(
     config: RuntimeConfig,
     state: RuntimeState,
-    now: float,
-    window_hours: float,
-    show_all: bool,
-) -> list[Session]:
-    # Resumes and subagent threads each write their own rollout file, so group
-    # by the session_meta session_id rather than by file.
-    found: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
-    # parent session_id -> {"agents": [(label, mtime, model, started_at)], "rate": int}
-    agent_data: dict[str, dict[str, Any]] = {}
+) -> tuple[
+    dict[str, tuple[float, str]],
+    list[tuple[str, float, str, dict[str, Any]]],
+    dict[str, dict[str, Any]],
+]:
+    """Read Codex rollout identity once and separate dashboard roots."""
+    found: dict[str, tuple[float, str]] = {}
+    rollouts: list[tuple[str, float, str, dict[str, Any]]] = []
+    meta_by_sid: dict[str, dict[str, Any]] = {}
     for fp in runtime_io.glob_stores(
         config,
         "codex.sessions",
@@ -162,10 +360,73 @@ def collect(
         except OSError:
             continue
         meta = transcripts.codex_meta(config, state, fp)
-        sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")][-36:]
+        session_sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")][-36:]
+        sid = (meta.get("thread_id") or session_sid) if meta.get("subagent") else session_sid
+        rollouts.append((sid, mtime, fp, meta))
+        meta_by_sid[sid] = meta
+        if not meta.get("subagent") and (session_sid not in found or mtime > found[session_sid][0]):
+            found[session_sid] = (mtime, fp)
+    return found, rollouts, meta_by_sid
+
+
+def _session_state(
+    info: dict[str, Any] | None,
+    scan: dict[str, Any] | None,
+    tasks: list[dict[str, Any]],
+    subagents: list[dict[str, Any]],
+    *,
+    working: bool,
+) -> tuple[str, str]:
+    """Current state and detail from the root event stream and its plan."""
+    if not working or not ((scan and scan.get("turn_start") is not None) or subagents):
+        return "idle", "awaiting your message"
+    in_progress = next((task for task in tasks if task["status"] == "in_progress"), None)
+    detail = sessions.working_detail(info, subagents)
+    if in_progress:
+        detail = in_progress["subject"] + "…"
+    return "working", detail
+
+
+def collect(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    now: float,
+    window_hours: float,
+    show_all: bool,
+) -> list[Session]:
+    # Resumes and subagent threads each write their own rollout file, so group
+    # by the session_meta session_id rather than by file.
+    # parent session_id -> running agents, recent child activity, and rate
+    agent_data: dict[str, dict[str, Any]] = {}
+    found, rollouts, meta_by_sid = _rollouts(config, state)
+    path_by_sid = {sid: fp for sid, _, fp, _ in rollouts}
+    assignment_cache: dict[tuple[str, str], tuple[str | None, str, str, str, str]] = {}
+    lifecycle_paths = set(
+        [
+            fp
+            for _, _, fp, meta in sorted(rollouts, key=lambda row: -row[1])
+            if meta.get("subagent")
+        ][:_CHILD_LIFECYCLE_FILE_CAP]
+    )
+
+    for sid, mtime, fp, meta in rollouts:
         if meta.get("subagent"):
-            parent_sid = meta.get("parent_session_id") or sid
-            data = agent_data.setdefault(parent_sid, {"agents": [], "rate": 0})
+            immediate_parent_sid = meta.get("parent_session_id") or sid
+            parent_sid = immediate_parent_sid
+            # Codex nests worker threads. Only top-level sessions are dashboard
+            # rows, so walk the recorded parent links and attach each descendant
+            # to the real row that owns it. The previous direct-parent lookup
+            # orphaned depth-2 rollouts even though both links were on disk.
+            parent_sid, depth, parent_name = _child_lineage(
+                sid,
+                parent_sid,
+                found,
+                meta_by_sid,
+            )
+            data = agent_data.setdefault(
+                parent_sid,
+                {"agents": [], "activity": [], "rate": 0, "lifecycle": []},
+            )
             # One scan, above both branches. The rate window is wider than the
             # working window today, so the rate branch happens to have scanned
             # every child the second branch renders — but that is two config
@@ -175,28 +436,69 @@ def collect(
             charged = sessions.is_fresh(config, now, mtime, config.rate_window_sec)
             rendered = sessions.is_fresh(config, now, mtime, config.working_threshold_sec)
             scan = turns.scan_turns(config, state, fp, "codex") if charged or rendered else None
+            name = records.safe_text(meta.get("agent_label") or "subagent", 70)
+            data["activity"].extend(
+                [mtime] if sessions.is_fresh(config, now, mtime, window_hours * 3600) else []
+            )
+            if fp in lifecycle_paths and sessions.is_fresh(
+                config,
+                now,
+                mtime,
+                window_hours * 3600,
+            ):
+                data["lifecycle"].extend(
+                    _child_lifecycle(
+                        config,
+                        fp,
+                        name,
+                        (scan or {}).get("model"),
+                        depth,
+                        parent_name,
+                    )
+                )
             if charged:
                 data["rate"] += _subagent_rate(config, state, fp, now, scan)
-            if rendered:
+            if rendered and scan and scan.get("turn_start") is not None:
                 # The child's own rollout declares its own model; the page, not
                 # the collector, decides whether it differs from the parent's.
+                # Membership is present lifecycle, not mtime inference: Codex
+                # writes task_complete/turn_aborted and scan_turns retires the
+                # active turn on either boundary.
+                assignment_key = (
+                    path_by_sid.get(immediate_parent_sid, ""),
+                    str(meta.get("agent_path") or ""),
+                )
+                if assignment_key not in assignment_cache:
+                    assignment_cache[assignment_key] = _child_assignment(config, *assignment_key)
+                assignment = assignment_cache[assignment_key]
                 data["agents"].append(
                     (
-                        (meta.get("agent_label") or "subagent")[:70],
+                        name,
                         mtime,
                         (scan or {}).get("model"),
                         turns.started_at(scan),
+                        depth,
+                        parent_name,
+                        assignment[0],
+                        assignment[1],
+                        assignment[2],
+                        assignment[3],
+                        assignment[4],
+                        sid,
                     )
                 )
             continue
-        if sid not in found or mtime > found[sid][0]:
-            found[sid] = (mtime, fp)
 
     out: list[Session] = []
     for sid, (mtime, fp) in found.items():
-        data = agent_data.get(sid) or {"agents": [], "rate": 0}
+        data = agent_data.get(sid) or {
+            "agents": [],
+            "activity": [],
+            "rate": 0,
+            "lifecycle": [],
+        }
         agents = sorted(data["agents"], key=lambda a: -a[1])
-        activity_sources = (mtime, *(a[1] for a in agents))
+        activity_sources = (mtime, *data["activity"])
         last_activity = sessions.newest_plausible(config, now, activity_sources)
         active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
@@ -217,7 +519,6 @@ def collect(
         # for no scan. Such a row reports no model rather than an old one: the
         # collector has not read it this pass, and that is the honest reading.
         scan = turns.scan_turns(config, state, fp, "codex") if info else None
-        last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [
             {
                 "name": label,
@@ -226,42 +527,73 @@ def collect(
                 "active": None,
                 "parent": None,
             }
-            for label, _, model, started_at in agents
+            for label, _, model, started_at, *_ in agents
         ]
+        hierarchy = [
+            {
+                "name": label,
+                "model": model,
+                "started_at": started_at,
+                "depth": depth,
+                "parent_name": parent_name,
+                "assignment": assignment,
+                "assignment_status": assignment_status,
+                "observer_sid": observer_sid,
+                **(
+                    {
+                        "workflow_entity": workflow_entity,
+                        "workflow_stage": workflow_stage,
+                        "workflow_binding": workflow_binding,
+                    }
+                    if workflow_entity and workflow_stage
+                    else {}
+                ),
+            }
+            for (
+                label,
+                _,
+                model,
+                started_at,
+                depth,
+                parent_name,
+                assignment,
+                assignment_status,
+                workflow_entity,
+                workflow_stage,
+                workflow_binding,
+                observer_sid,
+            ) in sorted(
+                agents,
+                key=lambda agent: (agent[4], -agent[1], agent[0]),
+            )
+        ]
+        lifecycle = sorted(data["lifecycle"], key=lambda event: event["at"])[-48:]
         # Behind the same `active` gate as the rest of the reads: a stale
         # `?all=1` row pays for no walk and reports no plan, which is "not read"
         # rather than a plan that has since moved on.
         tasks = transcripts.codex_plan(config, state, fp) if active else []
         done = sum(1 for t in tasks if t["status"] == "completed")
+        last_event_sources = ((info or {}).get("last_event_ts") or 0, *activity_sources)
+        session_state, state_detail = _session_state(
+            info,
+            scan,
+            tasks,
+            subagents,
+            working=sessions.is_fresh(
+                config,
+                now,
+                sessions.newest_plausible(config, now, last_event_sources),
+                config.working_threshold_sec,
+            ),
+        )
 
-        session_state, state_detail = "idle", "awaiting your message"
-        if sessions.is_fresh(
-            config,
-            now,
-            sessions.newest_plausible(config, now, last_event_sources),
-            config.working_threshold_sec,
-        ):
-            session_state = "working"
-            # The step Codex says it is on outranks the generic line, the same
-            # order the Claude collector uses and for the same reason: "running 1
-            # subagent" is true of every fan-out, and the plan step is the only
-            # published field that says WHICH piece of work is in flight.
-            in_progress = next((t for t in tasks if t["status"] == "in_progress"), None)
-            state_detail = (
-                in_progress["subject"] + "…"
-                if in_progress
-                else sessions.working_detail(info, subagents)
-            )
-
+        cwd = transcripts.codex_meta(config, state, fp).get("cwd") or ""
         s = sessions.base_session(
             "codex",
             sid,
-            sessions.project_from_cwd(
-                config,
-                transcripts.codex_meta(config, state, fp).get("cwd") or "",
-            )
-            or "codex",
+            sessions.project_from_cwd(config, cwd) or "codex",
         )
+        sessions.apply_project_identity(config, s, cwd)
         s.update(
             {
                 # Codex publishes the whole rollout id as `sid`, and that is the id
@@ -274,6 +606,7 @@ def collect(
                 "title": asked["title"],
                 "last_prompt": asked["last_prompt"],
                 "instruction": asked["instruction"],
+                "last_output": (info or {}).get("last_output"),
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,
@@ -304,6 +637,8 @@ def collect(
                 # reading "openai" off the harness name would be inference.
                 "model": scan.get("model") if scan else None,
                 "subagents": subagents,
+                "subagent_hierarchy": hierarchy,
+                "subagent_events": lifecycle,
                 "tasks": tasks,
                 "total": len(tasks),
                 "done": done,

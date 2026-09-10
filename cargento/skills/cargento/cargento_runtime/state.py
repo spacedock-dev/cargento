@@ -43,6 +43,7 @@ class RuntimeState:
     hook_lock: LockType = field(default_factory=threading.Lock)
     cache_lock: LockType = field(default_factory=threading.Lock)
     scanner_lock: LockType = field(default_factory=threading.Lock)
+    semantic_history_lock: LockType = field(default_factory=threading.Lock)
     # Named for the memo it used to guard, and still doing that memo's real job:
     # held across collection so concurrent readers share one filesystem and
     # SQLite scan. The published bytes moved to `snapshot`, which has its own
@@ -111,6 +112,11 @@ class RuntimeState:
     spacedock_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = field(
         default_factory=dict
     )
+    # Canonical project root -> (observation time, detached discovery result).
+    # The command is bounded, but it is still a subprocess; one project-context
+    # poll must not spawn it again while its project declaration has not aged
+    # past the short observation floor.
+    spacedock_discovery_cache: dict[str, tuple[float, dict[str, Any]]] = field(default_factory=dict)
     spacedock_entity_cache: dict[tuple[str, int, int], str] = field(default_factory=dict)
     cursor_metadata_cache: dict[str, tuple[float, str | None, str]] = field(default_factory=dict)
     # The quota fetch. One cache entry per vendor key, stamped with the fetch

@@ -627,19 +627,28 @@ def read_frontmatter(
 
 
 def read_workflow(
-    config: RuntimeConfig, state: RuntimeState, workflow_dir: str
+    config: RuntimeConfig,
+    state: RuntimeState,
+    workflow_dir: str,
+    *,
+    definition_root: str | None = None,
 ) -> dict[str, Any] | None:
     """The stage taxonomy of one workflow directory, or None.
 
-    ``workflow_dir`` is an absolute path the session itself recorded in its boot
-    output; it is canonicalised, its README must be a regular non-symlink file,
-    at most ``config.spacedock_readme_bytes`` are read, and the result counts only if the
-    frontmatter declares ``commissioned-by: spacedock@`` — Spacedock's own
-    workflow discriminator. No other file in the workflow directory is read and
-    no directory is walked; the entity-state directory the boot output names
-    separately is read by :func:`read_entities`. Only derived scalars leave this
-    function, plus the frontmatter ``title`` — the goal line, and the one piece
-    of project-authored text on the surface, bounded by
+    ``workflow_dir`` is canonicalised and at most
+    ``config.spacedock_readme_bytes`` are read. A session-recorded workflow
+    keeps the default strict boundary: its README must be a regular,
+    non-symlink file inside that directory. Project discovery may pass the
+    already verified ``.spacedock`` definition root; then an immediate workflow
+    child may link its README to another definition below that same root. This
+    supports Spacedock's repository-owned definition layout without allowing a
+    discovered link to leave the project boundary.
+
+    The result counts only if the frontmatter declares ``commissioned-by:
+    spacedock@`` — Spacedock's own workflow discriminator. No directory is
+    walked. Only derived scalars leave this function, plus the frontmatter
+    ``title`` — the goal line, and the one piece of project-authored text on the
+    surface, bounded by
     ``config.spacedock_goal_cap_chars`` and stripped by ``records.safe_text``.
     No body text and no filesystem path leaves.
 
@@ -649,15 +658,14 @@ def read_workflow(
     try:
         root = os.path.realpath(workflow_dir)
         readme = os.path.join(root, "README.md")
-        info = os.stat(readme)
-    except (OSError, ValueError):
-        return None
-    # Containment: the README must resolve inside the directory it was found in,
-    # so a symlinked or swapped entry cannot redirect the read elsewhere.
-    try:
         resolved = os.path.realpath(readme)
-        if os.path.commonpath((root, resolved)) != root:
+        containment_root = os.path.realpath(definition_root) if definition_root else root
+        if definition_root and os.path.dirname(root) != containment_root:
             return None
+        if os.path.commonpath((containment_root, resolved)) != containment_root:
+            return None
+        read_path = resolved if definition_root else readme
+        info = os.stat(read_path)
     except (OSError, ValueError):
         return None
     key = (root, info.st_mtime_ns, info.st_size)
@@ -666,7 +674,7 @@ def read_workflow(
             return state.spacedock_workflow_cache[key]
     result: dict[str, Any] | None = None
     try:
-        lines = read_frontmatter(config, readme, config.spacedock_readme_bytes, info)
+        lines = read_frontmatter(config, read_path, config.spacedock_readme_bytes, info)
     except SdMismatchError:
         return None
     if scalar(lines, "commissioned-by").startswith(SD_COMMISSIONED_PREFIX):
