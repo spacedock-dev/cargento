@@ -671,6 +671,41 @@ def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
     return unwired
 
 
+class AnnotationFieldCollapseTest(unittest.TestCase):
+    """The box and the store must strip the same characters.
+
+    `records.safe_text` turns every run of control and bidi characters into ONE
+    space before the store sees anything, so a pasted line break was gone at the
+    save while the box still showed it and the cue said "Saved as a new
+    revision." under text the store never held. The page now collapses on input,
+    which means the rule is spelled twice, in Python and in JavaScript.
+
+    Two spellings of one rule drift, so this pins them together. It is a
+    verbatim substring assertion and not a re-derivation, because the pattern is
+    written with escapes on both sides and is therefore byte-identical: the
+    Python `.pattern` string is also a valid JavaScript regex literal body.
+    `lint_embedded` runs `node --check` alone, so no JS linter would object to
+    the class either way.
+    """
+
+    def test_the_page_strips_exactly_what_the_store_strips(self) -> None:
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        self.assertIn(
+            records._UNSAFE_CHARS.pattern,
+            source,
+            "next-cockpit.js no longer spells the store's character class verbatim, so the "
+            "held field and records.safe_text can now disagree about what a paste contains.",
+        )
+
+    def test_the_pinned_class_is_the_one_that_eats_a_newline(self) -> None:
+        # Guards the pin itself: a class that no longer covered \n would still
+        # be pinned, and the assertion above would stay green while the defect
+        # it exists for came back.
+        self.assertEqual("a b", records.safe_text("a\nb", 240))
+        self.assertEqual("a b", records.safe_text("a\n\n\nb", 240))
+        self.assertEqual("a b", records.safe_text("a\tb", 240))
+
+
 class ReadingControlIsWiredTest(unittest.TestCase):
     """A rendered cockpit action may not become reachable with no handler.
 

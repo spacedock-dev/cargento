@@ -76,6 +76,38 @@ class AnnotationStoreTest(unittest.TestCase):
         self.assertEqual(before, sorted(os.listdir(self.harness_store)))
         self.assertTrue(annotation_store.store_path(self.config).startswith(str(self.root)))
 
+    def test_a_typed_line_break_is_stored_as_one_space(self) -> None:
+        """The product call, recorded where it binds: these fields are one line.
+
+        DRC-4533 asked whether they are single-line or multi-line. Single, and
+        the reason is not layout. Relaxing the control-character strip for these
+        two fields would reopen a closed credential hole: the scrub is what
+        stops a pasted PEM body surviving, which `test_records` holds shut. So
+        the store keeps collapsing, and the box collapses too, so the reader
+        watches it happen rather than finding it afterwards.
+        """
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "sess-1",
+            goal="ship it\n\nand the doc",
+            output="a PR\tgreen CI",
+            now=self.NOW,
+        )
+
+        entry = annotation_store.find(
+            annotation_store.active(self.config, self.state), "pi", "sess-1"
+        )
+        assert entry is not None
+        revision = entry["revisions"][-1]
+        self.assertEqual("ship it and the doc", revision["goal"])
+        self.assertEqual("a PR green CI", revision["output"])
+        for field in ("goal", "output"):
+            with self.subTest(field=field):
+                self.assertNotIn("\n", revision[field])
+                self.assertNotIn("\t", revision[field])
+
     def test_activity_after_the_annotation_does_not_erase_it(self) -> None:
         """The deliberate difference from `dismissals`, which lapses on activity.
 
@@ -89,11 +121,23 @@ class AnnotationStoreTest(unittest.TestCase):
         )
         entries = annotation_store.active(self.config, self.state)
 
-        # Far past any plausible watermark.
-        self.assertTrue(annotation_store.holds(entries, "pi", "sess-1", self.NOW + 1_000_000))
-        entry = annotation_store.find(entries, "pi", "sess-1")
-        assert entry is not None
-        self.assertEqual("Ship the cockpit", entry["revisions"][-1]["goal"])
+        # Asserted on the PUBLISHED ROW, far past any plausible watermark,
+        # because that is where a lapse would be observable. A predicate in the
+        # store used to stand here and took an activity argument it ignored, so
+        # adding the lapse to the binding left this test green; it is deleted
+        # and this is what replaces it.
+        rows: list[dict[str, object]] = [
+            {
+                "harness": "pi",
+                "sid": "sess-1",
+                "state": "working",
+                "last_activity": self.NOW + 1_000_000,
+            }
+        ]
+        aggregate._attach_annotations(rows, entries)
+
+        self.assertEqual("Ship the cockpit", rows[0]["annotation_goal"])
+        self.assertEqual("", rows[0]["annotation_goal_why"])
 
     # --- revisions ---------------------------------------------------------
 

@@ -755,6 +755,18 @@ function nextCockpitHeldCap(){
    handler above cannot redraw and has to reach an element that is already
    there. `hidden` rather than a class: it is the attribute that means this,
    and `styles.css` is where it is made to stick. */
+/* The store's own character class, character for character. `records.safe_text`
+   turns every run of these into ONE space before the store sees anything, so a
+   pasted line break was already gone at the save while the box still showed it
+   and the cue said "Saved as a new revision." under text the store never held.
+   Collapsing here makes the box show what will be stored.
+
+   Spelled with escapes rather than raw codepoints for two reasons: it is then
+   byte-identical to `records._UNSAFE_CHARS.pattern`, which
+   `AnnotationFieldCollapseTest` pins so the two spellings cannot drift; and a
+   raw bidi control in a source file is the thing this class exists to strip. */
+const NEXT_COCKPIT_HELD_UNSAFE = /[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\u2066-\u2069]+/g;
+
 function nextCockpitHeldControl(action, label, kind, shown){
   return `<button type="button" data-next-cockpit-action="${action}" data-arg="${kind}"` +
     `${shown ? "" : " hidden"}>${label}</button>`;
@@ -2347,7 +2359,8 @@ document.addEventListener("input", event => {
   if(!input) return;
   const key = String(input.dataset.nextCockpitHeldKey || "");
   if(!key) return;
-  const value = String(input.value || "").slice(0, nextCockpitHeldCap());
+  const value = String(input.value || "")
+    .replace(NEXT_COCKPIT_HELD_UNSAFE, " ").slice(0, nextCockpitHeldCap());
   if(value !== input.value) input.value = value;
   nextCockpitHeldDrafts.set(key, value);
   nextCockpitHeldStates.delete(key);

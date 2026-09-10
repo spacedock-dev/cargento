@@ -9,8 +9,11 @@ place, which is the whole design decision here. A dismissal lapses when the
 session moves again, because "I have handled this" is answered by later
 activity. An annotation does not lapse, because "this is what I asked for" is
 not answered by later activity — that is the thing it exists to be compared
-against. There is no watermark in this module, and `holds` says so rather than
-leaving the absence to be read as an oversight.
+against. There is no watermark in this module, and nothing here takes an
+activity argument, which is the shape that says so. A predicate asserting it
+used to stand here and was deleted: it ignored the very argument the rule is
+about and nothing called it, so mutating the binding left its test green. The
+rule is held where it is observable instead, on the published row.
 
 Bounded by two counts and no time-to-live, for `dismissals._bounded`'s reason:
 a TTL would delete the reader's own words while the session they describe is
@@ -302,19 +305,6 @@ def find(entries: Iterable[Annotation], harness: Any, sid: Any) -> Annotation | 
         if (entry["harness"], entry["sid"]) == key:
             return entry
     return None
-
-
-def holds(entries: Iterable[Annotation], harness: Any, sid: Any, _last_activity: float) -> bool:
-    """Whether this session carries words the reader typed.
-
-    Takes `last_activity` and ignores it, which is the point. `dismissals.holds`
-    compares it against a watermark because a dismissal lapses when the work
-    resumes. An annotation does not lapse: later activity is the thing it is
-    there to be read against, not a reason to forget it. The parameter is here
-    so the difference is visible at the call site rather than inferred from an
-    absence.
-    """
-    return find(entries, harness, sid) is not None
 
 
 def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> dict[str, Any]:

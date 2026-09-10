@@ -3811,6 +3811,46 @@ console.log(JSON.stringify({
         self.assertTrue(out["revision"])
         self.assertEqual(["0/240", "0/240"], out["counts"])
 
+    def test_a_pasted_line_break_collapses_in_the_box_not_silently_at_the_store(self) -> None:
+        """DRC-4533's newline item, taken as a product call: the fields are one line.
+
+        `records.safe_text` already collapsed a run of control characters into
+        one space before the store saw anything, so a pasted line break was
+        gone at the save while the box still showed it and the cue said "Saved
+        as a new revision." under text the store never held. The box now shows
+        what will be stored.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const before = __els.renders;
+const box = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+box.value = "ship it\\n\\nand the doc";
+__fire("input", {target:box});
+await __settle();
+const field = box.closest("[data-next-cockpit-held-field]");
+console.log(JSON.stringify({
+  box: box.value,
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  count: field.querySelector("[data-next-cockpit-held-count]").textContent,
+  redraws: __els.renders - before,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        # What the reader sees is what the store will hold: one space, not two
+        # newlines. The write-back on the input element is what makes it visible.
+        self.assertEqual("ship it and the doc", out["box"])
+        self.assertEqual("ship it and the doc", out["draft"])
+        # 19 characters, not 20: the count is against the collapsed value, so
+        # the box and the store cannot disagree at the cap either.
+        self.assertEqual("19/240", out["count"])
+        # And it is still the lane that does not redraw on a keystroke.
+        self.assertEqual(0, out["redraws"])
+
     def test_a_keystroke_updates_the_draft_and_does_not_redraw(self) -> None:
         """The live defect, and the reason the memo lane beside this one does
         not redraw either.
