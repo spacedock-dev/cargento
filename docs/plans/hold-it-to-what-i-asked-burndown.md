@@ -43,6 +43,38 @@ What is still owed, and none of it is buildable without a ruling or a capture:
   criterion.
 - DRC-4514, blocked by DEC-18.
 
+## THE JOURNEY REVIEW (2026-09-10) — findings to clear before this PR is done
+
+Three harnesses reviewed PR #317 against the milestone's four-step journey: Codex (`codex exec`),
+Antigravity (`agy -p`), and six Claude Code lenses with an adversarial verifier per finding
+(56 agents, 50 verdicts, 18 survived, 32 refuted). Deduplicated below. Fix in this order.
+
+| # | Finding | Raised by | Status |
+| -- | -- | -- | -- |
+| A | `persisted:false` ignored: "Saved as a new revision." over a write that never reached disk, and the draft is erased on the next collect | codex, claude x2 | TODO |
+| B | "revision 20 of 16" past the revision bound, in three places, with no sentence saying revisions were dropped | codex, claude x3 | TODO |
+| C | WORK EVIDENCE says "No entry in the observed record names this session" when the record was never read: in flight, errored, or the session was outside the server's 3-session scan | codex x2, claude x2 | TODO |
+| D | STATED GOAL pairs the focused session's typed words with the project's most-recently-active *sibling's* directive, stamped with that sibling's age | agy, codex, claude | TODO |
+| E | The two-axis end evidence (`landing`) renders nowhere | me, agy, codex | TODO |
+| F | The reading shape clauses on the *current* annotation, so a cleared field's departure vanishes and the empty state then claims none were raised | agy | TODO |
+| G | No "covers only the work so far" anywhere; the cutoff renders only inside departure cards | me, agy | TODO |
+| H | The reading limit line is mono, but the board is talking | agy | TODO |
+| I | An observer snapshot renders as published source; the `actor_claim` this PR computes is rendered nowhere | codex, claude | TODO |
+| J | DEPARTURES RAISED TO YOU is omitted entirely when no assessment exists, so step 4 has no surface | codex | TODO |
+| K | A criterion demoted by the harness limit prints the identical sentence twice | claude | TODO |
+| L | The absence sentence renders directly beneath the reader's own typed draft | claude | TODO |
+| M | `--no-annotations` still renders the prefix-binding caveat, a claim about words that cannot exist | claude | TODO |
+| N | `annotation_at` is published, read into the object, and rendered nowhere; a comment added by this PR claims otherwise | claude | TODO |
+| O | SKILL.md says the counter shows "what is left of its 240 characters"; it shows characters used | claude | TODO |
+| P | Held to is unreachable from the dedicated session page every session link points at | claude | TODO |
+| Q | Sessions sharing a title are indistinguishable in the scope tree, and Held to names no session | claude | TODO |
+| R | "Saved as a new revision." never expires and reads as fresh hours later | claude | TODO |
+| S | WORK EVIDENCE on Claude is the reader's own prompts: `_SEMANTIC_FACT_TYPES` maps `steer` to `user_message` and a Claude session promotes nothing else | me | TODO |
+
+Refuted and NOT to be rebuilt: 32 findings, including every claim that the missing model reading,
+the missing write path into a session, and DRC-4514's history are defects. Those are closed
+rulings.
+
 ### Rulings that now govern
 
 - **DEC-17 (DRC-4532), decided.** The evaluation rubric gates AUTOMATIC evaluation only. A
