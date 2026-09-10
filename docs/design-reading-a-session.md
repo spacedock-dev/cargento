@@ -149,3 +149,64 @@ producer exists is false: cases drawn from recorded sessions with expectations w
 need no producer, and only a measured threshold does. And the claim that a reader requested reading
 is safe because it is attended is weak: the reader asks precisely because they cannot judge it
 themselves, and DEC-15b's persistence makes the same reading unattended when it is re read later.
+
+## DEC-18: an unasked reading is permitted, and gated on delivery first
+
+Decided 2026-09-10 (DRC-4534), replacing DEC-15's "for now" refusal of automatic evaluation.
+DEC-17 named this decision as the owner of the tension it could not resolve, and this is the answer.
+
+Automatic evaluation is permitted. A reading you have to ask for only helps someone already looking
+at the board, and the whole point is the person who set a session going and walked away.
+
+It is refused in practice until four things are true, in order.
+
+1. Delivery is real and recorded. DRC-4328 closes the Linux and Windows server side gap, DRC-4034
+   owns the off machine lane, DRC-4540 records the outcome per raise.
+2. A producer exists. DRC-4511.
+3. DEC-17's abstention check has run and passed.
+4. Quiet hours exist. DRC-4032.
+
+Delivery leads rather than the rubric, and that ordering is the substance of the ruling. Measured in
+this tree on the day it was decided: `notify_mac` runs one `osascript` call and records nothing
+about whether the notification was shown or seen, and `native_notifier` returns a backend on darwin
+alone, so Linux and Windows fall back to a browser notification that needs the dashboard tab open.
+An automatic evaluation shipped against that would spend the reader's capacity unattended and raise
+a departure that reaches nobody on two of three platforms, and could not afterwards say whether it
+had arrived on any of them.
+
+### What an off machine signal may carry
+
+DEC-4 permits counts and states only in an off machine payload, never a session name, project,
+title, path or request text. On the machine a departure notification can name the session and say
+what departed. Off the machine it cannot, and the most it may carry is that a count changed.
+DEC-18 does not lift that and did not try.
+
+### The two amendments to the shape
+
+Off by default behind its own switch, evaluating on an observed state change rather than per turn,
+raising only a `departure` and never a `consistent`, held under quiet hours. Two things were added
+to that draft.
+
+Every raise persists the annotation revision and evidence cutoff it rested on, at raise time. By the
+time it is read the annotation may be at a later revision and the evidence window has moved, so a
+raise that does not carry its own baseline cannot be understood on return.
+
+The cumulative cap is per session and per day, and exhaustion is visible on the board. The reader is
+by construction not present, so "nothing departed" and "nothing was checked" must never render
+alike.
+
+### The alternative that was rejected
+
+Automatic evaluation writing into the board only, with no push. It would have sidestepped the
+notification contract, quiet hours, delivery recording and the platform gap, and it was the
+recommendation put to the captain. Rejected because it gives up the capability the reopening was
+about: a board only raise helps only the reader who comes back to look. It stays available as a
+first slice if the delivery preconditions prove more expensive than they look.
+
+### What still bounds the surviving failure class
+
+DEC-17 records one class its rules do not remove: a false `consistent` on Goal resting on the
+agent's own narration. What bounded it was that a reading was produced once per press, never
+aggregated and never pushed. This decision breaks all three, which is why the rubric's acceptance
+thresholds gate the switch defaulting to anything other than off. The case set is written in
+parallel rather than after the build, because cases need no producer and only a threshold does.

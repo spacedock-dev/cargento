@@ -554,6 +554,33 @@ question is open, and it depends on a reading that DRC-4511 cannot produce.
 
 **DRC-4514** is gated behind DRC-4511.
 
+## DEC-18 ruled (2026-09-10)
+
+DRC-4534 is Done. Automatic evaluation is **permitted**, and refused in practice until four
+preconditions in this order: delivery real and recorded (DRC-4328, DRC-4034, DRC-4540), a producer
+(DRC-4511), DEC-17's abstention check, and quiet hours (DRC-4032). Recorded in
+[docs/design-reading-a-session.md](../design-reading-a-session.md#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first).
+
+Three things the ruling turned up that were not in any issue:
+
+- **The notification lane records no delivery.** `notify_mac` is fire and forget. DRC-4514 claimed
+  it reused a distinction the lane already draws; there is no such distinction, and that scope
+  bullet is corrected. DRC-4540 filed to build it.
+- **Server side push is macOS only.** Linux and Windows fall back to a browser notification that
+  needs the dashboard tab open, so "reaches you while you are away" works on one of three
+  platforms today.
+- **DEC-4 caps what an off machine signal may say**: counts and states only, never a session name
+  or title. So an off machine departure signal can say a count changed and nothing more. That is a
+  closed ruling and DEC-18 did not lift it.
+
+Two issues filed from the ruling: **DRC-4540** (record whether a raise reached you) and
+**DRC-4541** (the implementation, carrying all five blocking edges, blocking DRC-4514). DEC-18's
+own `blocks` edge on DRC-4514 became `relatedTo`, because a closed decision holding a live gate
+reads as a real blocker.
+
+The rejected alternative, recorded so it is not rebuilt as a proposal: board only raises with no
+push at all. It was my recommendation and the captain chose full push.
+
 ## Owed to Linear
 
 Nothing yet. Every issue this run touches needs, at minimum: a move to `In Progress` when started,
