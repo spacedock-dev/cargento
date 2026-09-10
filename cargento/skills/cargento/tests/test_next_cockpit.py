@@ -294,9 +294,10 @@ console.log(JSON.stringify({html:__els.app.innerHTML}));
         self.assertIn("eight-character identity prefix", html)
         # The harness published no goal here, so its row keeps its absence
         # styling rather than being dressed as a value because it sits in a list.
+        # And the sentence is about THIS session, not the project: the
+        # derived row used to borrow whichever sibling moved most recently.
         self.assertIn(
-            'next-project-value--absent next-project-goal-text">'
-            "No assignment or workflow goal published",
+            'next-project-value--absent next-project-goal-text">This session published no goal',
             html,
         )
 
@@ -333,6 +334,65 @@ console.log(JSON.stringify({withTime, withoutTime:__els.app.innerHTML}));
             "Spacedock · workflow goal · observation time not published",
             out["withoutTime"],
         )
+
+    def test_the_derived_row_is_the_focused_sessions_own_directive(self) -> None:
+        """Finding D, raised independently by Antigravity, Codex and a lens.
+
+        `nextObservedProject` picks the goal of whichever session moved most
+        recently. Rendered beside one session's typed words that is another
+        session's directive under DERIVED FROM THE HARNESS, and the apparent
+        disagreement reads as a departure when the two concern different work.
+        """
+        out = self.run_fixture(
+            r"""
+// Given: the focused session asked for one thing, a more recently active
+// sibling for another.
+__dashboard.sessions[0].instruction = {label:"asked", text:"Shape the cockpit", at:40};
+__dashboard.sessions[0].last_activity = 90;
+__dashboard.sessions[0].annotation_goal = "Shape the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[1].instruction = {label:"asked", text:"Migrate the database", at:95};
+__dashboard.sessions[1].last_activity = 104;
+
+const read = () => {
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('class="next-project-goal"'));
+  const rows = [...block.matchAll(
+    /goal-tag">([^<]*)<\/span><span class="[^"]*next-project-goal-text">([^<]*)</g)];
+  return {rows: rows.map(m => [m[1], m[2]]),
+    gap: /class="next-project-goal-gap">([^<]*)</.exec(block)};
+};
+
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+const focused = read();
+nextRoute = {view:"project",project:"cargento",tab:"now"};
+renderNext();
+const project = read();
+console.log(JSON.stringify({focused: focused.rows, focusedGap: Boolean(focused.gap),
+  projectGap: Boolean(project.gap)}));
+"""
+        )
+
+        # Then: the derived row is this session's directive, never the sibling's.
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                ["YOUR WORDS · GOAL", "Shape the cockpit"],
+                ["DERIVED FROM THE HARNESS", "Shape the cockpit"],
+            ],
+            out["focused"],
+        )
+        # And the project-wide "N of M sessions publish no goal" count belongs
+        # to the project's render, not beside one session's words.
+        self.assertFalse(out["focusedGap"])
+        self.assertTrue(out["projectGap"])
 
     def test_a_session_with_no_typed_words_shows_the_harness_goal_alone(self) -> None:
         # No rows, no tags, and nothing implying the reader typed something.
@@ -3964,8 +4024,13 @@ console.log(JSON.stringify({within, past}));
 
         # Then
         assert isinstance(out, dict)
-        self.assertEqual("revision 2 of 2", out["within"]["header"])
-        self.assertEqual("revision 20, 16 kept · older revisions dropped", out["past"]["header"])
+        # The reader's words carry their own time now, so the typed row and
+        # the derived row beside it can be put in order.
+        self.assertRegex(out["within"]["header"], r"^revision 2 of 2 \u00b7 typed \d+[smhd]")
+        self.assertRegex(
+            out["past"]["header"],
+            r"^revision 20, 16 kept \u00b7 typed \d+[smhd].* \u00b7 older revisions dropped$",
+        )
         # And the same sentence wherever it renders, not three spellings.
         for line in out["past"]["rows"]:
             with self.subTest(row=line):

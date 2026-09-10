@@ -207,9 +207,11 @@ function nextProjectRevisionLine(annotation){
   const revision = nextNumber(annotation && annotation.revision);
   const count = nextNumber(annotation && annotation.revision_count);
   if(revision == null || count == null || count <= 0) return "";
+  const age = nextDurationSince(nextNumber(annotation && annotation.at));
+  const typed = age == null ? "" : ` · typed ${age} ago`;
   return revision > count
-    ? `revision ${revision}, ${count} kept · older revisions dropped`
-    : `revision ${revision} of ${count}`;
+    ? `revision ${revision}, ${count} kept${typed} · older revisions dropped`
+    : `revision ${revision} of ${count}${typed}`;
 }
 
 function nextProjectGoalRow(tag, text, src, known = true){
@@ -220,22 +222,40 @@ function nextProjectGoalRow(tag, text, src, known = true){
 }
 
 /* The derived row's source line, with when the directive was observed
-   (DRC-4509). A typed row carries its time through the revision line and this
-   one carried none, so a four-minute-old directive and a four-hour-old one
-   read the same. The workflow arm publishes no stamp and says so rather than
-   leaving the row looking fresh. */
-function nextProjectGoalDerivedSource(project){
-  if(!project.goalKnown) return "";
-  const age = project.goalAt == null ? null : nextDurationSince(project.goalAt);
-  return `${project.goalSrcText} · ` +
+   (DRC-4509). It carried a source and no time, so a four-minute-old directive
+   and a four-hour-old one read the same. The workflow arm publishes no stamp
+   and says so rather than leaving the row looking fresh.
+
+   `scope` is the focused session at session scope and the project otherwise.
+   They are different claims: the project's goal is whichever session moved
+   most recently, and pairing that with one session's typed words puts another
+   session's directive under DERIVED FROM THE HARNESS. */
+function nextProjectGoalDerivedSource(scope){
+  if(!scope.known) return "";
+  const age = scope.at == null ? null : nextDurationSince(scope.at);
+  return `${scope.src} · ` +
     (age == null ? "observation time not published" : `observed ${age} ago`);
 }
 
-function nextProjectGoal(project, annotation){
-  const source = project.goalKnown
+/* Whose derived goal this render is about. A focused session answers for
+   itself; with none, the project answers for the group. */
+function nextProjectGoalScope(project, focus){
+  return focus
+    ? {text: focus.ownGoalText, known: focus.ownGoalKnown, src: focus.ownGoalSrcText,
+      at: focus.ownGoalAt}
+    : {text: project.goalText, known: project.goalKnown, src: project.goalSrcText,
+      at: project.goalAt};
+}
+
+function nextProjectGoal(project, annotation, focus){
+  const scope = nextProjectGoalScope(project, focus);
+  const source = scope.known
     ? '<span class="next-project-goal-source">' +
-      `${esc(nextProjectGoalDerivedSource(project))}</span>` : "";
-  const gap = project.goalGapKnown
+      `${esc(nextProjectGoalDerivedSource(scope))}</span>` : "";
+  /* A count across the project's sessions, so it belongs to the project's
+     render. Beside one session's typed words it answers a question the reader
+     did not ask about a group they are not looking at. */
+  const gap = !focus && project.goalGapKnown
     ? `<p class="next-project-goal-gap">${esc(project.goalGapText)}</p>` : "";
   const typed = annotation || null;
   const revision = nextProjectRevisionLine(typed);
@@ -256,9 +276,9 @@ function nextProjectGoal(project, annotation){
   const binding = typed && typed.binding_why && (typed.goal || typed.output)
     ? `<p class="next-project-goal-gap">${esc(typed.binding_why)}</p>` : "";
   const derived = rows
-    ? nextProjectGoalRow("DERIVED FROM THE HARNESS", project.goalText,
-        nextProjectGoalDerivedSource(project), project.goalKnown)
-    : nextProjectValue(project.goalText, project.goalKnown, "next-project-goal-text");
+    ? nextProjectGoalRow("DERIVED FROM THE HARNESS", scope.text,
+        nextProjectGoalDerivedSource(scope), scope.known)
+    : nextProjectValue(scope.text, scope.known, "next-project-goal-text");
   return '<section class="next-project-goal"><header><h2>STATED GOAL</h2>' +
     (rows ? "" : source) + '</header>' + rows + derived + binding + gap + '</section>';
 }

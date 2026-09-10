@@ -76,6 +76,16 @@ function nextObservedLanding(source, ended, stopped){
   };
 }
 
+function nextObservedOwnGoal(source){
+  const goal = nextObservedGoal(source);
+  return {
+    ...nextObservedPair("ownGoal", goal && goal.text, "This session published no goal"),
+    ownGoalSrcText: goal ? goal.src : "Goal source not published",
+    ownGoalSrcKnown: Boolean(goal),
+    ownGoalAt: goal && goal.at != null ? goal.at : null,
+  };
+}
+
 function nextObservedSession(source, asks, harness, generated, shared){
   const ended = nextSessionEndedAt(source) != null;
   const working = !ended && source.state === "working";
@@ -162,6 +172,11 @@ function nextObservedSession(source, asks, harness, generated, shared){
       (blocked || errors || (working && turn.long === true) ? "want" :
       (blockKnown && ["working", "idle"].includes(source.state) ? "ok" : "unknown")),
     landing,
+    /* This session's own derived goal, beside the project's. A session-scope
+       render used to take the project's, which is the most recently active
+       session's, so the reader saw their words for one session above another
+       session's directive under DERIVED FROM THE HARNESS. */
+    ...nextObservedOwnGoal(source),
     subagents: Array.isArray(source.subagents) ? source.subagents : [],
     tasks: Array.isArray(source.tasks) ? source.tasks : [],
   };

@@ -70,6 +70,18 @@ function nextCockpitAnnotation(session){
   return Object.fromEntries(fields.map(name => [name, session[`annotation_${name}`]]));
 }
 
+/* The focused session as `nextObserved` derived it, not the raw row
+   `nextCockpitFocusedSession` returns. Only the observed copy carries the
+   session's own derived goal, and the raw row's missing keys read as
+   `undefined`, which is how a `known` flag defaulted to true and drew an
+   empty value as a published one. */
+function nextCockpitFocusedObserved(group, project){
+  const focus = nextCockpitFocusedSession(group);
+  if(!focus || !project) return null;
+  const key = sessKey(focus);
+  return (project.sessions || []).find(session => sessKey(session) === key) || null;
+}
+
 /* The focused session's annotation, or null at project scope. Null is not an
    error: with no one session selected there is nobody whose words these would
    be, and STATED GOAL falls back to the harness row alone. */
@@ -1465,7 +1477,8 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
     `<div data-next-cockpit-task${taskAttrs}><span>ASSIGNMENT</span>` +
     `<strong>${esc(taskText)}</strong>` +
     `${assignmentEffect}${assignmentEvidence}` +
-    (project ? nextProjectGoal(project, nextCockpitFocusedAnnotation(group)) : "") + '</div>' +
+    (project ? nextProjectGoal(project, nextCockpitFocusedAnnotation(group),
+      nextCockpitFocusedObserved(group, project)) : "") + '</div>' +
     `<div><span>EXECUTION</span>${nextCockpitRecoveryExecution(group, briefing, compactIdle)}</div>` +
     `<div><span>COMMAND</span>` +
     nextCockpitWaitingCommand(project) +

@@ -54,7 +54,7 @@ Antigravity (`agy -p`), and six Claude Code lenses with an adversarial verifier 
 | A | `persisted:false` ignored: "Saved as a new revision." over a write that never reached disk, and the draft is erased on the next collect | codex, claude x2 | DONE |
 | B | "revision 20 of 16" past the revision bound, in three places, with no sentence saying revisions were dropped | codex, claude x3 | DONE |
 | C | WORK EVIDENCE says "No entry in the observed record names this session" when the record was never read: in flight, errored, or the session was outside the server's 3-session scan | codex x2, claude x2 | DONE |
-| D | STATED GOAL pairs the focused session's typed words with the project's most-recently-active *sibling's* directive, stamped with that sibling's age | agy, codex, claude | TODO |
+| D | STATED GOAL pairs the focused session's typed words with the project's most-recently-active *sibling's* directive, stamped with that sibling's age | agy, codex, claude | DONE |
 | E | The two-axis end evidence (`landing`) renders nowhere | me, agy, codex | TODO |
 | F | The reading shape clauses on the *current* annotation, so a cleared field's departure vanishes and the empty state then claims none were raised | agy | TODO |
 | G | No "covers only the work so far" anywhere; the cutoff renders only inside departure cards | me, agy | TODO |
@@ -64,7 +64,7 @@ Antigravity (`agy -p`), and six Claude Code lenses with an adversarial verifier 
 | K | A criterion demoted by the harness limit prints the identical sentence twice | claude | DONE |
 | L | The absence sentence renders directly beneath the reader's own typed draft | claude | DONE |
 | M | `--no-annotations` still renders the prefix-binding caveat, a claim about words that cannot exist | claude | DONE |
-| N | `annotation_at` is published, read into the object, and rendered nowhere; a comment added by this PR claims otherwise | claude | TODO |
+| N | `annotation_at` is published, read into the object, and rendered nowhere; a comment added by this PR claims otherwise | claude | DONE |
 | O | SKILL.md says the counter shows "what is left of its 240 characters"; it shows characters used | claude | TODO |
 | P | Held to is unreachable from the dedicated session page every session link points at | claude | TODO |
 | Q | Sessions sharing a title are indistinguishable in the scope tree, and Held to names no session | claude | TODO |
