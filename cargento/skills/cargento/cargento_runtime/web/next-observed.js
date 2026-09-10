@@ -58,7 +58,8 @@ function nextObservedLanding(source, ended, stopped){
   const claimed = ended || stopped;
   const changed = Number.isInteger(source.changed) && source.changed >= 0 ? source.changed : null;
   const independent = source.dirty === true
-    ? `${changed == null ? "Uncommitted work was" : `${changed} changed entries were`} observed, ` +
+    ? `${changed == null ? "Uncommitted work was"
+      : `${changed} changed ${changed === 1 ? "entry was" : "entries were"}`} observed, ` +
       "which shows work happened and not that the requested output exists"
     : (source.dirty === false
       ? "The working tree was observed clean, which is not evidence a deliverable exists"

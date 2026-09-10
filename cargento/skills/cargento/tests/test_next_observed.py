@@ -805,3 +805,34 @@ console.log(JSON.stringify({active: m.active.map(s => s.sid), history: m.history
         self.assertEqual(out["legacyHistory"], out["history"])
         self.assertTrue(out["unchanged"])
         self.assertTrue(out["shared"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ObservedLandingCountsOneAsOneTest(NextPageJsHarness):
+    """A copy defect the review's own fixes put on screen.
+
+    The sentence predates this branch, and nothing rendered it: HOW IT LANDED
+    is what gave the independent axis a surface, so "1 changed entries were
+    observed" reached a reader for the first time because of a fix.
+    """
+
+    def test_the_independent_axis_agrees_with_itself_about_a_count_of_one(self) -> None:
+        out = self._run_page_js(
+            """
+const landing = changed => nextObservedLanding(
+  {state:"idle", harness:"claude", dirty:true, changed}, true, false).independentText;
+console.log(JSON.stringify({
+  one: landing(1),
+  several: landing(4),
+  none: landing(0),
+  unmeasured: nextObservedLanding({state:"idle", harness:"claude"}, true, false).independentText,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["one"].startswith("1 changed entry was observed"))
+        self.assertTrue(out["several"].startswith("4 changed entries were observed"))
+        # Zero is still plural, which is what English does and what the
+        # dirty-with-nothing-changed case actually reads as.
+        self.assertTrue(out["none"].startswith("0 changed entries were observed"))
+        self.assertTrue(out["unmeasured"].startswith("Git state was not measured"))

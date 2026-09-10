@@ -3629,6 +3629,10 @@ class CockpitHeldToTabTest(NextPageJsHarness):
     FOCUS_DOM = r"""
 let controls = [];
 let spans = [];
+// Paragraphs, because the absence sentence is one and the input handler hides
+// it in place. Parsed with their `hidden` attribute so a test can tell the
+// renderer's state from the handler's.
+let paras = [];
 const decode = text => text.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 const camel = name => name.replace(/^data-/, "").replace(/-([a-z])/g,
   (_, letter) => letter.toUpperCase());
@@ -3660,6 +3664,9 @@ __els.app = {
                 if(inner === "[data-next-cockpit-held-count]"){
                   return spans.find(span => span.dataset.nextCockpitHeldCount === kind) || null;
                 }
+                if(inner === "[data-next-cockpit-held-absent]"){
+                  return paras.find(para => para.dataset.nextCockpitHeldAbsent === kind) || null;
+                }
                 const action = /action="([a-z-]+)"/.exec(inner);
                 return action ? controls.find(control =>
                   control.dataset.nextCockpitAction === action[1] &&
@@ -3669,6 +3676,13 @@ __els.app = {
           const bare = /^\[(data-[\w-]+)\]$/.exec(selector);
           return bare && dataset[camel(bare[1])] !== undefined ? this : null;
         }};
+    });
+    paras = [...html.matchAll(/<p\b([^>]*)>([^<]*)</g)].map(match => {
+      const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      return {textContent: decode(match[2]), hidden: /(^|\s)hidden(\s|$)/.test(match[1]),
+        dataset: Object.fromEntries(Object.entries(attrs)
+          .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]))};
     });
     spans = [...html.matchAll(/<span\b([^>]*)>([^<]*)</g)].map(match => {
       const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
@@ -3932,6 +3946,8 @@ await __settle();
 save("output");
 await __settle();
 const unwritable = cue();
+// The box, because the cue is only honest if the words are where it says.
+const keptDraft = nextCockpitHeldDrafts.get("held:codex:focus-1:output");
 
 // And: a run where it can.
 persisted = true;
@@ -3939,18 +3955,26 @@ type("output", "Six screenshots again");
 await __settle();
 save("output");
 await __settle();
-console.log(JSON.stringify({unwritable, written: cue()}));
+console.log(JSON.stringify({unwritable, keptDraft, written: cue(),
+  clearedDraft: nextCockpitHeldDrafts.has("held:codex:focus-1:output")}));
 """
         )
 
         # Then
         assert isinstance(out, dict)
+        # The wording says what already happened rather than what will. Codex
+        # walked this on the re-check: the handler calls `refreshNext()` on
+        # the line after the cue, and every collection reloads the store from
+        # disk, so the refresh the old sentence warned about had already run
+        # by the time the reader could read the warning.
         self.assertEqual(
-            "Saved for this run only. The store could not be written, so these words "
-            "will be gone at the next refresh.",
+            "Not stored. The store could not be written, so the refresh has already "
+            "dropped these words, and they are still in the box.",
             out["unwritable"],
         )
+        self.assertEqual("Six screenshots", out["keptDraft"])
         self.assertEqual("Saved as a new revision.", out["written"])
+        self.assertFalse(out["clearedDraft"])
 
     def test_the_saved_cue_expires_and_the_map_stays_bounded(self) -> None:
         # Finding R. The cue was unstamped, so it survived every redraw and a
@@ -4100,8 +4124,12 @@ console.log(JSON.stringify({
   emptyShowsReason: empty.includes("No goal typed for this session."),
   // The binding caveat is a claim about words. With none typed there are none.
   emptyShowsBinding: empty.includes("eight-character prefix"),
-  typedShowsReason: __els.app.innerHTML.includes("No goal typed for this session."),
-  typedShowsOtherReason: __els.app.innerHTML.includes("No expected output typed."),
+  // Rendered and hidden, not omitted: a keystroke does not redraw, so the
+  // paragraph has to be an element the input handler can reach.
+  typedHidesReason: /<p class="next-cockpit-held-absent" [^>]*data-next-cockpit-held-absent="goal" hidden>/
+    .test(__els.app.innerHTML),
+  typedShowsOtherReason: /data-next-cockpit-held-absent="output">No expected output typed\\./
+    .test(__els.app.innerHTML),
 }));
 """
         )
@@ -4110,7 +4138,7 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertTrue(out["emptyShowsReason"])
         self.assertFalse(out["emptyShowsBinding"])
-        self.assertFalse(out["typedShowsReason"])
+        self.assertTrue(out["typedHidesReason"])
         # The other field is still empty, so its reason stays.
         self.assertTrue(out["typedShowsOtherReason"])
 
@@ -4192,12 +4220,21 @@ for(const [key] of contexts) nextCockpitContexts.set(key, {data:null, revision:1
 renderNext();
 const failed = absence();
 
-// And: it came back, but the server says it scanned only some sessions.
+/* And: it came back, but the scan that produces these facts did not reach
+   this session. That is `sources.work.omitted`, which names the sessions
+   `_analysis_context_sessions` bounded out at MAX_PROJECT_OBSERVERS.
+
+   It is NOT `command_attention_coverage`, which this test set and the block
+   read for one round of the review: that is a separate sweep over active
+   sessions' final output, bounded at 64 rather than 3, so the state resolved
+   to "empty" for exactly the sessions the sentence was written for. Codex
+   caught it on the verification round by omitting three real sessions and
+   watching the board still say the record named nothing. */
 nextCockpitContexts.clear();
 for(const [key, entry] of contexts){
   const data = JSON.parse(JSON.stringify(entry.data));
-  data.semantic.projections.command_attention_coverage =
-    {state:"incomplete", scanned:3, total:5, omitted:2, source:"bounded scan"};
+  data.sources = {observer:{live:3}, work:{omitted:[
+    {harness:"claude", sid:"claude-idle"}, {harness:"pi", sid:"pi-idle"}]}};
   nextCockpitContexts.set(key, {data, revision:entry.revision});
 }
 renderNext();
@@ -5049,6 +5086,454 @@ console.log(JSON.stringify(scopes));
         # about. Asserted rather than assumed: it is the reason the empty case
         # above is legal.
         self.assertEqual([], out["codex:gone"]["rendered"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitRecheckFindingsTest(NextPageJsHarness):
+    """The defects Codex found on the verification round of the journey review.
+
+    Every one of these is a surface the review's own fixes created or exposed,
+    which is why they are held here rather than folded into the classes that
+    hold the nineteen: a fix that introduces a defect is the failure mode the
+    re-check exists to catch, and a test filed beside the original finding
+    would read as though the original had regressed.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_a_citation_resolves_against_every_entry_not_the_displayed_window(self) -> None:
+        """The display bound was silently a citation bound.
+
+        `nextCockpitWorkSource` slices to the newest rows for readability, and
+        the same slice was handed to the reading. A departure citing a fact
+        older than the window therefore stopped resolving as the session grew,
+        was demoted to `not verifiable`, and the block then printed "The
+        reading raised no departure from the revision it read" about a
+        departure the payload still held.
+        """
+        out = self.run_fixture(
+            """
+const old = {id:"cited-early", type:"user_message", by:"", source:"root transcript · exact"};
+const filler = Array.from({length: NEXT_COCKPIT_WORK_ROWS + 1}, (_, i) =>
+  ({id:`later-${i}`, type:"result", by:"", source:"dispatch artifact · exact"}));
+const all = [old, ...filler];
+const window = all.slice(-NEXT_COCKPIT_WORK_ROWS);
+const annotation = {goal:"do not change the board", output:"six screenshots"};
+const reading = {criteria:{goal:{result:"departure", detail:"It changed the board.",
+  cites:["cited-early"]}}};
+console.log(JSON.stringify({
+  windowed: nextCockpitReadingShape(reading, annotation, window, "").departures.length,
+  full: nextCockpitReadingShape(reading, annotation, all, "").departures.length,
+  // The window is genuinely smaller, so the test is not asserting on a slice
+  // that happens to hold everything.
+  windowHolds: window.some(entry => entry.id === "cited-early"),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertFalse(out["windowHolds"])
+        self.assertEqual(1, out["full"])
+        # The point of the fix is upstream of this function: the shape is
+        # correct for whatever it is given, and the caller must give it all.
+        self.assertEqual(0, out["windowed"])
+
+    def test_the_work_source_publishes_the_full_set_beside_the_displayed_one(self) -> None:
+        """The caller's half of the citation fix."""
+        out = self.run_fixture(
+            """
+const facts = Array.from({length: NEXT_COCKPIT_WORK_ROWS + 5}, (_, i) => ({
+  fact_id:`f-${i}`, at:100 + i, type:"result", summary:`row ${i}`,
+  source_session:{harness:"codex", sid:"focus-1"},
+  evidence:{source:"dispatch artifact", confidence:"exact"}}));
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const session = group.sessions.find(row => row.sid === "focus-1");
+nextCockpitContexts.set(nextCockpitContextKey(group, session),
+  {data:{semantic:{facts, projections:{}}}});
+const source = nextCockpitWorkSource(group, session);
+console.log(JSON.stringify({
+  shown: source.entries.length,
+  all: source.all.length,
+  total: source.total,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(20, out["shown"])
+        self.assertEqual(25, out["all"])
+        self.assertEqual(25, out["total"])
+
+    def test_the_rendered_tab_resolves_a_citation_older_than_the_window(self) -> None:
+        """The caller's half, walked the way a reader meets it.
+
+        The two halves fail independently: the shape can be correct for what
+        it is given while the tab hands it the twenty rows it draws, which is
+        what a session simply has to outgrow. So this renders the real tab
+        against a session with more facts than the window and a reading that
+        cites the oldest of them.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + """
+const older = Array.from({length: NEXT_COCKPIT_WORK_ROWS + 4}, (_, i) => ({
+  fact_id:`later-${i}`, at:200 + i, type:"result", summary:`row ${i}`,
+  source_session:{harness:"codex", sid:"focus-1"},
+  evidence:{source:"dispatch artifact", confidence:"exact"}}));
+__semantic.facts = [
+  {fact_id:"cited-early", at:1, type:"user_message", summary:"Do not change the board",
+   source_session:{harness:"codex", sid:"focus-1"},
+   evidence:{source:"root transcript", confidence:"exact"}},
+  ...older,
+];
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
+  goal:{result:"departure", detail:"It changed the board.", cites:["cited-early"]}}};
+await refreshNext();
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+await __settle();
+const html = __els.app.innerHTML;
+const departures = (html.match(
+  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({
+  departures,
+  // The cited fact really is outside the drawn window, or this proves nothing.
+  windowed: html.includes("Showing the 20 most recent of 25 observed entries."),
+  citedRowDrawn: html.includes("Zeta the earliest direction"),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["windowed"])
+        self.assertFalse(out["citedRowDrawn"])
+        self.assertIn("It changed the board.", out["departures"])
+        self.assertNotIn("raised no departure", out["departures"])
+
+    def test_a_turn_stop_is_not_a_session_end_for_the_reading_scope(self) -> None:
+        """The qualifier read `endKnown`, which a turn stop also sets.
+
+        The card beside it says "A turn stop was observed; no session end was",
+        so suppressing "this covers only the work so far" on the same evidence
+        made the two halves of one tab disagree about whether the session had
+        ended.
+        """
+        out = self.run_fixture(
+            """
+const session = {harness:"codex", sid:"focus-1", state:"idle"};
+const annotation = {goal:"do not change the board", revision:1};
+const entries = [{id:"u1", type:"user_message", by:"", source:"root transcript · exact"}];
+const reading = {revision_read:1, criteria:{goal:{result:"departure",
+  detail:"It changed the board.", cites:["u1"]}}};
+const render = kind => nextCockpitReading(session,
+  Object.assign({}, annotation, {assessment: reading}), entries, null,
+  {landing: nextObservedLanding({state:"idle", harness:"codex"},
+    kind === "session-end", kind === "turn-stop")});
+console.log(JSON.stringify({
+  running: render("running"),
+  stop: render("turn-stop"),
+  end: render("session-end"),
+  landing: {
+    stop: nextObservedLanding({state:"idle", harness:"codex"}, false, true),
+    end: nextObservedLanding({state:"idle", harness:"codex"}, true, false),
+  },
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        qualifier = "This covers only the work so far."
+        # A running session has always said it, and still does.
+        self.assertIn(qualifier, out["running"])
+        # A turn stop is not a session end, so the qualifier stands, and the
+        # sentence beside it names the event the card next door names.
+        self.assertIn(qualifier, out["stop"])
+        self.assertIn("A turn stop was observed; no session end was", out["stop"])
+        # Only an observed session end retires it.
+        self.assertNotIn(qualifier, out["end"])
+        # Both events are still reported as observed ends by the landing
+        # axis: the fix narrows what the READING keys on, and must not
+        # quietly rewrite what HOW IT LANDED says.
+        self.assertTrue(out["landing"]["stop"]["endKnown"])
+        self.assertTrue(out["landing"]["end"]["endKnown"])
+
+    def test_a_derived_snapshot_of_the_goal_is_not_counted_as_observed_work(self) -> None:
+        """Finding S's other half, which the fix for it created.
+
+        `modelDerived` is `actor_claim` starting `model-derived`, and
+        `_OBSERVER_ACTOR_CLAIMS` publishes two other strings for the same kind
+        of row: a deterministic derivation and one whose derivation was never
+        recorded. Both are paraphrases of the goal, and both fell into the
+        bucket the line calls "observed of what it did".
+        """
+        out = self.run_fixture(
+            """
+const mix = entries => nextCockpitWorkMix(entries);
+console.log(JSON.stringify({
+  deterministic: mix([{type:"observer_snapshot", by:"",
+    actorClaim:"deterministically derived observer snapshot", modelDerived:false}]),
+  unrecorded: mix([{type:"observer_snapshot", by:"",
+    actorClaim:"observer snapshot, derivation not recorded", modelDerived:false}]),
+  model: mix([{type:"observer_snapshot", by:"",
+    actorClaim:"model-derived observer snapshot", modelDerived:true}]),
+  // A person's gate decision is a direction, and rule 7 already says so.
+  gate: mix([{type:"gate_decision", by:"person:captain", modelDerived:false}]),
+  work: mix([{type:"result", by:"", modelDerived:false}]),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        # The zero is stated rather than dropped: "0 observed of what it did"
+        # beside a count of directions is the sentence finding S asked for,
+        # and hiding it would put the reader back where they started.
+        for case in ("deterministic", "unrecorded", "model"):
+            with self.subTest(case=case):
+                self.assertIn("0 observed of what it did", out[case])
+        self.assertIn("derived summary of this session", out["deterministic"])
+        self.assertIn("derived summary of this session", out["unrecorded"])
+        self.assertIn("1 model-derived", out["model"])
+        self.assertIn("1 direction you gave", out["gate"])
+        self.assertIn("0 observed of what it did", out["gate"])
+        self.assertIn("1 observed of what it did", out["work"])
+
+    def test_the_board_explaining_a_missing_clause_does_not_wear_the_readers_register(
+        self,
+    ) -> None:
+        """The stylesheet states the rule this violated, two lines above it.
+
+        `.next-cockpit-reading-clause` is mono because it holds words a person
+        typed. The fallback sentence is the board saying those words were not
+        retained, and it was rendered into the same span, so the explanation
+        looked like the quotation it was standing in for. `clauseKnown` was
+        computed for exactly this and never read.
+        """
+        out = self.run_fixture(
+            """
+const row = clause => nextCockpitReadingCriterionRow(nextCockpitReadingCriterion(
+  "goal", "TYPED GOAL", clause, {result:"consistent with the evidence read", cites:["u1"]},
+  [{id:"u1", type:"user_message", by:"", source:"root transcript · exact"}], ""));
+console.log(JSON.stringify({
+  known: row("do not change the board"),
+  absent: row(""),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn('class="next-cockpit-reading-clause"', out["known"])
+        self.assertIn("do not change the board", out["known"])
+        self.assertIn("are not retained", out["absent"])
+        self.assertNotIn('class="next-cockpit-reading-clause"', out["absent"])
+        self.assertIn("next-cockpit-reading-clause-absent", out["absent"])
+
+    def test_a_reading_with_no_departure_still_states_its_cutoff(self) -> None:
+        """The cutoff was rendered inside a departure row and nowhere else.
+
+        A reading that raised nothing is exactly the one whose cutoff a reader
+        needs, because "nothing was raised" is only worth as much as the
+        evidence it was raised against.
+        """
+        out = self.run_fixture(
+            """
+const shape = departures => ({departures, cutoff:"read to 2026-09-10T04:00Z",
+  criteria:[], revisionRead:1, stamp:""});
+console.log(JSON.stringify({
+  none: nextCockpitDepartures(shape([])),
+  one: nextCockpitDepartures(shape([{label:"TYPED GOAL", clause:"c", clauseKnown:true,
+    detail:"It drifted.", result:"departure", evidence:["user_message · root transcript"]}])),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("read to 2026-09-10T04:00Z", out["none"])
+        self.assertIn("raised no departure", out["none"])
+        self.assertIn("read to 2026-09-10T04:00Z", out["one"])
+        # Once per block, not once per row: the cutoff is a property of the
+        # reading, and repeating it beside every departure said one fact twice.
+        self.assertEqual(1, out["one"].count("read to 2026-09-10T04:00Z"))
+
+    def test_two_sessions_a_reader_cannot_tell_apart_are_labelled_apart(self) -> None:
+        """Finding Q's remainder: the scope rail is how a reader reaches one.
+
+        Same harness, same state, same title renders byte-identical rows. The
+        session key is in the href and in a data attribute, neither of which
+        is on screen, so the reader picks one of two indistinguishable links
+        and finds out which by reading the tab that opens.
+        """
+        out = self.run_fixture(
+            """
+const group = {label:"cargento", sessions:[
+  {harness:"codex", sid:"twin-a", state:"working", title:"Shape project cockpit"},
+  {harness:"codex", sid:"twin-b", state:"working", title:"Shape project cockpit"},
+  {harness:"claude", sid:"alone", state:"idle", title:"Only one of these"}
+]};
+const html = nextCockpitScopeLinks(group, null);
+// Only what a reader can see: the href and the data attributes carry the
+// session key already, and asserting on those passes without the fix.
+const visible = html.replace(/<[^>]*>/g, "\\n");
+console.log(JSON.stringify({visible, rows: html.split("</a>").length - 1}));
+"""
+        )
+        assert isinstance(out, dict)
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertEqual(4, out["rows"])
+        self.assertIn("twin-a", visible)
+        self.assertIn("twin-b", visible)
+        # The session nothing can be confused with is not made noisier for it.
+        self.assertNotIn("alone", visible)
+
+    def test_the_absence_sentence_goes_as_soon_as_the_box_stops_being_empty(self) -> None:
+        """Finding L's remainder, in the one lane that does not redraw.
+
+        The renderer already drops "No expected output typed." once a draft
+        exists, and a comment above it says so. But a keystroke deliberately
+        does not redraw, and the handler updated the counter and the two
+        controls and nothing else, so the sentence sat under the reader's own
+        half-typed words until something unrelated forced a replacement.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + CockpitHeldToTabTest.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const field = input.closest("[data-next-cockpit-held-field]");
+const absent = () => field.querySelector("[data-next-cockpit-held-absent]");
+const before = {text: absent() && absent().textContent, hidden: absent() && absent().hidden};
+const before_renders = __els.renders;
+input.value = "Six screen";
+__fire("input", {target:input});
+await __settle();
+const typing = {hidden: absent().hidden, redraws: __els.renders - before_renders};
+// And back, because a reader who deletes what they typed is owed the answer
+// to "why is this empty" again.
+input.value = "";
+__fire("input", {target:input});
+await __settle();
+console.log(JSON.stringify({before, typing, cleared: absent().hidden}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("No expected output typed.", out["before"]["text"])
+        self.assertFalse(out["before"]["hidden"])
+        self.assertTrue(out["typing"]["hidden"])
+        # In place, not by redrawing: the redraw is the defect this lane was
+        # built to avoid, and hiding the paragraph must not reintroduce it.
+        self.assertEqual(0, out["typing"]["redraws"])
+        self.assertFalse(out["cleared"])
+
+    def test_a_session_the_fact_scan_skipped_is_unread_rather_than_empty(self) -> None:
+        """Finding C's remainder: the state read the wrong scan's coverage.
+
+        `sources.work.omitted` names the sessions bounded out of the scan that
+        produces these facts, at MAX_PROJECT_OBSERVERS. The block consulted
+        `command_attention_coverage` instead, which is a different sweep over
+        active sessions' final output, capped at 64. A session omitted from
+        the first is almost never omitted from the second, so the state
+        resolved to "empty" for exactly the sessions it was written for, and
+        the board said "No entry in the observed record names this session"
+        about a session it had never read.
+        """
+        out = self._run_page_js(
+            """await __settle();
+await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const session = group.sessions.find(row => row.sid === "focus-1");
+const probe = sources => {
+  nextCockpitContexts.set(nextCockpitContextKey(group, session),
+    {data:{semantic:{facts:[], projections:{command_attention_coverage:
+      {scanned:64, total:64, omitted:0}}}, sources}});
+  const source = nextCockpitWorkSource(group, session);
+  return {state: source.state, absence: nextCockpitWorkAbsence(source)};
+};
+console.log(JSON.stringify({
+  omitted: probe({observer:{live:3}, work:{omitted:[
+    {harness:"codex", sid:"focus-1"}, {harness:"pi", sid:"pi-idle"}]}}),
+  scanned: probe({observer:{live:3}, work:{omitted:[{harness:"pi", sid:"pi-idle"}]}}),
+  // The wrong scan says nothing was left out, and used to be the only voice.
+  noSources: probe(undefined),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("partial", out["omitted"]["state"])
+        self.assertIn("outside the observed-record scan", out["omitted"]["absence"])
+        self.assertEqual("empty", out["scanned"]["state"])
+        self.assertEqual(
+            "No entry in the observed record names this session.", out["scanned"]["absence"]
+        )
+        self.assertEqual("empty", out["noSources"]["state"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitHeldDraftSurvivesAnUnwritableStoreTest(NextPageJsHarness):
+    """Finding A's remainder: `persisted:false` still destroyed the words.
+
+    `annotations.annotate` sets `state.annotations` before it writes, so an
+    unwritable store leaves the revision in this process only. Every
+    collection calls `annotation_store.refresh`, which reloads the file and
+    drops it, and the save handler calls `refreshNext()` on the next line. So
+    the cue promising the words would be "gone at the next refresh" was
+    describing a refresh the page had already started, after it had dropped
+    the draft that was the only remaining copy.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_an_unpersisted_save_keeps_the_draft_and_a_persisted_one_clears_it(self) -> None:
+        out = self.run_fixture(
+            """
+const key = nextCockpitHeldKey({harness:"codex", sid:"focus-1"}, "goal");
+const attempt = async persisted => {
+  nextCockpitHeldDrafts.set(key, "hold it to what I asked");
+  // Only the annotate call answers; the refresh the handler starts next is
+  // left to fail into refreshNext's own catch, so this test measures the save
+  // path rather than a payload it would have to invent.
+  __fetchImpl = url => String(url).includes("/api/annotate")
+    ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted})})
+    : Promise.resolve({ok:false, status:503, json: async () => ({})});
+  await nextCockpitHeldSave({harness:"codex", sid:"focus-1"}, "goal");
+  return {
+    kept: nextCockpitHeldDrafts.has(key),
+    draft: nextCockpitHeldDrafts.get(key) || "",
+    cue: nextCockpitHeldCue(key),
+  };
+};
+const unpersisted = await attempt(false);
+const persisted = await attempt(true);
+console.log(JSON.stringify({unpersisted, persisted}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["unpersisted"]["kept"])
+        self.assertEqual("hold it to what I asked", out["unpersisted"]["draft"])
+        self.assertIn("still in the box", out["unpersisted"]["cue"])
+        self.assertFalse(out["persisted"]["kept"])
+        self.assertEqual("Saved as a new revision.", out["persisted"]["cue"])
 
 
 if __name__ == "__main__":
