@@ -168,6 +168,10 @@ class Annotation(TypedDict):
     # reading THAT file, so a build that can read the reading publishes no
     # refusal without anything having to clear the flag.
     refused: NotRequired[bool]
+    # The reading this build could not read, held verbatim so `save` can put it
+    # back. Never published and never read for meaning: it is bytes in transit
+    # between two builds.
+    refused_raw: NotRequired[Any]
     readings: NotRequired[int]
     withheld: NotRequired[str]
 
@@ -329,10 +333,16 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         # A reading was stored and this build refuses it whole, which is right:
         # a half-read reading is worse than none. But `readings` survives just
         # below, so without this the row published a press with nothing to show
-        # and the page read it as a session nobody had pressed on. Derived on
-        # read-back rather than stored, so it corrects itself when the build
-        # that can read it comes back.
+        # and the page read it as a session nobody had pressed on.
+        #
+        # The raw value is kept beside the flag and written back verbatim by
+        # `save`, which is what makes "a later build reads it fine" true rather
+        # than a hope. Measured otherwise: `load` drops the unreadable reading,
+        # so the next save to ANY session rewrote the file without it and the
+        # reading was gone for good, leaving the row back at a press with
+        # nothing to show.
         entry["refused"] = True
+        entry["refused_raw"] = value["assessment"]
     readings = value.get("readings")
     if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
         entry["readings"] = readings
@@ -406,12 +416,17 @@ def save(
     payload = {
         "v": SCHEMA_VERSION,
         "entries": [
-            # `refused` is dropped rather than written. It is a fact about the
-            # build that just read the file, not about the annotation, so
-            # persisting it would outlive the build that could not read the
-            # reading and go on refusing one a later build can read fine.
+            # `refused` is a fact about the build that just read the file
+            # rather than about the annotation, so it is dropped. The reading it
+            # refused is restored under its own name, or a save here would
+            # destroy a reading this build merely could not parse.
             {
-                **{name: field for name, field in entry.items() if name != "refused"},
+                **{
+                    name: field
+                    for name, field in entry.items()
+                    if name not in {"refused", "refused_raw"}
+                },
+                **({"assessment": entry["refused_raw"]} if "refused_raw" in entry else {}),
                 "revisions": [dict(rev) for rev in entry["revisions"]],
             }
             for entry in _bounded(entries, config.annotation_max_sessions)

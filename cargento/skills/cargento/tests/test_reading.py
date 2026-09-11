@@ -1304,6 +1304,32 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
             model=over.pop("model", self._model()),
         )
 
+    def test_the_reading_carries_when_its_own_revision_was_typed(self) -> None:
+        """A mutation of `revision_read_at` survived the whole suite before this.
+
+        The disclosure that shows a historical reading's words is captioned
+        with when that revision was typed, and past the revision cap the store
+        has no `at` left to find, so the reading carries its own. Nothing
+        asserted it, and swapping it for the session's end stamp changed no
+        test in 2968.
+        """
+        revisions = [
+            {"n": 1, "at": 100.0, "goal": "an older goal", "output": ""},
+            {"n": 2, "at": 500.0, "goal": "the goal it read", "output": ""},
+        ]
+        # `now` well past the end, or the producer withholds on the settle
+        # window and this measures that instead of the stamp.
+        assessment, why, _spent = self._produce(
+            revisions=revisions, row={"ended_at": 600.0, "state": "idle"}, now=9_000.0
+        )
+
+        self.assertEqual("", why)
+        assert assessment is not None
+        self.assertEqual(2, assessment["revision_read"])
+        # The revision it read. Not the session's end, and not an older one.
+        self.assertEqual(500.0, assessment["revision_read_at"])
+        self.assertNotEqual(assessment["ended_at_read"], assessment["revision_read_at"])
+
     def test_a_reader_who_typed_nothing_is_not_charged_for_a_reading(self) -> None:
         for revisions in ([], [{"n": 1, "at": 1.0, "goal": "   ", "output": ""}]):
             with self.subTest(revisions=len(revisions)):

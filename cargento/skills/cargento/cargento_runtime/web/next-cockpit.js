@@ -55,7 +55,7 @@ function nextCockpitReadMemo(key){
    unannotated row carries its absence sentences. */
 function nextCockpitAnnotation(session){
   if(!session) return null;
-  /* Fourteen published fields, and every one of them is published now:
+  /* Fifteen published fields, and every one of them is published now:
      `base_session` declares all three of the reading's. The comment here
      used to say `assessment` was read but never published, which stopped
      being true when a producer landed -- and `TheAnnotationFieldListIsDerivedTest`
@@ -1131,6 +1131,12 @@ const NEXT_READING_BASELINE_OPEN =
 const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "stamp", "cutoff",
   "scope", "scope_text", "ended_at_read", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause"];
+/* Said in two places now, the criterion row and the disclosure, so it is a
+   constant. It is deliberately narrower than "nothing typed": `_criterion`
+   coerces a missing clause to "", so this board cannot tell an empty field
+   from a producer that did not carry the words. */
+const NEXT_READING_CLAUSE_UNRETAINED =
+  "the words of the revision this reading read are not retained";
 const NEXT_READING_UNKNOWN_KEY =
   "This board cannot read the reading it was given: it carries a field this build does not " +
   "know. Nothing from it is shown, because a reading half-read is not a reading.";
@@ -1312,7 +1318,7 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const narration = restsOn;
   return {
     key, label,
-    clause: clause || "the words of the revision this reading read are not retained",
+    clause: clause || NEXT_READING_CLAUSE_UNRETAINED,
     clauseKnown: Boolean(clause),
     result,
     /* Only under a departure that survived every rule above. It was set
@@ -1388,8 +1394,16 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
-    readClauses: NEXT_READING_CONSTRAINTS.map(([key, label]) =>
-      [label, String((rows[key] && rows[key].clause) || "")]),
+    /* Through the same helper the criterion row uses, and filtered the same
+       way. Read raw, the disclosure said "nothing typed in that revision" for
+       an empty clause while the row beside it said the words were not
+       retained: `_criterion` coerces a missing clause to "", so after a store
+       round trip the two are indistinguishable and only one of those sentences
+       can be honest. */
+    readClauses: NEXT_READING_CONSTRAINTS
+      .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
+      .map(([key, label]) =>
+        [label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
     stamp: String(source.stamp || ""),
     cutoff: String(source.cutoff || ""),
     /* From the READING, not from the live row. A stored reading describes
@@ -1574,10 +1588,13 @@ function nextCockpitReadingBaseline(shape){
     ? `typed ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
     : "when it was typed was not recorded";
   const rows = (shape.readClauses || []).map(([label, clause]) => {
+    /* One wording with the criterion row, from one place. This board cannot
+       tell "the reader typed nothing" from "the producer did not carry the
+       words", so it says the narrower thing that is true of both. */
     const body = clause
       ? `<span class="next-cockpit-reading-clause">${esc(clause)}</span>`
-      : '<span class="next-cockpit-reading-clause-absent">nothing typed in that ' +
-        "revision</span>";
+      : '<span class="next-cockpit-reading-clause-absent">' +
+        NEXT_READING_CLAUSE_UNRETAINED + "</span>";
     return `<div class="next-cockpit-reading-criterion-clause">` +
       `<span class="next-cockpit-source">${esc(label)}</span>${body}</div>`;
   }).join("");

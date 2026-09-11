@@ -23,7 +23,6 @@ from cargento_runtime.state import build_runtime_state
 from .next_harness import NextPageJsHarness, storage_prelude
 
 
-@unittest.skipUnless(shutil.which("node"), "node not available")
 def _assessment(*, revision_read: int) -> dict[str, Any]:
     """A stored reading in the shape `annotations._assessment` admits."""
     return {
@@ -49,6 +48,7 @@ def _assessment(*, revision_read: int) -> dict[str, Any]:
     }
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class NextIntentViewTest(NextPageJsHarness):
     FIXTURE = """
 const __dashboard = {
@@ -222,7 +222,7 @@ console.log(JSON.stringify({
         visible = out["visible"]
         assert isinstance(visible, str)
         self.assertIn("read revision 2", visible)
-        self.assertNotIn("is current, so", visible)
+        self.assertNotIn("2 is current", visible)
 
     def test_a_withheld_press_is_not_a_session_nobody_pressed_on(self) -> None:
         # Three states the old surface collapsed into one sentence: nobody
@@ -235,7 +235,7 @@ console.log(JSON.stringify({
         visible = out["visible"]
         assert isinstance(visible, str)
         self.assertIn("The reading was not made.", visible)
-        self.assertNotIn("nobody has asked for one", visible)
+        self.assertNotIn("No reading asked for", visible)
 
     def test_a_press_with_nothing_to_show_is_named_rather_than_read_as_unasked(self) -> None:
         # `readings` survives a reading the store refuses on read-back, so a
@@ -246,7 +246,7 @@ console.log(JSON.stringify({
         visible = out["visible"]
         assert isinstance(visible, str)
         self.assertIn("2 readings asked for", visible)
-        self.assertNotIn("nobody has asked for one", visible)
+        self.assertNotIn("No reading asked for", visible)
 
     def test_nothing_typed_anywhere_is_not_the_same_as_the_store_being_off(self) -> None:
         empty = self.render([])

@@ -1282,10 +1282,6 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
         self.assertIn("_withdraw_stale_finality", body)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TheSavePathReportsTruthfullyTest(unittest.TestCase):
     """DRC-4543. Five ways the board's own report about a save was untrue.
 
@@ -1410,3 +1406,7 @@ class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
         with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
             written = json.load(handle)
         self.assertNotIn("refused", written["entries"][0])
+
+
+if __name__ == "__main__":
+    unittest.main()

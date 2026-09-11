@@ -4716,7 +4716,13 @@ console.log(JSON.stringify({
   stale: html.includes("This reading read revision 1"),
   // And says when that revision was typed, which is the one datum that was
   // genuinely absent from the payload.
-  typedAt: html.includes("typed"),
+  // The rendered duration, not the word "typed": that word appears in both
+  // branches of the summary and in the clause-absent sentence, so asserting
+  // it could not fail. A mutation of revision_read_at survived the whole
+  // suite before this.
+  // The fixture clock is 105 and the revision was typed at 100, so this is
+  // five seconds and it is deterministic.
+  typedAt: html.includes("typed 5s ago"),
   // A disclosure rather than always-open prose: the reading block is already
   // long and this is reference, not the reading.
   disclosure: (html.match(/<details/g) || []).length,
@@ -5984,10 +5990,7 @@ console.log(JSON.stringify({unpersisted, persisted}));
         self.assertEqual("Saved as a new revision.", out["persisted"]["cue"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class AStoreRefusedReadingIsNotAnUnpressedSessionTest(NextPageJsHarness):
     """DRC-4545's second half, on the block that renders both sentences.
 
@@ -6040,3 +6043,7 @@ console.log(JSON.stringify({html, names: html.includes("could not read it")}));
         )
         assert isinstance(out, dict)
         self.assertFalse(out["names"], out["html"])
+
+
+if __name__ == "__main__":
+    unittest.main()
