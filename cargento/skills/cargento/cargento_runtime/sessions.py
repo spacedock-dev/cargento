@@ -568,6 +568,13 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "browser_lane": False,
         "browser_lane_at": None,
         "browser_lane_why": "",
+        # What the unasked reading lane raised about this session, and why there
+        # is nothing. Declared here at their absent values on the rule above;
+        # `Application._unasked_fields` fills both from `unasked.published`,
+        # which is where the four sentences live so an exhausted cap cannot read
+        # like a session found to be on track.
+        "departures": [],
+        "departure_why": "",
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and

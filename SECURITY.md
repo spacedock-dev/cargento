@@ -1056,7 +1056,7 @@ how hard, to anyone who can read the notification stream. That is stated here ra
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-The server writes eight files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+The server writes nine files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
 authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
 `started`, `log`, `python`); `cargento-<port>.log`, where a detached (`--daemon`) instance's
 output goes; `cargento-dismissals.json`, the sessions the reader marked handled, described in
@@ -1066,10 +1066,11 @@ history of what this server observed, described in Local history above;
 `cargento-annotations.json`, the goal and expected output you typed and the readings taken against
 them, named in invariant 2 above and turned off by `--no-annotations`; and
 `cargento-deliveries.json`, what became of each notification this board raised, described in
-Delivery records below; and
+Delivery records below; `cargento-departures.json`, what an unasked reading raised, described in
+Unasked readings below and written only with that feature switched on; and
 `semantic-work-history.json`, the operator-cockpit prototype's own store, described under the
 prototype below and not reached by `--forget`. One forwarder writes a
-ninth, in the same directory and named in invariant 2 above:
+tenth, in the same directory and named in invariant 2 above:
 `statusline_hook.py` keeps `statusline-<harness>-<session>.json` per conversation, holding a
 normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
@@ -1095,6 +1096,43 @@ The same route serves the bounded record of state disputes, where an event overr
 dashboard had read as waiting. A record holds the same fields plus the two activity timestamps the
 reducer compared, and no more: the row's title and its state detail are deliberately absent, because
 a state detail can carry a permission prompt's own text, an open question's, or a plan's first line.
+
+## Unasked readings
+
+`--unasked-readings` is off by default, and it is the only feature here that sends your words and
+your session's record to a model with nobody watching. Everything else that reads a session with a
+model happens because somebody pressed a control and saw a disclosure first. This one happens
+because the operator passed a flag, so the flag's own help text is where that disclosure lives.
+
+What it sends is exactly what `POST /api/reading` sends, on exactly the same path: the goal and
+expected output you typed, and the observed record the reading is allowed to read, to a `codex`
+subprocess running on your own machine under your own capacity. Nothing new leaves the machine that
+did not already leave it when you pressed the control by hand. What is new is that nobody is there
+at the moment it goes.
+
+It is bounded three ways, and the bounds are the posture rather than a preference. One reading runs
+at a time for the whole board, so a board where forty annotated sessions cross a state boundary
+together starts one subprocess and not forty. A per-session floor holds a second reading of the same
+session off, because a session can cross a boundary repeatedly inside a minute. And two counts of CHECKS RUN, per session and rolling
+per day, stop the lane entirely once spent. Counting only what was raised was tried and is wrong: a
+board whose sessions are all healthy raises nothing, so nothing advances the count and the lane runs
+forever. Measured on that version, five sessions ran 480 subprocesses in a simulated day against a
+daily cap of 12. A spent count is stated on the board
+rather than passed over in silence: the reader is by construction not present, so a limit being
+spent and a session found to be on track must never render alike.
+
+`~/.cargento/cargento-departures.json` holds every check the lane ran, opened `0600` with the mode
+in the `open` call and written through a temp file and `os.replace`. Every check and not only the
+ones that found something: a check that found nothing still spent a subprocess, and a store of
+findings alone bounds nothing, which is what the caps count. It is also the only way the board can
+say whether a particular session was looked at, as against whether the feature was switched on.
+
+A record holds a harness key, a session id, the server's clock, and the annotation revision and
+evidence window it read against. A check that raised something also holds the constraint and clause
+that departed, the model's own sentence about it, and the evidence ids it cited. That sentence is
+prose a model wrote about your session, which is the same class of content the annotation store
+already holds and is bounded the same way. Nothing sends it anywhere. With the switch off the file is
+never created.
 
 ## Delivery records
 

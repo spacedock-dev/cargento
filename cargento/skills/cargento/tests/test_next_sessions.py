@@ -1081,3 +1081,100 @@ class NextSessionDeliveryPanelTest(NextPageJsHarness):
         )
 
         self.assertIn("<h2>NOTIFICATIONS</h2>", html)
+
+
+class NextSessionDeparturesPanelTest(NextPageJsHarness):
+    """What the unasked lane raised, as the reader sees it.
+
+    The sentences are composed on the server and printed verbatim, so what is
+    under test is the choosing: whether the panel appears, and that a spent cap
+    never wears the wording of a board with nothing to raise.
+    """
+
+    HARNESSES = (
+        "nextData = {generated: 10000, window_hours: 24, unasked: true, harnesses: ["
+        '{key: "claude", label: "Claude", reports_needs_input: true}],'
+    )
+
+    OFF = (
+        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+        '{key: "claude", label: "Claude", reports_needs_input: true}],'
+    )
+
+    BASE = (
+        '{sid: "abcd1234", harness: "claude", project: "trio/app", state: "idle",'
+        ' active: true, title: "A session", state_detail: "awaiting your message",'
+        " last_activity: 9990, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+    )
+
+    def detail(self, extra: str, *, head: str | None = None) -> str:
+        rendered = self._run_page_js(
+            f"{head or self.HARNESSES} sessions: [{self.BASE} {extra}}}]}};\n"
+            "console.log(JSON.stringify(nextSessionView("
+            '"trio/app", "claude", "abcd1234")));'
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def test_no_panel_at_all_with_the_lane_off(self) -> None:
+        # A panel on every row of a board whose switch is off is noise about a
+        # feature nobody turned on.
+        html = self.detail(
+            'departures: [], departure_why: "Cargento has not checked this session."',
+            head=self.OFF,
+        )
+
+        self.assertNotIn("next-session-departures", html)
+
+    def test_nothing_checked_and_nothing_departed_are_different_sentences(self) -> None:
+        unchecked = self.detail(
+            'departures: [], departure_why: "Cargento has not checked this session '
+            'against what you asked for."'
+        )
+        quiet = self.detail(
+            'departures: [], departure_why: "Cargento has checked this session and '
+            'found nothing to raise."'
+        )
+
+        self.assertIn("has not checked this session", unchecked)
+        self.assertIn("found nothing to raise", quiet)
+        self.assertNotIn("found nothing to raise", unchecked)
+
+    def test_a_spent_cap_says_a_limit_was_spent_and_not_that_nothing_departed(self) -> None:
+        html = self.detail(
+            'departures: [], departure_why: "This session has reached its limit of '
+            "unasked checks, so no further check will run on it. That is a limit being "
+            'spent, not a session found to be on track."'
+        )
+
+        self.assertIn("limit being spent", html)
+        self.assertIn("not a session found to be on track", html)
+
+    def test_a_departure_prints_its_baseline_rather_than_implying_one(self) -> None:
+        # By the time this is read the annotation may be at a later revision and
+        # the window has moved. A row that does not say which words it read
+        # cannot be checked by the person it was raised to.
+        html = self.detail(
+            'departures: [{constraint: "Goal", clause: "Ship the cockpit",'
+            ' reading: "the work moved to the installer", evidence: "e1",'
+            ' revision: 4, cutoff: 1700000000}], departure_why: ""'
+        )
+
+        self.assertIn("read against revision 4", html)
+        self.assertIn("the work moved to the installer", html)
+        self.assertIn("evidence to", html)
+
+    def test_a_raise_whose_revision_did_not_survive_says_so(self) -> None:
+        html = self.detail(
+            'departures: [{constraint: "Goal", clause: "", reading: "went elsewhere",'
+            ' evidence: "", revision: 0, cutoff: 0}], departure_why: ""'
+        )
+
+        self.assertIn("the revision it read is not on record", html)
+        self.assertIn("the evidence window is not on record", html)
+        self.assertNotIn("read against revision", html)
+
+    def test_the_panel_carries_the_same_label_shape_as_its_neighbours(self) -> None:
+        html = self.detail('departures: [], departure_why: "Cargento has checked this session."')
+
+        self.assertIn("<h2>UNASKED CHECKS</h2>", html)

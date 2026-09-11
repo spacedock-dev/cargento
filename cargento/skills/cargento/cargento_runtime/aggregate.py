@@ -9,7 +9,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
 from . import annotations as annotation_store
-from . import deliveries, dismissals, notifications, quota, reading, records, sessions
+from . import (
+    deliveries,
+    departures,
+    dismissals,
+    notifications,
+    quota,
+    reading,
+    records,
+    sessions,
+    unasked,
+)
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -22,6 +32,7 @@ if TYPE_CHECKING:
     from .git_status import GitStatus
     from .sessions import Session
     from .state import RuntimeState
+    from .unasked import Lane as UnaskedLane
 
 
 _STATE_RANK: Final = {"needs_input": 0, "working": 1, "idle": 2}
@@ -627,6 +638,11 @@ class Application:
         # the same reason: the assembly point owns which services exist. None
         # means no lane, which is the behaviour that shipped before history did.
         self.history_lane: HistoryLane | None = None
+        # Attached only on the serving path and only with the switch on, for
+        # `history_lane`'s reason and a larger one: `--diagnose` runs a
+        # collection and must not start a `codex` subprocess while reporting
+        # what the stores hold.
+        self.unasked_lane: UnaskedLane | None = None
 
     def harness_label(self, key: str) -> str:
         """The registry's display label for a harness key, or "" for anything else.
@@ -832,6 +848,7 @@ class Application:
                 # once and both attaches the per-row sentences and returns the
                 # board-wide counts.
                 **self._delivery_fields(out_sessions),
+                **self._unasked_fields(out_sessions, annotation_entries, now=now),
                 **history_fields,
             }
         )
@@ -900,6 +917,36 @@ class Application:
             "browser_lane": lane_reported_at > 0,
             "browser_lane_at": lane_reported_at or None,
         }
+
+    def _unasked_fields(
+        self,
+        rows: list[Session],
+        entries: tuple[annotation_store.Annotation, ...],
+        *,
+        now: float,
+    ) -> dict[str, Any]:
+        """Attach what the unasked lane raised, and start at most one reading.
+
+        Every row gets the keys whether the lane is attached or not, for
+        `_delivery_fields`' reason: a missing key renders as `undefined`, and an
+        absence has to arrive as an absence carrying its own wording. With the
+        lane off the sentence says nothing was checked, which is the honest
+        answer and is deliberately not the same sentence as nothing departed.
+
+        `consider` runs here, after the raises and the dismissal subtraction, so
+        a session the reader has already marked handled is not read against
+        their words behind their back. It does dictionary work and hands any
+        reading to a worker.
+        """
+        stored = departures.load(self.config)
+        for row in rows:
+            row.update(unasked.published(self.config, stored, row, now=now))
+        if self.unasked_lane is not None:
+            self.unasked_lane.consider(self.state, rows, entries, now=now)
+        # The capability flag, keyed the way `dismiss` and `annotate` are:
+        # present exactly when the lane is live, so a page with the switch off
+        # draws nothing rather than a panel that never fills.
+        return {"unasked": True} if self.unasked_lane is not None else {}
 
     def _history_fields(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Record this collection's transitions, and the payload keys they earn.

@@ -79,6 +79,12 @@ class RuntimeConfig:
     # prose the reader composed rather than anything a harness published, which
     # is why it gets a switch of its own rather than riding the dismissal one.
     annotations_enabled: bool
+    # The unasked reading lane, off by default and the only feature here that
+    # spends the reader's model capacity with nobody watching. The ruling that
+    # permits it is cited in `unasked.py`, and it gates the lane's DEFAULT on
+    # four preconditions rather than its existence: the switch ships off, and
+    # the flag is what turns it on.
+    unasked_enabled: bool
     # Whether the local history store is read and written at all.
     # `--no-history` is the off switch
     # [DEC-6](SECURITY.md#local-history-the-session-history-store)'s contract made part of the
@@ -228,6 +234,26 @@ class RuntimeConfig:
     annotation_max_sessions: int
     annotation_max_revisions: int
     annotation_text_cap_chars: int
+    # The unasked lane's bounds. Per session and per day, separately, because
+    # they answer different failures: one session churning, and a whole board
+    # quietly spending a day's capacity. Each reading is a `codex` subprocess at
+    # `reasoning_effort=max`, so these are capacity numbers rather than taste.
+    # Chosen rather than measured, and deliberately low: the ruling cited in
+    # `unasked.py` says to measure the real rate on a real board before raising
+    # them, and a cap that is too low renders as exhausted, which the board
+    # says out loud.
+    unasked_session_cap: int
+    unasked_daily_cap: int
+    # The floor between two unasked readings of the same session, whatever its
+    # state does. A session can cross a state boundary repeatedly inside a
+    # minute, and the cap is not a rate limit.
+    unasked_session_floor_sec: float
+    # The store's bounds, copied from the delivery record beside it for its
+    # reason: a count rather than an age, because the review surface reads
+    # across sessions and an age bound would empty it exactly when a reader came
+    # back from a long absence.
+    departure_read_cap_bytes: int
+    departure_max_entries: int
     # The history store's two bounds, which apply together: raising either does
     # not stop the other applying. Fourteen days and 1 MiB are the contract's
     # defaults, and `--history-days` and `--history-max-bytes` are what move
@@ -541,6 +567,7 @@ def build_runtime_config(
     focus_enabled: bool = True,
     dismissals_enabled: bool = True,
     annotations_enabled: bool = True,
+    unasked_enabled: bool = False,
     ask_enabled: bool = True,
     history_enabled: bool = True,
     history_retention_sec: float = HISTORY_RETENTION_DEFAULT_DAYS * SECONDS_PER_DAY,
@@ -588,6 +615,7 @@ def build_runtime_config(
         focus_enabled=focus_enabled,
         dismissals_enabled=dismissals_enabled,
         annotations_enabled=annotations_enabled,
+        unasked_enabled=unasked_enabled,
         ask_enabled=ask_enabled,
         history_enabled=history_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
@@ -682,6 +710,11 @@ def build_runtime_config(
         annotation_max_sessions=256,
         annotation_max_revisions=16,
         annotation_text_cap_chars=240,
+        unasked_session_cap=3,
+        unasked_daily_cap=12,
+        unasked_session_floor_sec=900.0,
+        departure_read_cap_bytes=262_144,
+        departure_max_entries=512,
         annotation_body_cap_bytes=4_096,
         dismissal_body_cap_bytes=1_024,
         history_retention_sec=history_retention_sec,

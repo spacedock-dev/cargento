@@ -323,6 +323,76 @@ function nextSessionFooter(session){
     `${nextCompactTokens(value)} output tokens this ${source}</footer>`;
 }
 
+/* What the unasked reading lane raised about this session, and why there is
+   nothing.
+
+   Both halves are printed, and the second is the one that matters. The reader
+   is by construction not at the desk while this lane runs, so "nothing
+   departed" and "nothing was checked" must never render alike: a spent cap
+   wearing the first sentence's clothes is a session reported as on track by a
+   check that never ran. The server owns all four sentences in `departures`, so
+   this chooses whether to print and never what.
+
+   Drawn only where the lane is live. With the switch off there is no check and
+   no claim to make, and a panel saying so on every row of an installed board is
+   noise about a feature nobody turned on. */
+function nextSessionDepartures(session){
+  if(!(nextData && nextData.unasked === true)) return "";
+  const rows = Array.isArray(session.departures) ? session.departures : [];
+  const why = String(session.departure_why == null ? "" : session.departure_why);
+  if(!rows.length && !why) return "";
+  /* "while you were away" was a claim about the reader, and nothing here
+     observes where they were. The store has no expiry either, so a row can be
+     days old under a heading that implies this trip. The heading counts, and
+     each row says when. */
+  const heading = rows.length === 1
+    ? "One departure was raised"
+    : `${rows.length} departures were raised`;
+  return '<section class="next-session-departures">' +
+    "<h2>UNASKED CHECKS</h2>" +
+    (rows.length ? `<p class="next-session-departures-count">${esc(heading)}</p>` : "") +
+    rows.map(row => nextSessionDepartureRow(row)).join("") +
+    (why ? `<p class="next-session-departures-why">${esc(why)}</p>` : "") +
+    "</section>";
+}
+
+/* Wall-clock hours and minutes, the way `nextWorkstreamClock` does it. Its own
+   copy rather than a reach across parts: these files are concatenated into one
+   scope in APP_PARTS order, and this one loads before the workstream. */
+function nextSessionClock(stamp){
+  const date = new Date(stamp * 1000);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/* One raised departure, with the baseline it rested on.
+
+   The revision and the cutoff are printed rather than implied. By the time this
+   is read the annotation may be at a later revision and the evidence window has
+   moved, so a row that does not say which words it read and where its evidence
+   stopped cannot be checked by the person it was raised to. A raise whose
+   revision did not survive says so rather than borrowing today's. */
+function nextSessionDepartureRow(row){
+  const text = key => String(row[key] == null ? "" : row[key]);
+  const revision = Number(row.revision);
+  const baseline = Number.isFinite(revision) && revision > 0
+    ? `read against revision ${revision}`
+    : "the revision it read is not on record";
+  const cutoff = Number(row.cutoff);
+  const window = Number.isFinite(cutoff) && cutoff > 0
+    ? ` · evidence to ${nextSessionClock(cutoff)}`
+    : " · the evidence window is not on record";
+  const at = Number(row.at);
+  const when = Number.isFinite(at) && at > 0
+    ? `<span class="next-session-departure-at">${esc(nextSessionClock(at))}</span>` : "";
+  return '<div class="next-session-departure">' +
+    `<span class="next-session-departure-name">${esc(text("constraint"))}</span>${when}` +
+    (text("clause") ? `<span class="next-session-departure-clause">${esc(text("clause"))}` +
+      "</span>" : "") +
+    `<p class="next-session-departure-reading">${esc(text("reading"))}</p>` +
+    `<p class="next-session-departure-base">${esc(baseline + window)}` +
+    (text("evidence") ? ` · ${esc(text("evidence"))}` : "") + "</p></div>";
+}
+
 /* What became of the notifications Cargento raised about this session.
 
    Every sentence here is composed by `deliveries.published` on the server and
@@ -423,7 +493,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     nextSessionAskBlock(session, asks, observed) + nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
-    nextSessionDelivery(session) +
+    nextSessionDepartures(session) + nextSessionDelivery(session) +
     nextSessionHeldLink(session) + nextSessionFooter(session) + "</article>";
 }
 
