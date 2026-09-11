@@ -17,6 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 from cargento_runtime import aggregate, cli, project_context
 from cargento_runtime import annotations as annotation_store
@@ -1279,6 +1280,132 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
             source.index("def _attach_annotations(") : source.index("def _hide_unmeasured")
         ]
         self.assertIn("_withdraw_stale_finality", body)
+
+
+class TheSavePathReportsTruthfullyTest(unittest.TestCase):
+    """DRC-4543. Five ways the board's own report about a save was untrue.
+
+    Each of these is a sentence the reader is shown, not a field they read, so
+    every assertion here is on what the endpoint answers rather than on what
+    the store holds.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+
+    def test_a_type_error_out_of_the_dump_is_caught_like_any_other_write_failure(self) -> None:
+        # `load` already catches RecursionError; `save` did not, so a payload
+        # the encoder refuses dropped the connection instead of answering.
+        # Latent today because every field is a str, int or float, and the
+        # whole point of the failure arm is that a write failure never reaches
+        # the reader as a dropped socket.
+        said: list[str] = []
+        with mock.patch("cargento_runtime.annotations.json.dump", side_effect=TypeError("nope")):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertFalse(ok)
+        self.assertTrue(any("could not write the annotation store" in line for line in said))
+
+    def test_a_recursion_error_out_of_the_dump_is_caught_too(self) -> None:
+        said: list[str] = []
+        with mock.patch("cargento_runtime.annotations.json.dump", side_effect=RecursionError):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertFalse(ok)
+
+    def test_a_write_that_fails_leaves_no_temporary_file_behind(self) -> None:
+        with mock.patch("cargento_runtime.annotations.json.dump", side_effect=TypeError("nope")):
+            annotation_store.save(self.config, (), diagnostic_sink=lambda _line: None)
+
+        leftovers = [name for name in os.listdir(self.config.state_home) if name.endswith(".tmp")]
+        self.assertEqual([], leftovers)
+
+    def test_the_bytes_reach_the_disk_before_the_rename(self) -> None:
+        # A rename is atomic against a concurrent reader and says nothing about
+        # power loss. This is the only fsync in the annotation lane and it is
+        # here because the store holds prose a person composed and cannot
+        # retype from anywhere else.
+        synced: list[int] = []
+        with mock.patch("cargento_runtime.annotations.os.fsync", side_effect=synced.append):
+            self.assertTrue(annotation_store.save(self.config, (), diagnostic_sink=lambda _l: None))
+
+        self.assertEqual(1, len(synced))
+
+
+class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
+    """DRC-4545's second half, driven through a real read rather than injected.
+
+    `_assessment` refuses a stored reading whole on any bad key, which is
+    right. But `readings` is read from an independent key and survives, so the
+    row published a press with nothing to show and the page rendered both
+    "1 reading asked for on this session" and "No reading has been made".
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+
+    def _write(self, assessment: Any) -> dict[str, Any]:
+        os.makedirs(self.config.state_home, mode=0o700, exist_ok=True)
+        payload = {
+            "v": annotation_store.SCHEMA_VERSION,
+            "entries": [
+                {
+                    "harness": "codex",
+                    "sid": "s-1",
+                    "revisions": [{"n": 1, "at": 100.0, "goal": "ship it", "output": ""}],
+                    "readings": 1,
+                    "assessment": assessment,
+                }
+            ],
+        }
+        with open(annotation_store.store_path(self.config), "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        entries = annotation_store.load(self.config)
+        self.assertEqual(1, len(entries))
+        return dict(annotation_store.published(entries[0], binding_why=""))
+
+    def test_a_reading_carrying_a_key_this_build_does_not_know_is_published_as_refused(
+        self,
+    ) -> None:
+        row = self._write({"revision_read": 1, "a_key_from_the_future": True})
+
+        self.assertIsNone(row["assessment"])
+        self.assertEqual(1, row["reading_count"])
+        self.assertTrue(row["reading_refused"])
+
+    def test_a_session_nobody_pressed_on_is_not_refused(self) -> None:
+        row = self._write(None)
+
+        self.assertIsNone(row["assessment"])
+        self.assertFalse(row["reading_refused"])
+
+    def test_the_refusal_is_never_written_back_to_disk(self) -> None:
+        # It is a fact about this build reading that file, so a build that can
+        # read the reading must publish no refusal without anything clearing a
+        # stored flag.
+        self._write({"revision_read": 1, "a_key_from_the_future": True})
+        entries = annotation_store.load(self.config)
+        annotation_store.save(self.config, entries, diagnostic_sink=lambda _line: None)
+
+        with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertNotIn("refused", written["entries"][0])
 
 
 if __name__ == "__main__":

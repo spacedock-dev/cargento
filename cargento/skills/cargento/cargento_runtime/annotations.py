@@ -163,6 +163,15 @@ class Annotation(TypedDict):
     revisions: tuple[Revision, ...]
     settled: NotRequired[Settlement]
     assessment: NotRequired[reading.Assessment]
+    # Set on read-back when a stored reading was refused whole, never written
+    # to disk and never carried across a save. It is a fact about THIS build
+    # reading THAT file, so a build that can read the reading publishes no
+    # refusal without anything having to clear the flag.
+    refused: NotRequired[bool]
+    # The reading this build could not read, held verbatim so `save` can put it
+    # back. Never published and never read for meaning: it is bytes in transit
+    # between two builds.
+    refused_raw: NotRequired[Any]
     readings: NotRequired[int]
     withheld: NotRequired[str]
 
@@ -265,6 +274,9 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         "scope": scope,
         "scope_text": reading.SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(ended) or None,
+        # `.get`, so a reading stored before this field reads back as None and
+        # the disclosure states the absence rather than blanking.
+        "revision_read_at": records.norm_epoch(value.get("revision_read_at")) or None,
         "criteria": criteria,
     }
 
@@ -317,6 +329,20 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     assessment = _assessment(value.get("assessment"), text_cap)
     if assessment is not None:
         entry["assessment"] = assessment
+    elif value.get("assessment") is not None:
+        # A reading was stored and this build refuses it whole, which is right:
+        # a half-read reading is worse than none. But `readings` survives just
+        # below, so without this the row published a press with nothing to show
+        # and the page read it as a session nobody had pressed on.
+        #
+        # The raw value is kept beside the flag and written back verbatim by
+        # `save`, which is what makes "a later build reads it fine" true rather
+        # than a hope. Measured otherwise: `load` drops the unreadable reading,
+        # so the next save to ANY session rewrote the file without it and the
+        # reading was gone for good, leaving the row back at a press with
+        # nothing to show.
+        entry["refused"] = True
+        entry["refused_raw"] = value["assessment"]
     readings = value.get("readings")
     if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
         entry["readings"] = readings
@@ -390,7 +416,19 @@ def save(
     payload = {
         "v": SCHEMA_VERSION,
         "entries": [
-            {**entry, "revisions": [dict(rev) for rev in entry["revisions"]]}
+            # `refused` is a fact about the build that just read the file
+            # rather than about the annotation, so it is dropped. The reading it
+            # refused is restored under its own name, or a save here would
+            # destroy a reading this build merely could not parse.
+            {
+                **{
+                    name: field
+                    for name, field in entry.items()
+                    if name not in {"refused", "refused_raw"}
+                },
+                **({"assessment": entry["refused_raw"]} if "refused_raw" in entry else {}),
+                "revisions": [dict(rev) for rev in entry["revisions"]],
+            }
             for entry in _bounded(entries, config.annotation_max_sessions)
         ],
     }
@@ -401,8 +439,20 @@ def save(
         handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
+            # A rename is atomic against a concurrent reader and says nothing
+            # about power loss. The one fsync in this lane, and it is here
+            # because this store holds prose a person composed and cannot
+            # retype from anywhere else; every other store is reconstructible
+            # from what the harnesses already wrote.
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(tmp, target)
-    except (OSError, ValueError):
+    # `TypeError` and `RecursionError` are here for the reason `load` already
+    # catches `RecursionError`: an encoder that refuses a payload must reach the
+    # reader as the failure cue this arm exists to send, not as a dropped
+    # socket. Latent while every field is a str, int or float, which is exactly
+    # when a guard is cheap.
+    except (OSError, ValueError, TypeError, RecursionError):
         runtime_io.diag(
             f"Cargento: could not write the annotation store {target}; "
             "what you typed will be gone at the next collection",
@@ -485,6 +535,7 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "revision_count": len(entry["revisions"]) if entry else 0,
         "at": latest["at"] if latest else None,
         "binding_why": binding_why,
+        "reading_refused": bool(entry.get("refused")) if entry else False,
         # Three scalars and no prose, which is what keeps this out of DEC-15b's
         # admission path: `history.OBSERVATION_FIELDS` is a closed tuple and a
         # new published field does not enter the store by being published.

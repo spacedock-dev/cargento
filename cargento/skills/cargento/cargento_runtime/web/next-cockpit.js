@@ -45,7 +45,7 @@ function nextCockpitReadMemo(key){
   }
 }
 
-/* The row's eight flat `annotation_*` fields as one object, or null when the
+/* The row's fifteen flat `annotation_*` fields as one object, or null when the
    row carries none. The payload is flat because `history.PROMPT_TEXT_ALLOWLIST`
    admits field names and a name cannot reach inside a mapping; the renderers
    want an object, so the seam is here and they are unchanged.
@@ -55,7 +55,7 @@ function nextCockpitReadMemo(key){
    unannotated row carries its absence sentences. */
 function nextCockpitAnnotation(session){
   if(!session) return null;
-  /* Fourteen published fields, and every one of them is published now:
+  /* Fifteen published fields, and every one of them is published now:
      `base_session` declares all three of the reading's. The comment here
      used to say `assessment` was read but never published, which stopped
      being true when a producer landed -- and `TheAnnotationFieldListIsDerivedTest`
@@ -64,7 +64,8 @@ function nextCockpitAnnotation(session){
      reading a field nothing publishes. */
   const fields = ["goal", "goal_why", "output", "output_why", "revision",
     "revision_count", "at", "binding_why", "settled_at", "settled_through",
-    "settled_revision", "assessment", "reading_count", "reading_withheld"];
+    "settled_revision", "assessment", "reading_count", "reading_withheld",
+    "reading_refused"];
   const known = fields.some(name => {
     const value = session[`annotation_${name}`];
     return value !== undefined && value !== null && value !== "" && value !== 0;
@@ -1127,9 +1128,15 @@ const NEXT_READING_BASELINE_OPEN =
    `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
-const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "stamp", "cutoff", "scope",
-  "scope_text", "ended_at_read", "criteria"];
+const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "stamp", "cutoff",
+  "scope", "scope_text", "ended_at_read", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause"];
+/* Said in two places now, the criterion row and the disclosure, so it is a
+   constant. It is deliberately narrower than "nothing typed": `_criterion`
+   coerces a missing clause to "", so this board cannot tell an empty field
+   from a producer that did not carry the words. */
+const NEXT_READING_CLAUSE_UNRETAINED =
+  "the words of the revision this reading read are not retained";
 const NEXT_READING_UNKNOWN_KEY =
   "This board cannot read the reading it was given: it carries a field this build does not " +
   "know. Nothing from it is shown, because a reading half-read is not a reading.";
@@ -1311,7 +1318,7 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const narration = restsOn;
   return {
     key, label,
-    clause: clause || "the words of the revision this reading read are not retained",
+    clause: clause || NEXT_READING_CLAUSE_UNRETAINED,
     clauseKnown: Boolean(clause),
     result,
     /* Only under a departure that survived every rule above. It was set
@@ -1366,7 +1373,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     NEXT_READING_ASSESSMENT_KEYS.indexOf(name) < 0);
   if(unknown.length){
     return {criteria: [], departures: [], malformed: unknown.slice(0, 4).join(", "),
-      revisionRead: null, stamp: "", cutoff: "", scopeText: ""};
+      revisionRead: null, revisionReadAt: null, stamp: "", cutoff: "", scopeText: ""};
   }
   const rows = source.criteria && typeof source.criteria === "object" ? source.criteria : {};
   const revisionRead = nextNumber(source.revision_read);
@@ -1386,6 +1393,17 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
     revisionRead,
+    revisionReadAt: nextNumber(source.revision_read_at),
+    /* Through the same helper the criterion row uses, and filtered the same
+       way. Read raw, the disclosure said "nothing typed in that revision" for
+       an empty clause while the row beside it said the words were not
+       retained: `_criterion` coerces a missing clause to "", so after a store
+       round trip the two are indistinguishable and only one of those sentences
+       can be honest. */
+    readClauses: NEXT_READING_CONSTRAINTS
+      .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
+      .map(([key, label]) =>
+        [label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
     stamp: String(source.stamp || ""),
     cutoff: String(source.cutoff || ""),
     /* From the READING, not from the live row. A stored reading describes
@@ -1556,6 +1574,35 @@ const NEXT_READING_OFFER =
   "and the words you typed, and nothing else. It does not read a diff, a file, a test or a " +
   "deliverable.";
 
+function nextCockpitReadingBaseline(shape){
+  /* What the reading actually read, verbatim, rather than only which revision
+     it was. Naming the revision says a reading is historical; it does not let
+     the reader see what it said, and a reading of revision 1 sitting beside
+     today's revision 3 invites them to assume the words on screen are the ones
+     it read. The text was always on the wire as each criterion's clause.
+
+     A disclosure rather than open prose: this is reference for a reader who
+     doubts the reading, not part of it, and the block is long already. */
+  if(shape.revisionRead == null) return "";
+  const typed = shape.revisionReadAt != null
+    ? `typed ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
+    : "when it was typed was not recorded";
+  const rows = (shape.readClauses || []).map(([label, clause]) => {
+    /* One wording with the criterion row, from one place. This board cannot
+       tell "the reader typed nothing" from "the producer did not carry the
+       words", so it says the narrower thing that is true of both. */
+    const body = clause
+      ? `<span class="next-cockpit-reading-clause">${esc(clause)}</span>`
+      : '<span class="next-cockpit-reading-clause-absent">' +
+        NEXT_READING_CLAUSE_UNRETAINED + "</span>";
+    return `<div class="next-cockpit-reading-criterion-clause">` +
+      `<span class="next-cockpit-source">${esc(label)}</span>${body}</div>`;
+  }).join("");
+  return `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
+    `<summary>What it read: revision ${shape.revisionRead}, ${typed}</summary>` +
+    rows + "</details>";
+}
+
 function nextCockpitReading(session, annotation, entries, model, observed, unsettled, source){
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = String(session.harness || "") === "pi"
@@ -1579,9 +1626,20 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     if(reason){
       return close(`<p class="next-cockpit-reading-why">${esc(reason)}</p>`, null);
     }
+    /* A reading the store refused on read-back is not a session nobody
+       pressed on. `readings` survives a refusal, so without this the block
+       said "N readings asked for" above "No reading has been made" and left
+       the difference unaccounted for. The JS refusal below cannot reach this:
+       the validator nulls the assessment before the page ever sees it, so
+       that arm only fires in a tab left open across a server upgrade. */
+    const refused = annotation && annotation.reading_refused === true
+      ? '<p class="next-cockpit-reading-why">A reading is stored for this session and this ' +
+        "build could not read it, so nothing from it is shown. Asking again replaces it." +
+        "</p>"
+      : "";
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER} ` +
       `${NEXT_READING_NOT_A_VERIFICATION}</p>`;
-    return close(offer + why + nextCockpitReadingControl(session, annotation), null);
+    return close(refused + offer + why + nextCockpitReadingControl(session, annotation), null);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
   if(shape.malformed){
@@ -1608,7 +1666,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     ? `<p class="next-cockpit-reading-why">${esc(shape.scopeText)}</p>` : "";
   return header +
     (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
-    '</header>' + stale + scope + why +
+    '</header>' + stale + nextCockpitReadingBaseline(shape) + scope + why +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
     nextCockpitReadingControl(session, annotation) + '</section>' +
     nextCockpitDepartures(shape, source);

@@ -81,6 +81,7 @@ CONSTRAINTS = (CONSTRAINT_GOAL, CONSTRAINT_OUTPUT)
 # neither one noticing.
 ASSESSMENT_KEYS = (
     "revision_read",
+    "revision_read_at",
     "stamp",
     "cutoff",
     "scope",
@@ -379,6 +380,13 @@ class Assessment(TypedDict):
     """
 
     revision_read: int
+    # When that revision was typed, carried on the reading rather than derived
+    # from the store. Past the revision cap the read revision is evicted and
+    # `revisions` has no `at` left to find, so a disclosure that searched the
+    # store would go blank exactly where a historical reading needs it. The
+    # reading already carries its own clause text through that eviction; the
+    # time travels the same way. `None` on a reading written before this field.
+    revision_read_at: float | None
     stamp: str
     cutoff: str
     scope: str
@@ -1088,6 +1096,7 @@ def produce(
         "scope": scope,
         "scope_text": SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
+        "revision_read_at": records.norm_epoch(latest.get("at")) or None,
         "criteria": criteria,
     }
     return assessment, "", True

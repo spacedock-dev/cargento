@@ -55,6 +55,44 @@ function nextIntentLiveProjects(){
   return live;
 }
 
+function nextIntentReading(row){
+  /* Compact on purpose. The Held to tab owns the full sentence about a reading
+     that read an older revision; this says the same fact in the space a list
+     row has, and a reader who wants the wording follows the link. Two full
+     wordings of one fact is the divergence this file already refuses for the
+     revision line. */
+  const raw = row && row.assessment;
+  const read = raw && nextNumber(raw.revision_read);
+  const current = nextNumber(row && row.revision);
+  if(read != null){
+    const stale = current != null && read !== current
+      ? `, ${current} is current`
+      : "";
+    return `read revision ${read}${stale}`;
+  }
+  const withheld = String(row && row.reading_withheld || "").trim();
+  if(withheld) return withheld;
+  const asked = nextNumber(row && row.reading_count) || 0;
+  /* A count with no reading and no reason is a press whose reading the store
+     refused on read-back. It is not a session nobody pressed on, and saying
+     so is the whole of DRC-4545's second half. */
+  if(asked > 0) return `${asked} ${asked === 1 ? "reading" : "readings"} asked for, none readable`;
+  return "No reading asked for";
+}
+
+function nextIntentClose(ordered){
+  /* Derived from the rows this view is already holding, rather than asserted.
+     The constant it replaces said no reading existed while one rendered on the
+     Held to tab for a session listed directly beneath it. */
+  const withReading = (ordered || []).filter(row => row && row.assessment).length;
+  const total = (ordered || []).length;
+  const lead = withReading === 0
+    ? "No reading has been made against any of these, and nothing watches for one. "
+    : `${withReading} of these ${total} ${withReading === 1 ? "carries" : "carry"} a reading, ` +
+      "and nothing watches for one. ";
+  return `<p class="next-intent-note">${lead}${NEXT_READING_NOT_A_VERIFICATION}</p></section>`;
+}
+
 function nextIntentRow(row, live){
   const key = sessKey(row);
   const project = live.get(key) || "";
@@ -75,6 +113,7 @@ function nextIntentRow(row, live){
     `<span class="next-intent-key">${name}</span>` +
     `<span class="next-intent-words">${label}</span>` +
     `<span class="next-intent-revision">${esc(revision)}</span>` +
+    `<span class="next-intent-revision">${esc(nextIntentReading(row))}</span>` +
     (reachable ? "" : '<span class="next-intent-why">Not on the board now, so there is ' +
       'nowhere to open. The words are here.</span>') +
     /* The binding caveat, because a list of many sessions is where a shared
@@ -88,8 +127,6 @@ function nextIntentRow(row, live){
 function nextIntentView(){
   const head = '<section class="next-intent" data-next-view-body="intent">' +
     "<h1>Intent log</h1>";
-  const close = '<p class="next-intent-note">No reading has been made against any of these, ' +
-    'and nothing watches for one. ' + NEXT_READING_NOT_A_VERIFICATION + "</p></section>";
   if(!(nextData && nextData.annotate === true)){
     return `${head}<p class="next-intent-note">Annotations are off for this run. Start without ` +
       "--no-annotations to type a goal and an expected output, and they will be listed here." +
@@ -105,7 +142,7 @@ function nextIntentView(){
   const rows = nextIntentRows || [];
   if(!rows.length){
     return `${head}<p class="next-intent-note">Nothing has been typed against any session ` +
-      "yet.</p>" + close;
+      "yet.</p>" + nextIntentClose([]);
   }
   const live = nextIntentLiveProjects();
   /* Newest save first, which is also eviction order read backwards: the store
@@ -119,5 +156,5 @@ function nextIntentView(){
     "bottom row is the next to go. Session history keeps a fourteen-day copy of the same two " +
     "fields; this list is not that copy, so a row leaving here is an eviction and not an " +
     "expiry.</p>" +
-    ordered.map(row => nextIntentRow(row, live)).join("") + close;
+    ordered.map(row => nextIntentRow(row, live)).join("") + nextIntentClose(ordered);
 }
