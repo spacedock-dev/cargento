@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from cargento_runtime import claude_data, dismissals, records
+from cargento_runtime import claude_data, deliveries, dismissals, records
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
 
@@ -132,9 +132,15 @@ def notify_mac(
     message: Any,
     *,
     diagnostic_sink: Callable[[str], None] = print,
-) -> None:
+) -> str:
+    """Send one banner, and say what became of it.
+
+    Four outcomes rather than three, and none of them is "seen". It used to
+    return `None` on all four paths, so no caller could tell a platform with no
+    backend from a call that timed out from one the service refused.
+    """
     if not native_notifier(config.platform_name):
-        return
+        return deliveries.OUTCOME_NO_LANE
 
     def esc(s: str) -> str:
         return str(s).replace("\\", "\\\\").replace('"', '\\"')
@@ -156,8 +162,18 @@ def notify_mac(
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown error").strip()
             runtime_io.diag(f"[notify] osascript failed: {detail[:300]}", diagnostic_sink)
+            return deliveries.OUTCOME_REFUSED
+    # A timeout is caught here too and is NOT a failure: the call did not
+    # return, so whether a banner was drawn is unknown. Folding it into the
+    # refused arm is the collapse this whole record exists to refuse one level
+    # down, and the two were indistinguishable while this returned None.
+    except subprocess.TimeoutExpired as exc:
+        runtime_io.diag(f"[notify] osascript did not return: {exc}", diagnostic_sink)
+        return deliveries.OUTCOME_DID_NOT_RETURN
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         runtime_io.diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}", diagnostic_sink)
+        return deliveries.OUTCOME_REFUSED
+    return deliveries.OUTCOME_HANDED_OVER
 
 
 def hook_generation(state: RuntimeState, prefix: str) -> int:
@@ -321,6 +337,32 @@ class PopupSubject:
     activity: float
 
 
+def _record_outcome(
+    config: RuntimeConfig,
+    harness: str,
+    sid: str,
+    lane: str,
+    outcome: str | None,
+    now: float,
+) -> None:
+    """Write what became of one raise, outside every lock.
+
+    Outside deliberately, as the notifier call itself is: `hook_lock` is a plain
+    Lock that three lanes contend for, and this write touches a file. A record
+    that failed to reach disk is a diagnostic and never a reason to drop the
+    raise, so this returns nothing and the caller carries on.
+
+    `outcome` may be `None`, which is a notifier that does not report rather
+    than a fifth outcome. Nothing is recorded then, because a record has to say
+    what happened and "the notifier declined to say" is not one of the four
+    things that can. In this tree only an injected stub does that; the shipped
+    notifier always reports.
+    """
+    if not harness or not sid or outcome is None:
+        return
+    deliveries.record(config, harness=harness, sid=sid, lane=lane, outcome=outcome, now=now)
+
+
 def maybe_popup(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -329,7 +371,7 @@ def maybe_popup(
     detail: str | None,
     *,
     expect_generation: int | None = None,
-    popup_notifier: Callable[[str, str], None],
+    popup_notifier: Callable[[str, str], str | None],
 ) -> None:
     """Popup when a session transitions into a needs-input state.
 
@@ -395,9 +437,23 @@ def maybe_popup(
             return
         if now - state.last_popup.get(prefix, 0) < config.popup_cooldown_sec:
             return
+        # The floors are spent here, before the call, and that is knowingly wrong
+        # for a platform with no backend: the notifier returns having done
+        # nothing and the next real transition is suppressed for
+        # `popup_cooldown_sec` on the strength of a notification that did not
+        # happen. Checking above these writes was tried and reverted.
+        # `popup_notifier` is INJECTED, so gating on `config.platform_name`
+        # decides for a notifier this function cannot see, and a Linux backend
+        # would then be skipped by a check about the macOS one. Gating on the
+        # OUTCOME instead needs the floor written after the call, which reopens
+        # the window these writes close under the lock. That is a lock change
+        # and it is filed rather than smuggled in here.
         runtime_state.bounded_put(state.last_popup, prefix, now, limit=config.max_cache_entries)
         runtime_state.bounded_put(state.last_popup, "_global", now, limit=config.max_cache_entries)
-    popup_notifier(waiting_title(harness_label), detail or f"Session {prefix} needs your input")
+    outcome = popup_notifier(
+        waiting_title(harness_label), detail or f"Session {prefix} needs your input"
+    )
+    _record_outcome(config, subject.harness, prefix, "gate", outcome, now)
 
 
 @dataclass(frozen=True)
@@ -413,6 +469,8 @@ class AskSubject:
     re-truncated — see `ask_popup_detail`.
     """
 
+    harness: str
+    sid: str
     label: str
     question: str
     project: str
@@ -445,7 +503,7 @@ def maybe_ask_popup(
     subject: AskSubject,
     *,
     now: float,
-    popup_notifier: Callable[[str, str], None],
+    popup_notifier: Callable[[str, str], str | None],
 ) -> None:
     """Popup when a session registers a question, once per ask-lane floor.
 
@@ -489,7 +547,10 @@ def maybe_ask_popup(
         )
     # Outside the lock, as every other popup site is: `hook_lock` is a plain Lock
     # and osascript has a 5s timeout.
-    popup_notifier(asking_title(subject.label), ask_popup_detail(subject.question, subject.project))
+    outcome = popup_notifier(
+        asking_title(subject.label), ask_popup_detail(subject.question, subject.project)
+    )
+    _record_outcome(config, subject.harness, subject.sid, "ask", outcome, now)
 
 
 def transcript_mtime(path: Any) -> float:
@@ -538,7 +599,7 @@ def handle_payload(
     payload: dict[str, Any],
     *,
     now: float,
-    popup_notifier: Callable[[str, str], None],
+    popup_notifier: Callable[[str, str], str | None],
 ) -> dict[str, Any]:
     """Apply one Claude hook payload and return the response object.
 
@@ -635,7 +696,11 @@ def handle_payload(
                 state.last_popup_message, popup_key, (message, now), limit=config.max_cache_entries
             )
     if fire:
-        popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
+        outcome = popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
+        # "claude" by the same argument as the label above it: the route is
+        # Claude's own hook forwarder and nothing else posts there, so the
+        # harness is a property of the route rather than a field to trust.
+        _record_outcome(config, "claude", prefix, "hook", outcome, now)
     if cleared:
         return {"ok": True, "suppressed": "cleared"}
     return {"ok": True}

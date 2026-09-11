@@ -597,7 +597,7 @@ class Application:
         harnesses: tuple[HarnessSpec, ...],
         *,
         native_notifier: Callable[[str], str],
-        popup_notifier: Callable[[str, str], None],
+        popup_notifier: Callable[[str, str], str | None],
         diagnostic_sink: Callable[[str], None],
         clock: Callable[[], float] = time.time,
         overlays: OverlaySource | None = None,

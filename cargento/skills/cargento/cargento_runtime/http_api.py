@@ -1859,6 +1859,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 config,
                 application.state,
                 notifications.AskSubject(
+                    harness=ask.harness,
+                    sid=ask.session_id,
                     label=application.harness_label(ask.harness),
                     question=ask.question,
                     project=ask.project,

@@ -1570,7 +1570,13 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="Claude", question="Ship it?", project="repo/proj"),
+            notifications.AskSubject(
+                harness="claude",
+                sid="s-1",
+                label="Claude",
+                question="Ship it?",
+                project="repo/proj",
+            ),
             now=1000.0,
             popup_notifier=rec,
         )
@@ -1584,7 +1590,9 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="", question="Ship it?", project="repo/proj"),
+            notifications.AskSubject(
+                harness="claude", sid="s-1", label="", question="Ship it?", project="repo/proj"
+            ),
             now=1000.0,
             popup_notifier=rec,
         )
@@ -1595,7 +1603,9 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="Claude", question="Ship it?", project=""),
+            notifications.AskSubject(
+                harness="claude", sid="s-1", label="Claude", question="Ship it?", project=""
+            ),
             now=1000.0,
             popup_notifier=rec,
         )
@@ -1612,7 +1622,9 @@ class AskPopupTest(unittest.TestCase):
             notifications.maybe_ask_popup(
                 config,
                 state,
-                notifications.AskSubject(label="Claude", question=f"q{now}", project="p"),
+                notifications.AskSubject(
+                    harness="claude", sid="s-1", label="Claude", question=f"q{now}", project="p"
+                ),
                 now=now,
                 popup_notifier=rec,
             )
@@ -1659,7 +1671,9 @@ class AskPopupTest(unittest.TestCase):
             notifications.maybe_ask_popup(
                 config,
                 state,
-                notifications.AskSubject(label="Claude", question="q", project="p"),
+                notifications.AskSubject(
+                    harness="claude", sid="s-1", label="Claude", question="q", project="p"
+                ),
                 now=now,
                 popup_notifier=rec,
             )
@@ -1695,7 +1709,9 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="Claude", question=fits, project=project),
+            notifications.AskSubject(
+                harness="claude", sid="s-1", label="Claude", question=fits, project=project
+            ),
             now=1000.0,
             popup_notifier=rec,
         )
@@ -1707,7 +1723,9 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="Claude", question=fits + "q", project=project),
+            notifications.AskSubject(
+                harness="claude", sid="s-1", label="Claude", question=fits + "q", project=project
+            ),
             now=1000.0,
             popup_notifier=rec,
         )
@@ -1721,7 +1739,13 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="Claude", question="short", project="/" + "d" * 511),
+            notifications.AskSubject(
+                harness="claude",
+                sid="s-1",
+                label="Claude",
+                question="short",
+                project="/" + "d" * 511,
+            ),
             now=1000.0,
             popup_notifier=rec,
         )
@@ -1743,7 +1767,9 @@ class AskPopupTest(unittest.TestCase):
         notifications.maybe_ask_popup(
             config,
             state,
-            notifications.AskSubject(label="Claude", question="q", project="p"),
+            notifications.AskSubject(
+                harness="claude", sid="s-1", label="Claude", question="q", project="p"
+            ),
             now=1000.0,
             popup_notifier=notifier,
         )

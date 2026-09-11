@@ -390,11 +390,15 @@ def build_runtime(
 def bound_popup_notifier(
     config: RuntimeConfig,
     diagnostic_sink: Callable[[str], None],
-) -> Callable[[str, str], None]:
-    """The application's popup notifier: config and sink bound, two arguments left."""
+) -> Callable[[str, str], str | None]:
+    """The application's popup notifier: config and sink bound, two arguments left.
 
-    def notify(title: str, message: str) -> None:
-        notifications.notify_mac(config, title, message, diagnostic_sink=diagnostic_sink)
+    Returns the outcome rather than `None`, so the caller that spends the
+    cooldown can record what became of the raise it spent it on.
+    """
+
+    def notify(title: str, message: str) -> str:
+        return notifications.notify_mac(config, title, message, diagnostic_sink=diagnostic_sink)
 
     return notify
 
