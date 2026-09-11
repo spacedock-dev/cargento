@@ -401,8 +401,20 @@ def save(
         handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
+            # A rename is atomic against a concurrent reader and says nothing
+            # about power loss. The one fsync in this lane, and it is here
+            # because this store holds prose a person composed and cannot
+            # retype from anywhere else; every other store is reconstructible
+            # from what the harnesses already wrote.
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(tmp, target)
-    except (OSError, ValueError):
+    # `TypeError` and `RecursionError` are here for the reason `load` already
+    # catches `RecursionError`: an encoder that refuses a payload must reach the
+    # reader as the failure cue this arm exists to send, not as a dropped
+    # socket. Latent while every field is a str, int or float, which is exactly
+    # when a guard is cheap.
+    except (OSError, ValueError, TypeError, RecursionError):
         runtime_io.diag(
             f"Cargento: could not write the annotation store {target}; "
             "what you typed will be gone at the next collection",

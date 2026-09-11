@@ -24,6 +24,32 @@ from .next_harness import NextPageJsHarness, storage_prelude
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+def _assessment(*, revision_read: int) -> dict[str, Any]:
+    """A stored reading in the shape `annotations._assessment` admits."""
+    return {
+        "revision_read": revision_read,
+        "revision_read_at": 140,
+        "scope": "final",
+        "stamp": "a-model - read at 10:00",
+        "ended_at_read": 200,
+        "criteria": {
+            "goal": {
+                "result": "consistent with the evidence read",
+                "cites": [],
+                "detail": "",
+                "clause": "Ship the cockpit",
+            },
+            "output": {
+                "result": "not verifiable from available evidence",
+                "cites": [],
+                "detail": "",
+                "clause": "",
+            },
+        },
+        "departures": [],
+    }
+
+
 class NextIntentViewTest(NextPageJsHarness):
     FIXTURE = """
 const __dashboard = {
@@ -81,6 +107,11 @@ console.log(JSON.stringify({
             "settled_at": None,
             "settled_through": None,
             "settled_revision": None,
+            # Already on the wire from `annotations.published`, and the reason
+            # this surface could always have known: it asserted instead.
+            "assessment": None,
+            "reading_count": 0,
+            "reading_withheld": "",
         }
         row.update(over)
         return row
@@ -157,6 +188,66 @@ console.log(JSON.stringify({
         # The one clause both this surface and the reading block owe, from one
         # constant rather than two wordings.
         self.assertIn("never a verification that the work was done", visible)
+
+    def test_the_block_does_not_claim_none_when_one_row_carries_a_reading(self) -> None:
+        # The defect this surface shipped with: the closing line was a constant,
+        # so it said no reading existed while one rendered on the Held to tab
+        # for a session listed directly beneath it.
+        out = self.render(
+            [
+                self._row(assessment=_assessment(revision_read=1), reading_count=1),
+                self._row(sid="gone-9"),
+            ]
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertNotIn("No reading has been made against any of these", visible)
+        self.assertIn("1 of these 2 carries a reading", visible)
+        self.assertIn("never a verification that the work was done", visible)
+
+    def test_a_row_names_the_revision_its_reading_read(self) -> None:
+        out = self.render([self._row(revision=3, assessment=_assessment(revision_read=1))])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        # Compact here on purpose. The Held to tab owns the full sentence about
+        # a stale reading; two wordings of one fact is the divergence this
+        # file's own comment refuses.
+        self.assertIn("read revision 1", visible)
+        self.assertIn("3 is current", visible)
+
+    def test_a_row_with_a_reading_of_the_current_revision_says_so_plainly(self) -> None:
+        out = self.render([self._row(revision=2, assessment=_assessment(revision_read=2))])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("read revision 2", visible)
+        self.assertNotIn("is current, so", visible)
+
+    def test_a_withheld_press_is_not_a_session_nobody_pressed_on(self) -> None:
+        # Three states the old surface collapsed into one sentence: nobody
+        # pressed, a press that produced nothing, and a press whose reading the
+        # store refused.
+        out = self.render(
+            [self._row(reading_count=1, reading_withheld="The reading was not made.")]
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("The reading was not made.", visible)
+        self.assertNotIn("nobody has asked for one", visible)
+
+    def test_a_press_with_nothing_to_show_is_named_rather_than_read_as_unasked(self) -> None:
+        # `readings` survives a reading the store refuses on read-back, so a
+        # count with no assessment and no withheld reason is a real state and
+        # was the one with no sentence.
+        out = self.render([self._row(reading_count=2)])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("2 readings asked for", visible)
+        self.assertNotIn("nobody has asked for one", visible)
 
     def test_nothing_typed_anywhere_is_not_the_same_as_the_store_being_off(self) -> None:
         empty = self.render([])
