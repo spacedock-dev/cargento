@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import unittest
+from typing import Any
 
 from .next_harness import NextPageJsHarness
 
@@ -322,3 +323,152 @@ console.log(JSON.stringify({
         self.assertEqual("unsupported", out["permission"])
         self.assertEqual("", out["control"])
         self.assertTrue(out["rendered"])
+
+
+class BrowserLaneReportTest(NextPageJsHarness):
+    """DEC-19's report, and the three things it must not do.
+
+    The byte pins notice any edit to this file; they cannot tell a report that
+    names no session from one that does, or a self-healing resend from a
+    heartbeat. This is the test that can.
+    """
+
+    def _report(self, script: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            """
+__fetchImpl = () => Promise.resolve({ok:true, json:() => Promise.resolve({ok:true})});
+let __gen = 1000;
+const payload = lane => ({
+  native_notify:"", harnesses:[], sessions:[], asks:[], ask:true,
+  browser_lane:lane, generated:(__gen += 10), summary:{working:0, needs_input:0}
+});
+const out = {};
+"""
+            + script
+            + """
+out.calls = __fetchCalls.filter(call => String(call[0]) === "/api/lane").map(call =>
+  JSON.parse(String((call[1] || {}).body || "null")));
+console.log(JSON.stringify(out));
+""",
+            '__els.app = {innerHTML: "", querySelectorAll(){ return []; }, '
+            "insertAdjacentElement(){}};\n",
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_granted_tab_reports_once_and_stops_when_the_payload_agrees(self) -> None:
+        out = self._report(
+            """
+__notifyPermission = "granted";
+nextSyncNotifications(payload(false));
+await __settle();
+nextSyncNotifications(payload(true));
+await __settle();
+nextSyncNotifications(payload(true));
+await __settle();
+"""
+        )
+
+        self.assertEqual(1, len(out["calls"]))
+        self.assertEqual({"supported": True, "permission": "granted"}, out["calls"][0])
+
+    def test_the_report_names_no_session(self) -> None:
+        # The route refuses one with a 400. This is the other half: the page
+        # must not send one, or every reader sees a refusal in the console.
+        out = self._report(
+            """
+__notifyPermission = "granted";
+nextSyncNotifications(payload(false));
+await __settle();
+"""
+        )
+
+        for key in ("sid", "session", "session_id", "harness", "resume_id"):
+            with self.subTest(key=key):
+                self.assertNotIn(key, out["calls"][0])
+
+    def test_a_tab_without_permission_reports_nothing(self) -> None:
+        # Only a working lane is a report. A tab saying it has none would say
+        # nothing true about a board other tabs may be watching.
+        out = self._report(
+            """
+__notifyPermission = "denied";
+nextSyncNotifications(payload(false));
+await __settle();
+__notifyPermission = "default";
+nextSyncNotifications(payload(false));
+await __settle();
+"""
+        )
+
+        self.assertEqual([], out["calls"])
+
+    def test_a_payload_that_forgets_the_lane_is_reported_to_again(self) -> None:
+        # The restart case, without a heartbeat and without a boot token: the
+        # page has a lane and the payload says none has been reported, so the
+        # disagreement is what resends.
+        out = self._report(
+            """
+__notifyPermission = "granted";
+nextSyncNotifications(payload(false));
+await __settle();
+nextSyncNotifications(payload(true));
+await __settle();
+nextSyncNotifications(payload(false));
+await __settle();
+"""
+        )
+
+        self.assertEqual(2, len(out["calls"]))
+
+    def test_many_renders_of_one_collection_report_once(self) -> None:
+        # The defect: the page renders many times per collection, and the
+        # server's answer cannot appear until the next payload, so gating only
+        # on `browser_lane` made every render between the post and that payload
+        # post again. Same payload object, three renders.
+        out = self._report(
+            """
+__notifyPermission = "granted";
+const one = payload(false);
+nextSyncNotifications(one);
+await __settle();
+nextSyncNotifications(one);
+await __settle();
+nextSyncNotifications(one);
+await __settle();
+"""
+        )
+
+        self.assertEqual(1, len(out["calls"]))
+
+    def test_a_payload_with_no_lane_key_at_all_does_not_report_forever(self) -> None:
+        # What the server used to publish: the key lived on the rows and not at
+        # the top of the payload, so `payload.browser_lane` read `undefined` on
+        # every poll and the page reported on every one of them.
+        out = self._report(
+            """
+__notifyPermission = "granted";
+for(let i = 0; i < 6; i++){
+  const p = payload(false);
+  delete p.browser_lane;
+  nextSyncNotifications(p);
+  await __settle();
+}
+"""
+        )
+
+        self.assertLessEqual(len(out["calls"]), 3)
+
+    def test_a_server_that_never_accepts_the_report_is_given_up_on(self) -> None:
+        out = self._report(
+            """
+__fetchImpl = () => Promise.resolve({ok:false, status:500});
+__notifyPermission = "granted";
+for(let i = 0; i < 10; i++){
+  nextSyncNotifications(payload(false));
+  await __settle();
+}
+"""
+        )
+
+        self.assertEqual(3, len(out["calls"]))

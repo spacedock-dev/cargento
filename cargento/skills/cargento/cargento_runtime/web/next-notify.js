@@ -99,6 +99,9 @@ function nextNotifyEdge(session, previous){
 }
 
 function nextSyncNotifications(payload){
+  /* Reported from here because this runs on every payload, which is what makes
+     the disagreement check above cheap to act on. */
+  nextReportNotifyLane(payload);
   const seen = new Map();
   const now = Date.now();
   for(const [key, issuedAt] of nextQuietNudgedAt){
@@ -148,4 +151,85 @@ function nextNotifyControl(payload){
   }
   return '<button type="button" class="next-notify-button" ' +
     'data-next-action="enable-notifications">Enable notifications</button>';
+}
+
+/* Under
+   [DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery)
+   the page may report that a notification lane EXISTS in it, and may
+   never report a delivery. So this posts two scalars about the tab, names no
+   session, and is never sent per raise.
+
+   Only a WORKING lane is reported. A tab reporting that it has no lane would
+   say nothing true about the board: several tabs can be open, and this one
+   being blocked says nothing about another that is not.
+
+   WHEN IT RESENDS, and why it is not a load-time one-shot. The page has no way
+   to know the server restarted, and a report that lives in the server's memory
+   is gone when it does. So the condition is a DISAGREEMENT: this tab has a lane
+   and the payload says none has been reported. That covers the first render,
+   the permission grant (which re-renders), and a restart, without a heartbeat
+   and without a token for the boot. Once the payload agrees, nothing is sent
+   again. */
+let nextLaneReportInFlight = false;
+let nextLaneReportedThrough = 0;
+let nextLaneReportedEver = false;
+let nextLaneReportFailures = 0;
+/* Three, then stop until something changes. A post only fails when the server
+   is broken, and retrying one per poll against a broken server is the heartbeat
+   this whole design exists to avoid. */
+const NEXT_LANE_REPORT_ATTEMPTS = 3;
+
+function nextLaneReportNeeded(payload){
+  if(nextLaneReportInFlight) return false;
+  if(!nextNotifySupported() || nextNotifyPermission() !== "granted") return false;
+  if(payload && payload.browser_lane === true){
+    nextLaneReportFailures = 0;
+    return false;
+  }
+  if(nextLaneReportFailures >= NEXT_LANE_REPORT_ATTEMPTS) return false;
+  /* A server that does not publish the key at all is one this page cannot read
+     an answer from, so it gets one report and never a second. Treating a
+     missing key as a disagreement is the same heartbeat by another route, and
+     it is the likelier one: a page from this build against a server from an
+     older one sees exactly that. */
+  if(!(payload && Object.prototype.hasOwnProperty.call(payload, "browser_lane"))){
+    return !nextLaneReportedEver;
+  }
+  /* Gated on the payload being NEWER than the one we last posted against. The
+     page renders many times per collection, and the server's answer cannot
+     appear until the next one, so without this every render between the post
+     and the next payload posts again. That was the defect: the top-level key
+     did not exist either, so `browser_lane` read `undefined` on every payload
+     and the page reported on every render. `lane_reported_at` is then always
+     "now", and every past raise renders the sentence saying the report arrived
+     after it, which is the weakest one and says nothing at all. */
+  const generated = Number(payload && payload.generated);
+  return !Number.isFinite(generated) || generated > nextLaneReportedThrough;
+}
+
+function nextReportNotifyLane(payload){
+  if(!nextLaneReportNeeded(payload)) return;
+  const generated = Number(payload && payload.generated);
+  nextLaneReportInFlight = true;
+  const settle = ok => {
+    nextLaneReportInFlight = false;
+    if(ok){
+      nextLaneReportFailures = 0;
+      nextLaneReportedEver = true;
+      if(Number.isFinite(generated)) nextLaneReportedThrough = generated;
+    }else{
+      nextLaneReportFailures += 1;
+    }
+  };
+  try{
+    fetch("/api/lane", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      /* Two scalars and nothing else. A session here would be refused with a
+         400 by the route, which is deliberate on both sides. */
+      body: JSON.stringify({supported: true, permission: "granted"}),
+    }).then(response => settle(!!(response && response.ok)), () => settle(false));
+  }catch(_error){
+    settle(false);
+  }
 }

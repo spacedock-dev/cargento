@@ -402,6 +402,27 @@ moment, never that none existed when the raise happened.
 The sentence says the first. It may not be tightened into the second, and the clause explaining why
 is load bearing rather than decoration.
 
+### Three sentences, not two, and what the build had to decide
+
+The ruling names two cases. Building it found a third, and two rules the ruling implies without
+saying.
+
+A report has a time, and the time changes what it is evidence of. A lane reported three hours before
+a raise and one reported a minute before are different evidence, and a sentence that omits the gap
+makes them read alike. So the positive case carries the gap, and a report that arrived after the
+raise gets its own sentence saying it is about a later moment. Rendering the positive sentence with a
+negative gap would have been the quiet version of the same overclaim.
+
+Only a working lane is a report. A tab reporting that it has no lane records nothing and clears
+nothing, because several tabs can be open and one without permission says nothing about another that
+has it. The absence of any report is the negative sentence above, which already claims nothing either
+way.
+
+The page resends on disagreement rather than on a timer. A report lives in the server's memory, so a
+restart loses it, and the page has no way to know a restart happened. The condition is that this tab
+has a lane and the payload says none has been reported. That covers the first render, the permission
+grant and the restart, with no heartbeat and no token for the boot.
+
 ### One argument that was withdrawn
 
 The first recommendation refused any report, on the ground that the page can only say a constructor

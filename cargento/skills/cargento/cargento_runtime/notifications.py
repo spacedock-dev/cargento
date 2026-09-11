@@ -135,9 +135,10 @@ def notify_mac(
 ) -> str:
     """Send one banner, and say what became of it.
 
-    Four outcomes rather than three, and none of them is "seen". It used to
-    return `None` on all four paths, so no caller could tell a platform with no
-    backend from a call that timed out from one the service refused.
+    Five outcomes rather than one, and none of them is "seen". It used to return
+    `None` on every path, so no caller could tell a platform with no backend
+    from a call that timed out, from one the service refused, from one that
+    never started at all.
     """
     if not native_notifier(config.platform_name):
         return deliveries.OUTCOME_NO_LANE
@@ -170,9 +171,16 @@ def notify_mac(
     except subprocess.TimeoutExpired as exc:
         runtime_io.diag(f"[notify] osascript did not return: {exc}", diagnostic_sink)
         return deliveries.OUTCOME_DID_NOT_RETURN
+    # Separate from the non-zero return above, not folded into it. These are the
+    # call never starting: a missing or unexecutable binary, or an argument the
+    # runtime refused. Reporting that as "the notification service returned an
+    # error" tells a reader their notification service rejected something it
+    # never saw.
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        runtime_io.diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}", diagnostic_sink)
-        return deliveries.OUTCOME_REFUSED
+        runtime_io.diag(
+            f"[notify] osascript did not start: {type(exc).__name__}: {exc}", diagnostic_sink
+        )
+        return deliveries.OUTCOME_NOT_LAUNCHED
     return deliveries.OUTCOME_HANDED_OVER
 
 
@@ -437,23 +445,50 @@ def maybe_popup(
             return
         if now - state.last_popup.get(prefix, 0) < config.popup_cooldown_sec:
             return
-        # The floors are spent here, before the call, and that is knowingly wrong
-        # for a platform with no backend: the notifier returns having done
-        # nothing and the next real transition is suppressed for
-        # `popup_cooldown_sec` on the strength of a notification that did not
-        # happen. Checking above these writes was tried and reverted.
-        # `popup_notifier` is INJECTED, so gating on `config.platform_name`
-        # decides for a notifier this function cannot see, and a Linux backend
-        # would then be skipped by a check about the macOS one. Gating on the
-        # OUTCOME instead needs the floor written after the call, which reopens
-        # the window these writes close under the lock. That is a lock change
-        # and it is filed rather than smuggled in here.
+        # Spent here, before the call, and refunded below when the notifier
+        # reports there was no lane to attempt. Spending first and refunding
+        # rather than deciding first, for two reasons that both point the same
+        # way. `popup_notifier` is INJECTED, so a gate on `config.platform_name`
+        # would decide for a notifier this function cannot see, and a Linux
+        # backend would be skipped by a check about the macOS one. And writing
+        # the floor after the call instead reopens the window these writes close
+        # under the lock: two collections could both pass the edge test and both
+        # raise. A refund keeps the window shut and costs one suppressed raise
+        # for the duration of a call that did nothing.
+        previous_session = state.last_popup.get(prefix)
+        previous_global = state.last_popup.get("_global")
         runtime_state.bounded_put(state.last_popup, prefix, now, limit=config.max_cache_entries)
         runtime_state.bounded_put(state.last_popup, "_global", now, limit=config.max_cache_entries)
     outcome = popup_notifier(
         waiting_title(harness_label), detail or f"Session {prefix} needs your input"
     )
+    if outcome == deliveries.OUTCOME_NO_LANE:
+        _refund_floor(state, state.last_popup, prefix, now, previous_session)
+        _refund_floor(state, state.last_popup, "_global", now, previous_global)
     _record_outcome(config, subject.harness, prefix, "gate", outcome, now)
+
+
+def _refund_floor(
+    state: RuntimeState,
+    cache: dict[str, Any],
+    key: str,
+    spent: Any,
+    previous: Any,
+) -> None:
+    """Put one spent suppressor back, unless someone else has moved it since.
+
+    Compare and swap rather than a plain restore. `_global` and the ask lane's
+    key are shared across sessions, so a raise that landed between the spend and
+    this call has written its own value, and rolling that back would unsilence a
+    raise that really was attempted.
+    """
+    with state.hook_lock:
+        if cache.get(key) != spent:
+            return
+        if previous is None:
+            cache.pop(key, None)
+        else:
+            cache[key] = previous
 
 
 @dataclass(frozen=True)
@@ -542,6 +577,7 @@ def maybe_ask_popup(
     with state.hook_lock:
         if now - state.last_popup.get(ASK_POPUP_KEY, 0) < config.global_popup_cooldown_sec:
             return
+        previous_ask = state.last_popup.get(ASK_POPUP_KEY)
         runtime_state.bounded_put(
             state.last_popup, ASK_POPUP_KEY, now, limit=config.max_cache_entries
         )
@@ -550,7 +586,38 @@ def maybe_ask_popup(
     outcome = popup_notifier(
         asking_title(subject.label), ask_popup_detail(subject.question, subject.project)
     )
+    # Refunded on `no-lane` for `maybe_popup`'s reason, and it matters more here:
+    # nothing ever re-registers a question, so a floor spent on a raise that was
+    # never attempted silences the NEXT question rather than a retry of this one.
+    if outcome == deliveries.OUTCOME_NO_LANE:
+        _refund_floor(state, state.last_popup, ASK_POPUP_KEY, now, previous_ask)
     _record_outcome(config, subject.harness, subject.sid, "ask", outcome, now)
+
+
+def _refund_hook_floors(
+    state: RuntimeState,
+    popup_key: str,
+    now: float,
+    outcome: str | None,
+    spent_before: tuple[Any, Any],
+) -> None:
+    """Put the hook lane's two cooldown floors back when there was no lane.
+
+    The two floors only. `last_popup_message` is not a floor: it suppresses a
+    REPEAT of the same message, and Claude re-emits the same notification for as
+    long as the session stays blocked. Refunding it was tried and reverted,
+    because on a platform with no backend it makes every re-emission a fresh
+    raise, and each one writes a record about a banner nobody could have drawn.
+    A floor exists so the next real transition is not lost; this one exists so
+    the same standing gate is not counted again, and that reason does not change
+    with the outcome.
+
+    A separate function only because `handle_payload` sits on ruff's branch cap.
+    """
+    if outcome != deliveries.OUTCOME_NO_LANE:
+        return
+    _refund_floor(state, state.last_popup, popup_key, now, spent_before[0])
+    _refund_floor(state, state.last_popup, "_global", now, spent_before[1])
 
 
 def transcript_mtime(path: Any) -> float:
@@ -686,6 +753,10 @@ def handle_payload(
         repeat = message == prev_msg and now - prev_ts < config.popup_repeat_suppress_sec
         fire = popup and session_ready and global_ready and not repeat and not cleared
         if fire:
+            spent_before = (
+                state.last_popup.get(popup_key),
+                state.last_popup.get("_global"),
+            )
             runtime_state.bounded_put(
                 state.last_popup, popup_key, now, limit=config.max_cache_entries
             )
@@ -697,6 +768,7 @@ def handle_payload(
             )
     if fire:
         outcome = popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
+        _refund_hook_floors(state, popup_key, now, outcome, spent_before)
         # "claude" by the same argument as the label above it: the route is
         # Claude's own hook forwarder and nothing else posts there, so the
         # harness is a property of the route rather than a field to trust.

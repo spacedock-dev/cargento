@@ -204,6 +204,11 @@ class RuntimeConfig:
     # inside the read cap copied from the dismissal store.
     delivery_read_cap_bytes: int
     delivery_max_entries: int
+    # `POST /api/lane`'s body cap. Two booleans and a short string, so this is
+    # deliberately far smaller than any other body cap here: a route that accepts
+    # no session and no text has nothing large that is legal, and the cap is what
+    # says so before the body is read.
+    lane_body_cap_bytes: int
     # The annotation store. The read cap is NOT the dismissal store's: measured,
     # 256 sessions at 16 revisions of two 240-character fields serialize to about
     # 2.2 MB, so the 65,536 copied from `dismissal_read_cap_bytes` was 31 times
@@ -672,6 +677,7 @@ def build_runtime_config(
         dismissal_max_entries=256,
         delivery_read_cap_bytes=262_144,
         delivery_max_entries=1_024,
+        lane_body_cap_bytes=512,
         annotation_read_cap_bytes=2_621_440,
         annotation_max_sessions=256,
         annotation_max_revisions=16,

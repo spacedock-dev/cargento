@@ -29,6 +29,12 @@ Four constraints on code that does not exist yet:
   interactive session, `notify-send` wants a graphical user D-Bus session, and WSL interop can be
   disabled by policy. The honest exit criterion is graceful degradation plus a *reported* delivery
   status, so every backend must no-op with a log rather than raise. Ship it labeled experimental.
+  That reported status now exists and has a shape: `deliveries.py` holds five outcome tokens, a
+  notifier returns one of them, and a new backend adds a value rather than changing the record. A
+  backend that cannot deliver returns the refused or the did-not-return token, and the lane token is
+  reserved for a platform this build has no backend for at all. The cooldown floors are spent before
+  the call and refunded when the outcome says there was no lane, so a platform gap does not silence
+  the next real transition.
 - Latency is fine, but holding the lock is not. A backend that spawns a subprocess can block for
   hundreds of milliseconds, and all three of these are slower to start than `osascript`. That is
   safe only because the server is threaded and both dispatch sites invoke the notifier *after*

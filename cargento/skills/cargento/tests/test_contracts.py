@@ -1286,6 +1286,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.annotations",
             "cargento_runtime.collectors",
             "cargento_runtime.config",
+            "cargento_runtime.deliveries",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.git_status",

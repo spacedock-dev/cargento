@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
 from . import annotations as annotation_store
-from . import dismissals, notifications, quota, reading, records, sessions
+from . import deliveries, dismissals, notifications, quota, reading, records, sessions
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -527,6 +527,30 @@ def _withdraw_stale_finality(row: Session, assessment: object) -> None:
     assessment["scope_text"] = reading.SCOPE_TEXT[reading.SCOPE_WITHDRAWN]
 
 
+def _identity_is_a_prefix(row: Session) -> bool:
+    """Whether this row's `sid` is a truncation rather than a whole identity.
+
+    Two ways an identity fails to be provably unique, and the second is the one
+    a length comparison alone missed. `resume_id` is the harness's own full
+    identity where it publishes one, and a longer one that starts with the sid
+    means the sid is a truncation: `collectors/claude.py` hands `base_session`
+    the transcript stem's first eight characters, so every Claude row is this
+    case, which is the hazard DRC-4508 named. A Claude row that reached the
+    collector loop from the task store has no transcript and therefore no
+    `resume_id` at all, while its sid is still the display prefix, so an
+    identity at most display-length is the second arm.
+
+    Shared by the annotation and the delivery attach, because both bind stored
+    records to a row by the same key and two copies of this rule would drift.
+    """
+    sid = row.get("sid")
+    resume = row.get("resume_id")
+    return isinstance(sid, str) and (
+        (isinstance(resume, str) and len(resume) > len(sid) and resume.startswith(sid))
+        or len(sid) <= _DISPLAY_ID_FLOOR
+    )
+
+
 def _attach_annotations(
     rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
 ) -> None:
@@ -541,26 +565,11 @@ def _attach_annotations(
     beside it. Both are on the row, and the prefix can collide.
     """
     for row in rows:
-        # `resume_id` is the harness's own full identity where it publishes one.
-        # When it is longer than the `sid` this store binds on, the sid is a
-        # truncation and the binding is by prefix. That is not hypothetical:
-        # `collectors/claude.py` hands `base_session` the transcript stem's
-        # first eight characters, so every Claude row is this case, which is the
-        # hazard DRC-4508 named and the reason it is reported rather than
-        # claimed away.
+        # Reported rather than claimed away: every Claude row binds by prefix,
+        # which is the hazard DRC-4508 named. `_identity_is_a_prefix` owns the
+        # rule and the reason, and the delivery attach reads the same one.
         sid = row.get("sid")
-        resume = row.get("resume_id")
-        # Two ways an identity fails to be provably unique, and the second is
-        # the one the length comparison alone missed. A Claude row that reached
-        # the collector loop from the task store has no transcript and therefore
-        # no `resume_id`, which that collector records as the None case, while
-        # its sid is still the display prefix. `base_session` publishes
-        # `session` as `sid[:8]`, so an identity at most that long is
-        # display-length and cannot be shown to name one session.
-        by_prefix = isinstance(sid, str) and (
-            (isinstance(resume, str) and len(resume) > len(sid) and resume.startswith(sid))
-            or len(sid) <= _DISPLAY_ID_FLOOR
-        )
+        by_prefix = _identity_is_a_prefix(row)
         published = annotation_store.published(
             annotation_store.find(entries, row.get("harness"), sid),
             binding_why=(
@@ -818,6 +827,11 @@ class Application:
                     else {}
                 ),
                 **self._ask_cards(now),
+                # Called from inside the update rather than beside it because
+                # `collect` sits on ruff's statement cap. It reads the store
+                # once and both attaches the per-row sentences and returns the
+                # board-wide counts.
+                **self._delivery_fields(out_sessions),
                 **history_fields,
             }
         )
@@ -833,6 +847,59 @@ class Application:
             # a disk-read provider or with the fetch disabled.
             collection["usage_fetch"] = True
         return collection
+
+    def _delivery_fields(self, rows: list[Session]) -> dict[str, Any]:
+        """Attach what became of each session's raises, and count the board's.
+
+        One read of the store for both halves. Called after `_notify_waits`,
+        which is what writes this collection's own outcomes: reading first
+        would publish a board one raise behind its own notification on the very
+        poll that raised it.
+
+        Every row gets the keys, raised or not, for `_attach_annotations`'
+        reason: a missing key renders as `undefined`, and an absence has to
+        arrive as an absence carrying its own wording. `deliveries.published`
+        owns every sentence so three surfaces cannot word it three ways.
+
+        Bound on `(harness, sid)` with the same prefix rule
+        `_attach_annotations` uses, and for the harder half of its reason. The
+        gate and hook lanes record under the key the collector publishes, so
+        those match exactly. The ASK lane records under the session id the
+        caller sent, which for Claude is the whole UUID against a row carrying
+        the eight-character transcript prefix: matching exactly orphaned every
+        ask-lane outcome from the row it was raised about, so a question the
+        reader had been alerted to showed no raise at all. A prefix can collide,
+        and `deliveries.published` says so on the row rather than claiming it
+        away.
+
+        The counts come from the whole store rather than from these rows,
+        because a raise whose session has since aged out of the window still
+        happened. Two numbers and never one ratio: they answer different
+        questions, and neither is a figure about what a person saw.
+        """
+        entries = deliveries.load(self.config)
+        lane_reported_at = self.state.lane_reported_at
+        for row in rows:
+            row.update(
+                deliveries.published(
+                    entries,
+                    str(row.get("harness") or ""),
+                    str(row.get("sid") or ""),
+                    lane_reported_at=lane_reported_at,
+                    by_prefix=_identity_is_a_prefix(row),
+                )
+            )
+        return {
+            "delivery_counts": deliveries.counts(entries),
+            # Board-wide, at the top of the payload, because that is what it is:
+            # one report for the whole dashboard and never per session. The page
+            # reads THIS key to decide whether its own lane has been reported
+            # yet, so publishing it only on the rows left the page unable to
+            # tell a server that has its report from one that has not, and it
+            # posted a fresh report on every payload.
+            "browser_lane": lane_reported_at > 0,
+            "browser_lane_at": lane_reported_at or None,
+        }
 
     def _history_fields(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Record this collection's transitions, and the payload keys they earn.

@@ -960,3 +960,124 @@ class NextSessionsScanOnlyTest(NextPageJsHarness):
                 ).replace('sid: "goose-1"', 'sid: "goose-junk"')
 
                 self.assertNotIn("Read by scanning", self.row(self.view(junk), "goose-junk"))
+
+
+class NextSessionDeliveryPanelTest(NextPageJsHarness):
+    """What became of a raise, as the reader actually sees it.
+
+    The sentences are composed on the server and printed verbatim, so what is
+    under test here is the choosing: whether a panel appears at all, and that
+    the page adds no wording of its own to the four outcomes.
+    """
+
+    HARNESSES = (
+        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+        '{key: "claude", label: "Claude", reports_needs_input: true}],'
+    )
+
+    BASE = (
+        '{sid: "abcd1234", harness: "claude", project: "trio/app", state: "idle",'
+        ' active: true, title: "A session", state_detail: "awaiting your message",'
+        " last_activity: 9990, rate_per_min: 0, turn: null, tasks: [], subagents: [],"
+    )
+
+    def detail(self, extra: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{self.BASE} {extra}}}]}};\n"
+            "console.log(JSON.stringify(nextSessionView("
+            '"trio/app", "claude", "abcd1234")));'
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def test_a_session_nobody_raised_about_draws_no_panel(self) -> None:
+        # An absence of raises is not evidence about a raise. A panel saying
+        # "no record" here invents a question the reader did not have.
+        html = self.detail('delivery_raises: 0, delivery_why: "", browser_lane_why: ""')
+
+        self.assertNotIn("next-session-delivery", html)
+
+    def test_the_outcome_sentence_is_printed_and_not_reworded(self) -> None:
+        html = self.detail(
+            'delivery_raises: 1, delivery_outcome: "handed-over",'
+            ' delivery_why: "Handed to this machine\\u2019s notification service, which '
+            'accepted it.", browser_lane_why: ""'
+        )
+
+        self.assertIn("which accepted it.", html)
+        self.assertIn('data-next-delivery="handed-over"', html)
+        # The page adds no verdict of its own beside the sentence it was given.
+        self.assertNotIn("delivered", html)
+        self.assertNotIn("you saw", html)
+
+    def test_the_lane_sentence_rides_beside_the_outcome_and_not_instead_of_it(self) -> None:
+        # DEC-19: the server saying it has no backend and the page saying
+        # whether it has one are different facts, and the reader needs both.
+        html = self.detail(
+            'delivery_raises: 1, delivery_outcome: "no-lane",'
+            ' delivery_why: "This platform has no notification backend in this build.",'
+            ' browser_lane_why: "No dashboard tab has reported a notification lane."'
+        )
+
+        self.assertIn("no notification backend in this build.", html)
+        self.assertIn("No dashboard tab has reported a notification lane.", html)
+
+    def test_the_count_says_how_many_raises_the_sentence_is_about(self) -> None:
+        html = self.detail(
+            'delivery_raises: 3, delivery_outcome: "refused",'
+            ' delivery_why: "The notification service returned an error.",'
+            ' browser_lane_why: ""'
+        )
+
+        self.assertIn("3 notifications were raised about this session", html)
+
+    def test_a_plural_count_does_not_read_as_three_of_the_same_outcome(self) -> None:
+        # The sentence describes the LATEST raise and no other. "3
+        # notifications were raised" printed above one outcome reads as three of
+        # that outcome, so a session whose first raise was refused and whose
+        # second was handed over rendered as two hand-overs.
+        html = self.detail(
+            'delivery_raises: 3, delivery_outcome: "handed-over",'
+            ' delivery_why: "Handed to this service, which accepted it.",'
+            " delivery_mixed: true,"
+            ' delivery_mixed_why: "Earlier raises about this session did not all end the same way'
+            ' as this one.", browser_lane_why: ""'
+        )
+
+        self.assertIn("The most recent:", html)
+        self.assertIn("did not all end the same way", html)
+        self.assertIn('data-next-delivery-mixed="true"', html)
+
+    def test_a_uniform_set_does_not_claim_the_raises_differed(self) -> None:
+        html = self.detail(
+            'delivery_raises: 2, delivery_outcome: "handed-over",'
+            ' delivery_why: "Handed to this service, which accepted it.",'
+            ' delivery_mixed: false, delivery_mixed_why: "", browser_lane_why: ""'
+        )
+
+        self.assertIn("The most recent:", html)
+        self.assertNotIn("did not all end the same way", html)
+        self.assertNotIn("data-next-delivery-mixed", html)
+
+    def test_a_prefix_binding_is_printed_rather_than_claimed_away(self) -> None:
+        # A raise counted here may have been about another session sharing the
+        # eight-character identity, and the panel says so.
+        html = self.detail(
+            'delivery_raises: 1, delivery_outcome: "handed-over",'
+            ' delivery_why: "Handed to this service, which accepted it.",'
+            ' delivery_binding_why: "Matched on an eight-character identity prefix.",'
+            ' browser_lane_why: ""'
+        )
+
+        self.assertIn("eight-character identity prefix", html)
+
+    def test_the_panel_carries_the_same_label_shape_as_its_neighbours(self) -> None:
+        # Walked on a real board: it was the only block on this panel without
+        # an uppercase label, so it read as a loose paragraph rather than a fact
+        # the panel is stating.
+        html = self.detail(
+            'delivery_raises: 1, delivery_outcome: "handed-over",'
+            ' delivery_why: "Handed to this service.", browser_lane_why: ""'
+        )
+
+        self.assertIn("<h2>NOTIFICATIONS</h2>", html)
