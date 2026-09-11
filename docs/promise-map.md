@@ -171,9 +171,10 @@ stopped. The Intent log keeps them after the row leaves the board.
 
 Where it stops: nothing reads your words for you at the end. The two axes say what ended and who
 claims it finished, drawn separately because neither implies the other, and the comparison against
-what you asked for is yours to make. A model reading of it is permitted on request and is not
-built, so there is no verdict here to trust or distrust. The words are kept under a session count
-rather than a date, so an old enough annotation is evicted rather than expired. And both of those
+what you asked for is yours to make. A model reading of it is built and is asked for rather than
+running, and the control that asks is disabled until an abstention check has been run and
+recorded, so there is no verdict here today to trust or distrust. The words are kept under a
+session count rather than a date, so an old enough annotation is evicted rather than expired. And both of those
 marks reach only the harnesses whose adapter maps the event that
 carries them. An absent mark means no end was observed, never that a session is alive, so it covers
 the harnesses with no adapter, a session that predates this server process, and a run under

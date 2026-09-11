@@ -12,8 +12,8 @@ If you are looking for what to work on rather than how, [docs/visibility-2x2](do
 
 ## Development setup
 
-Prerequisites: Python 3.11+ (`runtime-floor` checks the shipped entry point on 3.11, while the full
-gate runs on 3.12), `git`, Node (only for `scripts/lint_embedded.py`, which checks the frontend JS;
+Prerequisites: Python 3.11+ (`runtime-floor` runs the shipped entry point and the suite on 3.11,
+while lint, types and the coverage threshold run on 3.12), `git`, Node (only for `scripts/lint_embedded.py`, which checks the frontend JS;
 pass `--allow-missing-node` to skip that half), and optionally the Claude Code / AGY CLIs for native
 validation. See [COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
 
@@ -58,13 +58,14 @@ same directories through the relative symlinks under `.agents/skills/`.
 - `mypy` in `--strict` mode with `warn_unreachable`.
 - `scripts/lint_embedded.py`, which lints the shipped HTML, CSS and JS source files directly.
 - `runtime-floor`, which launches the shipped `server.py` entry point directly from outside the
-  checkout on Python 3.11 and exercises `--help` and `--diagnose --json`.
+  checkout on Python 3.11, exercises `--help` and `--diagnose --json`, and then runs the whole suite
+  on the floor without coverage.
 - The full unittest suite under `coverage`, against the `fail_under` threshold in `pyproject.toml`.
   That threshold only ratchets up. A PR that must merge below it needs the `coverage-exception`
   label, which is visible in the PR timeline.
 - `platform-tests`, the unit suite re-run natively on Ubuntu, macOS and Windows.
 
-Those seven jobs run when the diff contains something they can measure. A change to prose
+Those checks run in five jobs, and they run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself
 always runs and always reports, so a prose-only PR is never left waiting on a check that never
 arrives. `SKILL.md`, `SECURITY.md`, `README.md` and any file under `docs/` that a test opens by
@@ -241,12 +242,13 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   timestamp, then on the session id, or rows move under the reader between refreshes.
 - The frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
   page boundary, not routed to another assembly path. The promoted files retain their `next-*` names and
-  `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless; do not infer a
-  second frontend from those internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
+  `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless, and the imported
+  cockpit sits beside them in `project.js` under its own `cargento.project*` keys; do not infer a
+  second frontend from either set of internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
   the promotion decision and route grammar.
 - Keep stylesheet edits inside the region owned by the surface you are changing, including its
   media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
-  names all seven regions, the dark-only palette and the type floor. Board sentences use at least
+  names all nine regions, the dark-only palette and the type floor. Board sentences use at least
   `--fs-xs` (12.5px); compact labels and source metadata retain their smaller design sizes.
   The stylesheet contains both scale tokens and literal sizes; no test currently bans all raw
   pixel sizes or unused scale steps. The earlier scale-only rule followed twenty ad-hoc values
@@ -257,8 +259,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `--sel-bd`; the former dashboard's panel-on-background treatment measured 1.2:1 and made on and
   off indistinguishable. Its metadata ink once measured 3.1:1, below AA, on the smallest type.
 - Test the page by running it, not by matching strings against its source. `NextPageJsHarness` in
-  `next_harness.py` executes the real dashboard script (the `web/next-*.js` parts, concatenated in
-  `APP_PARTS` order) under node against a stub DOM. A test can fire a click or a keystroke and assert
+  `next_harness.py` executes the real dashboard script (every part named in `APP_PARTS`,
+  concatenated in that order, which since the cockpit import includes `project.js` alongside the
+  `next-*.js` files) under node against a stub DOM. A test can fire a click or a keystroke and assert
   on what the page did. A source-text assertion passes forever after the behavior behind it breaks.
   Each check runs in a fresh `vm` context inside the shared worker described above, so it still gets
   a clean set of globals, but it is no longer a clean process: anything a check leaves on a timer
@@ -318,7 +321,7 @@ This is the contribution we most want. Each harness is one registry entry: a key
 - Add tests with a synthetic store fixture, including a hostile-path case.
 - No frontend registry entry is needed. The page reads harness keys and labels from the payload's
   `harnesses` list, which is derived from `default_harnesses()`.
-- Every row's field set is declared once, in `base_session` in `cargento_runtime/sessions.py`, at `None`. Populate the fields your store can answer and leave the rest; do not add a key that only your harness sets, because then every consumer has to test for presence instead of for a value. `provider` and `model` are there for the same reason and only Pi fills them today, since Pi is the one harness that spends another product's allowance rather than its own.
+- Every row's field set is declared once, in `base_session` in `cargento_runtime/sessions.py`, at `None`. Populate the fields your store can answer and leave the rest; do not add a key that only your harness sets, because then every consumer has to test for presence instead of for a value. `provider` and `model` are there for the same reason. `provider` is Pi's alone, since Pi is the one harness that spends another product's allowance rather than its own; `model` is filled by whichever collectors can read one.
 
 Before writing any of it, settle whether the thing deserves a row of its own: two store formats can be one harness, and one vendor can be two. [`docs/design-harness-registry.md`](docs/design-harness-registry.md) owns that judgement and the one time it had to be revisited.
 

@@ -7,8 +7,9 @@ Cargento ships three kinds of component that touch the network. The dashboard se
 reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
 makes the quota poll described in Usage quota reads (the quota fetcher); it carries no session
-data. The observer model is the one path that can send session content off this machine. It is
-off unless explicitly enabled and disclosure consent accompanies a focused refresh.
+data. The model lane is the one path that can send session content off this machine. It is
+off unless explicitly enabled, and a call needs disclosure consent on the request that triggers it:
+a focused refresh for a goal line, or a reader's press for a reading.
 [Observer model calls](#observer-model-calls) states its bounds. The opt-in UI's Space fonts are
 packaged into its page, so
 loading either interface makes no request to a font provider. Four small forwarders ship beside it,
@@ -50,7 +51,7 @@ The posture rests on two invariants:
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
    own connection, which is why it is named here rather than counted above.
-2. Read-only against harness stores. They are opened read-only and never written. Eight endpoints
+2. Read-only against harness stores. They are opened read-only and never written. Nine endpoints
    mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
@@ -58,11 +59,14 @@ The posture rests on two invariants:
    which register a question a session asked, record the option the reader chose, and drop a question
    whose asker has stopped waiting for it, all three described under The ask lane. The long
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
-   which is the delivery completing rather than a change a caller asked for. Two write to disk.
-   `POST /api/dismiss` writes the sessions you marked handled, and
-   `POST /api/annotate` writes the goal and expected output you typed against a session. Both write
-   Cargento's own state under `~/.cargento` and never a harness store, so the read-only rule above stands
-   unchanged. What the first holds and how to clear it is in Dismissals; the second is one file,
+   which is the delivery completing rather than a change a caller asked for. Three write to disk.
+   `POST /api/dismiss` writes the sessions you marked handled,
+   `POST /api/annotate` writes the goal and expected output you typed against a session, and
+   `POST /api/reading` writes a model's reading of that session back into the same annotation
+   entry. A press that produces nothing still writes, because the reason and the spend count are
+   recorded too. All three write Cargento's own state under `~/.cargento` and never a harness
+   store, so the read-only rule above stands unchanged. What the first holds and how to clear it is
+   in Dismissals; the other two share one file,
    `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
    redacted on the way in like every other prompt-derived string, written owner-only through a temp
    file and a rename, and turned off entirely by `--no-annotations`. It is the only store holding
@@ -108,8 +112,8 @@ The posture rests on two invariants:
    operator has configured globally, git-lfs being the common one, can still be invoked by a
    committed attribute and may then write where it likes, which the git-reads section below states
    in full. The focus command writes nothing
-   anywhere, reads nothing back, and touches no harness store; `POST /api/focus`, the ninth POST
-   route, is the one that mutates nothing at all. The server also keeps its own history
+   anywhere, reads nothing back, and touches no harness store; `POST /api/focus` is the one POST
+   route that mutates nothing at all. The server also keeps its own history
    of what it observed under `~/.cargento`, written as it observes rather than in answer to a
    request, and never a harness store, so the read-only rule stands unchanged.
 
@@ -850,8 +854,10 @@ the operator was away, what a session's actual goal is rather than its opening i
 each of those shipped withholding its answer instead. Cargento may now ask a harness a bounded
 question and consume a little of the operator's own capacity doing it.
 
-The observer model is the first implementation of this pathway. Its entry below names what it
-sends, what it asks, and what it caps. Future harness callers need their own entry.
+The observer model is the first implementation of this pathway, deriving a session's goal line, and
+the reading lane is the second, reading a session against the words the reader typed against it.
+Each has its own entry below naming what it sends, what it asks, and what it caps. Future harness
+callers need their own entry.
 
 What makes this different from every other boundary in this document: it is the only one that sends
 the operator's own words off this machine. The quota poll carries a token and numbers. A harness
@@ -907,12 +913,20 @@ stated here rather than implied.
 ### Observer model calls
 
 `observer.CodexGoalModel` sends a generated prompt to the installed Codex CLI, which uses its
-own authentication to reach OpenAI. This is the one path that can send session content off the
-machine. It is off unless `--observer-model` was supplied. `--no-observer-model` always wins.
+own authentication to reach OpenAI. `reading.CodexReadingModel` is the second caller and goes
+through the same `observer.codex_exec`, so the two share one set of sandbox flags rather than two
+that could drift. These are the paths that can send session content off the
+machine. A reading is produced by a codex subprocess whatever harness the session runs on, so a
+reading of a Claude session spends the operator's Codex capacity and sends that session's evidence
+to OpenAI. It is off unless `--observer-model` was supplied. `--no-observer-model` always wins.
 
-A focused `/api/project-context` refresh can summarize the focused session and up to three active
-children whose assignment is unavailable. Merely opening a panel does not call the model. The
-server also requires `observer_model=1` on that refresh, following the quota consent pattern;
+Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
+focused session and up to three active children whose assignment is unavailable.
+`POST /api/reading` reads one annotated session against the words typed against it, and it sends
+those words as well as the session's evidence, which is why it carries a disclosure of its own
+rather than reusing the observer's. Merely opening a panel does not call the model, and neither
+does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
+server also requires `observer_model=1` on either request, following the quota consent pattern;
 the page must send it only after presenting the observer disclosure and storing its answer.
 Only loopback peers can authorize a model call, and cross-origin Fetch Metadata is refused.
 The response publishes the disclosure and byte cap. The backend does not treat `usage=1` as
@@ -926,8 +940,11 @@ generated prompt, including workflow stage, then goes through `records.redact_se
 before UTF-8 clipping to **16,384 bytes (16 KiB)**. This caps the prompt Cargento hands to Codex,
 not the CLI's added protocol or system instructions. Redaction recognizes credential shapes;
 it does not remove arbitrary private prose. One call per session may be in flight, including
-concurrent HTTP refreshes; the slot is released on failure. Each invocation has a **60-second**
-timeout and returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal line.
+concurrent HTTP refreshes, and a reading takes the same one-in-flight gate per session; both slots
+are released on failure. Each invocation has a **60-second**
+timeout. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
+line; a reading returns at most `annotation_text_cap_chars * 8` bytes, 1,920 at the shipped
+value.
 A failed call falls back to local analysis. No raw model stdout or stderr is served or logged.
 
 An absent or relative `shutil.which("codex")` result is refused. An absolute installed executable
@@ -1039,14 +1056,18 @@ how hard, to anyone who can read the notification stream. That is stated here ra
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-The server writes five files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+The server writes seven files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
 authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
 `started`, `log`, `python`); `cargento-<port>.log`, where a detached (`--daemon`) instance's
 output goes; `cargento-dismissals.json`, the sessions the reader marked handled, described in
 Dismissals below; `observer/<harness>_<sid>.json`, the sidecar `GET /api/observe` records when a
-reader opens that panel for a session, named in invariant 2 above; and `cargento-history.json`, the
-history of what this server observed, described in Local history above. One forwarder writes a
-sixth, in the same directory and named in invariant 2 above:
+reader opens that panel for a session, named in invariant 2 above; `cargento-history.json`, the
+history of what this server observed, described in Local history above;
+`cargento-annotations.json`, the goal and expected output you typed and the readings taken against
+them, named in invariant 2 above and turned off by `--no-annotations`; and
+`semantic-work-history.json`, the operator-cockpit prototype's own store, described under the
+prototype below and not reached by `--forget`. One forwarder writes an
+eighth, in the same directory and named in invariant 2 above:
 `statusline_hook.py` keeps `statusline-<harness>-<session>.json` per conversation, holding a
 normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
@@ -1729,6 +1750,16 @@ control and no capability; and the `204` a poll of `/api/ask/<id>` returns while
 arrived carries no body at all, so a frame navigated to it renders nothing. The stream and that poll
 are both reachable from a frame on the same terms the board is, because each route takes the plain
 local check.
+
+A reading spends the reader's own capacity, and any local process that can reach the port can spend
+it. `POST /api/reading` carries no capability token. The precedent is the quota fetch rather than the
+event ingress: the harm is a side effect on the operator's Codex balance rather than a forged claim
+about a session, and what holds it is the same-origin check and the refusal of a document
+navigation, neither of which a local process sends headers for. Three things keep it narrow. The
+route answers 503 unless `--observer-model` was supplied, so a default run spends nothing. One
+reading per session may be in flight, so a loop cannot multiply a single session's cost. And the
+route reads nothing back to the caller beyond whether a reading was produced: an unknown session is
+the same 200 as any other, never a 404, so it is not an oracle for which sessions the board holds.
 
 Having nothing to click is not the whole question for those two, because both hold a socket open,
 and that half was measured on 2026-09-07 in Chrome. Eight frames pointed at `/api/stream` from a

@@ -55,7 +55,9 @@ tasks. **Decisions** shows recorded decisions and their application state; it do
 them. **Console** holds Delegation, Waiting on you, Capacity, and Tripwires, followed by the
 selected session's optional read-only terminal in the same panel. **Held to** appears only with a
 session selected and holds the goal and expected output you typed for it, the observed entries
-naming it, and the reading block. Missing readings name their reason. Browser-local
+naming it, any direction you gave after you saved those words, the reading block, and how the
+session landed as two cards that do not imply each other. Missing readings name their reason.
+Browser-local
 human context and tripwires do not instruct an agent, and nothing enforces the tripwires.
 
 The state-change timeline and delegation figure use the server's local session history, survive a
@@ -67,8 +69,9 @@ and accepts no input. Its xterm assets are vendored and served from loopback.
 Exact session detail remains available from Sessions and cockpit session links, with the recorded
 request, tasks, subagents, token measurements, and any answerable question attributed to it.
 
-The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`,
-`#n=project:<encoded-project>`, or the full project, harness, and session identity for session
+The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
+`#n=project:<encoded-project>` with the selected session and then the open tab appended when either
+is set, or the full project, harness, and session identity for session
 detail. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
 that belonged to the retired dashboard normalize to Projects. Open the dashboard at its bare URL;
 the retired `next` query is no longer a dashboard route.
@@ -200,10 +203,12 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes six files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes seven files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
 detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
 `cargento-annotations.json`, the goal and expected output you typed against a session;
+`semantic-work-history.json`, the project cockpit's own record of what a project's sessions were
+observed doing, bounded to a 24-hour window across at most 20 projects;
 `observer/<harness>_<sid>.json`, the sidecar an observer panel records when a reader opens one; and
 `cargento-history.json`, the history of what the server observed, kept for up to 14 days. A store
 that cannot be read is discarded rather than repaired, the board starts empty, and the header names
@@ -230,7 +235,9 @@ only when the box differs from what is stored, and Escape puts the stored value 
 
 `POST /api/annotate` with a harness, a session id and either field does the same thing without the
 page. It writes a numbered revision; an earlier revision is never edited, so anything citing
-revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely.
+revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely,
+or `settle_through` with a timestamp to mark the directions given up to that moment as settled
+against the current baseline.
 
 They are held in `cargento-annotations.json`, bounded by how many sessions carry words and how many
 revisions each keeps rather than by age, because a session still on the board should not lose what
@@ -248,6 +255,13 @@ entries are instructions, dispatches and gate decisions and never an inspected f
 deliverable. Your words also appear beside the goal the harness published, in the project view's
 stated goal block, each on its own row so the two claims are never merged, and the derived row says
 when the directive was observed.
+
+A later direction gets its own block. Every instruction you gave after your newest save is listed
+there with its age, and nothing there decides whether it changes what you asked for: that is yours,
+and Cargento does not write into the session either way. Marking the baseline as still applying
+settles them through the newest one shown, which is what `settle_through` records. The retype
+control only moves the caret to the goal field, because Cargento cannot author your words. While a
+later direction is unsettled a reading states no departure at all.
 
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer
@@ -386,7 +400,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse them for this run (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. Quota consent does not authorize it. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits above the button in `Held to`, the press itself stands in for consent rather than a stored answer, and the button stays disabled until the abstention check has been run. Quota consent authorizes neither. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
@@ -417,6 +431,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
+| `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the `Held to` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or while the abstention check has not been run, which is every build so far. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
 
 ## Interpretation notes (share with the user if asked)
 
