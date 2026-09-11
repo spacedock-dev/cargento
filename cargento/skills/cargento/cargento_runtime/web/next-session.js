@@ -341,9 +341,13 @@ function nextSessionDepartures(session){
   const rows = Array.isArray(session.departures) ? session.departures : [];
   const why = String(session.departure_why == null ? "" : session.departure_why);
   if(!rows.length && !why) return "";
+  /* "while you were away" was a claim about the reader, and nothing here
+     observes where they were. The store has no expiry either, so a row can be
+     days old under a heading that implies this trip. The heading counts, and
+     each row says when. */
   const heading = rows.length === 1
-    ? "One departure was raised while you were away"
-    : `${rows.length} departures were raised while you were away`;
+    ? "One departure was raised"
+    : `${rows.length} departures were raised`;
   return '<section class="next-session-departures">' +
     "<h2>UNASKED CHECKS</h2>" +
     (rows.length ? `<p class="next-session-departures-count">${esc(heading)}</p>` : "") +
@@ -377,8 +381,11 @@ function nextSessionDepartureRow(row){
   const window = Number.isFinite(cutoff) && cutoff > 0
     ? ` · evidence to ${nextSessionClock(cutoff)}`
     : " · the evidence window is not on record";
+  const at = Number(row.at);
+  const when = Number.isFinite(at) && at > 0
+    ? `<span class="next-session-departure-at">${esc(nextSessionClock(at))}</span>` : "";
   return '<div class="next-session-departure">' +
-    `<span class="next-session-departure-name">${esc(text("constraint"))}</span>` +
+    `<span class="next-session-departure-name">${esc(text("constraint"))}</span>${when}` +
     (text("clause") ? `<span class="next-session-departure-clause">${esc(text("clause"))}` +
       "</span>" : "") +
     `<p class="next-session-departure-reading">${esc(text("reading"))}</p>` +

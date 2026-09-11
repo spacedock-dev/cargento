@@ -1,4 +1,4 @@
-"""The departures Cargento raised without being asked, and their baselines.
+"""Every unasked check Cargento ran, and what each one found.
 
 [DEC-18](docs/design-reading-a-session.md#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first)
 permits an unasked reading and adds one amendment this module exists for: every
@@ -6,6 +6,18 @@ raise persists the annotation revision and the evidence cutoff it rested on. By
 the time the reader comes back the annotation may be at a later revision and the
 evidence window has moved, so a raise that does not carry its own baseline cannot
 be understood on return.
+
+EVERY check, not only the ones that found something, and that is the correction
+rather than the obvious shape. A check that found nothing still spent a `codex`
+subprocess at `reasoning_effort=max` against the reader's own capacity, and a
+store of raises alone bounds nothing: measured on the raises-only version, five
+healthy sessions ran 480 subprocesses in a simulated day against a daily cap of
+12, because no reading ever advanced the count. It is also the only way the
+board can say whether THIS session was checked, as against whether the lane was
+switched on.
+
+A check with no `constraint` is one that raised nothing. A check with one is a
+departure, and only those render.
 
 Durable, for `deliveries`' reason and one of its own: the whole framing is that
 you were away, so the read is later than the write by design and a restart in
@@ -86,14 +98,23 @@ DAY_EXHAUSTED: Final = (
 )
 
 
-class Departure(TypedDict):
-    """One departure raised, and the baseline it rested on.
+class Check(TypedDict):
+    """One unasked check, and the baseline it read against.
 
-    `revision` and `cutoff` are the first amendment of the ruling cited at the
-    top of this file: the annotation revision the
-    reading read, and the moment its evidence stopped. Both are recorded at
-    raise time and never re-derived, because by the time this is read neither is
-    recoverable.
+    `constraint` empty is a check that found nothing to raise. It is still a
+    row, because it still spent the reader's capacity and it is still the
+    evidence that this session was looked at.
+
+    `revision`, `cutoff` and `cutoff_text` are the first amendment of the ruling
+    cited at the top of this file: the annotation revision the reading read, and
+    where its evidence stopped. All three are recorded at check time and never
+    re-derived, because by the time this is read none of them is recoverable.
+
+    `cutoff` is the moment the reading ran, which is when the record it read was
+    the record. `cutoff_text` is the producer's own sentence about what it
+    actually read, by count and by author, and it is kept verbatim because a
+    reading resting entirely on the session's own account is a different thing
+    from one a person's words corroborate.
     """
 
     harness: str
@@ -105,6 +126,7 @@ class Departure(TypedDict):
     evidence: str
     revision: int
     cutoff: float
+    cutoff_text: str
 
 
 def store_path(config: RuntimeConfig) -> str:
@@ -112,7 +134,7 @@ def store_path(config: RuntimeConfig) -> str:
     return os.path.join(config.state_home, "cargento-departures.json")
 
 
-def _entry(value: Any) -> Departure | None:
+def _entry(value: Any) -> Check | None:
     """One untrusted record, or nothing.
 
     Type-checked on the way in as well as on the way out, because any local
@@ -122,16 +144,18 @@ def _entry(value: Any) -> Departure | None:
         return None
     harness = records.safe_text(value.get("harness"), KEY_CAP_CHARS)
     sid = records.safe_text(value.get("sid"), KEY_CAP_CHARS)
-    constraint = records.safe_text(value.get("constraint"), KEY_CAP_CHARS)
     at = records.norm_epoch(value.get("at"))
-    if not harness or not sid or not constraint or at <= 0:
+    # No `constraint` test. An empty one is a check that raised nothing, which
+    # is a row this store exists to keep: dropping it is what made the caps
+    # bound raises instead of spend.
+    if not harness or not sid or at <= 0:
         return None
     revision = value.get("revision")
     return {
         "harness": harness,
         "sid": sid,
         "at": at,
-        "constraint": constraint,
+        "constraint": records.safe_text(value.get("constraint"), KEY_CAP_CHARS),
         "clause": records.safe_text(value.get("clause"), KEY_CAP_CHARS),
         "reading": records.safe_text(value.get("reading"), TEXT_CAP_CHARS),
         "evidence": records.safe_text(value.get("evidence"), TEXT_CAP_CHARS),
@@ -140,16 +164,17 @@ def _entry(value: Any) -> Departure | None:
         # rather than hiding the row.
         "revision": revision if isinstance(revision, int) and not isinstance(revision, bool) else 0,
         "cutoff": records.norm_epoch(value.get("cutoff")),
+        "cutoff_text": records.safe_text(value.get("cutoff_text"), TEXT_CAP_CHARS),
     }
 
 
-def _bounded(entries: Iterable[Departure], limit: int) -> tuple[Departure, ...]:
+def _bounded(entries: Iterable[Check], limit: int) -> tuple[Check, ...]:
     """The newest `limit` records, oldest evicted first."""
     ordered = sorted(entries, key=lambda entry: entry["at"])
     return tuple(ordered[-limit:]) if limit > 0 else ()
 
 
-def load(config: RuntimeConfig) -> tuple[Departure, ...]:
+def load(config: RuntimeConfig) -> tuple[Check, ...]:
     """Every record on disk, or none if there is none to trust."""
     try:
         with open(store_path(config), "rb") as handle:
@@ -170,7 +195,7 @@ def load(config: RuntimeConfig) -> tuple[Departure, ...]:
 
 def save(
     config: RuntimeConfig,
-    entries: Iterable[Departure],
+    entries: Iterable[Check],
     *,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> bool:
@@ -204,7 +229,7 @@ def save(
 
 def record(
     config: RuntimeConfig,
-    entries: Iterable[Departure],
+    entries: Iterable[Check],
     *,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> bool:
@@ -221,10 +246,13 @@ def record(
         return save(config, [*load(config), *fresh], diagnostic_sink=diagnostic_sink)
 
 
-def counts(
-    entries: Iterable[Departure], harness: str, sid: str, *, since: float
-) -> tuple[int, int]:
-    """(this session's raises, this board's raises since `since`).
+def counts(entries: Iterable[Check], harness: str, sid: str, *, since: float) -> tuple[int, int]:
+    """(this session's checks, this board's checks since `since`).
+
+    CHECKS and not raises, which is the whole of what the caps bound. Counting
+    raises bounds nothing: a healthy board raises nothing and would run readings
+    forever, measured at 480 subprocesses in a simulated day against a daily cap
+    of 12.
 
     Two numbers because the two caps are different questions: one session
     churning, and a whole board quietly spending a day's capacity.
@@ -234,7 +262,26 @@ def counts(
     return mine, sum(1 for row in rows if row["at"] >= since)
 
 
-def published(entries: Iterable[Departure], harness: str, sid: str) -> list[dict[str, Any]]:
-    """This session's departures, newest first, as the board renders them."""
-    mine = [row for row in entries if row["harness"] == harness and row["sid"] == sid]
+def checked(entries: Iterable[Check], harness: str, sid: str) -> bool:
+    """Whether THIS session has ever been checked.
+
+    Per session and not per board. The lane being attached says the feature is
+    on; it says nothing about whether this row was ever read, and a session with
+    no annotation is never read at all.
+    """
+    return any(row["harness"] == harness and row["sid"] == sid for row in entries)
+
+
+def published(entries: Iterable[Check], harness: str, sid: str) -> list[dict[str, Any]]:
+    """This session's DEPARTURES, newest first, as the board renders them.
+
+    A check that raised nothing is in the store and not in this list: it is
+    what the caps count and what makes the checked sentence true, and rendering
+    it as a row would fill the panel with absences.
+    """
+    mine = [
+        row
+        for row in entries
+        if row["harness"] == harness and row["sid"] == sid and row["constraint"]
+    ]
     return [dict(row) for row in sorted(mine, key=lambda row: row["at"], reverse=True)]

@@ -939,15 +939,14 @@ class Application:
         reading to a worker.
         """
         stored = departures.load(self.config)
-        checked = self.unasked_lane is not None
         for row in rows:
-            row.update(unasked.published(self.config, stored, row, now=now, checked=checked))
+            row.update(unasked.published(self.config, stored, row, now=now))
         if self.unasked_lane is not None:
             self.unasked_lane.consider(self.state, rows, entries, now=now)
         # The capability flag, keyed the way `dismiss` and `annotate` are:
         # present exactly when the lane is live, so a page with the switch off
         # draws nothing rather than a panel that never fills.
-        return {"unasked": True} if checked else {}
+        return {"unasked": True} if self.unasked_lane is not None else {}
 
     def _history_fields(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Record this collection's transitions, and the payload keys they earn.

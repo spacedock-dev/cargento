@@ -465,6 +465,10 @@ def build_application(
         application.unasked_lane = unasked.Lane(
             config,
             popup_notifier=popup_notifier,
+            # The registry's own display label, so a departure banner says what
+            # the board says. Without it a row badged Antigravity produced a
+            # notification headed `antigravity`.
+            harness_label=application.harness_label,
             diagnostic_sink=diagnostic_sink,
             clock=clock,
         )

@@ -1113,18 +1113,26 @@ at the moment it goes.
 It is bounded three ways, and the bounds are the posture rather than a preference. One reading runs
 at a time for the whole board, so a board where forty annotated sessions cross a state boundary
 together starts one subprocess and not forty. A per-session floor holds a second reading of the same
-session off, because a session can cross a boundary repeatedly inside a minute. And two counts, per
-session and rolling per day, stop the lane entirely once spent. A spent count is stated on the board
+session off, because a session can cross a boundary repeatedly inside a minute. And two counts of CHECKS RUN, per session and rolling
+per day, stop the lane entirely once spent. Counting only what was raised was tried and is wrong: a
+board whose sessions are all healthy raises nothing, so nothing advances the count and the lane runs
+forever. Measured on that version, five sessions ran 480 subprocesses in a simulated day against a
+daily cap of 12. A spent count is stated on the board
 rather than passed over in silence: the reader is by construction not present, so a limit being
 spent and a session found to be on track must never render alike.
 
-`~/.cargento/cargento-departures.json` holds what was raised, opened `0600` with the mode in the
-`open` call and written through a temp file and `os.replace`. A record holds a harness key, a session
-id, the server's clock, the constraint and clause that departed, the model's own sentence about it,
-the evidence ids it cited, and the annotation revision and evidence cutoff it rested on. The model's
-sentence is prose a model wrote about your session, which is the same class of content the annotation
-store already holds and is bounded the same way. Nothing sends it anywhere. With the switch off the
-file is never created.
+`~/.cargento/cargento-departures.json` holds every check the lane ran, opened `0600` with the mode
+in the `open` call and written through a temp file and `os.replace`. Every check and not only the
+ones that found something: a check that found nothing still spent a subprocess, and a store of
+findings alone bounds nothing, which is what the caps count. It is also the only way the board can
+say whether a particular session was looked at, as against whether the feature was switched on.
+
+A record holds a harness key, a session id, the server's clock, and the annotation revision and
+evidence window it read against. A check that raised something also holds the constraint and clause
+that departed, the model's own sentence about it, and the evidence ids it cited. That sentence is
+prose a model wrote about your session, which is the same class of content the annotation store
+already holds and is bounded the same way. Nothing sends it anywhere. With the switch off the file is
+never created.
 
 ## Delivery records
 

@@ -937,6 +937,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-departure{margin:8px 0 0;padding-left:10px;border-left:1px dotted var(--line2)}
 .next-session-departure-name{color:var(--ink);font:var(--fs-xs)/1.5 var(--mono)}
 .next-session-departure-clause{margin-left:8px;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
+.next-session-departure-at{float:right;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
 /* Italic, because it is a model's reading and not a string a source published.
    The one treatment the design is explicit about. */
 .next-session-departure-reading{margin:2px 0 0;color:var(--ink2);

@@ -36,6 +36,16 @@ def _config(root: Path, **changes: Any) -> Any:
     return dataclasses.replace(config, **changes) if changes else config
 
 
+def _taking(seen: list[str]) -> Any:
+    """A `reading.claim` stub that records the key and always grants."""
+
+    def claim(_config: Any, key: str) -> bool:
+        seen.append(key)
+        return True
+
+    return claim
+
+
 def _annotation(sid: str = "s-1") -> Annotation:
     return {
         "harness": "claude",
@@ -53,7 +63,11 @@ def _assessment(*results: str) -> reading.Assessment:
         "revision_read": 4,
         "revision_read_at": 10.0,
         "stamp": "a stamp",
-        "cutoff": "900.0",
+        # Prose, which is what the producer actually writes: `cutoff_text`
+        # composes a sentence about what was read, by count and by author.
+        # An earlier fixture put "900.0" here and hid a parser that returned 0
+        # on every real reading.
+        "cutoff": "12 entries read, 3 by you and 9 by the agent.",
         "scope": "final",
         "scope_text": "",
         "ended_at_read": None,
@@ -259,7 +273,7 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
             reads += 1
             return real_load(config)
 
-        spent: list[departures.Departure] = [
+        spent: list[departures.Check] = [
             {
                 "harness": "claude",
                 "sid": f"s-{n}",
@@ -270,6 +284,7 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
                 "evidence": "e1",
                 "revision": 4,
                 "cutoff": 900.0,
+                "cutoff_text": "",
             }
             for n in range(20)
             for _ in range(self.harness.config.unasked_session_cap)
@@ -328,15 +343,27 @@ class OnlyDeparturesAreRaisedTest(unittest.TestCase):
 
         self.assertEqual(["s-1"], harness.readings, "the reading still ran")
         self.assertEqual([], harness.popups)
-        self.assertEqual((), departures.load(harness.config))
+        self.assertEqual([], departures.published(departures.load(harness.config), "claude", "s-1"))
+
+    def test_a_reading_that_raises_nothing_is_still_recorded_as_a_check(self) -> None:
+        # It spent a `codex` subprocess, which is what the caps bound, and it
+        # is the only evidence that THIS session was looked at.
+        harness = self._run(_assessment(reading.RESULT_CONSISTENT))
+
+        stored = departures.load(harness.config)
+        self.assertEqual(1, len(stored))
+        self.assertEqual("", stored[0]["constraint"])
+        self.assertIs(True, departures.checked(stored, "claude", "s-1"))
 
     def test_an_unverifiable_reading_raises_nothing(self) -> None:
         harness = self._run(_assessment(reading.RESULT_UNVERIFIABLE))
 
         self.assertEqual([], harness.popups)
-        self.assertEqual((), departures.load(harness.config))
+        self.assertEqual([], departures.published(departures.load(harness.config), "claude", "s-1"))
 
-    def test_a_withheld_reading_raises_nothing(self) -> None:
+    def test_a_withheld_reading_records_no_check_because_it_spent_nothing(self) -> None:
+        # `produce` refuses before the subprocess, so counting this against the
+        # reader's cap would charge them for a spend that did not happen.
         harness = self._run(None)
 
         self.assertEqual([], harness.popups)
@@ -396,7 +423,18 @@ class TheRaiseCarriesItsOwnBaselineTest(unittest.TestCase):
         stored = departures.load(self.harness.config)
 
         self.assertEqual(4, stored[0]["revision"])
-        self.assertEqual(900.0, stored[0]["cutoff"])
+        # The moment the reading ran. `Assessment.cutoff` is prose for the page,
+        # so the earlier code parsed it as a float and stored 0 on every real
+        # reading, which is the amendment's cutoff never being recorded at all.
+        self.assertEqual(5_000.0, stored[0]["cutoff"])
+
+    def test_the_producers_own_account_of_what_it_read_is_kept_verbatim(self) -> None:
+        # A reading resting entirely on the session's own account is a different
+        # thing from one a person's words corroborate, and only this sentence
+        # says which.
+        stored = departures.load(self.harness.config)
+
+        self.assertEqual("12 entries read, 3 by you and 9 by the agent.", stored[0]["cutoff_text"])
 
     def test_a_later_revision_does_not_rewrite_what_was_raised(self) -> None:
         # The store holds the baseline, not a pointer to one, so a save after
@@ -421,60 +459,74 @@ class TheRaiseCarriesItsOwnBaselineTest(unittest.TestCase):
 
         self.assertEqual(before, departures.load(self.harness.config)[0]["revision"])
 
-    def test_a_reading_with_no_machine_readable_cutoff_stores_zero(self) -> None:
+    def test_a_reading_whose_account_is_empty_stores_an_empty_account(self) -> None:
         assessment = _assessment(reading.RESULT_DEPARTURE)
-        assessment["cutoff"] = "the last nine turns"
+        assessment["cutoff"] = ""
         harness = _Harness(_config(Path(self.temp.name) / "other"), assessment)
         harness.consider([_row(state="working")])
         harness.consider([_row(state="idle")])
 
-        self.assertEqual(0.0, departures.load(harness.config)[0]["cutoff"])
+        stored = departures.load(harness.config)[0]
+        self.assertEqual("", stored["cutoff_text"])
+        self.assertEqual(5_000.0, stored["cutoff"], "the moment is still recorded")
 
 
 class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
     """AC5. The reader is by construction not present, so "nothing departed" and
-    "nothing was checked" must never render alike."""
+    "nothing was checked" must never render alike.
+
+    `checked` is read from the store PER SESSION. It used to be board-wide, so
+    every row said "Cargento has checked this session and found nothing to
+    raise" on the strength of the switch being on, including sessions with no
+    annotation that the lane never touches.
+    """
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.config = _config(Path(self.temp.name), unasked_session_cap=2, unasked_daily_cap=3)
 
-    def _store(self, count: int, *, sid: str = "s-1", at: float = 4_000.0) -> None:
-        rows: list[departures.Departure] = [
+    def _store(self, count: int, *, sid: str = "s-1", constraint: str = "Goal") -> None:
+        rows: list[departures.Check] = [
             {
                 "harness": "claude",
                 "sid": sid,
-                "at": at + n,
-                "constraint": f"c{n}",
+                "at": 4_000.0 + n,
+                "constraint": f"{constraint}{n}" if constraint else "",
                 "clause": "G",
-                "reading": "went elsewhere",
-                "evidence": "e1",
+                "reading": "went elsewhere" if constraint else "",
+                "evidence": "e1" if constraint else "",
                 "revision": 4,
-                "cutoff": 900.0,
+                "cutoff": 4_000.0 + n,
+                "cutoff_text": "",
             }
             for n in range(count)
         ]
         departures.record(self.config, rows, diagnostic_sink=lambda _line: None)
 
-    def _why(self, *, checked: bool = True) -> str:
+    def _why(self, sid: str = "s-1") -> str:
         stored = departures.load(self.config)
-        return str(
-            unasked.published(self.config, stored, _row(), now=5_000.0, checked=checked)[
-                "departure_why"
-            ]
-        )
+        return str(unasked.published(self.config, stored, _row(sid), now=5_000.0)["departure_why"])
 
-    def test_the_lane_off_says_nothing_was_checked(self) -> None:
-        self.assertEqual(departures.NEVER_CHECKED, self._why(checked=False))
-        self.assertIn("has not checked", self._why(checked=False))
+    def test_a_session_nobody_checked_says_so(self) -> None:
+        self.assertEqual(departures.NEVER_CHECKED, self._why())
+        self.assertIn("has not checked", self._why())
 
-    def test_the_lane_on_with_nothing_found_says_so_and_not_the_same_thing(self) -> None:
+    def test_a_session_the_lane_never_reached_does_not_claim_it_was_checked(self) -> None:
+        # The board has run checks, on another session. This one must not
+        # borrow them: the reader was not there to know which they are reading.
+        self._store(1, sid="other", constraint="")
+
+        self.assertEqual(departures.NEVER_CHECKED, self._why("s-1"))
+
+    def test_a_checked_session_with_nothing_found_says_so_and_not_the_same_thing(self) -> None:
+        self._store(1, constraint="")
+
         self.assertEqual(departures.NOTHING_DEPARTED, self._why())
         self.assertNotEqual(departures.NEVER_CHECKED, departures.NOTHING_DEPARTED)
 
     def test_a_spent_session_cap_says_a_limit_was_spent(self) -> None:
-        self._store(2)
+        self._store(2, constraint="")
 
         why = self._why()
 
@@ -482,16 +534,35 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         self.assertIn("not a session found to be on track", why)
 
     def test_a_spent_day_cap_says_so_apart_from_the_session_cap(self) -> None:
-        # Three raises spread across three sessions: no session is at its cap
-        # and the board is at its daily one, which is the case a single number
-        # would hide.
-        for n in range(3):
-            self._store(1, sid=f"other-{n}")
+        # Three checks across three sessions: no session is at its cap and the
+        # board is at its daily one, which is the case a single number hides.
+        # `s-1` has one of them, so it has been checked and is not the
+        # never-checked case.
+        for n in range(2):
+            self._store(1, sid=f"other-{n}", constraint="")
+        self._store(1, constraint="")
 
         why = self._why()
 
         self.assertEqual(departures.DAY_EXHAUSTED, why)
         self.assertNotEqual(departures.SESSION_EXHAUSTED, departures.DAY_EXHAUSTED)
+
+    def test_never_checked_outranks_a_spent_day_cap(self) -> None:
+        # A session nobody looked at is not a session held off by a cap. The
+        # second implies something was checked here and nothing was.
+        for n in range(3):
+            self._store(1, sid=f"other-{n}", constraint="")
+
+        self.assertEqual(departures.NEVER_CHECKED, self._why("s-1"))
+
+    def test_a_departure_leaves_the_sentence_to_the_rows(self) -> None:
+        self._store(1)
+
+        stored = departures.load(self.config)
+        published = unasked.published(self.config, stored, _row(), now=5_000.0)
+
+        self.assertEqual("", published["departure_why"])
+        self.assertEqual(1, len(published["departures"]))
 
     def test_the_four_sentences_are_four_sentences(self) -> None:
         every = {
@@ -512,12 +583,8 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         ):
             with self.subTest(sentence=sentence[:40]):
                 lowered = sentence.lower()
-                for claim in ("on track", "is fine", "no problem", "as you asked"):
-                    if claim == "on track":
-                        # The two exhausted sentences say "NOT a ... found to be
-                        # on track", which is the refusal rather than the claim.
-                        self.assertNotIn("is on track", lowered)
-                        continue
+                self.assertNotIn("is on track", lowered)
+                for claim in ("is fine", "no problem", "as you asked"):
                     self.assertNotIn(claim, lowered)
 
 
@@ -653,6 +720,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
                     "evidence": "e1",
                     "revision": 4,
                     "cutoff": 900.0,
+                    "cutoff_text": "",
                 }
             ],
             diagnostic_sink=lambda _line: None,
@@ -676,7 +744,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
     def test_a_reading_lands_whole_or_not_at_all(self) -> None:
         # One reading's departures are one raise. Splitting them would let a
         # restart between two writes publish half a raise.
-        rows: list[departures.Departure] = [
+        rows: list[departures.Check] = [
             {
                 "harness": "claude",
                 "sid": "s-1",
@@ -687,6 +755,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
                 "evidence": "e1",
                 "revision": 4,
                 "cutoff": 900.0,
+                "cutoff_text": "",
             }
             for n in range(3)
         ]
@@ -703,6 +772,197 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
             handle.write("{not json")
 
         self.assertEqual((), departures.load(self.config))
+
+
+class TheCapsBoundSpendAndNotFindingsTest(unittest.TestCase):
+    """The defect the caps shipped with: they counted raises.
+
+    A healthy board raises nothing, so nothing ever advanced the count and the
+    lane ran forever. Reproduced on that version at 480 `codex` subprocesses in
+    a simulated day against a documented daily cap of 12.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def _flip(self, harness: _Harness, sid: str, *, at: float) -> None:
+        entries = [_annotation(sid)]
+        harness.lane.consider(harness.state, [_row(sid, "working")], entries, now=at)
+        harness.lane.consider(harness.state, [_row(sid, "idle")], entries, now=at)
+
+    def test_a_healthy_session_still_reaches_its_cap(self) -> None:
+        # Every reading returns `consistent`, so nothing is ever raised. The
+        # cap must still stop the spend.
+        harness = _Harness(
+            _config(self.root, unasked_session_cap=3, unasked_session_floor_sec=0.0),
+            _assessment(reading.RESULT_CONSISTENT),
+        )
+
+        for n in range(20):
+            self._flip(harness, "s-1", at=5_000.0 + n)
+
+        self.assertEqual(3, len(harness.readings))
+        self.assertEqual([], departures.published(departures.load(harness.config), "claude", "s-1"))
+
+    def test_a_healthy_board_still_reaches_its_day_cap(self) -> None:
+        harness = _Harness(
+            _config(self.root, unasked_daily_cap=4, unasked_session_floor_sec=0.0),
+            _assessment(reading.RESULT_CONSISTENT),
+        )
+
+        for n in range(20):
+            self._flip(harness, f"s-{n}", at=5_000.0 + n)
+
+        self.assertEqual(4, len(harness.readings))
+
+    def test_the_day_cap_is_a_rolling_window_and_not_a_permanent_stop(self) -> None:
+        harness = _Harness(
+            _config(self.root, unasked_daily_cap=2, unasked_session_floor_sec=0.0),
+            _assessment(reading.RESULT_CONSISTENT),
+        )
+        for n in range(6):
+            self._flip(harness, f"s-{n}", at=5_000.0 + n)
+        self.assertEqual(2, len(harness.readings))
+
+        # A day later the window has moved past them.
+        self._flip(harness, "s-9", at=5_000.0 + unasked.DAY_SEC + 10)
+
+        self.assertEqual(3, len(harness.readings))
+
+
+class ARaiseThatCannotBeRecordedIsNotRaisedTest(unittest.TestCase):
+    """A banner saying a departure was found, over a board that has no record of
+    one and says nothing departed, is the board contradicting its own alert."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def test_an_unwritable_store_raises_no_banner(self) -> None:
+        # The state home is a file, so `save`'s makedirs fails and nothing
+        # reaches disk. Everything else about the lane still runs.
+        blocked = self.root / "state"
+        blocked.parent.mkdir(parents=True, exist_ok=True)
+        blocked.write_text("not a directory", encoding="utf-8")
+        harness = _Harness(_config(self.root), _assessment(reading.RESULT_DEPARTURE))
+
+        harness.consider([_row(state="working")])
+        harness.consider([_row(state="idle")])
+
+        self.assertEqual(["s-1"], harness.readings, "the reading ran")
+        self.assertEqual([], harness.popups)
+        self.assertEqual((), departures.load(harness.config))
+
+
+class TheSlotsAreGivenBackOnEveryPathTest(unittest.TestCase):
+    """A slot never released silences the lane for the life of the process, and
+    that reads exactly like a board with nothing to raise."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.harness = _Harness(
+            _config(Path(self.temp.name)), _assessment(reading.RESULT_DEPARTURE)
+        )
+
+    def test_a_spawn_that_cannot_start_releases_the_slot(self) -> None:
+        # The slot is taken before the worker exists. A thread that will not
+        # start would otherwise hold it forever.
+        def refuse(_work: Any) -> None:
+            raise RuntimeError("cannot start a thread")
+
+        self.harness.lane.spawn = refuse
+        self.harness.consider([_row(state="working")])
+        self.harness.consider([_row(state="idle")])
+
+        self.assertEqual(set(), self.harness.state.unasked_inflight)
+
+    def test_a_spawn_that_cannot_start_does_not_break_the_collection(self) -> None:
+        # `consider` runs inside a collection. A raise here would take down
+        # every connected dashboard.
+        def refuse(_work: Any) -> None:
+            raise RuntimeError("cannot start a thread")
+
+        self.harness.lane.spawn = refuse
+        self.harness.consider([_row(state="working")])
+        self.harness.consider([_row(state="idle")])
+
+    def test_the_producers_own_session_slot_is_taken_and_given_back(self) -> None:
+        # Without it, pressing `Ask for a reading` while an unasked one runs
+        # starts a second subprocess on one session, which is what that slot
+        # exists to refuse.
+        taken: list[str] = []
+        released: list[str] = []
+        with (
+            mock.patch.object(reading, "claim", _taking(taken)),
+            mock.patch.object(reading, "release", lambda _c, key: released.append(key)),
+        ):
+            self.harness.consider([_row(state="working")])
+            self.harness.consider([_row(state="idle")])
+
+        self.assertEqual(["claude:s-1"], taken)
+        self.assertEqual(["claude:s-1"], released)
+
+    def test_a_session_the_reader_is_already_reading_is_left_alone(self) -> None:
+        with mock.patch.object(reading, "claim", lambda _c, _key: False):
+            self.harness.consider([_row(state="working")])
+            self.harness.consider([_row(state="idle")])
+
+        self.assertEqual([], self.harness.readings)
+        self.assertEqual(set(), self.harness.state.unasked_inflight, "the board slot came back")
+
+
+class TheLaneStateIsBoundedTest(unittest.TestCase):
+    """Every other per-session cache on `RuntimeState` is bounded, and these
+    two are written for every row of every collection."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _config(Path(self.temp.name), max_cache_entries=8)
+        self.harness = _Harness(self.config, _assessment(reading.RESULT_CONSISTENT))
+
+    def test_the_seen_map_does_not_grow_without_bound(self) -> None:
+        for n in range(40):
+            self.harness.lane.consider(
+                self.harness.state, [_row(f"s-{n}", "working")], [], now=5_000.0
+            )
+
+        self.assertLessEqual(len(self.harness.state.unasked_seen), 8)
+
+
+class TheBannerNamesWhatTheBoardNamesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.harness = _Harness(
+            _config(Path(self.temp.name)), _assessment(reading.RESULT_DEPARTURE)
+        )
+
+    def test_the_registry_label_is_used_and_not_the_collector_key(self) -> None:
+        # A row badged Antigravity produced a notification headed
+        # `antigravity`, where every other popup on this board says what the
+        # board says.
+        self.harness.lane.harness_label = lambda key: key.title()
+        self.harness.consider([_row(state="working")])
+        self.harness.consider([_row(state="idle")])
+
+        self.assertIn("Claude may be going off track", self.harness.popups[0][0])
+
+    def test_the_constraint_survives_a_clipped_body(self) -> None:
+        # `notify_mac` keeps the HEAD of the body, so the subject has to come
+        # first or a long reading is cut mid-claim under a title saying the
+        # session may be going off track.
+        assessment = _assessment(reading.RESULT_DEPARTURE)
+        assessment["criteria"]["c0"]["detail"] = "x" * 400
+        harness = _Harness(_config(Path(self.temp.name) / "other"), assessment)
+        harness.consider([_row(state="working")])
+        harness.consider([_row(state="idle")])
+
+        self.assertTrue(harness.popups[0][1].startswith("c0: "))
 
 
 if __name__ == "__main__":

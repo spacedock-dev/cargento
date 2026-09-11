@@ -46,6 +46,7 @@ from . import departures, notifications
 from . import io as runtime_io
 from . import project_context as runtime_project_context
 from . import reading as runtime_reading
+from . import state as runtime_state
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -83,6 +84,7 @@ class Lane:
         popup_notifier: Callable[[str, str], str | None],
         diagnostic_sink: Callable[[str], None] = print,
         clock: Callable[[], float] = time.time,
+        harness_label: Callable[[str], str] | None = None,
         produce: Callable[..., tuple[runtime_reading.Assessment | None, str, bool]] | None = None,
         facts_for: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
         spawn: Callable[[Callable[[], None]], None] = _spawn,
@@ -91,6 +93,11 @@ class Lane:
         self.popup_notifier = popup_notifier
         self.diagnostic_sink = diagnostic_sink
         self.clock = clock
+        # The registry's own display label. Without it the banner says the
+        # collector key, so a row badged Antigravity produced a notification
+        # headed `antigravity`, where every other popup on this board says what
+        # the board says.
+        self.harness_label = harness_label or (lambda key: key)
         # Injected so a test can assert on the ABSENCE of a subprocess, which is
         # the first acceptance criterion and cannot be asserted against a
         # function that decides for itself whether to run one.
@@ -117,7 +124,7 @@ class Lane:
         # Read at most once per collection, and only once a candidate has been
         # found. `_claim` used to read it per row, which is a file read per row
         # per collection on a board where most rows are not candidates at all.
-        stored: tuple[departures.Departure, ...] | None = None
+        stored: tuple[departures.Check, ...] | None = None
         # Two gates and they are not the same rule, which is why both stay.
         # `started` is one reading per COLLECTION and holds structurally: the
         # loop stops offering after the first. The in-flight slot is one reading
@@ -156,7 +163,19 @@ class Lane:
                 # would see the loop's last row.
                 self._run(state, row, entry, key, now)
 
-            self.spawn(work)
+            try:
+                self.spawn(work)
+            except Exception as exc:  # noqa: BLE001 (a thread that will not start is not a raise)
+                # The slot is taken before the worker exists, so a `spawn` that
+                # throws would hold it for the life of the process and the lane
+                # would go silent in a way that reads exactly like a board with
+                # nothing to raise. This runs inside a collection, so it must
+                # not propagate either.
+                self._release(state, key)
+                runtime_io.diag(
+                    f"Cargento: could not start the unasked reading for {key}: {exc}",
+                    self.diagnostic_sink,
+                )
 
     def _note(self, state: RuntimeState, key: str, session_state: str) -> bool:
         """Record this row's state and say whether it differs from the last.
@@ -167,14 +186,16 @@ class Lane:
         """
         with state.unasked_lock:
             previous = state.unasked_seen.get(key)
-            state.unasked_seen[key] = session_state
+            runtime_state.bounded_put(
+                state.unasked_seen, key, session_state, limit=self.config.max_cache_entries
+            )
             return previous is not None and previous != session_state
 
     def _claim(
         self,
         state: RuntimeState,
         key: str,
-        stored: Sequence[departures.Departure],
+        stored: Sequence[departures.Check],
         *,
         now: float,
     ) -> bool:
@@ -190,6 +211,9 @@ class Lane:
         second.
         """
         harness, _, sid = key.partition(":")
+        # CHECKS, not raises. Counting raises bounds nothing, because a healthy
+        # board raises nothing: measured on that version, five sessions ran 480
+        # `codex` subprocesses in a simulated day against a daily cap of 12.
         mine, today = departures.counts(stored, harness, sid, since=now - DAY_SEC)
         with state.unasked_lock:
             if state.unasked_inflight:
@@ -201,8 +225,24 @@ class Lane:
             if today >= self.config.unasked_daily_cap:
                 return False
             state.unasked_inflight.add(key)
-            state.unasked_last[key] = now
-            return True
+            runtime_state.bounded_put(
+                state.unasked_last, key, now, limit=self.config.max_cache_entries
+            )
+        # The producer's own per-session slot, taken AFTER this lane's gates and
+        # released in `_run`. Without it a reader pressing `Ask for a reading`
+        # while an unasked one runs starts a second subprocess on one session,
+        # which is the thing that slot exists to refuse. Taken outside the lock
+        # because it is a different lock.
+        if not runtime_reading.claim(self.config, key):
+            self._release(state, key)
+            return False
+        return True
+
+    def _release(self, state: RuntimeState, key: str) -> None:
+        """Give both slots back. Called on every exit path the claim reached."""
+        with state.unasked_lock:
+            state.unasked_inflight.discard(key)
+        runtime_reading.release(self.config, key)
 
     def _facts(
         self, state: RuntimeState, row: Mapping[str, Any], now: float
@@ -238,8 +278,7 @@ class Lane:
                 f"Cargento: unasked reading failed for {key}: {exc}", self.diagnostic_sink
             )
         finally:
-            with state.unasked_lock:
-                state.unasked_inflight.discard(key)
+            self._release(state, key)
 
     def _read_and_raise(
         self,
@@ -258,31 +297,69 @@ class Lane:
             model=runtime_reading.CodexReadingModel(self.config),
         )
         if assessment is None:
+            # A withheld reading spent nothing: `produce` refuses before the
+            # subprocess. Recording a check here would count a spend that did
+            # not happen against the reader's cap.
             return
         raised = self._departures(assessment, row, now)
+        # The check is recorded whether or not it found anything, because it
+        # spent a subprocess either way and that is what the caps bound. A check
+        # that raised nothing is one row with an empty constraint, which is also
+        # what lets the board say THIS session was looked at.
+        landed = departures.record(
+            self.config,
+            raised or [self._check(assessment, row, now)],
+            diagnostic_sink=self.diagnostic_sink,
+        )
         if not raised:
-            # A reading that departed from nothing is not a raise, and the
-            # ruling refuses to tell the reader so unasked: an unasked
-            # reassurance is the output the evidence-floor ruling called most
-            # damaging. The board says it on
-            # return, where they came looking.
+            # The ruling refuses to tell the reader unasked that nothing
+            # departed: an unasked reassurance is the output the evidence-floor
+            # ruling called most damaging. The board says it on return, where
+            # they came looking.
             return
-        departures.record(self.config, raised, diagnostic_sink=self.diagnostic_sink)
+        if not landed:
+            # Raised nowhere rather than raised and unreviewable. A banner
+            # saying a departure was found, over a board that has no record of
+            # one and says nothing departed, is the board contradicting its own
+            # alert. The write already logged why it failed.
+            runtime_io.diag(
+                "Cargento: a departure was found and could not be recorded, so it was not "
+                "raised; the board would have contradicted the notification",
+                self.diagnostic_sink,
+            )
+            return
         self._raise(row, raised, now)
+
+    def _check(
+        self, assessment: runtime_reading.Assessment, row: Mapping[str, Any], now: float
+    ) -> departures.Check:
+        """The row for a reading that raised nothing: the spend, and its baseline."""
+        return {
+            "harness": str(row.get("harness") or ""),
+            "sid": str(row.get("sid") or ""),
+            "at": now,
+            "constraint": "",
+            "clause": "",
+            "reading": "",
+            "evidence": "",
+            "revision": assessment["revision_read"],
+            "cutoff": now,
+            "cutoff_text": str(assessment.get("cutoff") or ""),
+        }
 
     def _departures(
         self,
         assessment: runtime_reading.Assessment,
         row: Mapping[str, Any],
         now: float,
-    ) -> list[departures.Departure]:
+    ) -> list[departures.Check]:
         """Only the criteria that departed, with the baseline each rested on.
 
-        `revision_read` and `cutoff` come off the assessment rather than being
-        re-derived, which is the ruling's first amendment: by the time this is read
-        the annotation may be at a later revision and the window has moved.
+        The baseline is recorded here rather than re-derived, which is the
+        ruling's first amendment: by the time this is read the annotation may be
+        at a later revision and the window has moved.
         """
-        out: list[departures.Departure] = []
+        out: list[departures.Check] = []
         for name, criterion in assessment["criteria"].items():
             if criterion.get("result") != runtime_reading.RESULT_DEPARTURE:
                 continue
@@ -296,21 +373,32 @@ class Lane:
                     "reading": str(criterion.get("detail") or ""),
                     "evidence": ", ".join(criterion.get("cites") or ()),
                     "revision": assessment["revision_read"],
-                    "cutoff": _cutoff(assessment),
+                    # The moment the reading ran, which is when the record it
+                    # read WAS the record. `Assessment.cutoff` is prose for the
+                    # page ("12 entries, 3 by you"), so parsing it as a number
+                    # returned 0 on every real reading and the amendment's
+                    # cutoff was never actually recorded.
+                    "cutoff": now,
+                    "cutoff_text": str(assessment.get("cutoff") or ""),
                 }
             )
         return out
 
     def _raise(
-        self, row: Mapping[str, Any], raised: Sequence[departures.Departure], now: float
+        self, row: Mapping[str, Any], raised: Sequence[departures.Check], now: float
     ) -> None:
         """One banner per reading, not one per departure.
 
         A reading that departed on both Goal and Expected Output is one thing
         that happened, and two banners about it would read as two events.
         """
-        label = str(row.get("harness_label") or row.get("harness") or "")
+        label = self.harness_label(str(row.get("harness") or ""))
         first = raised[0]
+        # The constraint first and the model's sentence after. `notify_mac`
+        # bounds the body and `safe_text` keeps the HEAD, so a reading long
+        # enough to be clipped loses its tail rather than its subject. The
+        # reading first published a sentence cut mid-claim under a title saying
+        # the session may be going off track.
         detail = (
             f"{first['constraint']}: {first['reading']}"
             if len(raised) == 1
@@ -322,29 +410,22 @@ class Lane:
         )
 
 
-def _cutoff(assessment: runtime_reading.Assessment) -> float:
-    """The reading's evidence cutoff as an epoch, or 0 when it published none.
-
-    `Assessment.cutoff` is the rendered string the page shows. 0 means the
-    reading carried no machine-readable cutoff, and the render says the window
-    is unknown rather than inventing one.
-    """
-    raw = assessment.get("cutoff")
-    try:
-        return float(raw) if raw not in (None, "") else 0.0
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def published(
     config: RuntimeConfig,
-    stored: Sequence[departures.Departure],
+    stored: Sequence[departures.Check],
     row: Mapping[str, Any],
     *,
     now: float,
-    checked: bool,
 ) -> dict[str, Any]:
     """What one session's row says about unasked checks.
+
+    Whether this session was checked is read from the store PER SESSION rather
+    than from the lane's existence. It used to be board-wide, so a session with
+    no annotation at all, or one the lane had never reached, rendered "Cargento
+    has checked this session and found nothing to raise" on the strength of the
+    switch being on. That is the one sentence this feature must never get wrong,
+    because the reader was not there to know which of the two they are looking
+    at.
 
     The four sentences are `departures`', not this module's, so the board cannot
     word an exhausted cap one way here and another way on the review surface.
@@ -353,12 +434,16 @@ def published(
     sid = str(row.get("sid") or "")
     mine, today = departures.counts(stored, harness, sid, since=now - DAY_SEC)
     rows = departures.published(stored, harness, sid)
-    if today >= config.unasked_daily_cap:
+    if not departures.checked(stored, harness, sid):
+        # Before the caps, deliberately. A session nobody has checked is not a
+        # session held off by a spent cap, even when the board's day cap is
+        # spent: the first says nothing was looked at here, and the second
+        # implies something was.
+        why = departures.NEVER_CHECKED
+    elif today >= config.unasked_daily_cap:
         why = departures.DAY_EXHAUSTED
     elif mine >= config.unasked_session_cap:
         why = departures.SESSION_EXHAUSTED
-    elif not checked:
-        why = departures.NEVER_CHECKED
     elif rows:
         why = ""
     else:
