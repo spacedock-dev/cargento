@@ -19,12 +19,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import ParseResult, parse_qs, urlparse
 
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import dismissals, notifications, quota, records
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import project_context as runtime_project_context
+from cargento_runtime import reading as runtime_reading
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
@@ -559,28 +561,38 @@ class _RequestHandler(BaseHTTPRequestHandler):
         observer route took the single method to mccabe 11 against ruff's cap
         of 10, and this file has never needed a complexity exemption. The
         split keeps the next route free rather than buying it one.
+
+        The exact matches are a table now, for the reason `do_POST` gives at
+        its own: adding `/api/annotations` took the ladder back to 11, and a
+        table adds the route after it for nothing. The two prefix arms stay
+        ahead of it so they cannot be shadowed by an exact key.
         """
-        if url.path == "/api/data":
-            self._data(url)
-        elif url.path == "/api/overlays":
-            self._overlays()
-        elif url.path == "/api/cleared":
-            self._cleared()
-        elif url.path.startswith("/api/interaction/"):
+        if url.path.startswith("/api/interaction/"):
             self._interaction_get(url)
-        elif url.path.startswith("/api/ask/"):
-            # Prefix-matched, so it cannot join the exact-match arms above.
+            return True
+        if url.path.startswith("/api/ask/"):
             self._ask_poll(url.path[len("/api/ask/") :])
-        elif url.path == "/api/stream":
-            self._stream()
-        elif url.path == "/api/health":
-            self._health()
-        elif url.path == "/api/observe":
-            self._observe(url)
-        elif url.path == "/api/project-context":
-            self._project_context(url)
-        else:
+            return True
+        # Two tables, split by whether the handler reads the query rather than
+        # by anything about the route, so neither grows a branch per entry.
+        with_url = {
+            "/api/data": self._data,
+            "/api/observe": self._observe,
+            "/api/project-context": self._project_context,
+        }.get(url.path)
+        if with_url is not None:
+            with_url(url)
+            return True
+        bare = {
+            "/api/overlays": self._overlays,
+            "/api/cleared": self._cleared,
+            "/api/annotations": self._annotations,
+            "/api/stream": self._stream,
+            "/api/health": self._health,
+        }.get(url.path)
+        if bare is None:
             return False
+        bare()
         return True
 
     def _interaction_get(self, url: ParseResult) -> None:
@@ -922,6 +934,65 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "application/json",
         )
 
+    def _annotations(self) -> None:
+        """Every session the reader has typed words against, including departed ones.
+
+        Strictly same-origin, like `/api/cleared`: nothing navigates here.
+
+        A route of its own for `_cleared`'s reason, and for one more. The Intent
+        log is a top-level view, so it has no project key to hand
+        `/api/project-context`, which is the fact that settled a question the
+        plan left open between those two shapes. Folding the rows into
+        `/api/data` would also put up to 256 sessions of the reader's own prose
+        on a body polled every few seconds; here the words leave the server when
+        someone opens the log.
+
+        The store's rows and only the store's. Session history keeps a copy of
+        the same two fields for fourteen days, and reading the log out of that
+        instead would resurrect words a reader withdrew: `annotations.clear`
+        removes the entry because clearing the field is withdrawing the request,
+        while a history observation already appended is never retro-deleted.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        application = self.server.application
+        if not application.config.annotations_enabled:
+            self.send_error(503, "annotations are disabled on this server")
+            return
+        entries = annotation_store.active(application.config, application.state)
+        rows = [
+            {
+                "harness": entry["harness"],
+                "sid": entry["sid"],
+                # The binding caveat, or the log claims exact binding for every
+                # row. `published`'s default is BINDING_EXACT, which is a claim
+                # and not an absence: on Claude the store keys on the eight
+                # characters the harness publishes, so two sessions sharing
+                # them share the words, and the tab that shows one session says
+                # so while a list of many did not.
+                #
+                # Length alone here, unlike `_attach_annotations`, which also
+                # reads `resume_id` off the live row. A departed session has no
+                # row to read, and the whole point of this route is that it
+                # serves those. Over-disclosing the caveat on a genuinely short
+                # identity is the safe direction.
+                **annotation_store.published(
+                    entry,
+                    binding_why=(
+                        annotation_store.BINDING_BY_PREFIX
+                        if len(entry["sid"]) <= annotation_store.DISPLAY_ID_FLOOR
+                        else annotation_store.BINDING_EXACT
+                    ),
+                ),
+            }
+            for entry in entries
+        ]
+        self._send(
+            json.dumps({"annotations": rows}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
     def _ask_poll(self, ask_id: str) -> None:
         """One bounded hold on a question's answer, for the peer that asked it.
 
@@ -1059,6 +1130,284 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "cleared": len(dismissals.active(config, state)),
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
+    def _annotate(self) -> None:
+        """Record what the reader typed this session should achieve, or clear it.
+
+        Guarded like `/api/dismiss`: `_local_ok()` has already run, the declared
+        length is checked before any read, and a malformed body degrades to
+        `{}`, which names no session and does nothing.
+
+        The two text fields are type-checked BEFORE redaction, which is
+        `/api/ask`'s discipline rather than `/api/dismiss`'s. `records.safe_text`
+        does `str(value or "")`, so a dict reaching it publishes its Python repr
+        — including anything inside it — where a string would have been
+        redacted. That is a 400 rather than a silent stringification, because
+        the reader needs to know their words were not saved.
+
+        `persisted` is answered honestly, for `_dismiss`'s reason: an unwritable
+        home still holds the annotation for this run, and the page says so
+        rather than implying it will survive a restart.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.annotations_enabled:
+            # 503, not 404: under `--no-annotations` the route exists and the
+            # store does not, and a 404 would read as a build too old to have it.
+            self._reject(503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        goal, output = payload.get("goal"), payload.get("output")
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if any(value is not None and not isinstance(value, str) for value in (goal, output)):
+            self._reject(400)
+            return
+        # The identity is untrusted too, and it reaches `records.safe_text` by
+        # the same path the text does. An earlier version checked only the two
+        # text fields, which let a dict harness land a store entry keyed on its
+        # Python repr.
+        if not isinstance(harness, str) or not isinstance(sid, str):
+            self._reject(400)
+            return
+        state = application.state
+        settle_through = payload.get("settle_through")
+        if payload.get("clear") is True:
+            persisted = annotation_store.clear(
+                config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
+            )
+        elif settle_through is not None:
+            # A third arm on this route rather than a route of its own: the
+            # subject is the same session's annotation, the reply shape is the
+            # same, and `test_history`'s POST inventory is a contract on the
+            # surface's WIDTH. The store clamps `settle_through` to now and
+            # refuses a bool, so nothing here needs to re-check the number
+            # beyond refusing what is not one.
+            persisted = annotation_store.settle(
+                config,
+                state,
+                harness,
+                sid,
+                through=settle_through,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        else:
+            persisted = annotation_store.annotate(
+                config,
+                state,
+                harness,
+                sid,
+                goal=goal,
+                output=output,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        # Dropped rather than waited out, for `_dismiss`'s reason: the next GET
+        # would otherwise serve the pre-save payload for up to `collect_memo_sec`.
+        state.snapshot.clear()
+        current = annotation_store.published(
+            annotation_store.find(annotation_store.active(config, state), harness, sid)
+        )
+        answer = {
+            "ok": True,
+            "persisted": persisted,
+            "revision": current["revision"],
+            "revision_count": current["revision_count"],
+        }
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
+    def _reading_refusal(self, payload: dict[str, Any]) -> int | None:
+        """The status this press must be refused with, or None to proceed.
+
+        Its own function rather than a ladder inside the handler, because
+        `http_api.py` carries no complexity exemption in `pyproject.toml` and
+        because every condition here is then unit-testable without a socket.
+
+        Ordered cheapest-first and ALL of it before anything reaches the
+        model. A gate that answers 503 after spending the reader's own
+        capacity has not held, which is the property the route's tests assert
+        by counting invocations rather than by reading status codes.
+
+        Nine conditions against `/api/project-context`'s five. The two this
+        adds beyond that route are the last two: a reading is the first thing
+        in this product a reader spends capacity on by pressing a button, so
+        the press is asserted rather than assumed, and nothing on render,
+        poll, reconnect, resume, focus change or revision save carries it.
+        """
+        config = self.server.application.config
+        # A table rather than a ladder, for the reason the POST routes below
+        # are one: six conditions read as a list of what must be true, and a
+        # ladder of early returns puts this function over ruff's return cap
+        # without making any of them clearer. Every condition is a pure read,
+        # so evaluating all six costs nothing and the order is documentation.
+        checks: tuple[tuple[bool, int], ...] = (
+            # 503 rather than 404, for `_annotate`'s reason: under
+            # `--no-annotations` the route exists and the store does not.
+            (not config.annotations_enabled, 503),
+            (not config.observer_model_enabled, 503),
+            # The button and this route read the same constant, so they agree
+            # by construction and a local `curl` cannot outrun the check.
+            (
+                annotation_store.ABSTENTION_CHECK != annotation_store.ABSTENTION_CHECK_PASSED,
+                503,
+            ),
+            # A lured navigation reads nothing back, but it would still spend
+            # the reader's capacity, which is the harm this route carries.
+            (self._is_document_navigation() or not self._loopback_resource_ok(), 403),
+            (payload.get("observer_model") != 1, 400),
+            (payload.get("press") is not True, 400),
+        )
+        for failed, status in checks:
+            if failed:
+                return status
+        return None
+
+    def _reading(self) -> None:
+        """Read one session against the words typed against it.
+
+        No capability token. The precedent is the quota fetch rather than the
+        event ingress: the harm is a side effect on the reader's own capacity
+        rather than a forged claim about a session, and it is held by the
+        same-origin and navigation refusals above. The accepted exposure -- a
+        local process with no fetch metadata can spend one reading -- is in
+        SECURITY.md rather than left to be discovered.
+
+        An unknown session answers 200 with `produced: false` and never 404,
+        for `_focus`'s ruling: a harness name is public and a session id is
+        not, so a 404 here would be an existence oracle.
+        """
+        application = self.server.application
+        config = application.config
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        refusal = self._reading_refusal(payload)
+        if refusal is not None:
+            self._reject(refusal)
+            return
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not isinstance(harness, str) or not isinstance(sid, str) or not harness or not sid:
+            self._reject(400)
+            return
+        self._send_reading(harness, sid)
+
+    def _send_reading(self, harness: str, sid: str) -> None:
+        """Produce, store and answer. Split for the complexity cap alone."""
+        application = self.server.application
+        config = application.config
+        state = application.state
+        _revision, body = application.collect_json(show_all=False)
+        rows = [
+            row
+            for row in json.loads(body)["sessions"]
+            if row.get("harness") == harness and row.get("sid") == sid
+        ]
+        entry = annotation_store.find(annotation_store.active(config, state), harness, sid)
+        if not rows or entry is None:
+            self._send(
+                json.dumps(
+                    {"ok": True, "produced": False, "reason": "no annotated session by that name"},
+                    separators=(",", ":"),
+                ).encode(),
+                "application/json",
+            )
+            return
+        key = f"{harness}:{sid}"
+        if not runtime_reading.claim(config, key):
+            # One in flight per session, and no retry: a second press answers
+            # 409 and calls nothing.
+            self._reject(409)
+            return
+        try:
+            assessment, why, spent = self._compose_reading(rows[0], entry)
+        finally:
+            runtime_reading.release(config, key)
+        if assessment is not None:
+            annotation_store.record_reading(
+                config,
+                state,
+                harness,
+                sid,
+                assessment=assessment,
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        else:
+            annotation_store.record_withheld(
+                config,
+                state,
+                harness,
+                sid,
+                reason=why,
+                spent=spent,
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        # Dropped rather than waited out, for `_annotate`'s reason: the next
+        # GET would otherwise serve the pre-write payload.
+        state.snapshot.clear()
+        self._send(
+            json.dumps(
+                {"ok": True, "produced": assessment is not None, "reason": why},
+                separators=(",", ":"),
+            ).encode(),
+            "application/json",
+        )
+
+    def _compose_reading(
+        self, row: dict[str, Any], entry: annotation_store.Annotation
+    ) -> tuple[runtime_reading.Assessment | None, str, bool]:
+        """The model lane, with the observed record it reads."""
+        application = self.server.application
+        context = runtime_project_context.collect(
+            application.config,
+            application.state,
+            [row],
+            str(row.get("project_key") or row.get("project") or ""),
+            now=application.clock(),
+            refresh=False,
+            focus=(str(row.get("harness")), str(row.get("sid"))),
+            model_consent=False,
+        )
+        semantic = context.get("semantic") if isinstance(context, dict) else None
+        facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
+        return runtime_reading.produce(
+            application.config,
+            row,
+            entry["revisions"],
+            facts,
+            now=application.clock(),
+            # A stamp: what read it and when. It carried `PROVIDER_NOTE`, a
+            # policy sentence, rendered in the position and micro-type where
+            # the design says a stamp names the model and the moment. The
+            # policy belongs in the disclosure above the button, where the
+            # reader sees it BEFORE pressing rather than after.
+            stamp_text=(
+                f"{runtime_observer.OBSERVER_MODEL} · read at "
+                f"{time.strftime('%H:%M', time.localtime(application.clock()))}"
+            ),
+            model=runtime_reading.CodexReadingModel(application.config),
+        )
 
     def _events(self, harness: str) -> None:
         """A harness's lifecycle events, forwarded by its own hook.
@@ -1199,6 +1548,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._shutdown,
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
+            "/api/annotate": self._annotate,
+            "/api/reading": self._reading,
             "/api/focus": self._focus,
             "/api/ask": self._ask,
             "/api/ask/withdraw": self._withdraw,

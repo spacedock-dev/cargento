@@ -292,6 +292,108 @@ console.log(JSON.stringify(Object.fromEntries(m.sessions.map(s => [s.sid,
             self.assertEqual("Exact location not published", session["where"])
             self.assertFalse(session["whereKnown"])
 
+    def test_the_three_end_kinds_are_named_and_quiet_authorises_nothing(self) -> None:
+        """DRC-4512: how it landed is two axes, and neither one implies the other.
+
+        The composed one-line outcome merges an end with a git reading, which
+        is why it cannot answer either question on its own. `landing` separates
+        them: what was observed to end, and who says the work finished.
+        """
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+const scan = JSON.parse(JSON.stringify(payload));
+scan.sessions.find(s => s.sid === 'quiet').acquisition = 'scan-only';
+const m = nextObserved(scan);
+console.log(JSON.stringify(Object.fromEntries(m.sessions.map(s => [s.sid, {
+  endKind: s.landing.endKind, end: s.landing.endText, endKnown: s.landing.endKnown,
+  claimKind: s.landing.claimKind, claim: s.landing.claimText,
+  claimKnown: s.landing.claimKnown,
+  independent: s.landing.independentText,
+  independentKnown: s.landing.independentKnown,
+  outcome: s.outcomeText}]))));
+"""
+        )
+        assert isinstance(out, dict)
+        # One row per end kind the board can reach, including the two that
+        # authorise nothing. `quiet` carries `acquisition: scan-only` in this
+        # payload only, because no event can ever reach such a row and its
+        # silence therefore means something different from `loop`'s.
+        kinds = {
+            "dirty": "session-end",
+            "end-clean": "session-end",
+            "end-unknown": "session-end",
+            "stop-dirty": "turn-stop",
+            "stop-clean": "turn-stop",
+            "stop-unknown": "turn-stop",
+            "loop": "idle-unknown",
+            "exact": "idle-unknown",
+            "quiet": "unobservable",
+            "build": "running",
+            "gate": "running",
+        }
+        for sid, kind in kinds.items():
+            with self.subTest(sid=sid):
+                self.assertEqual(kind, out[sid]["endKind"])
+        self.assertEqual(
+            "A session end was observed",
+            out["end-clean"]["end"],
+        )
+        self.assertEqual(
+            "A turn stop was observed; no session end was",
+            out["stop-clean"]["end"],
+        )
+        # Quiet authorises nothing, and says which kind of quiet it is.
+        self.assertEqual(
+            "Idle with completion unknown: no stop and no end was observed",
+            out["loop"]["end"],
+        )
+        self.assertEqual(
+            "No event from this harness can reach this row, so no stop or end can be observed",
+            out["quiet"]["end"],
+        )
+        for sid in ("loop", "exact", "quiet", "build", "gate"):
+            with self.subTest(sid=sid):
+                self.assertFalse(out[sid]["endKnown"])
+                self.assertEqual("none", out[sid]["claimKind"])
+                self.assertFalse(out[sid]["claimKnown"])
+                self.assertEqual("Nothing has claimed this session finished", out[sid]["claim"])
+        # Only the six that ended or stopped carry a finish claim, and every one
+        # of them attributes it to the session rather than to an observer.
+        for sid in ("dirty", "end-clean", "end-unknown", "stop-dirty", "stop-clean"):
+            with self.subTest(sid=sid):
+                self.assertTrue(out[sid]["endKnown"])
+                self.assertEqual("agent", out[sid]["claimKind"])
+                self.assertEqual("The agent reported it finished", out[sid]["claim"])
+        # The second axis never reads true on this board, and it states the
+        # limit rather than rendering blank. A dirty tree is work, not the
+        # requested output, and a clean one is not a deliverable either.
+        self.assertEqual(
+            {
+                (
+                    "3 changed entries were observed, which shows work happened "
+                    "and not that the requested output exists"
+                ),
+                ("The working tree was observed clean, which is not evidence a deliverable exists"),
+                (
+                    "2 changed entries were observed, which shows work happened "
+                    "and not that the requested output exists"
+                ),
+                (
+                    "Git state was not measured, so nothing was observed apart "
+                    "from the session's own account"
+                ),
+            },
+            {session["independent"] for session in out.values()},
+        )
+        for sid, session in out.items():
+            with self.subTest(sid=sid):
+                self.assertFalse(session["independentKnown"])
+        # The lift left the composed line byte-identical: `next-attention.js`
+        # looks its risk labels up by these exact strings.
+        self.assertEqual("Session ended with uncommitted work", out["dirty"]["outcome"])
+        self.assertEqual("No stop or end observed", out["quiet"]["outcome"])
+
     def test_history_derives_closed_intervals_changes_and_partial_floor(self) -> None:
         out = self._run_page_js(
             self.FIXTURE
@@ -703,3 +805,34 @@ console.log(JSON.stringify({active: m.active.map(s => s.sid), history: m.history
         self.assertEqual(out["legacyHistory"], out["history"])
         self.assertTrue(out["unchanged"])
         self.assertTrue(out["shared"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ObservedLandingCountsOneAsOneTest(NextPageJsHarness):
+    """A copy defect the review's own fixes put on screen.
+
+    The sentence predates this branch, and nothing rendered it: HOW IT LANDED
+    is what gave the independent axis a surface, so "1 changed entries were
+    observed" reached a reader for the first time because of a fix.
+    """
+
+    def test_the_independent_axis_agrees_with_itself_about_a_count_of_one(self) -> None:
+        out = self._run_page_js(
+            """
+const landing = changed => nextObservedLanding(
+  {state:"idle", harness:"claude", dirty:true, changed}, true, false).independentText;
+console.log(JSON.stringify({
+  one: landing(1),
+  several: landing(4),
+  none: landing(0),
+  unmeasured: nextObservedLanding({state:"idle", harness:"claude"}, true, false).independentText,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["one"].startswith("1 changed entry was observed"))
+        self.assertTrue(out["several"].startswith("4 changed entries were observed"))
+        # Zero is still plural, which is what English does and what the
+        # dirty-with-nothing-changed case actually reads as.
+        self.assertTrue(out["none"].startswith("0 changed entries were observed"))
+        self.assertTrue(out["unmeasured"].startswith("Git state was not measured"))

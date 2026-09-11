@@ -159,6 +159,96 @@ class ModelCaller(Protocol):
     def __call__(self, recent_text: str, entity_stage: str) -> str | None: ...
 
 
+def codex_exec(
+    config: RuntimeConfig,
+    prompt: str,
+    *,
+    output_cap_bytes: int,
+    runner: Any = subprocess.run,
+    binary_resolver: Any = shutil.which,
+) -> tuple[str, str]:
+    """One bounded, ephemeral Codex call. Returns the output and a status.
+
+    `unavailable` when no absolute `codex` resolves, `failed` on a non-zero
+    exit, a timeout or an OS error, `ok` otherwise. What an EMPTY output means
+    is the caller's to decide, because a goal line and a reading disagree
+    about it.
+
+    Extracted so a second lane cannot drift from the first one's sandboxing.
+    Every flag below is load-bearing and the whole list shipped unpinned:
+    `CodexExecArgvTest` is the first thing in the suite to assert any of them,
+    and it was written because the extraction made a second caller possible.
+
+    The caller owns the prompt bound and must redact BEFORE it clips. Clipping
+    first can cut a recognizable credential into a fragment the scrub misses.
+    """
+    binary = binary_resolver("codex")
+    if not binary or not os.path.isabs(binary):
+        return "", "unavailable"
+    os.makedirs(config.state_dir, mode=0o700, exist_ok=True)
+    output_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix="observer-model-",
+            suffix=".txt",
+            dir=config.state_dir,
+            delete=False,
+        ) as output:
+            output_path = output.name
+        command = [
+            binary,
+            "exec",
+            "--ignore-user-config",
+            *[
+                item
+                for feature in _MODEL_DISABLED_FEATURES
+                for item in ("--config", f"features.{feature}=false")
+            ],
+            "--config",
+            'web_search="disabled"',
+            "--config",
+            "project_doc_max_bytes=0",
+            "--config",
+            "skills.include_instructions=false",
+            "--model",
+            OBSERVER_MODEL,
+            "--config",
+            f"model_reasoning_effort={OBSERVER_MODEL_REASONING_EFFORT}",
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-rules",
+            "--output-last-message",
+            output_path,
+            "-",
+        ]
+        result = runner(
+            command,
+            input=prompt,
+            cwd=str(config.state_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            timeout=OBSERVER_MODEL_TIMEOUT_SEC,
+            check=False,
+        )
+        if result.returncode != 0:
+            return "", "failed"
+        return (
+            runtime_io.read_prefix_bytes(output_path, max_bytes=output_cap_bytes)
+            .decode("utf-8", "replace")
+            .strip()
+        ), "ok"
+    except (OSError, subprocess.SubprocessError):
+        return "", "failed"
+    finally:
+        if output_path:
+            with contextlib.suppress(OSError):
+                os.unlink(output_path)
+
+
 class CodexGoalModel:
     """One bounded, ephemeral Codex call for an observer goal line."""
 
@@ -214,11 +304,6 @@ class CodexGoalModel:
                 _MODEL_IN_FLIGHT.discard(key)
 
     def _invoke(self, recent_text: str, entity_stage: str) -> str | None:
-        binary = self.binary_resolver("codex")
-        if not binary or not os.path.isabs(binary):
-            self.status = "unavailable"
-            return None
-        os.makedirs(self.config.state_dir, mode=0o700, exist_ok=True)
         instruction = (
             "Summarize the child worker's current concrete assignment in at most 12 words. "
             "Describe what it is changing now, not its validation or deployment procedure. "
@@ -241,72 +326,16 @@ class CodexGoalModel:
             .encode("utf-8", "replace")[:OBSERVER_MODEL_MAX_PROMPT_BYTES]
             .decode("utf-8", "ignore")
         )
-        output_path = ""
-        try:
-            with tempfile.NamedTemporaryFile(
-                prefix="observer-model-",
-                suffix=".txt",
-                dir=self.config.state_dir,
-                delete=False,
-            ) as output:
-                output_path = output.name
-            command = [
-                binary,
-                "exec",
-                "--ignore-user-config",
-                *[
-                    item
-                    for feature in _MODEL_DISABLED_FEATURES
-                    for item in ("--config", f"features.{feature}=false")
-                ],
-                "--config",
-                'web_search="disabled"',
-                "--config",
-                "project_doc_max_bytes=0",
-                "--config",
-                "skills.include_instructions=false",
-                "--model",
-                OBSERVER_MODEL,
-                "--config",
-                f"model_reasoning_effort={OBSERVER_MODEL_REASONING_EFFORT}",
-                "--sandbox",
-                "read-only",
-                "--skip-git-repo-check",
-                "--ephemeral",
-                "--ignore-rules",
-                "--output-last-message",
-                output_path,
-                "-",
-            ]
-            result = self.runner(
-                command,
-                input=prompt,
-                cwd=str(self.config.state_dir),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                encoding="utf-8",
-                timeout=OBSERVER_MODEL_TIMEOUT_SEC,
-                check=False,
-            )
-            if result.returncode != 0:
-                self.status = "failed"
-                return None
-            enhanced = (
-                runtime_io.read_prefix_bytes(
-                    output_path,
-                    max_bytes=self.config.observer_goal_cap_chars * 4,
-                )
-                .decode("utf-8", "replace")
-                .strip()
-            )
-        except (OSError, subprocess.SubprocessError):
-            self.status = "failed"
+        enhanced, status = codex_exec(
+            self.config,
+            prompt,
+            output_cap_bytes=self.config.observer_goal_cap_chars * 4,
+            runner=self.runner,
+            binary_resolver=self.binary_resolver,
+        )
+        if status != "ok":
+            self.status = status
             return None
-        finally:
-            if output_path:
-                with contextlib.suppress(OSError):
-                    os.unlink(output_path)
         if not enhanced or _is_no_goal_output(enhanced):
             self.status = "no-goal"
             return None
@@ -762,7 +791,10 @@ def analyze(
 ) -> dict[str, Any]:
     """Derive goal + stage + block from a session transcript, read-only.
 
-    Returns ``{"goal": str, "stage": str, "block": str, "reason": str | None}``.
+    Returns ``{"goal", "deterministic_goal", "goal_source", "stage", "block",
+    "reason"}``. ``goal_source`` is ``"deterministic"`` or ``"model"`` and says
+    which arm produced ``goal``; ``deterministic_goal`` is the pre-model line,
+    which the model arm would otherwise destroy.
     The goal is either a derived goal line or the literal ``"no goal derived"``
     sentinel. The stage comes from the entity dir's frontmatter ``status``.
     The block is one sentence from recent assistant text containing a block
@@ -775,6 +807,12 @@ def analyze(
     """
     messages = _extract_messages(config, transcript_path)
     goal, reason = _derive_goal_deterministic(config, messages)
+    # Kept beside the published goal rather than overwritten by the model arm
+    # below. A reader shown "this is what the harness published" has to be
+    # distinguishable from one shown a model's paraphrase, and one string
+    # cannot carry both (DRC-4509).
+    deterministic_goal = goal
+    goal_source = "deterministic"
     workflow_dir, entity_dir = resolve_workflow(config, state, transcript_path)
     # Once, not once per consumer. The two frontmatter reads are cached on
     # (path, mtime, size), but resolving twice also scanned the transcript head
@@ -796,9 +834,17 @@ def analyze(
             enhanced = None
         if isinstance(enhanced, str) and enhanced.strip() and not _is_no_goal_output(enhanced):
             goal = records.safe_text(enhanced.strip(), config.observer_goal_cap_chars)
+            goal_source = "model"
 
     block = _derive_block(config, messages)
-    return {"goal": goal, "stage": stage, "block": block, "reason": reason}
+    return {
+        "goal": goal,
+        "deterministic_goal": deterministic_goal,
+        "goal_source": goal_source,
+        "stage": stage,
+        "block": block,
+        "reason": reason,
+    }
 
 
 def derive_child_assignment(

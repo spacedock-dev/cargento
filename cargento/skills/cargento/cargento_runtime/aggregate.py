@@ -8,7 +8,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
-from . import dismissals, notifications, quota, records, sessions
+from . import annotations as annotation_store
+from . import dismissals, notifications, quota, reading, records, sessions
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -497,6 +498,83 @@ def _redact_published_text(rows: list[Session]) -> list[Session]:
     return rows
 
 
+# The width `sessions.base_session` truncates a display id to. An identity no
+# longer than this is display-length, which is not proof it was truncated but is
+# proof it cannot be shown to be unique.
+_DISPLAY_ID_FLOOR = annotation_store.DISPLAY_ID_FLOOR
+
+
+def _withdraw_stale_finality(row: Session, assessment: object) -> None:
+    """Retract a `final` reading whose session end is no longer published.
+
+    Derived at publish time rather than stored, so it corrects itself in both
+    directions: `events.reduce_overlays` nulls `ended_at` on a working overlay
+    by design, and an `ended_at` that comes back restores finality on the next
+    collection. A stored flag would have to be un-stored by something, and
+    nothing would.
+
+    "Final" is a durable claim about a session id, not a terminal state of the
+    page. A reading that called a session finished, on a row that no longer
+    says it finished, is the one claim here a reader cannot check for
+    themselves.
+    """
+    if not isinstance(assessment, dict) or assessment.get("scope") != reading.SCOPE_FINAL:
+        return
+    ended = records.norm_epoch(row.get("ended_at"))
+    if ended and ended == records.norm_epoch(assessment.get("ended_at_read")):
+        return
+    assessment["scope"] = reading.SCOPE_WITHDRAWN
+    assessment["scope_text"] = reading.SCOPE_TEXT[reading.SCOPE_WITHDRAWN]
+
+
+def _attach_annotations(
+    rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
+) -> None:
+    """Put what the reader typed onto every row, including the rows with none.
+
+    Every row, not only the annotated ones. A missing key renders as
+    `undefined`, which is the blank the board's first rule forbids; an absence
+    has to arrive as an absence carrying its reason. `annotations.published`
+    owns that wording so three surfaces cannot word it three ways.
+
+    Bound on the full `sid` rather than the eight-character `session` prefix
+    beside it. Both are on the row, and the prefix can collide.
+    """
+    for row in rows:
+        # `resume_id` is the harness's own full identity where it publishes one.
+        # When it is longer than the `sid` this store binds on, the sid is a
+        # truncation and the binding is by prefix. That is not hypothetical:
+        # `collectors/claude.py` hands `base_session` the transcript stem's
+        # first eight characters, so every Claude row is this case, which is the
+        # hazard DRC-4508 named and the reason it is reported rather than
+        # claimed away.
+        sid = row.get("sid")
+        resume = row.get("resume_id")
+        # Two ways an identity fails to be provably unique, and the second is
+        # the one the length comparison alone missed. A Claude row that reached
+        # the collector loop from the task store has no transcript and therefore
+        # no `resume_id`, which that collector records as the None case, while
+        # its sid is still the display prefix. `base_session` publishes
+        # `session` as `sid[:8]`, so an identity at most that long is
+        # display-length and cannot be shown to name one session.
+        by_prefix = isinstance(sid, str) and (
+            (isinstance(resume, str) and len(resume) > len(sid) and resume.startswith(sid))
+            or len(sid) <= _DISPLAY_ID_FLOOR
+        )
+        published = annotation_store.published(
+            annotation_store.find(entries, row.get("harness"), sid),
+            binding_why=(
+                annotation_store.BINDING_BY_PREFIX if by_prefix else annotation_store.BINDING_EXACT
+            ),
+        )
+        _withdraw_stale_finality(row, published.get("assessment"))
+        # Prefixed and flat rather than nested, for the reason `base_session`
+        # declares them that way: the history allowlist admits field names, and
+        # a name cannot reach inside a mapping.
+        for name, value in published.items():
+            row[f"annotation_{name}"] = value
+
+
 def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:
     """Replace a rate-blind collector's numeric placeholder with wire-level unknown."""
     reporting = {spec.key for spec in harnesses if spec.reports_rate}
@@ -585,6 +663,10 @@ class Application:
         window_hours = config.window_hours
         now = self.clock()
         cleared_marks = dismissals.refresh(config, state)
+        # Alongside the dismissal refresh and for its reason: two dashboards can
+        # bind on one machine and the file is the record, so a save made in the
+        # other is picked up here rather than at the next restart.
+        annotation_entries = annotation_store.refresh(config, state)
         # Sampled before the harness loop for the reason Claude's collector used
         # to sample it before its transcript scan: a SessionEnd that commits
         # while this collection is in flight must invalidate the popup, and a
@@ -638,6 +720,16 @@ class Application:
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
         history_fields = self._apply_overlays(out_sessions, now=now)
+        # After dedupe, which keys on (harness, sid) and would otherwise decide
+        # between two rows one of which carries the annotation. And AFTER the
+        # overlays, which is the half that was wrong: identity is not patchable
+        # so the ordering is safe either way, but the retraction inside this
+        # pass compares a stored reading's end against `ended_at`, and nothing
+        # in the runtime writes that field except `_apply_overlays`. Attaching
+        # first meant every row read None and every `final` reading was
+        # retracted, on every collection, with a sentence saying the end was no
+        # longer published about an end published seconds later.
+        _attach_annotations(out_sessions, annotation_entries)
         # After the overlays, which is load-bearing: a wait only an event knows
         # about is a wait, and reading the collector's state is what left the
         # overlay lane silent on every harness.
@@ -700,7 +792,35 @@ class Application:
             collection["dismiss"] = True
         # Folded in rather than branched on here: `collect` sits on ruff's
         # complexity and statement caps, and an inline `if` puts it over both.
-        collection.update({**self._ask_cards(now), **history_fields})
+        # `annotate` is keyed the way `dismiss` is, and the page needs it because
+        # `--no-annotations` promises no field at all rather than a field whose
+        # every save answers 503.
+        collection.update(
+            {
+                # The bound rides with the flag rather than being repeated
+                # in the bundle: the counter beside each field says how
+                # much room is left, and a page guessing that number tells
+                # the reader their words fit when the store will clip them.
+                **(
+                    {
+                        "annotate": True,
+                        "annotate_cap": config.annotation_text_cap_chars,
+                        "reading_check": annotation_store.ABSTENTION_CHECK,
+                        # Published so the page can show it BEFORE the press.
+                        # It was written, tested and rendered nowhere, so the
+                        # only scoping a reader got was "and nothing else",
+                        # which reads as a promise about locality under a
+                        # button that sends their words to OpenAI on their own
+                        # Codex capacity.
+                        "reading_disclosure": reading.DISCLOSURE,
+                    }
+                    if config.annotations_enabled
+                    else {}
+                ),
+                **self._ask_cards(now),
+                **history_fields,
+            }
+        )
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"

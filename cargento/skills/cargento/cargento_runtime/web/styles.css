@@ -181,6 +181,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-goal-text{max-width:640px;font-size:14.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
 .next-project-goal-text.next-project-value--known{color:var(--ink)}
 .next-project-goal-gap{margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
+.next-project-goal-row{display:flex;flex-direction:column;gap:5px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-project-goal-row+.next-project-goal-row{margin-top:2px}
+.next-project-goal-tag{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
 .next-project-activity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
 .next-project-activity{min-width:0}
 .next-project-activity>h2{margin-bottom:11px}
@@ -840,6 +843,126 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-child-row+.next-cockpit-child-row{padding-top:7px;border-top:1px solid var(--line)}
 .next-cockpit-execution-root+.next-cockpit-execution-root{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 .next-cockpit-execution-root>.next-cockpit-child-row{padding-left:10px}
+/* DRC-4508's typed fields. Note 7 of the design notes: every label around the
+   two boxes is mono although it names the reader's field rather than a string
+   a source published, and the values inside them are sans. Recorded there as a
+   known compromise, taken here rather than inventing a fourth register. The
+   fields sit on a solid hairline, not the dashed one the steer box carries:
+   dashed marks a control that reaches nothing outside this browser, and these
+   words reach the server. */
+.next-cockpit-held{display:flex;flex-direction:column;gap:11px;padding:14px 16px}
+.next-cockpit-held>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-held h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
+.next-cockpit-held-revision{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-cockpit-held-label{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
+.next-cockpit-held-sub{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:14px/1.55 var(--sans)}
+.next-cockpit-held-count{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-field button{border:0;background:none;color:var(--ink2);font:var(--fs-xs) var(--mono);cursor:pointer}
+.next-cockpit-held-field button[hidden]{display:none}
+.next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
+.next-cockpit-held-cue{grid-column:1/-1;color:var(--ink3);font-size:var(--fs-xs)}
+/* DRC-4509's work evidence. Mono throughout: every string in a row is one a
+   source published, including the type. The limit line is the board talking,
+   so it is sans. */
+.next-cockpit-work{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-work>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-work h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
+.next-cockpit-work-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:3px 10px;padding-left:9px;border-left:1px solid var(--line)}
+.next-cockpit-work-row+.next-cockpit-work-row{margin-top:5px}
+.next-cockpit-work-type{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em}
+.next-cockpit-work-summary{font:var(--fs-xs)/1.55 var(--mono);overflow-wrap:anywhere}
+/* A model's paraphrase inside the observed record takes the same third
+   treatment a reading does: italic sans on a dotted rule, no colour. */
+.next-cockpit-work-derived{font:italic 13px/1.55 var(--sans);color:var(--ink2);padding-left:7px;border-left:1px dotted var(--line2);overflow-wrap:anywhere}
+.next-cockpit-work-mix{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-work-at{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-work-source{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+/* The third treatment, for a model reading: italic Space Grotesk on the
+   secondary ink over a dotted rule, so it reads as neither a published string
+   nor the board stating a fact. No colour under any result, ever, because
+   accent on a reading reads as "met" and that is a claim about the reader's
+   intent from partial evidence. The one warm ink allowed near a reading is
+   the line saying which revision it read, which is an observation about
+   revisions rather than part of the reading. */
+.next-cockpit-reading,.next-cockpit-departures{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-reading>header,.next-cockpit-departures>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-reading h2,.next-cockpit-departures h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
+.next-cockpit-reading-stamp{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-reading-row,.next-cockpit-departure{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px dotted var(--line2)}
+.next-cockpit-reading-row+.next-cockpit-reading-row,.next-cockpit-departure+.next-cockpit-departure{margin-top:6px}
+.next-cockpit-reading-name{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
+.next-cockpit-reading-clause{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
+/* The board saying the revision's words are not retained, which is the board
+   talking and not a quotation, so sans for the reason the limit line below
+   gives. */
+.next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--sans);color:var(--ink3);overflow-wrap:anywhere}
+.next-cockpit-reading-result,.next-cockpit-reading-detail{font:italic 13.5px/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
+.next-cockpit-reading-evidence{color:var(--ink3);font-family:var(--mono);font-size:10px;overflow-wrap:anywhere}
+/* The board talking, not a string a source published, so sans. The
+   evidence line above it names a type and a source and stays mono. */
+.next-cockpit-reading-limit{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans);overflow-wrap:anywhere}
+.next-cockpit-reading-why{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-reading-stale{margin:0;color:var(--amber);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-reading button{align-self:flex-start;padding:5px 10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans);cursor:pointer}
+.next-cockpit-reading button[disabled]{color:var(--ink3);cursor:default}
+/* HOW IT LANDED. Two cards side by side and never one verdict: what ended and
+   who says the work finished are different questions. The board is talking
+   here, not a source and not a model, so sans throughout and no colour under
+   any state. */
+.next-cockpit-landed{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-landed>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-landed h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
+.next-cockpit-landed-axes{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-held-bound{margin-left:auto;color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-session-held-link{margin:10px 0 0;font:var(--fs-xs)/1.5 var(--sans)}
+/* The board's own ink, not the browser's default link colour. Nothing else
+   on this page is blue, and an unstyled anchor announced itself as the one
+   thing here that came from outside the design. */
+.next-session-held-link a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-session-held-link a:hover{text-decoration-color:var(--accent)}
+/* Same shape as .next-session-held-link above, and for its reason: a bare
+   anchor announces itself as the one thing on the page from outside the design,
+   and the `#app a` rules at the top of this file win on specificity against a
+   class-only selector. */
+.next-cockpit-held-reentry{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-held-reentry a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-cockpit-held-reentry a:hover{text-decoration-color:var(--accent)}
+/* The baseline question. Sans and no colour throughout: none of it is a model
+   reading and none of it is a string a source published, except the direction
+   rows, which are. No amber, deliberately - the rule two blocks down says the
+   one warm ink allowed near a reading is the revision line, and this sits
+   above the reading rather than inside it precisely so it needs no exception. */
+/* The Intent log. A list of the reader's own words, so the words take the
+   published-string register and everything the board says about them is sans. */
+.next-intent{display:flex;flex-direction:column;gap:10px}
+.next-intent-note{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-intent-row{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-intent-key{font-family:var(--mono);font-size:10px;color:var(--ink3);letter-spacing:.08em}
+.next-intent-key a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-intent-key a:hover{text-decoration-color:var(--accent)}
+.next-intent-gone{color:var(--ink3)}
+.next-intent-words{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
+.next-intent-revision,.next-intent-why{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-conflict{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line2);background:var(--panel)}
+.next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-conflict-open{margin:0;color:var(--ink);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-conflict-row{display:flex;flex-direction:column;gap:2px;padding-left:9px;border-left:1px solid var(--line2)}
+/* A direction is a string the reader published, so mono, the same register the
+   observed record's own rows take. */
+.next-cockpit-conflict-text{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
+.next-cockpit-conflict-at{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-cockpit-conflict-choices{display:flex;flex-wrap:wrap;gap:8px}
+.next-cockpit-conflict-choices button{padding:5px 10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans);cursor:pointer}
+.next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--line2)}
+.next-cockpit-landed-label{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
+.next-cockpit-landed-value{font:var(--fs-xs)/1.5 var(--sans);color:var(--ink)}
+.next-cockpit-landed-value--absent{color:var(--ink3)}
+.next-cockpit-landed-note{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-scope{display:flex;align-items:baseline;gap:12px;padding:7px 12px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
 .next-cockpit-scope strong{font-size:var(--fs-2xs);letter-spacing:.08em;color:var(--ink)}
 .next-cockpit-scope--project{border-bottom:1px solid var(--line)}

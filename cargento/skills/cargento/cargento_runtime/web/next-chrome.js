@@ -546,6 +546,7 @@ function nextPrimaryNavigation(){
     ["projects", "Projects"],
     ["sessions", "Sessions"],
     ["attention", "Attention"],
+    ["intent", "Intent log"],
   ].map(([view, label]) => {
     const current = (nextRoute.view === view || view === "projects" && ["project", "session"].includes(nextRoute.view)) ? ' aria-current="page"' : "";
     return `<a href="#n=${view}"${current}>${label}</a>`;
@@ -557,6 +558,7 @@ function nextDocumentTitle(){
   if(nextRoute.view === "attention") return "Cargento — Attention";
   if(nextRoute.view === "projects") return "Cargento — Projects";
   if(nextRoute.view === "sessions") return "Cargento — Sessions";
+  if(nextRoute.view === "intent") return "Cargento — Intent log";
   if(nextRoute.view === "project") return `${nextRoute.project} — Cargento`;
   const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
   const title = session

@@ -260,6 +260,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-annotations",
+        action="store_true",
+        help=(
+            "do not read or write the annotation store for this run: the goal "
+            "and expected output you typed against a session are neither shown "
+            "nor saved, and the page offers no field to type them in. The "
+            "rollback switch for the one store holding prose you composed "
+            "rather than anything a harness published"
+        ),
+    )
+    parser.add_argument(
         "--no-ask",
         action="store_true",
         help=(
@@ -367,6 +378,7 @@ def build_runtime(
         git_probe_enabled=not args.no_git,
         focus_enabled=not args.no_focus,
         dismissals_enabled=not args.no_dismiss,
+        annotations_enabled=not args.no_annotations,
         ask_enabled=not args.no_ask,
         history_enabled=not args.no_history,
         history_retention_sec=args.history_days * runtime_config.SECONDS_PER_DAY,

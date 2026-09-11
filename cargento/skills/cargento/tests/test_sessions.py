@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events as runtime_events
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
@@ -28,6 +29,7 @@ from .support import (
     make_runtime,
     store_patch,
 )
+from .support import runtime as support_runtime
 
 # The payload's declared field set, written out here rather than derived from
 # base_session(), so the two sides cannot move together. Comparing a function
@@ -89,6 +91,26 @@ DECLARED_SESSION_FIELDS = frozenset(
         # `events.PATCHABLE`, so an event envelope can write either onto any row.
         "acquisition",
         "blocked_since",
+        # Same provenance as the two above: written onto every row by
+        # `Application._attach_annotations` after `base_session` returns. Every
+        # row and not only the annotated ones, because a missing key renders as
+        # `undefined` where an absence has to state its reason. Eight flat
+        # fields and not one mapping, because `history.PROMPT_TEXT_ALLOWLIST`
+        # admits field names and a name cannot reach inside a dict.
+        "annotation_goal",
+        "annotation_goal_why",
+        "annotation_output",
+        "annotation_output_why",
+        "annotation_revision",
+        "annotation_revision_count",
+        "annotation_at",
+        "annotation_binding_why",
+        "annotation_settled_at",
+        "annotation_settled_through",
+        "annotation_settled_revision",
+        "annotation_assessment",
+        "annotation_reading_count",
+        "annotation_reading_withheld",
     }
 )
 
@@ -1353,6 +1375,40 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 # offending key. Compared as mismatched types it reports two
                 # truncated reprs instead, which leaves whoever hit it grepping.
                 self.assertSetEqual(set(DECLARED_SESSION_FIELDS), set(rows[0]))
+
+    def test_the_published_annotation_is_never_the_constructor_default(self) -> None:
+        # `base_session` declares these empty, the way it declares
+        # `acquisition` as None, because that module has no runtime imports.
+        # The comment there claims a blank never reaches a reader, and this is
+        # what makes the claim checkable: the payload carries the absence and
+        # its reason, which is a sentence the board can print.
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+                self.assertEqual("", rows[0]["annotation_goal"])
+                self.assertTrue(rows[0]["annotation_goal_why"], "an absence with no reason")
+                self.assertTrue(rows[0]["annotation_output_why"], "an absence with no reason")
+                self.assertEqual(0, rows[0]["annotation_revision_count"])
+                self.assertIsNone(rows[0]["annotation_revision"])
+
+    def test_a_stored_annotation_reaches_the_published_row_through_collect(self) -> None:
+        # The wiring nothing else covered. `AnnotationOnTheRowTest` calls the
+        # attach pass directly, so removing its call site in `Application.collect`
+        # left every test green while the feature's whole purpose stopped
+        # working. Verified as a real gap by mutation before this was written.
+        key, build = next((k, b) for k, b in HARNESSES if k == "codex")
+        with self.subTest(harness=key):
+            config, _state = support_runtime()
+            annotation_store.annotate(
+                config, _state, key, self.SID, goal="Ship the cockpit", now=self.NOW
+            )
+            # The store is the shared runtime's and outlives this test, so the
+            # sibling asserting an unannotated row would see these words.
+            self.addCleanup(annotation_store.clear, config, _state, key, self.SID)
+            rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+            self.assertEqual("Ship the cockpit", rows[0]["annotation_goal"])
+            self.assertEqual(1, rows[0]["annotation_revision"])
+            self.assertEqual("", rows[0]["annotation_goal_why"])
 
     def test_every_field_an_event_may_patch_is_a_declared_field(self) -> None:
         # The reachable-by-an-envelope half, which no store fixture can produce:

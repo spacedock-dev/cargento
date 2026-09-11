@@ -11,7 +11,15 @@ import unittest
 from pathlib import Path
 from typing import Any, ClassVar
 
-from cargento_runtime import aggregate, claude_data, cli, focus, git_status, history
+from cargento_runtime import (
+    aggregate,
+    claude_data,
+    cli,
+    focus,
+    git_status,
+    history,
+    semantic_history,
+)
 from cargento_runtime import config as runtime_config
 from cargento_runtime import events as runtime_events
 from cargento_runtime import transcripts as runtime_transcripts
@@ -1217,13 +1225,95 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
             with self.subTest(field=carrier):
                 self.assertNotIn(carrier, history.OBSERVATION_FIELDS)
 
-    def test_the_allowlist_is_empty_and_the_contract_says_so(self) -> None:
-        # The two have to agree about emptiness as well as about contents,
-        # because "nothing yet" is the claim a reader of this contract acts on.
-        self.assertEqual((), history.PROMPT_TEXT_ALLOWLIST)
+    def test_the_allowlist_holds_the_two_fields_the_baseline_needs(self) -> None:
+        # The two have to agree about the count as well as about the contents.
+        # This replaces an emptiness assertion: "nothing yet" was the claim a
+        # reader of this contract acted on until DEC-15b earned the first two
+        # entries, and a list that grew without this line moving would leave
+        # the contract claiming an exposure it no longer has.
+        self.assertEqual(("annotation_goal", "annotation_output"), history.PROMPT_TEXT_ALLOWLIST)
         entries = self.bullets(self.SECURITY, "The allowlist, one line per field:\n\n")
-        self.assertEqual(1, len(entries))
-        self.assertIn("Nothing yet. No feature has earned an entry", entries[0])
+        self.assertEqual(2, len(entries))
+
+    def test_a_reserved_name_is_not_an_admitted_one(self) -> None:
+        # The contract names five assessment fields it has NOT admitted, so a
+        # later change does not re-argue the naming. A reserved name that
+        # reached the record without its own allowlist line would be the
+        # admission happening by accident.
+        for name in (
+            "assessment_at",
+            "assessment_cutoff",
+            "assessment_revision_read",
+            "assessment_goal_result",
+            "assessment_output_result",
+        ):
+            with self.subTest(field=name):
+                self.assertIn(name, self.SECURITY)
+                self.assertNotIn(name, history.OBSERVATION_FIELDS)
+                self.assertNotIn(name, history.PROMPT_TEXT_ALLOWLIST)
+
+
+class SemanticHistoryContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's semantic-history claims are a contract, so something must read them.
+
+    DRC-4533's ninth item asked whether SECURITY.md names the prototype's
+    semantic-work-history store. It does, and every sentence of it was true when
+    written — but nothing compared any of it to the code, so a moved store name
+    or a widened bound would have left the document asserting something false
+    with the whole suite green. That is the same shape as the drift
+    `HistoryStoreContractDocumentationTest` above exists to catch, and this file
+    is where the comparison belongs.
+
+    The store is the one carrier of typed words that `--forget` does not reach,
+    which is why the deletion sentence is asserted here rather than taken on
+    trust.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+    def test_the_document_names_the_store_the_code_actually_writes(self) -> None:
+        self.assertIn(semantic_history.STORE_NAME, self.SECURITY)
+        self.assertIn(f"`~/.cargento/{semantic_history.STORE_NAME}`", self.SECURITY)
+
+    def test_the_documented_summary_bound_is_the_bound_the_code_applies(self) -> None:
+        # Prose and a literal can only agree by accident. The constant exists so
+        # that widening the bound is a two-file change a reviewer sees, rather
+        # than a one-character edit that leaves the sentence quietly wrong.
+        self.assertEqual(240, semantic_history.SUMMARY_CAP_CHARS)
+        self.assertIn(
+            f"`summary` is bounded at {semantic_history.SUMMARY_CAP_CHARS} characters",
+            _flat_section(self.SECURITY, "## Operator-cockpit prototype"),
+        )
+
+    def test_the_documented_detail_bound_is_the_bound_the_code_applies(self) -> None:
+        self.assertEqual(4096, semantic_history.RESULT_DETAIL_CAP_CHARS)
+        self.assertIn(
+            f"holds up to {semantic_history.RESULT_DETAIL_CAP_CHARS} characters",
+            _flat_section(self.SECURITY, "## Operator-cockpit prototype"),
+        )
+
+    def test_forget_still_does_not_reach_this_store(self) -> None:
+        # The document says so twice, and it is the sentence most likely to
+        # become false: admitting this store to `--forget` is a natural-looking
+        # improvement that would silently contradict both paragraphs.
+        section = _flat_section(self.SECURITY, "## Operator-cockpit prototype")
+        self.assertIn("`--forget` continues to delete only the session-history store", section)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "history.py").read_text(
+            encoding="utf-8"
+        )
+        forget = source[source.index("def forget(") :]
+        forget = forget[: forget.index("\ndef ")]
+        self.assertNotIn("semantic", forget.lower())
+
+    def test_the_store_is_written_owner_only_through_a_rename(self) -> None:
+        section = _flat_section(self.SECURITY, "## Published text (credential redaction)")
+        self.assertIn("written owner-only through a temp file and a rename", section)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "semantic_history.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("0o600", source)
+        self.assertIn("os.replace", source)
 
 
 class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
@@ -1578,6 +1668,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
                 "--no-focus",
                 "--no-history",
                 "--no-dismiss",
+                "--no-annotations",
                 "--no-ask",
                 "--no-events",
             },
@@ -1880,10 +1971,10 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
             'path.startswith("/api/events/")' in do_post
         )
         gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
-        self.assertEqual(9, routes)
+        self.assertEqual(11, routes)
         self.assertEqual(2, gated)
-        self.assertIn("Writing is the nine POST routes", self.FLAT)
-        self.assertIn("There is nothing to authenticate with on seven of them", self.FLAT)
+        self.assertIn("Writing is the eleven POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on nine of them", self.FLAT)
         self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
 
     def test_the_documented_framing_header_is_the_one_the_server_sends(self) -> None:
@@ -2012,12 +2103,13 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 self.assertIn(lane, self.DOC)
 
     def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
-        # The test above derives only `Capture`/`Restore` names, so these two
-        # survive a redraw with nothing deriving their rows. Renaming either
+        # The test above derives only `Capture`/`Restore` names, so these
+        # three survive a redraw with nothing deriving their rows. Renaming any
         # would otherwise leave the table citing a symbol that is gone.
         for name, lane in (
             ("next-controls.js", "nextControlsProjectState"),
             ("next-workstream.js", "nextWorkstreamCollapsed"),
+            ("next-cockpit.js", "nextCockpitHeldDrafts"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))

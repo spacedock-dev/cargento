@@ -6,7 +6,7 @@ unless the page holds it somewhere else and puts it back.
 
 This file is the single inventory of that state: one row per thing a reader can leave behind, what
 happens to it across a redraw, and where the code does it. Most rows are derived from `renderNext`
-by a test; the two that are not are named there as well, because a lane whose name carries neither
+by a test; the three that are not are named there as well, because a lane whose name carries neither
 `Capture` nor `Restore` is invisible to that derivation and would otherwise sit here unchecked. The
 file exists because the rule was previously distributed across comment blocks in `next-chrome.js`
 and `next-controls.js`, one per lane, with nowhere to check whether a lane was missing. Three
@@ -34,6 +34,7 @@ For where these files sit and which way their dependencies run, see
 | Cockpit scope and selected tab | Preserved through redraw, reload and browser navigation | `nextRoute` and the fragment helpers in `next-boot.js`; changing scope retains the current tab |
 | Cockpit disclosures and the mounted terminal | Captured before replacement and restored afterward; the terminal screen survives navigation away from Console until disposal | `nextCockpitBeforeRender` and `nextCockpitAfterRender` in `next-cockpit.js`; `projectTerminalScreen` retains the mounted screen in `project.js` and `projectTerminalDispose` clears it |
 | Cockpit human context | Bounded to 500 characters per field, saved on input, and retained in memory if storage fails | `nextCockpitMemoDrafts` and `cargento.cockpit.memo.v2:` storage keys in `next-cockpit.js`, keyed by project, scope and field |
+| An unsaved goal or expected output in `Held to` | Kept in memory across every redraw, and never written to browser storage. Bounded to the server's own cap, published as `annotate_cap` and 240 characters today. Escape drops the draft, which puts the saved revision back, and a save the server refuses keeps what was typed | `nextCockpitHeldDrafts` in `next-cockpit.js`, keyed by harness, session id and field |
 | Context editor focus, caret and internal scroll | Restored by the named-focus lane; Escape in the field or Done control restores the value from when editing began and closes the editor | `nextCaptureFocus` / `nextFocusNamed` in `next-chrome.js`, memo focus keys and `nextCockpitMemoOriginal` in `next-cockpit.js` |
 | A draft input's internal scroll and resized dimensions, even after focus leaves it | Restored by the input's named key; unfocused caret offsets are restored too | `nextCaptureInputState` before replacement and `nextRestoreInputState` after it in `next-chrome.js` |
 | The More menu | Restored, including summary focus | The `more` disclosure key in `next-chrome.js` |

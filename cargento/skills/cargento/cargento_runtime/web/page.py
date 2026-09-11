@@ -19,6 +19,7 @@ APP_PARTS: tuple[str, ...] = (
     "next-sessions.js",
     "next-projects.js",
     "next-project.js",
+    "next-intent.js",  # reads next-project.js's revision line and value helpers
     "next-activity.js",
     "next-session.js",
     "next-workstream.js",

@@ -22,6 +22,71 @@ function nextObservedLabel(session){
   return String(session.project == null ? "" : session.project);
 }
 
+/* How it landed, as two axes that never merge (DRC-4512). The composed
+   `outcome` line above answers neither question on its own: it packs an end
+   kind and a git reading into one sentence, so a reader cannot tell what was
+   observed to end from what anyone claims about the work.
+
+   Axis one is what ended. Four kinds and a running row, because the three ways
+   a session can be silent are not one fact: a turn stopped, a session ended,
+   and idle-with-nothing-observed all render as "quiet" today, and only the
+   first two authorise anything. The fourth is the scan-only row, where the
+   silence is a property of the harness rather than of the session, and
+   `nextSessionIsScanOnly` is reused rather than restated so the two surfaces
+   cannot drift.
+
+   Axis two is who says it finished, and today the honest answer is always the
+   session itself. `ended_at` and `finished_at` both originate in the harness
+   the agent is running inside; the only observer in this tree that is
+   independent of it is the end-of-session git probe, and a working tree is not
+   a deliverable in either direction. So `independent` is a limit line rather
+   than a branch: it states why nothing corroborates the claim, which is what
+   the design asks for where a harness and an evidence type do not combine. */
+function nextObservedLanding(source, ended, stopped){
+  const idle = source.state === "idle";
+  const endKind = ended ? "session-end" : (stopped ? "turn-stop" :
+    (!idle ? "running" : (nextSessionIsScanOnly(source) ? "unobservable" : "idle-unknown")));
+  const endText = {
+    "session-end": "A session end was observed",
+    "turn-stop": "A turn stop was observed; no session end was",
+  }[endKind] || "";
+  const endWhy = {
+    "idle-unknown": "Idle with completion unknown: no stop and no end was observed",
+    "unobservable": "No event from this harness can reach this row, so no stop or end " +
+      "can be observed",
+  }[endKind] || "No stop or end observed while the session is running";
+  const claimed = ended || stopped;
+  const changed = Number.isInteger(source.changed) && source.changed >= 0 ? source.changed : null;
+  const independent = source.dirty === true
+    ? `${changed == null ? "Uncommitted work was"
+      : `${changed} changed ${changed === 1 ? "entry was" : "entries were"}`} observed, ` +
+      "which shows work happened and not that the requested output exists"
+    : (source.dirty === false
+      ? "The working tree was observed clean, which is not evidence a deliverable exists"
+      : "Git state was not measured, so nothing was observed apart from the session's own account");
+  return {
+    endKind,
+    ...nextObservedPair("end", endText, endWhy),
+    claimKind: claimed ? "agent" : "none",
+    ...nextObservedPair("claim", claimed ? "The agent reported it finished" : "",
+      "Nothing has claimed this session finished"),
+    // Deliberately never known. The true arm arrives with a source that sees a
+    // deliverable without the session's account; until then the reader is told
+    // why, rather than shown a blank.
+    ...nextObservedPair("independent", "", independent),
+  };
+}
+
+function nextObservedOwnGoal(source){
+  const goal = nextObservedGoal(source);
+  return {
+    ...nextObservedPair("ownGoal", goal && goal.text, "This session published no goal"),
+    ownGoalSrcText: goal ? goal.src : "Goal source not published",
+    ownGoalSrcKnown: Boolean(goal),
+    ownGoalAt: goal && goal.at != null ? goal.at : null,
+  };
+}
+
 function nextObservedSession(source, asks, harness, generated, shared){
   const ended = nextSessionEndedAt(source) != null;
   const working = !ended && source.state === "working";
@@ -51,6 +116,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
   const stopped = source.state === "idle" && nextNumber(source.finished_at) > 0;
   const outcomeKnown = ended || stopped;
   const outcomePrefix = ended ? "Session ended" : "Stop observed";
+  const landing = nextObservedLanding(source, ended, stopped);
   const gitKnown = typeof source.dirty === "boolean";
   const outcome = outcomeKnown ? outcomePrefix + (source.dirty === true ? " with uncommitted work" :
     (source.dirty === false ? "; git state clean" : "; git state not measured")) : "";
@@ -106,6 +172,12 @@ function nextObservedSession(source, asks, harness, generated, shared){
     tone: outcomeKnown ? (gitKnown ? (source.dirty ? "bad" : "ok") : "unknown") :
       (blocked || errors || (working && turn.long === true) ? "want" :
       (blockKnown && ["working", "idle"].includes(source.state) ? "ok" : "unknown")),
+    landing,
+    /* This session's own derived goal, beside the project's. A session-scope
+       render used to take the project's, which is the most recently active
+       session's, so the reader saw their words for one session above another
+       session's directive under DERIVED FROM THE HARNESS. */
+    ...nextObservedOwnGoal(source),
     subagents: Array.isArray(source.subagents) ? source.subagents : [],
     tasks: Array.isArray(source.tasks) ? source.tasks : [],
   };
@@ -154,14 +226,20 @@ function nextObservedHistory(project, evidence){
   };
 }
 
+/* `at` is the observation time, and it is carried rather than derived: the
+   directive arm has one on the record and the workflow arm has none, so a
+   render that timestamped both would date the second from whenever the page
+   last drew (DRC-4509). Null is an absence with a reason, not "just now". */
 function nextObservedGoal(source){
   const instruction = source.instruction;
   if(instruction && instruction.label === "asked" && nextObservedString(instruction.text)){
-    return {text: instruction.text, src: `${source.harness} · latest assignment`};
+    return {text: instruction.text, src: `${source.harness} · latest assignment`,
+      at: nextNumber(instruction.at)};
   }
   const workflows = nextObservedRecords(source.spacedock && source.spacedock.workflows);
   const goals = workflows.filter(workflow => nextObservedString(workflow.goal));
-  return goals.length ? {text: goals.map(workflow => workflow.goal).join("\n"), src: "Spacedock · workflow goal"} : false;
+  return goals.length ? {text: goals.map(workflow => workflow.goal).join("\n"),
+    src: "Spacedock · workflow goal", at: null} : false;
 }
 
 function nextObservedProject(key, sessions, sources, evidence, risky){
@@ -188,6 +266,9 @@ function nextObservedProject(key, sessions, sources, evidence, risky){
     ...nextObservedPair("goal", goal && goal.text, "No assignment or workflow goal published"),
     goalSrcText: goal ? goal.src : "Goal source not published",
     goalSrcKnown: Boolean(goal),
+    // The raw stamp, not a formatted age: a duration derived here would be as
+    // old as the last derivation, and the render is what knows the clock.
+    goalAt: goal && goal.at != null ? goal.at : null,
     goalGapText: `${sessions.length - goals.length} of ${sessions.length} ${sessions.length === 1 ? "session publishes" : "sessions publish"} no goal.`,
     goalGapKnown: true,
     sessions, needs, working, ended, risky,

@@ -1,8 +1,25 @@
 const nextQuery = new URLSearchParams(location.search);
 const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same directory: the label is the" +
   " last two segments of each session's path, so sibling worktrees read alike.";
-const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
+/* The load-bearing half of what a reading is not, owned here because two
+   surfaces state it and a second wording would be a second promise. The
+   reading block says it about the reading it is offering; the Intent log says
+   it about every row it lists. */
+const NEXT_READING_NOT_A_VERIFICATION =
+  "A reading is never a verification that the work was done.";
+const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions", "intent"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
+/* Tabs that exist only while one session is in focus. Empty at project scope
+   rather than disabled there, because a tab about one session's words has
+   nothing to show when no session is selected, and an always-empty tab
+   teaches a reader not to click the one that will matter.
+
+   Not gated on the annotation store being live. This list is read by
+   `nextRouteFromFragment` at boot, before any payload has arrived, and a
+   capability-gated list would refuse to parse a bookmarked `:held-to` link on
+   first load and drop the reader on the projects index. The panel says the
+   store is off; the route stays readable either way. */
+const NEXT_SESSION_TABS = ["held-to"];
 const NEXT_OBSERVER_CONSENT_KEY = "cargento.observer-model-consent.v1";
 let nextObserverConsentMemo = null;
 const nextObserverRequests = new Set();
@@ -11,6 +28,19 @@ const nextObserverRequestStates = new Map();
 const qs = name => nextQuery.get(name);
 const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g,
   char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+
+/* Which cockpit tabs exist, given the session a project view is narrowed to.
+   `focus` is `nextRoute.focus`, and falsy is project scope.
+
+   One reader in place of the thirteen sites that read the list directly, and
+   it takes the scope now while both scopes still answer the same, so this
+   change moves nothing a reader sees. Six of those thirteen were the keyboard
+   wrap alone, which computes an index and a length against the list: a wrap
+   over a list the nav did not render moves focus to a tab that is not on the
+   reader's screen, and it does it silently. */
+function nextCockpitTabs(focus){
+  return focus ? [...NEXT_PROJECT_TABS, ...NEXT_SESSION_TABS] : NEXT_PROJECT_TABS;
+}
 
 function nextDecodeRoutePart(value){
   try{
@@ -35,7 +65,7 @@ function nextRouteFromFragment(fragment){
   if(parts.length === 3 && parts[0] === "project"){
     const project = nextDecodeRoutePart(parts[1]);
     const value = nextDecodeRoutePart(parts[2]);
-    if(project && NEXT_PROJECT_TABS.includes(value)){
+    if(project && nextCockpitTabs(null).includes(value)){
       return {view:"project",project,session:null,tab:value};
     }
     if(project && value) return {view:"project",project,session:null,focus:value};
@@ -44,7 +74,7 @@ function nextRouteFromFragment(fragment){
     const project = nextDecodeRoutePart(parts[1]);
     const focus = nextDecodeRoutePart(parts[2]);
     const tab = nextDecodeRoutePart(parts[3]);
-    if(project && focus && NEXT_PROJECT_TABS.includes(tab)){
+    if(project && focus && nextCockpitTabs(focus).includes(tab)){
       return {view:"project",project,session:null,focus,tab};
     }
   }
@@ -72,7 +102,7 @@ function nextFragmentForRoute(route){
   }
   if(route && route.view === "project" && route.project){
     const focus = route.focus ? `:${encodeURIComponent(route.focus)}` : "";
-    const tab = NEXT_PROJECT_TABS.includes(route.tab) && route.tab !== "now"
+    const tab = nextCockpitTabs(route.focus).includes(route.tab) && route.tab !== "now"
       ? `:${encodeURIComponent(route.tab)}` : "";
     return `#n=project:${encodeURIComponent(route.project)}${focus}${tab}`;
   }
@@ -263,6 +293,11 @@ function nextSessionResumeControl(session){
 // renders no control rather than one whose request could only be refused.
 const NEXT_FOCUS_META = 'meta[name="cargento-focus"]';
 
+// One fact about the process, stated at two scopes: the fleet coverage line on
+// Attention and the per-session limit in the Held to tab. Hoisted rather than
+// spelled twice, because two spellings of one fact drift.
+const NEXT_FOCUS_OFF_LINE = "Terminal raise: off for this run.";
+
 function nextFocusCapability(){
   if(typeof document === "undefined" || typeof document.querySelector !== "function") return "";
   let meta = null;
@@ -293,6 +328,13 @@ function nextFocusCapability(){
 // run, and every Linux and Windows session, where the contract's own device
 // grammar refuses `/dev/pts/N` — so the coverage line says how far the feature
 // reaches once, where a per-row note would print forever and say nothing.
+//
+// That holds for a QUEUE of rows and is why Attention states it once. It does not
+// hold where one session is the whole subject: the Held to tab is about the
+// session on screen, a reader there is asking whether they can get back into that
+// one, and "nothing at all" is the answer that reads as "no limit" rather than as
+// "not this session". `nextCockpitHeldReEntry` states it for that scope, which is
+// a second place and not a per-row note.
 function nextSessionRaiseControl(session){
   if(!session || session.focusable !== true) return "";
   const sid = String(session.sid == null ? "" : session.sid).trim();

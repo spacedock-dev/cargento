@@ -954,7 +954,7 @@ function nextAttentionTerminalCoverage(model){
   const rows = (model && Array.isArray(model.needs) ? model.needs : [])
     .filter(subject => subject && subject.session);
   if(!rows.length) return "";
-  if(!nextFocusCapability()) return "<p>Terminal raise: off for this run.</p>";
+  if(!nextFocusCapability()) return `<p>${NEXT_FOCUS_OFF_LINE}</p>`;
   const reached = rows.filter(subject => subject.session.focusable === true).length;
   const carry = rows.length === 1 ? "waiting row carries" : "waiting rows carry";
   return `<p>Terminal raise: ${reached} of ${rows.length} ${carry} ` +

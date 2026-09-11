@@ -50,7 +50,7 @@ The posture rests on two invariants:
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
    own connection, which is why it is named here rather than counted above.
-2. Read-only against harness stores. They are opened read-only and never written. Seven endpoints
+2. Read-only against harness stores. They are opened read-only and never written. Eight endpoints
    mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
@@ -58,12 +58,39 @@ The posture rests on two invariants:
    which register a question a session asked, record the option the reader chose, and drop a question
    whose asker has stopped waiting for it, all three described under The ask lane. The long
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
-   which is the delivery completing rather than a change a caller asked for. The seventh,
-   `POST /api/dismiss`, does write to disk, but what it writes is
+   which is the delivery completing rather than a change a caller asked for. Two write to disk.
+   `POST /api/dismiss` writes the sessions you marked handled, and
+   `POST /api/annotate` writes the goal and expected output you typed against a session. Both write
    Cargento's own state under `~/.cargento` and never a harness store, so the read-only rule above stands
-   unchanged. What that file holds and how to clear it is in Dismissals. One forwarder writes too:
+   unchanged. What the first holds and how to clear it is in Dismissals; the second is one file,
+   `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
+   redacted on the way in like every other prompt-derived string, written owner-only through a temp
+   file and a rename, and turned off entirely by `--no-annotations`. It is the only store holding
+   prose you composed rather than anything a harness published, and since 2026-09-10 it also holds
+   a **reading**: a model's account of that session against those words. A reading carries one
+   model-authored string, a departure's `detail`, and it goes through the same
+   redact-before-clip scrub the two prose fields do, on the way in and again on the way out,
+   because any local process can rewrite the file. Everything else a reading holds is a value the
+   code selected from a closed set or composed from counts it measured.
+
+   Two consequences of storing it here rather than in session history, both accepted rather than
+   discovered. `--forget` deletes session history alone and **does not reach this file**, so a
+   reader who wants a model-authored reading gone clears that session's annotation, which deletes
+   the reading with the words that produced it. And there is no fourteen-day expiry: a reading is
+   evicted when its annotation is, oldest-save-first at the session count above. One forwarder
+   writes too:
    `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
    name and a timestamp and nothing about the session's content.
+   One `GET` reads wider than the rest, and is named here for that reason rather than for the
+   count above. `GET /api/annotations` serves the prose you composed, for every session you have
+   annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
+   ever had, which serves only what is live. It is same-origin only, refuses a cross-site
+   navigation, answers 503 under `--no-annotations`, and reads the annotation store alone rather
+   than session history, so words you withdrew with a clear are gone from it. It is not on the
+   refresh loop: the words leave the server when the Intent log is opened, and the route's own
+   docstring records that reasoning. The POST-route inventory in the test suite cannot see a `GET`,
+   so this paragraph is the accounting for it.
+
    One `GET` writes as well, which is why it is named here rather than left to the count above.
    `GET /api/observe` is a trigger rather than a poll: it derives one session's goal, stage and open
    block and records the answer as a sidecar under `~/.cargento/observer/`, again Cargento's own
@@ -1125,17 +1152,41 @@ A field carrying prompt-derived text may be kept only when every one of these ho
    bounded and never after, the order Published text requires and for the reason given there;
 4. it is bounded to a cap this section states;
 5. it lives inside the retention window, the size cap, `--no-history` and `--forget` described
-   below, with no separate lifetime of its own.
+   below, with no separate lifetime of its own;
+6. its admission bumps `history.SCHEMA_VERSION` and appends the old value to
+   `history.READABLE_VERSIONS`, so an upgrade reads the records already on disk instead of
+   discarding them. Every admission is additive, because each field is re-validated on its own
+   and a record written before a field existed is a record with that field absent. The store
+   used to compare the version for equality, which meant the bump that came with the first
+   admission would have wiped fourteen days of history on upgrade with no signal but a reset
+   reason nobody reads. A version outside that tuple is still refused, which is the case the
+   header exists to report.
 
 The allowlist, one line per field:
 
-- Nothing yet. No feature has earned an entry, so the store's records carry no prompt-derived text
-  today and `history.PROMPT_TEXT_ALLOWLIST` is empty. A test binds that tuple to this block and to
-  the record's own field set: an entry with no record behind it fails, and none of the carriers
-  named in `history.PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. That tuple
-  is a hand-kept list of names, so a carrier it does not yet name is held out by this section and by
-  review rather than by the test. Adding a prompt-derived field to the record means adding its name
-  there in the same change.
+- `annotation_goal`, for the outcome baseline DEC-15b admits. What the reader typed one session
+  should achieve, at most 240 characters as the annotation store bounds it and at most 256 as this
+  store does. Published on every row, redacted by `records.safe_text` inside
+  `annotations.annotate` before either bound is applied, and kept so the words a reading was read
+  against reopen after a restart and after the live row leaves the board.
+- `annotation_output`, the same field's other half: what the reader typed the session should
+  produce. Same bound, same redaction, same reason.
+
+The revision number beside them, `annotation_revision`, is in the record and not on this list. It
+is an integer the board derives, not text anybody typed.
+
+Reserved and deliberately not admitted, because nothing produces one and this store may not hold
+what the live snapshot does not already serve: `assessment_at`, `assessment_cutoff`,
+`assessment_revision_read`, `assessment_goal_result` and `assessment_output_result`. The names are
+recorded so the admission that adds them does not re-argue the naming, and each still needs its own
+line here.
+
+A test binds this list to `history.PROMPT_TEXT_ALLOWLIST` and to the record's own field set: an
+entry with no record behind it fails, and none of the carriers named in
+`history.PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. That tuple is a
+hand-kept list of names, so a carrier it does not yet name is held out by this section and by
+review rather than by the test. Adding a prompt-derived field to the record means adding its name
+there in the same change.
 
 The store may never widen the set of fields it keeps otherwise: a field that is not already
 published on the live board is not a field history may keep. That condition used to run one way
@@ -1516,6 +1567,13 @@ under the configured state directory, and can invoke the installed Codex CLI for
 This is separate from quota fetching and from the session-history switch. The prototype retains
 its own semantic-history store; `--forget` continues to delete only the session-history store.
 
+That store carries session text in both directions, and this document did not say so until the
+annotation work re-counted which files hold what a person typed. A fact's `summary` is bounded at
+240 characters and holds the operator's own directive where the fact is a steer or an observer goal;
+a result fact's `detail` holds up to 4096 characters of the assistant's final answer. So the file is
+a carrier of typed words as well as generated ones, in the same content class as the observer
+sidecar's goal line, and the redaction paragraph below is what stands between it and a credential.
+
 Semantic history redacts recognized credential shapes before publication and persistence.
 Loading an older store also redacts nested values and, if any changed, immediately replaces
 the file atomically with an owner-only copy under the history lock. A read may be the only
@@ -1579,12 +1637,21 @@ fallen off no longer matches. A slice that ran first is what published a URL cre
 its `@`.
 
 The card, the browser notification body and the native popup are pixels, and a screenshot is what
-each of them risks. The fourth thing carrying this text is a file: the observer sidecar under
-`~/.cargento/observer/`, one JSON file per session holding the derived goal, which is the operator's
-own words. It is redacted on the way in like everything else, and it is
+each of them risks. Two of the things carrying this text are files. The first is the observer
+sidecar under `~/.cargento/observer/`, one JSON file per session holding the derived goal, which is
+the operator's own words. Since goal provenance landed it holds two such lines rather than one: the published
+`goal` and the pre-model `deterministic_goal` the model arm would otherwise have overwritten. They
+are the same class of text and carry the same risk, so the count changes and nothing else does.
+Both are redacted on the way in like everything else, and the file is
 written owner-only through a temp file and a rename, so a reader mid-write sees the old file or the
 new one and neither is ever briefly world-readable. The mode is advisory and Windows ignores it, the
 same caveat the state file and the dismissal store carry.
+
+The second is the prototype's semantic-history store, `~/.cargento/semantic-work-history.json`. It
+holds the operator's own directive as well as the assistant's answer, it is redacted on the way in
+and again on every read, and it is written owner-only through a temp file and a rename like the
+sidecar above. The Operator-cockpit prototype section has its fields and its deletion behaviour,
+including that `--forget` does not reach it.
 
 This reduces the exposure and does not close it, and both directions of error are real. A shape list
 covers the formats it was measured against, so a credential in a format nobody has seen goes through
@@ -1609,9 +1676,9 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the nine POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the eleven POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. There is nothing to authenticate with on seven of them, for the reason the
+somebody other than you. There is nothing to authenticate with on nine of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client

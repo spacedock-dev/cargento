@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import pathlib
+import re
 import shutil
 import unittest
+from typing import Any
 
 from .next_harness import NextPageJsHarness, storage_prelude
 
@@ -263,6 +267,146 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
         self.assertIn("pending 1", out["html"])
         self.assertIn("consumed/applied 1", out["html"])
         self.assertEqual(["unbound-decision", "gate-a"], out["rows"])
+
+    def test_the_typed_words_render_above_the_goal_the_harness_published(self) -> None:
+        # DRC-4509. STATED GOAL is a list, not a field: the reader's words are
+        # their own rows with their own tags, never merged into the harness's
+        # line, because the two are different claims.
+        out = self.run_fixture(r"""
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "A merged PR";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 2;
+__dashboard.sessions[0].annotation_revision_count = 2;
+__dashboard.sessions[0].annotation_at = 104;
+__dashboard.sessions[0].annotation_binding_why = "Bound by an eight-character identity prefix.";
+
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        html = out["html"]
+        self.assertIn("YOUR WORDS \u00b7 GOAL", html)
+        self.assertIn("Ship the cockpit", html)
+        self.assertIn("A merged PR", html)
+        self.assertIn("DERIVED FROM THE HARNESS", html)
+        self.assertIn("revision 2 of 2", html)
+        # The binding is reported rather than assumed exact.
+        self.assertIn("eight-character identity prefix", html)
+        # The harness published no goal here, so its row keeps its absence
+        # styling rather than being dressed as a value because it sits in a list.
+        # And the sentence is about THIS session, not the project: the
+        # derived row used to borrow whichever sibling moved most recently.
+        self.assertIn(
+            'next-project-value--absent next-project-goal-text">This session published no goal',
+            html,
+        )
+
+    def test_the_derived_row_says_when_the_directive_was_observed(self) -> None:
+        # DRC-4509. A typed row carries its time through the revision line; the
+        # derived row carried a source and nothing else, so a reader could not
+        # tell a directive from four minutes ago from one from four hours ago.
+        out = self.run_fixture(r"""
+__dashboard.sessions[0].instruction = {label:"asked", text:"Ship the cockpit", at:45};
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 104;
+__dashboard.sessions[0].annotation_binding_why = "";
+
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+const withTime = __els.app.innerHTML;
+
+// And: a project whose goal comes from a workflow, which publishes no time.
+__dashboard.sessions[0].instruction = null;
+__dashboard.sessions[0].spacedock = {workflows:[{goal:"Survey the layout"}]};
+renderNext();
+console.log(JSON.stringify({withTime, withoutTime:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("codex · latest assignment · observed 1m ago", out["withTime"])
+        # An absence states its reason rather than leaving the row looking
+        # freshly observed.
+        self.assertIn(
+            "Spacedock · workflow goal · observation time not published",
+            out["withoutTime"],
+        )
+
+    def test_the_derived_row_is_the_focused_sessions_own_directive(self) -> None:
+        """Finding D, raised independently by Antigravity, Codex and a lens.
+
+        `nextObservedProject` picks the goal of whichever session moved most
+        recently. Rendered beside one session's typed words that is another
+        session's directive under DERIVED FROM THE HARNESS, and the apparent
+        disagreement reads as a departure when the two concern different work.
+        """
+        out = self.run_fixture(
+            r"""
+// Given: the focused session asked for one thing, a more recently active
+// sibling for another.
+__dashboard.sessions[0].instruction = {label:"asked", text:"Shape the cockpit", at:40};
+__dashboard.sessions[0].last_activity = 90;
+__dashboard.sessions[0].annotation_goal = "Shape the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[1].instruction = {label:"asked", text:"Migrate the database", at:95};
+__dashboard.sessions[1].last_activity = 104;
+
+const read = () => {
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('class="next-project-goal"'));
+  const rows = [...block.matchAll(
+    /goal-tag">([^<]*)<\/span><span class="[^"]*next-project-goal-text">([^<]*)</g)];
+  return {rows: rows.map(m => [m[1], m[2]]),
+    gap: /class="next-project-goal-gap">([^<]*)</.exec(block)};
+};
+
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+const focused = read();
+nextRoute = {view:"project",project:"cargento",tab:"now"};
+renderNext();
+const project = read();
+console.log(JSON.stringify({focused: focused.rows, focusedGap: Boolean(focused.gap),
+  projectGap: Boolean(project.gap)}));
+"""
+        )
+
+        # Then: the derived row is this session's directive, never the sibling's.
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                ["YOUR WORDS · GOAL", "Shape the cockpit"],
+                ["DERIVED FROM THE HARNESS", "Shape the cockpit"],
+            ],
+            out["focused"],
+        )
+        # And the project-wide "N of M sessions publish no goal" count belongs
+        # to the project's render, not beside one session's words.
+        self.assertFalse(out["focusedGap"])
+        self.assertTrue(out["projectGap"])
+
+    def test_a_session_with_no_typed_words_shows_the_harness_goal_alone(self) -> None:
+        # No rows, no tags, and nothing implying the reader typed something.
+        out = self.run_fixture(r"""
+nextRoute = {view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"};
+renderNext();
+console.log(JSON.stringify({html:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertNotIn("YOUR WORDS", out["html"])
+        self.assertNotIn("DERIVED FROM THE HARNESS", out["html"])
 
     def test_a_rendered_decision_is_not_duplicated_by_its_steering_link(self) -> None:
         out = self.run_fixture(r"""
@@ -3468,6 +3612,2303 @@ console.log(JSON.stringify({
         self.assertIn("/api/interaction/origin", out["originPath"])
         self.assertNotIn("/api/interaction/input", out["parts"])
         self.assertNotIn("/api/interaction/control", out["parts"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitHeldToTabTest(NextPageJsHarness):
+    """DRC-4508's input surface: two fields, at session scope, in the cockpit.
+
+    The store, the endpoint and the read-only rows already ship. This is the
+    place a person types into, and the acceptance criterion it carries is that
+    a session with neither field renders an absence with its reason rather
+    than a blank or a placeholder.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    # A DOM stub whose `closest` answers any `[data-*]` selector from the
+    # element's own dataset. `NextCockpitCompositionTest.FOCUS_DOM` answers
+    # only the action selector, which is right for the tests that use it and
+    # cannot see a textarea's own input hook.
+    FOCUS_DOM = r"""
+let controls = [];
+let spans = [];
+// Paragraphs, because the absence sentence is one and the input handler hides
+// it in place. Parsed with their `hidden` attribute so a test can tell the
+// renderer's state from the handler's.
+let paras = [];
+const decode = text => text.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+const camel = name => name.replace(/^data-/, "").replace(/-([a-z])/g,
+  (_, letter) => letter.toUpperCase());
+// Every replacement is counted. A keystroke that redraws is the defect this
+// class exists to hold shut, and counting is how the test sees one.
+__els.renders = 0;
+__els.app = {
+  get innerHTML(){ return this.html || ""; },
+  set innerHTML(html){
+    this.html = html;
+    __els.renders += 1;
+    document.activeElement = null;
+    controls = [...html.matchAll(/<(button|a|textarea)\b([^>]*)>/g)].map(match => {
+      const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      const dataset = Object.fromEntries(Object.entries(attrs)
+        .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]));
+      return {dataset, tagName:match[1].toUpperCase(), value:"", attrs, hidden:"hidden" in attrs,
+        getAttribute(name){ return attrs[name] || null; },
+        focus(){ document.activeElement = this; },
+        closest(selector){
+          // The field container the input handler reaches for, synthesised
+          // from the kind the element already carries. Without it the handler
+          // returns early and a redraw put back into it would go unseen.
+          if(selector === "[data-next-cockpit-held-field]"){
+            const kind = dataset.nextCockpitHeldKind || dataset.arg;
+            return kind === undefined ? null : {
+              querySelector(inner){
+                if(inner === "[data-next-cockpit-held-count]"){
+                  return spans.find(span => span.dataset.nextCockpitHeldCount === kind) || null;
+                }
+                if(inner === "[data-next-cockpit-held-absent]"){
+                  return paras.find(para => para.dataset.nextCockpitHeldAbsent === kind) || null;
+                }
+                const action = /action="([a-z-]+)"/.exec(inner);
+                return action ? controls.find(control =>
+                  control.dataset.nextCockpitAction === action[1] &&
+                  control.dataset.arg === kind) || null : null;
+              }};
+          }
+          const bare = /^\[(data-[\w-]+)\]$/.exec(selector);
+          return bare && dataset[camel(bare[1])] !== undefined ? this : null;
+        }};
+    });
+    paras = [...html.matchAll(/<p\b([^>]*)>([^<]*)</g)].map(match => {
+      const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      return {textContent: decode(match[2]), hidden: /(^|\s)hidden(\s|$)/.test(match[1]),
+        dataset: Object.fromEntries(Object.entries(attrs)
+          .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]))};
+    });
+    spans = [...html.matchAll(/<span\b([^>]*)>([^<]*)</g)].map(match => {
+      const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
+        .map(attr => [attr[1], decode(attr[2])]));
+      return {textContent: decode(match[2]), dataset: Object.fromEntries(
+        Object.entries(attrs).filter(([key]) => key.startsWith("data-"))
+          .map(([key, value]) => [camel(key), value]))};
+    });
+  },
+  querySelectorAll(selector){
+    return selector === "[data-next-focus]" ? controls.filter(control => control.dataset.nextFocus) : [];
+  }
+};
+renderNext();
+"""
+    ANNOTATED = """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "Capture every screen with live sessions";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 2;
+__dashboard.sessions[0].annotation_revision_count = 2;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_tab_and_its_fields_exist_only_at_session_scope(self) -> None:
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+const seen = {};
+for(const focus of [null, "codex:focus-1"]){
+  navigateNext({view:"project", project:"cargento", focus, tab:focus ? "held-to" : "now"});
+  await __settle();
+  const html = __els.app.innerHTML;
+  seen[focus || "project"] = {
+    tab: html.includes('data-arg="held-to"'),
+    asked: html.includes("WHAT YOU ASKED FOR"),
+
+    goal: html.includes("Capture every screen with live sessions"),
+    revision: html.includes("revision 2 of 2"),
+    absence: html.includes("No expected output typed."),
+    counters: (html.match(/data-next-cockpit-held-count="[a-z]+"/g) || []).length,
+    clears: (html.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
+    saves: (html.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
+  };
+}
+// The memo cell is asked directly, with a briefing that has something to show:
+// with both notes unset and the task known it renders nothing at either scope,
+// which would make the scope rule untestable through the page.
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const briefing = {...nextCockpitRecoveryBriefing(group), outcome:"Ship the cockpit"};
+seen.memo = {
+  project: nextCockpitRecoveryMemoCell(group, null, briefing).length > 0,
+  session: nextCockpitRecoveryMemoCell(group, nextCockpitFocusedSession(group),
+    briefing).length > 0,
+};
+console.log(JSON.stringify(seen));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        project, session = out["project"], out["codex:focus-1"]
+        self.assertFalse(project["tab"])
+        self.assertFalse(project["asked"])
+        self.assertTrue(session["tab"])
+        self.assertTrue(session["asked"])
+        # The memo cell moves to project scope in the same commit that adds
+        # these two fields: four typed fields on one session-scope page, at two
+        # bounds and two save semantics, is the collision this avoids.
+        self.assertEqual({"project": True, "session": False}, out["memo"])
+        # What was typed, and the named reason for what was not.
+        self.assertTrue(session["goal"])
+        self.assertTrue(session["revision"])
+        self.assertTrue(session["absence"])
+        self.assertEqual(2, session["counters"])
+        # `clear` only where there is text; `save` only where the draft differs
+        # from what is saved, and nothing has been typed yet.
+        self.assertEqual(1, session["clears"])
+        self.assertEqual(0, session["saves"])
+
+    def test_an_unannotated_session_states_both_reasons_and_offers_no_clear(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  goalWhy: html.includes("No goal typed for this session."),
+  outputWhy: html.includes("No expected output typed."),
+  clears: (html.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
+  revision: html.includes("No revision saved yet"),
+  counts: [...html.matchAll(/data-next-cockpit-held-count="[a-z]+">([^<]*)</g)].map(m => m[1]),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertTrue(out["goalWhy"])
+        self.assertTrue(out["outputWhy"])
+        self.assertEqual(0, out["clears"])
+        self.assertTrue(out["revision"])
+        self.assertEqual(["0/240", "0/240"], out["counts"])
+
+    def test_a_pasted_line_break_collapses_in_the_box_not_silently_at_the_store(self) -> None:
+        """DRC-4533's newline item, taken as a product call: the fields are one line.
+
+        `records.safe_text` already collapsed a run of control characters into
+        one space before the store saw anything, so a pasted line break was
+        gone at the save while the box still showed it and the cue said "Saved
+        as a new revision." under text the store never held. The box now shows
+        what will be stored.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const before = __els.renders;
+const box = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+box.value = "ship it\\n\\nand the doc";
+__fire("input", {target:box});
+await __settle();
+const field = box.closest("[data-next-cockpit-held-field]");
+console.log(JSON.stringify({
+  box: box.value,
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  count: field.querySelector("[data-next-cockpit-held-count]").textContent,
+  redraws: __els.renders - before,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        # What the reader sees is what the store will hold: one space, not two
+        # newlines. The write-back on the input element is what makes it visible.
+        self.assertEqual("ship it and the doc", out["box"])
+        self.assertEqual("ship it and the doc", out["draft"])
+        # 19 characters, not 20: the count is against the collapsed value, so
+        # the box and the store cannot disagree at the cap either.
+        self.assertEqual("19/240", out["count"])
+        # And it is still the lane that does not redraw on a keystroke.
+        self.assertEqual(0, out["redraws"])
+
+    def test_a_keystroke_updates_the_draft_and_does_not_redraw(self) -> None:
+        """The live defect, and the reason the memo lane beside this one does
+        not redraw either.
+
+        A first version called `renderNext` from the input handler. Measured in
+        a browser against a real session: the field is a new element after the
+        replacement and the named-focus lane restores the caret a beat late, so
+        typing " and green" put "neerg dna" in front of the saved value. The
+        counter and the two controls are updated in place instead.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const before = __els.renders;
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+input.value = "Six screenshots";
+__fire("input", {target:input});
+await __settle();
+const field = input.closest("[data-next-cockpit-held-field]");
+console.log(JSON.stringify({
+  redraws: __els.renders - before,
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  // Updated in place, which is the whole of what replaces the redraw.
+  liveCount: field.querySelector("[data-next-cockpit-held-count]").textContent,
+  liveSave: field.querySelector('[data-next-cockpit-action="held-save"]').hidden,
+  liveClear: field.querySelector('[data-next-cockpit-action="held-clear"]').hidden,
+  // What the field renders from that draft, on the next redraw the reader
+  // does cause. Both controls exist either way; only their hidden state moves.
+  next: (() => { renderNext();
+    const html = __els.app.innerHTML;
+    return {
+      count: (html.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+      save: /data-next-cockpit-action="held-save" data-arg="output">/.test(html),
+      clear: /data-next-cockpit-action="held-clear" data-arg="output">/.test(html),
+      // The saved value rides on each field, because the handler compares
+      // against it without a payload to hand. Both are read: the untouched
+      // one carries the store's text, the edited one carries the empty string
+      // it was saved with, and a save control appears only where they differ.
+      saved: [...html.matchAll(/data-next-cockpit-held-saved="([^"]*)"/g)].map(m => m[1]),
+    }; })(),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["redraws"])
+        self.assertEqual("Six screenshots", out["draft"])
+        self.assertEqual("15/240", out["liveCount"])
+        self.assertFalse(out["liveSave"])
+        self.assertFalse(out["liveClear"])
+        self.assertEqual("15/240", out["next"]["count"])
+        self.assertTrue(out["next"]["save"])
+        self.assertTrue(out["next"]["clear"])
+        self.assertEqual(["Capture every screen with live sessions", ""], out["next"]["saved"])
+
+    def test_escape_puts_the_saved_value_back(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+input.value = "Six screenshots";
+__fire("input", {target:input});
+renderNext();
+const typed = __els.app.innerHTML;
+
+// When: Escape on the field the draft belongs to. This one redraws, because
+// it is a discrete action rather than a keystroke.
+__fire("keydown", {target:input, key:"Escape", preventDefault(){}});
+await __settle();
+const reverted = __els.app.innerHTML;
+console.log(JSON.stringify({
+  typedSaves: (typed.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
+  typedCount: (typed.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+  typedClears: (typed.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
+  revertedSaves: (reverted.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
+  revertedCount: (reverted.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+  draft: nextCockpitHeldDrafts.has("held:codex:focus-1:output"),
+}));
+"""
+        )
+
+        # Then: one save, for the field that changed, and a live counter.
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["typedSaves"])
+        self.assertEqual("15/240", out["typedCount"])
+        self.assertEqual(2, out["typedClears"])
+        # Escape drops the draft rather than writing the saved value into it,
+        # so the render reads the store and the save goes away with it.
+        self.assertEqual(0, out["revertedSaves"])
+        self.assertEqual("0/240", out["revertedCount"])
+        self.assertFalse(out["draft"])
+
+    def test_a_save_the_store_could_not_write_says_so(self) -> None:
+        """Finding A, raised by all three reviewing harnesses.
+
+        `/api/annotate` answers `persisted` honestly, and the page read only
+        `ok`. A write that never reached disk showed "Saved as a new revision."
+        and the very next collection reloaded the store and took the words out
+        of the box. The comment justifying that claimed the store said so
+        itself; nothing on screen said anything.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+let persisted = true;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => String(url) === "/api/annotate"
+  ? {ok:true, status:200, json: async () => ({ok:true, persisted, revision:2, revision_count:2})}
+  : upstream(url, init);
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+const cue = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1];
+
+// Given: the store cannot be written.
+persisted = false;
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+const unwritable = cue();
+// The box, because the cue is only honest if the words are where it says.
+const keptDraft = nextCockpitHeldDrafts.get("held:codex:focus-1:output");
+
+// And: a run where it can.
+persisted = true;
+type("output", "Six screenshots again");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({unwritable, keptDraft, written: cue(),
+  clearedDraft: nextCockpitHeldDrafts.has("held:codex:focus-1:output")}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        # The wording says what already happened rather than what will. Codex
+        # walked this on the re-check: the handler calls `refreshNext()` on
+        # the line after the cue, and every collection reloads the store from
+        # disk, so the refresh the old sentence warned about had already run
+        # by the time the reader could read the warning.
+        self.assertEqual(
+            "Not stored. The store could not be written, so the refresh has already "
+            "dropped these words, and they are still in the box.",
+            out["unwritable"],
+        )
+        self.assertEqual("Six screenshots", out["keptDraft"])
+        self.assertEqual("Saved as a new revision.", out["written"])
+        self.assertFalse(out["clearedDraft"])
+
+    def test_the_saved_cue_expires_and_the_map_stays_bounded(self) -> None:
+        # Finding R. The cue was unstamped, so it survived every redraw and a
+        # navigation away and back: a reader returning hours later read
+        # "Saved as a new revision." as though they had just pressed it.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const key = "held:codex:focus-1:goal";
+const cue = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1];
+
+nextCockpitHeldMark(key, "saved");
+renderNext();
+const fresh = cue();
+
+// Wind the stamp back past the window the row controls next door use.
+const held = nextCockpitHeldStates.get(key);
+nextCockpitHeldStates.set(key, {kind: held.kind, at: held.at - NEXT_CONTROL_STATE_TTL_MS - 1});
+renderNext();
+const stale = cue();
+
+// And the map is bounded, like every other module-level map here.
+for(let n = 0; n < 40; n++) nextCockpitHeldMark(`held:codex:focus-1:k${n}`, "saved");
+console.log(JSON.stringify({fresh, stale: stale === undefined ? null : stale,
+  size: nextCockpitHeldStates.size, ttl: NEXT_CONTROL_STATE_TTL_MS}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual("Saved as a new revision.", out["fresh"])
+        self.assertIsNone(out["stale"])
+        self.assertEqual(30_000, out["ttl"])
+        self.assertLessEqual(out["size"], 16)
+
+    def test_a_draft_typed_while_the_save_was_open_is_not_reverted(self) -> None:
+        # Finding raised by Codex. The success handler dropped the draft
+        # unconditionally, so a reader who kept typing watched their newer
+        # instruction be replaced by the one they had just sent.
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+let release;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => {
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  await new Promise(resolve => { release = resolve; });
+  return {ok:true, status:200, json: async () =>
+    ({ok:true, persisted:true, revision:2, revision_count:2})};
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const input = () => controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const type = value => { const box = input(); box.value = value; __fire("input", {target:box}); };
+
+// Given: the reader saves, then keeps typing while the request is open.
+type("Six screenshots");
+await __settle();
+__fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "output"),
+  preventDefault(){}});
+type("Six screenshots, one per screen");
+
+// When: the save lands.
+release();
+await __settle();
+console.log(JSON.stringify({
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+}));
+"""
+        )
+
+        # Then: the newer instruction stands.
+        assert isinstance(out, dict)
+        self.assertEqual("Six screenshots, one per screen", out["draft"])
+
+    def test_the_revision_line_never_prints_an_impossible_pair(self) -> None:
+        """Finding B, raised by all three harnesses.
+
+        `revision` is a save counter that keeps climbing so a dropped revision
+        reads as dropped; `revision_count` is how many the store's bound keeps.
+        Read as "N of M" the pair goes impossible the moment they diverge.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+const lines = () => {
+  const html = __els.app.innerHTML;
+  return {
+    header: (html.match(/class="next-cockpit-held-revision">([^<]*)</) || [])[1],
+    rows: [...html.matchAll(/class="next-project-goal-source">([^<]*)</g)].map(m => m[1]),
+  };
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const within = lines();
+__dashboard.sessions[0].annotation_revision = 20;
+__dashboard.sessions[0].annotation_revision_count = 16;
+renderNext();
+const past = lines();
+console.log(JSON.stringify({within, past}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        # The reader's words carry their own time now, so the typed row and
+        # the derived row beside it can be put in order.
+        self.assertRegex(out["within"]["header"], r"^revision 2 of 2 \u00b7 typed \d+[smhd]")
+        self.assertRegex(
+            out["past"]["header"],
+            r"^revision 20, 16 kept \u00b7 typed \d+[smhd].* \u00b7 older revisions dropped$",
+        )
+        # And the same sentence wherever it renders, not three spellings.
+        for line in out["past"]["rows"]:
+            with self.subTest(row=line):
+                self.assertNotIn(" of 16", line)
+
+    def test_an_absence_reason_gives_way_to_what_is_being_typed(self) -> None:
+        # The sentence answers "why is this empty", and it read the server
+        # value alone, so "No goal typed for this session." rendered directly
+        # under the sentence the reader was in the middle of writing.
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_binding_why = "Bound by an eight-character prefix.";
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const empty = __els.app.innerHTML;
+const box = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
+box.value = "Ship the cockpit";
+__fire("input", {target:box});
+renderNext();
+console.log(JSON.stringify({
+  emptyShowsReason: empty.includes("No goal typed for this session."),
+  // The binding caveat is a claim about words. With none typed there are none.
+  emptyShowsBinding: empty.includes("eight-character prefix"),
+  // Rendered and hidden, not omitted: a keystroke does not redraw, so the
+  // paragraph has to be an element the input handler can reach.
+  typedHidesReason: /<p class="next-cockpit-held-absent" [^>]*data-next-cockpit-held-absent="goal" hidden>/
+    .test(__els.app.innerHTML),
+  typedShowsOtherReason: /data-next-cockpit-held-absent="output">No expected output typed\\./
+    .test(__els.app.innerHTML),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertTrue(out["emptyShowsReason"])
+        self.assertFalse(out["emptyShowsBinding"])
+        self.assertTrue(out["typedHidesReason"])
+        # The other field is still empty, so its reason stays.
+        self.assertTrue(out["typedShowsOtherReason"])
+
+    def test_the_work_evidence_keeps_each_entry_type_and_states_its_limit(self) -> None:
+        """DRC-4509. What the record lets a reader inspect, beside their words.
+
+        No judgement and no model: the rows are the payload's own facts with
+        the payload's own type strings, and the reader makes the comparison.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const block = html.slice(html.indexOf('data-next-cockpit-work'));
+console.log(JSON.stringify({
+  rows: [...block.matchAll(/data-next-cockpit-work-type="([^"]+)"/g)].map(m => m[1]),
+  sources: [...block.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  limit: (block.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
+  heading: html.includes("OBSERVED RECORD"),
+  mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then: the fact's own type, never a relabelling. Nothing here is
+        # called a decision, because none of these sources records one.
+        assert isinstance(out, dict)
+        self.assertTrue(out["heading"])
+        self.assertEqual(["user_message", "prepared_dispatch", "user_message"], out["rows"])
+        # The heading names the record, and this line says what is in it: on
+        # Claude and Codex every entry can be a direction the reader gave, and
+        # the old WORK EVIDENCE heading read those back as the agent's work.
+        self.assertEqual(
+            "3 entries · 2 directions you gave · 1 observed of what it did.", out["mix"]
+        )
+        self.assertEqual(
+            ["root transcript · exact", "dispatch artifact · exact", "root transcript · exact"],
+            out["sources"],
+        )
+        # The limit is unconditional on every harness but Pi, and it is the
+        # half a reader cannot infer: an absent row reads as "no work" unless
+        # the page says the path that would have found it was never taken.
+        self.assertEqual(
+            "Codex publishes no demonstrated work results. Cargento reads those "
+            "on Pi alone, so nothing above is an inspected file, test or "
+            "deliverable.",
+            out["limit"],
+        )
+
+    def test_the_absence_says_which_absence_it_is(self) -> None:
+        """Finding C, the review's only blocker, raised by Codex and two lenses.
+
+        "No entry in the observed record names this session" is a claim ABOUT
+        a record. The block printed it while the fetch was in flight, after
+        the fetch had failed, and for a session the server said in the same
+        payload it had not scanned. Three different facts wearing one
+        sentence, and the least true of them read as the most reassuring.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+const absence = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-work-absent">([^<]*)</) || [])[1];
+const route = () => navigateNext({view:"project", project:"cargento",
+  focus:"claude:claude-idle", tab:"held-to"});
+
+// Given: the project context has not come back yet.
+const contexts = new Map(nextCockpitContexts);
+nextCockpitContexts.clear();
+route();
+renderNext();
+const unread = absence();
+
+// And: it came back an error.
+nextCockpitContexts.clear();
+for(const [key] of contexts) nextCockpitContexts.set(key, {data:null, revision:1, error:true});
+renderNext();
+const failed = absence();
+
+/* And: it came back, but the scan that produces these facts did not reach
+   this session. That is `sources.work.omitted`, which names the sessions
+   `_analysis_context_sessions` bounded out at MAX_PROJECT_OBSERVERS.
+
+   It is NOT `command_attention_coverage`, which this test set and the block
+   read for one round of the review: that is a separate sweep over active
+   sessions' final output, bounded at 64 rather than 3, so the state resolved
+   to "empty" for exactly the sessions the sentence was written for. Codex
+   caught it on the verification round by omitting three real sessions and
+   watching the board still say the record named nothing. */
+nextCockpitContexts.clear();
+for(const [key, entry] of contexts){
+  const data = JSON.parse(JSON.stringify(entry.data));
+  data.sources = {observer:{live:3}, work:{omitted:[
+    {harness:"claude", sid:"claude-idle"}, {harness:"pi", sid:"pi-idle"}]}};
+  nextCockpitContexts.set(key, {data, revision:entry.revision});
+}
+renderNext();
+const partial = absence();
+
+// And: it came back complete, and really names nothing.
+nextCockpitContexts.clear();
+for(const [key, entry] of contexts) nextCockpitContexts.set(key, entry);
+renderNext();
+console.log(JSON.stringify({unread, failed, partial, empty: absence()}));
+"""
+        )
+
+        # Then: four different facts, four different sentences.
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "The observed record for this session has not been read yet.", out["unread"]
+        )
+        self.assertEqual(
+            "The observed record could not be read, so nothing here says what this "
+            "session has been doing.",
+            out["failed"],
+        )
+        self.assertEqual(
+            "This session was outside the observed-record scan, which covered 3 of the "
+            "sessions in this project and left 2 out. Its record is unread rather than empty.",
+            out["partial"],
+        )
+        self.assertEqual("No entry in the observed record names this session.", out["empty"])
+        self.assertEqual(4, len({out["unread"], out["failed"], out["partial"], out["empty"]}))
+
+    def test_a_model_paraphrase_does_not_wear_the_register_of_a_published_line(self) -> None:
+        # Finding I, raised by Codex and a lens. `actor_claim` is the string
+        # the runtime computes to say who derived a snapshot, and making it
+        # honest was the first fix on this branch. Dropping it at the render
+        # undid that.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+// A real payload stamps `actor_claim` on every fact, and on most types it IS
+// the evidence source. Measured on a live board: every `user_message` carried
+// actor_claim === evidence.source, and appending it printed the clause twice.
+for(const fact of __semantic.facts){
+  fact.actor_claim = (fact.evidence || {}).source || "";
+}
+__semantic.facts.push({fact_id:"snap", at:106, type:"observer_snapshot",
+  summary:"The session appears to be capturing screens",
+  actor_claim:"model-derived observer snapshot", scope:"session",
+  source_session:{harness:"codex", sid:"focus-1"},
+  evidence:{source:"observer sidecar", confidence:"derived"}});
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  derived: (html.match(/class="next-cockpit-work-derived">([^<]*)</) || [])[1],
+  claimShown: html.includes("model-derived observer snapshot"),
+  // A claim the source line already carries is not repeated beside it.
+  sources: [...html.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  // A published line keeps the mono register beside it.
+  published: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
+  mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual("The session appears to be capturing screens", out["derived"])
+        self.assertTrue(out["claimShown"])
+        for line in out["sources"]:
+            with self.subTest(source=line):
+                halves = line.split(" · ")
+                self.assertEqual(len(halves), len(set(halves)), "a repeated clause")
+        # A published line keeps mono, and it is not the paraphrase.
+        self.assertTrue(out["published"])
+        self.assertNotEqual(out["derived"], out["published"])
+        self.assertIn("1 model-derived", out["mix"])
+
+    def test_a_long_record_is_bounded_and_says_what_it_left_out(self) -> None:
+        # Measured against a real session: 26 facts in one project, 7 naming
+        # one session after eleven hours, and nothing upstream caps them. A
+        # tab that grows without limit is one nobody scrolls, and a cap nobody
+        # is told about reads as the whole record.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+for(let n = 0; n < 40; n++){
+  __semantic.facts.push({fact_id:`bulk-${n}`, at:200 + n, type:"user_message",
+    summary:`Direction ${n}`, source_session:{harness:"codex", sid:"focus-1"},
+    evidence:{source:"root transcript", confidence:"exact"}});
+}
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  rows: (html.match(/data-next-cockpit-work-type=/g) || []).length,
+  // Oldest first inside the window, so the rows read forward.
+  first: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
+  last: [...html.matchAll(/class="next-cockpit-work-summary">([^<]*)</g)].pop()[1],
+  dropped: (html.match(/class="next-cockpit-work-dropped">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(20, out["rows"])
+        self.assertEqual("Direction 20", out["first"])
+        self.assertEqual("Direction 39", out["last"])
+        self.assertEqual("Showing the 20 most recent of 43 observed entries.", out["dropped"])
+
+    def test_a_session_the_record_says_nothing_about_says_so(self) -> None:
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+// Given: a session no semantic fact names.
+navigateNext({view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  rows: (html.match(/data-next-cockpit-work-type=/g) || []).length,
+  absent: (html.match(/class="next-cockpit-work-absent">([^<]*)</) || [])[1],
+  limit: (html.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["rows"])
+        self.assertEqual("No entry in the observed record names this session.", out["absent"])
+        self.assertIn("Claude publishes no demonstrated work results.", out["limit"])
+
+    def test_saving_sends_only_the_field_that_changed_and_keeps_a_refusal(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + """
+const posts = [];
+let refuse = false;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => {
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  posts.push(JSON.parse(init.body));
+  // The shape `/api/annotate` actually answers with, not one invented here:
+  // an earlier version of this stub agreed with the page rather than with the
+  // server, and the page was reading a key the server never sends.
+  return refuse ? {ok:false, status:503, json: async () => ({})}
+    : {ok:true, status:200, json: async () =>
+      ({ok:true, persisted:true, revision:3, revision_count:3})};
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+
+// When: type into Expected Output alone and save it.
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+
+// And: a save the server refuses.
+refuse = true;
+type("goal", "A different goal");
+await __settle();
+save("goal");
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({posts,
+  kept: html.includes("A different goal"),
+  cue: html.includes("Not saved. The server refused the write"),
+  stillOffersSave: (html.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length}));
+"""
+        )
+
+        # Then: the untouched field goes as null, which is "leave it alone" at
+        # the endpoint, so a stale draft of one cannot overwrite the other.
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {
+                    "harness": "codex",
+                    "sid": "focus-1",
+                    "goal": None,
+                    "output": "Six screenshots",
+                },
+                {
+                    "harness": "codex",
+                    "sid": "focus-1",
+                    "goal": "A different goal",
+                    "output": None,
+                },
+            ],
+            out["posts"],
+        )
+        # A refused write keeps what was typed. Losing it to report the failure
+        # is the one outcome worse than the failure.
+        self.assertTrue(out["kept"])
+        self.assertTrue(out["cue"])
+        self.assertEqual(1, out["stillOffersSave"])
+
+    def test_the_reading_has_three_states_and_the_control_waits_on_a_check(self) -> None:
+        """DRC-4511. Nothing typed, the model off, and the offer itself."""
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.reading_check = "not-run";
+const read = () => {
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('class="next-cockpit-reading"'));
+  return {
+    text: (block.match(/class="next-cockpit-reading-why">([^<]*)</) || [])[1],
+    control: block.includes('data-next-cockpit-action="reading-ask"'),
+    disabled: /data-next-cockpit-action="reading-ask"[^>]*disabled/.test(block),
+    departures: html.includes("DEPARTURES RAISED TO YOU"),
+  };
+};
+
+// Given: nothing typed.
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const empty = read();
+
+// And: words typed, with the observer model unread for this project.
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+
+renderNext();
+const unread = read();
+
+// And: the model enabled, which is the offer.
+const key = nextCockpitContextKey(nextProjectGroups().find(g => g.label === "cargento"),
+  nextCockpitFocusedSession(nextProjectGroups().find(g => g.label === "cargento")));
+const entry = nextCockpitContexts.get(key);
+entry.data = Object.assign({}, entry.data, {observer_model:{enabled:true, disclosure:"x"}});
+renderNext();
+const offered = read();
+
+// And: the check recorded as passed, which is the only thing that enables it.
+__dashboard.reading_check = "passed";
+renderNext();
+const enabled = read();
+console.log(JSON.stringify({empty, unread, offered, enabled}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "Nothing has been typed for this session, so there is nothing to read it against.",
+            out["empty"]["text"],
+        )
+        self.assertFalse(out["empty"]["control"])
+        self.assertIn("Observer model availability has not been read", out["unread"]["text"])
+        self.assertFalse(out["unread"]["control"])
+        # The offer states what a reading may and may not read, before the
+        # control rather than after it.
+        self.assertIn("never a verification that the work was done", out["offered"]["text"])
+        self.assertTrue(out["offered"]["control"])
+        self.assertTrue(out["offered"]["disabled"])
+        # Enablement reads the recorded result, not a constant.
+        self.assertTrue(out["enabled"]["control"])
+        self.assertFalse(out["enabled"]["disabled"])
+        # The departures block renders whether or not a reading exists. It
+        # carried the DEC-16 sentence and the fact that nothing was raised,
+        # and both were reachable only through a reading nothing produces, so
+        # journey step 4 had no surface at all.
+        self.assertTrue(out["offered"]["departures"])
+        self.assertTrue(out["empty"]["departures"])
+
+    def test_the_block_names_the_session_its_words_are_bound_to(self) -> None:
+        # Two sessions publishing one title are indistinguishable in the scope
+        # rail, and this block said nothing about which of them it was binding
+        # to. The harness and session id are what the store keys on.
+        out = self.run_fixture(
+            self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+console.log(JSON.stringify({bound: (__els.app.innerHTML
+  .match(/class="next-cockpit-held-bound">([^<]*)</) || [])[1]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("codex:focus-1", out["bound"])
+
+    def test_how_it_landed_draws_the_two_axes_the_derivation_computes(self) -> None:
+        """Finding E, raised by all three harnesses.
+
+        Journey step 3 turns on whether Cargento has evidence the session
+        ended. `nextObservedLanding` derived it and nothing consumed it, so a
+        reader in this tab could not see whether it did.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + r"""
+const read = () => {
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('class="next-cockpit-landed"'));
+  return {
+    cards: [...block.matchAll(/landed-label">([^<]*)<\/span><span class="([^"]*)">([^<]*)</g)]
+      .map(m => [m[1], m[3], m[2].includes("--absent")]),
+    note: (block.match(/class="next-cockpit-landed-note">([^<]*)</) || [])[1],
+    axes: block.includes("two axes, read separately"),
+    provisional: html.includes("This covers only the work so far"),
+  };
+};
+
+// Given: a session still running.
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const running = read();
+
+// And: the same session, observed to have ended with uncommitted work.
+__dashboard.sessions[0].ended_at = 104;
+__dashboard.sessions[0].dirty = true;
+__dashboard.sessions[0].changed = 3;
+renderNext();
+console.log(JSON.stringify({running, ended: read()}));
+"""
+        )
+
+        # Then: two cards, never one verdict, and the end axis moves with the
+        # evidence while the claim axis does not follow it.
+        assert isinstance(out, dict)
+        self.assertTrue(out["running"]["axes"])
+        self.assertEqual(
+            [
+                ["END EVIDENCE", "No stop or end observed while the session is running", True],
+                ["WHO CLAIMS IT FINISHED", "Nothing has claimed this session finished", True],
+            ],
+            out["running"]["cards"],
+        )
+        self.assertEqual(
+            [
+                ["END EVIDENCE", "A session end was observed", False],
+                ["WHO CLAIMS IT FINISHED", "The agent reported it finished", False],
+            ],
+            out["ended"]["cards"],
+        )
+        # The independent-evidence limit rides with the claim card.
+        self.assertIn("3 changed entries were observed", out["ended"]["note"])
+
+    def test_a_reading_before_the_end_says_what_it_covers(self) -> None:
+        # Journey step 3: "If it offers one earlier at your request, it says
+        # that this covers only the work so far." Nothing said it, anywhere.
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[0].annotation_assessment = {revision_read:1,
+  scope:"mid-flight",
+  scope_text:"This covers only the work so far. The session is still running, so nothing " +
+    "here is a reading of how it ended.",
+  criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]}}};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const running = __els.app.innerHTML.includes("This covers only the work so far");
+__dashboard.sessions[0].ended_at = 104;
+renderNext();
+console.log(JSON.stringify({running, ended:
+  __els.app.innerHTML.includes("This covers only the work so far")}));
+"""
+        )
+
+        # Then: said while it runs, and STILL said once the session ends,
+        # because the sentence is the reading's own and a reading describes
+        # the moment it was taken. Keying it on the live row meant a stored
+        # mid-flight reading silently started claiming to cover an ending it
+        # never saw, the instant the session stopped.
+        assert isinstance(out, dict)
+        self.assertTrue(out["running"])
+        self.assertTrue(out["ended"])
+
+    def test_a_reading_that_read_an_older_revision_says_so(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = 2;
+__dashboard.sessions[0].annotation_revision_count = 2;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+// Settled, so the baseline block is closed and this test measures the stale
+// line rather than the suppression. Without it the fixture's own user_message
+// facts at 102 and 104 are later directions against an annotation stamped 100,
+// and the departure is correctly demoted - which is a different test's job.
+__dashboard.sessions[0].annotation_settled_at = 300;
+__dashboard.sessions[0].annotation_settled_through = 300;
+__dashboard.sessions[0].annotation_settled_revision = 2;
+// Not a published field: nothing produces a reading, so the backend declares
+// none and the renderer reads whatever a producer would put here.
+__dashboard.sessions[0].annotation_assessment = {
+  revision_read:1, stamp:"observer model · consented at 13:36",
+  cutoff:"Evidence stops at 13:22.",
+  criteria:{goal:{result:"departure", detail:"Two turns edited the board.", cites:["fo-a"]}}
+};
+
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  stale: (html.match(/class="next-cockpit-reading-stale">([^<]*)</) || [])[1],
+  stamp: (html.match(/class="next-cockpit-reading-stamp">([^<]*)</) || [])[1],
+  stamps: (html.match(/class="next-cockpit-reading-stamp"/g) || []).length,
+  result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1],
+  departures: html.includes("DEPARTURES RAISED TO YOU"),
+  cutoff: html.includes("Evidence stops at 13:22."),
+}));
+"""
+        )
+
+        # Then
+        assert isinstance(out, dict)
+        self.assertEqual(
+            "This reading read revision 1. Revision 2 is current, so it does not describe "
+            "what you are asking for now.",
+            out["stale"],
+        )
+        # One stamp, in the header, rather than one per block.
+        self.assertEqual(1, out["stamps"])
+        self.assertEqual("observer model · consented at 13:36", out["stamp"])
+        self.assertEqual("departure", out["result"])
+        self.assertTrue(out["departures"])
+        self.assertTrue(out["cutoff"])
+
+    def test_no_field_is_offered_when_the_store_is_off(self) -> None:
+        out = self.run_fixture(
+            """
+// Given: --no-annotations, so the payload carries no capability at all.
+delete __dashboard.annotate;
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  tab: html.includes('data-arg="held-to"'),
+  inputs: (html.match(/data-next-cockpit-held-key/g) || []).length,
+  reason: html.includes("Annotations are off for this run"),
+}));
+"""
+        )
+
+        # Then: the tab still parses from a bookmarked link, and it carries
+        # the reason instead of a field whose every save would answer 503.
+        assert isinstance(out, dict)
+        self.assertTrue(out["tab"])
+        self.assertEqual(0, out["inputs"])
+        self.assertTrue(out["reason"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitReadingShapeTest(NextPageJsHarness):
+    """DEC-17's seven rules, one case each (DRC-4511 AC4).
+
+    Asserted against source-shaped fixtures rather than against expected
+    judgements, because there is no producer to judge and DEC-17 refuses a
+    rubric validated on fixtures the same pass wrote. What these hold is that
+    the three worst outputs cannot be rendered: the word "met", a departure
+    citing nothing, and a deliverable claim on a harness with no work
+    evidence.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ENTRIES = """
+const entries = [
+  {id:"u1", type:"user_message", by:"", source:"root transcript · exact"},
+  {id:"a1", type:"result", by:"", source:"dispatch artifact · exact"},
+  {id:"g1", type:"gate_decision", by:"person:captain", source:"entity gate · exact"},
+  {id:"empty", type:"", by:"", source:""}
+];
+const annotation = {goal:"do not change the board", output:"six screenshots"};
+const shape = (criteria, limit) => nextCockpitReadingShape({criteria}, annotation, entries,
+  limit || "");
+const results = (criteria, limit) => Object.fromEntries(
+  shape(criteria, limit).criteria.map(row => [row.key, row.result]));
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_rule_1_a_result_outside_the_closed_set_becomes_not_verifiable(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  met: results({goal:{result:"met", cites:["u1"]}, output:{result:"met", cites:["u1"]}}),
+  invented: results({goal:{result:"mostly on track", cites:["u1"]}}),
+  closed: NEXT_READING_RESULTS,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["met"])
+        self.assertEqual(unverifiable, out["invented"]["goal"])
+        self.assertEqual(
+            ["departure", "consistent with the evidence read", unverifiable], out["closed"]
+        )
+
+    def test_rule_2_absent_or_unparseable_output_falls_to_not_verifiable(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  missing: results({}),
+  garbage: results({goal:"a string, not a row", output:[]}),
+  noReading: nextCockpitReadingShape(null, annotation, entries, "").criteria.map(r => r.result),
+  why: shape({}).criteria[0].why,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["missing"])
+        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["garbage"])
+        self.assertEqual([unverifiable, unverifiable], out["noReading"])
+        self.assertEqual(
+            "The reading did not return a usable result for this constraint.", out["why"]
+        )
+
+    def test_rule_3_a_departure_needs_a_citation_that_resolves(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  none: results({goal:{result:"departure", detail:"It drifted."}}),
+  unknownId: results({goal:{result:"departure", cites:["nothing-here"]}}),
+  // An entry the page holds but that names no type or source is not a
+  // resolvable citation either.
+  blankEntry: results({goal:{result:"departure", cites:["empty"]}}),
+  resolvable: results({goal:{result:"departure", cites:["u1"]}}),
+  // A `consistent` resting on nothing is demoted by the same rule.
+  emptyConsistent: results({goal:{result:"consistent with the evidence read"}}),
+  why: shape({goal:{result:"departure"}}).criteria[0].why,
+  departures: shape({goal:{result:"departure", cites:["u1"]}}).departures.length,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual(unverifiable, out["none"]["goal"])
+        self.assertEqual(unverifiable, out["unknownId"]["goal"])
+        self.assertEqual(unverifiable, out["blankEntry"]["goal"])
+        self.assertEqual("departure", out["resolvable"]["goal"])
+        self.assertEqual(unverifiable, out["emptyConsistent"]["goal"])
+        self.assertEqual(
+            "Nothing resolvable was cited, so there is no entry to read this against.",
+            out["why"],
+        )
+        self.assertEqual(1, out["departures"])
+
+    def test_a_reading_reports_the_revision_it_read_not_the_one_typed_since(self) -> None:
+        """Finding F, raised by Antigravity.
+
+        The shape filtered and clauseed on the CURRENT annotation. A reading
+        of revision 1 therefore displayed revision 2's text as the clause it
+        judged, and a constraint cleared since dropped its row and its
+        departure with it, after which the block rendered "The reading raised
+        no departure from the revision it read" about a revision whose
+        departure had just been deleted.
+        """
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+// A reading of revision 1 that found a departure on the expected output.
+// `a1` and not `u1`: an Expected Output verdict needs an entry that
+// DEMONSTRATES work since rule 7 was re-keyed, and the reader's own request
+// is not one. This test is about clauses and revisions, so it cites the
+// entry that lets it be about those.
+const reading = {revision_read:1, criteria:{
+  output:{result:"departure", clause:"six screenshots", detail:"Three exist.", cites:["a1"]}}};
+// Revision 2 cleared that field and changed the goal.
+const now = {goal:"a different goal", output:"", revision:2};
+const read = nextCockpitReadingShape(reading, now, entries, "");
+const row = key => read.criteria.find(candidate => candidate.key === key);
+console.log(JSON.stringify({
+  keys: read.criteria.map(candidate => candidate.key),
+  clause: row("output").clause,
+  result: row("output").result,
+  departures: read.departures.length,
+  // The goal row has no entry in this reading and its clause must not be
+  // today's text presented as what a past reading judged.
+  goalClause: row("goal").clause,
+  goalClauseKnown: row("goal").clauseKnown,
+}));
+"""
+        )
+
+        # Then: the cleared constraint keeps its row, its clause and its
+        # departure, all as the reading read them.
+        assert isinstance(out, dict)
+        self.assertIn("output", out["keys"])
+        self.assertEqual("six screenshots", out["clause"])
+        self.assertEqual("departure", out["result"])
+        self.assertEqual(1, out["departures"])
+        # And a constraint the reading did not carry does not borrow today's
+        # words: that would be the historical reading describing the current
+        # request, which the amber line beside it exists to deny.
+        self.assertFalse(out["goalClauseKnown"])
+        self.assertEqual(
+            "the words of the revision this reading read are not retained", out["goalClause"]
+        )
+
+    def test_rule_4_the_word_met_cannot_reach_the_page(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+// Every reachable result string, rendered, plus a producer trying to say met.
+const html = [
+  {goal:{result:"met", cites:["u1"]}},
+  {goal:{result:"departure", detail:"met the wrong thing", cites:["u1"]}},
+  // `a1`: a `consistent` citing only the reader's own request is circular
+  // and demotes now. This case exists to show the third result string
+  // rendering, so it cites something that corroborates.
+  {goal:{result:"consistent with the evidence read", cites:["a1"]}},
+].map(criteria => shape(criteria).criteria.map(nextCockpitReadingCriterionRow).join("")).join("");
+console.log(JSON.stringify({
+  // The detail is the producer's prose and is escaped, not filtered: the rule
+  // is about the RESULT, which is only ever one of three constants.
+  resultStrings: [...html.matchAll(/class="next-cockpit-reading-result">([^<]*)</g)]
+    .map(m => m[1]),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        # Two rows per case, goal then output. The output row has no producer
+        # entry in any of the three, so it lands on the fallback each time.
+        unverifiable = "not verifiable from available evidence"
+        self.assertEqual(
+            [
+                unverifiable,
+                unverifiable,
+                "departure",
+                unverifiable,
+                "consistent with the evidence read",
+                unverifiable,
+            ],
+            out["resultStrings"],
+        )
+        for value in out["resultStrings"]:
+            with self.subTest(result=value):
+                self.assertNotEqual("met", value)
+
+    def test_rule_5_a_stated_limit_is_never_a_consistent(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const limit = nextCockpitWorkEvidenceLimit("codex");
+const rows = shape({goal:{result:"consistent with the evidence read", cites:["a1"]},
+  output:{result:"departure", cites:["a1"]}}, limit).criteria;
+console.log(JSON.stringify({
+  limited: Object.fromEntries(rows.map(row => [row.key, row.result])),
+  // Mutually exclusive per row: it states its evidence or states its limit.
+  evidence: Object.fromEntries(rows.map(row => [row.key, row.evidence])),
+  limits: Object.fromEntries(rows.map(row => [row.key, row.limit])),
+  why: rows.find(row => row.key === "output").why,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        # The limit is what `_work_evidence` would have supplied, which is
+        # deliverables. It bears on Expected Output and not on Goal: a
+        # transcript is exactly the evidence a change of direction leaves.
+        self.assertEqual(
+            {"goal": "consistent with the evidence read", "output": unverifiable},
+            out["limited"],
+        )
+        self.assertEqual(
+            {"goal": ["result · dispatch artifact · exact"], "output": []}, out["evidence"]
+        )
+        self.assertEqual("", out["limits"]["goal"])
+        self.assertIn("publishes no demonstrated work results", out["limits"]["output"])
+        # The limit has its own row. Setting `why` to the same string printed
+        # the identical sentence twice, the second prefixed `limit ·`.
+        self.assertEqual("", out["why"])
+
+    def test_rule_6_the_two_constraints_stay_separate_and_name_themselves(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const one = nextCockpitReadingShape({criteria:{goal:{result:"departure", cites:["u1"]}}},
+  {goal:"do not change the board", output:""}, entries, "");
+console.log(JSON.stringify({
+  both: shape({}).criteria.map(row => [row.key, row.label, row.clause]),
+  goalOnly: one.criteria.map(row => row.key),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                ["goal", "TYPED GOAL", "do not change the board"],
+                ["output", "EXPECTED OUTPUT", "six screenshots"],
+            ],
+            out["both"],
+        )
+        # A constraint nobody typed is not read, rather than read and passed.
+        self.assertEqual(["goal"], out["goalOnly"])
+
+    def test_rule_7_asks_whether_an_entry_shows_work_not_who_typed_it(self) -> None:
+        """Amended 2026-09-10: the test is demonstrated work, not authorship.
+
+        As written, rule 7 keyed the Expected Output verdict on WHO wrote a
+        cited entry, and that inverted its own reason. The reason is that
+        self-report is not evidence of a deliverable -- and a REQUEST is not
+        evidence of one either, so citing the reader's own words licensed a
+        verdict about her own deliverable while citing the actual work result
+        demoted. Seven adversaries found it; the captain re-keyed it.
+        """
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const shows = ["a1"];      // type `result`: an entry that demonstrates work
+const asked = ["u1"];      // the reader's own request
+const gate = ["g1"];       // a person's gate decision, but not work
+console.log(JSON.stringify({
+  outputOnWork: results({output:{result:"departure", cites:shows}}),
+  outputConsistentOnWork: results({output:{result:"consistent with the evidence read",
+    cites:shows}}),
+  outputOnRequest: results({output:{result:"departure", cites:asked}}),
+  outputOnGate: shape({output:{result:"departure", cites:gate}}).criteria
+    .find(row => row.key === "output").result,
+  // Goal keeps a departure on the agent's own narration.
+  goalOnAgent: results({goal:{result:"departure", cites:shows}}),
+  // A goal `consistent` resting only on the agent says so...
+  narration: shape({goal:{result:"consistent with the evidence read",
+    cites:shows}}).criteria[0].narration,
+  // ...and one resting only on the reader's own request is circular.
+  goalConsistentOnRequest: shape({goal:{result:"consistent with the evidence read",
+    cites:asked}}).criteria[0].result,
+  why: shape({output:{result:"departure", cites:asked}}).criteria
+    .find(row => row.key === "output").why,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        # An entry that shows work carries a verdict about the deliverable.
+        self.assertEqual("departure", out["outputOnWork"]["output"])
+        self.assertEqual(
+            "consistent with the evidence read", out["outputConsistentOnWork"]["output"]
+        )
+        # The reader's own request does not, whoever typed it, and neither
+        # does a person's gate decision: neither shows the thing exists.
+        self.assertEqual(unverifiable, out["outputOnRequest"]["output"])
+        self.assertEqual(unverifiable, out["outputOnGate"])
+        # Goal is unchanged: a stated change of direction is exactly what the
+        # agent's own account is good for.
+        self.assertEqual("departure", out["goalOnAgent"]["goal"])
+        self.assertEqual("Rests on the agent's own account alone.", out["narration"])
+        # But agreeing with the request is agreeing with yourself.
+        self.assertEqual(unverifiable, out["goalConsistentOnRequest"])
+
+
+class CockpitTabsAreOneDecisionTest(unittest.TestCase):
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    def test_the_tab_list_is_read_through_one_function(self) -> None:
+        stray = []
+        for name in ("next-boot.js", "next-cockpit.js"):
+            owner = ""
+            for number, line in enumerate(
+                (self.WEB / name).read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if line.startswith("function "):
+                    owner = line[len("function ") :].split("(", 1)[0]
+                if "NEXT_PROJECT_TABS" not in line:
+                    continue
+                # The declaration and the one reader are the whole allowance.
+                if line.startswith("const NEXT_PROJECT_TABS") or owner == "nextCockpitTabs":
+                    continue
+                stray.append(f"{name}:{number} ({owner or 'top level'})")
+        self.assertEqual([], stray, "these read the tab list instead of nextCockpitTabs")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitTabKeyboardWrapTest(NextPageJsHarness):
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    FOCUS_DOM = NextCockpitCompositionTest.FOCUS_DOM
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_wrap_reaches_exactly_the_tabs_the_nav_rendered(self) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + """
+// Given: the cockpit at project scope, and again with one session focused.
+const scopes = {};
+for(const focus of [null, "codex:focus-1", "codex:gone"]){
+  navigateNext({view:"project", project:"cargento", focus, tab:"now"});
+  await __settle();
+  const html = __els.app.innerHTML;
+  const start = html.indexOf('<nav class="next-cockpit-tabs"');
+  const rendered = start < 0 ? []
+    : [...html.slice(start).matchAll(/data-next-cockpit-action="tab" data-arg="([a-z-]+)"/g)]
+      .map(match => match[1]);
+
+  // When: walk right once per rendered tab, starting from the first.
+  const walked = [];
+  if(rendered.length){
+    controls.find(control => control.dataset.arg === rendered[0]).focus();
+    for(let step = 0; step < rendered.length; step++){
+      __fire("keydown", {target:document.activeElement, key:"ArrowRight", preventDefault(){}});
+      walked.push(nextRoute.tab || "now");
+    }
+  }
+  scopes[focus || "project"] = {rendered, walked};
+}
+console.log(JSON.stringify(scopes));
+"""
+        )
+
+        # Then: the walk visits every rendered tab in order and comes back.
+        assert isinstance(out, dict)
+        self.assertEqual(3, len(out))
+        for scope, seen in out.items():
+            with self.subTest(scope=scope):
+                rendered = seen["rendered"]
+                self.assertEqual(rendered[1:] + rendered[:1], seen["walked"])
+        # The two scopes no longer hold the same tabs, which is what the walk
+        # above exists to survive: `Held to` is session scope only, so a wrap
+        # computed over the project list would skip it on the reader's screen.
+        self.assertEqual(["now", "course", "decisions", "console"], out["project"]["rendered"])
+        self.assertEqual(
+            ["now", "course", "decisions", "console", "held-to"],
+            out["codex:focus-1"]["rendered"],
+        )
+        # A route whose focus names no session in the payload draws the stale
+        # filter surface instead of a cockpit, so it has no tabs to disagree
+        # about. Asserted rather than assumed: it is the reason the empty case
+        # above is legal.
+        self.assertEqual([], out["codex:gone"]["rendered"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitBaselineConflictTest(NextPageJsHarness):
+    """DRC-4508's baseline-conflict block, and the departure it suppresses.
+
+    The block DETECTS that a later direction exists and refuses to say whether
+    it conflicts. Deciding that is a reading of two prose strings, which DEC-15
+    refused and DEC-18 permits only behind preconditions that are not met, so
+    the reader settles it and the reading is demoted until they do.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    # The fixture's own facts: user_message fo-a at 104 and fo-b at 102 for
+    # codex:focus-1, so an annotation stamped 100 has two later directions and
+    # one stamped 200 has none.
+    def held(self, *, at: float, settled: str = "", assessment: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            f"""
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = {at};
+__dashboard.sessions[0].annotation_binding_why = "";
+{settled}
+{assessment}
+navigateNext({{view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"}});
+await __settle();
+const html = __els.app.innerHTML;
+const block = (html.match(
+  /<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({{
+  block,
+  rows: (block.match(/class="next-cockpit-conflict-row"/g) || []).length,
+  settle: (block.match(/data-arg="([0-9.]+)"/) || [])[1] || "",
+  result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1] || "",
+}}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    ASSESSMENT = """
+__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
+  goal:{result:"departure", detail:"It changed the board.", cites:["fo-a"]}}};
+"""
+
+    def test_nothing_typed_renders_no_block_at_all(self) -> None:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_at = null;
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+console.log(JSON.stringify({has: __els.app.innerHTML.includes("A LATER DIRECTION")}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # No baseline, so no question about one. It falls out of the layout
+        # rather than needing a rule.
+        self.assertFalse(out["has"])
+
+    def test_a_later_direction_is_counted_and_shown_without_being_judged(self) -> None:
+        out = self.held(at=100)
+
+        block = out["block"]
+        assert isinstance(block, str)
+        self.assertIn("2 directions you gave after you saved the words above", block)
+        self.assertEqual(2, out["rows"])
+        # Detected, not judged. The block must never claim the later direction
+        # conflicts, because nothing here can read that.
+        self.assertIn("Nothing here decides whether it changes what you are asking for", block)
+        # On the visible text, not the markup: the class names carry the word
+        # `conflict` and a reader never sees those. What the reader must never
+        # be told is that Cargento found one, because nothing here can read
+        # that.
+        visible = re.sub(r"<[^>]*>", " ", block).lower()
+        self.assertNotIn("conflict", visible)
+        # Both choices, and the honest note about the one that mints nothing.
+        self.assertIn("The baseline still applies", block)
+        self.assertIn("Retype the baseline", block)
+        self.assertIn("Retyping clears this only if the words change", block)
+
+    def test_the_settle_choice_carries_the_moment_the_reader_was_shown(self) -> None:
+        out = self.held(at=100)
+        # The newest candidate's own time, not the clock: the mark has to be
+        # the moment they actually looked at.
+        self.assertEqual("104", out["settle"])
+
+    def test_a_later_direction_demotes_a_departure_rather_than_filtering_it(self) -> None:
+        open_case = self.held(at=100, assessment=self.ASSESSMENT)
+        settled = self.held(
+            at=100,
+            assessment=self.ASSESSMENT,
+            settled="__dashboard.sessions[0].annotation_settled_through = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_revision = 1;\n",
+        )
+
+        # Demoted in the row, not filtered from the departures list: filtering
+        # would leave the word `departure` rendered above it, which is the
+        # drift verdict DRC-4511 forbids.
+        self.assertEqual("not verifiable from available evidence", open_case["result"])
+        self.assertEqual("departure", settled["result"])
+
+    def test_a_settled_baseline_says_when_and_against_which_revision(self) -> None:
+        out = self.held(
+            at=100,
+            settled="__dashboard.sessions[0].annotation_settled_through = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+            "__dashboard.sessions[0].annotation_settled_revision = 1;\n",
+        )
+
+        block = out["block"]
+        assert isinstance(block, str)
+        self.assertIn("You settled this", block)
+        self.assertIn("against revision 1", block)
+        # And it says the question can come back.
+        self.assertIn("A direction given after that will raise it again", block)
+
+    def test_nothing_said_since_is_not_the_same_as_nothing_read(self) -> None:
+        quiet = self.held(at=200)
+
+        block = quiet["block"]
+        assert isinstance(block, str)
+        self.assertIn("Nothing you have said since you saved these words", block)
+        self.assertNotIn("unknown, not none", block)
+
+    def test_an_unread_record_says_unknown_rather_than_none_and_still_demotes(self) -> None:
+        """The three-state distinction the record block already draws.
+
+        The block must not read an unread record as a quiet one. Checked here
+        because a reader is owed the difference, and because the review of this
+        design asked whether the two halves of the tab could disagree: the
+        block saying "unread" while the reading still carried a departure.
+
+        They cannot, and the reason is worth stating rather than assuming. It
+        is not this gate. With the context never fetched `entries` is empty, so
+        there are no candidates and the baseline gate stays shut; what demotes
+        the departure is DEC-17's rule 3, because a citation resolves against
+        the entries the page holds and there are none. The gate is for a record
+        that WAS read and holds a later direction. Two rules, one outcome, and
+        neither is doing the other's job.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
+  goal:{result:"departure", detail:"It changed the board.", cites:["fo-a"]}}};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+// The context never came back, which is the state the record block already
+// separates from an empty one.
+nextCockpitContexts.clear();
+renderNext();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  block: (html.match(/<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0],
+  result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1] || "",
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        block = out["block"]
+        assert isinstance(block, str)
+        self.assertIn("has not been read yet", block)
+        self.assertIn("unknown, not none", block)
+        # And the departure does not stand on a record nobody read.
+        self.assertEqual("not verifiable from available evidence", out["result"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitHeldReEntryTest(NextPageJsHarness):
+    """DRC-4509 AC4 and DRC-4511 AC3: the route exposed WITH its limits.
+
+    The route was always reachable. Its limits were stated in one place, the
+    Attention view's coverage disclosure, which a reader in the Held to tab is
+    not looking at. A raise control that silently does not render states no
+    limit at all, and on this tab a single session is the whole subject, so
+    rendering nothing reads as "no limit" rather than as "not this session".
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    # The capability is read through document.querySelector, not off a payload
+    # field, so a test that sets a field measures nothing. Copied from
+    # test_next_attention.FOCUS_META_PRELUDE.
+    FOCUS_ON = """
+document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
+  ? {getAttribute: name => (name === "content" ? "0a1b2c3d" : null)}
+  : null;
+"""
+
+    ANNOTATED = """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+"""
+
+    def render(self, extra: str, *, focus: str = "codex:focus-1") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.ANNOTATED
+            + extra
+            + "navigateNext({view:'project', project:'cargento', focus:"
+            + json.dumps(focus)
+            + ", tab:'held-to'});\n"
+            + """
+await __settle();
+const html = __els.app.innerHTML;
+const held = html.indexOf('class="next-cockpit-held"');
+const closes = html.indexOf("</section>", held);
+const at = html.indexOf('class="next-cockpit-held-reentry"');
+console.log(JSON.stringify({
+  note: (html.match(/class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/p>/) || [])[1] || "",
+  // Inside the WHAT YOU ASKED FOR section, not merely after its header.
+  // Asserted against that section's own closing tag, because "after the bound
+  // header" is also true of a paragraph that escaped the section entirely.
+  inside: at > held && at < closes,
+  offLine: NEXT_FOCUS_OFF_LINE,
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_reachable_terminal_says_so_and_says_what_a_raise_does_not_do(self) -> None:
+        out = self.render(
+            self.FOCUS_ON
+            + "__dashboard.sessions[0].focusable = true;\n"
+            + '__dashboard.sessions[0].resume_id = "abc123";\n'
+        )
+        note = out["note"]
+        assert isinstance(note, str)
+        self.assertTrue(out["inside"], "the note rendered outside the block it describes")
+        self.assertIn("Open this session", note)
+        # The route back, which is what the criterion's navigation check needs.
+        self.assertIn("#n=session:cargento:codex:focus-1", note)
+        # Keyboard focus here is a managed lane; an anchor without this loses
+        # focus on every redraw.
+        self.assertIn("cockpit-held-reentry", note)
+        # A raise is not a window manager, and the hedge matches the one the
+        # status line already uses after a raise is sent.
+        self.assertIn("its window may still be behind others", note)
+        self.assertIn("re-entry command for it is on the session page", note)
+
+    def test_no_reported_terminal_is_a_different_sentence_from_the_run_being_off(self) -> None:
+        absent = self.render(self.FOCUS_ON)
+        off = self.render("__dashboard.sessions[0].focusable = true;\n")
+
+        # Capability on, this session not focusable: about the session.
+        self.assertIn("No terminal was reported for this session", absent["note"])
+        self.assertNotIn("off for this run", absent["note"])
+        # No capability at all: about the run, in the words Attention uses.
+        self.assertIn(off["offLine"], off["note"])
+        self.assertNotIn("No terminal was reported", off["note"])
+        self.assertEqual("Terminal raise: off for this run.", off["offLine"])
+
+    def test_a_harness_with_no_resume_command_says_so_rather_than_saying_nothing(self) -> None:
+        # `pi` is not in NEXT_RESUME_COMMANDS; `codex` is, so an absent id
+        # there is a different fact. `nextResumeCommand` collapses both to "".
+        never = self.render(
+            self.FOCUS_ON + '__dashboard.sessions[0].harness = "pi";\n',
+            focus="pi:focus-1",
+        )
+        this_run = self.render(self.FOCUS_ON)
+
+        self.assertIn("publishes no re-entry command", never["note"])
+        self.assertIn("no usable id this run", this_run["note"])
+        self.assertNotIn("no usable id this run", never["note"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitRecheckFindingsTest(NextPageJsHarness):
+    """The defects Codex found on the verification round of the journey review.
+
+    Every one of these is a surface the review's own fixes created or exposed,
+    which is why they are held here rather than folded into the classes that
+    hold the nineteen: a fix that introduces a defect is the failure mode the
+    re-check exists to catch, and a test filed beside the original finding
+    would read as though the original had regressed.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_a_citation_resolves_against_every_entry_not_the_displayed_window(self) -> None:
+        """The display bound was silently a citation bound.
+
+        `nextCockpitWorkSource` slices to the newest rows for readability, and
+        the same slice was handed to the reading. A departure citing a fact
+        older than the window therefore stopped resolving as the session grew,
+        was demoted to `not verifiable`, and the block then printed "The
+        reading raised no departure from the revision it read" about a
+        departure the payload still held.
+        """
+        out = self.run_fixture(
+            """
+const old = {id:"cited-early", type:"user_message", by:"", source:"root transcript · exact"};
+const filler = Array.from({length: NEXT_COCKPIT_WORK_ROWS + 1}, (_, i) =>
+  ({id:`later-${i}`, type:"result", by:"", source:"dispatch artifact · exact"}));
+const all = [old, ...filler];
+const window = all.slice(-NEXT_COCKPIT_WORK_ROWS);
+const annotation = {goal:"do not change the board", output:"six screenshots"};
+const reading = {criteria:{goal:{result:"departure", detail:"It changed the board.",
+  cites:["cited-early"]}}};
+console.log(JSON.stringify({
+  windowed: nextCockpitReadingShape(reading, annotation, window, "").departures.length,
+  full: nextCockpitReadingShape(reading, annotation, all, "").departures.length,
+  // The window is genuinely smaller, so the test is not asserting on a slice
+  // that happens to hold everything.
+  windowHolds: window.some(entry => entry.id === "cited-early"),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertFalse(out["windowHolds"])
+        self.assertEqual(1, out["full"])
+        # The point of the fix is upstream of this function: the shape is
+        # correct for whatever it is given, and the caller must give it all.
+        self.assertEqual(0, out["windowed"])
+
+    def test_the_work_source_publishes_the_full_set_beside_the_displayed_one(self) -> None:
+        """The caller's half of the citation fix."""
+        out = self.run_fixture(
+            """
+const facts = Array.from({length: NEXT_COCKPIT_WORK_ROWS + 5}, (_, i) => ({
+  fact_id:`f-${i}`, at:100 + i, type:"result", summary:`row ${i}`,
+  source_session:{harness:"codex", sid:"focus-1"},
+  evidence:{source:"dispatch artifact", confidence:"exact"}}));
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const session = group.sessions.find(row => row.sid === "focus-1");
+nextCockpitContexts.set(nextCockpitContextKey(group, session),
+  {data:{semantic:{facts, projections:{}}}});
+const source = nextCockpitWorkSource(group, session);
+console.log(JSON.stringify({
+  shown: source.entries.length,
+  all: source.all.length,
+  total: source.total,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(20, out["shown"])
+        self.assertEqual(25, out["all"])
+        self.assertEqual(25, out["total"])
+
+    def test_the_rendered_tab_resolves_a_citation_older_than_the_window(self) -> None:
+        """The caller's half, walked the way a reader meets it.
+
+        The two halves fail independently: the shape can be correct for what
+        it is given while the tab hands it the twenty rows it draws, which is
+        what a session simply has to outgrow. So this renders the real tab
+        against a session with more facts than the window and a reading that
+        cites the oldest of them.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + """
+const older = Array.from({length: NEXT_COCKPIT_WORK_ROWS + 4}, (_, i) => ({
+  fact_id:`later-${i}`, at:200 + i, type:"result", summary:`row ${i}`,
+  source_session:{harness:"codex", sid:"focus-1"},
+  evidence:{source:"dispatch artifact", confidence:"exact"}}));
+__semantic.facts = [
+  {fact_id:"cited-early", at:1, type:"user_message", summary:"Do not change the board",
+   source_session:{harness:"codex", sid:"focus-1"},
+   evidence:{source:"root transcript", confidence:"exact"}},
+  ...older,
+];
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
+  goal:{result:"departure", detail:"It changed the board.", cites:["cited-early"]}}};
+await refreshNext();
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+await __settle();
+const html = __els.app.innerHTML;
+const departures = (html.match(
+  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({
+  departures,
+  // The cited fact really is outside the drawn window, or this proves nothing.
+  windowed: html.includes("Showing the 20 most recent of 25 observed entries."),
+  citedRowDrawn: html.includes("Zeta the earliest direction"),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["windowed"])
+        self.assertFalse(out["citedRowDrawn"])
+        self.assertIn("It changed the board.", out["departures"])
+        self.assertNotIn("raised no departure", out["departures"])
+
+    def test_a_turn_stop_withholds_a_reading_and_says_why(self) -> None:
+        """Replaces the qualifier test. The ruling changed underneath it.
+
+        The captain ruled on 2026-09-10 that an ending with no supported end
+        evidence gets NO reading at all -- not a provisional one. A turn stop
+        is not a session end, so the producer withholds and the page renders
+        the reason it chose from a closed set. This used to render a full
+        reading with "This covers only the work so far" appended, which is
+        exactly the provisional reading the ruling refuses.
+
+        A RUNNING session is a different thing and keeps its reading: it
+        claims no finality, so there is nothing to withhold.
+        """
+        out = self.run_fixture(
+            """
+const session = {harness:"codex", sid:"focus-1", state:"idle"};
+const model = {enabled:true};
+const entries = [{id:"u1", type:"user_message", by:"", source:"root transcript · exact"}];
+const withheld = {goal:"do not change the board", revision:1, reading_count:1,
+  reading_withheld:"A turn stop was observed and no session end was, so there is no end " +
+    "for a reading to rest on. Nothing partial is offered instead."};
+const html = nextCockpitReading(session, withheld, entries, model, null, false,
+  {state:"read", entries:entries});
+console.log(JSON.stringify({
+  html,
+  says: html.includes("no end for a reading to rest on"),
+  // No verdict of any kind: the result element is the only place the three
+  // sentences can appear.
+  results: (html.match(/class="next-cockpit-reading-result"/g) || []).length,
+  // The control stays on the page, so the reader can ask again.
+  control: html.includes('data-next-cockpit-action="reading-ask"'),
+  count: html.includes("1 reading asked for"),
+  // And the departures block says no reading was made, rather than that a
+  // reading raised nothing.
+  noReading: html.includes("No reading has been made"),
+  noDeparture: html.includes("raised no departure"),
+  // The landing axis is untouched: this narrows what the READING does and
+  // must not quietly rewrite what HOW IT LANDED says.
+  landing: {
+    stop: nextObservedLanding({state:"idle", harness:"codex"}, false, true),
+    end: nextObservedLanding({state:"idle", harness:"codex"}, true, false),
+  },
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["says"])
+        self.assertEqual(0, out["results"], "a withheld reading drew a verdict")
+        self.assertTrue(out["control"], "the reader cannot ask again")
+        self.assertTrue(out["count"], "the press that produced nothing was not counted")
+        self.assertTrue(out["noReading"])
+        self.assertFalse(out["noDeparture"], "a withheld reading claimed nothing departed")
+        self.assertTrue(out["landing"]["stop"]["endKnown"])
+        self.assertTrue(out["landing"]["end"]["endKnown"])
+
+    def test_a_derived_snapshot_of_the_goal_is_not_counted_as_observed_work(self) -> None:
+        """Finding S's other half, which the fix for it created.
+
+        `modelDerived` is `actor_claim` starting `model-derived`, and
+        `_OBSERVER_ACTOR_CLAIMS` publishes two other strings for the same kind
+        of row: a deterministic derivation and one whose derivation was never
+        recorded. Both are paraphrases of the goal, and both fell into the
+        bucket the line calls "observed of what it did".
+        """
+        out = self.run_fixture(
+            """
+const mix = entries => nextCockpitWorkMix(entries);
+console.log(JSON.stringify({
+  deterministic: mix([{type:"observer_snapshot", by:"",
+    actorClaim:"deterministically derived observer snapshot", modelDerived:false}]),
+  unrecorded: mix([{type:"observer_snapshot", by:"",
+    actorClaim:"observer snapshot, derivation not recorded", modelDerived:false}]),
+  model: mix([{type:"observer_snapshot", by:"",
+    actorClaim:"model-derived observer snapshot", modelDerived:true}]),
+  // A person's gate decision is a direction, and rule 7 already says so.
+  gate: mix([{type:"gate_decision", by:"person:captain", modelDerived:false}]),
+  work: mix([{type:"result", by:"", modelDerived:false}]),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        # The zero is stated rather than dropped: "0 observed of what it did"
+        # beside a count of directions is the sentence finding S asked for,
+        # and hiding it would put the reader back where they started.
+        for case in ("deterministic", "unrecorded", "model"):
+            with self.subTest(case=case):
+                self.assertIn("0 observed of what it did", out[case])
+        self.assertIn("derived summary of this session", out["deterministic"])
+        self.assertIn("derived summary of this session", out["unrecorded"])
+        self.assertIn("1 model-derived", out["model"])
+        self.assertIn("1 direction you gave", out["gate"])
+        self.assertIn("0 observed of what it did", out["gate"])
+        self.assertIn("1 observed of what it did", out["work"])
+
+    def test_the_board_explaining_a_missing_clause_does_not_wear_the_readers_register(
+        self,
+    ) -> None:
+        """The stylesheet states the rule this violated, two lines above it.
+
+        `.next-cockpit-reading-clause` is mono because it holds words a person
+        typed. The fallback sentence is the board saying those words were not
+        retained, and it was rendered into the same span, so the explanation
+        looked like the quotation it was standing in for. `clauseKnown` was
+        computed for exactly this and never read.
+        """
+        out = self.run_fixture(
+            """
+const row = clause => nextCockpitReadingCriterionRow(nextCockpitReadingCriterion(
+  "goal", "TYPED GOAL", clause, {result:"consistent with the evidence read", cites:["u1"]},
+  [{id:"u1", type:"user_message", by:"", source:"root transcript · exact"}], ""));
+console.log(JSON.stringify({
+  known: row("do not change the board"),
+  absent: row(""),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn('class="next-cockpit-reading-clause"', out["known"])
+        self.assertIn("do not change the board", out["known"])
+        self.assertIn("are not retained", out["absent"])
+        self.assertNotIn('class="next-cockpit-reading-clause"', out["absent"])
+        self.assertIn("next-cockpit-reading-clause-absent", out["absent"])
+
+    def test_a_reading_with_no_departure_still_states_its_cutoff(self) -> None:
+        """The cutoff was rendered inside a departure row and nowhere else.
+
+        A reading that raised nothing is exactly the one whose cutoff a reader
+        needs, because "nothing was raised" is only worth as much as the
+        evidence it was raised against.
+        """
+        out = self.run_fixture(
+            """
+const shape = departures => ({departures, cutoff:"read to 2026-09-10T04:00Z",
+  criteria:[], revisionRead:1, stamp:""});
+console.log(JSON.stringify({
+  none: nextCockpitDepartures(shape([])),
+  one: nextCockpitDepartures(shape([{label:"TYPED GOAL", clause:"c", clauseKnown:true,
+    detail:"It drifted.", result:"departure", evidence:["user_message · root transcript"]}])),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("read to 2026-09-10T04:00Z", out["none"])
+        self.assertIn("raised no departure", out["none"])
+        self.assertIn("read to 2026-09-10T04:00Z", out["one"])
+        # Once per block, not once per row: the cutoff is a property of the
+        # reading, and repeating it beside every departure said one fact twice.
+        self.assertEqual(1, out["one"].count("read to 2026-09-10T04:00Z"))
+
+    def test_two_sessions_a_reader_cannot_tell_apart_are_labelled_apart(self) -> None:
+        """Finding Q's remainder: the scope rail is how a reader reaches one.
+
+        Same harness, same state, same title renders byte-identical rows. The
+        session key is in the href and in a data attribute, neither of which
+        is on screen, so the reader picks one of two indistinguishable links
+        and finds out which by reading the tab that opens.
+        """
+        out = self.run_fixture(
+            """
+const group = {label:"cargento", sessions:[
+  {harness:"codex", sid:"twin-a", state:"working", title:"Shape project cockpit"},
+  {harness:"codex", sid:"twin-b", state:"working", title:"Shape project cockpit"},
+  {harness:"claude", sid:"alone", state:"idle", title:"Only one of these"}
+]};
+const html = nextCockpitScopeLinks(group, null);
+// Only what a reader can see: the href and the data attributes carry the
+// session key already, and asserting on those passes without the fix.
+const visible = html.replace(/<[^>]*>/g, "\\n");
+console.log(JSON.stringify({visible, rows: html.split("</a>").length - 1}));
+"""
+        )
+        assert isinstance(out, dict)
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertEqual(4, out["rows"])
+        self.assertIn("twin-a", visible)
+        self.assertIn("twin-b", visible)
+        # The session nothing can be confused with is not made noisier for it.
+        self.assertNotIn("alone", visible)
+
+    def test_the_absence_sentence_goes_as_soon_as_the_box_stops_being_empty(self) -> None:
+        """Finding L's remainder, in the one lane that does not redraw.
+
+        The renderer already drops "No expected output typed." once a draft
+        exists, and a comment above it says so. But a keystroke deliberately
+        does not redraw, and the handler updated the counter and the two
+        controls and nothing else, so the sentence sat under the reader's own
+        half-typed words until something unrelated forced a replacement.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + CockpitHeldToTabTest.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const field = input.closest("[data-next-cockpit-held-field]");
+const absent = () => field.querySelector("[data-next-cockpit-held-absent]");
+const before = {text: absent() && absent().textContent, hidden: absent() && absent().hidden};
+const before_renders = __els.renders;
+input.value = "Six screen";
+__fire("input", {target:input});
+await __settle();
+const typing = {hidden: absent().hidden, redraws: __els.renders - before_renders};
+// And back, because a reader who deletes what they typed is owed the answer
+// to "why is this empty" again.
+input.value = "";
+__fire("input", {target:input});
+await __settle();
+console.log(JSON.stringify({before, typing, cleared: absent().hidden}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("No expected output typed.", out["before"]["text"])
+        self.assertFalse(out["before"]["hidden"])
+        self.assertTrue(out["typing"]["hidden"])
+        # In place, not by redrawing: the redraw is the defect this lane was
+        # built to avoid, and hiding the paragraph must not reintroduce it.
+        self.assertEqual(0, out["typing"]["redraws"])
+        self.assertFalse(out["cleared"])
+
+    def test_a_session_the_fact_scan_skipped_is_unread_rather_than_empty(self) -> None:
+        """Finding C's remainder: the state read the wrong scan's coverage.
+
+        `sources.work.omitted` names the sessions bounded out of the scan that
+        produces these facts, at MAX_PROJECT_OBSERVERS. The block consulted
+        `command_attention_coverage` instead, which is a different sweep over
+        active sessions' final output, capped at 64. A session omitted from
+        the first is almost never omitted from the second, so the state
+        resolved to "empty" for exactly the sessions it was written for, and
+        the board said "No entry in the observed record names this session"
+        about a session it had never read.
+        """
+        out = self._run_page_js(
+            """await __settle();
+await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const session = group.sessions.find(row => row.sid === "focus-1");
+const probe = sources => {
+  nextCockpitContexts.set(nextCockpitContextKey(group, session),
+    {data:{semantic:{facts:[], projections:{command_attention_coverage:
+      {scanned:64, total:64, omitted:0}}}, sources}});
+  const source = nextCockpitWorkSource(group, session);
+  return {state: source.state, absence: nextCockpitWorkAbsence(source)};
+};
+console.log(JSON.stringify({
+  omitted: probe({observer:{live:3}, work:{omitted:[
+    {harness:"codex", sid:"focus-1"}, {harness:"pi", sid:"pi-idle"}]}}),
+  scanned: probe({observer:{live:3}, work:{omitted:[{harness:"pi", sid:"pi-idle"}]}}),
+  // The wrong scan says nothing was left out, and used to be the only voice.
+  noSources: probe(undefined),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("partial", out["omitted"]["state"])
+        self.assertIn("outside the observed-record scan", out["omitted"]["absence"])
+        self.assertEqual("empty", out["scanned"]["state"])
+        self.assertEqual(
+            "No entry in the observed record names this session.", out["scanned"]["absence"]
+        )
+        self.assertEqual("empty", out["noSources"]["state"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitHeldDraftSurvivesAnUnwritableStoreTest(NextPageJsHarness):
+    """Finding A's remainder: `persisted:false` still destroyed the words.
+
+    `annotations.annotate` sets `state.annotations` before it writes, so an
+    unwritable store leaves the revision in this process only. Every
+    collection calls `annotation_store.refresh`, which reloads the file and
+    drops it, and the save handler calls `refreshNext()` on the next line. So
+    the cue promising the words would be "gone at the next refresh" was
+    describing a refresh the page had already started, after it had dropped
+    the draft that was the only remaining copy.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_an_unpersisted_save_keeps_the_draft_and_a_persisted_one_clears_it(self) -> None:
+        out = self.run_fixture(
+            """
+const key = nextCockpitHeldKey({harness:"codex", sid:"focus-1"}, "goal");
+const attempt = async persisted => {
+  nextCockpitHeldDrafts.set(key, "hold it to what I asked");
+  // Only the annotate call answers; the refresh the handler starts next is
+  // left to fail into refreshNext's own catch, so this test measures the save
+  // path rather than a payload it would have to invent.
+  __fetchImpl = url => String(url).includes("/api/annotate")
+    ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted})})
+    : Promise.resolve({ok:false, status:503, json: async () => ({})});
+  await nextCockpitHeldSave({harness:"codex", sid:"focus-1"}, "goal");
+  return {
+    kept: nextCockpitHeldDrafts.has(key),
+    draft: nextCockpitHeldDrafts.get(key) || "",
+    cue: nextCockpitHeldCue(key),
+  };
+};
+const unpersisted = await attempt(false);
+const persisted = await attempt(true);
+console.log(JSON.stringify({unpersisted, persisted}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["unpersisted"]["kept"])
+        self.assertEqual("hold it to what I asked", out["unpersisted"]["draft"])
+        self.assertIn("still in the box", out["unpersisted"]["cue"])
+        self.assertFalse(out["persisted"]["kept"])
+        self.assertEqual("Saved as a new revision.", out["persisted"]["cue"])
 
 
 if __name__ == "__main__":

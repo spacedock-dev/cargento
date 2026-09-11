@@ -323,6 +323,22 @@ function nextSessionFooter(session){
     `${nextCompactTokens(value)} output tokens this ${source}</footer>`;
 }
 
+/* The way back to the reader's own words. Every session link on the board
+   lands here, and the surface that holds what they typed for this session
+   sits on a route this page never named, so the input surface existed on
+   exactly one route nothing pointed at. */
+function nextSessionHeldLink(session){
+  if(!(nextData && nextData.annotate === true)) return "";
+  const project = String(session.project == null ? "" : session.project);
+  if(!project) return "";
+  const href = nextFragmentForRoute({view: "project", project,
+    focus: sessKey(session), tab: "held-to"});
+  const typed = String(session.annotation_goal || session.annotation_output || "");
+  return `<p class="next-session-held-link"><a href="${esc(href)}">` +
+    `${typed ? "What you asked of this session" : "Record what you asked of this session"}` +
+    '</a></p>';
+}
+
 function nextSessionDetailState(state){
   if(state === "needs_input") return {label: "needs input", token: "needs_input"};
   if(state === "working") return {label: "working", token: "working"};
@@ -367,7 +383,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     nextSessionAskBlock(session, asks, observed) + nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
-    nextSessionFooter(session) + "</article>";
+    nextSessionHeldLink(session) + nextSessionFooter(session) + "</article>";
 }
 
 async function nextAnswerAsk(id, index){

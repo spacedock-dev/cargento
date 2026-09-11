@@ -18,13 +18,17 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
+from cargento_runtime import project_context as runtime_project_context
+from cargento_runtime import reading as runtime_reading
+from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
     PAGE_BYTES,
@@ -558,7 +562,14 @@ class UsageReceiptOptOutTest(RuntimeTestCase):
 
 
 class DismissEndpointTest(RuntimeTestCase):
-    """POST /api/dismiss and GET /api/cleared over a real socket.
+    """The reveal routes over a real socket, and the writes beside them.
+
+    `POST /api/dismiss` with `GET /api/cleared`, and `GET /api/annotations`,
+    which is the annotation store's reveal and is here rather than beside
+    `/api/annotate` because it is the same shape of route as `/api/cleared`:
+    strictly same-origin, 503 behind its own switch, and serving a store rather
+    than the live board. The class keeps its name because renaming it moves
+    every reference for no behavioural gain.
 
     `test_dismissals` covers the store and the subtraction. This covers the
     wiring, which is the half that breaks silently: the request has to reach the
@@ -655,6 +666,87 @@ class DismissEndpointTest(RuntimeTestCase):
             post_status, _ = self._post(port, b'{"harness":"claude","sid":"abcd1234"}')
             get_status, _ = self._get(port, "/api/cleared")
         self.assertEqual((503, 503), (post_status, get_status))
+
+    def test_the_annotation_reveal_serves_the_store_including_departed_sessions(self) -> None:
+        """`GET /api/annotations`, the Intent log's source.
+
+        The store's rows and only the store's: session history keeps a copy of
+        the same two fields for fourteen days, and serving the log from there
+        would republish words a reader withdrew, because `clear` removes the
+        entry while a history observation is never retro-deleted.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "departed", goal="Prove it landed")
+        annotation_store.annotate(config, state, "claude", "abcd1234", goal="Ship the cockpit")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        rows = json.loads(body)["annotations"]
+        by_key = {f"{row['harness']}:{row['sid']}": row for row in rows}
+        # Neither session is on the board in this runtime; both are served,
+        # which is the whole point of the surface.
+        self.assertEqual({"pi:departed", "claude:abcd1234"}, set(by_key))
+        self.assertEqual("Prove it landed", by_key["pi:departed"]["goal"])
+        # The published shape, so the page's existing revision helper reads it
+        # without a second wording of the same fact.
+        self.assertEqual(1, by_key["pi:departed"]["revision"])
+        self.assertEqual(1, by_key["pi:departed"]["revision_count"])
+
+    def test_the_reveal_carries_the_binding_caveat_rather_than_claiming_exact(self) -> None:
+        """`published`'s default is BINDING_EXACT, which is a claim.
+
+        Measured by walking the board: every Intent log row served an empty
+        `binding_why`, so a list of Claude sessions asserted exact binding on
+        identities that are eight published characters. Length alone here,
+        because a departed session has no live row to read `resume_id` off and
+        those are exactly the rows this route exists to serve.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "claude", "abcd1234", goal="Short id")
+        annotation_store.annotate(config, state, "codex", "a-much-longer-identity", goal="Whole id")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        by_sid = {row["sid"]: row for row in json.loads(body)["annotations"]}
+        self.assertEqual(annotation_store.BINDING_BY_PREFIX, by_sid["abcd1234"]["binding_why"])
+        # And not on an identity long enough to be whole, or the caveat is
+        # noise on every row and stops being read.
+        self.assertEqual("", by_sid["a-much-longer-identity"]["binding_why"])
+
+    def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "s1", goal="withdraw me")
+        annotation_store.clear(config, state, "pi", "s1")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        self.assertEqual([], json.loads(body)["annotations"])
+
+    def test_the_annotation_reveal_is_503_under_the_off_switch(self) -> None:
+        config, state = self._runtime(annotations_enabled=False)
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._get(port, "/api/annotations")
+
+        # The route exists and the store does not, which a 404 would read as a
+        # build too old to have it.
+        self.assertEqual(503, status)
+
+    def test_the_annotation_reveal_refuses_a_cross_site_navigation(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._get(
+                port,
+                "/api/annotations",
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+        self.assertEqual(403, status)
 
     def test_the_reveal_refuses_a_cross_site_navigation_unlike_api_data(self) -> None:
         # Same reasoning as `/api/overlays`: nothing navigates here, so `do_GET`'s
@@ -2623,3 +2715,523 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "broken store"):
                 collect_json(24, False)
             self.assertEqual(good, json.loads(collect_json(24, False)))
+
+
+class ReadingRouteTest(unittest.TestCase):
+    """POST /api/reading over a real socket, and what it refuses to spend.
+
+    Its own class rather than a home in `AnnotateRouteTest`: that one builds
+    an annotations-only application with no observer model, so a reading test
+    placed there would answer 503 forever and read as a pass.
+
+    Every refusal asserts the status AND that the model was never invoked.
+    The second half is the load-bearing one. A gate that answers 503 after
+    spending the reader's own capacity has not held, and a status code alone
+    cannot tell those apart.
+    """
+
+    def _runtime(self, **changes: Any) -> Any:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        changes.setdefault("annotations_enabled", True)
+        changes.setdefault("observer_model_enabled", True)
+        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+
+    @staticmethod
+    def _one_session_harness() -> Any:
+        """A harness publishing exactly the row the route looks for.
+
+        Without it the application collects nothing, `_send_reading` returns at
+        its no-rows arm BEFORE it claims the slot or reaches the model, and
+        every "the model was never invoked" assertion in this class passes no
+        matter what the gate does. That is how the first version of this class
+        certified a safety property it could not observe.
+        """
+
+        def collect(
+            config: Any, state: Any, now: float, window_hours: float, show_all: bool
+        ) -> list[dict[str, Any]]:
+            # Positional, because `Application.collect` calls it positionally.
+            # A keyword-only signature raises inside the failure boundary,
+            # which swallows it and yields no rows -- and no rows is exactly
+            # the state that made this class unfalsifiable.
+            del config, state, now, window_hours, show_all
+            row = runtime_sessions.base_session("pi", "s1", "proj")
+            row.update({"state": "working", "active": True, "last_activity": 1_700_000_000.0})
+            return [row]
+
+        return aggregate.HarnessSpec(
+            key="pi", label="Pi", discover=lambda *_: True, collect=collect
+        )
+
+    def _app(self, config: Any, state: Any) -> Any:
+        """An application over that one session, with an annotation on it."""
+        annotation_store.annotate(
+            config, state, "pi", "s1", goal="ship the parser", output="", now=10.0
+        )
+        return aggregate.Application(
+            config,
+            state,
+            (self._one_session_harness(),),
+            native_notifier=lambda _p: "",
+            popup_notifier=lambda _t, _b: None,
+            diagnostic_sink=lambda _m: None,
+            clock=lambda: 1_700_000_100.0,
+        )
+
+    @contextlib.contextmanager
+    def _serving(self, application: Any) -> Any:
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    @staticmethod
+    def _post(port: int, payload: Any, **headers: str) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/api/reading",
+                body=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", **headers},
+            )
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    # One entry naming the fixture session, so the ledger is never the reason
+    # the model is not reached. Without it `produce` returns `ledger-empty`
+    # ahead of the subprocess on EVERY path, and "the model was never invoked"
+    # is true whatever the gate does -- the second way this class was
+    # unfalsifiable, after the no-rows arm.
+    FACT: ClassVar[dict[str, Any]] = {
+        "fact_id": "f1",
+        "type": "user_message",
+        "by": "",
+        "summary": "ship the parser please",
+        "at": 1_700_000_000.0,
+        "evidence": {"source": "root transcript", "confidence": "exact"},
+        "source_session": {"harness": "pi", "sid": "s1"},
+    }
+
+    @contextlib.contextmanager
+    def _counting_model(self) -> Any:
+        """A model that records every invocation and runs no subprocess.
+
+        Also supplies the observed record, because a gate is only proven by a
+        non-invocation when an invocation was otherwise going to happen.
+        """
+        calls: list[str] = []
+
+        class _Model:
+            def __init__(self, _config: Any, **_kw: Any) -> None:
+                pass
+
+            def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+                calls.append(prompt)
+                return "{}", "ok"
+
+        with (
+            mock.patch.object(runtime_reading, "CodexReadingModel", _Model),
+            mock.patch.object(
+                runtime_project_context,
+                "collect",
+                lambda *_a, **_k: {"semantic": {"facts": [self.FACT]}},
+            ),
+        ):
+            yield calls
+
+    def _press(self, **over: Any) -> dict[str, Any]:
+        body = {"harness": "pi", "sid": "s1", "press": True, "observer_model": 1}
+        body.update(over)
+        return body
+
+    def test_a_reader_pressing_while_the_check_has_not_run_spends_nothing(self) -> None:
+        """The condition on enabling, asserted where a curl would try it."""
+        config, state = self._runtime()
+        with (
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, _ = self._post(port, self._press())
+        self.assertEqual(503, status)
+        self.assertEqual([], calls, "the model ran behind a closed gate")
+
+    def test_every_closed_gate_refuses_before_the_model_is_reached(self) -> None:
+        cases: tuple[tuple[str, dict[str, Any], dict[str, Any], int], ...] = (
+            ("annotations off", {"annotations_enabled": False}, {}, 503),
+            ("model off", {"observer_model_enabled": False}, {}, 503),
+            ("no disclosure echo", {}, {"observer_model": 0}, 400),
+            ("no press", {}, {"press": False}, 400),
+            ("press absent", {}, {"press": None}, 400),
+            ("no harness", {}, {"harness": ""}, 400),
+            ("no sid", {}, {"sid": ""}, 400),
+            ("harness not a string", {}, {"harness": 7}, 400),
+        )
+        for label, runtime_changes, body_changes, expected in cases:
+            with self.subTest(gate=label):
+                config, state = self._runtime(**runtime_changes)
+                with (
+                    mock.patch.object(
+                        annotation_store,
+                        "ABSTENTION_CHECK",
+                        annotation_store.ABSTENTION_CHECK_PASSED,
+                    ),
+                    self._counting_model() as calls,
+                    self._serving(self._app(config, state)) as port,
+                ):
+                    status, _ = self._post(port, self._press(**body_changes))
+                self.assertEqual(expected, status, label)
+                self.assertEqual([], calls, f"{label}: the model ran behind a closed gate")
+
+    def test_a_lured_request_cannot_spend_a_readers_capacity(self) -> None:
+        """Each shape this route refuses that `_local_ok` alone would admit.
+
+        `do_POST` already refuses `cross-site`, so asserting only that proves
+        nothing about this route's own gate: measured, deleting the gate's
+        navigation clause left a cross-site-only test green. `same-site` and a
+        same-origin document navigation are the two shapes `_local_ok` admits
+        and `_loopback_resource_ok` does not, and they are what this asserts.
+        """
+        cases = (
+            ("same-site fetch", {"Sec-Fetch-Site": "same-site"}),
+            (
+                "same-origin navigation",
+                {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"},
+            ),
+            ("cross-site navigation", {"Sec-Fetch-Site": "cross-site"}),
+        )
+        for label, headers in cases:
+            with self.subTest(shape=label):
+                config, state = self._runtime()
+                with (
+                    mock.patch.object(
+                        annotation_store,
+                        "ABSTENTION_CHECK",
+                        annotation_store.ABSTENTION_CHECK_PASSED,
+                    ),
+                    self._counting_model() as calls,
+                    self._serving(self._app(config, state)) as port,
+                ):
+                    status, _ = self._post(port, self._press(), **headers)
+                self.assertEqual(403, status, label)
+                self.assertEqual([], calls, label)
+
+    def test_an_open_gate_really_does_reach_the_model(self) -> None:
+        """The positive control, and without it this whole class proves nothing.
+
+        Every other test here asserts the model was NOT invoked. That is only
+        evidence if an invocation is observable in the first place. The first
+        version of this class had no session and no annotation, so
+        `_send_reading` returned at its no-rows arm ahead of the model on every
+        path -- and deleting the entire gate left all five assertions green.
+
+        This is the test that makes the other five mean something.
+        """
+        config, state = self._runtime()
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press())
+        self.assertEqual(200, status)
+        self.assertEqual(1, len(calls), "the open gate did not reach the model")
+        self.assertIn("ship the parser", calls[0], "the reader's goal was not sent")
+        self.assertTrue(json.loads(body)["ok"])
+
+    def test_a_second_press_while_one_is_in_flight_spends_nothing(self) -> None:
+        """One reading in flight per session, and no retry."""
+        config, state = self._runtime()
+        started, release = threading.Event(), threading.Event()
+        calls: list[str] = []
+
+        class _Blocking:
+            def __init__(self, _config: Any, **_kw: Any) -> None:
+                pass
+
+            def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+                calls.append(prompt)
+                started.set()
+                release.wait(timeout=5)
+                return "{}", "ok"
+
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            mock.patch.object(runtime_reading, "CodexReadingModel", _Blocking),
+            mock.patch.object(
+                runtime_project_context,
+                "collect",
+                lambda *_a, **_k: {"semantic": {"facts": [self.FACT]}},
+            ),
+            self._serving(self._app(config, state)) as port,
+        ):
+            out: list[int] = []
+            first = threading.Thread(target=lambda: out.append(self._post(port, self._press())[0]))
+            first.start()
+            self.assertTrue(started.wait(timeout=5), "the first press never reached the model")
+            second, _ = self._post(port, self._press())
+            release.set()
+            first.join(timeout=5)
+        self.assertEqual(409, second)
+        self.assertEqual([200], out)
+        self.assertEqual(1, len(calls), "the refused press spent the reader's capacity anyway")
+
+    def test_a_session_nobody_annotated_is_not_confirmed_to_exist(self) -> None:
+        """200 and never 404: a harness name is public and a session id is not."""
+        config, state = self._runtime()
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press(sid="no-such-session"))
+        self.assertEqual(200, status)
+        answer = json.loads(body)
+        self.assertFalse(answer["produced"])
+        self.assertEqual([], calls)
+
+    def test_an_oversized_body_is_refused_before_it_is_read(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                conn.putrequest("POST", "/api/reading")
+                conn.putheader("Content-Length", "999999")
+                conn.endheaders()
+                status = conn.getresponse().status
+            finally:
+                conn.close()
+        self.assertEqual(413, status)
+        self.assertEqual([], calls)
+
+
+class AnnotateRouteTest(unittest.TestCase):
+    """POST /api/annotate over a real socket.
+
+    `test_annotations` covers the store. This covers the wiring, and one thing
+    the store cannot: a body field that is not a string. `records.safe_text`
+    does `str(value or "")`, so a dict reaching it publishes its Python repr,
+    which is why `/api/ask` type-checks before redacting and this does too.
+    """
+
+    def _runtime(self, **changes: Any) -> Any:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+
+    @contextlib.contextmanager
+    def _serving(self, application: Any) -> Any:
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    @staticmethod
+    def _post(port: int, body: bytes, *, declared: str | None = None) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            if declared is None:
+                conn.request(
+                    "POST", "/api/annotate", body=body, headers={"Content-Type": "text/plain"}
+                )
+            else:
+                conn.putrequest("POST", "/api/annotate")
+                conn.putheader("Content-Length", declared)
+                conn.endheaders()
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _get_data(port: int) -> int:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/data")
+            response = conn.getresponse()
+            response.read()
+            return response.status
+        finally:
+            conn.close()
+
+    def test_settling_a_later_direction_is_a_third_arm_on_this_route(self) -> None:
+        """DRC-4508's baseline-conflict block writes its answer here.
+
+        A third arm rather than a route of its own: the subject is the same
+        session's annotation and the reply shape is the same, so the POST
+        inventory's width is unchanged.
+        """
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            typed, _ = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+            settled, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "settle_through": 1.0}
+                ).encode(),
+            )
+
+        self.assertEqual((200, 200), (typed, settled))
+        self.assertIs(True, json.loads(body)["persisted"])
+        entry = annotation_store.find(annotation_store.load(config), "claude", "abcd1234")
+        assert entry is not None
+        mark = entry.get("settled")
+        assert mark is not None
+        self.assertEqual(1.0, mark["through"])
+        self.assertEqual(1, mark["revision"])
+
+    def test_settling_a_session_nobody_annotated_answers_persisted_false(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "settle_through": 1.0}
+                ).encode(),
+            )
+
+        self.assertEqual(200, status)
+        # There is no baseline to answer about, so nothing is written and the
+        # reply says so rather than minting an empty annotation to hang a mark on.
+        self.assertIs(False, json.loads(body)["persisted"])
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_an_unwritable_store_answers_ok_with_persisted_false(self) -> None:
+        """DRC-4533: the reply the page's `unpersisted` cue is written against.
+
+        Both existing assertions on this key are `True`. The endpoint answers
+        `persisted` honestly and the page treats a false as "held for this run
+        and about to go", so the false arm is the one carrying a promise to a
+        reader, and it was the untested one.
+        """
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        # The server keeps a usable state_dir; only the annotation store's home
+        # is a file, so `save()`'s makedirs fails while everything else serves.
+        blocked = Path(home) / "annotation-home"
+        blocked.write_text("not a directory", encoding="utf-8")
+        config, state = make_runtime(state_home=str(blocked), state_dir=Path(home))
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+
+        self.assertEqual(200, status)
+        answer = json.loads(body)
+        # `ok` is not a claim the write landed, and the page reads them apart.
+        self.assertIs(True, answer["ok"])
+        self.assertIs(False, answer["persisted"])
+        # The revision is still minted and served, because this process holds it.
+        self.assertEqual(1, answer["revision"])
+        # And nothing reached disk, which is what makes the cue's wording true.
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_a_typed_goal_reaches_the_store_and_drops_the_published_body(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            # Warm the published body: without `snapshot.clear()` in the handler
+            # this is the response the next GET would reuse.
+            first = self._get_data(port)
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+        self.assertEqual((200, 200), (first, status))
+        answer = json.loads(body)
+        self.assertIs(True, answer["persisted"])
+        self.assertEqual(1, answer["revision"])
+        entry = annotation_store.find(annotation_store.load(config), "claude", "abcd1234")
+        assert entry is not None
+        self.assertEqual("Ship the cockpit", entry["revisions"][-1]["goal"])
+        self.assertIsNone(
+            state.snapshot.current((config.window_hours, False)),
+            "the published body survived the save and would be served again",
+        )
+
+    def test_a_field_that_is_not_a_string_is_refused_rather_than_stringified(self) -> None:
+        """`safe_text` would publish a dict's repr. 400 rather than a quiet 200.
+
+        The same hazard `/api/ask` type-checks for, and the reason it checks
+        before redacting rather than after.
+        """
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "s", "goal": {"k": "AKIAQQQQQQQQQQQQQQQQ"}}
+                ).encode(),
+            )
+        self.assertEqual(400, status)
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_a_non_string_identity_is_refused_too(self) -> None:
+        """`harness` and `sid` reach `safe_text` by the same path the text does.
+
+        An earlier version checked only the two text fields, which let a dict
+        harness land a store entry keyed on its Python repr.
+        """
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._post(
+                port, json.dumps({"harness": {"k": "v"}, "sid": ["a"], "goal": "x"}).encode()
+            )
+        self.assertEqual(400, status)
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_clearing_removes_what_was_typed(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": "G"}).encode())
+            status, body = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
+            )
+        self.assertEqual(200, status)
+        self.assertIsNone(json.loads(body)["revision"])
+        self.assertEqual((), annotation_store.load(config))
+
+    def test_the_off_switch_answers_503_rather_than_404(self) -> None:
+        """503 for `/api/dismiss`'s reason: under the off switch the route
+        exists and the store does not, and 404 would read as a build too old."""
+        config, state = self._runtime(annotations_enabled=False)
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._post(port, json.dumps({"harness": "pi", "sid": "s"}).encode())
+        self.assertEqual(503, status)
+
+    def test_an_oversized_declared_length_is_refused_before_any_read(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _body = self._post(port, b"", declared="200000")
+        self.assertEqual(413, status)

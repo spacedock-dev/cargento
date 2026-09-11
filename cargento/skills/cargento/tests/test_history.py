@@ -292,6 +292,130 @@ class NothingPromptDerivedReachesTheStoreTest(HistoryStoreTestCase):
         self.assertEqual("working", payload["entries"][0]["state"])
 
 
+class TheAnnotationBaselineIsAdmittedAndBoundedTest(HistoryStoreTestCase):
+    """DEC-15b's first two admissions, end to end.
+
+    The store's rule is that it holds nothing the live snapshot does not
+    already serve. These two are served, on every row, and they are the only
+    prompt-derived text in the record: what the reader typed one session should
+    achieve and what they typed it should produce.
+    """
+
+    GOAL = "Capture every screen with live sessions"
+    OUTPUT = "Six screenshots, one per screen"
+
+    def annotated(self, state: str = "working", **fields: object) -> dict[str, object]:
+        row = loaded_row(state)
+        row.update(
+            {
+                "annotation_goal": self.GOAL,
+                "annotation_output": self.OUTPUT,
+                "annotation_revision": 2,
+                **fields,
+            }
+        )
+        return row
+
+    def test_the_words_the_reader_typed_reach_the_store_and_come_back(self) -> None:
+        config = self.config()
+        history.record(config, [self.annotated()], now=1_000.0)
+        kept, reset = history.load(config)
+        self.assertIsNone(reset)
+        self.assertEqual(self.GOAL, kept[0]["annotation_goal"])
+        self.assertEqual(self.OUTPUT, kept[0]["annotation_output"])
+        self.assertEqual(2, kept[0]["annotation_revision"])
+
+    def test_an_unannotated_row_stores_no_sentence_in_place_of_the_words(self) -> None:
+        # The row carries an absence reason beside each field. Storing that is
+        # storing a string nobody typed, in a store whose rule is that it holds
+        # what a source published.
+        config = self.config()
+        row = loaded_row()
+        row["annotation_goal_why"] = "No goal typed for this session."
+        history.record(config, [row], now=1_000.0)
+        kept, _reset = history.load(config)
+        self.assertEqual("", kept[0]["annotation_goal"])
+        self.assertNotIn(b"No goal typed", self.store_bytes(config))
+
+    def test_editing_the_goal_records_a_transition_the_state_alone_would_miss(self) -> None:
+        # Without the baseline in the transition comparison the store keeps the
+        # old words until the session happens to move again, which makes its
+        # copy stale by construction.
+        config = self.config()
+        history.record(config, [self.annotated()], now=1_000.0)
+        history.record(
+            config,
+            [self.annotated(annotation_goal="A different goal", annotation_revision=3)],
+            now=1_001.0,
+        )
+        kept, _reset = history.load(config)
+        self.assertEqual(
+            [self.GOAL, "A different goal"], [entry["annotation_goal"] for entry in kept]
+        )
+
+    def test_a_quiet_board_still_writes_nothing(self) -> None:
+        # The widened comparison must not undo the dedupe it joined: the same
+        # row twice is still one record.
+        config = self.config()
+        history.record(config, [self.annotated()], now=1_000.0)
+        first = self.store_bytes(config)
+        history.record(config, [self.annotated(last_activity=1_500.0)], now=1_500.0)
+        self.assertEqual(first, self.store_bytes(config))
+
+    def test_a_tampered_store_cannot_publish_a_container_as_the_goal(self) -> None:
+        # This file is one any local process could have replaced, and every
+        # field is re-validated on the way in. A mapping here would otherwise
+        # reach the board.
+        self.write_tampered({"annotation_goal": {"evil": 1}, "annotation_revision": "two"})
+        kept, reset = history.load(self.config())
+        self.assertIsNone(reset)
+        self.assertEqual("", kept[0]["annotation_goal"])
+        self.assertIsNone(kept[0]["annotation_revision"])
+
+    def test_a_version_one_store_is_read_rather_than_discarded(self) -> None:
+        # The migration, exercised for real now that a bump has happened. A v1
+        # record is a v2 record with these three absent, and discarding one
+        # would cost a reader fourteen days of history on an upgrade.
+        self.assertEqual(2, history.SCHEMA_VERSION)
+        self.assertEqual((1, 2), history.READABLE_VERSIONS)
+        path = os.path.join(self.state_home, history.STORE_FILENAME)
+        with open(path, "w") as handle:
+            json.dump(
+                {
+                    "v": 1,
+                    "entries": [
+                        {
+                            "harness": "claude",
+                            "sid": "sid-1",
+                            "project": "recce/cargento",
+                            "state": "working",
+                            "last_activity": 1_000.0,
+                        }
+                    ],
+                },
+                handle,
+            )
+        kept, reset = history.load(self.config())
+        self.assertIsNone(reset)
+        self.assertEqual(1, len(kept))
+        self.assertEqual("working", kept[0]["state"])
+        self.assertEqual("", kept[0]["annotation_goal"])
+        self.assertIsNone(kept[0]["annotation_revision"])
+
+    def write_tampered(self, fields: dict[str, object]) -> None:
+        path = os.path.join(self.state_home, history.STORE_FILENAME)
+        entry = {
+            "harness": "claude",
+            "sid": "sid-1",
+            "project": "recce/cargento",
+            "state": "working",
+            "last_activity": 1_000.0,
+            **fields,
+        }
+        with open(path, "w") as handle:
+            json.dump({"v": history.SCHEMA_VERSION, "entries": [entry]}, handle)
+
+
 class EveryStoredFieldIsAPublishedFieldTest(HistoryStoreTestCase):
     """AC1: every field in the store is a field the board publishes, and none is
     on the never-list.
@@ -360,6 +484,9 @@ class EvictionTest(HistoryStoreTestCase):
                 project="p/q",
                 state="working",
                 last_activity=stamp,
+                annotation_goal="",
+                annotation_output="",
+                annotation_revision=None,
             )
             for stamp in stamps
         ]
@@ -472,6 +599,9 @@ class OwnerOnlyWriteTest(HistoryStoreTestCase):
                             project="recce/cargento",
                             state="working",
                             last_activity=1_000.0,
+                            annotation_goal="",
+                            annotation_output="",
+                            annotation_revision=None,
                         )
                     ],
                     diagnostic_sink=self.diagnostics.append,
@@ -506,6 +636,39 @@ class UnreadableStoreIsDiscardedTest(HistoryStoreTestCase):
         entries, reset = history.load(self.config())
         self.assertEqual((), entries)
         self.assertEqual(history.RESET_VERSION, reset)
+
+    def test_every_version_this_build_names_is_read_rather_than_reset(self) -> None:
+        """DEC-15b's admission path, and the reason it is not an equality check.
+
+        Admitting an assessment field bumps the version, and under an equality
+        check that bump discarded fourteen days of every existing user's
+        history on upgrade. Nothing in the tree would have caught it: the store
+        rebuilds itself from the next collection, so a wiped history looks like
+        a quiet morning.
+        """
+        row = {
+            "harness": "codex",
+            "sid": "s1",
+            "project": "cargento",
+            "state": "idle",
+            "last_activity": 100.0,
+        }
+        for version in history.READABLE_VERSIONS:
+            with self.subTest(version=version):
+                self.write_store({"v": version, "entries": [row]})
+                entries, reset = history.load(self.config())
+                self.assertIsNone(reset)
+                self.assertEqual(1, len(entries))
+        self.assertIn(history.SCHEMA_VERSION, history.READABLE_VERSIONS)
+
+    def test_a_version_that_is_not_a_number_is_refused(self) -> None:
+        # `True in (1,)` is true in Python, so a boolean here read as version 1
+        # under both this check and the equality check it replaced. This file is
+        # one any local process could have written.
+        for version in (True, "1", None, [1]):
+            with self.subTest(version=version):
+                self.write_store({"v": version, "entries": []})
+                self.assertEqual(history.RESET_VERSION, history.load(self.config())[1])
 
     def test_a_store_larger_than_the_cap_is_discarded_unread(self) -> None:
         self.write_store({"v": history.SCHEMA_VERSION, "entries": []})
@@ -788,9 +951,9 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
 
     def test_the_post_surface_did_not_grow(self) -> None:
         # The contract lists "a history file reachable over the port" as a
-        # security bug, so the count is asserted rather than trusted: nine POST
-        # routes, being the eight-entry exact-match table plus the one prefix
-        # match ahead of it, and no path naming history among them.
+        # security bug, so the count is asserted rather than trusted: the
+        # nine-entry exact-match table plus the two prefix matches ahead of it,
+        # and no path naming history among them.
         import ast  # noqa: PLC0415
         from pathlib import Path  # noqa: PLC0415
 
@@ -810,7 +973,7 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
             for key in tables[0].keys
             if isinstance(key, ast.Constant) and isinstance(key.value, str)
         ]
-        self.assertEqual(8, len(routes))
+        self.assertEqual(10, len(routes))
         prefixes = [
             node
             for node in ast.walk(post)
@@ -1357,6 +1520,9 @@ class TheSizeCapCostsOneSerialisationTest(HistoryStoreTestCase):
                 project="recce/cargento",
                 state="working",
                 last_activity=1_000.0 + index,
+                annotation_goal="",
+                annotation_output="",
+                annotation_revision=None,
             )
             for index in range(count)
         ]
@@ -1526,15 +1692,17 @@ class BothBoundsAreConfigurableTest(HistoryStoreTestCase):
         self.assertEqual(["idle"], [e["state"] for e in history.load(config)[0]])
 
     def test_a_narrowed_cap_is_the_cap_the_lane_evicts_by(self) -> None:
-        # 140 bytes holds one of these records and not two: measured at 111
-        # bytes each against a 23-byte envelope, so one store is 134 and two
-        # are 247. Four transitions therefore have to leave the newest alone.
-        config = self.built(["--history-max-bytes", "140"])
+        # 220 bytes holds one of these records and not two: re-measured after
+        # DEC-15b's three fields joined the record at 187 bytes each against a
+        # 24-byte envelope, so one store is 211 and two are 398. It was 140
+        # against a 111-byte record before. Four transitions therefore have to
+        # leave the newest alone.
+        config = self.built(["--history-max-bytes", "220"])
         lane = history.Lane(config, diagnostic_sink=self.diagnostics.append)
         for tick, state in enumerate(("working", "idle", "working", "idle")):
             lane.record([loaded_row(state, last_activity=1_000.0 + tick)], now=1_000.0 + tick)
         kept, _reset = history.load(config)
-        self.assertLessEqual(len(self.store_bytes(config)), 140)
+        self.assertLessEqual(len(self.store_bytes(config)), 220)
         self.assertEqual(["idle"], [e["state"] for e in kept])
         self.assertEqual([1_003.0], [e["last_activity"] for e in kept])
 

@@ -734,6 +734,49 @@ class ObserverAnalyzerTest(unittest.TestCase):
         self.assertIn("Review the PR", result["goal"])
         self.assertIsNone(result["reason"])
 
+    def test_analyze_names_which_arm_produced_the_goal(self) -> None:
+        """The published goal says which arm derived it, and keeps the
+        deterministic line beside it.
+
+        Without this the model arm's reassignment is invisible: `goal` is one
+        string whether a transcript line or a model wrote it, so a reader told
+        the harness published this cannot be distinguished from one reading a
+        model's paraphrase. DRC-4509 renders exactly that distinction, so the
+        distinction has to survive as far as the payload.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp,
+                [
+                    _pi_session("provenance-001"),
+                    _pi_message("m1", None, "user", "Review the PR"),
+                    _pi_message("m2", "m1", "assistant", "Starting the review."),
+                ],
+            )
+
+            plain = self.analyze(path)
+            enhanced = self.analyze(path, model=lambda _head, _ctx: "Review the PR and land it")
+
+            def crashing_model(_head: str, _ctx: str) -> str:
+                raise RuntimeError("model unavailable")
+
+            degraded = self.analyze(path, model=crashing_model)
+
+        # No model ran, so the deterministic line is the published goal.
+        self.assertEqual("deterministic", plain["goal_source"])
+        self.assertEqual(plain["goal"], plain["deterministic_goal"])
+
+        # The model ran and replaced the goal. Both lines stay reachable, and
+        # the source names which one `goal` now holds.
+        self.assertEqual("model", enhanced["goal_source"])
+        self.assertIn("land it", enhanced["goal"])
+        self.assertIn("Review the PR", enhanced["deterministic_goal"])
+        self.assertNotEqual(enhanced["goal"], enhanced["deterministic_goal"])
+
+        # A model that failed did not produce the goal, so it is not credited.
+        self.assertEqual("deterministic", degraded["goal_source"])
+        self.assertEqual(degraded["goal"], degraded["deterministic_goal"])
+
     def test_codex_goal_model_pins_luna_max_and_runs_ephemerally(self) -> None:
         recorded: dict[str, Any] = {}
 
@@ -1500,6 +1543,101 @@ class ObserverRouteTest(RuntimeTestCase):
         self.assertEqual("I am blocked on a missing token.", payload["block"])
         self.assertEqual("", payload["stage"])  # no workflow booted
         self.assertTrue(wrote_sidecar)
+
+
+class CodexExecArgvTest(unittest.TestCase):
+    """Every flag that sandboxes the model call, pinned.
+
+    Nothing in this suite asserted any of them before this class existed: a
+    change that dropped `--sandbox read-only`, `--ignore-user-config` or any of
+    the feature disables would have shipped green. That matters more now than
+    it did, because a second lane is about to call the same subprocess and a
+    lane that quietly ran unsandboxed would look exactly like one that did not.
+    """
+
+    def _capture(self) -> tuple[list[Any], observer.CodexGoalModel]:
+        seen: list[Any] = []
+
+        def runner(command: Any, **kwargs: Any) -> Any:
+            seen.append((command, kwargs))
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        config = dataclasses.replace(
+            make_config(), observer_model_enabled=True, state_dir=Path(tempfile.mkdtemp())
+        )
+        caller = observer.CodexGoalModel(
+            config,
+            runner=runner,
+            binary_resolver=mock.Mock(return_value="/usr/bin/codex"),
+            consent=True,
+            session_key="codex:one",
+        )
+        return seen, caller
+
+    def test_the_model_call_is_sandboxed_ephemeral_and_ignores_local_configuration(self) -> None:
+        seen, caller = self._capture()
+        caller("a transcript tail", "stage")
+
+        self.assertEqual(1, len(seen), "the model was not invoked exactly once")
+        command, kwargs = seen[0]
+
+        self.assertEqual("/usr/bin/codex", command[0])
+        self.assertEqual("exec", command[1])
+        self.assertEqual("-", command[-1], "the prompt must arrive on stdin, never as an argument")
+
+        for flag in (
+            "--ignore-user-config",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-rules",
+        ):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, command)
+
+        for pair in (
+            ("--sandbox", "read-only"),
+            ("--model", observer.OBSERVER_MODEL),
+            ("--config", 'web_search="disabled"'),
+            ("--config", "project_doc_max_bytes=0"),
+            ("--config", "skills.include_instructions=false"),
+            ("--config", f"model_reasoning_effort={observer.OBSERVER_MODEL_REASONING_EFFORT}"),
+        ):
+            with self.subTest(pair=pair):
+                # The VALUE that follows this flag, not merely the flag's
+                # presence: `--sandbox` with the wrong mode is the failure.
+                values = [command[i + 1] for i, tok in enumerate(command[:-1]) if tok == pair[0]]
+                self.assertIn(pair[1], values)
+
+        self.assertEqual(subprocess.DEVNULL, kwargs["stdout"])
+        self.assertEqual(subprocess.DEVNULL, kwargs["stderr"])
+        self.assertEqual(observer.OBSERVER_MODEL_TIMEOUT_SEC, kwargs["timeout"])
+        self.assertFalse(kwargs["check"], "a raising subprocess would crash a collection")
+        self.assertEqual(str(caller.config.state_dir), kwargs["cwd"])
+
+    def test_every_execution_and_integration_feature_is_disabled_on_the_command(self) -> None:
+        seen, caller = self._capture()
+        caller("a transcript tail", "stage")
+        command, _ = seen[0]
+
+        # Read-only sandboxing still permits reading files, and ignoring user
+        # config still leaves default-on hooks and plugin discovery available.
+        self.assertGreaterEqual(
+            len(observer._MODEL_DISABLED_FEATURES),
+            14,
+            "a feature was removed from the disable list rather than from Codex",
+        )
+        for feature in observer._MODEL_DISABLED_FEATURES:
+            with self.subTest(feature=feature):
+                self.assertIn(f"features.{feature}=false", command)
+
+    def test_the_prompt_reaches_the_model_on_stdin_and_never_on_disk(self) -> None:
+        seen, caller = self._capture()
+        caller("a transcript tail", "stage")
+        _, kwargs = seen[0]
+
+        self.assertIn("a transcript tail", kwargs["input"])
+        self.assertTrue(kwargs["text"])
+        self.assertEqual("utf-8", kwargs["encoding"])
 
 
 class ObserverModelSecurityTest(unittest.TestCase):

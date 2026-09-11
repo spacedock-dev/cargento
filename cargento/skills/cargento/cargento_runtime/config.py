@@ -73,6 +73,12 @@ class RuntimeConfig:
     # neither consulted during a collection nor created by a request, so a run
     # that misbehaves leaves no state a later run would honour.
     dismissals_enabled: bool
+    # Whether the annotation store is read and written at all. `--no-annotations`
+    # is the off switch, and off means off in both directions: the file is
+    # neither read during a collection nor created by a request. This one holds
+    # prose the reader composed rather than anything a harness published, which
+    # is why it gets a switch of its own rather than riding the dismissal one.
+    annotations_enabled: bool
     # Whether the local history store is read and written at all.
     # `--no-history` is the off switch
     # [DEC-6](SECURITY.md#local-history-the-session-history-store)'s contract made part of the
@@ -191,6 +197,25 @@ class RuntimeConfig:
     # magnitude above the busiest board measured (31 sessions).
     dismissal_read_cap_bytes: int
     dismissal_max_entries: int
+    # The annotation store. The read cap is NOT the dismissal store's: measured,
+    # 256 sessions at 16 revisions of two 240-character fields serialize to about
+    # 2.2 MB, so the 65,536 copied from `dismissal_read_cap_bytes` was 31 times
+    # too small and a store inside its own three other bounds would have been
+    # discarded whole by `load` and then overwritten by the next save. A
+    # dismissal is four scalars; an annotation is prose. 2.5 MiB clears the
+    # worst case the other three bounds permit, and `load` still refuses
+    # anything past it. Two count bounds and no time-to-live, again
+    # for `dismissals._bounded`'s reason: a TTL would delete the reader's own
+    # words while the session they describe is still on the board. 256 sessions
+    # matches `dismissal_max_entries` against the same measured board; 16
+    # revisions is set against a reader refining one line a handful of times,
+    # and the numbering keeps counting past an eviction so a dropped revision
+    # reads as dropped. The text cap is 240 characters, the bound the design
+    # draws as its live `n/240` counter.
+    annotation_read_cap_bytes: int
+    annotation_max_sessions: int
+    annotation_max_revisions: int
+    annotation_text_cap_chars: int
     # The history store's two bounds, which apply together: raising either does
     # not stop the other applying. Fourteen days and 1 MiB are the contract's
     # defaults, and `--history-days` and `--history-max-bytes` are what move
@@ -207,6 +232,9 @@ class RuntimeConfig:
     # What a dismissal request may declare. Three short fields, so this is far
     # below even the event cap: nothing else is read from the body.
     dismissal_body_cap_bytes: int
+    # What an annotation request may declare. Two 240-character fields plus
+    # their keys, so 4 KiB is generous and still far below the event cap.
+    annotation_body_cap_bytes: int
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
     notification_body_cap_bytes: int
@@ -373,6 +401,12 @@ class RuntimeConfig:
     observer_goal_cap_chars: int
     observer_block_cap_chars: int
     observer_model_context_chars: int
+    # How long after an observed session end a reading may call it final.
+    # The measurement is 5.581 s, the slowest clean end recorded after its
+    # final `Stop`; the headroom above it is judgement, because event delivery
+    # is at-least-once and reorderable and a reading composed on the instant
+    # of the end can be contradicted by a `turn_started` already in flight.
+    reading_settle_sec: float
 
 
 def resolve_store_roots(
@@ -494,6 +528,7 @@ def build_runtime_config(
     git_probe_enabled: bool = True,
     focus_enabled: bool = True,
     dismissals_enabled: bool = True,
+    annotations_enabled: bool = True,
     ask_enabled: bool = True,
     history_enabled: bool = True,
     history_retention_sec: float = HISTORY_RETENTION_DEFAULT_DAYS * SECONDS_PER_DAY,
@@ -540,6 +575,7 @@ def build_runtime_config(
         git_probe_enabled=git_probe_enabled,
         focus_enabled=focus_enabled,
         dismissals_enabled=dismissals_enabled,
+        annotations_enabled=annotations_enabled,
         ask_enabled=ask_enabled,
         history_enabled=history_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
@@ -627,6 +663,11 @@ def build_runtime_config(
         state_read_cap_bytes=65_536,
         dismissal_read_cap_bytes=65_536,
         dismissal_max_entries=256,
+        annotation_read_cap_bytes=2_621_440,
+        annotation_max_sessions=256,
+        annotation_max_revisions=16,
+        annotation_text_cap_chars=240,
+        annotation_body_cap_bytes=4_096,
         dismissal_body_cap_bytes=1_024,
         history_retention_sec=history_retention_sec,
         history_max_bytes=history_max_bytes,
@@ -673,6 +714,7 @@ def build_runtime_config(
         observer_goal_cap_chars=200,
         observer_block_cap_chars=200,
         observer_model_context_chars=8_192,
+        reading_settle_sec=8.0,
     )
 
 

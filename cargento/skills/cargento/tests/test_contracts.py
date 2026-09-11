@@ -5,6 +5,8 @@ import contextlib
 import http.client
 import json
 import os
+import pathlib
+import re
 import runpy
 import subprocess
 import sys
@@ -16,7 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, http_api, notifications, observation, records
+from cargento_runtime import aggregate, cli, http_api, notifications, observation, reading, records
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
@@ -24,6 +27,7 @@ from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import gemini as gemini_collector
+from cargento_runtime.web import page as frontend_page
 
 from .fixtures import (
     CURSOR_MODEL,
@@ -629,6 +633,237 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
 
 
+_COCKPIT_RENDERED_ACTION = re.compile(r'data-next-cockpit-action="([a-z-]+)"')
+_COCKPIT_DISPATCHED_ACTION = re.compile(r'action === "([a-z-]+)"')
+_COCKPIT_CLICK_LISTENER = 'document.addEventListener("click"'
+
+
+def _without_comments(source: str) -> str:
+    """Block and line comments removed, so prose cannot satisfy a code gate."""
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    return re.sub(r"^\s*//.*$", "", source, flags=re.MULTILINE)
+
+
+def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
+    """Rendered cockpit actions with no arm in the click dispatcher.
+
+    `reading-ask` is exempt exactly while the abstention check has not passed,
+    which is the one control DEC-17 ships deliberately inert. Every other
+    rendered action must be dispatched.
+
+    The dispatched set is read from the listener alone, which already excludes
+    the comment beside the reading control, and with comments stripped on top
+    of that, which excludes a comment inside the listener body naming an arm it
+    does not have. Defence in depth, and cheap: a gate that accepted prose as a
+    handler would be worse than no gate.
+
+    Known limit, stated rather than discovered: an action rendered through a
+    variable is invisible here. `nextCockpitHeldControl` renders `held-clear`
+    and `held-save` that way, which is why they appear in the dispatched set
+    and not the rendered one. This catches a dead literal control, not a dead
+    computed one.
+    """
+    rendered = set(_COCKPIT_RENDERED_ACTION.findall(source))
+    listener = source[source.index(_COCKPIT_CLICK_LISTENER) :]
+    dispatched = set(_COCKPIT_DISPATCHED_ACTION.findall(_without_comments(listener)))
+    unwired = rendered - dispatched
+    if not reachable:
+        unwired.discard("reading-ask")
+    return unwired
+
+
+class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
+    """The producer and the page must agree on every key and every sentence.
+
+    This is the measured biggest risk in the reading surface, and it fails
+    silently and confidently. The page reads snake_case `source.revision_read`
+    and derives its stale-revision warning from it, so a producer emitting
+    `revisionRead` yields no amber line PLUS every criterion captioned with
+    today's typed words under a reading of an older revision. Nothing else in
+    the tree compares the two spellings.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    @property
+    def source(self) -> str:
+        return (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
+
+    @staticmethod
+    def _js_list(source: str, name: str) -> set[str]:
+        start = source.index(f"const {name} = [")
+        body = source[start + len(f"const {name} = [") : source.index("]", start)]
+        return {part.strip().strip('"') for part in body.split(",") if part.strip()}
+
+    def test_the_page_and_the_producer_name_the_same_assessment_fields(self) -> None:
+        self.assertEqual(
+            set(reading.ASSESSMENT_KEYS),
+            self._js_list(self.source, "NEXT_READING_ASSESSMENT_KEYS"),
+        )
+
+    def test_the_page_and_the_producer_name_the_same_criterion_fields(self) -> None:
+        self.assertEqual(
+            set(reading.CRITERION_KEYS),
+            self._js_list(self.source, "NEXT_READING_CRITERION_KEYS"),
+        )
+
+    def test_both_sides_agree_on_which_entries_demonstrate_work(self) -> None:
+        """The pair rule 7 pivots on, and the class was not comparing it.
+
+        If one side gains a type the other lacks, the page renders a
+        `consistent` on Expected Output that the producer would have demoted,
+        or demotes one the producer allowed. Everything else in this class was
+        compared; this is the pair that decides whether a deliverable verdict
+        survives.
+        """
+        self.assertEqual(
+            set(reading.WORK_EVIDENCE_TYPES),
+            self._js_list(self.source, "NEXT_READING_WORK_TYPES"),
+        )
+
+    def test_the_page_reads_the_revision_key_the_producer_actually_writes(self) -> None:
+        # The specific spelling, because this is the pair that fails silently.
+        self.assertIn("source.revision_read", self.source)
+        self.assertNotIn("source.revisionRead", self.source)
+
+    def test_all_three_results_a_reader_can_see_are_spelt_the_same_on_both_sides(self) -> None:
+        for sentence in reading.RESULTS:
+            with self.subTest(result=sentence):
+                self.assertIn(f'"{sentence}"', self.source)
+
+    def test_the_two_kinds_of_nothing_never_render_alike(self) -> None:
+        # "Nothing departed" and "nothing was checked" are the pair this
+        # milestone says must never read the same.
+        self.assertNotEqual(reading.NO_READING_YET, reading.WITHHELD[reading.WITHHELD_LEDGER_EMPTY])
+        self.assertIn("No reading has been made", self.source)
+        self.assertIn("verified neither constraint", self.source)
+
+
+class TheAnnotationFieldListIsDerivedTest(unittest.TestCase):
+    """The page's annotation field list, against what Python publishes.
+
+    A three-defect site, and every defect was the same shape: the page
+    reading a field nothing publishes. The list was hand-kept and its own
+    comment had gone stale twice. This derives it.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    def test_the_page_reads_exactly_the_fields_the_store_publishes(self) -> None:
+        source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
+        start = source.index("  const fields = [")
+        body = source[start : source.index("];", start)]
+        rendered = {
+            part.strip().strip('"') for part in body.split("[", 1)[1].split(",") if part.strip()
+        }
+        self.assertEqual(set(annotation_store.published(None)), rendered)
+
+
+class AnnotationFieldCollapseTest(unittest.TestCase):
+    """The box and the store must strip the same characters.
+
+    `records.safe_text` turns every run of control and bidi characters into ONE
+    space before the store sees anything, so a pasted line break was gone at the
+    save while the box still showed it and the cue said "Saved as a new
+    revision." under text the store never held. The page now collapses on input,
+    which means the rule is spelled twice, in Python and in JavaScript.
+
+    Two spellings of one rule drift, so this pins them together. It is a
+    verbatim substring assertion and not a re-derivation, because the pattern is
+    written with escapes on both sides and is therefore byte-identical: the
+    Python `.pattern` string is also a valid JavaScript regex literal body.
+    `lint_embedded` runs `node --check` alone, so no JS linter would object to
+    the class either way.
+    """
+
+    def test_the_page_strips_exactly_what_the_store_strips(self) -> None:
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        self.assertIn(
+            records._UNSAFE_CHARS.pattern,
+            source,
+            "next-cockpit.js no longer spells the store's character class verbatim, so the "
+            "held field and records.safe_text can now disagree about what a paste contains.",
+        )
+
+    def test_the_pinned_class_is_the_one_that_eats_a_newline(self) -> None:
+        # Guards the pin itself: a class that no longer covered \n would still
+        # be pinned, and the assertion above would stay green while the defect
+        # it exists for came back.
+        self.assertEqual("a b", records.safe_text("a\nb", 240))
+        self.assertEqual("a b", records.safe_text("a\n\n\nb", 240))
+        self.assertEqual("a b", records.safe_text("a\tb", 240))
+
+
+class ReadingControlIsWiredTest(unittest.TestCase):
+    """A rendered cockpit action may not become reachable with no handler.
+
+    DEC-17 gates the `Ask for a reading` control on a recorded abstention
+    check, and the comment beside it argued one gate was enough: the check
+    cannot be run without a producer, so a recorded pass implies one exists.
+    True, and not the whole implication. A pass implies a producer; it does not
+    imply the button is wired to it.
+
+    Measured on this branch: the control shipped with no `reading-ask` arm in
+    the dispatcher while `test_next_cockpit` asserted the enabled state
+    renders, commented "Enablement reads the recorded result, not a constant".
+    A tested path to an inert enabled control.
+
+    Written as an inventory rather than as a `reading-ask` special case,
+    following the POST-route gate in `test_history`: the general form costs
+    nothing today, because `reading-ask` is the only rendered literal with no
+    arm, and it catches the next dead control as well as this one.
+    """
+
+    def test_no_rendered_action_is_reachable_without_a_dispatch_arm(self) -> None:
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        reachable = annotation_store.ABSTENTION_CHECK == annotation_store.ABSTENTION_CHECK_PASSED
+        self.assertEqual(
+            set(),
+            unwired_cockpit_actions(source, reachable=reachable),
+            "a cockpit control renders an action the click dispatcher does not handle. "
+            "Wire it in the same change that makes it reachable, or stop rendering it.",
+        )
+
+    def test_the_reading_arm_exists_whether_or_not_the_control_is_enabled(self) -> None:
+        """The exemption above is now dead, and this is what proves it.
+
+        `unwired_cockpit_actions` forgives `reading-ask` while the abstention
+        check has not passed, which was right while the control was
+        deliberately inert with nothing behind it. A producer exists now and
+        the arm is wired, so the forgiving branch must not be what keeps this
+        green: asserted with `reachable=True` unconditionally, so deleting
+        the arm is red on this branch rather than only after the check
+        eventually passes.
+        """
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        self.assertEqual(set(), unwired_cockpit_actions(source, reachable=True))
+
+    def test_the_predicate_itself_holds_in_every_state(self) -> None:
+        """The gate proven on synthetic sources, so it never stops being proven.
+
+        An earlier version walked the real tree and skipped once a handler
+        existed, which retires the proof on exactly the tree where the gate
+        starts carrying weight. These four cases pin the predicate instead, and
+        the third is the false green the whole-file version would have had.
+        """
+        listener = _COCKPIT_CLICK_LISTENER
+        unwired = f'data-next-cockpit-action="reading-ask" {listener} action === "tab"'
+        wired = f'{unwired} action === "reading-ask"'
+        commented = (
+            f'data-next-cockpit-action="reading-ask" {listener} '
+            '/* no action === "reading-ask" arm yet */ action === "tab"'
+        )
+        other = f'data-next-cockpit-action="graph-mode" {listener} action === "tab"'
+
+        self.assertEqual({"reading-ask"}, unwired_cockpit_actions(unwired, reachable=True))
+        self.assertEqual(set(), unwired_cockpit_actions(unwired, reachable=False))
+        self.assertEqual(set(), unwired_cockpit_actions(wired, reachable=True))
+        # Prose naming the arm is not the arm.
+        self.assertEqual({"reading-ask"}, unwired_cockpit_actions(commented, reachable=True))
+        # And nothing else gets the exemption, in either state.
+        self.assertEqual({"graph-mode"}, unwired_cockpit_actions(other, reachable=False))
+
+
 class LauncherContractTest(unittest.TestCase):
     """server.py is the stable entry point and owns nothing else."""
 
@@ -1048,6 +1283,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # collectors and whichever one is added next. `records` is a leaf, so
         # this stays inward.
         "cargento_runtime.aggregate": {
+            "cargento_runtime.annotations",
             "cargento_runtime.collectors",
             "cargento_runtime.config",
             "cargento_runtime.dismissals",
@@ -1056,6 +1292,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.quota",
+            "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.snapshot",
@@ -1233,11 +1470,35 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.state",
         },
+        # `annotations` is `dismissals`' shape over the reader's own words rather
+        # than over a mark, so it is a leaf on the same four and nothing else.
+        # The one behavioural difference is the absent watermark, which costs no
+        # edge: see that module's docstring for why an annotation does not lapse.
+        # `reading` for the shape of a stored assessment and the closed
+        # vocabularies that validate one. The arrow runs this way because the
+        # shape belongs with the producer, and it stays a DAG: `reading`
+        # imports neither this module nor `state`.
+        "cargento_runtime.annotations": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.reading",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
+        },
         # The observer analyzer: a read-only bystander that derives goal +
         # stage + block from a session transcript head and its workflow entity
         # dir. `spacedock` provides the read-only entity-dir frontmatter reader;
         # `transcripts` provides the first-line metadata reader the path
         # resolver uses. Both are lower-level modules that do not import back.
+        # A leaf. It reads the reader's words and the observed facts the caller
+        # hands it, and calls one sandboxed subprocess through `observer` --
+        # deliberately through it rather than beside it, so a second model lane
+        # cannot drift from the first one's flags.
+        "cargento_runtime.reading": {
+            "cargento_runtime.config",
+            "cargento_runtime.observer",
+            "cargento_runtime.records",
+        },
         "cargento_runtime.observer": {
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -1298,6 +1559,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
+            "cargento_runtime.annotations",
             "cargento_runtime.aggregate",
             "cargento_runtime.asks",
             "cargento_runtime.dismissals",
@@ -1309,6 +1571,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.observer",
             "cargento_runtime.project_context",
             "cargento_runtime.quota",
+            "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",

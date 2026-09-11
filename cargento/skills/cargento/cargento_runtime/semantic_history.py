@@ -23,6 +23,13 @@ MAX_PROJECTS = 20
 MAX_EVENTS_PER_PROJECT = 512
 HISTORY_WINDOW_SEC = 24 * 60 * 60
 STORE_NAME = "semantic-work-history.json"
+# Named, unlike the other bounds in this module, because SECURITY.md quotes
+# these two numbers: this store carries the operator's own directive and the
+# assistant's answer, so widening either bound widens what a credential could
+# survive inside. A literal here and a number in the document can only agree by
+# accident, and `SemanticHistoryContractDocumentationTest` is what compares them.
+SUMMARY_CAP_CHARS = 240
+RESULT_DETAIL_CAP_CHARS = 4096
 RESCAN_OVERLAP_BYTES = 64 * 1024
 BACKFILL_SCHEMA_VERSION = 5
 
@@ -188,7 +195,7 @@ def _event_from_fact(
     if event_type is None:
         return None
     fact_id = records.safe_text(fact.get("fact_id"), 160)
-    summary = records.safe_text(fact.get("summary"), 240)
+    summary = records.safe_text(fact.get("summary"), SUMMARY_CAP_CHARS)
     at = fact.get("at")
     if not fact_id or not summary or not isinstance(at, (int, float)):
         return None
@@ -253,7 +260,9 @@ def _final_output_events(sessions: Iterable[Mapping[str, Any]]) -> list[dict[str
         at = session.get("last_activity")
         if not harness or not sid or not isinstance(at, (int, float)):
             continue
-        exact = "\n".join(records.safe_text(line, 4096) for line in output.splitlines())[:4096]
+        exact = "\n".join(
+            records.safe_text(line, RESULT_DETAIL_CAP_CHARS) for line in output.splitlines()
+        )[:RESULT_DETAIL_CAP_CHARS]
         summary = records.safe_text(" ".join(exact.split()), 112)
         event_id = f"final:{harness}:{sid}:{float(at):.6f}"
         work_item_id = f"session:{harness}:{sid}"

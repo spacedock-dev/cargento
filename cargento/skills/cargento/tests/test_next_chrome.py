@@ -140,6 +140,7 @@ console.log(JSON.stringify({views, rendered}));
             "attention": "Cargento \u2014 Attention",
             "projects": "Cargento \u2014 Projects",
             "sessions": "Cargento \u2014 Sessions",
+            "intent": "Cargento \u2014 Intent log",
         }
         for rendered in out["rendered"]:
             view = rendered["view"]

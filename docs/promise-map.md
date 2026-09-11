@@ -75,7 +75,9 @@ Backed by the current-turn elapsed and ETA estimate with its progress bar, the w
 when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its
 measured elapsed, its own model and its own liveness, with a teammate that has finished or gone
 quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
-session is running on, and desktop notifications on a state change.
+session is running on, desktop notifications on a state change, and a goal and an expected output
+you can type against one session and read back beside the goal its harness published, each on its
+own row with its own source, alongside every observed entry naming that session.
 
 Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
 contained only at the few places
@@ -85,6 +87,12 @@ plan title from Claude, and up to 64 plan steps with their statuses from Codex. 
 boundary in part on 2026-09-02 rather than confirming it, and SECURITY.md is where the current line
 is drawn.
 An ETA is an estimate, and it says so.
+
+Your words are yours, and nothing compares them to anything. A reading that would is asked for
+rather than running, and the control that asks is disabled until an abstention check has been run
+and recorded, so what ships today is the evidence side by side and the comparison is yours.
+Demonstrated work results are read on Pi alone, which the work evidence states under itself rather
+than leaving an empty list to read as no work done.
 
 ### P3. Is anything waiting on me?
 
@@ -156,9 +164,17 @@ Backed by the finished-and-unread flag, the mark that separates a turn that stop
 still waiting on a reply that never came, the mark that a session is over so it stops reading as one
 waiting at its prompt, the note on a row read off disk saying that no turn end can be observed
 there, a way to mark a session handled so it leaves the board, and the
-end-of-session git probe that shipped in 0.19.
+end-of-session git probe that shipped in 0.19. And, since the annotation store landed, by what you
+typed the session should achieve and produce: the words are kept beside the two end axes, so a
+session that ended can be read against what was asked of it rather than only against whether it
+stopped. The Intent log keeps them after the row leaves the board.
 
-Where it stops: both of those marks reach only the harnesses whose adapter maps the event that
+Where it stops: nothing reads your words for you at the end. The two axes say what ended and who
+claims it finished, drawn separately because neither implies the other, and the comparison against
+what you asked for is yours to make. A model reading of it is permitted on request and is not
+built, so there is no verdict here to trust or distrust. The words are kept under a session count
+rather than a date, so an old enough annotation is evicted rather than expired. And both of those
+marks reach only the harnesses whose adapter maps the event that
 carries them. An absent mark means no end was observed, never that a session is alive, so it covers
 the harnesses with no adapter, a session that predates this server process, and a run under
 `--no-events` alike. Of those three, only the first is named on the row: the note is a fact about

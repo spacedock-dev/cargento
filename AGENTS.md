@@ -37,6 +37,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── mcp_server.py           # stdio MCP server: the one tool a session calls to ask the reader
         ├── cargento_runtime/       # importable dashboard runtime package
         │   ├── aggregate.py        # harness registry, failure boundary, and the application
+        │   ├── annotations.py      # the goal and expected output the reader typed, as revisions
         │   ├── asks.py             # outstanding questions and their answer mailboxes, a leaf
         │   ├── claude_data.py      # Claude transcript reads shared by the collector and hooks
         │   ├── cli.py              # argument parsing, runtime assembly, and the serve branches
@@ -59,6 +60,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── observer.py        # one session's goal, stage and open block, on demand
         │   ├── probe.py            # the coarse store probe: a bounded stat sweep, a hint only
         │   ├── quota.py            # quota: per-vendor fetches, pushed receipts, and the cache
+        │   ├── reading.py          # one reader-requested reading: the ledger, the rules, the refusals
         │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── sessions.py         # session identity, shape, and deterministic aggregation
         │   ├── snapshot.py         # the published response bytes and their restart-qualified revision
@@ -96,6 +98,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. What a release note, the README lede and the Linear project all restate rather than reinvent. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
 | `docs/design-reader-state.md` | **Canonical** rule for what survives a redraw: one row per thing a reader can leave in the DOM, whether `renderNext` puts it back, and — for the two it does not manage — why. The code cites it instead of repeating it. |
+| `docs/design-reading-a-session.md` | **Canonical** record of the four rulings that govern what Cargento may say about a session against the words a reader typed: the evidence floor and the reader-requested model overlay, whether an assessment may be stored, that Cargento never writes into a session, and the seven-rule shape contract a reading must satisfy. The runtime cites its headings, because three of those rules are built into the producer rather than checked after it. |
 | [docs/design-adapter-packaging.md](docs/design-adapter-packaging.md) | **Canonical** adapter admission and packaging contract: identity normalizers, hook-shaped mappings, and implementation-language boundaries. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
@@ -196,7 +199,8 @@ coverage run -a -m unittest \
   scripts.tests.test_capture_hook scripts.tests.test_bench_event_latency \
   scripts.tests.test_derive_prompt_shapes scripts.tests.test_capture_team_registry \
   scripts.tests.test_capture_terminal_identity \
-  scripts.tests.test_capture_focus_raise
+  scripts.tests.test_capture_focus_raise \
+  scripts.tests.test_serve_operator_cockpit
 coverage report   # enforces the fail_under threshold from pyproject.toml
 # Those last two modules exercise AppleScript against Terminal.app, and this
 # suite now sends nothing. It used to: measured on a macOS desk with Terminal

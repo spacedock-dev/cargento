@@ -127,6 +127,12 @@ function nextViewBody(){
   if(nextRoute.view === "sessions"){
     return nextSessionsView();
   }
+  if(nextRoute.view === "intent"){
+    // Fetched on arrival rather than polled: the words leave the server when
+    // someone opens the log, and the log is not on the refresh loop.
+    if(nextIntentState === "unread") nextIntentLoad();
+    return nextIntentView();
+  }
   return `<section data-next-view-body="${esc(nextRoute.view)}">${nextDetailBody(nextRoute, nextOpenDisclosures)}</section>`;
 }
 
