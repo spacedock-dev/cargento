@@ -1342,3 +1342,71 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
             self.assertTrue(annotation_store.save(self.config, (), diagnostic_sink=lambda _l: None))
 
         self.assertEqual(1, len(synced))
+
+
+class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
+    """DRC-4545's second half, driven through a real read rather than injected.
+
+    `_assessment` refuses a stored reading whole on any bad key, which is
+    right. But `readings` is read from an independent key and survives, so the
+    row published a press with nothing to show and the page rendered both
+    "1 reading asked for on this session" and "No reading has been made".
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+
+    def _write(self, assessment: Any) -> dict[str, Any]:
+        os.makedirs(self.config.state_home, mode=0o700, exist_ok=True)
+        payload = {
+            "v": annotation_store.SCHEMA_VERSION,
+            "entries": [
+                {
+                    "harness": "codex",
+                    "sid": "s-1",
+                    "revisions": [{"n": 1, "at": 100.0, "goal": "ship it", "output": ""}],
+                    "readings": 1,
+                    "assessment": assessment,
+                }
+            ],
+        }
+        with open(annotation_store.store_path(self.config), "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        entries = annotation_store.load(self.config)
+        self.assertEqual(1, len(entries))
+        return dict(annotation_store.published(entries[0], binding_why=""))
+
+    def test_a_reading_carrying_a_key_this_build_does_not_know_is_published_as_refused(
+        self,
+    ) -> None:
+        row = self._write({"revision_read": 1, "a_key_from_the_future": True})
+
+        self.assertIsNone(row["assessment"])
+        self.assertEqual(1, row["reading_count"])
+        self.assertTrue(row["reading_refused"])
+
+    def test_a_session_nobody_pressed_on_is_not_refused(self) -> None:
+        row = self._write(None)
+
+        self.assertIsNone(row["assessment"])
+        self.assertFalse(row["reading_refused"])
+
+    def test_the_refusal_is_never_written_back_to_disk(self) -> None:
+        # It is a fact about this build reading that file, so a build that can
+        # read the reading must publish no refusal without anything clearing a
+        # stored flag.
+        self._write({"revision_read": 1, "a_key_from_the_future": True})
+        entries = annotation_store.load(self.config)
+        annotation_store.save(self.config, entries, diagnostic_sink=lambda _line: None)
+
+        with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertNotIn("refused", written["entries"][0])

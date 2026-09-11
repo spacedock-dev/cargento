@@ -163,6 +163,11 @@ class Annotation(TypedDict):
     revisions: tuple[Revision, ...]
     settled: NotRequired[Settlement]
     assessment: NotRequired[reading.Assessment]
+    # Set on read-back when a stored reading was refused whole, never written
+    # to disk and never carried across a save. It is a fact about THIS build
+    # reading THAT file, so a build that can read the reading publishes no
+    # refusal without anything having to clear the flag.
+    refused: NotRequired[bool]
     readings: NotRequired[int]
     withheld: NotRequired[str]
 
@@ -320,6 +325,14 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     assessment = _assessment(value.get("assessment"), text_cap)
     if assessment is not None:
         entry["assessment"] = assessment
+    elif value.get("assessment") is not None:
+        # A reading was stored and this build refuses it whole, which is right:
+        # a half-read reading is worse than none. But `readings` survives just
+        # below, so without this the row published a press with nothing to show
+        # and the page read it as a session nobody had pressed on. Derived on
+        # read-back rather than stored, so it corrects itself when the build
+        # that can read it comes back.
+        entry["refused"] = True
     readings = value.get("readings")
     if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
         entry["readings"] = readings
@@ -393,7 +406,14 @@ def save(
     payload = {
         "v": SCHEMA_VERSION,
         "entries": [
-            {**entry, "revisions": [dict(rev) for rev in entry["revisions"]]}
+            # `refused` is dropped rather than written. It is a fact about the
+            # build that just read the file, not about the annotation, so
+            # persisting it would outlive the build that could not read the
+            # reading and go on refusing one a later build can read fine.
+            {
+                **{name: field for name, field in entry.items() if name != "refused"},
+                "revisions": [dict(rev) for rev in entry["revisions"]],
+            }
             for entry in _bounded(entries, config.annotation_max_sessions)
         ],
     }
@@ -500,6 +520,7 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "revision_count": len(entry["revisions"]) if entry else 0,
         "at": latest["at"] if latest else None,
         "binding_why": binding_why,
+        "reading_refused": bool(entry.get("refused")) if entry else False,
         # Three scalars and no prose, which is what keeps this out of DEC-15b's
         # admission path: `history.OBSERVATION_FIELDS` is a closed tuple and a
         # new published field does not enter the store by being published.

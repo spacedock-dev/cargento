@@ -64,7 +64,8 @@ function nextCockpitAnnotation(session){
      reading a field nothing publishes. */
   const fields = ["goal", "goal_why", "output", "output_why", "revision",
     "revision_count", "at", "binding_why", "settled_at", "settled_through",
-    "settled_revision", "assessment", "reading_count", "reading_withheld"];
+    "settled_revision", "assessment", "reading_count", "reading_withheld",
+    "reading_refused"];
   const known = fields.some(name => {
     const value = session[`annotation_${name}`];
     return value !== undefined && value !== null && value !== "" && value !== 0;
@@ -1608,9 +1609,20 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     if(reason){
       return close(`<p class="next-cockpit-reading-why">${esc(reason)}</p>`, null);
     }
+    /* A reading the store refused on read-back is not a session nobody
+       pressed on. `readings` survives a refusal, so without this the block
+       said "N readings asked for" above "No reading has been made" and left
+       the difference unaccounted for. The JS refusal below cannot reach this:
+       the validator nulls the assessment before the page ever sees it, so
+       that arm only fires in a tab left open across a server upgrade. */
+    const refused = annotation && annotation.reading_refused === true
+      ? '<p class="next-cockpit-reading-why">A reading is stored for this session and this ' +
+        "build could not read it, so nothing from it is shown. Asking again replaces it." +
+        "</p>"
+      : "";
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER} ` +
       `${NEXT_READING_NOT_A_VERIFICATION}</p>`;
-    return close(offer + why + nextCockpitReadingControl(session, annotation), null);
+    return close(refused + offer + why + nextCockpitReadingControl(session, annotation), null);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
   if(shape.malformed){

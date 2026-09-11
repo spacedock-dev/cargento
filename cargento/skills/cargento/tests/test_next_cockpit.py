@@ -5986,3 +5986,57 @@ console.log(JSON.stringify({unpersisted, persisted}));
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AStoreRefusedReadingIsNotAnUnpressedSessionTest(NextPageJsHarness):
+    """DRC-4545's second half, on the block that renders both sentences.
+
+    `readings` survives a reading `_assessment` refuses whole, so the block
+    said "1 reading asked for on this session" above "No reading has been
+    made, so nothing has been raised" with no account of the difference.
+    """
+
+    # Its own runner rather than a subclass of a concrete test case: inheriting
+    # that class re-ran its hundred and twelve tests under this name.
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_block_names_the_refusal_rather_than_offering_a_first_press(self) -> None:
+        out = self.run_fixture(
+            """
+const session = {harness:"codex", sid:"focus-1", state:"idle"};
+const model = {enabled:true};
+const annotation = {goal:"ship it", output:"", revision:1, revision_count:1, at:100,
+  reading_count:1, reading_refused:true, assessment:null};
+const html = nextCockpitReading(session, annotation, [], model, null, false,
+  {state:"read", entries:[]});
+console.log(JSON.stringify({
+  html,
+  names: html.includes("could not read it, so nothing from it is shown"),
+  count: html.includes("1 reading asked for"),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["names"], out["html"])
+        self.assertTrue(out["count"])
+
+    def test_a_session_nobody_pressed_on_is_not_told_a_reading_was_refused(self) -> None:
+        out = self.run_fixture(
+            """
+const session = {harness:"codex", sid:"focus-1", state:"idle"};
+const model = {enabled:true};
+const annotation = {goal:"ship it", output:"", revision:1, revision_count:1, at:100,
+  reading_count:0, reading_refused:false, assessment:null};
+const html = nextCockpitReading(session, annotation, [], model, null, false,
+  {state:"read", entries:[]});
+console.log(JSON.stringify({html, names: html.includes("could not read it")}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertFalse(out["names"], out["html"])

@@ -547,6 +547,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_assessment": None,
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
+        "annotation_reading_refused": False,
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and
