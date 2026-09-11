@@ -122,6 +122,8 @@ DECLARED_SESSION_FIELDS = frozenset(
         "browser_lane",
         "browser_lane_at",
         "browser_lane_why",
+        "departures",
+        "departure_why",
     }
 )
 

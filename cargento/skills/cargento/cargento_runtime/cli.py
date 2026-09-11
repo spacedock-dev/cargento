@@ -21,6 +21,7 @@ from cargento_runtime import (
     lifecycle,
     notifications,
     observation,
+    unasked,
 )
 from cargento_runtime import config as runtime_config
 from cargento_runtime import interaction_prototype as runtime_interaction
@@ -271,6 +272,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--unasked-readings",
+        action="store_true",
+        help=(
+            "check annotated sessions against what you asked for without being "
+            "asked, and raise a departure through the notification lane. OFF by "
+            "default and the only feature here that spends your model capacity "
+            "with nobody watching: each check is a codex subprocess, bounded per "
+            "session and per day, and only a departure is ever raised"
+        ),
+    )
+    parser.add_argument(
         "--no-ask",
         action="store_true",
         help=(
@@ -379,6 +391,7 @@ def build_runtime(
         focus_enabled=not args.no_focus,
         dismissals_enabled=not args.no_dismiss,
         annotations_enabled=not args.no_annotations,
+        unasked_enabled=bool(args.unasked_readings),
         ask_enabled=not args.no_ask,
         history_enabled=not args.no_history,
         history_retention_sec=args.history_days * runtime_config.SECONDS_PER_DAY,
@@ -420,6 +433,10 @@ def build_application(
     13.41 days — 176 of them outside `window_hours` and unreachable from a
     serving collection — and `--forget && --diagnose` put back the file the
     delete had just removed.
+
+    The unasked reading lane rides the same switch and adds one of its own, the
+    ruling being
+    [DEC-18](docs/design-reading-a-session.md#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first).
     """
     popup_notifier = bound_popup_notifier(config, diagnostic_sink)
     application = aggregate.Application(
@@ -436,6 +453,21 @@ def build_application(
         # None forever under --no-events: the store's only off switch is
         # --no-history, so the lane must not hang off an unrelated flag.
         application.history_lane = history.Lane(config, diagnostic_sink=diagnostic_sink)
+    if record_history and config.unasked_enabled:
+        # Two conditions and both are load bearing. `--diagnose` passes
+        # `record_history=False` and runs a collection, which must not start a
+        # `codex` subprocess while reporting what the stores hold; and the
+        # switch is off by default under the ruling cited in this function's
+        # docstring, so an installed board never spends the reader's capacity
+        # unless they asked it to. It shares
+        # `record_history` with the history lane rather than owning a second
+        # is-this-diagnose signal, which is the thing there must not be two of.
+        application.unasked_lane = unasked.Lane(
+            config,
+            popup_notifier=popup_notifier,
+            diagnostic_sink=diagnostic_sink,
+            clock=clock,
+        )
     return application
 
 

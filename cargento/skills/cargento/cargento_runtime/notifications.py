@@ -296,6 +296,21 @@ def waiting_title(harness_label: str) -> str:
     return f"{harness_label} is waiting on you"
 
 
+def departure_title(harness_label: str) -> str:
+    """The popup title for an unasked reading that found a departure.
+
+    Its own sentence, for `asking_title`'s reason and a sharper one. A gate and
+    a question are both the session asking for you; this is Cargento saying
+    something about the session, on evidence a model read, and the reader is by
+    construction not at the desk. Reading it as "answer me" would send them to
+    the wrong place, and reading it as a fact would overclaim what a reading is.
+
+    An empty label yields the generic subject rather than a blank one, exactly
+    as the two titles above do.
+    """
+    return f"{harness_label or ASK_HARNESS_FALLBACK} may be going off track"
+
+
 def asking_title(harness_label: str) -> str:
     """The popup title for a session that registered a question.
 
@@ -345,7 +360,7 @@ class PopupSubject:
     activity: float
 
 
-def _record_outcome(
+def record_outcome(
     config: RuntimeConfig,
     harness: str,
     sid: str,
@@ -465,7 +480,7 @@ def maybe_popup(
     if outcome == deliveries.OUTCOME_NO_LANE:
         _refund_floor(state, state.last_popup, prefix, now, previous_session)
         _refund_floor(state, state.last_popup, "_global", now, previous_global)
-    _record_outcome(config, subject.harness, prefix, "gate", outcome, now)
+    record_outcome(config, subject.harness, prefix, "gate", outcome, now)
 
 
 def _refund_floor(
@@ -591,7 +606,7 @@ def maybe_ask_popup(
     # never attempted silences the NEXT question rather than a retry of this one.
     if outcome == deliveries.OUTCOME_NO_LANE:
         _refund_floor(state, state.last_popup, ASK_POPUP_KEY, now, previous_ask)
-    _record_outcome(config, subject.harness, subject.sid, "ask", outcome, now)
+    record_outcome(config, subject.harness, subject.sid, "ask", outcome, now)
 
 
 def _refund_hook_floors(
@@ -772,7 +787,7 @@ def handle_payload(
         # "claude" by the same argument as the label above it: the route is
         # Claude's own hook forwarder and nothing else posts there, so the
         # harness is a property of the route rather than a field to trust.
-        _record_outcome(config, "claude", prefix, "hook", outcome, now)
+        record_outcome(config, "claude", prefix, "hook", outcome, now)
     if cleared:
         return {"ok": True, "suppressed": "cleared"}
     return {"ok": True}

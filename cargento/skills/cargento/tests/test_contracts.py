@@ -1287,6 +1287,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.collectors",
             "cargento_runtime.config",
             "cargento_runtime.deliveries",
+            "cargento_runtime.departures",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.git_status",
@@ -1297,6 +1298,31 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.snapshot",
+            "cargento_runtime.state",
+            "cargento_runtime.unasked",
+        },
+        # A leaf over the same four as `dismissals`, for the same reason: the
+        # lane writes it, the application publishes it and a review surface
+        # reads it, and none of those could depend on it if it depended on any
+        # of them.
+        "cargento_runtime.departures": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+        },
+        # An orchestrator rather than a leaf, and the reason it is its own
+        # module: it reaches the producer, the evidence, the baseline, the
+        # record and the raise, and `aggregate` imports neither of the last two
+        # halves. Keeping it here is what stops the application growing an edge
+        # to `project_context` for one feature.
+        "cargento_runtime.unasked": {
+            "cargento_runtime.annotations",
+            "cargento_runtime.config",
+            "cargento_runtime.departures",
+            "cargento_runtime.io",
+            "cargento_runtime.notifications",
+            "cargento_runtime.project_context",
+            "cargento_runtime.reading",
             "cargento_runtime.state",
         },
         # The CLI is the assembly point, so it may import any runtime module.
@@ -1312,6 +1338,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.notifications",
             "cargento_runtime.observation",
             "cargento_runtime.state",
+            "cargento_runtime.unasked",
             "cargento_runtime.web",
         },
         # Outstanding asks and their one-slot answer mailboxes. Imports no

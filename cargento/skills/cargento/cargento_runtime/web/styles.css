@@ -918,6 +918,30 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-landed h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
 .next-cockpit-landed-axes{color:var(--ink3);font-family:var(--mono);font-size:10px}
 .next-cockpit-held-bound{margin-left:auto;color:var(--ink3);font-family:var(--mono);font-size:10px}
+/* What the unasked lane raised. The same label shape as every other fact on
+   this panel, for the reason the delivery block beside it carries one.
+
+   No colour on a departure, and that is the rule rather than a default. A
+   departure is a model's reading of partial evidence, and the design's register
+   rule reserves colour for the board stating a fact: red here would read as
+   Cargento asserting the session is wrong, which is exactly the claim it may
+   not make. The baseline line is dimmer still, because it is provenance rather
+   than the reading. */
+.next-session-departures{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--line2)}
+.next-session-departures h2{margin:0;color:var(--ink3);font-family:var(--mono);
+  font-size:var(--fs-label);font-weight:400}
+.next-session-departures-count{margin:6px 0 0;color:var(--ink2);font:var(--fs-xs)/1.5 var(--sans)}
+/* The sentence saying why there is nothing. Dimmer than a departure, because a
+   spent cap and a quiet board are both absences and neither is a finding. */
+.next-session-departures-why{margin:6px 0 0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-session-departure{margin:8px 0 0;padding-left:10px;border-left:1px dotted var(--line2)}
+.next-session-departure-name{color:var(--ink);font:var(--fs-xs)/1.5 var(--mono)}
+.next-session-departure-clause{margin-left:8px;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
+/* Italic, because it is a model's reading and not a string a source published.
+   The one treatment the design is explicit about. */
+.next-session-departure-reading{margin:2px 0 0;color:var(--ink2);
+  font:italic var(--fs-xs)/1.5 var(--sans)}
+.next-session-departure-base{margin:2px 0 0;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
 /* What became of a raise. No colour on any of it, and that is the rule rather
    than a default: the four outcomes are facts of different weights and none of
    them is a verdict, so a red on "the service returned an error" would read as

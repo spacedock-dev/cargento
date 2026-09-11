@@ -177,6 +177,20 @@ class RuntimeState:
     # comes back rather than being remembered wrongly.
     lane_lock: LockType = field(default_factory=threading.Lock)
     lane_reported_at: float = 0.0
+    # The unasked reading lane. `unasked_seen` is the last state each row was
+    # observed in, which is what makes an evaluation fire on a CHANGE rather
+    # than per collection; `unasked_inflight` holds the board's one reading slot;
+    # `unasked_last` is the per-session floor a cap is not.
+    #
+    # In memory and bounded like the caches above, which is right for all three:
+    # a restart means the board has observed nothing yet, and the first
+    # collection after one must not read as a transition on every row. The
+    # DEPARTURES survive a restart, in `departures.py`, because they are what
+    # the reader came back for.
+    unasked_lock: LockType = field(default_factory=threading.Lock)
+    unasked_seen: dict[str, str] = field(default_factory=dict)
+    unasked_inflight: set[str] = field(default_factory=set)
+    unasked_last: dict[str, float] = field(default_factory=dict)
     dispute_lock: LockType = field(default_factory=threading.Lock)
     dispute_total: int = 0
     disputes: deque[dict[str, Any]] = field(default_factory=deque)
