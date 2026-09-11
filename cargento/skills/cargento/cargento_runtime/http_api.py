@@ -296,10 +296,19 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 with contextlib.suppress(OSError):
                     self.connection.settimeout(previous)
 
-    def _reject(self, code: int) -> None:
-        """Refuse a POST without stranding the peer mid-write."""
+    def _reject(self, code: int, why: str | None = None) -> None:
+        """Refuse a POST without stranding the peer mid-write.
+
+        `why` reaches the caller in the status line and the error body. Passed
+        only where the refusal is a rule the client can obey rather than a
+        malformed request: a client told "this names a session" can stop sending
+        one, where a bare 400 reads as a bug in its own encoder.
+        """
         self._drain_body()
-        self.send_error(code)
+        if why is None:
+            self.send_error(code)
+        else:
+            self.send_error(code, why)
 
     def _host_admitted(self, host: str) -> bool:
         """Whether a host string is local enough for this server's bind.
@@ -1131,6 +1140,76 @@ class _RequestHandler(BaseHTTPRequestHandler):
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
+    # The five spellings a session's identity takes across this API. `/api/lane`
+    # refuses a body carrying any of them, so this is a closed list on purpose:
+    # it is the thing a reviewer checks against the rest of the surface rather
+    # than a filter to keep widening.
+    SESSION_IDENTITY_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"harness", "sid", "session", "session_id", "resume_id"}
+    )
+
+    def _lane(self) -> None:
+        """Record that a dashboard tab has a working notification lane in it.
+
+        [DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery):
+        the page may report that a lane EXISTS and may never report a delivery.
+        So the body carries two scalars about the tab and nothing about a
+        session, the record is one float for the whole board, and the reply says
+        only whether a lane was recorded.
+
+        **A body naming a session is refused rather than sanitized.** Dropping
+        the field and answering 200 tells a client its per-raise claim was
+        accepted, and the next client to be written against this route would
+        keep sending one. The named keys are the five identity spellings the
+        rest of this API uses; an unknown key is ignored, because a page that
+        adds a field must not start failing against an older server.
+
+        Only a WORKING lane is a report. A tab reporting that it has no lane
+        records nothing and clears nothing: several tabs can be open, and one
+        without permission says nothing about another that has it. What the
+        absence of any report means is the second sentence of
+        [DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery),
+        which `deliveries` owns.
+
+        No capability token, for `/api/dismiss`'s reason: `_local_ok()` has run,
+        and the largest thing a forged request can do here is claim a tab is
+        open, which makes one sentence on a review surface read as weaker
+        evidence than it is.
+        """
+        application = self.server.application
+        config = application.config
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.lane_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"null")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = None
+        if not isinstance(payload, dict):
+            # 400 rather than a degrade to `{}`, unlike `/api/dismiss`. There a
+            # body naming nothing does nothing; here it would be read as a tab
+            # reporting no lane, which this route must not invent.
+            self._reject(400)
+            return
+        if any(key in payload for key in self.SESSION_IDENTITY_KEYS):
+            self._reject(400, "the lane report names a session, and it may not")
+            return
+        reported = payload.get("supported") is True and payload.get("permission") == "granted"
+        if reported:
+            state = application.state
+            with state.lane_lock:
+                state.lane_reported_at = application.clock()
+            # The published bodies carry the lane sentence, so they are dropped
+            # for `/api/dismiss`'s reason: without this the next GET serves the
+            # pre-report payload for up to `collect_memo_sec`.
+            state.snapshot.clear()
+        answer = {"ok": True, "reported": reported}
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
     def _annotate(self) -> None:
         """Record what the reader typed this session should achieve, or clear it.
 
@@ -1555,6 +1634,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/ask/withdraw": self._withdraw,
             "/api/answer": self._answer,
             "/api/notify": self._notify,
+            "/api/lane": self._lane,
         }.get(path)
         if route is None:
             self._reject(404)
@@ -1859,6 +1939,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 config,
                 application.state,
                 notifications.AskSubject(
+                    harness=ask.harness,
+                    sid=ask.session_id,
                     label=application.harness_label(ask.harness),
                     question=ask.question,
                     project=ask.project,

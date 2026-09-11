@@ -1056,7 +1056,7 @@ how hard, to anyone who can read the notification stream. That is stated here ra
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-The server writes seven files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+The server writes eight files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
 authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
 `started`, `log`, `python`); `cargento-<port>.log`, where a detached (`--daemon`) instance's
 output goes; `cargento-dismissals.json`, the sessions the reader marked handled, described in
@@ -1065,9 +1065,11 @@ reader opens that panel for a session, named in invariant 2 above; `cargento-his
 history of what this server observed, described in Local history above;
 `cargento-annotations.json`, the goal and expected output you typed and the readings taken against
 them, named in invariant 2 above and turned off by `--no-annotations`; and
+`cargento-deliveries.json`, what became of each notification this board raised, described in
+Delivery records below; and
 `semantic-work-history.json`, the operator-cockpit prototype's own store, described under the
-prototype below and not reached by `--forget`. One forwarder writes an
-eighth, in the same directory and named in invariant 2 above:
+prototype below and not reached by `--forget`. One forwarder writes a
+ninth, in the same directory and named in invariant 2 above:
 `statusline_hook.py` keeps `statusline-<harness>-<session>.json` per conversation, holding a
 normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
@@ -1093,6 +1095,31 @@ The same route serves the bounded record of state disputes, where an event overr
 dashboard had read as waiting. A record holds the same fields plus the two activity timestamps the
 reducer compared, and no more: the row's title and its state detail are deliberately absent, because
 a state detail can carry a permission prompt's own text, an open question's, or a plan's first line.
+
+## Delivery records
+
+Raising a notification writes one file: `~/.cargento/cargento-deliveries.json`, opened `0600` with
+the mode in the `open` call and written through a temp file and `os.replace`, exactly as the
+dismissal store is.
+
+A record holds a harness key, a session id, the server's clock at the attempt, which producer raised
+it, and one of five outcome tokens. Nothing else: no title, no prompt, no project path, no question
+text and no notification body. What the operating system did with the banner is not in it either,
+because nothing reports that back. Nothing sends it anywhere.
+
+`POST /api/lane` is the one route that writes the browser half, and what it refuses is the point.
+The page may report that a notification lane exists in it and may never report a delivery, so the
+body carries two scalars about the tab and a body naming a session is refused with a 400 rather than
+having its session dropped. The record it writes is one timestamp for the whole board, held in
+memory and never on disk. It is gated by `_local_ok()` alone and carries no capability, for the
+reason `/api/dismiss` does not. What a forged request buys is worth stating in the right direction,
+because an earlier draft of this paragraph had it backwards. A forge stamps the server's clock at
+the moment it arrives, so every raise already on record renders the sentence saying the report came
+after it, which claims nothing. It is the raises AFTER the forge that render the reassuring sentence,
+and the most it can say is that a tab reported a working notification lane some minutes before the
+raise. That is a statement about a tab, never about a delivery, and the negative sentence it
+displaces already claimed nothing either way. A local account that can post this can already read
+every session on the machine through `/api/data`.
 
 ## Dismissals
 
@@ -1697,9 +1724,9 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the eleven POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the twelve POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. There is nothing to authenticate with on nine of them, for the reason the
+somebody other than you. There is nothing to authenticate with on ten of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client

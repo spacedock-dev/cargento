@@ -369,3 +369,64 @@ DRC-4542 before any session is read, and it may need a ruling of its own. Synthe
 instead is cheaper and carries no disclosure risk, but DEC-17 warns that a rubric validated on
 fixtures the same pass writes is not validated, so the two pull opposite ways and the answer is
 written down rather than settled by convenience.
+
+## DEC-19: the page may report a lane, never a delivery
+
+Decided 2026-09-11. Cargento notifies through two independent producers. The server runs one
+`osascript` call and exists on macOS alone. The page constructs a browser `Notification` and is the
+only lane on Linux and Windows. They do not raise the same events, and the page reports nothing
+back.
+
+The page may now tell the server whether a notification lane exists in it: whether the browser
+supports notifications, and what its permission is. On page load and on permission change, never
+per raise, and carrying no session.
+
+It may not report a delivery. Three things decided that, and the security argument was not one of
+them: by this repository's own standard, which is what a forged post can suppress or mask, a
+delivery report is side state of the same weight as `POST /api/notify`, which any local account can
+already forge.
+
+What decided it was that a per-raise report inflates the count by the number of open tabs, because
+every tab computes the edge itself and constructs its own notification while the browser collapses
+them to one banner; that it would be the first route on which the page asserts a fact about itself
+rather than relaying a reader's action; and that a forged delivery is the single false statement
+this milestone ranks worst, because it makes a reader's inaction read as their having ignored
+something.
+
+### The negative sentence, which is the part that is easy to get wrong
+
+A report is stale by construction, and stale asymmetrically: a tab that opens sends one and a tab
+that closes sends none. So an absence of availability means no lane has been reported since a given
+moment, never that none existed when the raise happened.
+
+The sentence says the first. It may not be tightened into the second, and the clause explaining why
+is load bearing rather than decoration.
+
+### Three sentences, not two, and what the build had to decide
+
+The ruling names two cases. Building it found a third, and two rules the ruling implies without
+saying.
+
+A report has a time, and the time changes what it is evidence of. A lane reported three hours before
+a raise and one reported a minute before are different evidence, and a sentence that omits the gap
+makes them read alike. So the positive case carries the gap, and a report that arrived after the
+raise gets its own sentence saying it is about a later moment. Rendering the positive sentence with a
+negative gap would have been the quiet version of the same overclaim.
+
+Only a working lane is a report. A tab reporting that it has no lane records nothing and clears
+nothing, because several tabs can be open and one without permission says nothing about another that
+has it. The absence of any report is the negative sentence above, which already claims nothing either
+way.
+
+The page resends on disagreement rather than on a timer. A report lives in the server's memory, so a
+restart loses it, and the page has no way to know a restart happened. The condition is that this tab
+has a lane and the payload says none has been reported. That covers the first render, the permission
+grant and the restart, with no heartbeat and no token for the boot.
+
+### One argument that was withdrawn
+
+The first recommendation refused any report, on the ground that the page can only say a constructor
+did not throw while the server can say what a subprocess returned. That asymmetry does not exist.
+`osascript` exits zero under Do Not Disturb and with the hosting application's notifications
+switched off, so a zero return means the scripting bridge accepted the call and nothing more. The
+two lanes are the same strength, and a shared value name would have been defensible.

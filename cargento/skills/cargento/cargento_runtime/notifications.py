@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from cargento_runtime import claude_data, dismissals, records
+from cargento_runtime import claude_data, deliveries, dismissals, records
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
 
@@ -132,9 +132,16 @@ def notify_mac(
     message: Any,
     *,
     diagnostic_sink: Callable[[str], None] = print,
-) -> None:
+) -> str:
+    """Send one banner, and say what became of it.
+
+    Five outcomes rather than one, and none of them is "seen". It used to return
+    `None` on every path, so no caller could tell a platform with no backend
+    from a call that timed out, from one the service refused, from one that
+    never started at all.
+    """
     if not native_notifier(config.platform_name):
-        return
+        return deliveries.OUTCOME_NO_LANE
 
     def esc(s: str) -> str:
         return str(s).replace("\\", "\\\\").replace('"', '\\"')
@@ -156,8 +163,25 @@ def notify_mac(
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown error").strip()
             runtime_io.diag(f"[notify] osascript failed: {detail[:300]}", diagnostic_sink)
+            return deliveries.OUTCOME_REFUSED
+    # A timeout is caught here too and is NOT a failure: the call did not
+    # return, so whether a banner was drawn is unknown. Folding it into the
+    # refused arm is the collapse this whole record exists to refuse one level
+    # down, and the two were indistinguishable while this returned None.
+    except subprocess.TimeoutExpired as exc:
+        runtime_io.diag(f"[notify] osascript did not return: {exc}", diagnostic_sink)
+        return deliveries.OUTCOME_DID_NOT_RETURN
+    # Separate from the non-zero return above, not folded into it. These are the
+    # call never starting: a missing or unexecutable binary, or an argument the
+    # runtime refused. Reporting that as "the notification service returned an
+    # error" tells a reader their notification service rejected something it
+    # never saw.
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        runtime_io.diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}", diagnostic_sink)
+        runtime_io.diag(
+            f"[notify] osascript did not start: {type(exc).__name__}: {exc}", diagnostic_sink
+        )
+        return deliveries.OUTCOME_NOT_LAUNCHED
+    return deliveries.OUTCOME_HANDED_OVER
 
 
 def hook_generation(state: RuntimeState, prefix: str) -> int:
@@ -321,6 +345,32 @@ class PopupSubject:
     activity: float
 
 
+def _record_outcome(
+    config: RuntimeConfig,
+    harness: str,
+    sid: str,
+    lane: str,
+    outcome: str | None,
+    now: float,
+) -> None:
+    """Write what became of one raise, outside every lock.
+
+    Outside deliberately, as the notifier call itself is: `hook_lock` is a plain
+    Lock that three lanes contend for, and this write touches a file. A record
+    that failed to reach disk is a diagnostic and never a reason to drop the
+    raise, so this returns nothing and the caller carries on.
+
+    `outcome` may be `None`, which is a notifier that does not report rather
+    than a fifth outcome. Nothing is recorded then, because a record has to say
+    what happened and "the notifier declined to say" is not one of the four
+    things that can. In this tree only an injected stub does that; the shipped
+    notifier always reports.
+    """
+    if not harness or not sid or outcome is None:
+        return
+    deliveries.record(config, harness=harness, sid=sid, lane=lane, outcome=outcome, now=now)
+
+
 def maybe_popup(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -329,7 +379,7 @@ def maybe_popup(
     detail: str | None,
     *,
     expect_generation: int | None = None,
-    popup_notifier: Callable[[str, str], None],
+    popup_notifier: Callable[[str, str], str | None],
 ) -> None:
     """Popup when a session transitions into a needs-input state.
 
@@ -395,9 +445,50 @@ def maybe_popup(
             return
         if now - state.last_popup.get(prefix, 0) < config.popup_cooldown_sec:
             return
+        # Spent here, before the call, and refunded below when the notifier
+        # reports there was no lane to attempt. Spending first and refunding
+        # rather than deciding first, for two reasons that both point the same
+        # way. `popup_notifier` is INJECTED, so a gate on `config.platform_name`
+        # would decide for a notifier this function cannot see, and a Linux
+        # backend would be skipped by a check about the macOS one. And writing
+        # the floor after the call instead reopens the window these writes close
+        # under the lock: two collections could both pass the edge test and both
+        # raise. A refund keeps the window shut and costs one suppressed raise
+        # for the duration of a call that did nothing.
+        previous_session = state.last_popup.get(prefix)
+        previous_global = state.last_popup.get("_global")
         runtime_state.bounded_put(state.last_popup, prefix, now, limit=config.max_cache_entries)
         runtime_state.bounded_put(state.last_popup, "_global", now, limit=config.max_cache_entries)
-    popup_notifier(waiting_title(harness_label), detail or f"Session {prefix} needs your input")
+    outcome = popup_notifier(
+        waiting_title(harness_label), detail or f"Session {prefix} needs your input"
+    )
+    if outcome == deliveries.OUTCOME_NO_LANE:
+        _refund_floor(state, state.last_popup, prefix, now, previous_session)
+        _refund_floor(state, state.last_popup, "_global", now, previous_global)
+    _record_outcome(config, subject.harness, prefix, "gate", outcome, now)
+
+
+def _refund_floor(
+    state: RuntimeState,
+    cache: dict[str, Any],
+    key: str,
+    spent: Any,
+    previous: Any,
+) -> None:
+    """Put one spent suppressor back, unless someone else has moved it since.
+
+    Compare and swap rather than a plain restore. `_global` and the ask lane's
+    key are shared across sessions, so a raise that landed between the spend and
+    this call has written its own value, and rolling that back would unsilence a
+    raise that really was attempted.
+    """
+    with state.hook_lock:
+        if cache.get(key) != spent:
+            return
+        if previous is None:
+            cache.pop(key, None)
+        else:
+            cache[key] = previous
 
 
 @dataclass(frozen=True)
@@ -413,6 +504,8 @@ class AskSubject:
     re-truncated — see `ask_popup_detail`.
     """
 
+    harness: str
+    sid: str
     label: str
     question: str
     project: str
@@ -445,7 +538,7 @@ def maybe_ask_popup(
     subject: AskSubject,
     *,
     now: float,
-    popup_notifier: Callable[[str, str], None],
+    popup_notifier: Callable[[str, str], str | None],
 ) -> None:
     """Popup when a session registers a question, once per ask-lane floor.
 
@@ -484,12 +577,47 @@ def maybe_ask_popup(
     with state.hook_lock:
         if now - state.last_popup.get(ASK_POPUP_KEY, 0) < config.global_popup_cooldown_sec:
             return
+        previous_ask = state.last_popup.get(ASK_POPUP_KEY)
         runtime_state.bounded_put(
             state.last_popup, ASK_POPUP_KEY, now, limit=config.max_cache_entries
         )
     # Outside the lock, as every other popup site is: `hook_lock` is a plain Lock
     # and osascript has a 5s timeout.
-    popup_notifier(asking_title(subject.label), ask_popup_detail(subject.question, subject.project))
+    outcome = popup_notifier(
+        asking_title(subject.label), ask_popup_detail(subject.question, subject.project)
+    )
+    # Refunded on `no-lane` for `maybe_popup`'s reason, and it matters more here:
+    # nothing ever re-registers a question, so a floor spent on a raise that was
+    # never attempted silences the NEXT question rather than a retry of this one.
+    if outcome == deliveries.OUTCOME_NO_LANE:
+        _refund_floor(state, state.last_popup, ASK_POPUP_KEY, now, previous_ask)
+    _record_outcome(config, subject.harness, subject.sid, "ask", outcome, now)
+
+
+def _refund_hook_floors(
+    state: RuntimeState,
+    popup_key: str,
+    now: float,
+    outcome: str | None,
+    spent_before: tuple[Any, Any],
+) -> None:
+    """Put the hook lane's two cooldown floors back when there was no lane.
+
+    The two floors only. `last_popup_message` is not a floor: it suppresses a
+    REPEAT of the same message, and Claude re-emits the same notification for as
+    long as the session stays blocked. Refunding it was tried and reverted,
+    because on a platform with no backend it makes every re-emission a fresh
+    raise, and each one writes a record about a banner nobody could have drawn.
+    A floor exists so the next real transition is not lost; this one exists so
+    the same standing gate is not counted again, and that reason does not change
+    with the outcome.
+
+    A separate function only because `handle_payload` sits on ruff's branch cap.
+    """
+    if outcome != deliveries.OUTCOME_NO_LANE:
+        return
+    _refund_floor(state, state.last_popup, popup_key, now, spent_before[0])
+    _refund_floor(state, state.last_popup, "_global", now, spent_before[1])
 
 
 def transcript_mtime(path: Any) -> float:
@@ -538,7 +666,7 @@ def handle_payload(
     payload: dict[str, Any],
     *,
     now: float,
-    popup_notifier: Callable[[str, str], None],
+    popup_notifier: Callable[[str, str], str | None],
 ) -> dict[str, Any]:
     """Apply one Claude hook payload and return the response object.
 
@@ -625,6 +753,10 @@ def handle_payload(
         repeat = message == prev_msg and now - prev_ts < config.popup_repeat_suppress_sec
         fire = popup and session_ready and global_ready and not repeat and not cleared
         if fire:
+            spent_before = (
+                state.last_popup.get(popup_key),
+                state.last_popup.get("_global"),
+            )
             runtime_state.bounded_put(
                 state.last_popup, popup_key, now, limit=config.max_cache_entries
             )
@@ -635,7 +767,12 @@ def handle_payload(
                 state.last_popup_message, popup_key, (message, now), limit=config.max_cache_entries
             )
     if fire:
-        popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
+        outcome = popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
+        _refund_hook_floors(state, popup_key, now, outcome, spent_before)
+        # "claude" by the same argument as the label above it: the route is
+        # Claude's own hook forwarder and nothing else posts there, so the
+        # harness is a property of the route rather than a field to trust.
+        _record_outcome(config, "claude", prefix, "hook", outcome, now)
     if cleared:
         return {"ok": True, "suppressed": "cleared"}
     return {"ok": True}

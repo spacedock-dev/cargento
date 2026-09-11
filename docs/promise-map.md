@@ -123,6 +123,14 @@ for you. The one shape it is allowed is the session asking and Cargento
 answering
 ([DEC-2](https://linear.app/recce/issue/DRC-4054/dec-2-decision-let-cargento-act-not-just-observe)).
 
+A notification the board raised now carries what became of it, so a signal that never left the
+machine is not read as one you ignored. What it can say stops at the hand-over: on macOS the
+scripting bridge exits zero under Do Not Disturb and with the hosting application's notifications
+switched off, so the record says the notification service accepted the request and never that a
+banner was drawn or that you saw it. On Linux and Windows there is no server-side backend at all,
+and the page may report that it has a notification lane of its own. That is a statement about a tab
+being open, not about a raise reaching you.
+
 ### P4. Will I hit the wall before the work finishes?
 
 **We promise:** your quota in one place across vendors, with each window's budget shown against its

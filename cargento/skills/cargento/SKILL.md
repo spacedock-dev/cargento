@@ -290,6 +290,19 @@ the session has gone quiet rather than that it is waiting on you, which is the h
 either path.
 Notification delivery is best effort; the dashboard's observed state remains the source to inspect.
 
+What became of an alert about a session is now recorded, one entry per raise, and that session's
+panel prints it. There are five outcomes and they mean different things: handed to this machine's
+notification service, the service returned an error, the command could not be started at all, the
+call did not return inside its time limit, and this platform has no backend in this build. A raise
+whose subject carries no session id records nothing, since the record is keyed by session. None of them is "seen". `osascript` exits zero under Do Not
+Disturb and with the hosting application's notifications switched off, so a hand-over says the
+service accepted the request and nothing about whether a banner was drawn or anyone was at the desk.
+A raise on a platform with no backend spends no cooldown, so the next real transition is still
+eligible. Beside the outcome, the panel says whether a dashboard tab has reported a notification lane
+of its own and how long before the raise it did so. That is a statement about a tab, not about a
+raise: a tab that opens reports and a tab that closes does not, so its absence never means the alert
+missed you.
+
 1. **Transcript detection** — an open `AskUserQuestion` or `ExitPlanMode` flips the session to Needs input on the next collection, *when the record has reached disk*. Claude Code buffers it and may not write it until the gate is answered, so treat this as an opportunistic early signal rather than a source to rely on (an open dashboard tab is what drives collections, so keep one open). When the record is there, the row shows the question itself, or a plan's first line, rather than the tool's name; when it is not, the row still says a question is open but cannot say which. Both readings are normal for the same session. There is also a window of up to 90 seconds after a turn starts where a live event overlay reports Working and the question does not show at all, even though it was parsed.
 2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication, completion and computer-use status notifications do neither; permission prompts, MCP elicitation dialogs and a worker's permission or network request create Needs-input state. A type not on either list is treated as actionable, so a notification kind added upstream surfaces rather than disappearing. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
 

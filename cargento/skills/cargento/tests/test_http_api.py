@@ -3235,3 +3235,121 @@ class AnnotateRouteTest(unittest.TestCase):
         with self._serving(cli.build_application(config, state, clock=time.time)) as port:
             status, _body = self._post(port, b"", declared="200000")
         self.assertEqual(413, status)
+
+
+class LaneRouteTest(unittest.TestCase):
+    """POST /api/lane over a real socket.
+
+    The route DEC-19 opened, and the whole of what makes it safe is what it
+    refuses. It carries lane availability and may never carry a delivery, so a
+    body naming a session is rejected outright rather than having its session
+    quietly dropped: a client that smuggles one and gets a 200 has been told
+    its per-raise claim was accepted.
+    """
+
+    def _runtime(self, **changes: Any) -> Any:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+
+    @contextlib.contextmanager
+    def _serving(self, application: Any) -> Any:
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    @staticmethod
+    def _post(port: int, body: bytes, *, declared: str | None = None) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            if declared is None:
+                conn.request("POST", "/api/lane", body=body, headers={"Content-Type": "text/plain"})
+            else:
+                conn.putrequest("POST", "/api/lane")
+                conn.putheader("Content-Length", declared)
+                conn.endheaders()
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def test_a_granted_lane_is_recorded_with_the_servers_own_clock(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 4_242.0)
+        with self._serving(application) as port:
+            status, body = self._post(
+                port, json.dumps({"supported": True, "permission": "granted"}).encode()
+            )
+
+        self.assertEqual(200, status)
+        self.assertIs(True, json.loads(body)["reported"])
+        self.assertEqual(4_242.0, state.lane_reported_at)
+
+    def test_a_body_naming_a_session_is_refused_on_the_response(self) -> None:
+        # AC6. Asserted on the response and not only on the store: a 200 with
+        # the session dropped tells the client its claim was accepted.
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 4_242.0)
+        for field in ("sid", "session", "session_id", "harness", "resume_id"):
+            with self.subTest(field=field):
+                with self._serving(application) as port:
+                    status, body = self._post(
+                        port,
+                        json.dumps(
+                            {"supported": True, "permission": "granted", field: "s-1"}
+                        ).encode(),
+                    )
+
+                self.assertEqual(400, status)
+                self.assertIn(b"names a session", body)
+                self.assertEqual(0.0, state.lane_reported_at)
+
+    def test_a_tab_without_a_lane_neither_records_nor_clears(self) -> None:
+        # Several tabs can be open, so one tab reporting that IT has no lane
+        # says nothing about another that has one. Only a working lane is a
+        # report; the absence of one is the sentence's own subject.
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 4_242.0)
+        with self._serving(application) as port:
+            self._post(port, json.dumps({"supported": True, "permission": "granted"}).encode())
+            status, body = self._post(
+                port, json.dumps({"supported": True, "permission": "denied"}).encode()
+            )
+
+        self.assertEqual(200, status)
+        self.assertIs(False, json.loads(body)["reported"])
+        self.assertEqual(4_242.0, state.lane_reported_at)
+
+    def test_the_response_echoes_nothing_a_client_sent(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 4_242.0)
+        with self._serving(application) as port:
+            _status, body = self._post(
+                port,
+                json.dumps({"supported": True, "permission": "granted", "note": "abc123"}).encode(),
+            )
+
+        self.assertNotIn(b"abc123", body)
+        self.assertEqual({"ok", "reported"}, set(json.loads(body)))
+
+    def test_a_malformed_body_is_refused_rather_than_read_as_a_report(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 4_242.0)
+        with self._serving(application) as port:
+            status, _body = self._post(port, b"[]")
+
+        self.assertEqual(400, status)
+        self.assertEqual(0.0, state.lane_reported_at)
+
+    def test_an_oversized_declared_length_is_refused_before_any_read(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 4_242.0)
+        with self._serving(application) as port:
+            status, _body = self._post(port, b"", declared="200000")
+
+        self.assertEqual(413, status)
+        self.assertEqual(0.0, state.lane_reported_at)

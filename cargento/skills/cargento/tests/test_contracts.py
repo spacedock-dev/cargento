@@ -1286,6 +1286,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.annotations",
             "cargento_runtime.collectors",
             "cargento_runtime.config",
+            "cargento_runtime.deliveries",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.git_status",
@@ -1452,9 +1453,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # popup, and the popup policy is this module's. The alternative was for
         # the collector to decide and hand the answer in, which would put half of
         # one rule in a file that owns none of it.
+        # `deliveries` joins for the same shape of reason as `dismissals`: what
+        # became of a raise is decided where the raise is made, and handing the
+        # outcome back to a caller to store would put half of one rule in a file
+        # that owns none of it.
         "cargento_runtime.notifications": {
             "cargento_runtime.claude_data",
             "cargento_runtime.config",
+            "cargento_runtime.deliveries",
             "cargento_runtime.dismissals",
             "cargento_runtime.io",
             "cargento_runtime.records",
@@ -1464,6 +1470,15 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # untrusted-input discipline, `io` for the diagnostic sink, `state` for
         # the lock and this process's copy. It imports nothing above itself, which
         # is what lets aggregate, notifications and http_api all consult it.
+        # The delivery record, a leaf on the same three as `dismissals` minus
+        # `state`: it holds no in-process copy, because the read is deliberately
+        # later than the write and a cache would answer from a process that may
+        # not be the one that wrote it.
+        "cargento_runtime.deliveries": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+        },
         "cargento_runtime.dismissals": {
             "cargento_runtime.config",
             "cargento_runtime.io",

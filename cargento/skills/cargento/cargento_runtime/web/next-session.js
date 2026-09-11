@@ -323,6 +323,46 @@ function nextSessionFooter(session){
     `${nextCompactTokens(value)} output tokens this ${source}</footer>`;
 }
 
+/* What became of the notifications Cargento raised about this session.
+
+   Every sentence here is composed by `deliveries.published` on the server and
+   printed verbatim. That is deliberate: the wording is the product, and three
+   surfaces wording it three ways is how the least true reading becomes the most
+   reassuring one. This function chooses WHETHER to print, never WHAT.
+
+   Nothing is drawn for a session with no raise. An absence of raises is not an
+   absence of evidence about a raise, and a panel saying "no record" under a
+   session nobody was ever alerted about invents a question the reader did not
+   have. */
+function nextSessionDelivery(session){
+  const raises = Number(session.delivery_raises);
+  if(!Number.isFinite(raises) || raises < 1) return "";
+  const text = key => String(session[key] == null ? "" : session[key]);
+  /* The sentence describes the LATEST raise and no other, so the count and the
+     sentence must not be printed as one claim. "3 notifications were raised"
+     above one outcome reads as three of that outcome, which is how a session
+     whose first raise was refused and whose second was handed over would render
+     as two hand-overs. The server says whether the set is mixed; this says
+     which raise the sentence is about. */
+  const count = raises === 1
+    ? "One notification was raised about this session"
+    : `${raises} notifications were raised about this session. The most recent:`;
+  return '<section class="next-session-delivery" ' +
+    `data-next-delivery="${esc(text("delivery_outcome"))}"` +
+    `${session.delivery_mixed === true ? ' data-next-delivery-mixed="true"' : ""}>` +
+    `<h2>NOTIFICATIONS</h2>` +
+    `<p class="next-session-delivery-count">${esc(count)}</p>` +
+    (text("delivery_why")
+      ? `<p class="next-session-delivery-why">${esc(text("delivery_why"))}</p>` : "") +
+    (session.delivery_mixed === true && text("delivery_mixed_why")
+      ? `<p class="next-session-delivery-note">${esc(text("delivery_mixed_why"))}</p>` : "") +
+    (text("delivery_binding_why")
+      ? `<p class="next-session-delivery-note">${esc(text("delivery_binding_why"))}</p>` : "") +
+    (text("browser_lane_why")
+      ? `<p class="next-session-delivery-lane">${esc(text("browser_lane_why"))}</p>` : "") +
+    "</section>";
+}
+
 /* The way back to the reader's own words. Every session link on the board
    lands here, and the surface that holds what they typed for this session
    sits on a route this page never named, so the input surface existed on
@@ -383,6 +423,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     nextSessionAskBlock(session, asks, observed) + nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
+    nextSessionDelivery(session) +
     nextSessionHeldLink(session) + nextSessionFooter(session) + "</article>";
 }
 

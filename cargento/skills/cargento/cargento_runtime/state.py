@@ -162,6 +162,21 @@ class RuntimeState:
     # first is unknown and the second is an absence with a reason.
     annotation_lock: LockType = field(default_factory=threading.Lock)
     annotations: tuple[dict[str, Any], ...] | None = None
+    # When a dashboard tab last reported a working notification lane in itself,
+    # under
+    # [DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery).
+    # One float for the whole board and never a session: the page
+    # may report that a lane EXISTS and may never report a delivery, so there is
+    # nothing here to key by session.
+    #
+    # In memory, unlike the delivery record beside it, and the difference is the
+    # claim each one makes. A delivery outcome is a fact about a raise that
+    # happened and must survive a restart. This is a fact about a tab that was
+    # open, and a restarted server has no open tabs it knows of; the page
+    # re-reports when the payload disagrees with what it can see, so the truth
+    # comes back rather than being remembered wrongly.
+    lane_lock: LockType = field(default_factory=threading.Lock)
+    lane_reported_at: float = 0.0
     dispute_lock: LockType = field(default_factory=threading.Lock)
     dispute_total: int = 0
     disputes: deque[dict[str, Any]] = field(default_factory=deque)

@@ -548,6 +548,26 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
         "annotation_reading_refused": False,
+        # What became of the notifications raised about this session, and
+        # whether a dashboard tab has reported a notification lane of its own.
+        # Declared here at their absent values on the rule above, and left empty
+        # here for the same reason: this module has no runtime imports.
+        # `Application._delivery_fields` fills all seven from
+        # `deliveries.published(...)`, which owns every sentence.
+        #
+        # The browser lane is board-wide rather than per session, and rides on
+        # the row anyway: its sentence is relative to the raise it sits beside,
+        # and one top-level sentence could not carry that gap.
+        "delivery_outcome": "",
+        "delivery_why": "",
+        "delivery_at": None,
+        "delivery_raises": 0,
+        "delivery_mixed": False,
+        "delivery_mixed_why": "",
+        "delivery_binding_why": "",
+        "browser_lane": False,
+        "browser_lane_at": None,
+        "browser_lane_why": "",
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and
