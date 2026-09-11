@@ -4768,11 +4768,12 @@ class CockpitReadingShapeTest(NextPageJsHarness):
     """DEC-17's seven rules, one case each (DRC-4511 AC4).
 
     Asserted against source-shaped fixtures rather than against expected
-    judgements, because there is no producer to judge and DEC-17 refuses a
-    rubric validated on fixtures the same pass wrote. What these hold is that
-    the three worst outputs cannot be rendered: the word "met", a departure
-    citing nothing, and a deliverable claim on a harness with no work
-    evidence.
+    judgements. A producer exists, but no judgement of it is validated yet:
+    DEC-17's abstention check has not run, and the ruling refuses a rubric
+    validated on fixtures the same pass wrote. So these hold the shape rather
+    than the verdict, which is that the three worst outputs cannot be
+    rendered: the word "met", a departure citing nothing, and a deliverable
+    claim resting on evidence that demonstrates no work.
     """
 
     FIXTURE = NextCockpitCompositionTest.FIXTURE

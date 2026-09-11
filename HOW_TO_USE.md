@@ -282,7 +282,8 @@ Two traps in reading its output, both reproduced:
 ## Move it: ports, a second dashboard, and where state lives
 
 `--port` moves the listener. `CARGENTO_HOME` moves everything Cargento writes, which is its state
-file, the dismissal store and the daemon log. Two dashboards on different ports coexist, and each
+file, the dismissal store, the history store, the annotation store and the daemon log. Two
+dashboards on different ports coexist, and each
 publishes its own state file.
 
 The per-harness store variables `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, `COPILOT_HOME`,
@@ -339,7 +340,9 @@ python3 "<skill-dir>/server.py" --forget
 
 It removes the file whether or not the store was enabled, so turning the feature off and then asking
 for the file to go does what it says. Nothing over the loopback port can delete history; this is the
-only way.
+only way. It does not reach the annotation store: the goal and the expected output you typed against
+a session, and any reading made against them, go when you clear that session's fields in its Held to
+tab.
 
 Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
 it names, because a running server keeps its own copy of the history in memory and writes the
@@ -362,6 +365,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
 | `--no-annotations` | The goal and expected output you typed against a session. Nothing is shown or saved, and the page offers no field |
 | `--no-focus` | Raising a session's terminal. No focus command runs, no terminal identity is recorded, and the page is offered no raise control. `--no-events` turns it off as well |
+| `--no-observer-model` | Model goal summaries, and the readings that use the same lane. It overrides `--observer-model`, so nothing reaches the Codex CLI for this run |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 

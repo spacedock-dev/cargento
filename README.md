@@ -119,19 +119,24 @@ the machine by default. The quota poll requires disclosure consent, carries a ve
 session content, and can be disabled with `--no-usage`. The optional observer model is the one path
 that can send session content off the machine through the installed Codex CLI. It requires
 `--observer-model` and separate disclosure consent; `--no-observer-model` overrides enablement.
-The browser consent control is not wired yet, so model summaries remain unavailable through the UI.
+The Console tab carries that disclosure for one exact session, keeps the answer in this browser,
+and sends nothing until the reader asks for a summary.
 Dashboard assets, including the optional terminal's vendored xterm files, need no external fetch.
 A third outbound pathway, counts-only nudges to an operator-supplied endpoint, remains documented
 and unimplemented. See [SECURITY.md](SECURITY.md) for all three, and before you use `--host`.
 
 The dashboard opens on Projects, grouping sessions by the label their harness publishes. Each
 project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
-and Now, Course, Decisions and Console tabs. Console collects delegation, waiting requests,
+and Now, Course, Decisions and Console tabs, plus a Held to tab once one session is in focus. There
+you type the goal and the expected output you are holding that session to, and ask for one reading
+against them. Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
 Sessions puts active work above recent history and gives each active session the same four facts: where it
 is, what it is doing now, what it does next, and whether it is blocked.
-Attention collects what needs a human. Keyboard shortcuts `s`, `p` and `a` switch between them.
+Attention collects what needs a human, and the Intent log lists every session you have typed words
+against, including ones that have left the board. Keyboard shortcuts `s`, `p` and `a` reach
+Sessions, Projects and Attention; the Intent log is a nav link with no shortcut.
 `Escape` returns from a session to its project and otherwise to Projects. The route lives in the
 URL fragment so a reload or a pasted link comes back to the same view.
 

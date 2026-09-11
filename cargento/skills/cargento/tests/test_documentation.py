@@ -2104,12 +2104,16 @@ class ReaderStateInventoryTest(unittest.TestCase):
 
     def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
         # The test above derives only `Capture`/`Restore` names, so these
-        # three survive a redraw with nothing deriving their rows. Renaming any
-        # would otherwise leave the table citing a symbol that is gone.
+        # five survive a redraw with nothing deriving their rows. Renaming any
+        # would otherwise leave the table citing a symbol that is gone. The
+        # last two joined on 2026-09-11: both landed with rows in the table and
+        # neither was pinned here, which is the gap this test exists to close.
         for name, lane in (
             ("next-controls.js", "nextControlsProjectState"),
             ("next-workstream.js", "nextWorkstreamCollapsed"),
             ("next-cockpit.js", "nextCockpitHeldDrafts"),
+            ("next-cockpit.js", "nextCockpitHeldStates"),
+            ("next-cockpit.js", "nextCockpitBriefingCopyStates"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
