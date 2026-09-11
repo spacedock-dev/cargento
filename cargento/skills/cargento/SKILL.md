@@ -290,6 +290,14 @@ the session has gone quiet rather than that it is waiting on you, which is the h
 either path.
 Notification delivery is best effort; the dashboard's observed state remains the source to inspect.
 
+Cargento can also check an annotated session against what you asked for without being asked, and
+raise a departure while you are away. Off by default, behind `--unasked-readings`, and it is the
+only thing here that spends your model capacity with nobody watching. It checks on an observed state
+change rather than every turn, it raises a departure and never a reassurance, and it stops at a
+per-session and a per-day limit. A spent limit is said out loud: a session nobody checked and a
+session checked and found clean are different sentences on the board, because you were not there to
+know which one you are looking at.
+
 What became of an alert about a session is now recorded, one entry per raise, and that session's
 panel prints it. There are five outcomes and they mean different things: handed to this machine's
 notification service, the service returned an error, the command could not be started at all, the

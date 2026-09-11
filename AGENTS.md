@@ -45,6 +45,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── deliveries.py       # what became of each raise, and what may not be said of one
+        │   ├── departures.py      # what an unasked reading raised, and the baseline it read
         │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
         │   ├── events.py           # the untrusted event envelope and its overlay reducer
         │   ├── focus.py            # the focus command: one socket case, or no raise
@@ -70,6 +71,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
         │   ├── transcripts.py      # shared metadata, prompt titles, the Codex plan, non-Claude analyzers
         │   ├── turns.py            # generic incremental turn scanning and turn display
+        │   ├── unasked.py          # the unasked reading lane: the gate, the caps, the raise
         │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support

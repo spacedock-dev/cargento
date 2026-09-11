@@ -370,6 +370,31 @@ instead is cheaper and carries no disclosure risk, but DEC-17 warns that a rubri
 fixtures the same pass writes is not validated, so the two pull opposite ways and the answer is
 written down rather than settled by convenience.
 
+### What the build had to decide, 2026-09-11
+
+The ruling settles the shape and leaves three choices to the implementation. All three were made
+against the ruling rather than for convenience, and each is the kind of thing a later reader would
+otherwise re-derive.
+
+Two gates, not one, and they are different rules. One reading per collection is a flag on the loop
+that offers rows; one reading at a time is an in-flight slot released when the worker finishes.
+Relying on the slot for both was tried and reverted: it is released by the worker, so the
+per-collection guarantee would rest on a `codex` subprocess outliving the loop rather than on
+anything the function does. Measured with a synchronous worker, twenty candidate rows started twenty
+readings.
+
+The per-day cap counts over a rolling twenty-four hours rather than a calendar day. The reader this
+exists for walked away at an arbitrary hour, so a midnight reset would hand a fresh allowance to a
+board nobody is watching, and a calendar day needs a timezone this runtime does not otherwise carry.
+
+The lane rides `record_history` rather than owning a second is-this-diagnose signal. `--diagnose` is
+the one caller that says no to that flag, it runs a collection, and it must not start a subprocess
+while reporting what the stores hold. A second flag meaning the same thing is the thing there must
+not be two of.
+
+Quiet hours are deferred to DRC-4032 and the switch ships off, which is what the amendment above
+permits: the preconditions gate the default rather than whether the thing may be built.
+
 ## DEC-19: the page may report a lane, never a delivery
 
 Decided 2026-09-11. Cargento notifies through two independent producers. The server runs one

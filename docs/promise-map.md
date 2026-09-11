@@ -123,6 +123,15 @@ for you. The one shape it is allowed is the session asking and Cargento
 answering
 ([DEC-2](https://linear.app/recce/issue/DRC-4054/dec-2-decision-let-cargento-act-not-just-observe)).
 
+Cargento can now check a session against your words while you are away and raise a departure
+without being asked, which is off by default and the only thing here that spends your model capacity
+with nobody watching. Where it stops is the part worth reading: it raises a departure and never a
+reassurance, because an unasked "this looks fine" is the output the evidence-floor ruling called
+most damaging and it is worth nothing to someone who is not at the desk. It stops at a per-session
+and a per-day limit, and a spent limit is stated rather than passed over, because a session nobody
+checked and a session checked and found clean are the two things you cannot tell apart from an empty
+board.
+
 A notification the board raised now carries what became of it, so a signal that never left the
 machine is not read as one you ignored. What it can say stops at the hand-over: on macOS the
 scripting bridge exits zero under Do Not Disturb and with the hosting application's notifications

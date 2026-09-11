@@ -61,6 +61,11 @@ server-side backend the page may report that it has a notification lane of its o
 statement about a tab rather than about a raise: see
 [DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery).
 
+The unasked reading lane raises through this same notification lane and records the same outcome, so
+everything above applies to a departure exactly as it applies to a gate. It needs a working `codex`
+CLI on the machine, which is the dependency a reader-requested reading already has, and it is off by
+default on every platform.
+
 The operator-cockpit prototype's terminal registration is unsupported on native Windows. Its
 tmux bridge consumes registration capabilities only after POSIX ownership, mode and no-follow
 checks; Windows cannot pass those checks. The registration client reports this platform
