@@ -87,7 +87,7 @@ second is the one a retained assessment needs.
 
 Admitting them cost a published-row change first, because this store may hold nothing the live
 snapshot does not already serve and the allowlist admits field names rather than paths into a
-mapping. The row published `annotation` as one nested object; it now publishes eight flat
+mapping. The row published `annotation` as one nested object; it now publishes fifteen flat
 `annotation_*` fields, and one helper in the bundle rebuilds the object the renderers read. A
 nested carrier is also the shape the store's own tests ban for `tasks`, `subagents` and
 `spacedock`, and for the same reason: a name cannot reach inside one.

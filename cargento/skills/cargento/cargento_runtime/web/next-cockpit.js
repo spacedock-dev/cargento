@@ -45,7 +45,7 @@ function nextCockpitReadMemo(key){
   }
 }
 
-/* The row's eight flat `annotation_*` fields as one object, or null when the
+/* The row's fifteen flat `annotation_*` fields as one object, or null when the
    row carries none. The payload is flat because `history.PROMPT_TEXT_ALLOWLIST`
    admits field names and a name cannot reach inside a mapping; the renderers
    want an object, so the seam is here and they are unchanged.

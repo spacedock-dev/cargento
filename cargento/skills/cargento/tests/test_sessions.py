@@ -94,7 +94,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         # Same provenance as the two above: written onto every row by
         # `Application._attach_annotations` after `base_session` returns. Every
         # row and not only the annotated ones, because a missing key renders as
-        # `undefined` where an absence has to state its reason. Eight flat
+        # `undefined` where an absence has to state its reason. Fifteen flat
         # fields and not one mapping, because `history.PROMPT_TEXT_ALLOWLIST`
         # admits field names and a name cannot reach inside a dict.
         "annotation_goal",
