@@ -4683,6 +4683,78 @@ console.log(JSON.stringify({running, ended:
         self.assertTrue(out["running"])
         self.assertTrue(out["ended"])
 
+    def test_the_reading_shows_the_words_it_actually_read(self) -> None:
+        """DRC-4512. Naming the revision is not showing what it said.
+
+        The amber line says a reading is historical. It does not let the reader
+        see WHAT it read, and a reading of revision 1 rendered beside today's
+        revision 3 invites the reader to assume the words are the ones on
+        screen. The text was always on the wire as the criterion's clause; what
+        was missing was somewhere to read it and when it was typed.
+        """
+        out = self.run_fixture(
+            """
+const session = {harness:"codex", sid:"focus-1", state:"idle", ended_at:200};
+const model = {enabled:true};
+const entries = [{id:"u1", type:"user_message", by:"person", source:"root transcript"}];
+const annotation = {goal:"the goal as it stands now", output:"", revision:3,
+  revision_count:3, at:300, reading_count:1,
+  assessment:{revision_read:1, revision_read_at:100, stamp:"a-model - read at 10:00",
+    cutoff:"", scope:"final", scope_text:"",
+    ended_at_read:200,
+    criteria:{
+      goal:{result:"consistent with the evidence read", cites:[], detail:"",
+        clause:"the goal as it was when the reading ran"},
+      output:{result:"not verifiable from available evidence", cites:[], detail:"", clause:""}}}};
+const html = nextCockpitReading(session, annotation, entries, model, null, false,
+  {state:"read", entries:entries});
+console.log(JSON.stringify({
+  html,
+  // The words the reading actually read, verbatim.
+  showsRead: html.includes("the goal as it was when the reading ran"),
+  // Still names the revision, because the disclosure does not replace the line.
+  stale: html.includes("This reading read revision 1"),
+  // And says when that revision was typed, which is the one datum that was
+  // genuinely absent from the payload.
+  typedAt: html.includes("typed"),
+  // A disclosure rather than always-open prose: the reading block is already
+  // long and this is reference, not the reading.
+  disclosure: (html.match(/<details/g) || []).length,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["showsRead"], out["html"])
+        self.assertTrue(out["stale"])
+        self.assertTrue(out["typedAt"])
+        self.assertGreaterEqual(out["disclosure"], 1)
+
+    def test_a_reading_with_no_typed_at_states_the_absence(self) -> None:
+        """A reading stored before `revision_read_at` existed reads back None.
+
+        The absence states its reason rather than blanking, which is the rule
+        every other field on this surface follows.
+        """
+        out = self.run_fixture(
+            """
+const session = {harness:"codex", sid:"focus-1", state:"idle", ended_at:200};
+const model = {enabled:true};
+const entries = [{id:"u1", type:"user_message", by:"person", source:"root transcript"}];
+const annotation = {goal:"now", output:"", revision:2, revision_count:2, at:300,
+  reading_count:1,
+  assessment:{revision_read:1, revision_read_at:null, stamp:"a-model - read at 10:00",
+    cutoff:"", scope:"final", scope_text:"", ended_at_read:200,
+    criteria:{
+      goal:{result:"consistent with the evidence read", cites:[], detail:"", clause:"then"},
+      output:{result:"not verifiable from available evidence", cites:[], detail:"", clause:""}}}};
+const html = nextCockpitReading(session, annotation, entries, model, null, false,
+  {state:"read", entries:entries});
+console.log(JSON.stringify({html, saysWhen: html.includes("when it was typed was not recorded")}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["saysWhen"], out["html"])
+
     def test_a_reading_that_read_an_older_revision_says_so(self) -> None:
         out = self.run_fixture(
             """

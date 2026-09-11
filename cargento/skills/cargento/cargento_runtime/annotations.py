@@ -265,6 +265,9 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         "scope": scope,
         "scope_text": reading.SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(ended) or None,
+        # `.get`, so a reading stored before this field reads back as None and
+        # the disclosure states the absence rather than blanking.
+        "revision_read_at": records.norm_epoch(value.get("revision_read_at")) or None,
         "criteria": criteria,
     }
 

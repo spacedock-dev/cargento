@@ -46,7 +46,6 @@ def _assessment(*, revision_read: int) -> dict[str, Any]:
                 "clause": "",
             },
         },
-        "departures": [],
     }
 
 

@@ -1127,8 +1127,8 @@ const NEXT_READING_BASELINE_OPEN =
    `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
-const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "stamp", "cutoff", "scope",
-  "scope_text", "ended_at_read", "criteria"];
+const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "stamp", "cutoff",
+  "scope", "scope_text", "ended_at_read", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause"];
 const NEXT_READING_UNKNOWN_KEY =
   "This board cannot read the reading it was given: it carries a field this build does not " +
@@ -1366,7 +1366,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     NEXT_READING_ASSESSMENT_KEYS.indexOf(name) < 0);
   if(unknown.length){
     return {criteria: [], departures: [], malformed: unknown.slice(0, 4).join(", "),
-      revisionRead: null, stamp: "", cutoff: "", scopeText: ""};
+      revisionRead: null, revisionReadAt: null, stamp: "", cutoff: "", scopeText: ""};
   }
   const rows = source.criteria && typeof source.criteria === "object" ? source.criteria : {};
   const revisionRead = nextNumber(source.revision_read);
@@ -1386,6 +1386,9 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
     revisionRead,
+    revisionReadAt: nextNumber(source.revision_read_at),
+    readClauses: NEXT_READING_CONSTRAINTS.map(([key, label]) =>
+      [label, String((rows[key] && rows[key].clause) || "")]),
     stamp: String(source.stamp || ""),
     cutoff: String(source.cutoff || ""),
     /* From the READING, not from the live row. A stored reading describes
@@ -1556,6 +1559,32 @@ const NEXT_READING_OFFER =
   "and the words you typed, and nothing else. It does not read a diff, a file, a test or a " +
   "deliverable.";
 
+function nextCockpitReadingBaseline(shape){
+  /* What the reading actually read, verbatim, rather than only which revision
+     it was. Naming the revision says a reading is historical; it does not let
+     the reader see what it said, and a reading of revision 1 sitting beside
+     today's revision 3 invites them to assume the words on screen are the ones
+     it read. The text was always on the wire as each criterion's clause.
+
+     A disclosure rather than open prose: this is reference for a reader who
+     doubts the reading, not part of it, and the block is long already. */
+  if(shape.revisionRead == null) return "";
+  const typed = shape.revisionReadAt != null
+    ? `typed ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
+    : "when it was typed was not recorded";
+  const rows = (shape.readClauses || []).map(([label, clause]) => {
+    const body = clause
+      ? `<span class="next-cockpit-reading-clause">${esc(clause)}</span>`
+      : '<span class="next-cockpit-reading-clause-absent">nothing typed in that ' +
+        "revision</span>";
+    return `<div class="next-cockpit-reading-criterion-clause">` +
+      `<span class="next-cockpit-source">${esc(label)}</span>${body}</div>`;
+  }).join("");
+  return `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
+    `<summary>What it read: revision ${shape.revisionRead}, ${typed}</summary>` +
+    rows + "</details>";
+}
+
 function nextCockpitReading(session, annotation, entries, model, observed, unsettled, source){
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = String(session.harness || "") === "pi"
@@ -1608,7 +1637,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     ? `<p class="next-cockpit-reading-why">${esc(shape.scopeText)}</p>` : "";
   return header +
     (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
-    '</header>' + stale + scope + why +
+    '</header>' + stale + nextCockpitReadingBaseline(shape) + scope + why +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
     nextCockpitReadingControl(session, annotation) + '</section>' +
     nextCockpitDepartures(shape, source);
