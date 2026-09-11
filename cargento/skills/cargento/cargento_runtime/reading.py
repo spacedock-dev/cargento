@@ -122,9 +122,13 @@ SCOPE_MID_FLIGHT = "mid-flight"
 SCOPE_FINAL = "final"
 SCOPE_WITHDRAWN = "withdrawn"
 SCOPE_TEXT = {
+    # Past tense, deliberately. A reading is stored and describes the moment
+    # it was taken, so a present-tense claim about the session expires the
+    # instant it stops -- and the block then contradicts the HOW IT LANDED
+    # cards on the same tab. Its `final` sibling was already past tense.
     SCOPE_MID_FLIGHT: (
-        "This covers only the work so far. The session is still running, so nothing "
-        "here is a reading of how it ended."
+        "This covers only the work so far. The session was still running when it was "
+        "read, so nothing here is a reading of how it ended."
     ),
     SCOPE_FINAL: (
         "A session end was observed before this was read, so this covers the work through that end."
@@ -261,6 +265,9 @@ SUCCESS_WORDS = frozenset(
         "implemented",
         "meets",
         "met",
+        "passed",
+        "passes",
+        "passing",
         "proven",
         "proves",
         "satisfied",

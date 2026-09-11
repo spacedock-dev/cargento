@@ -7,6 +7,7 @@ this store to. The two it cannot are named in the module docstring of
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import pathlib
@@ -24,7 +25,7 @@ from cargento_runtime import reading as runtime_reading
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
-from .support import make_runtime
+from .support import SERVER_PATH, make_runtime
 
 
 class AnnotationStoreTest(unittest.TestCase):
@@ -1157,13 +1158,14 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
 
 
 class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.TestCase):
-    """`final` is a durable claim about a session id, not a state of the page."""
+    """`final` is a durable claim about a session id, not a state of the page.
 
-    @staticmethod
-    def _row(**over: Any) -> Any:
-        row = {"harness": "claude", "sid": "s1", "ended_at": 99.0}
-        row.update(over)
-        return row
+    Every test here drives the two passes in the order `collect` runs them.
+    An earlier version fed the retraction a row already carrying `ended_at`,
+    which no row does at that moment, and asserted the resulting retraction as
+    correct. Both were green while every final reading on a real board was
+    retracted with a sentence that was false.
+    """
 
     @staticmethod
     def _assessment() -> Any:
@@ -1174,8 +1176,6 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
             "scope": runtime_reading.SCOPE_FINAL,
             "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
             "ended_at_read": 99.0,
-            # Both constraints, because the store validates the shape and a
-            # fixture that cannot round-trip would test the helper alone.
             "criteria": {
                 name: {
                     "result": runtime_reading.RESULT_UNVERIFIABLE,
@@ -1187,26 +1187,7 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
             },
         }
 
-    def test_a_reader_returning_to_a_session_that_resumed_is_not_told_it_is_final(self) -> None:
-        for ended in (None, 0.0, 150.0):
-            with self.subTest(ended=ended):
-                assessment = self._assessment()
-                aggregate._withdraw_stale_finality(self._row(ended_at=ended), assessment)
-                self.assertEqual(runtime_reading.SCOPE_WITHDRAWN, assessment["scope"])
-                self.assertIn("no longer published", assessment["scope_text"])
-
-    def test_a_reading_of_a_session_that_really_ended_still_says_it_is_final(self) -> None:
-        assessment = self._assessment()
-        aggregate._withdraw_stale_finality(self._row(), assessment)
-        self.assertEqual(runtime_reading.SCOPE_FINAL, assessment["scope"])
-
-    def test_a_reader_looking_at_the_board_sees_the_retraction_not_just_the_helper(self) -> None:
-        """Through `_attach_annotations`, because the call site is the defect.
-
-        Measured: deleting the call left every direct test of the helper green
-        while no row on the board was ever retracted. A tested function
-        nothing reaches is the same failure as a test that never runs.
-        """
+    def _through_the_pipeline(self, ended_at: float | None, *, scope: str | None = None) -> Any:
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
@@ -1218,26 +1199,86 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
         )
         state = build_runtime_state(config, started=1.0)
         annotation_store.annotate(config, state, "claude", "s1", goal="rename", now=10.0)
-        annotation_store.record_reading(
-            config, state, "claude", "s1", assessment=self._assessment()
-        )
-        entries = annotation_store.load(config)
-
+        assessment = self._assessment()
+        if scope is not None:
+            assessment["scope"] = scope
+            assessment["scope_text"] = runtime_reading.SCOPE_TEXT[scope]
+        annotation_store.record_reading(config, state, "claude", "s1", assessment=assessment)
         rows: list[dict[str, object]] = [
-            {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None}
+            {"harness": "claude", "sid": "s1", "state": "idle", "ended_at": None}
         ]
-        aggregate._attach_annotations(rows, entries)
+        # What `_apply_overlays` does, and the only thing in the runtime that
+        # ever writes this field. It runs BEFORE the attach, which is the
+        # ordering under test.
+        rows[0]["ended_at"] = ended_at
+        aggregate._attach_annotations(rows, annotation_store.load(config))
+        return rows[0]["annotation_assessment"]
 
-        published = rows[0]["annotation_assessment"]
+    def test_a_reader_whose_session_really_ended_is_still_told_the_reading_is_final(self) -> None:
+        published = self._through_the_pipeline(99.0)
         assert isinstance(published, dict)
-        self.assertEqual(runtime_reading.SCOPE_WITHDRAWN, published["scope"])
-        self.assertIn("no longer published", published["scope_text"])
+        self.assertEqual(runtime_reading.SCOPE_FINAL, published["scope"])
+        self.assertNotIn("no longer published", published["scope_text"])
+
+    def test_a_reader_returning_to_a_resumed_session_is_not_told_it_is_final(self) -> None:
+        for ended in (None, 0.0, 150.0):
+            with self.subTest(ended_at=ended):
+                published = self._through_the_pipeline(ended)
+                assert isinstance(published, dict)
+                self.assertEqual(runtime_reading.SCOPE_WITHDRAWN, published["scope"])
+                self.assertIn("no longer published", published["scope_text"])
 
     def test_a_mid_flight_reading_is_never_retracted_by_this_rule(self) -> None:
-        assessment = self._assessment()
-        assessment["scope"] = runtime_reading.SCOPE_MID_FLIGHT
-        aggregate._withdraw_stale_finality(self._row(ended_at=None), assessment)
-        self.assertEqual(runtime_reading.SCOPE_MID_FLIGHT, assessment["scope"])
+        published = self._through_the_pipeline(None, scope=runtime_reading.SCOPE_MID_FLIGHT)
+        assert isinstance(published, dict)
+        self.assertEqual(runtime_reading.SCOPE_MID_FLIGHT, published["scope"])
+
+    def test_the_retraction_runs_after_the_field_it_reads_is_written(self) -> None:
+        """The ordering itself, because nothing else can see it.
+
+        The tests above drive the passes by hand, so moving the CALL in
+        `collect` is invisible to them, which is exactly how the defect was
+        green. This reads `collect`'s own body: the annotation pass carries
+        the retraction, and it must run after `_apply_overlays`, the only
+        thing in the runtime that writes the field the retraction compares.
+        """
+        source = (SERVER_PATH.parent / "cargento_runtime" / "aggregate.py").read_text(
+            encoding="utf-8"
+        )
+        collect = next(
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.FunctionDef) and node.name == "collect"
+        )
+        calls = {
+            node.func.id: node.lineno
+            for node in ast.walk(collect)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        attrs = {
+            node.func.attr: node.lineno
+            for node in ast.walk(collect)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        self.assertIn("_attach_annotations", calls, "the annotation pass is not called")
+        self.assertIn("_apply_overlays", attrs, "the overlay pass moved or was renamed")
+        self.assertGreater(
+            calls["_attach_annotations"],
+            attrs["_apply_overlays"],
+            "the retraction reads `ended_at` before anything writes it, so every final "
+            "reading is retracted with a sentence that is false",
+        )
+
+    def test_the_retraction_lives_in_the_pass_the_ordering_assertion_guards(self) -> None:
+        # Otherwise the assertion above guards a pass that no longer does the
+        # thing the ordering exists for, and goes on passing while it does not.
+        source = (SERVER_PATH.parent / "cargento_runtime" / "aggregate.py").read_text(
+            encoding="utf-8"
+        )
+        body = source[
+            source.index("def _attach_annotations(") : source.index("def _hide_unmeasured")
+        ]
+        self.assertIn("_withdraw_stale_finality", body)
 
 
 if __name__ == "__main__":

@@ -1397,7 +1397,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
             entry["revisions"],
             facts,
             now=application.clock(),
-            stamp_text=runtime_reading.PROVIDER_NOTE,
+            # A stamp: what read it and when. It carried `PROVIDER_NOTE`, a
+            # policy sentence, rendered in the position and micro-type where
+            # the design says a stamp names the model and the moment. The
+            # policy belongs in the disclosure above the button, where the
+            # reader sees it BEFORE pressing rather than after.
+            stamp_text=(
+                f"{runtime_observer.OBSERVER_MODEL} · read at "
+                f"{time.strftime('%H:%M', time.localtime(application.clock()))}"
+            ),
             model=runtime_reading.CodexReadingModel(application.config),
         )
 

@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import json
 import math
+import pathlib
 import random
 import time
 import unicodedata
 import unittest
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
@@ -1176,6 +1177,51 @@ class WhatTheReaderIsToldBeforeTheyPress(unittest.TestCase):
         self.assertIn("No reading has been made", reading.NO_READING_YET)
 
 
+class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
+    """`DISCLOSURE` was written, tested, and rendered nowhere.
+
+    A test class named for what a reader is told, asserting a constant no
+    reader ever sees, is a test that does not prove what its name claims.
+    These assert the wiring instead: the collection publishes it and the page
+    reads it, so the sentence reaches the reader before the press rather than
+    after it or never.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    def test_the_collection_publishes_the_warning_beside_the_gate_it_belongs_to(self) -> None:
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "aggregate.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"reading_disclosure": reading.DISCLOSURE', source)
+        # Beside the check, because a reader who cannot press still needs to
+        # know what pressing would do.
+        self.assertIn('"reading_check"', source)
+
+    def test_the_page_shows_the_warning_before_the_button_and_not_after(self) -> None:
+        source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
+        self.assertIn("reading_disclosure", source)
+        control = source[
+            source.index("function nextCockpitReadingControl(") : source.index(
+                "const NEXT_READING_OFFER"
+            )
+        ]
+        self.assertIn("reading_disclosure", control, "the warning is not on the control")
+        self.assertLess(
+            control.index("reading_disclosure"),
+            control.index('data-next-cockpit-action="reading-ask"'),
+            "the warning renders after the button the reader has already pressed",
+        )
+
+    def test_the_warning_says_where_the_words_go_and_who_pays(self) -> None:
+        # The offer paragraph scopes WHAT is sent; only this says where it
+        # goes. "and nothing else" reads as a promise about locality without
+        # it.
+        self.assertIn("OpenAI", reading.DISCLOSURE)
+        self.assertIn("off this", reading.DISCLOSURE)
+        self.assertIn("codex", reading.DISCLOSURE)
+
+
 class OneReadingAtATimePerSession(unittest.TestCase):
     """`claim` and `release`: DEC-17 allows one reading in flight and no retry."""
 
@@ -1205,6 +1251,134 @@ class OneReadingAtATimePerSession(unittest.TestCase):
         self.assertTrue(reading.claim(self.config, "session-a"))
         reading.release(self.config, "session-a")
         self.assertTrue(reading.claim(self.config, "session-a"))
+
+
+class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
+    """`produce`, which had no test of any kind.
+
+    Every rule beneath it was tested and the assembly of them was executed by
+    nothing: `produce` is where the verified pieces become the artifact. It
+    picks the scope, defaults the revision, composes the cutoff sentence,
+    writes the `ended_at_read` the retraction later compares against, and sets
+    the flag that decides whether a press cost the reader anything.
+    """
+
+    class _Config:
+        reading_settle_sec = 8.0
+        annotation_text_cap_chars = 240
+
+    FACT: ClassVar[dict[str, Any]] = {
+        "fact_id": "f1",
+        "type": "user_message",
+        "by": "",
+        "summary": "please add a CSV export",
+        "at": 90.0,
+        "evidence": {"source": "root transcript", "confidence": "exact"},
+        "source_session": {"harness": "claude", "sid": "s1"},
+    }
+
+    def setUp(self) -> None:
+        self.calls: list[str] = []
+
+    def _model(self, reply: str = "{}", status: str = "ok") -> Any:
+        def run(prompt: str, **_kw: Any) -> tuple[str, str]:
+            self.calls.append(prompt)
+            return reply, status
+
+        return run
+
+    def _produce(self, **over: Any) -> Any:
+        row = {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None}
+        row.update(over.pop("row", {}))
+        revisions = over.pop(
+            "revisions", [{"n": 3, "at": 50.0, "goal": "add a CSV export", "output": ""}]
+        )
+        facts = over.pop("facts", [self.FACT])
+        return reading.produce(
+            cast("Any", self._Config()),
+            row,
+            revisions,
+            facts,
+            now=over.pop("now", 200.0),
+            stamp_text=over.pop("stamp_text", "read at 10:00"),
+            model=over.pop("model", self._model()),
+        )
+
+    def test_a_reader_who_typed_nothing_is_not_charged_for_a_reading(self) -> None:
+        for revisions in ([], [{"n": 1, "at": 1.0, "goal": "   ", "output": ""}]):
+            with self.subTest(revisions=len(revisions)):
+                assessment, why, spent = self._produce(revisions=revisions)
+                self.assertIsNone(assessment)
+                self.assertEqual(reading.WITHHELD_NOTHING_TYPED, why)
+                self.assertFalse(spent)
+                self.assertEqual([], self.calls, "the model ran with nothing to read against")
+
+    def test_a_session_with_no_observed_record_costs_the_reader_nothing(self) -> None:
+        assessment, why, spent = self._produce(facts=[])
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
+        self.assertFalse(spent)
+        self.assertEqual([], self.calls)
+
+    def test_a_missing_codex_costs_the_reader_nothing_but_a_failed_call_costs_a_press(self) -> None:
+        """The distinction the press count exists to make.
+
+        A CLI that is not installed never spent anything. A call that started
+        and then failed already did, and the count beside the control has to
+        say so or the reader cannot tell what they have left.
+        """
+        _a, why, spent = self._produce(model=self._model("", "unavailable"))
+        self.assertEqual(reading.WITHHELD_MODEL_UNAVAILABLE, why)
+        self.assertFalse(spent)
+
+        _a2, why2, spent2 = self._produce(model=self._model("", "failed"))
+        self.assertEqual(reading.WITHHELD_MODEL_FAILED, why2)
+        self.assertTrue(spent2)
+
+    def test_a_reading_names_the_revision_it_read_and_not_the_first_one(self) -> None:
+        assessment, why, spent = self._produce()
+        assert assessment is not None
+        self.assertEqual("", why)
+        self.assertTrue(spent)
+        self.assertEqual(3, assessment["revision_read"])
+        self.assertEqual(reading.SCOPE_MID_FLIGHT, assessment["scope"])
+        self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_MID_FLIGHT], assessment["scope_text"])
+        self.assertIn("Read 1 of 1 entries", assessment["cutoff"])
+        self.assertEqual(set(reading.CONSTRAINTS), set(assessment["criteria"]))
+
+    def test_a_reading_of_an_ended_session_records_the_end_it_rested_on(self) -> None:
+        """`ended_at_read` is what the board later compares against to decide
+        whether a `final` claim still stands, so a wrong one is a wrong
+        retraction."""
+        assessment, why, _spent = self._produce(row={"state": "idle", "ended_at": 100.0}, now=200.0)
+        assert assessment is not None
+        self.assertEqual("", why)
+        self.assertEqual(reading.SCOPE_FINAL, assessment["scope"])
+        self.assertEqual(100.0, assessment["ended_at_read"])
+
+    def test_a_session_that_ended_a_moment_ago_is_not_read_finally_yet(self) -> None:
+        _a, why, spent = self._produce(row={"state": "idle", "ended_at": 195.0}, now=200.0)
+        self.assertEqual(reading.WITHHELD_SETTLING, why)
+        self.assertFalse(spent)
+        self.assertEqual([], self.calls)
+
+    def test_words_typed_after_the_session_ended_have_no_work_to_be_read_against(self) -> None:
+        _a, why, _spent = self._produce(
+            row={"state": "idle", "ended_at": 100.0},
+            revisions=[{"n": 1, "at": 150.0, "goal": "add a CSV export", "output": ""}],
+            now=200.0,
+        )
+        self.assertEqual(reading.WITHHELD_REVISION_AFTER_END, why)
+        self.assertEqual([], self.calls)
+
+    def test_the_prompt_carries_the_readers_own_goal_and_the_record_it_is_read_against(
+        self,
+    ) -> None:
+        self._produce()
+        self.assertEqual(1, len(self.calls))
+        prompt = self.calls[0]
+        self.assertIn("add a CSV export", prompt)
+        self.assertIn("please add a CSV export", prompt)
 
 
 if __name__ == "__main__":

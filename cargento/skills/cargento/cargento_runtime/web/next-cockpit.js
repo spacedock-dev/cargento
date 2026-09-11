@@ -1109,9 +1109,14 @@ const NEXT_READING_CONSTRAINTS = [
   ["goal", "TYPED GOAL"],
   ["output", "EXPECTED OUTPUT"],
 ];
+/* Rule 7 stopped keying on WHO wrote an entry on 2026-09-10 and this sentence
+   did not follow it. It told the reader every cited entry was written by the
+   agent, directly above an evidence line naming her own message -- self
+   contradicting on one row, and wrong in the direction that flatters the
+   agent. */
 const NEXT_READING_ASSISTANT_ONLY =
-  "Every entry cited here was written by the agent, which is not evidence " +
-  "that the requested output exists.";
+  "Nothing cited here demonstrates that the requested output exists; each entry describes " +
+  "or asks for the work rather than showing it.";
 const NEXT_READING_UNCITED =
   "Nothing resolvable was cited, so there is no entry to read this against.";
 const NEXT_READING_BASELINE_OPEN =
@@ -1529,7 +1534,15 @@ function nextCockpitReadingControl(session, annotation){
   const spent = count === 0
     ? "No reading has been asked for on this session."
     : `${count} reading${count === 1 ? "" : "s"} asked for on this session.`;
-  return '<button type="button" data-next-cockpit-action="reading-ask" ' +
+  /* Before the button, not after the press. The reading spends the reader's
+     own Codex capacity and sends their goal and a slice of the observed
+     record off this machine; the offer paragraph above scopes WHAT is sent
+     and says nothing about where it goes or who pays. A reader who has not
+     read this has not been warned. */
+  const disclosure = nextData && nextData.reading_disclosure
+    ? `<p class="next-cockpit-reading-why">${esc(nextData.reading_disclosure)}</p>` : "";
+  return disclosure +
+    '<button type="button" data-next-cockpit-action="reading-ask" ' +
     `data-next-focus="reading:${esc(sessKey(session))}"${passed ? "" : " disabled"}>` +
     'Ask for a reading</button>' +
     `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
@@ -1819,9 +1832,13 @@ function nextCockpitHeldTo(group, observation){
    and the route refuses a body without it. Nothing on render, poll,
    reconnect, resume, focus change or revision save carries it.
 
-   `observer_model: 1` is the same per-press disclosure echo `/api/project-context`
-   requires, and it is sent here rather than stored because consent to spend
-   capacity is per press. */
+   `observer_model: 1` is the route's required token and NOT a consent claim.
+   An earlier version of this comment said it was "the same per-press
+   disclosure echo /api/project-context requires"; it is not the same. On
+   that route `next-render.js` withholds the literal unless the reader has
+   answered a disclosure, so it MEANS they consented. Here it is a constant.
+   What stands in for consent is the press itself, under a disclosure the
+   control renders above the button. */
 async function nextCockpitAskForReading(session){
   try{
     const response = await fetch("/api/reading", {

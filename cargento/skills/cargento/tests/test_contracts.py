@@ -707,6 +707,20 @@ class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
             self._js_list(self.source, "NEXT_READING_CRITERION_KEYS"),
         )
 
+    def test_both_sides_agree_on_which_entries_demonstrate_work(self) -> None:
+        """The pair rule 7 pivots on, and the class was not comparing it.
+
+        If one side gains a type the other lacks, the page renders a
+        `consistent` on Expected Output that the producer would have demoted,
+        or demotes one the producer allowed. Everything else in this class was
+        compared; this is the pair that decides whether a deliverable verdict
+        survives.
+        """
+        self.assertEqual(
+            set(reading.WORK_EVIDENCE_TYPES),
+            self._js_list(self.source, "NEXT_READING_WORK_TYPES"),
+        )
+
     def test_the_page_reads_the_revision_key_the_producer_actually_writes(self) -> None:
         # The specific spelling, because this is the pair that fails silently.
         self.assertIn("source.revision_read", self.source)

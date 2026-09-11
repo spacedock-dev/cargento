@@ -18,7 +18,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
@@ -26,7 +26,9 @@ from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
+from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
+from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
     PAGE_BYTES,
@@ -2735,6 +2737,48 @@ class ReadingRouteTest(unittest.TestCase):
         changes.setdefault("observer_model_enabled", True)
         return make_runtime(state_home=home, state_dir=Path(home), **changes)
 
+    @staticmethod
+    def _one_session_harness() -> Any:
+        """A harness publishing exactly the row the route looks for.
+
+        Without it the application collects nothing, `_send_reading` returns at
+        its no-rows arm BEFORE it claims the slot or reaches the model, and
+        every "the model was never invoked" assertion in this class passes no
+        matter what the gate does. That is how the first version of this class
+        certified a safety property it could not observe.
+        """
+
+        def collect(
+            config: Any, state: Any, now: float, window_hours: float, show_all: bool
+        ) -> list[dict[str, Any]]:
+            # Positional, because `Application.collect` calls it positionally.
+            # A keyword-only signature raises inside the failure boundary,
+            # which swallows it and yields no rows -- and no rows is exactly
+            # the state that made this class unfalsifiable.
+            del config, state, now, window_hours, show_all
+            row = runtime_sessions.base_session("pi", "s1", "proj")
+            row.update({"state": "working", "active": True, "last_activity": 1_700_000_000.0})
+            return [row]
+
+        return aggregate.HarnessSpec(
+            key="pi", label="Pi", discover=lambda *_: True, collect=collect
+        )
+
+    def _app(self, config: Any, state: Any) -> Any:
+        """An application over that one session, with an annotation on it."""
+        annotation_store.annotate(
+            config, state, "pi", "s1", goal="ship the parser", output="", now=10.0
+        )
+        return aggregate.Application(
+            config,
+            state,
+            (self._one_session_harness(),),
+            native_notifier=lambda _p: "",
+            popup_notifier=lambda _t, _b: None,
+            diagnostic_sink=lambda _m: None,
+            clock=lambda: 1_700_000_100.0,
+        )
+
     @contextlib.contextmanager
     def _serving(self, application: Any) -> Any:
         httpd = make_server(application=application)
@@ -2760,9 +2804,28 @@ class ReadingRouteTest(unittest.TestCase):
         finally:
             conn.close()
 
+    # One entry naming the fixture session, so the ledger is never the reason
+    # the model is not reached. Without it `produce` returns `ledger-empty`
+    # ahead of the subprocess on EVERY path, and "the model was never invoked"
+    # is true whatever the gate does -- the second way this class was
+    # unfalsifiable, after the no-rows arm.
+    FACT: ClassVar[dict[str, Any]] = {
+        "fact_id": "f1",
+        "type": "user_message",
+        "by": "",
+        "summary": "ship the parser please",
+        "at": 1_700_000_000.0,
+        "evidence": {"source": "root transcript", "confidence": "exact"},
+        "source_session": {"harness": "pi", "sid": "s1"},
+    }
+
     @contextlib.contextmanager
     def _counting_model(self) -> Any:
-        """A CodexReadingModel that records every invocation and runs none."""
+        """A model that records every invocation and runs no subprocess.
+
+        Also supplies the observed record, because a gate is only proven by a
+        non-invocation when an invocation was otherwise going to happen.
+        """
         calls: list[str] = []
 
         class _Model:
@@ -2773,7 +2836,14 @@ class ReadingRouteTest(unittest.TestCase):
                 calls.append(prompt)
                 return "{}", "ok"
 
-        with mock.patch.object(runtime_reading, "CodexReadingModel", _Model):
+        with (
+            mock.patch.object(runtime_reading, "CodexReadingModel", _Model),
+            mock.patch.object(
+                runtime_project_context,
+                "collect",
+                lambda *_a, **_k: {"semantic": {"facts": [self.FACT]}},
+            ),
+        ):
             yield calls
 
     def _press(self, **over: Any) -> dict[str, Any]:
@@ -2786,7 +2856,7 @@ class ReadingRouteTest(unittest.TestCase):
         config, state = self._runtime()
         with (
             self._counting_model() as calls,
-            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+            self._serving(self._app(config, state)) as port,
         ):
             status, _ = self._post(port, self._press())
         self.assertEqual(503, status)
@@ -2813,7 +2883,7 @@ class ReadingRouteTest(unittest.TestCase):
                         annotation_store.ABSTENTION_CHECK_PASSED,
                     ),
                     self._counting_model() as calls,
-                    self._serving(cli.build_application(config, state, clock=time.time)) as port,
+                    self._serving(self._app(config, state)) as port,
                 ):
                     status, _ = self._post(port, self._press(**body_changes))
                 self.assertEqual(expected, status, label)
@@ -2846,11 +2916,75 @@ class ReadingRouteTest(unittest.TestCase):
                         annotation_store.ABSTENTION_CHECK_PASSED,
                     ),
                     self._counting_model() as calls,
-                    self._serving(cli.build_application(config, state, clock=time.time)) as port,
+                    self._serving(self._app(config, state)) as port,
                 ):
                     status, _ = self._post(port, self._press(), **headers)
                 self.assertEqual(403, status, label)
                 self.assertEqual([], calls, label)
+
+    def test_an_open_gate_really_does_reach_the_model(self) -> None:
+        """The positive control, and without it this whole class proves nothing.
+
+        Every other test here asserts the model was NOT invoked. That is only
+        evidence if an invocation is observable in the first place. The first
+        version of this class had no session and no annotation, so
+        `_send_reading` returned at its no-rows arm ahead of the model on every
+        path -- and deleting the entire gate left all five assertions green.
+
+        This is the test that makes the other five mean something.
+        """
+        config, state = self._runtime()
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press())
+        self.assertEqual(200, status)
+        self.assertEqual(1, len(calls), "the open gate did not reach the model")
+        self.assertIn("ship the parser", calls[0], "the reader's goal was not sent")
+        self.assertTrue(json.loads(body)["ok"])
+
+    def test_a_second_press_while_one_is_in_flight_spends_nothing(self) -> None:
+        """One reading in flight per session, and no retry."""
+        config, state = self._runtime()
+        started, release = threading.Event(), threading.Event()
+        calls: list[str] = []
+
+        class _Blocking:
+            def __init__(self, _config: Any, **_kw: Any) -> None:
+                pass
+
+            def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+                calls.append(prompt)
+                started.set()
+                release.wait(timeout=5)
+                return "{}", "ok"
+
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            mock.patch.object(runtime_reading, "CodexReadingModel", _Blocking),
+            mock.patch.object(
+                runtime_project_context,
+                "collect",
+                lambda *_a, **_k: {"semantic": {"facts": [self.FACT]}},
+            ),
+            self._serving(self._app(config, state)) as port,
+        ):
+            out: list[int] = []
+            first = threading.Thread(target=lambda: out.append(self._post(port, self._press())[0]))
+            first.start()
+            self.assertTrue(started.wait(timeout=5), "the first press never reached the model")
+            second, _ = self._post(port, self._press())
+            release.set()
+            first.join(timeout=5)
+        self.assertEqual(409, second)
+        self.assertEqual([200], out)
+        self.assertEqual(1, len(calls), "the refused press spent the reader's capacity anyway")
 
     def test_a_session_nobody_annotated_is_not_confirmed_to_exist(self) -> None:
         """200 and never 404: a harness name is public and a session id is not."""
@@ -2860,9 +2994,9 @@ class ReadingRouteTest(unittest.TestCase):
                 annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
             ),
             self._counting_model() as calls,
-            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+            self._serving(self._app(config, state)) as port,
         ):
-            status, body = self._post(port, self._press(sid="never-seen"))
+            status, body = self._post(port, self._press(sid="no-such-session"))
         self.assertEqual(200, status)
         answer = json.loads(body)
         self.assertFalse(answer["produced"])
@@ -2872,7 +3006,7 @@ class ReadingRouteTest(unittest.TestCase):
         config, state = self._runtime()
         with (
             self._counting_model() as calls,
-            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+            self._serving(self._app(config, state)) as port,
         ):
             conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
             try:

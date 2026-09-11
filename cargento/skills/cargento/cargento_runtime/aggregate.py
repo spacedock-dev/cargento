@@ -713,10 +713,6 @@ class Application:
 
         out_sessions = _redact_published_text(sessions.dedupe_sessions(out_sessions))
         _hide_unmeasured_rates(out_sessions, self.harnesses)
-        # After dedupe, which keys on (harness, sid) and would otherwise decide
-        # between two rows one of which carries the annotation. Before the
-        # overlays, which change `state` and not identity.
-        _attach_annotations(out_sessions, annotation_entries)
         self._mark_unreachable_by_events(out_sessions)
         # Between dedupe and the sort, deliberately. Dedupe keys on
         # (harness, sid), which no overlay changes, and the sort ranks on `state`,
@@ -724,6 +720,16 @@ class Application:
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
         history_fields = self._apply_overlays(out_sessions, now=now)
+        # After dedupe, which keys on (harness, sid) and would otherwise decide
+        # between two rows one of which carries the annotation. And AFTER the
+        # overlays, which is the half that was wrong: identity is not patchable
+        # so the ordering is safe either way, but the retraction inside this
+        # pass compares a stored reading's end against `ended_at`, and nothing
+        # in the runtime writes that field except `_apply_overlays`. Attaching
+        # first meant every row read None and every `final` reading was
+        # retracted, on every collection, with a sentence saying the end was no
+        # longer published about an end published seconds later.
+        _attach_annotations(out_sessions, annotation_entries)
         # After the overlays, which is load-bearing: a wait only an event knows
         # about is a wait, and reading the collector's state is what left the
         # overlay lane silent on every harness.
@@ -800,6 +806,13 @@ class Application:
                         "annotate": True,
                         "annotate_cap": config.annotation_text_cap_chars,
                         "reading_check": annotation_store.ABSTENTION_CHECK,
+                        # Published so the page can show it BEFORE the press.
+                        # It was written, tested and rendered nowhere, so the
+                        # only scoping a reader got was "and nothing else",
+                        # which reads as a promise about locality under a
+                        # button that sends their words to OpenAI on their own
+                        # Codex capacity.
+                        "reading_disclosure": reading.DISCLOSURE,
                     }
                     if config.annotations_enabled
                     else {}
