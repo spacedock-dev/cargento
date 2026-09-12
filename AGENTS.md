@@ -45,7 +45,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── deliveries.py       # what became of each raise, and what may not be said of one
-        │   ├── departures.py      # what an unasked reading raised, its baseline, and what came after
+        │   ├── departures.py       # what an unasked reading raised, its baseline, and what came after
         │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
         │   ├── ends.py             # the session ends this board observed, kept across a restart
         │   ├── events.py           # the untrusted event envelope and its overlay reducer
@@ -55,12 +55,12 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── interaction_prototype.py # optional registered-session terminal output
-        │   ├── project_context.py   # prototype project evidence and semantic projections
-        │   ├── semantic_history.py  # prototype semantic event history
+        │   ├── project_context.py  # prototype project evidence and semantic projections
+        │   ├── semantic_history.py # prototype semantic event history
         │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown
-        │   ├── observer.py        # one session's goal, stage and open block, on demand
+        │   ├── observer.py         # one session's goal, stage and open block, on demand
         │   ├── probe.py            # the coarse store probe: a bounded stat sweep, a hint only
         │   ├── quota.py            # quota: per-vendor fetches, pushed receipts, and the cache
         │   ├── reading.py          # one reader-requested reading: the ledger, the rules, the refusals
