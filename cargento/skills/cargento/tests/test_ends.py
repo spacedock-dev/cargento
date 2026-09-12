@@ -21,6 +21,7 @@ import tempfile
 import threading
 import time
 import unittest
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
@@ -39,12 +40,14 @@ from .test_history import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from cargento_runtime.config import RuntimeConfig
 
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
 PREFIX = "abcdef12"
+SECOND = "beefcafe-3456-7890-abcd-ef1234567890"
+SECOND_PREFIX = "beefcafe"
 # The end, and the board's clock. Well inside the display window, so the row is
 # still produced from the transcript after the restart.
 END_AT = support.SERVER_STARTED - 600
@@ -306,6 +309,120 @@ class ConcurrentWritersKeepEveryEndTest(unittest.TestCase):
 
         self.assertEqual(2, len(opened))
         self.assertEqual(2, len(set(opened)), "two writers shared one temp path")
+
+
+class _StubApplication:
+    """Enough application for a coordinator whose worker is never started."""
+
+    def __init__(self, config: RuntimeConfig) -> None:
+        self.config = config
+
+
+class _DrainWindow:
+    """The one interleaving `_flush_end_ops` has to survive, made deterministic.
+
+    `armed` is set by the queue's own emptiness check and consumed by the next
+    release of the coordinator's lock, which is the window between the drainer's
+    empty check and whatever it does with `_end_flushing` afterwards. `run` is
+    the work of the second thread, executed there.
+    """
+
+    def __init__(self, run: Callable[[], None]) -> None:
+        self.run = run
+        self.armed = False
+        self.fired = False
+        self.drained = 0
+
+
+class _MarkingDeque(deque[tuple[str, tuple[str, str], float]]):
+    """The coordinator's end-op queue, arming the window on its empty check."""
+
+    def __init__(self, window: _DrainWindow) -> None:
+        super().__init__()
+        self.window = window
+
+    def __bool__(self) -> bool:
+        if not len(self) and self.window.drained and not self.window.fired:
+            self.window.armed = True
+        return bool(len(self))
+
+    def popleft(self) -> tuple[str, tuple[str, str], float]:
+        self.window.drained += 1
+        return super().popleft()
+
+
+class _WindowLock:
+    """The coordinator's lock, running the second thread's work on one release."""
+
+    def __init__(self, window: _DrainWindow, inner: threading.Lock) -> None:
+        self.window = window
+        self.inner = inner
+
+    def __enter__(self) -> bool:
+        return self.inner.acquire()
+
+    def __exit__(self, *_exc: object) -> None:
+        self.inner.release()
+        if self.window.armed and not self.window.fired:
+            self.window.armed = False
+            self.window.fired = True
+            self.window.run()
+
+
+class EveryQueuedEndReachesDiskTest(unittest.TestCase):
+    """AC5's other half: the queue between the coordinator and the store.
+
+    `_flush_end_ops` keeps the file write off `_lock` and lets one thread at a
+    time drain the queue. The empty check and the clearing of `_end_flushing`
+    have to happen under one hold of that lock. While they were two holds, an op
+    appended between them was stranded: the thread that appended it found the
+    flag still set and returned, and the drainer then cleared the flag with the
+    op still in the queue. Nothing drains it until some later unrelated event
+    arrives, and `stop` does not drain it either, so a board stopped or
+    restarted in that window loses exactly the end this store exists to keep.
+
+    Driven through `submit`, because the defect is in the coordinator's queue
+    and every other concurrency case in this module writes to the store
+    directly, below it. The interleaving is injected rather than raced: 3,840
+    real concurrent submits never hit the window on this machine, since it is a
+    handful of bytecodes with no I/O, so a thread race here would pass whether
+    or not the defect is present.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _config(Path(self.temp.name))
+
+    @staticmethod
+    def _ended(sid: str) -> dict[str, Any]:
+        return {"v": 1, "event": "session_ended", "session_id": sid}
+
+    def test_an_end_decided_at_the_drainers_empty_check_still_reaches_disk(self) -> None:
+        coordinator = observation.Observation(
+            _StubApplication(self.config),  # type: ignore[arg-type]
+            clock=lambda: END_AT,
+            diagnostic_sink=lambda _line: None,
+        )
+
+        def second_end() -> None:
+            coordinator.submit("claude", self._ended(SECOND))
+
+        window = _DrainWindow(second_end)
+        queue = _MarkingDeque(window)
+        with (
+            mock.patch.object(coordinator, "_end_ops", queue),
+            mock.patch.object(coordinator, "_lock", _WindowLock(window, coordinator._lock)),
+        ):
+            coordinator.submit("claude", self._ended(SESSION))
+
+        self.assertTrue(window.fired, "the interleaving was never injected")
+        self.assertEqual([], list(queue), "an end op was left in the queue")
+        self.assertFalse(coordinator._end_flushing)
+        self.assertEqual(
+            {("claude", PREFIX): END_AT, ("claude", SECOND_PREFIX): END_AT},
+            ends.restored(ends.load(self.config)),
+        )
 
 
 class ColdSource:

@@ -1197,17 +1197,23 @@ class Application:
         then rides `events.reduce_overlays` exactly as a live end does, so a live
         working or needs-input overlay still beats it.
 
-        Guarded on transcript activity where a live end is not, and the
+        Guarded on the row's activity where a live end is not, and the
         difference is the point (decisions.md, DRC-4547). A live end is retired
         by `_lift_ended` the moment the id is seen in use again; an id
         `--resume`d while the board was down produced no event this process saw,
-        so the transcript writing well after the end is the only tell. The grace
-        is the reducer's own, because it absorbs the same ordering: a real end
-        lands a few seconds after the last write (5.581 s in the a1 arm of
-        docs/captures/claude/session-end-2.1.261-macos.jsonl). The exposure that
-        comes with it is stated in SECURITY.md rather than solved: a harness that
-        writes its transcript after `SessionEnd` loses the restored end, and the
-        row then reads as it does today, which is honest rather than wrong.
+        so a write well after the end is the only tell. The grace is the
+        reducer's own, because it absorbs the same ordering: a real end lands a
+        few seconds after the last write (5.581 s in the a1 arm of
+        docs/captures/claude/session-end-2.1.261-macos.jsonl).
+
+        The tell is the row's `last_activity`, which is wider than the parent
+        transcript: on Claude it is the newest of five mtimes — the task file,
+        the parent transcript, the subagent transcripts, the agent files and the
+        child sessions (`collectors/claude.py`). So the exposure stated in
+        SECURITY.md rather than solved covers all of them: a harness that writes
+        any of those more than the grace after `SessionEnd` loses the restored
+        end, and the row then reads as it does today, which is honest rather
+        than wrong.
         """
         if not stored:
             return 0.0

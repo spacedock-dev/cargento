@@ -78,13 +78,13 @@ The posture rests on two invariants:
    code selected from a closed set or composed from counts it measured.
 
    Two consequences of storing it here rather than in session history, both accepted rather than
-   discovered. `--forget` deletes session history alone and **does not reach this file**, so a
-   reader who wants a model-authored reading gone clears that session's annotation, which deletes
-   the reading with the words that produced it. And there is no fourteen-day expiry: a reading is
-   evicted when its annotation is, oldest-save-first at the session count above. One forwarder
-   writes too:
-   `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
-   name and a timestamp and nothing about the session's content.
+   discovered. `--forget` deletes the session-history and session-end stores and **does not reach
+   this file**, so a reader who wants a model-authored reading gone clears that session's
+   annotation, which deletes the reading with the words that produced it. And there is no
+   fourteen-day expiry: a reading is evicted when its annotation is, oldest-save-first at the
+   session count above. One forwarder writes too: `statusline_hook.py`'s deduplication memo under
+   the same directory, which holds a normalized state name and a timestamp and nothing about the
+   session's content.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
    annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
@@ -1155,14 +1155,16 @@ discarding the rest.
 
 What a stored end may not do is invent one. Absence means the end was not observed by any run of
 this board, never that the session is still open, which is the same reading the coordinator's
-memory gives. A stored end also loses to the transcript: a session resumed while the board was
-down produced no `session_started` this process could see, so a transcript written more than the
+memory gives. A stored end also loses to later activity: a session resumed while the board was
+down produced no `session_started` this process could see, so a file written more than the
 activity grace after its end is the only tell that the id is in use again, and the stored end is
-then not applied. The exposure accepted with that guard is stated rather than solved. A harness
-that writes its transcript after `SessionEnd` would have its restored end dropped, and the row
-reads as it does today, no end observed, which is honest rather than wrong. A live end, observed
-by the running coordinator, takes no such guard, because the coordinator retires it itself the
-moment the id is seen in use.
+then not applied. Activity here is whatever the row counts as activity, which is wider than the
+session's own transcript: on Claude it is the newest of the task file, the parent transcript, the
+subagent transcripts, the agent files and the child sessions. The exposure accepted with that
+guard is stated rather than solved. A harness that writes any of those after `SessionEnd` would
+have its restored end dropped, and the row reads as it does today, no end observed, which is
+honest rather than wrong. A live end, observed by the running coordinator, takes no such guard,
+because the coordinator retires it itself the moment the id is seen in use.
 
 The coordinator is the only writer, so two flags govern the file by construction rather than by a
 switch of their own. `--no-events` leaves it unread and unwritten, exactly as it leaves the focus

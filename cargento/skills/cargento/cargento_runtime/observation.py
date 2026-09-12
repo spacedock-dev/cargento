@@ -639,6 +639,17 @@ class Observation:
         its own op was appended under the lock before that drainer's next empty
         check and so cannot be left behind. The store takes its own lock around
         each read-modify-write, so this is ordering, not exclusion.
+
+        That guarantee is why the empty check and the clearing of
+        `_end_flushing` share one hold of the lock rather than leaving the clear
+        to the `finally`. With two holds there is a window between them, and an
+        op appended inside it is stranded: its own thread sees the flag still
+        set and returns, and the drainer then clears the flag with the op still
+        queued. Nothing drains it until some later unrelated event arrives, and
+        `stop` does not drain it, so a board stopped or restarted first loses
+        that end — the exact loss this store exists to prevent. The `finally`
+        stays for the exception path, where the flag must be released without a
+        drained queue.
         """
         with self._lock:
             if self._end_flushing:
@@ -648,6 +659,7 @@ class Observation:
             while True:
                 with self._lock:
                     if not self._end_ops:
+                        self._end_flushing = False
                         return
                     op, key, at = self._end_ops.popleft()
                 if op == "record":
