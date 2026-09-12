@@ -13,7 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 if TYPE_CHECKING:
@@ -242,6 +242,74 @@ class ADegenerateCorpusIsCalledOutTest(unittest.TestCase):
         rows[0] = {"harness": "claude", "sid": "s0", "project": "p", "state": "working"}
         said = self._build(rows, facts=13)
         self.assertIn("does not vary", said)
+
+
+class TheEvidenceCountIsTheOneTheProducerWouldReadTest(unittest.TestCase):
+    """The screen answers "does that ledger hold anything citable" or nothing.
+
+    v3 counted a fact citable on `type` and `summary`, and scoped the list with
+    `fact["sid"]` -- a key `project_context` does not write, so the filter
+    admitted everything the endpoint returned. The producer needs a named
+    evidence source as well and scopes on `source_session`, and the shape with
+    a confidence and no source is one `reading.build_ledger`'s own comment
+    records seeing. A marker told "1 citable fact" marks a session the producer
+    then refuses before the model, and that pair counts for neither side.
+    """
+
+    SESSION: ClassVar[dict[str, str]] = {"harness": "claude", "sid": "s1"}
+
+    def _count(self, facts: list[dict[str, Any]]) -> dict[str, Any]:
+        with mock.patch.object(
+            mark_abstention, "_get", lambda *_a, **_k: {"semantic": {"facts": facts}}
+        ):
+            return mark_abstention._ledger(4553, {"project_key": "p", **self.SESSION})
+
+    @staticmethod
+    def _fact(**over: Any) -> dict[str, Any]:
+        fact: dict[str, Any] = {
+            "fact_id": "f1",
+            "type": "user_message",
+            "summary": "did the thing",
+            "evidence": {"source": "transcript", "confidence": "exact"},
+            "source_session": dict(TheEvidenceCountIsTheOneTheProducerWouldReadTest.SESSION),
+        }
+        fact.update(over)
+        return fact
+
+    def test_a_fact_the_resolver_could_cite_is_counted(self) -> None:
+        self.assertEqual(1, self._count([self._fact()])["citable"])
+
+    def test_a_confidence_with_no_named_source_is_not_citable(self) -> None:
+        thin = self._fact(evidence={"confidence": "low"})
+        self.assertEqual(0, self._count([thin])["citable"])
+
+    def test_another_sessions_fact_is_not_this_sessions_evidence(self) -> None:
+        theirs = self._fact(source_session={"harness": "claude", "sid": "s2"})
+        self.assertEqual(0, self._count([theirs])["citable"])
+
+    def test_the_count_is_whatever_the_producer_would_read(self) -> None:
+        # The binding assertion: the two rules are the same rule, so a change
+        # to either side has to move both. Without it the three cases above
+        # can be satisfied by a second copy of the producer's rule that then
+        # drifts from it.
+        reading = mark_abstention._reading()
+        facts = [
+            self._fact(),
+            self._fact(fact_id="f2", evidence={"confidence": "low"}),
+            self._fact(fact_id="f3", source_session={"harness": "claude", "sid": "s2"}),
+            self._fact(fact_id="f4", type="work_result"),
+        ]
+        entries = reading.build_ledger(facts, self.SESSION["harness"], self.SESSION["sid"])
+        wanted = sum(1 for entry in entries if reading._citable(entry))
+        self.assertEqual(wanted, self._count(facts)["citable"])
+        self.assertEqual(2, wanted)
+
+    def test_a_work_result_is_counted_only_while_it_stays_citable(self) -> None:
+        # The OUTPUT question turns on this number, and a thin work_result is
+        # no more citable than a thin user_message.
+        thin = self._fact(type="work_result", evidence={"confidence": "low"})
+        self.assertEqual(0, self._count([thin])["work_results"])
+        self.assertEqual(1, self._count([self._fact(type="work_result")])["work_results"])
 
 
 class TheDocstringDoesNotClaimWhatTheCodeLacksTest(unittest.TestCase):

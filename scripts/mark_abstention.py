@@ -224,10 +224,20 @@ def _end_shape(row: dict[str, Any]) -> str:
 def _ledger(port: int, row: dict[str, Any]) -> dict[str, Any]:
     """What a reading would actually have to cite for this session.
 
-    `citable` is the count a reading can build a claim on: rule 3 needs a
-    resolvable citation, and an entry with no type, source or summary resolves
-    to nothing. `work_results` is the subset that demonstrates work rather than
-    describing a request, which is what the Expected Output constraint needs.
+    `facts` is the ledger the producer would hold and `citable` the subset a
+    reading can build a claim on, which are `produce`'s two refusals in order.
+    `work_results` is the subset that demonstrates work rather than describing
+    a request, which is what the Expected Output constraint needs.
+
+    Both numbers come from the producer's own `build_ledger` and `_citable`
+    rather than a second copy of their rules, because a second copy drifted:
+    this counted a fact citable on `type` and `summary` alone, where rule 3
+    also needs a named evidence source, and it scoped the list with
+    `fact["sid"]` -- a key `project_context` does not write, so the filter
+    admitted every fact the endpoint returned for the project. Both errors run
+    the same way, toward a screen that says there is evidence where the
+    producer will find none, and a case marked judge on that screen is refused
+    before the model and counts for neither side.
     """
     project = str(row.get("project_key") or row.get("project") or "")
     harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
@@ -239,10 +249,14 @@ def _ledger(port: int, row: dict[str, Any]) -> dict[str, Any]:
         body = _get(f"http://127.0.0.1:{port}/api/project-context?{query}")
     except (urllib.error.URLError, TimeoutError, ValueError, OSError):
         return blank
+    reading = _reading()
     facts = ((body or {}).get("semantic") or {}).get("facts") or []
-    mine = [f for f in facts if str(f.get("sid") or "") in {sid, ""}]
-    citable = [f for f in mine if f.get("type") and f.get("summary")]
-    work = [f for f in citable if str(f.get("type") or "") in _reading().WORK_EVIDENCE_TYPES]
+    # The endpoint answers for the focused session and for its children and
+    # the project-scoped facts they share a work item with, so the scoping is
+    # the producer's to do, not this tool's to assume.
+    mine = reading.build_ledger(facts, harness, sid)
+    citable = [entry for entry in mine if reading._citable(entry)]  # noqa: SLF001 - see above
+    work = [entry for entry in citable if entry["type"] in reading.WORK_EVIDENCE_TYPES]
     return {
         "facts": len(mine),
         "citable": len(citable),
