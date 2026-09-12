@@ -21,6 +21,12 @@ deliverable claim resting on nothing that demonstrates work is unrenderable
 because the constraint is either never put to the model, or demoted before it
 is published.
 
+The numbering is bound the same way. `build_prompt` returns a `Selection`,
+the handle for exactly the rows the model was shown, and `resolve` accepts
+nothing else: a caller handing it the whole ledger where the selected slice
+belongs used to type-check, because both were sequences of the same entry,
+and every citation then resolved against a row the model never saw.
+
 Rule 4 is weaker and the docstring used to overstate it. **One model string
 does reach the page**: a departure's `detail`. No model string is ever printed
 as a *verdict* -- the verdict is a token this module maps to a sentence it owns
@@ -42,6 +48,7 @@ import shutil
 import subprocess
 import threading
 import unicodedata
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from . import observer, records
@@ -351,6 +358,25 @@ class LedgerEntry(TypedDict):
     at: float
     author: str
     source: str
+
+
+@dataclass(frozen=True)
+class Selection:
+    """Exactly the entries one prompt carried, in the order it numbered them.
+
+    A handle rather than a bare tuple, on purpose. `resolve` numbers whatever it
+    is given from 1, and the ledger and the selected slice are the same tuple
+    type, so a caller confusing the two produced citations that resolved to the
+    wrong entries -- fully rule-3 compliant, and a departure against an entry
+    the model never saw (DRC-4544 item 1). Only `build_prompt` constructs one
+    in production, so the type says which list the numbering belongs to.
+    """
+
+    entries: tuple[LedgerEntry, ...]
+
+    def by_index(self) -> dict[int, LedgerEntry]:
+        """Menu number to entry, exactly as the prompt printed them."""
+        return dict(enumerate(self.entries, start=1))
 
 
 class Criterion(TypedDict):
@@ -695,7 +721,7 @@ def build_prompt(
     output: str,
     harness: str,
     max_bytes: int,
-) -> tuple[str, tuple[LedgerEntry, ...]]:
+) -> tuple[str, Selection]:
     """The prompt, and exactly the entries it carried.
 
     Entries are selected newest-first against the byte cap and then printed
@@ -762,7 +788,7 @@ def build_prompt(
         # there is and no entries at all: `cutoff_text` then says none of the
         # record could be read, which is the true sentence and a different one
         # from the record being empty.
-        return header, ()
+        return header, Selection(())
 
     def row_text(index: int, row: LedgerEntry) -> str:
         return records.redact_secrets(
@@ -789,7 +815,7 @@ def build_prompt(
         taken += 1
     selected = tuple(citable[len(citable) - taken :]) if taken else ()
     body = "".join(row_text(index, row) for index, row in enumerate(selected, start=1))
-    return header + body, selected
+    return header + body, Selection(selected)
 
 
 def parse_reply(raw: str) -> dict[str, dict[str, Any]]:
@@ -962,9 +988,25 @@ def _resolve_one(
     return criterion
 
 
+def _numbered(selection: object) -> dict[int, LedgerEntry]:
+    """The menu numbering, from the one handle allowed to carry it.
+
+    Typed on `object` so the check is reachable: `resolve` is documented as
+    callable with hand-built replies, and a hand-built sequence where the
+    selection belongs is exactly the caller that resolved citations against
+    rows the model never saw. The annotation on `resolve` catches that caller
+    under mypy; this catches the one that was not type-checked (decisions.md,
+    DRC-4544 item 1).
+    """
+    if not isinstance(selection, Selection):
+        msg = "resolve needs the Selection build_prompt returned, not a bare sequence"
+        raise TypeError(msg)
+    return selection.by_index()
+
+
 def resolve(
     parsed: Mapping[str, Mapping[str, Any]],
-    selected: Sequence[LedgerEntry],
+    selection: Selection,
     *,
     goal: str,
     output: str,
@@ -975,13 +1017,16 @@ def resolve(
 
     The renderer applies the same rules again over the entries it actually
     holds, because the two can be looking at collections fetched seconds apart.
+
+    Refuses anything but the `Selection` `build_prompt` returned; `_numbered`
+    holds the check and says why it is a runtime one.
     """
+    by_index = _numbered(selection)
     asked = {
         CONSTRAINT_GOAL: asks_goal(goal),
         CONSTRAINT_OUTPUT: asks_output(output, harness),
     }
     clauses = {CONSTRAINT_GOAL: goal, CONSTRAINT_OUTPUT: output}
-    by_index = dict(enumerate(selected, start=1))
     out: dict[str, Criterion] = {}
     for name in CONSTRAINTS:
         # Bounded and scrubbed like every other published string. It is the
@@ -1073,7 +1118,7 @@ def produce(
         harness=str(row.get("harness") or ""),
         max_bytes=observer.OBSERVER_MODEL_MAX_PROMPT_BYTES,
     )
-    if not selected:
+    if not selected.entries:
         return None, WITHHELD_LEDGER_EMPTY, False
     raw, status = model(prompt, output_cap_bytes=config.annotation_text_cap_chars * 8)
     if status == "unavailable":
@@ -1092,7 +1137,7 @@ def produce(
     assessment: Assessment = {
         "revision_read": revision if isinstance(revision, int) and revision > 0 else 1,
         "stamp": stamp_text,
-        "cutoff": cutoff_text(selected, len(ledger), now),
+        "cutoff": cutoff_text(selected.entries, len(ledger), now),
         "scope": scope,
         "scope_text": SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,

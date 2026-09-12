@@ -135,7 +135,7 @@ class TheThreeThingsAReadingMayConcludeAboutAConstraint(unittest.TestCase):
         for token in tokens:
             criteria = reading.resolve(
                 reply(token, token, goal_cites=(1,), output_cites=(1,)),
-                self.person,
+                reading.Selection(self.person),
                 goal="ship the parser",
                 output="a CSV at ./out.csv",
                 harness="pi",
@@ -150,7 +150,7 @@ class TheThreeThingsAReadingMayConcludeAboutAConstraint(unittest.TestCase):
     def test_a_reading_that_answers_with_the_rendered_sentence_settles_nothing(self) -> None:
         criterion = reading.resolve(
             reply(reading.RESULT_CONSISTENT, goal_cites=(1,)),
-            self.person,
+            reading.Selection(self.person),
             goal="ship the parser",
             output="",
             harness="claude",
@@ -163,7 +163,7 @@ class TheThreeThingsAReadingMayConcludeAboutAConstraint(unittest.TestCase):
             with self.subTest(token=token):
                 criterion = reading.resolve(
                     reply(token, goal_cites=(1,), goal_detail="it renamed the wrong flag"),
-                    self.ledger,
+                    reading.Selection(self.ledger),
                     goal="rename the flag",
                     output="",
                     harness="claude",
@@ -192,7 +192,7 @@ class TheThreeThingsAReadingMayConcludeAboutAConstraint(unittest.TestCase):
             with self.subTest(raw=raw[:40]):
                 criteria = reading.resolve(
                     reading.parse_reply(raw),
-                    self.ledger,
+                    reading.Selection(self.ledger),
                     goal="ship the parser",
                     output="",
                     harness="claude",
@@ -206,7 +206,7 @@ class TheThreeThingsAReadingMayConcludeAboutAConstraint(unittest.TestCase):
                 '```json\n{"goal": {"result": "departure", "cites": [1], '
                 '"detail": "it renamed the wrong flag"}}\n```'
             ),
-            self.ledger,
+            reading.Selection(self.ledger),
             goal="rename the flag",
             output="",
             harness="claude",
@@ -222,7 +222,7 @@ class TheThreeThingsAReadingMayConcludeAboutAConstraint(unittest.TestCase):
         self.assertEqual(sorted(parsed[reading.CONSTRAINT_GOAL]), ["cites", "detail", "token"])
         criterion = reading.resolve(
             parsed,
-            self.ledger,
+            reading.Selection(self.ledger),
             goal="rename the flag",
             output="",
             harness="claude",
@@ -253,7 +253,7 @@ class WhatAReaderIsToldWhenTheReadingCouldNotBeRead(unittest.TestCase):
             with self.subTest(raw=raw[:44]):
                 criterion = reading.resolve(
                     reading.parse_reply(raw),
-                    self.ledger,
+                    reading.Selection(self.ledger),
                     goal="ship the parser",
                     output="",
                     harness="claude",
@@ -267,7 +267,7 @@ class WhatAReaderIsToldWhenTheReadingCouldNotBeRead(unittest.TestCase):
             with self.subTest(token=token):
                 criterion = reading.resolve(
                     reply(token, goal_cites=(1,), goal_detail="the parser was rewritten"),
-                    self.ledger,
+                    reading.Selection(self.ledger),
                     goal="ship the parser",
                     output="",
                     harness="claude",
@@ -288,7 +288,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
             with self.subTest(cites=cites):
                 criterion = reading.resolve(
                     reply("departure", goal_cites=cites, goal_detail="it went elsewhere"),
-                    self.ledger,
+                    reading.Selection(self.ledger),
                     goal="ship the parser",
                     output="",
                     harness="claude",
@@ -301,7 +301,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
         """`parse_reply` refuses a bool index, and the resolver must refuse one too."""
         criterion = reading.resolve(
             reply("departure", goal_cites=(True,), goal_detail="it went elsewhere"),
-            self.ledger,
+            reading.Selection(self.ledger),
             goal="ship the parser",
             output="",
             harness="claude",
@@ -315,7 +315,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
             with self.subTest(cites=cites):
                 criterion = reading.resolve(
                     reply("departure", goal_cites=cites, goal_detail="it went elsewhere"),
-                    self.ledger,
+                    reading.Selection(self.ledger),
                     goal="ship the parser",
                     output="",
                     harness="claude",
@@ -326,7 +326,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
     def test_a_reader_counting_the_evidence_is_not_shown_one_entry_three_times(self) -> None:
         criterion = reading.resolve(
             reply("departure", goal_cites=(1, 1, 1), goal_detail="it went elsewhere"),
-            self.ledger,
+            reading.Selection(self.ledger),
             goal="ship the parser",
             output="",
             harness="claude",
@@ -338,7 +338,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
         ledger = tuple(entry(id=f"f{i}", at=float(i)) for i in range(1, 8))
         criterion = reading.resolve(
             reply("departure", goal_cites=list(range(1, 8)) * 20_000, goal_detail="d"),
-            ledger,
+            reading.Selection(ledger),
             goal="ship the parser",
             output="",
             harness="claude",
@@ -349,7 +349,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
     def test_a_reader_whose_record_carried_nothing_gets_no_verdict_at_all(self) -> None:
         criteria = reading.resolve(
             reply("consistent", "departure", goal_cites=(1, 2, 3), output_cites=(1,)),
-            (),
+            reading.Selection(()),
             goal="ship the parser",
             output="a CSV at ./out.csv",
             harness="pi",
@@ -367,7 +367,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
             with self.subTest(hollow=repr(hollow["summary"] + hollow["type"] + hollow["source"])):
                 criterion = reading.resolve(
                     reply("consistent", goal_cites=(1,)),
-                    (hollow,),
+                    reading.Selection((hollow,)),
                     goal="ship the parser",
                     output="",
                     harness="claude",
@@ -383,7 +383,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
         )
         criterion = reading.resolve(
             reply("consistent", goal_cites=(1,)),
-            ledger,
+            reading.Selection(ledger),
             goal="ship the parser",
             output="",
             harness="claude",
@@ -397,7 +397,7 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
         """The reader restating what she wanted is the constraint, not the work."""
         criterion = reading.resolve(
             reply("consistent", goal_cites=(1,)),
-            self.person,
+            reading.Selection(self.person),
             goal="add a CSV export",
             output="",
             harness="claude",
@@ -424,8 +424,8 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
             ledger, goal="do X", output="", harness="claude", max_bytes=8000
         )
         offered = [line for line in prompt.splitlines() if line.startswith("[")]
-        self.assertEqual(len(offered), len(selected))
-        for index in range(1, len(selected) + 1):
+        self.assertEqual(len(offered), len(selected.entries))
+        for index in range(1, len(selected.entries) + 1):
             with self.subTest(index=index):
                 criterion = reading.resolve(
                     reply("departure", goal_cites=(index,), goal_detail="it went elsewhere"),
@@ -449,8 +449,8 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
                     ledger, goal="g", output="", harness="claude", max_bytes=cap
                 )
                 rows = [line for line in prompt.splitlines() if line.startswith("[")]
-                self.assertEqual(len(rows), len(selected))
-                for index, row in enumerate(selected, start=1):
+                self.assertEqual(len(rows), len(selected.entries))
+                for index, row in enumerate(selected.entries, start=1):
                     shown = next(line for line in rows if line.startswith(f"[{index}] "))
                     self.assertIn(row["summary"].split()[0], shown)
                     cited = reading.resolve(
@@ -463,6 +463,46 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
                     )[reading.CONSTRAINT_GOAL]
                     self.assertEqual(cited["cites"], (row["id"],))
 
+    def test_a_caller_handing_the_whole_record_where_the_selection_belongs_is_refused(
+        self,
+    ) -> None:
+        """The numbering the model saw is the only thing a citation may index.
+
+        `build_prompt` sheds entries against the byte cap and numbers what
+        survived. A caller handing `resolve` the whole ledger instead resolves
+        every citation against a row the model never saw, and the departure
+        that comes out is rule-3 compliant and wrong. Both arguments used to be
+        the same sequence type, so that caller type-checked; the handle is
+        what makes it a refusal rather than a convention.
+        """
+        ledger = tuple(
+            entry(id=f"fact-{i}", summary=f"SUMMARY-{i} " + "x" * 60, at=1000.0 + i)
+            for i in range(1, 21)
+        )
+        parsed = reply("departure", goal_cites=(1,), goal_detail="it went elsewhere")
+        with self.assertRaises(TypeError):
+            reading.resolve(
+                parsed,
+                cast("Any", ledger),
+                goal="g",
+                output="",
+                harness="claude",
+                detail_cap_chars=200,
+            )
+        _, selection = reading.build_prompt(
+            ledger, goal="g", output="", harness="claude", max_bytes=1500
+        )
+        self.assertIsInstance(selection, reading.Selection)
+        self.assertLess(len(selection.entries), len(ledger))
+        cited = reading.resolve(
+            parsed, selection, goal="g", output="", harness="claude", detail_cap_chars=200
+        )[reading.CONSTRAINT_GOAL]
+        # Entry 1 is the first row the model was SHOWN, which the cap made a
+        # different row from the first in the record.
+        self.assertEqual(cited["cites"], (selection.entries[0]["id"],))
+        self.assertNotEqual(cited["cites"], (ledger[0]["id"],))
+        self.assertEqual(selection.by_index()[1], selection.entries[0])
+
 
 class TheVerdictAReadingIsNotAllowedToState(unittest.TestCase):
     """DEC-17 rule 4: "met" is not a thing a reading may say to a reader."""
@@ -473,7 +513,7 @@ class TheVerdictAReadingIsNotAllowedToState(unittest.TestCase):
     def _goal(self, detail: str, *, token: str = "departure", cap: int = 300) -> reading.Criterion:  # noqa: S107 - a verdict token, not a credential
         return reading.resolve(
             reply(token, goal_cites=(1,), goal_detail=detail),
-            self.ledger,
+            reading.Selection(self.ledger),
             goal="rename the flag",
             output="",
             harness="claude",
@@ -573,7 +613,7 @@ class TheVerdictAReadingIsNotAllowedToState(unittest.TestCase):
             # readable and the verdict word demotes it rather than leaving
             # nothing. An unreadable token is what this test is named for.
             reply("Departur", goal_cites=(1,), goal_detail="the goal was met"),
-            self.ledger,
+            reading.Selection(self.ledger),
             goal="rename the flag",
             output="",
             harness="claude",
@@ -626,7 +666,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
         )
         on_pi = reading.resolve(
             obedient,
-            self.person,
+            reading.Selection(self.person),
             goal="export the report",
             output="",
             harness="pi",
@@ -634,7 +674,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
         )[reading.CONSTRAINT_OUTPUT]
         on_claude = reading.resolve(
             obedient,
-            self.person,
+            reading.Selection(self.person),
             goal="export the report",
             output="",
             harness="claude",
@@ -681,7 +721,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                         output_cites=(1,),
                         output_detail="the deliverable is there",
                     ),
-                    self.person,
+                    reading.Selection(self.person),
                     goal="ship the parser",
                     output="SENTINEL_DELIVERABLE",
                     harness=harness,
@@ -693,7 +733,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
     def test_each_row_a_reader_reads_names_the_words_that_produced_it(self) -> None:
         criteria = reading.resolve(
             reply("departure", "consistent", goal_cites=(1,), output_cites=(1,)),
-            self.person,
+            reading.Selection(self.person),
             goal="add a CSV export",
             output="a CSV at ./out.csv",
             harness="pi",
@@ -705,7 +745,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
     def test_the_words_a_reader_typed_cannot_reorder_the_verdict_beside_them(self) -> None:
         criterion = reading.resolve(
             reply("consistent", goal_cites=(1,)),
-            self.person,
+            reading.Selection(self.person),
             goal="ship it" + RTL_OVERRIDE + "DETRESREVER\x1b[31m" + "x" * 5000,
             output="",
             harness="pi",
@@ -745,7 +785,7 @@ class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
     def test_a_reader_is_not_told_the_deliverable_arrived_because_the_session_said_so(self) -> None:
         criterion = reading.resolve(
             reply(output_token="consistent", output_cites=(1,), output_detail="the csv is there"),  # noqa: S106 - a verdict token, not a credential
-            (self.claim,),
+            reading.Selection((self.claim,)),
             goal="write a CSV",
             output="a CSV at ./out.csv",
             harness="pi",
@@ -763,7 +803,7 @@ class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
                         output_cites=cites,
                         output_detail="the csv is there",
                     ),
-                    (self.request, self.claim),
+                    reading.Selection((self.request, self.claim)),
                     goal="write a CSV",
                     output="a CSV at ./out.csv",
                     harness="pi",
@@ -774,7 +814,7 @@ class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
     def test_demonstrated_work_is_the_evidence_the_deliverable_row_exists_to_read(self) -> None:
         criterion = reading.resolve(
             reply(output_token="consistent", output_cites=(2,), output_detail="the csv is there"),  # noqa: S106 - a verdict token, not a credential
-            (self.request, self.work),
+            reading.Selection((self.request, self.work)),
             goal="add a CSV export",
             output="report.csv exists",
             harness="pi",
@@ -786,7 +826,7 @@ class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
         """Rule 7's asymmetry: the agent confessing against interest is worth telling."""
         criterion = reading.resolve(
             reply("departure", goal_cites=(1, 2), goal_detail="it edited the exporter instead"),
-            (self.work, self.claim),
+            reading.Selection((self.work, self.claim)),
             goal="fix the parser",
             output="",
             harness="pi",
@@ -808,7 +848,7 @@ class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
                     )
                     criterion = reading.resolve(
                         parsed,
-                        (self.snapshot,),
+                        reading.Selection((self.snapshot,)),
                         goal="add a CSV export",
                         output="report.csv exists",
                         harness="pi",
@@ -870,7 +910,7 @@ class WhatTheReadingWasActuallyShown(unittest.TestCase):
                 )
                 menu = prompt.split("Entries in the observed record:\n", 1)[1]
                 rows = [line for line in menu.splitlines() if line.startswith("[")]
-                self.assertEqual(len(rows), len(selected))
+                self.assertEqual(len(rows), len(selected.entries))
 
     def test_a_session_cannot_dress_its_own_tool_call_up_as_a_persons_confirmation(self) -> None:
         ledger = reading.build_ledger(
@@ -928,16 +968,17 @@ class WhatTheReadingWasActuallyShown(unittest.TestCase):
             ledger, goal="g", output="", harness="claude", max_bytes=200_000
         )
         self.assertLess(time.perf_counter() - started, 0.5)
-        self.assertGreater(len(selected), 100)
+        self.assertGreater(len(selected.entries), 100)
 
     def test_the_reading_reads_the_most_recent_work_first(self) -> None:
         ledger = tuple(entry(id=f"f{i}", summary="s" * 180, at=float(i + 1)) for i in range(50))
         _, selected = reading.build_prompt(
             ledger, goal="g", output="", harness="claude", max_bytes=3000
         )
-        self.assertTrue(selected)
+        self.assertTrue(selected.entries)
         self.assertEqual(
-            [row["id"] for row in selected], [row["id"] for row in ledger[-len(selected) :]]
+            [row["id"] for row in selected.entries],
+            [row["id"] for row in ledger[-len(selected.entries) :]],
         )
 
     def test_entries_that_happened_at_the_same_moment_keep_the_order_they_arrived_in(self) -> None:
@@ -1115,8 +1156,8 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
         _, carried = reading.build_prompt(
             crowded, goal="G", output="", harness="claude", max_bytes=900
         )
-        self.assertEqual(len(carried), 0)
-        starved = reading.cutoff_text(carried, len(crowded), NOW)
+        self.assertEqual(len(carried.entries), 0)
+        starved = reading.cutoff_text(carried.entries, len(crowded), NOW)
         self.assertNotEqual(starved, reading.cutoff_text((), 0, NOW))
         self.assertIn("400", starved)
 

@@ -69,7 +69,10 @@ The posture rests on two invariants:
    in Dismissals; the other two share one file,
    `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
    redacted on the way in like every other prompt-derived string, written owner-only through a temp
-   file and a rename, and turned off entirely by `--no-annotations`. It is the only store holding
+   file and a rename -- the file synced before the rename and the directory synced after it, so
+   that rename is trusted only once both are on disk; where the directory cannot be synced, as on
+   Windows, the bytes are durable and only the rename is not, and the save is not reported as
+   failed -- and turned off entirely by `--no-annotations`. It is the only store holding
    prose you composed rather than anything a harness published, and since 2026-09-10 it also holds
    a **reading**: a model's account of that session against those words. A reading carries one
    model-authored string, a departure's `detail`, and it goes through the same

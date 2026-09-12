@@ -397,6 +397,25 @@ def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
     return _bounded(parsed, config.annotation_max_sessions)
 
 
+def _fsync_directory(path: str) -> None:
+    """Flush the directory entry a rename just wrote.
+
+    `os.replace` is atomic against a concurrent reader and says nothing about
+    power loss: the new bytes can be durable while the directory still names
+    the old file. Opening a directory needs `O_DIRECTORY`, which Windows does
+    not have, so there this returns without syncing; anywhere else the caller
+    decides what an `OSError` means.
+    """
+    flag = getattr(os, "O_DIRECTORY", None)
+    if flag is None:
+        return
+    fd = os.open(path, os.O_RDONLY | flag)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def save(
     config: RuntimeConfig,
     entries: Iterable[Annotation],
@@ -440,13 +459,21 @@ def save(
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
             # A rename is atomic against a concurrent reader and says nothing
-            # about power loss. The one fsync in this lane, and it is here
-            # because this store holds prose a person composed and cannot
-            # retype from anywhere else; every other store is reconstructible
-            # from what the harnesses already wrote.
+            # about power loss. Synced here, and the directory synced again
+            # after the rename, because this store holds prose a person
+            # composed and cannot retype from anywhere else; every other store
+            # is reconstructible from what the harnesses already wrote.
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, target)
+        # The directory sync may fail where the file sync did not (Windows
+        # cannot open a directory; some filesystems refuse to fsync one), and
+        # by then the bytes are durable and the rename has happened -- only the
+        # rename's durability is in doubt. Suppressed rather than reported,
+        # because the failure cue below says the words will be gone, and here
+        # they are on disk (decisions.md, DRC-4544 directory-fsync half).
+        with contextlib.suppress(OSError):
+            _fsync_directory(config.state_home)
     # `TypeError` and `RecursionError` are here for the reason `load` already
     # catches `RecursionError`: an encoder that refuses a payload must reach the
     # reader as the failure cue this arm exists to send, not as a dropped

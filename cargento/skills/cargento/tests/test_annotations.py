@@ -1328,16 +1328,56 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         leftovers = [name for name in os.listdir(self.config.state_home) if name.endswith(".tmp")]
         self.assertEqual([], leftovers)
 
-    def test_the_bytes_reach_the_disk_before_the_rename(self) -> None:
+    def test_the_bytes_and_then_the_rename_reach_the_disk_in_that_order(self) -> None:
         # A rename is atomic against a concurrent reader and says nothing about
-        # power loss. This is the only fsync in the annotation lane and it is
-        # here because the store holds prose a person composed and cannot
-        # retype from anywhere else.
-        synced: list[int] = []
-        with mock.patch("cargento_runtime.annotations.os.fsync", side_effect=synced.append):
-            self.assertTrue(annotation_store.save(self.config, (), diagnostic_sink=lambda _l: None))
+        # power loss: the file's bytes need an fsync before it, and the
+        # directory entry the rename wrote needs one after it, or the store
+        # can come back as the OLD file with the new bytes durable and
+        # unreachable. The store holds prose a person composed and cannot
+        # retype from anywhere else. An ordered log rather than a count,
+        # because a count of one forbade the second sync and observed no order.
+        calls: list[str] = []
+        real_fsync, real_replace = os.fsync, os.replace
 
-        self.assertEqual(1, len(synced))
+        def fsync(fd: int) -> None:
+            calls.append("file fsync")
+            real_fsync(fd)
+
+        def replace(src: str, dst: str) -> None:
+            calls.append("replace")
+            real_replace(src, dst)
+
+        with (
+            mock.patch("cargento_runtime.annotations.os.fsync", side_effect=fsync),
+            mock.patch("cargento_runtime.annotations.os.replace", side_effect=replace),
+            mock.patch(
+                "cargento_runtime.annotations._fsync_directory",
+                create=True,
+                side_effect=lambda _path: calls.append("directory fsync"),
+            ),
+        ):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=lambda _l: None)
+
+        self.assertTrue(ok)
+        self.assertEqual(["file fsync", "replace", "directory fsync"], calls)
+
+    def test_a_directory_that_cannot_be_synced_does_not_report_the_words_as_lost(self) -> None:
+        # Windows refuses to open a directory at all, and some filesystems
+        # refuse to fsync one. By then the bytes are durable and the rename has
+        # happened; only the rename's durability is in doubt. Reporting that
+        # as a failed save tells the reader their words are gone when they are
+        # on disk, which is DRC-4543's lie in the other direction.
+        said: list[str] = []
+        with mock.patch(
+            "cargento_runtime.annotations._fsync_directory",
+            create=True,
+            side_effect=PermissionError("directories cannot be opened here"),
+        ):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertTrue(ok)
+        self.assertEqual([], said)
+        self.assertTrue(os.path.exists(annotation_store.store_path(self.config)))
 
 
 class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
