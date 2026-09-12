@@ -283,9 +283,12 @@ session, and where one has, the sentence says what it found and never that the r
 figures beneath are one line per collection — the departures the reading raised and the departures
 the away checks raised, each counted from the rows shown beside it — then the board's raises,
 attempts and hand-overs, with no arithmetic between any of them. A count identifies a session worth
-reading and settles nothing else. Clearing what you asked withdraws the raises made against it: the
-words go from the departure record too, and only the fact that a check ran stays. The Intent log
-carries the same raises a line at a time, and keeps them after the session leaves the board.
+reading and settles nothing else, and where the away checks have never read the session the figure
+says it was not measured rather than reading zero. The `clear` beside each box empties that box, and
+the save after it keeps every earlier revision, so the raises quoting those words stay. Discarding
+the whole annotation, which is `clear` in a `POST /api/annotate` body, withdraws them: the
+quotations go from the departure record too, and only the fact that a check ran stays. The Intent
+log carries the same raises a line at a time, and keeps them after the session leaves the board.
 
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer

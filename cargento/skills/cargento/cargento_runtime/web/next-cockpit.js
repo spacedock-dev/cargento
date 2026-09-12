@@ -1571,9 +1571,19 @@ function nextCockpitDepartures(shape, source, session){
   /* The lane's rows, counted once and used twice: the delivery part is printed
      only where one of THESE stands, because only this lane raises a
      notification, and the figure below must count the rows this section
-     actually rendered. */
-  const lane = nextData && nextData.unasked === true &&
-    Array.isArray(session && session.departures) ? session.departures.length : null;
+     actually rendered.
+
+     `departure_checked` and not the list's own length, because an empty list
+     is two different facts. The lane publishes `[]` for a session it read and
+     found nothing in AND for one it has never reached, and only the first is a
+     figure: walked with the switch on and this session unread, "Departures the
+     checks run while you were away raised 0" printed four lines under
+     "Cargento has not checked this session against what you asked for". The
+     switch test above is the same rule one layer out. */
+  const laneOn = Boolean(nextData && nextData.unasked === true);
+  const laneRows = Array.isArray(session && session.departures) ? session.departures : null;
+  const lane = laneOn && laneRows &&
+    (laneRows.length > 0 || session.departure_checked === true) ? laneRows.length : null;
   return '<section class="next-cockpit-departures"><header>' +
     '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
     reading.html +

@@ -3400,6 +3400,60 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertIs(True, stored[0]["withdrawn"])
         self.assertEqual("", stored[0]["clause"])
 
+    def test_emptying_both_fields_is_not_the_clear_that_withdraws_a_raise(self) -> None:
+        """DRC-4514, walked on the board, and the reason `SECURITY.md` says which.
+
+        The `clear` control beside each field empties the box; the save that
+        follows is a revision with an empty string, and every earlier revision
+        stays on disk. `clear: true` is a different act -- it deletes them all
+        -- and it is the only one that withdraws a raise. Walked end to end:
+        pressing `clear` and `save` on both fields left `/api/annotations`
+        serving the departure clause verbatim, which is correct, because the
+        words themselves are still in the store two revisions up.
+        """
+        config, state = self._runtime()
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "s",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "never touch production credentials in this run",
+                    "reading": "It reached for the deploy key.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "Read 4 of 4 entries in the observed record.",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(
+                port,
+                json.dumps(
+                    {
+                        "harness": "pi",
+                        "sid": "s",
+                        "goal": "never touch production credentials in this run",
+                    }
+                ).encode(),
+            )
+            # What the two controls on the board actually send.
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": ""}).encode())
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "output": ""}).encode())
+            status, body = self._get_annotations(port)
+
+        self.assertEqual(200, status)
+        rows = json.loads(body)["annotations"]
+        self.assertEqual(1, len(rows))
+        self.assertEqual(1, len(rows[0]["departures"]))
+        self.assertIn("production credentials", body.decode())
+        stored = departures.load(config)
+        self.assertIs(False, stored[0]["withdrawn"])
+
     def test_the_off_switch_answers_503_rather_than_404(self) -> None:
         """503 for `/api/dismiss`'s reason: under the off switch the route
         exists and the store does not, and 404 would read as a build too old."""

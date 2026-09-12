@@ -176,6 +176,32 @@ NO_RAISE_RECORDED: Final = (
     "left it."
 )
 
+# The lane the unasked reading raises under. Duplicated from `unasked.LANE`
+# rather than imported, because this module is a leaf and `unasked` reads it;
+# `test_deliveries` asserts the two are the same token, so the copy cannot
+# drift silently.
+LANE_DEPARTURE: Final = "departure"
+
+# The same absence, said at the scope the caller narrowed to. Keyed on the lane
+# rather than composed, for the reason every other sentence here is a constant:
+# the wording is the product.
+#
+# Measured on the board, and it is why the sentence above may not be reused for
+# a narrowed call. With one hook refusal on record and no departure raise, the
+# session page printed "No notification raise about this session is on record,
+# so nothing here says one was attempted" inside the departure block and "One
+# notification was raised about this session" in the NOTIFICATIONS block
+# directly beneath it. Both were about the same session, one counted one lane
+# and the other counted four, and nothing on screen said so.
+NO_RAISE_BY_LANE: Final[dict[str, str]] = {
+    LANE_DEPARTURE: (
+        "No notification raise about a departure on this session is on record, so nothing here "
+        "says one was attempted. Raises this board made about the session for other reasons are "
+        "not counted here, and the record is bounded and drops its oldest rows, so an older "
+        "raise can have left it."
+    ),
+}
+
 # The outcomes that mean this board actually tried. Named positively rather than
 # as "not no-lane": an unreadable outcome is not an attempt either, and a
 # negative test would have counted one silently the day that case was added.
@@ -521,8 +547,13 @@ def published(
         "delivery_outcome": latest["outcome"] if latest else "",
         "delivery_why": DELIVERY.get(latest["outcome"], NO_RECORD) if latest else "",
         # Exactly one of these two carries a sentence. The absence one is
-        # published on every row and printed only where a departure stands.
-        "delivery_none_why": "" if latest else NO_RAISE_RECORDED,
+        # published on every row and printed only where a departure stands,
+        # and it is the narrowed wording whenever the caller narrowed: a
+        # sentence that counted one lane may not be worded as if it counted
+        # every one. An unknown lane falls back to the board-wide wording,
+        # which is why `test_deliveries` binds the one narrowing caller's
+        # token to a key here.
+        "delivery_none_why": ("" if latest else NO_RAISE_BY_LANE.get(lane, NO_RAISE_RECORDED)),
         "delivery_at": raised_at,
         "delivery_raises": len(mine),
         # Whether the sentence above is the whole story. One sentence is

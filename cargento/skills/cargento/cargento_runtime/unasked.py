@@ -438,4 +438,11 @@ def published(
     return {
         "departures": departures.published(stored, harness, sid),
         "departure_why": departures.why(config, stored, harness, sid, now=now),
+        # Whether the list above is a measurement at all. It is `[]` both for a
+        # session nobody read and for one that was read and had nothing to
+        # raise, and the review surface counts it: a session the lane had never
+        # reached rendered a departure figure of 0 under the sentence saying it
+        # had not been checked. `departures.checked` is the same test the
+        # sentence uses, so the figure and the sentence cannot disagree.
+        "departure_checked": departures.checked(stored, harness, sid),
     }

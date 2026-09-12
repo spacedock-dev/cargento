@@ -582,11 +582,19 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "browser_lane_why": "",
         # What the unasked reading lane raised about this session, and why there
         # is nothing. Declared here at their absent values on the rule above;
-        # `Application._unasked_fields` fills both from `unasked.published`,
+        # `Application._unasked_fields` fills all three from `unasked.published`,
         # which is where the four sentences live so an exhausted cap cannot read
         # like a session found to be on track.
         "departures": [],
         "departure_why": "",
+        # Whether this session has ever been read against the words it holds
+        # now, which is what makes the list above a measurement. `[]` is the
+        # value on a session the lane never reached AND on one it read and
+        # found nothing in, so a count of that list is a number in one case and
+        # an absence in the other: a review surface printed "Departures the
+        # checks run while you were away raised 0" under "Cargento has not
+        # checked this session against what you asked for".
+        "departure_checked": False,
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and

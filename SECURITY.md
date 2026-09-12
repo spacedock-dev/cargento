@@ -101,10 +101,13 @@ The posture rests on two invariants:
    check found. Two of those are prose about a departed session and one of them is yours.
    It is same-origin only, refuses a cross-site
    navigation, answers 503 under `--no-annotations`, and reads the annotation store and the
-   departure store rather than session history. A clear withdraws from both: it deletes every
-   revision and blanks the quotations from the departure rows those revisions were read against,
-   keeping only that a check ran, so words you withdrew are gone from this response and from disk.
-   Nothing else removes a departure row's words. It is not on the
+   departure store rather than session history. Discarding a session's annotation withdraws from
+   both: it deletes every revision and blanks the quotations from the departure rows those
+   revisions were read against, keeping only that a check ran, so words discarded that way are
+   gone from this response and from disk. That is the `clear` field of a `POST /api/annotate`
+   body, and it is not the `clear` control beside each box on the board: that one empties the box,
+   and the save after it writes a revision with an empty string while every earlier revision, and
+   every raise quoting one, stays. Nothing else removes a departure row's words. It is not on the
    refresh loop: the words leave the server when the Intent log is opened, and the route's own
    docstring records that reasoning. The POST-route inventory in the test suite cannot see a `GET`,
    so this paragraph is the accounting for it.
@@ -1189,11 +1192,17 @@ prose a model wrote about your session, which is the same class of content the a
 already holds and is bounded the same way. Nothing sends it anywhere. With the switch off the file is
 never created.
 
-Clearing what you asked of a session withdraws its raises too. The constraint, the clause, the
+Discarding what you asked of a session withdraws its raises too. The constraint, the clause, the
 model's sentence, the evidence ids and the producer's account of what it read are blanked in place
 and the row is marked withdrawn, so nothing quoting the words you took back survives on disk or on
 `GET /api/annotations`. The row itself stays, holding only that a check ran and when, because the
 row is what the two caps above count and deleting it would refund the subprocess it spent.
+
+Discarding here means the `clear` field of a `POST /api/annotate` body, which deletes every
+revision. The board's own `clear` control is a different act with the same word on it: it empties
+one box, and the save that follows appends a revision holding an empty string. The words you typed
+are still in the earlier revisions and a raise quoting them is still quoting them, so nothing is
+withdrawn. Naming both is the point, because the shorter name is the one printed on the button.
 
 ## Session ends
 

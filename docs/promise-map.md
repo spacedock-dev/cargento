@@ -143,7 +143,10 @@ run, the sentence says what that check found and never that the raise caused it 
 later check ran rather than that it read newer evidence, because the store records when each check
 ran and holds no evidence bound to support the stronger claim. The figures are five labelled lines
 with no arithmetic between them: the departures each of the two collections raised, counted from
-the rows it renders, and the board's raises, attempts and hand-overs. A count identifies a session
+the rows it renders, and the board's raises, attempts and hand-overs. A figure nobody measured says
+so rather than reading zero, which covers both the switch being off and the away checks never having
+read this particular session — an empty list is the same value in either case. A count identifies a
+session
 worth reading and settles nothing about whether the brief, the agent or Cargento's own judgement
 was poor.
 

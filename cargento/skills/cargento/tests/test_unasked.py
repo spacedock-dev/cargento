@@ -617,6 +617,36 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         self.assertEqual("", published["departure_why"])
         self.assertEqual(1, len(published["departures"]))
 
+    def test_a_row_says_whether_this_session_was_ever_checked(self) -> None:
+        """DRC-4514, walked on the board. Zero was standing in for unmeasured.
+
+        `departures` is `[]` on a session the lane has never read and on one it
+        read and found nothing in, so a length is not a measurement. The review
+        section printed "Departures the checks run while you were away raised
+        0" four lines under "Cargento has not checked this session against what
+        you asked for". A figure nobody measured has to say so, which is the
+        shared contract's first rule and the rule the lane-off case already
+        obeys.
+        """
+        self._store(1, sid="other", constraint="")
+
+        stored = departures.load(self.config)
+        unread = unasked.published(self.config, stored, _row("s-1"), now=5_000.0)
+
+        self.assertIs(False, unread["departure_checked"])
+        self.assertEqual([], unread["departures"])
+
+    def test_a_checked_session_that_raised_nothing_says_it_was_checked(self) -> None:
+        # The case where zero IS a measurement, and the one the row above must
+        # be distinguishable from.
+        self._store(1, constraint="")
+
+        stored = departures.load(self.config)
+        published = unasked.published(self.config, stored, _row(), now=5_000.0)
+
+        self.assertIs(True, published["departure_checked"])
+        self.assertEqual([], published["departures"])
+
     def test_the_four_sentences_are_four_sentences(self) -> None:
         every = {
             departures.NEVER_CHECKED,

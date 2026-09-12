@@ -23,7 +23,7 @@ from unittest import mock
 if TYPE_CHECKING:
     from cargento_runtime.deliveries import Delivery
 
-from cargento_runtime import aggregate, deliveries, notifications
+from cargento_runtime import aggregate, deliveries, notifications, unasked
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
@@ -347,6 +347,45 @@ class ThePublishedRowNamesTheLatestOutcomeTest(unittest.TestCase):
         self.assertEqual(deliveries.NO_RAISE_RECORDED, row["delivery_none_why"])
         # Never both. A row with a raise has an outcome to report instead.
         self.assertNotEqual(row["delivery_none_why"], row["delivery_why"])
+
+    def test_the_absence_sentence_says_which_raises_it_counted(self) -> None:
+        """DRC-4514, walked on the board. The unnarrowed sentence was false.
+
+        The session page prints this one inside the departure block, which is
+        narrowed to the departure lane, and prints the NOTIFICATIONS block from
+        every lane directly beneath it. Measured with one hook refusal on
+        record and no departure raise: "No notification raise about this
+        session is on record" rendered one line above "One notification was
+        raised about this session". A sentence a caller narrows has to say what
+        it counted.
+        """
+        rows: list[Delivery] = [
+            {
+                "harness": "claude",
+                "sid": "s-1",
+                "at": 9.0,
+                "lane": "hook",
+                "outcome": deliveries.OUTCOME_REFUSED,
+            }
+        ]
+
+        board = deliveries.published(rows, "claude", "s-1")
+        narrowed = deliveries.published(rows, "claude", "s-1", lane=deliveries.LANE_DEPARTURE)
+
+        self.assertEqual("", board["delivery_none_why"])
+        self.assertNotEqual("", narrowed["delivery_none_why"])
+        self.assertNotEqual(deliveries.NO_RAISE_RECORDED, narrowed["delivery_none_why"])
+        self.assertIn("departure", narrowed["delivery_none_why"])
+
+    def test_every_lane_a_caller_narrows_to_has_its_own_absence_sentence(self) -> None:
+        """The unasked lane is the only narrowing caller, and it is bound here.
+
+        `aggregate` passes `unasked.LANE`; a lane token with no sentence would
+        fall back to the board-wide wording, which is the sentence this pair
+        exists to stop.
+        """
+        self.assertIn(unasked.LANE, deliveries.NO_RAISE_BY_LANE)
+        self.assertEqual(deliveries.LANE_DEPARTURE, unasked.LANE)
 
     def test_a_session_with_a_raise_publishes_no_absence_sentence(self) -> None:
         rows: list[Delivery] = [

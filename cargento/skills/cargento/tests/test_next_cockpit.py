@@ -6643,6 +6643,44 @@ console.log(JSON.stringify({
         self.assertIn("Nothing watches for a departure on its own", out["visible"])
         self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
 
+    def test_a_session_the_lane_never_read_gets_no_departure_figure(self) -> None:
+        """The same rule as the lane-off case, one layer in.
+
+        Walked on a board with the switch on and this session never checked:
+        "Departures the checks run while you were away raised 0" printed four
+        lines under "Cargento has not checked this session against what you
+        asked for". Both sentences were about the same session and only one of
+        them was a measurement.
+        """
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            "__dashboard.sessions[0].departures = [];\n"
+            "__dashboard.sessions[0].departure_checked = false;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session '
+            "against what you asked for. Nothing here says whether it would have found "
+            'anything.";\n'
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+        self.assertIn("Cargento has not checked this session", out["visible"])
+        self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
+
+    def test_a_session_the_lane_read_and_found_nothing_in_gets_a_zero(self) -> None:
+        """The case where the figure is a measurement, and 0 is the right one."""
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            "__dashboard.sessions[0].departures = [];\n"
+            "__dashboard.sessions[0].departure_checked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has checked this session '
+            'against what you asked for and found nothing to raise.";\n'
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "0", "3", "3", "2"], values)
+
     def test_each_figure_counts_the_rows_its_own_part_rendered(self) -> None:
         """The shared contract's second rule, and the DRC-4453 defect class.
 
@@ -6670,6 +6708,7 @@ console.log(JSON.stringify({
             "__dashboard.delivery_counts = {raises: 1, attempted: 1, handed_over: 0};\n"
             + setup
             + "__dashboard.sessions[0].departures = [];\n"
+            "__dashboard.sessions[0].departure_checked = true;\n"
             '__dashboard.sessions[0].departure_why = "";\n'
         )
         both = self.review(
