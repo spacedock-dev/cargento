@@ -86,11 +86,38 @@ function nextIntentClose(ordered){
      Held to tab for a session listed directly beneath it. */
   const withReading = (ordered || []).filter(row => row && row.assessment).length;
   const total = (ordered || []).length;
+  /* And the watching clause is conditional, which it was not. With
+     `--unasked-readings` on, something does watch, and this line said otherwise
+     directly beneath rows carrying the departures it had raised. */
+  const watching = Boolean(nextData && nextData.unasked === true);
+  const tail = watching ? ". " : ", and nothing watches for one. ";
   const lead = withReading === 0
-    ? "No reading has been made against any of these, and nothing watches for one. "
-    : `${withReading} of these ${total} ${withReading === 1 ? "carries" : "carry"} a reading, ` +
-      "and nothing watches for one. ";
+    ? `No reading has been made against any of these${tail}`
+    : `${withReading} of these ${total} ${withReading === 1 ? "carries" : "carry"} a reading` +
+      tail;
   return `<p class="next-intent-note">${lead}${NEXT_READING_NOT_A_VERIFICATION}</p></section>`;
+}
+
+/* What was raised against this session's words, in the space a list row has.
+
+   The third line, beside the revision line and the reading line, because this
+   is the only surface a retained assessment survives its session on and it
+   retained the words without retaining what they had raised. Departure-scoped
+   data on an annotation-scoped row: the alternative was a second row kind,
+   which splits one session across two rows on the one surface where keeping
+   them together is the point.
+
+   Compact, for `nextIntentReading`'s reason. The count is derived from the
+   published list the Held to tab renders from, which filters the checks that
+   raised nothing, so it is a count of raises and not of store rows. Where there
+   is none, the server's own sentence says which of the four reasons, because a
+   bare zero here would read as a session found to be on track. */
+function nextIntentDepartures(row){
+  const rows = Array.isArray(row && row.departures) ? row.departures : [];
+  if(rows.length){
+    return `${rows.length === 1 ? "One departure" : `${rows.length} departures`} raised`;
+  }
+  return String((row && row.departure_why) || "").trim();
 }
 
 function nextIntentRow(row, live){
@@ -104,6 +131,7 @@ function nextIntentRow(row, live){
      second wording of one fact is the divergence the store's own absence
      strings exist to prevent. */
   const revision = nextProjectRevisionLine(row) || "No revision saved yet";
+  const departures = nextIntentDepartures(row);
   const reachable = Boolean(project);
   const name = reachable
     ? `<a href="${esc(nextFragmentForRoute({view: "project", project,
@@ -114,6 +142,7 @@ function nextIntentRow(row, live){
     `<span class="next-intent-words">${label}</span>` +
     `<span class="next-intent-revision">${esc(revision)}</span>` +
     `<span class="next-intent-revision">${esc(nextIntentReading(row))}</span>` +
+    (departures ? `<span class="next-intent-revision">${esc(departures)}</span>` : "") +
     (reachable ? "" : '<span class="next-intent-why">Not on the board now, so there is ' +
       'nowhere to open. The words are here.</span>') +
     /* The binding caveat, because a list of many sessions is where a shared

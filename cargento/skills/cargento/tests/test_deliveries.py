@@ -334,6 +334,35 @@ class ThePublishedRowNamesTheLatestOutcomeTest(unittest.TestCase):
         self.assertEqual("", row["delivery_why"])
         self.assertEqual(0, row["delivery_raises"])
 
+    def test_the_absence_of_a_raise_carries_a_sentence_of_its_own(self) -> None:
+        """DRC-4514. Silence beside a departure reads as a raise nobody minded.
+
+        Its own key rather than `delivery_why`, because the session page draws
+        nothing at all for a session nobody was raised about and must keep
+        doing so: this sentence is only true beside a departure, and the page
+        prints it only there.
+        """
+        row = deliveries.published((), "claude", "s-1")
+
+        self.assertEqual(deliveries.NO_RAISE_RECORDED, row["delivery_none_why"])
+        # Never both. A row with a raise has an outcome to report instead.
+        self.assertNotEqual(row["delivery_none_why"], row["delivery_why"])
+
+    def test_a_session_with_a_raise_publishes_no_absence_sentence(self) -> None:
+        rows: list[Delivery] = [
+            {
+                "harness": "claude",
+                "sid": "s-1",
+                "at": 9.0,
+                "lane": "native",
+                "outcome": deliveries.OUTCOME_HANDED_OVER,
+            }
+        ]
+
+        row = deliveries.published(rows, "claude", "s-1")
+
+        self.assertEqual("", row["delivery_none_why"])
+
     def test_the_newest_raise_is_the_one_described(self) -> None:
         rows: list[Delivery] = [
             {

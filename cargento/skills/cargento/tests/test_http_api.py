@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
+from cargento_runtime import aggregate, cli, departures, http_api, lifecycle, notifications
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
@@ -714,6 +714,50 @@ class DismissEndpointTest(RuntimeTestCase):
         # And not on an identity long enough to be whole, or the caveat is
         # noise on every row and stops being read.
         self.assertEqual("", by_sid["a-much-longer-identity"]["binding_why"])
+
+    def test_the_reveal_carries_what_was_raised_against_each_row(self) -> None:
+        """DRC-4514. The one surface a retained assessment survives on.
+
+        Departures ride the same request as the words rather than the polled
+        payload, because the payload only holds sessions still on the board and
+        the rows this route exists for have left it. It also keeps a row and its
+        raises consistent with each other: they are read in one pass.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "departed", goal="Prove it landed")
+        annotation_store.annotate(config, state, "claude", "abcd1234", goal="Ship the cockpit")
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "departed",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "Prove it landed",
+                    "reading": "The work moved to the installer.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "",
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        by_key = {f"{r['harness']}:{r['sid']}": r for r in json.loads(body)["annotations"]}
+        raised = by_key["pi:departed"]
+        self.assertEqual(1, len(raised["departures"]))
+        self.assertEqual("TYPED GOAL", raised["departures"][0]["constraint"])
+        # A raise carries no absence sentence beside it.
+        self.assertEqual("", raised["departure_why"])
+        # And a session the lane never reached says that, rather than reading
+        # as one that was checked and found clean.
+        quiet = by_key["claude:abcd1234"]
+        self.assertEqual([], quiet["departures"])
+        self.assertEqual(departures.NEVER_CHECKED, quiet["departure_why"])
 
     def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
         config, state = self._runtime()

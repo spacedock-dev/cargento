@@ -21,7 +21,7 @@ from urllib.parse import ParseResult, parse_qs, urlparse
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
-from cargento_runtime import dismissals, notifications, quota, records
+from cargento_runtime import departures, dismissals, notifications, quota, records
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
@@ -970,6 +970,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self.send_error(503, "annotations are disabled on this server")
             return
         entries = annotation_store.active(application.config, application.state)
+        # Read once for the whole response, and served here rather than on the
+        # polled payload for the reason this route exists at all: the payload
+        # only carries sessions still on the board, and the rows this route is
+        # for have left it. Reading both in one pass also keeps a row and its
+        # raises consistent with each other.
+        raised = departures.load(application.config)
+        now = application.clock()
         rows = [
             {
                 "harness": entry["harness"],
@@ -993,6 +1000,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
                         if len(entry["sid"]) <= annotation_store.DISPLAY_ID_FLOOR
                         else annotation_store.BINDING_EXACT
                     ),
+                ),
+                # What was raised against these words, and — where nothing was
+                # — which of the four reasons. `departures` owns both, so the
+                # log cannot word a spent cap differently from the session page.
+                "departures": departures.published(raised, entry["harness"], entry["sid"]),
+                "departure_why": departures.why(
+                    application.config, raised, entry["harness"], entry["sid"], now=now
                 ),
             }
             for entry in entries

@@ -552,7 +552,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # whether a dashboard tab has reported a notification lane of its own.
         # Declared here at their absent values on the rule above, and left empty
         # here for the same reason: this module has no runtime imports.
-        # `Application._delivery_fields` fills all seven from
+        # `Application._delivery_fields` fills all eight from
         # `deliveries.published(...)`, which owns every sentence.
         #
         # The browser lane is board-wide rather than per session, and rides on
@@ -560,6 +560,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # and one top-level sentence could not carry that gap.
         "delivery_outcome": "",
         "delivery_why": "",
+        # The absence of a raise, said out loud. Only ever printed beside a
+        # departure: silence there reads as a raise the reader ignored, and a
+        # session nobody was raised about still draws no panel at all.
+        "delivery_none_why": "",
         "delivery_at": None,
         "delivery_raises": 0,
         "delivery_mixed": False,

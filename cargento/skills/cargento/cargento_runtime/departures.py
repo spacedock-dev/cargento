@@ -97,6 +97,44 @@ DAY_EXHAUSTED: Final = (
     "on any session. That is a limit being spent, not a board found to be on track."
 )
 
+# The window the per-day cap counts over. Rolling rather than calendar, because
+# the reader this exists for walked away at an arbitrary hour: a midnight reset
+# would hand a whole fresh allowance to a board nobody is watching, and a
+# calendar day would need a timezone this runtime does not otherwise carry.
+#
+# Here rather than in `unasked` because `why` below is what applies it, and
+# three surfaces now read that sentence. `unasked` re-exports the name.
+DAY_SEC: Final = 86_400.0
+
+# What later evidence showed about a constraint that departed, and never that
+# the raise caused it. The issue's third prohibition is that a return to the
+# goal is not evidence the flag worked, so each of these names the evidence and
+# stops: no sentence here has a causal clause, and the two that report a later
+# check say what it read rather than what it achieved.
+#
+# Derived from later CHECKS in this store, not from a second model call and not
+# from a reader-requested reading. That is the affordable half and it is also
+# the only half available: a stored reading carries its evidence cutoff as the
+# producer's own sentence (`reading.Assessment.cutoff` is a string) and there is
+# no number on it that could be compared with a departure's cutoff.
+FOLLOW_UP_NO_LATER_CHECK: Final = (
+    "No later check has read this session, so what happened after this raise is not recorded here."
+)
+# A check that ran later by the clock and read older evidence. It is a reading
+# of the record as it stood before the raise, so it is not about after it.
+FOLLOW_UP_EVIDENCE_PREDATES: Final = (
+    "A later check read this session, but its evidence stops before this raise, so it says "
+    "nothing about what came after."
+)
+FOLLOW_UP_NOT_RAISED_AGAIN: Final = (
+    "A later check read evidence from after this raise and did not raise this constraint again. "
+    "That is what the later evidence showed, and not an effect of the raise."
+)
+FOLLOW_UP_RAISED_AGAIN: Final = (
+    "A later check read evidence from after this raise and raised this constraint again. That is "
+    "what the later evidence showed, and not an effect of the raise."
+)
+
 
 class Check(TypedDict):
     """One unasked check, and the baseline it read against.
@@ -272,6 +310,70 @@ def checked(entries: Iterable[Check], harness: str, sid: str) -> bool:
     return any(row["harness"] == harness and row["sid"] == sid for row in entries)
 
 
+def why(
+    config: RuntimeConfig,
+    entries: Iterable[Check],
+    harness: str,
+    sid: str,
+    *,
+    now: float,
+) -> str:
+    """Which of the four absence sentences this session has earned, or none.
+
+    Here rather than in `unasked` because three surfaces need it and none of
+    them may reach the lane: the session page, the departure review on the
+    Held-to tab, and the Intent log, which serves sessions that have left the
+    board entirely. A second copy of this ladder is how a spent cap comes to be
+    worded one way where the raise is shown and another where it is reviewed,
+    and the whole point of these four is that they must never read alike.
+    """
+    stored = list(entries)
+    mine, today = counts(stored, harness, sid, since=now - DAY_SEC)
+    if not checked(stored, harness, sid):
+        # Before the caps, deliberately. A session nobody has checked is not a
+        # session held off by a spent cap, even when the board's day cap is
+        # spent: the first says nothing was looked at here, and the second
+        # implies something was.
+        return NEVER_CHECKED
+    if today >= config.unasked_daily_cap:
+        return DAY_EXHAUSTED
+    if mine >= config.unasked_session_cap:
+        return SESSION_EXHAUSTED
+    if any(row["harness"] == harness and row["sid"] == sid and row["constraint"] for row in stored):
+        return ""
+    return NOTHING_DEPARTED
+
+
+def follow_up(entries: Iterable[Check], row: Check) -> str:
+    """What later evidence showed about this constraint, from this store alone.
+
+    `Unknown` is the default and the common answer, and it renders as one of two
+    named reasons rather than as a blank: no later check, or a later check whose
+    evidence stops before the raise. A blank here would be read as nothing
+    having gone wrong, which is the one thing this axis must not say.
+
+    Grouped on the LATER CHECK's own cutoff and not on when it ran. A check that
+    ran an hour after a raise while reading a window that closed before it is
+    evidence about the earlier record, and the store keeps both numbers so the
+    two cases can be told apart.
+    """
+    later = [
+        other
+        for other in entries
+        if other["harness"] == row["harness"]
+        and other["sid"] == row["sid"]
+        and other["at"] > row["at"]
+    ]
+    if not later:
+        return FOLLOW_UP_NO_LATER_CHECK
+    after = [other for other in later if other["cutoff"] >= row["cutoff"]]
+    if not after:
+        return FOLLOW_UP_EVIDENCE_PREDATES
+    if any(other["constraint"] == row["constraint"] for other in after):
+        return FOLLOW_UP_RAISED_AGAIN
+    return FOLLOW_UP_NOT_RAISED_AGAIN
+
+
 def published(entries: Iterable[Check], harness: str, sid: str) -> list[dict[str, Any]]:
     """This session's DEPARTURES, newest first, as the board renders them.
 
@@ -279,9 +381,17 @@ def published(entries: Iterable[Check], harness: str, sid: str) -> list[dict[str
     what the caps count and what makes the checked sentence true, and rendering
     it as a row would fill the panel with absences.
     """
+    stored = list(entries)
     mine = [
         row
-        for row in entries
+        for row in stored
         if row["harness"] == harness and row["sid"] == sid and row["constraint"]
     ]
-    return [dict(row) for row in sorted(mine, key=lambda row: row["at"], reverse=True)]
+    return [
+        # `follow_up` is derived here and never read off the record. The file is
+        # writable by any local process, and a sentence about what happened
+        # after a raise is the one a rewriter would most want to choose; the
+        # explicit key also overwrites one a rewriter left in the file.
+        {**row, "follow_up": follow_up(stored, row)}
+        for row in sorted(mine, key=lambda row: row["at"], reverse=True)
+    ]

@@ -163,6 +163,19 @@ NO_RECORD: Final = (
     "is unknown rather than known to have failed."
 )
 
+# The absence of a raise, said out loud, and published on its own key rather
+# than through `delivery_why`. A session nobody was raised about draws no panel
+# at all and must keep drawing none; this sentence is only true BESIDE a
+# departure, where silence would otherwise read as a raise the reader ignored.
+# Measured on the board: the session page showed two departures and simply
+# omitted the notifications block, so nothing on screen distinguished a raise
+# that failed from a departure nobody was ever alerted to.
+NO_RAISE_RECORDED: Final = (
+    "No notification raise about this session is on record, so nothing here says one was "
+    "attempted. The record is bounded and drops its oldest rows, so an older raise can have "
+    "left it."
+)
+
 # The outcomes that mean this board actually tried. Named positively rather than
 # as "not no-lane": an unreadable outcome is not an attempt either, and a
 # negative test would have counted one silently the day that case was added.
@@ -492,6 +505,9 @@ def published(
     return {
         "delivery_outcome": latest["outcome"] if latest else "",
         "delivery_why": DELIVERY.get(latest["outcome"], NO_RECORD) if latest else "",
+        # Exactly one of these two carries a sentence. The absence one is
+        # published on every row and printed only where a departure stands.
+        "delivery_none_why": "" if latest else NO_RAISE_RECORDED,
         "delivery_at": raised_at,
         "delivery_raises": len(mine),
         # Whether the sentence above is the whole story. One sentence is

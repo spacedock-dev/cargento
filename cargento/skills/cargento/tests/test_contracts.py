@@ -1628,6 +1628,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.annotations",
             "cargento_runtime.aggregate",
             "cargento_runtime.asks",
+            # The Intent log's route serves sessions that have left the board,
+            # so it reads the departure store directly rather than through the
+            # payload. `departures` is a leaf, so this stays inward.
+            "cargento_runtime.departures",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.interaction_prototype",

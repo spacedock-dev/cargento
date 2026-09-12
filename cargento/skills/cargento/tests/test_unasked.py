@@ -231,6 +231,28 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
 
         self.assertEqual([], self.harness.readings)
 
+    def test_two_collections_over_unchanged_evidence_add_no_row(self) -> None:
+        """DRC-4514 AC2, asserted on the store rather than on the lane's log.
+
+        The review surface reads the store, so the claim that matters there is
+        that the file did not grow. Verified, not rebuilt.
+
+        Which side binds, measured by mutation: removing the `changed` gate in
+        `consider` alone leaves this green, because `_claim`'s per-session floor
+        still holds the second reading off. Removing both turns it red at
+        `1 != 2`. So this binds the pair rather than either one, which is the
+        claim the review surface actually rests on.
+        """
+        self.harness.consider([_row(state="working")])
+        self.harness.consider([_row(state="idle")])
+        after_one_change = departures.load(self.harness.config)
+
+        for _ in range(3):
+            self.harness.consider([_row(state="idle")])
+
+        self.assertEqual(1, len(after_one_change))
+        self.assertEqual(after_one_change, departures.load(self.harness.config))
+
     def test_only_one_reading_starts_per_collection(self) -> None:
         # Forty annotated sessions crossing a boundary together must not start
         # forty subprocesses. Written against a SYNCHRONOUS worker on purpose:

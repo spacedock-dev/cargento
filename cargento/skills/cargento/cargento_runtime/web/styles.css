@@ -892,6 +892,22 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-reading>header,.next-cockpit-departures>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-cockpit-reading h2,.next-cockpit-departures h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
 .next-cockpit-reading-stamp{color:var(--ink3);font-family:var(--mono);font-size:10px}
+/* The review section holds two collections and two more parts, so each is
+   fenced and named. The label takes the mono uppercase every other source label
+   on this panel takes; it names a collection rather than quoting one, which is
+   note 7 of the design's own compromise list and is kept deliberately. */
+.next-cockpit-departure-part{display:flex;flex-direction:column;gap:4px;padding:8px 0 0}
+.next-cockpit-departure-part+.next-cockpit-departure-part{margin-top:6px;border-top:1px solid var(--line)}
+.next-cockpit-departure-label{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.08em}
+/* Figures, one per line and never side by side: two numbers on one line invite
+   the division neither of them survives. */
+.next-cockpit-departure-counts{display:flex;flex-direction:column;gap:3px}
+.next-cockpit-count{display:flex;justify-content:space-between;gap:12px}
+.next-cockpit-count-label{color:var(--ink2);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-count-value{color:var(--ink);font:var(--fs-xs)/1.5 var(--mono)}
+.next-cockpit-departures-kept{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-departures-kept a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-cockpit-departures-kept a:hover{text-decoration-color:var(--accent)}
 .next-cockpit-reading-row,.next-cockpit-departure{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px dotted var(--line2)}
 .next-cockpit-reading-row+.next-cockpit-reading-row,.next-cockpit-departure+.next-cockpit-departure{margin-top:6px}
 .next-cockpit-reading-name{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
@@ -943,11 +959,22 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-departure-reading{margin:2px 0 0;color:var(--ink2);
   font:italic var(--fs-xs)/1.5 var(--sans)}
 .next-session-departure-base{margin:2px 0 0;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
-/* What became of a raise. No colour on any of it, and that is the rule rather
-   than a default: the four outcomes are facts of different weights and none of
-   them is a verdict, so a red on "the service returned an error" would read as
-   a fault the reader has to answer for. The heading carries the count and the
-   two paragraphs carry the sentences the server composed. */
+/* What later evidence showed. Sans and upright, because it is the board
+   reporting a derivation over its own store and not a model reading, and no
+   colour on any of its four sentences: the common one is unknown, and unknown
+   never takes colour. Dimmer than the reading above it, which is the finding. */
+.next-session-departure-next{margin:2px 0 0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+/* What became of a raise. The heading carries the count and the paragraphs
+   carry the sentences the server composed.
+
+   Colour only where the lane observed something, and never clay: a red on "the
+   service returned an error" would read as a fault the reader has to answer
+   for, which is why this block carried no colour at all until DRC-4514 put it
+   beside the departure it is about. Amber on a raise that did not get out,
+   because that is rule 3's "observed, and wants you" exactly -- the reader is
+   the only one who can act on a signal the machine failed to send. `no-lane` is
+   ink3, because nothing was published. `handed-over` and `did-not-return` stay
+   uncoloured: the first is not a delivery and the second is unknown. */
 .next-session-delivery{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--line2)}
 /* The same label shape as every other fact on this panel, and that is the
    correction rather than a preference: walked on a real board, the block was the
@@ -964,6 +991,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    evidence than a server-side outcome, and the two reading alike is what would
    let the reader take a tab that was open once for a notification that landed. */
 .next-session-delivery-lane{margin:4px 0 0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+[data-next-delivery="refused"] .next-session-delivery-why,
+[data-next-delivery="not-launched"] .next-session-delivery-why{color:var(--amber)}
+[data-next-delivery="no-lane"] .next-session-delivery-why{color:var(--ink3)}
 .next-session-held-link{margin:10px 0 0;font:var(--fs-xs)/1.5 var(--sans)}
 /* The board's own ink, not the browser's default link colour. Nothing else
    on this page is blue, and an unstyled anchor announced itself as the one
