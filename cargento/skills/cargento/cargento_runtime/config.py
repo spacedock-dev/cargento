@@ -66,7 +66,10 @@ class RuntimeConfig:
     # command runs, no target is recorded, and the page is handed no capability
     # to ask with. `--no-events` turns it off as a side effect, because the
     # capability and the target both come from the observation coordinator, which
-    # does not exist under that flag.
+    # does not exist under that flag. The session-end store is the second thing
+    # `--no-events` switches off, for the same reason and with no flag of its
+    # own (decisions.md, DRC-4547): the coordinator is its only writer, so with
+    # none it is neither written nor read back (`ends.py`).
     focus_enabled: bool
     # Whether the dismissal store is read and written at all. `--no-dismiss` is
     # the rollback switch, and off means off in both directions: the file is
@@ -254,6 +257,16 @@ class RuntimeConfig:
     # back from a long absence.
     departure_read_cap_bytes: int
     departure_max_entries: int
+    # The session-end store's bounds (DRC-4547). The read cap is the dismissal
+    # store's rather than the delivery record's, because the shape of a record
+    # is the dismissal's: three scalars and no prose, so 512 of them serialize
+    # to a few tens of kilobytes and the 65,536 leaves headroom to spare. The
+    # entry bound matches `event_overlay_max_sessions`, the cap `_mark_ended`
+    # already refuses new keys at, so the store can never restore more ends
+    # than the coordinator's memory would have held; a count and not an age,
+    # for `dismissals._bounded`'s reason.
+    end_read_cap_bytes: int
+    end_max_entries: int
     # The history store's two bounds, which apply together: raising either does
     # not stop the other applying. Fourteen days and 1 MiB are the contract's
     # defaults, and `--history-days` and `--history-max-bytes` are what move
@@ -715,6 +728,8 @@ def build_runtime_config(
         unasked_session_floor_sec=900.0,
         departure_read_cap_bytes=262_144,
         departure_max_entries=512,
+        end_read_cap_bytes=65_536,
+        end_max_entries=512,
         annotation_body_cap_bytes=4_096,
         dismissal_body_cap_bytes=1_024,
         history_retention_sec=history_retention_sec,

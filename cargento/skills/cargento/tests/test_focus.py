@@ -601,7 +601,15 @@ class CoordinatorTargetTest(unittest.TestCase):
         # would publish a control that spends two subprocesses and always
         # answers false. `support.make_config()` is Linux by default, which is
         # why every test here has to say so.
-        self.config = support.make_config(platform_name="darwin")
+        #
+        # A real, empty state home too: `session_ended` writes the end store
+        # (DRC-4547), and `support.make_config`'s notional `/home/cargento-test`
+        # is outside every sandbox. See `test_observation.ObservationTestCase`.
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        self.config = support.make_config(
+            platform_name="darwin", state_home=home.name, state_dir=Path(home.name)
+        )
 
     def build(self, **changes: Any) -> observation.Observation:
         from .test_observation import FakeApplication  # noqa: PLC0415

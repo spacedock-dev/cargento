@@ -165,6 +165,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/claude_data.py",
     "skills/cargento/cargento_runtime/deliveries.py",
     "skills/cargento/cargento_runtime/departures.py",
+    "skills/cargento/cargento_runtime/ends.py",
     "skills/cargento/cargento_runtime/dismissals.py",
     "skills/cargento/cargento_runtime/notifications.py",
     "skills/cargento/cargento_runtime/spacedock.py",

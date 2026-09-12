@@ -595,8 +595,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # a closed terminal delivered `SessionEnd` within 0.687s, and both clean
         # exits delivered one too, the headless completion slowest at 5.581s
         # (docs/captures/claude/session-end-2.1.261-macos.jsonl) — but an
-        # absent end still covers the six harnesses with no event adapter, a run
-        # that predates this server process, and `--no-events`. A boolean here
+        # absent end still covers the six harnesses with no event adapter, a
+        # session that ended before any run of this board recorded it (an end a
+        # previous run did record survives the restart, DRC-4547), and
+        # `--no-events`. A boolean here
         # would do null's job with false, which is the DRC-4101 failure the
         # comments above and `events.py` both name.
         #

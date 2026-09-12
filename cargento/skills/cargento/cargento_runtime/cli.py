@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from cargento_runtime import (
     aggregate,
     diagnostics,
+    ends,
     history,
     http_api,
     lifecycle,
@@ -555,6 +556,7 @@ def run_one_shot(
         # enabled, and it adds no route: nothing over the loopback port can
         # delete history.
         path = history.store_path(config)
+        ends_path = ends.store_path(config)
         # Refused while an instance is up, because a running dashboard holds its
         # own baseline in memory and republishes it on the next transition: the
         # delete reported success and every record came back. The probe is the
@@ -563,9 +565,16 @@ def run_one_shot(
         # this invocation names and cannot see an instance on another one, which
         # is why the lane also drops a baseline whose file has gone.
         if lifecycle.instance_status(config, args.port)["state"] == "running":
+            # Both files, because the refusal keeps both (DRC-4547): a reader who
+            # ran this to drop a recorded end is owed the end store's name, and a
+            # sentence naming the history store alone reads as though the end had
+            # gone. The two clauses differ because the reasons do: the history
+            # lane would write its baseline back, while the coordinator would go
+            # on publishing the ends it still holds.
             runtime_io.diag(
                 f"Cargento: a dashboard is running on port {args.port} and would "
-                f"write {path} back from memory; stop it with --stop first, then --forget",
+                f"write {path} back from memory and go on publishing the ends in "
+                f"{ends_path}; stop it with --stop first, then --forget",
                 print,
             )
             return 1
@@ -573,6 +582,19 @@ def run_one_shot(
             f"Cargento: deleted {path}"
             if history.forget(config)
             else f"Cargento: no history store at {path}",
+            print,
+        )
+        # The session-end store goes with it (decisions.md, DRC-4547): the
+        # command removes the machine's memory of what it observed, and an end
+        # this board saw is exactly that class. The running-instance refusal
+        # above covers it too, for a neighbouring reason: the coordinator does
+        # not republish its memory the way the history lane does, but it still
+        # holds the ends it observed and publishes them on every collection, so
+        # the delete would change the file and not the board.
+        runtime_io.diag(
+            f"Cargento: deleted {ends_path}"
+            if ends.forget(config)
+            else f"Cargento: no session-end store at {ends_path}",
             print,
         )
         return 0

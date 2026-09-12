@@ -18,7 +18,16 @@ from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 import event_hook
-from cargento_runtime import aggregate, cli, events, git_status, http_api, lifecycle, observation
+from cargento_runtime import (
+    aggregate,
+    cli,
+    ends,
+    events,
+    git_status,
+    http_api,
+    lifecycle,
+    observation,
+)
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
@@ -77,7 +86,17 @@ class FakeApplication:
 class ObservationTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.now = NOW
-        self.config = support.make_config()
+        # A real, empty state home per case. `support.make_config`'s
+        # `/home/cargento-test` is a path that exists nowhere, which was harmless
+        # while nothing here wrote: since DRC-4547 every `session_ended` reaching
+        # `_record` writes the end store, so every coordinator built here is a
+        # live writer outside any sandbox. Measured: `LedgerTest` as it stood made
+        # ten `os.makedirs("/home/cargento-test/.cargento")` calls, and it passed
+        # on macOS only because that raises OSError and `ends.save` swallows it.
+        # On the Windows runner the same path is creatable by an ordinary user.
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        self.config = support.make_config(state_home=home.name, state_dir=Path(home.name))
 
     def clock(self) -> float:
         return self.now
@@ -306,6 +325,70 @@ class LedgerTest(ObservationTestCase):
         older = datetime.datetime.fromtimestamp(NOW, tz=datetime.UTC).isoformat()
         coordinator.submit("claude", self.envelope(event="turn_started", timestamp=older))
         self.assertEqual(self.now, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_observed_end_is_written_to_the_end_store(self) -> None:
+        # DRC-4547: the mark lived only here, so a restart forgot every end.
+        # Written through on the same event that sets it, and the assertion is
+        # on the file rather than on the accessor.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertEqual({("claude", PREFIX): NOW}, ends.restored(ends.load(coordinator.config)))
+
+    def test_a_lifted_end_is_removed_from_the_end_store(self) -> None:
+        # Delete-through on the same three edges `_lift_ended` forgets on;
+        # without it a `claude --resume <id>` would come back ended after the
+        # next restart even though this run had already lifted the mark.
+        for event in ("session_started", "turn_started", "input_requested"):
+            with self.subTest(event=event):
+                coordinator = self.build()
+                coordinator.submit("claude", self.envelope(event="session_ended"))
+                self.now += 60
+                coordinator.submit("claude", self.envelope(event=event))
+                self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+                self.assertEqual({}, ends.restored(ends.load(coordinator.config)))
+
+    def test_a_resume_after_a_restart_lifts_the_end_an_earlier_run_stored(self) -> None:
+        # The memory is empty after a restart, so `_lift_ended` has nothing to
+        # forget; the disk still carries the end an earlier run observed. A
+        # `session_started` is what `claude --resume <id>` emits for the id it
+        # reuses, and with the board up to see it the stored end must go too,
+        # or the resumed session would read as ended at its prompt until the
+        # transcript guard in `aggregate` happened to drop it.
+        coordinator = self.build()
+        ends.record(
+            coordinator.config,
+            harness="claude",
+            sid=PREFIX,
+            at=NOW - 3600,
+            diagnostic_sink=lambda _m: None,
+        )
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX), "memory starts empty")
+        coordinator.submit("claude", self.envelope(event="session_started"))
+        self.assertEqual({}, ends.restored(ends.load(coordinator.config)))
+
+    def test_a_stop_after_an_end_leaves_the_stored_end(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        self.assertEqual({("claude", PREFIX): NOW}, ends.restored(ends.load(coordinator.config)))
+
+    def test_an_end_refused_at_the_cap_is_not_written(self) -> None:
+        # The file mirrors what memory accepted. Writing a refused end would have
+        # the next collection restore from disk what the cap just refused, so the
+        # counter would say refused and the row would say ended.
+        coordinator = self.build(event_overlay_max_sessions=1)
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        coordinator.submit("claude", self.envelope(event="session_ended", session_id=OTHER))
+        self.assertEqual(1, coordinator.counters["ended.refused"])
+        self.assertEqual({("claude", PREFIX): NOW}, ends.restored(ends.load(coordinator.config)))
+
+    def test_a_session_that_never_ended_creates_no_end_store(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="session_started"))
+        self.assertFalse(os.path.exists(ends.store_path(coordinator.config)))
 
     def test_an_end_mark_is_capped_like_the_ledger_and_counts_the_refusal(self) -> None:
         coordinator = self.build(event_overlay_max_sessions=1)

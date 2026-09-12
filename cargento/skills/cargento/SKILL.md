@@ -203,10 +203,14 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes seven files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes ten files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
 detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
 `cargento-annotations.json`, the goal and expected output you typed against a session;
+`cargento-deliveries.json`, what became of each notification the board raised;
+`cargento-departures.json`, what an unasked reading raised, written only with `--unasked-readings`;
+`cargento-ends.json`, the session ends the board observed, so a session that finished still reads as
+ended after a restart;
 `semantic-work-history.json`, the project cockpit's own record of what a project's sessions were
 observed doing, bounded to a 24-hour window across at most 20 projects;
 `observer/<harness>_<sid>.json`, the sidecar an observer panel records when a reader opens one; and
@@ -428,12 +432,12 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
 | `--stop` | Stop the instance on `--port` over `/api/shutdown`. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
-| `--forget` | Delete the local history store, then exit. A one-shot command like `--stop` and `--status`, not a switch for a run: what it does is not undone by running the next command without it. Refused while a dashboard answers on `--port`, because a running instance holds its own copy in memory and would write the deleted records back. |
+| `--forget` | Delete the local history store and the session-end store, then exit. A one-shot command like `--stop` and `--status`, not a switch for a run: what it does is not undone by running the next command without it. Refused while a dashboard answers on `--port`, because a running instance holds both in memory: it would write the deleted history records back, and it would go on publishing the ends it observed. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; it writes nothing and transmits nothing. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
-| `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
+| `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The session-end store is neither read nor written, since the coordinator is its only writer, so a session that ended before this run reads as quiet. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
 | `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the `Held to` tab offers no field and says why. The rollback switch for the one store holding prose you composed. |

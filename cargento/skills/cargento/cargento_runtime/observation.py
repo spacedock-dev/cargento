@@ -114,8 +114,10 @@ import secrets
 import subprocess
 import threading
 import time
+from collections import deque
 from typing import TYPE_CHECKING, Any
 
+from cargento_runtime import ends as runtime_ends
 from cargento_runtime import events as runtime_events
 from cargento_runtime import focus as runtime_focus
 from cargento_runtime import git_status as runtime_git
@@ -245,6 +247,22 @@ class Observation:
         # describes, and the reducer's own clears lapse with the overlay that
         # carries them while a reading does not.
         self._git: dict[SessionKey, runtime_git.GitStatus] = {}
+        # The end-store writes this process has decided on and not yet made
+        # (DRC-4547). `_ended` above is written through to disk so a restart does
+        # not forget it, but the file write must not happen under `_lock`: that
+        # lock is the condition the collection worker sleeps on, and `_record`
+        # runs on a handler thread behind the hook client's 2 s timeout, the
+        # same two reasons the git probe is dispatched after the lock releases.
+        # Deferring past the lock loses ordering, though: an end and the
+        # `session_started` that lifts it can be decided on two handler threads
+        # microseconds apart, and whichever reached the disk last would win. So
+        # the decision is queued here, under the lock, in the order it was made,
+        # and one thread at a time drains the queue outside it. A queue rather
+        # than a whole-file snapshot of `_ended`, because memory starts empty on
+        # every run and a snapshot would erase the very ends the store exists to
+        # carry across the restart.
+        self._end_ops: deque[tuple[str, SessionKey, float]] = deque()
+        self._end_flushing = False
         # The session keys with a probe in flight, on `quota`'s per-vendor
         # pattern (`usage_fetch_inflight`, discarded in its own `finally`) and on
         # `_focus_inflight`'s two hundred lines below. Both a per-key gate and a
@@ -412,28 +430,7 @@ class Observation:
         with self._lock:
             self._bump(f"event.{event.event}")
             if runtime_events.retires_overlays(event):
-                # Non-destructive: the ledger for this session goes, the row does
-                # not. Only a collector may decide a session is gone.
-                self._overlays.pop(key, None)
-                self._pending.pop(key, None)
-                self._bump("retired")
-                self._mark_ended(key, event.timestamp)
-                # Claimed here and dispatched below, once the lock is released.
-                # The claim has to happen under the lock even though the dispatch
-                # must not: two handler threads reaching this with the same key is
-                # exactly the case being refused. `_claim_git` is last in the
-                # conjunction because it has an effect, so the two flag checks
-                # have to be what short-circuits it away.
-                if self.config.git_probe_enabled and event.cwd and self._claim_git(key):
-                    probe_cwd = event.cwd
-                # The session is over, so the pane it ran in is nobody's target.
-                # Retired here rather than in `_mark_finished`, which is where
-                # the git reading goes: that method pops on a WORKING overlay,
-                # and the hook sends terminal identity on `session_started`
-                # alone, so retiring there would drop every target at the first
-                # `turn_started` and leave the feature unable to focus anything.
-                self._focus.pop(key, None)
-                self._focus_at.pop(key, None)
+                probe_cwd = self._retire(key, event)
             elif overlay is not None:
                 self._remember(key, overlay)
                 self._mark_finished(key, overlay)
@@ -443,7 +440,15 @@ class Observation:
                 # replaying overlays over a cached read.
                 self._last_reconcile_at = 0.0
                 self._probe_stamp = None
-            self._lift_ended(key, event, overlay)
+            # A `session_started` lifts the stored end whether or not memory
+            # held one, and the difference is a restart: memory starts empty on
+            # every run, so an end an earlier run stored is one this coordinator
+            # cannot know to forget, and `claude --resume <id>` emits exactly
+            # this event for the id it reuses. Only this edge: it fires once per
+            # session, and the working and needs-input edges fire per turn, on
+            # a transcript the collection's own guard already reads.
+            if self._lift_ended(key, event, overlay) or runtime_events.reopens_session(event):
+                self._end_ops.append(("lift", key, 0.0))
             self._mark_focus(key, event)
             self._dirty[event.harness] = self._dirty.get(event.harness, 0) + 1
             if overlay is not None and overlay.kind == runtime_events.OVERLAY_NEEDS_INPUT:
@@ -459,6 +464,7 @@ class Observation:
                 # sustained burst, and the board would stop updating entirely.
                 self._coalesce_until = deadline
             self._wake.notify_all()
+        self._flush_end_ops()
         if probe_cwd is not None:
             # Off this thread AND outside the lock, and both halves are load-bearing.
             # `submit` is reached from `http_api`'s request handler on a
@@ -481,6 +487,40 @@ class Observation:
                     self._git_inflight.discard(key)
                     self._bump("git.failed")
         return "accepted"
+
+    def _retire(self, key: SessionKey, event: runtime_events.Event) -> str | None:
+        """`session_ended`, under `_lock`: pop the ledger, take the end mark, claim the probe.
+
+        Returns the directory to probe, or None; the caller dispatches it once the
+        lock is released.
+        """
+        # Non-destructive: the ledger for this session goes, the row does
+        # not. Only a collector may decide a session is gone.
+        self._overlays.pop(key, None)
+        self._pending.pop(key, None)
+        self._bump("retired")
+        if self._mark_ended(key, event.timestamp):
+            # Only what memory accepted. Writing a refused end would have
+            # the next collection restore from disk what the cap just
+            # refused: the counter would say refused, the row ended.
+            self._end_ops.append(("record", key, self._ended[key]))
+        # The session is over, so the pane it ran in is nobody's target.
+        # Retired here rather than in `_mark_finished`, which is where
+        # the git reading goes: that method pops on a WORKING overlay,
+        # and the hook sends terminal identity on `session_started`
+        # alone, so retiring there would drop every target at the first
+        # `turn_started` and leave the feature unable to focus anything.
+        self._focus.pop(key, None)
+        self._focus_at.pop(key, None)
+        # Claimed here and dispatched by the caller, once the lock is released.
+        # The claim has to happen under the lock even though the dispatch
+        # must not: two handler threads reaching this with the same key is
+        # exactly the case being refused. `_claim_git` is last in the
+        # conjunction because it has an effect, so the two flag checks
+        # have to be what short-circuits it away.
+        if self.config.git_probe_enabled and event.cwd and self._claim_git(key):
+            return event.cwd
+        return None
 
     def _remember(self, key: SessionKey, overlay: runtime_events.Overlay) -> None:
         """Record an overlay, bounded by kind rather than by an eviction queue."""
@@ -533,8 +573,8 @@ class Observation:
         # so a redelivered older stop must not pull the mark backwards.
         self._finished[key] = max(self._finished.get(key, 0.0), overlay.at)
 
-    def _mark_ended(self, key: SessionKey, at: float) -> None:
-        """Remember that this session id ended.
+    def _mark_ended(self, key: SessionKey, at: float) -> bool:
+        """Remember that this session id ended. True when the mark was taken.
 
         Refused rather than evicted at the same cap `_remember` uses, and `max`
         rather than assignment for `_mark_finished`'s reason: delivery is
@@ -543,16 +583,20 @@ class Observation:
         """
         if key not in self._ended and len(self._ended) >= self.config.event_overlay_max_sessions:
             self._bump("ended.refused")
-            return
+            return False
         self._ended[key] = max(self._ended.get(key, 0.0), at)
+        return True
 
     def _lift_ended(
         self,
         key: SessionKey,
         event: runtime_events.Event,
         overlay: runtime_events.Overlay | None,
-    ) -> None:
+    ) -> bool:
         """Forget an end once the session id is observed in use again.
+
+        True when a mark was actually forgotten, so the caller can forget the
+        stored copy too and only then.
 
         Three things say that: a `session_started`, which `claude --resume <id>`
         emits for the id it reuses, and a working or needs-input overlay, which
@@ -579,10 +623,63 @@ class Observation:
         }:
             at = overlay.at
         else:
-            return
+            return False
         recorded = self._ended.get(key)
         if recorded is not None and at >= recorded:
             del self._ended[key]
+            return True
+        return False
+
+    def _flush_end_ops(self) -> None:
+        """Make the queued end-store writes, in the order they were decided.
+
+        Called after `_record` releases `_lock`. The first thread to find the
+        queue unattended drains it, one op at a time, taking the lock only to pop
+        the next; a thread that finds another draining returns at once, because
+        its own op was appended under the lock before that drainer's next empty
+        check and so cannot be left behind. The store takes its own lock around
+        each read-modify-write, so this is ordering, not exclusion.
+
+        That guarantee is why the empty check and the clearing of
+        `_end_flushing` share one hold of the lock rather than leaving the clear
+        to the `finally`. With two holds there is a window between them, and an
+        op appended inside it is stranded: its own thread sees the flag still
+        set and returns, and the drainer then clears the flag with the op still
+        queued. Nothing drains it until some later unrelated event arrives, and
+        `stop` does not drain it, so a board stopped or restarted first loses
+        that end — the exact loss this store exists to prevent. The `finally`
+        stays for the exception path, where the flag must be released without a
+        drained queue.
+        """
+        with self._lock:
+            if self._end_flushing:
+                return
+            self._end_flushing = True
+        try:
+            while True:
+                with self._lock:
+                    if not self._end_ops:
+                        self._end_flushing = False
+                        return
+                    op, key, at = self._end_ops.popleft()
+                if op == "record":
+                    runtime_ends.record(
+                        self.config,
+                        harness=key[0],
+                        sid=key[1],
+                        at=at,
+                        diagnostic_sink=self.diagnostic_sink,
+                    )
+                else:
+                    runtime_ends.lift(
+                        self.config,
+                        harness=key[0],
+                        sid=key[1],
+                        diagnostic_sink=self.diagnostic_sink,
+                    )
+        finally:
+            with self._lock:
+                self._end_flushing = False
 
     def _mark_focus(self, key: SessionKey, event: runtime_events.Event) -> None:
         """Record where this session's terminal is, if the event carried it.
@@ -775,8 +872,11 @@ class Observation:
 
         0.0 means NOT OBSERVED and never "did not end". Only a SIGKILL ends a
         Claude session silently, but the six harnesses with no event adapter, a
-        session that predates this server run and `--no-events` all land here
-        too, so an absent end is never evidence a session is still alive.
+        session that ended before any run of this board recorded it and
+        `--no-events` all land here too, so an absent end is never evidence a
+        session is still alive. This is one process's memory; an end an earlier
+        run observed is read back from `ends` by the collection, not from here
+        (DRC-4547).
         """
         with self._lock:
             return self._ended.get((harness, sid), 0.0)
