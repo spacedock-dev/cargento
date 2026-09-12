@@ -54,10 +54,13 @@ session identity into the file that gets committed.
 
 The two constraints below live in this file, not in the annotation store. A
 producer handed a session with no stored revision refuses it outright with
-`nothing-typed`, before any evidence is read. So a scorer must, per case, write
-these two lines as a revision for that `(harness, sid)`, call the producer, and
-clear them again. It must not leave them behind: they are a yardstick, not the
-reader's words, and the Intent log is the reader's.
+`nothing-typed`, before any evidence is read. So `score_abstention.py` hands
+`reading.produce` these two lines as a **synthetic revision**, per case, as an
+argument: nothing is written to `cargento-annotations.json`, no reading count
+moves, and the Intent log stays the reader's. The first draft of this paragraph
+had the scorer write and clear a store revision instead; `produce` takes
+`revisions` as a parameter, so that was a write for nothing, and a write into
+a file that is the reader's.
 """
 
 from __future__ import annotations
