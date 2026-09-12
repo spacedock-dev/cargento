@@ -51,13 +51,16 @@ The posture rests on two invariants:
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
    own connection, which is why it is named here rather than counted above.
-2. Read-only against harness stores. They are opened read-only and never written. Nine endpoints
-   mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
+2. Read-only against harness stores. They are opened read-only and never written. Ten endpoints
+   mutate, and seven of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
    Known and accepted, and so do `POST /api/ask`, `POST /api/answer` and `POST /api/ask/withdraw`,
    which register a question a session asked, record the option the reader chose, and drop a question
-   whose asker has stopped waiting for it, all three described under The ask lane. The long
+   whose asker has stopped waiting for it, all three described under The ask lane. So does
+   `POST /api/lane`, which records that a dashboard tab has a working notification lane in it: one
+   timestamp for the whole board, never written to disk, and a body that names a session is refused
+   rather than stripped. Delivery records below is where that refusal is stated. The long
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
    which is the delivery completing rather than a change a caller asked for. Three write to disk.
    `POST /api/dismiss` writes the sessions you marked handled,
@@ -1121,7 +1124,7 @@ Dismissals below; `observer/<harness>_<sid>.json`, the sidecar `GET /api/observe
 reader opens that panel for a session, named in invariant 2 above; `cargento-history.json`, the
 history of what this server observed, described in Local history above;
 `cargento-annotations.json`, the goal and expected output you typed and the readings taken against
-them, named in invariant 2 above and turned off by `--no-annotations`; and
+them, named in invariant 2 above and turned off by `--no-annotations`;
 `cargento-deliveries.json`, what became of each notification this board raised, described in
 Delivery records below; `cargento-departures.json`, what an unasked reading raised, described in
 Unasked readings below and written only with that feature switched on; `cargento-ends.json`, the

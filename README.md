@@ -128,8 +128,9 @@ and unimplemented. See [SECURITY.md](SECURITY.md) for all three, and before you 
 The dashboard opens on Projects, grouping sessions by the label their harness publishes. Each
 project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
 and Now, Course, Decisions and Console tabs, plus a Held to tab once one session is in focus. There
-you type the goal and the expected output you are holding that session to, and ask for one reading
-against them. Console collects delegation, waiting requests,
+you type the goal and the expected output you are holding that session to, ask for one reading
+against them, and read back what has been raised about that session and what became of the raise.
+Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
 Sessions puts active work above recent history and gives each active session the same four facts: where it

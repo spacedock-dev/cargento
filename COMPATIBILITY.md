@@ -124,4 +124,11 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 955727a (2026-09-11) -->
+<!-- docs-synced-through: 6f32a19 (2026-09-13) -->
+<!-- The range this covers is 955727a..6f32a19, which is #318 through #325: the previous sync
+     itself, the reading-exists fix, the delivery record, the unasked departure lane, the durable
+     session-end store, the abstention scorer, the stored reading's reason and its save path, and
+     the departure review surface. Each of those feature branches ran its own scoped pass and left
+     this marker alone, per the parallel-work rule in AGENTS.md, so what this pass had left to find
+     was the claims that span two of them rather than the ones inside one. -->
+

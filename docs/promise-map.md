@@ -139,13 +139,13 @@ saying what was raised against the words on it, and keeps that after the row lea
 Where it stops is the follow-up. What came after a raise is derived from later checks in the same
 store, so the common answer is that no later check has read the session, and the board says that
 rather than leaving a blank that would read as nothing having gone wrong. Where a later check did
-run, the sentence says what that check found and never that the raise caused it — and it says a
+run, the sentence says what that check found and never that the raise caused it, and it says a
 later check ran rather than that it read newer evidence, because the store records when each check
 ran and holds no evidence bound to support the stronger claim. The figures are five labelled lines
 with no arithmetic between them: the departures each of the two collections raised, counted from
 the rows it renders, and the board's raises, attempts and hand-overs. A figure nobody measured says
 so rather than reading zero, which covers both the switch being off and the away checks never having
-read this particular session — an empty list is the same value in either case. A count identifies a
+read this particular session. An empty list is the same value in either case. A count identifies a
 session
 worth reading and settles nothing about whether the brief, the agent or Cargento's own judgement
 was poor.
