@@ -792,13 +792,37 @@ function nextCockpitHeldToggle(field, action, shown){
    held only in this process: the next collection reloads the store from disk
    and the words are gone. An earlier version of this code read only `ok` and
    called that a save, with a comment claiming the store said so itself. It
-   does not; the only report went to a diagnostic sink no reader sees. */
+   does not; the only report went to a diagnostic sink no reader sees.
+
+   One sentence per store outcome, chosen from the reply's `outcome` token and
+   not from `persisted`, which is one bit for four sentences (decisions.md,
+   DRC-4543). Forced live on 2026-09-12: a save the store REFUSED wore the
+   `unpersisted` sentence while the store's mtime did not move, so it claimed
+   a write and a loss when there had been neither; and a repeat of the last
+   revision wore `saved` while the reply's own `revision_count` had not moved.
+   The refusal sentence already exists for the HTTP refusals and is as true of
+   a store refusal. The two `settle-*` kinds ride this same lane -- one stamp,
+   one TTL, one bound -- and are drawn inside the conflict block by
+   `nextCockpitConflict`, worded about what has already happened, because the
+   handler's own refresh has run by the time the reader can read them. */
 const NEXT_COCKPIT_HELD_CUE_LIMIT = 16;
 const NEXT_COCKPIT_HELD_CUES = {
   error: "Not saved. The server refused the write, and your words are still in the box.",
   unpersisted: "Not stored. The store could not be written, so the refresh has already " +
     "dropped these words, and they are still in the box.",
   saved: "Saved as a new revision.",
+  unchanged: "Already stored. These words match the saved revision, so no new revision " +
+    "was minted.",
+  "settle-refused": "Not settled. The store refused the mark, so the question above still " +
+    "stands as it did.",
+  "settle-unpersisted": "Not settled. The store could not be written, so the mark has " +
+    "already been dropped and the question above still stands.",
+};
+/* The reply's `outcome` token (`annotations.OUTCOMES`) to the cue it earns. An
+   unknown token, from a server newer than this page, falls back on
+   `persisted`, which keeps its meaning across builds. */
+const NEXT_COCKPIT_HELD_OUTCOME_CUES = {
+  stored: "saved", unchanged: "unchanged", refused: "error", unwritable: "unpersisted",
 };
 
 function nextCockpitHeldCue(key){
@@ -1790,8 +1814,13 @@ function nextCockpitConflict(session, annotation, source){
   const typed = String(annotation && annotation.goal || "").trim() ||
     String(annotation && annotation.output || "").trim();
   if(!typed) return "";
+  /* What the last settle press is still worth saying. Its own class rather
+     than the held fields' cue class, so the tests that read the first held
+     cue on the page never read this one instead. */
+  const cue = nextCockpitHeldCue(nextCockpitHeldKey(session, "settle"));
   const header = '<section class="next-cockpit-conflict"><header>' +
-    '<h2>A LATER DIRECTION</h2></header>';
+    '<h2>A LATER DIRECTION</h2></header>' +
+    (cue ? `<small class="next-cockpit-conflict-cue">${esc(cue)}</small>` : "");
   const steer = '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
     'what you are asking for. That is yours, and Cargento does not write into the session ' +
     'either way.</p></section>';
@@ -1981,6 +2010,18 @@ async function nextCockpitConflictSettle(session, through){
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
     const saved = await response.json();
     if(!saved || saved.ok !== true) throw new Error("settle not confirmed");
+    /* `persisted` was ignored here, so a settle whose write did not land
+       reopened the block looking exactly as it had before the press: the
+       store sets the mark in this process before it writes, and the refresh
+       on the next line reloads the file and drops it. The cue rides the held
+       fields' lane and is drawn inside the block by `nextCockpitConflict`
+       (decisions.md, DRC-4543). Nothing is marked for a settle that landed:
+       the block's own settled sentence, read from the store on the next
+       payload, is that report. */
+    if(saved.persisted !== true){
+      nextCockpitHeldMark(nextCockpitHeldKey(session, "settle"),
+        String(saved.outcome || "") === "refused" ? "settle-refused" : "settle-unpersisted");
+    }
     await refreshNext();
   }catch(_error){
     // The block stays open, which is the safe direction: a settlement that did
@@ -2020,9 +2061,16 @@ async function nextCockpitHeldSave(session, kind){
        next line starts one. Dropping the draft here therefore destroyed the
        only remaining copy of what someone typed, while the cue beside it
        warned the words would be gone at a refresh that had already run. */
-    const persisted = saved.persisted === true;
-    if(persisted && nextCockpitHeldDrafts.get(key) === sent) nextCockpitHeldDrafts.delete(key);
-    nextCockpitHeldMark(key, persisted ? "saved" : "unpersisted");
+    /* And the cue from the store's own token rather than from `persisted`,
+       which is one bit for four sentences; `NEXT_COCKPIT_HELD_CUES` records
+       what each bit hid. The draft goes only where the words are on disk,
+       which is a minted revision or a repeat of the one already there. */
+    const outcome = String(saved.outcome || "");
+    const kind = NEXT_COCKPIT_HELD_OUTCOME_CUES[outcome] ||
+      (saved.persisted === true ? "saved" : "unpersisted");
+    const onDisk = kind === "saved" || kind === "unchanged";
+    if(onDisk && nextCockpitHeldDrafts.get(key) === sent) nextCockpitHeldDrafts.delete(key);
+    nextCockpitHeldMark(key, kind);
     await refreshNext();
   }catch(_error){
     // The draft stays. Losing what someone typed to report a failure is the

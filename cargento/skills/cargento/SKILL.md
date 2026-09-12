@@ -237,7 +237,13 @@ only when the box differs from what is stored, and Escape puts the stored value 
 page. It writes a numbered revision; an earlier revision is never edited, so anything citing
 revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely,
 or `settle_through` with a timestamp to mark the directions given up to that moment as settled
-against the current baseline.
+against the current baseline. The reply says what happened: `persisted` is whether the words are
+on disk, and `outcome` is which of four things the store did — `stored` (a new revision),
+`unchanged` (the same words again, so no revision was minted and `persisted` is still true),
+`refused` (the request named nothing the store would take, such as a settle on a session with no
+words, and nothing was written) or `unwritable` (the write failed, so the words are held for this
+run only). The page draws a different sentence for each, and re-saving the same words never mints
+a revision.
 
 They are held in `cargento-annotations.json`, bounded by how many sessions carry words and how many
 revisions each keeps rather than by age, because a session still on the board should not lose what

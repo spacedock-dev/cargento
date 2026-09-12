@@ -356,7 +356,10 @@ class AnnotationStoreTest(unittest.TestCase):
     def test_the_off_switch_reads_empty_and_writes_nothing(self) -> None:
         off = self._config(annotations_enabled=False)
         state = build_runtime_state(off, started=self.NOW)
-        self.assertFalse(annotation_store.annotate(off, state, "pi", "s", goal="G", now=self.NOW))
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            annotation_store.annotate(off, state, "pi", "s", goal="G", now=self.NOW),
+        )
         self.assertEqual((), annotation_store.load(off))
         self.assertFalse(os.path.exists(annotation_store.store_path(off)))
 
@@ -449,7 +452,9 @@ class SettlingALaterDirectionTest(unittest.TestCase):
             now=self.NOW + 120,
         )
 
-        self.assertTrue(landed)
+        # The token and not a truthiness test: every outcome is a non-empty
+        # string, so `assertTrue` would pass for a refusal.
+        self.assertEqual(annotation_store.OUTCOME_STORED, landed)
         published = self._published()
         self.assertEqual(self.NOW + 120, published["settled_at"])
         self.assertEqual(self.NOW + 60, published["settled_through"])
@@ -491,7 +496,7 @@ class SettlingALaterDirectionTest(unittest.TestCase):
             self.config, self.state, "pi", "s1", through=self.NOW, now=self.NOW
         )
 
-        self.assertFalse(landed)
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, landed)
         self.assertIsNone(self._published()["settled_at"])
 
     def test_a_non_numeric_through_is_refused_including_a_bool(self) -> None:
@@ -499,10 +504,11 @@ class SettlingALaterDirectionTest(unittest.TestCase):
 
         for value in (True, "now", None, {"at": 1}):
             with self.subTest(value=value):
-                self.assertFalse(
+                self.assertEqual(
+                    annotation_store.OUTCOME_REFUSED,
                     annotation_store.settle(
                         self.config, self.state, "pi", "s1", through=value, now=self.NOW
-                    )
+                    ),
                 )
         self.assertIsNone(self._published()["settled_at"])
 
@@ -636,8 +642,9 @@ class AnUnwritableStoreIsReportedRatherThanSwallowedTest(unittest.TestCase):
             diagnostic_sink=self.said.append,
         )
 
-        # False, and that is what the endpoint publishes as `persisted`.
-        self.assertFalse(landed)
+        # Unwritable, which the endpoint publishes as `persisted:false` with
+        # `outcome:"unwritable"`, and not a refusal.
+        self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, landed)
         # And yet the revision IS in this process: `annotate` sets
         # `state.annotations` before it writes, inside the lock. That is the
         # whole reason the page may not treat a false here as a lost save
@@ -692,11 +699,20 @@ class TheSaveReadsTheAnswerTheEndpointSendsTest(unittest.TestCase):
         body = body[: body.index("\n    def ", 1)]
         sent = set(re.findall(r'^\s+"([a-z_]+)": ', body, re.MULTILINE))
         self.assertIn("ok", sent)
-        save = self.PAGE[self.PAGE.index("async function nextCockpitHeldSave(") :]
-        save = save[: save.index("\nfunction ")]
-        read = set(re.findall(r"\bsaved\.([a-z_]+)\b", save))
-        self.assertTrue(read, "the save reads nothing off the answer")
-        self.assertEqual(set(), read - sent, "the page reads a key the endpoint never sends")
+        # Both handlers that read this reply, not one. The settle handler read
+        # only `ok` when this oracle was written and was left out of it, so
+        # the day it started reading `outcome` nothing bound that read to the
+        # endpoint.
+        for name in ("nextCockpitHeldSave", "nextCockpitConflictSettle"):
+            with self.subTest(handler=name):
+                handler = self.PAGE[self.PAGE.index(f"async function {name}(") :]
+                # Up to the next top-level function of either kind.
+                following = re.search(r"\n(?:async )?function ", handler[1:])
+                assert following is not None
+                handler = handler[: following.start() + 1]
+                read = set(re.findall(r"\bsaved\.([a-z_]+)\b", handler))
+                self.assertTrue(read, f"{name} reads nothing off the answer")
+                self.assertEqual(set(), read - sent, f"{name} reads a key the endpoint never sends")
 
 
 class AnnotationWiringTest(unittest.TestCase):
@@ -1151,10 +1167,11 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
         self.assertEqual(1, entry["readings"])
 
     def test_a_reading_of_a_session_nobody_annotated_is_refused(self) -> None:
-        self.assertFalse(
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
             annotation_store.record_reading(
                 self.config, self.state, "claude", "never-typed", assessment=self._assessment()
-            )
+            ),
         )
 
     def test_a_stored_reading_keeps_why_each_row_is_unverifiable(self) -> None:
@@ -1368,6 +1385,10 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
             os_name="posix",
             launcher_path=root / "server.py",
         )
+        self.state = build_runtime_state(self.config, started=self.NOW)
+        self.root = root
+
+    NOW = 1_800_000_000.0
 
     def test_a_type_error_out_of_the_dump_is_caught_like_any_other_write_failure(self) -> None:
         # `load` already catches RecursionError; `save` did not, so a payload
@@ -1446,6 +1467,97 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual([], said)
         self.assertTrue(os.path.exists(annotation_store.store_path(self.config)))
+
+    def test_an_unchanged_save_says_it_minted_nothing(self) -> None:
+        # Re-saving the same words mints no revision, and the store said `True`
+        # for it, which the page read as "Saved as a new revision." with the
+        # revision count unchanged in the very same reply. Asserted on the
+        # stored value: the token is what the endpoint forwards to the page.
+        first = annotation_store.annotate(
+            self.config, self.state, "pi", "s", goal="Same", now=self.NOW
+        )
+        again = annotation_store.annotate(
+            self.config, self.state, "pi", "s", goal="Same", now=self.NOW + 5
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_STORED, first)
+        self.assertEqual(annotation_store.OUTCOME_UNCHANGED, again)
+        entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
+        assert entry is not None
+        self.assertEqual(1, len(entry["revisions"]))
+
+    def test_a_refusal_and_a_failed_write_are_told_apart(self) -> None:
+        # Four refusal arms and one write failure used to share a single
+        # `False`, which the page could only render as the lost-write cue. A
+        # refusal means the request will never work as sent; a failed write
+        # means try again. The reader is owed the difference.
+        refused_settle = annotation_store.settle(
+            self.config, self.state, "pi", "nobody", through=1.0, now=self.NOW
+        )
+        refused_empty = annotation_store.annotate(
+            self.config, self.state, "pi", "s", goal=None, output=None, now=self.NOW
+        )
+        refused_key = annotation_store.clear(self.config, self.state, "", "s")
+        off = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(self.root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+            annotations_enabled=False,
+        )
+        refused_off = annotation_store.annotate(
+            off, build_runtime_state(off, started=self.NOW), "pi", "s", goal="G", now=self.NOW
+        )
+
+        blocked = self.root / "blocked"
+        blocked.write_text("not a directory", encoding="utf-8")
+        unwritable_config = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(blocked)},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+        )
+        unwritable = annotation_store.annotate(
+            unwritable_config,
+            build_runtime_state(unwritable_config, started=self.NOW),
+            "pi",
+            "s",
+            goal="Ship the cockpit",
+            now=self.NOW,
+            diagnostic_sink=lambda _line: None,
+        )
+
+        self.assertEqual(
+            [annotation_store.OUTCOME_REFUSED] * 4,
+            [refused_settle, refused_empty, refused_key, refused_off],
+        )
+        self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, unwritable)
+        # The vocabulary is closed and every token is a distinct string, so no
+        # two outcomes can render as one sentence by accident.
+        self.assertEqual(4, len(set(annotation_store.OUTCOMES)))
+        self.assertNotIn(True, annotation_store.OUTCOMES)
+        self.assertNotIn(False, annotation_store.OUTCOMES)
+
+    def test_a_recorded_reading_names_its_outcome_too(self) -> None:
+        # `_record` shares the write with the three mutators, so it speaks the
+        # same vocabulary: a reading of a session nobody annotated is refused,
+        # a reason this build does not know is refused, and a landed one is
+        # stored.
+        reason = runtime_reading.WITHHELD_MODEL_UNAVAILABLE
+        nobody = annotation_store.record_withheld(
+            self.config, self.state, "pi", "nobody", reason=reason, spent=False
+        )
+        annotation_store.annotate(self.config, self.state, "pi", "s", goal="G", now=self.NOW)
+        unknown = annotation_store.record_withheld(
+            self.config, self.state, "pi", "s", reason="not-a-reason", spent=False
+        )
+        landed = annotation_store.record_withheld(
+            self.config, self.state, "pi", "s", reason=reason, spent=False
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, nobody)
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, unknown)
+        self.assertEqual(annotation_store.OUTCOME_STORED, landed)
 
 
 class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):

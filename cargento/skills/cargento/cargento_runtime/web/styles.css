@@ -995,6 +995,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-intent-revision,.next-intent-why{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-conflict{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line2);background:var(--panel)}
 .next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+/* The settle cue, in the held-cue register and its own class, per next-cockpit.js. */
+.next-cockpit-conflict-cue{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-conflict-open{margin:0;color:var(--ink);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-conflict-row{display:flex;flex-direction:column;gap:2px;padding-left:9px;border-left:1px solid var(--line2)}
 /* A direction is a string the reader published, so mono, the same register the
