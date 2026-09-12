@@ -5150,6 +5150,14 @@ const row = (key, why, limit) => rows(
 console.log(JSON.stringify({
   notAsked: row("output", "not-asked", ""),
   unreadable: row("goal", "unreadable", ""),
+  // The shape `resolve` actually writes for rule 2, measured 2026-09-12:
+  // `why` set and no `result` key at all, because rule 2's fallback is an
+  // absent result rather than a present one. Held here as well as above,
+  // because the row with `result` present is a shape the producer cannot
+  // emit for this token, and it is the only one the case above proves.
+  producerUnreadable: rows({goal: {cites: [], detail: "", clause: "typed words",
+    why: "unreadable"}}, "").split('<div class="next-cockpit-reading-row">').filter(Boolean)
+    .find(r => r.includes("TYPED GOAL")),
   uncited: row("goal", "uncited", ""),
   stands: row("goal", "", ""),
   liveLimitWins: row("output", "not-asked", "Codex publishes no demonstrated work results."),
@@ -5157,6 +5165,7 @@ console.log(JSON.stringify({
   liveRulesWin: shape({goal: {result: "departure", cites: ["u1"], detail: "drifted",
     clause: "x", why: "uncited"}}).criteria[0].result,
   sentence: NEXT_READING_NOT_ASKED,
+  storedUnreadable: NEXT_READING_STORED_WHY["unreadable"],
 }));
 """
         )
@@ -5168,6 +5177,15 @@ console.log(JSON.stringify({
         self.assertNotIn('class="next-cockpit-reading-why"', out["notAsked"])
         # The two rule-2 and rule-3 reasons render the sentences the page owns.
         self.assertIn(malformed, out["unreadable"])
+        # And on the shape the producer writes, the same sentence arrives from
+        # the page's own rule 2 rather than from the stored token, which is why
+        # a rule-2 row needs no limit slot.
+        self.assertIn(malformed, out["producerUnreadable"])
+        self.assertNotIn("limit · ", out["producerUnreadable"])
+        # The two routes must not drift apart. A rule-2 row reaches the page by
+        # whichever arm sees it first, and a distinct sentence behind the token
+        # would make the same stored row read two ways depending on that.
+        self.assertEqual(malformed, out["storedUnreadable"])
         self.assertIn("Nothing resolvable was cited", out["uncited"])
         # A result that stands carries no reason and no limit: the pair above
         # binds on the sentence, because this row has neither.

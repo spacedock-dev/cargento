@@ -98,11 +98,15 @@ ASSESSMENT_KEYS = (
 )
 CRITERION_KEYS = ("result", "cites", "detail", "clause", "why")
 
-# Why a row is `not verifiable`, as a closed token set. Four different things
-# stored byte-identically before this: a constraint never put to the model
-# (rule 5), a reply that could not be read (rule 2), a departure citing
-# nothing (rule 3) and a model that itself said `unverifiable`. The page was
-# right on screen, because it re-derives the limit from today's harness, and
+# Why a row is `not verifiable`, as a closed token set. Six demotions stored
+# byte-identically before this to a model that had said `unverifiable` itself:
+# a constraint never put to the model (rule 5), a departure citing nothing
+# (rule 3), rule 4's backstop, and rule 7's three. Rule 2 is the one that did
+# not, and it was measured rather than assumed: an unreadable reply leaves
+# `result` absent, so `WHY_UNREADABLE` only ever accompanies an absent result
+# and the page answers that row from its own rule 2 before this field is
+# consulted. The page was right on screen, because it re-derives the limit
+# from today's harness, and
 # wrong in the store, because a reading re-read later could not say which --
 # and the store is the half DEC-15b exists for. Tokens rather than sentences,
 # per decisions.md (DRC-4544 item 3): the page keeps its own derivation

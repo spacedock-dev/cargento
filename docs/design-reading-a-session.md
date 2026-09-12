@@ -103,10 +103,12 @@ change that admits them does not re-argue the naming, and each still needs its o
 
 ### Amended 2026-09-12: a stored row says why it is not verifiable
 
-A stored reading has to mean the same thing when it is read back later, and four of its rows did
-not. A constraint never put to the model, a reply that could not be read, a departure the rules
-demoted for citing nothing, and a model that itself said `unverifiable` all stored as
-`not verifiable from available evidence` with nothing else. The page was right on screen, because
+A stored reading has to mean the same thing when it is read back later, and six of its demotions
+did not. A constraint never put to the model, a departure the rules demoted for citing nothing,
+rule 4's backstop and rule 7's three all stored as `not verifiable from available evidence` and
+nothing else, which is what a model that said `unverifiable` on its own leaves behind too. Rule 2
+is the exception, and it was measured rather than assumed: a reply that could not be read stores no
+`result` at all, so the page tells that row apart without help. The page was right on screen, because
 it derives the limit from today's harness table, and wrong in the store, because a reading re-read
 after that table moved rendered a never-asked constraint as a model verdict.
 
@@ -232,16 +234,18 @@ only under a departure. The word list is the second line and it is a judgement r
 measurement. Saying otherwise would be the same overstated claim the rule exists to stop the model
 making.
 
-### Amended 2026-09-12: rules 2, 3 and 5 are told apart in the stored shape
+### Amended 2026-09-12: rules 3, 4, 5 and 7 are told apart in the stored shape
 
 The seven rules say what a row may conclude and did not say how a row records which rule
-concluded it. Rule 5's limit row and rule 2's fallback are told apart on the page, which derives
-the limit itself, and were not told apart in the store, where the limit was never written. Rule
-3's demotion of an uncited departure stored byte-identically to a model that said `unverifiable`
-on its own.
+concluded it. Rule 5's limit row is told apart on the page, which derives the limit itself, and was
+not told apart in the store, where the limit was never written. Rule 3's demotion of an uncited
+departure, rule 4's backstop and rule 7's three stored byte-identically to a model that said
+`unverifiable` on its own. Rule 2 is the one that already recorded itself, by leaving `result`
+absent.
 
 Every row now names the rule that left it without a verdict, as a token: `not-asked` for rule 5,
-`unreadable` for rule 2, `uncited` for rule 3, `verdict-stated` for rule 4's backstop, and
+`unreadable` for rule 2 — a row the page still answers from its own derivation, since that token
+never accompanies a result — `uncited` for rule 3, `verdict-stated` for rule 4's backstop, and
 `no-work-shown`, `board-quoting-itself` and `uncorroborated` for rule 7 and the two rules added
 beside it. Where more than one fires the producer records the one the page would have said, in the
 page's order, so a live row and its stored copy never disagree about the reason. The contract
