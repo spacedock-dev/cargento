@@ -1468,6 +1468,34 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         self.assertEqual([], said)
         self.assertTrue(os.path.exists(annotation_store.store_path(self.config)))
 
+    def test_a_platform_without_o_directory_still_saves_and_syncs_the_bytes(self) -> None:
+        # The Windows arm of `_fsync_directory` is the early return taken when
+        # `os.O_DIRECTORY` does not exist. Every other test here patches the
+        # whole function out, so nothing ran its body, and on the Linux
+        # coverage runner the constant always exists. Simulated rather than
+        # skipped: without the guard the `os.open` call raises AttributeError,
+        # which is not in `save`'s except tuple, so the Windows leg of every
+        # saving test would die on it.
+        calls: list[str] = []
+        real_fsync = os.fsync
+
+        def fsync(fd: int) -> None:
+            calls.append("fsync")
+            real_fsync(fd)
+
+        said: list[str] = []
+        with (
+            mock.patch("cargento_runtime.annotations.os.O_DIRECTORY", None, create=True),
+            mock.patch("cargento_runtime.annotations.os.fsync", side_effect=fsync),
+        ):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertTrue(ok)
+        # The file's own bytes, and nothing else: there is no directory to open.
+        self.assertEqual(["fsync"], calls)
+        self.assertEqual([], said)
+        self.assertTrue(os.path.exists(annotation_store.store_path(self.config)))
+
     def test_an_unchanged_save_says_it_minted_nothing(self) -> None:
         # Re-saving the same words mints no revision, and the store said `True`
         # for it, which the page read as "Saved as a new revision." with the

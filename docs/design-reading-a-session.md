@@ -248,6 +248,8 @@ page's order, so a live row and its stored copy never disagree about the reason.
 otherwise stands as written: the results are unchanged, the fallback for an unreadable reply is
 still an absent result rather than a present one, and the token set is closed on both sides.
 
+### The two typed fields are one line each, and that is a security decision
+
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a
 single line by the same control character scrub that stops a pasted private key body surviving into
 a published string, and it runs server side on write and again on read back. Admitting newlines

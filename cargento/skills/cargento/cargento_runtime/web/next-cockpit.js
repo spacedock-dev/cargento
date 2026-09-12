@@ -2018,9 +2018,20 @@ async function nextCockpitConflictSettle(session, through){
        (decisions.md, DRC-4543). Nothing is marked for a settle that landed:
        the block's own settled sentence, read from the store on the next
        payload, is that report. */
+    const settleKey = nextCockpitHeldKey(session, "settle");
     if(saved.persisted !== true){
-      nextCockpitHeldMark(nextCockpitHeldKey(session, "settle"),
+      nextCockpitHeldMark(settleKey,
         String(saved.outcome || "") === "refused" ? "settle-refused" : "settle-unpersisted");
+    }else{
+      /* Cleared rather than left alone. A press that failed and a press that
+         landed share one lane and one key, so a failure cue outlived its
+         failure for the lane's whole TTL and was drawn directly above the
+         block's own "You settled this ... ago": the block then said both
+         that the mark had been dropped and that it was held. Reaching it
+         needs a store unwritable and then writable inside that TTL, which
+         is exactly the retry a reader makes after the first cue tells them
+         to. */
+      nextCockpitHeldStates.delete(settleKey);
     }
     await refreshNext();
   }catch(_error){
