@@ -109,6 +109,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus closed harness vocabularies such as `notification_type` and `reply`, each earned one at a time on the reasoning the captures README gives; never a value a person or a model wrote. |
 | `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `sync-project`, `visibility-2x2`, `burndown`, `cargento-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
+| `docs/abstention/` | The committed half of DEC-17's abstention check: the scorer's summary (case ids, marks, outcomes, counts, coverage, the marks digest) and a README saying what the file may hold and how to argue with a result. The cases, the local results and the rubric expectations stay under `~/.cargento`; `SECURITY.md` owns that ruling. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 | `docs/screenshots/` | Screenshots taken in this repository. Every capture — browser or screen — lands here unless the request names another location. Its contents are gitignored, so a capture never reaches a commit, and a committed `.gitkeep` holds the directory itself for a fresh clone. Write a descriptive filename, because the directory has no index and nothing prunes it. |
 
@@ -203,10 +204,11 @@ coverage run -a -m unittest \
   scripts.tests.test_derive_prompt_shapes scripts.tests.test_capture_team_registry \
   scripts.tests.test_capture_terminal_identity \
   scripts.tests.test_capture_focus_raise \
-  scripts.tests.test_serve_operator_cockpit
+  scripts.tests.test_serve_operator_cockpit \
+  scripts.tests.test_mark_abstention scripts.tests.test_score_abstention
 coverage report   # enforces the fail_under threshold from pyproject.toml
-# Those last two modules exercise AppleScript against Terminal.app, and this
-# suite now sends nothing. It used to: measured on a macOS desk with Terminal
+# `test_capture_terminal_identity` and `test_capture_focus_raise` exercise AppleScript
+# against Terminal.app, and this suite now sends nothing. It used to: measured on a macOS desk with Terminal
 # open, `test_capture_terminal_identity` sent 91 `tell application "Terminal"`
 # events and `test_capture_focus_raise` sent 2, none of it disclosed anywhere.
 # Both are read-only property reads that select nothing, activate nothing and
