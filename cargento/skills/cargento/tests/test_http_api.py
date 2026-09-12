@@ -3155,6 +3155,69 @@ class AnnotateRouteTest(unittest.TestCase):
         # And nothing reached disk, which is what makes the cue's wording true.
         self.assertEqual((), annotation_store.load(config))
 
+    def test_the_reply_names_the_outcome_beside_persisted(self) -> None:
+        """DRC-4543: `persisted` is one bit and the page has four sentences.
+
+        `persisted` keeps its meaning (true whenever the words are on disk,
+        which an unchanged save's are), and `outcome` says which branch the
+        store took, so the page can tell a refusal from a failed write and a
+        minted revision from a repeat of the last one.
+        """
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            _, stored = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+            _, unchanged = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+            _, refused = self._post(
+                port,
+                json.dumps({"harness": "claude", "sid": "nobody", "settle_through": 1.0}).encode(),
+            )
+
+        blocked = Path(tempfile.mkdtemp()) / "annotation-home"
+        self.addCleanup(shutil.rmtree, blocked.parent, True)
+        blocked.write_text("not a directory", encoding="utf-8")
+        config, state = make_runtime(state_home=str(blocked), state_dir=blocked.parent)
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            _, unwritable = self._post(
+                port,
+                json.dumps(
+                    {"harness": "claude", "sid": "abcd1234", "goal": "Ship the cockpit"}
+                ).encode(),
+            )
+
+        answers = {
+            name: json.loads(body)
+            for name, body in (
+                ("stored", stored),
+                ("unchanged", unchanged),
+                ("refused", refused),
+                ("unwritable", unwritable),
+            )
+        }
+        self.assertEqual(
+            {
+                "stored": (True, "stored"),
+                "unchanged": (True, "unchanged"),
+                "refused": (False, "refused"),
+                "unwritable": (False, "unwritable"),
+            },
+            {name: (a["persisted"], a.get("outcome")) for name, a in answers.items()},
+        )
+        # The unchanged save minted nothing, and the reply itself says so.
+        self.assertEqual(1, answers["stored"]["revision_count"])
+        self.assertEqual(1, answers["unchanged"]["revision_count"])
+
     def test_a_typed_goal_reaches_the_store_and_drops_the_published_body(self) -> None:
         config, state = self._runtime()
         application = cli.build_application(config, state, clock=time.time)

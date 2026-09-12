@@ -1651,6 +1651,50 @@ class ProjectContextTest(unittest.TestCase):
             )
         )
 
+    def test_two_records_that_say_the_same_thing_at_the_same_moment_are_two_facts(self) -> None:
+        """DRC-4544 item 2: a fact id must be as unique as the record behind it.
+
+        `_dedupe_project_events` keeps two events that differ only in
+        `record_id`, so both are real. Hashed without it they shared one
+        `fact_id`; the ledger then emitted two rows under one citation handle
+        and the page's `Map` kept whichever came last.
+        """
+        base = {
+            "at": 5.0,
+            "kind": "steer",
+            "title": "Ship it",
+            "source": "row",
+            "harness": "claude",
+            "sid": "s1",
+        }
+        first = {**base, "record_id": "rec-a"}
+        second = {**base, "record_id": "rec-b"}
+        self.assertEqual(2, len(project_context._dedupe_project_events([first, second])))
+
+        model = project_context._semantic_model([first, second], [])
+
+        self.assertEqual(2, len(model["facts"]))
+        self.assertEqual(2, len({fact["fact_id"] for fact in model["facts"]}))
+
+    def test_a_fact_with_no_record_behind_it_keeps_the_id_it_had(self) -> None:
+        """The other half of item 2: only record-bearing ids move.
+
+        Stored citations and departure evidence name these ids, so an id that
+        moves demotes a stored departure to UNCITED on the page. The literal
+        was measured at 08c07ad before `record_id` joined the hash; adding it
+        unconditionally (`str(None)`) moves this id too, and this test says so.
+        """
+        event = {
+            "at": 5.0,
+            "kind": "steer",
+            "title": "Ship it",
+            "source": "row",
+            "harness": "claude",
+            "sid": "s1",
+        }
+        model = project_context._semantic_model([event], [])
+        self.assertEqual(["fact:6e475aaa4bbb3580"], [fact["fact_id"] for fact in model["facts"]])
+
     def test_transcript_facts_keep_source_session_without_branch_records(self) -> None:
         # Given: a Codex user fact has exact session identity but no branch records.
         events = [

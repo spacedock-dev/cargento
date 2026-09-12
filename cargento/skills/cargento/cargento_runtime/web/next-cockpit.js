@@ -792,13 +792,37 @@ function nextCockpitHeldToggle(field, action, shown){
    held only in this process: the next collection reloads the store from disk
    and the words are gone. An earlier version of this code read only `ok` and
    called that a save, with a comment claiming the store said so itself. It
-   does not; the only report went to a diagnostic sink no reader sees. */
+   does not; the only report went to a diagnostic sink no reader sees.
+
+   One sentence per store outcome, chosen from the reply's `outcome` token and
+   not from `persisted`, which is one bit for four sentences (decisions.md,
+   DRC-4543). Forced live on 2026-09-12: a save the store REFUSED wore the
+   `unpersisted` sentence while the store's mtime did not move, so it claimed
+   a write and a loss when there had been neither; and a repeat of the last
+   revision wore `saved` while the reply's own `revision_count` had not moved.
+   The refusal sentence already exists for the HTTP refusals and is as true of
+   a store refusal. The two `settle-*` kinds ride this same lane -- one stamp,
+   one TTL, one bound -- and are drawn inside the conflict block by
+   `nextCockpitConflict`, worded about what has already happened, because the
+   handler's own refresh has run by the time the reader can read them. */
 const NEXT_COCKPIT_HELD_CUE_LIMIT = 16;
 const NEXT_COCKPIT_HELD_CUES = {
   error: "Not saved. The server refused the write, and your words are still in the box.",
   unpersisted: "Not stored. The store could not be written, so the refresh has already " +
     "dropped these words, and they are still in the box.",
   saved: "Saved as a new revision.",
+  unchanged: "Already stored. These words match the saved revision, so no new revision " +
+    "was minted.",
+  "settle-refused": "Not settled. The store refused the mark, so the question above still " +
+    "stands as it did.",
+  "settle-unpersisted": "Not settled. The store could not be written, so the mark has " +
+    "already been dropped and the question above still stands.",
+};
+/* The reply's `outcome` token (`annotations.OUTCOMES`) to the cue it earns. An
+   unknown token, from a server newer than this page, falls back on
+   `persisted`, which keeps its meaning across builds. */
+const NEXT_COCKPIT_HELD_OUTCOME_CUES = {
+  stored: "saved", unchanged: "unchanged", refused: "error", unwritable: "unpersisted",
 };
 
 function nextCockpitHeldCue(key){
@@ -1130,7 +1154,7 @@ const NEXT_READING_BASELINE_OPEN =
    and neither one noticing. */
 const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "stamp", "cutoff",
   "scope", "scope_text", "ended_at_read", "criteria"];
-const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause"];
+const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a
    constant. It is deliberately narrower than "nothing typed": `_criterion`
    coerces a missing clause to "", so this board cannot tell an empty field
@@ -1146,6 +1170,37 @@ const NEXT_READING_OWN_WORDS_ONLY =
   "Rests only on what you asked for, which is the request rather than the work.";
 const NEXT_READING_MALFORMED =
   "The reading did not return a usable result for this constraint.";
+/* Rule 5 as the reading stored it. The limit row used to come from TODAY's
+   harness alone, so a stored Expected Output row re-read after the harness
+   table moved rendered as a model verdict rather than a constraint that was
+   never put to the model. Phrased in the limit's own register because it
+   renders in the limit's slot. */
+const NEXT_READING_NOT_ASKED =
+  "This constraint was not put to the reading when it was made, so no verdict on it was " +
+  "asked for.";
+/* Rule 4's backstop fired in the producer. The page has no word list of its
+   own -- the prose it would check renders only under a departure, which the
+   demotion has already taken away -- so this is the one reason it cannot
+   re-derive and must take from the store. */
+const NEXT_READING_VERDICT_STATED =
+  "The reading's explanation stated whether the work landed, which is a verdict the evidence " +
+  "read does not license, so its result was withdrawn.";
+/* Why a stored row is `not verifiable`, token to sentence. The producer owns
+   the tokens (`reading.WHY_TOKENS`, compared by `ReadingVocabularyIsSpeltOnceTest`)
+   and this page owns every sentence, so no producer prose reaches the page
+   through the field. Consulted only where this page's own derivation left a
+   `not verifiable` row without a reason: the live rules stay authoritative,
+   and a stored reason never overrides a result derived from evidence the
+   page holds (DRC-4544 item 3). */
+const NEXT_READING_STORED_WHY = {
+  "not-asked": NEXT_READING_NOT_ASKED,
+  "unreadable": NEXT_READING_MALFORMED,
+  "uncited": NEXT_READING_UNCITED,
+  "no-work-shown": NEXT_READING_ASSISTANT_ONLY,
+  "board-quoting-itself": NEXT_READING_DERIVED_ONLY,
+  "uncorroborated": NEXT_READING_OWN_WORDS_ONLY,
+  "verdict-stated": NEXT_READING_VERDICT_STATED,
+};
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
    asymmetry in rule 7 turns on it and a truthy check would count every
@@ -1223,6 +1278,8 @@ function nextCockpitConflictCandidates(annotation, entries){
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled){
   const citations = nextReadingCitations(raw, entries);
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
+  const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
+  let limitText = limit || "";
   let result = NEXT_READING_RESULTS.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
   // Rule 2, and it is the reason the default above is not `consistent`: a
   // producer that returned nothing has said nothing, and silence is not a pass.
@@ -1272,6 +1329,14 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_MALFORMED;
   }
+  if(stored && !Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
+    // A reason this build does not know is the unknown-key asymmetry one
+    // level further down: the store refuses it whole, so this arm only fires
+    // in a tab left open across a server upgrade, and it says so rather than
+    // guessing which sentence was meant.
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_MALFORMED;
+  }
   const fromPerson = citations.filter(nextReadingPersonAuthored);
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
@@ -1302,6 +1367,18 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_OWN_WORDS_ONLY;
   }
+  if(result === NEXT_READING_UNVERIFIABLE && !why && !limitText &&
+      Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
+    /* Only the gap the page's own derivation leaves: a row the producer
+       already marked `not verifiable`, with no live rule and no live limit
+       explaining why. Rule 5's token draws the limit row, in the limit's
+       slot, because a constraint never asked has no evidence line to show;
+       every other token is a reason under the result. Today's limit wins
+       where both exist, above, because it describes the harness the reader
+       is looking at now. */
+    if(stored === "not-asked") limitText = NEXT_READING_STORED_WHY[stored];
+    else why = NEXT_READING_STORED_WHY[stored];
+  }
   // Rule 7, the Goal half. A departure on the agent's own narration stands,
   // because a stated change of direction is what that evidence is good for,
   // and a `consistent` resting only on it says so rather than reading as
@@ -1327,10 +1404,10 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
        departure prose underneath the demoted result -- the reader saw the
        finding and the refusal of it at once. */
     detail: result === NEXT_READING_DEPARTURE ? String(raw && raw.detail || "") : "",
-    why, narration, limit: limit || "",
+    why, narration, limit: limitText,
     // Mutually exclusive with `limit`, and never both blank: a row states its
     // evidence or states why it has none.
-    evidence: limit ? [] : citations.map(entry =>
+    evidence: limitText ? [] : citations.map(entry =>
       `${entry.type} · ${entry.source}`),
   };
 }
@@ -1737,8 +1814,13 @@ function nextCockpitConflict(session, annotation, source){
   const typed = String(annotation && annotation.goal || "").trim() ||
     String(annotation && annotation.output || "").trim();
   if(!typed) return "";
+  /* What the last settle press is still worth saying. Its own class rather
+     than the held fields' cue class, so the tests that read the first held
+     cue on the page never read this one instead. */
+  const cue = nextCockpitHeldCue(nextCockpitHeldKey(session, "settle"));
   const header = '<section class="next-cockpit-conflict"><header>' +
-    '<h2>A LATER DIRECTION</h2></header>';
+    '<h2>A LATER DIRECTION</h2></header>' +
+    (cue ? `<small class="next-cockpit-conflict-cue">${esc(cue)}</small>` : "");
   const steer = '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
     'what you are asking for. That is yours, and Cargento does not write into the session ' +
     'either way.</p></section>';
@@ -1928,6 +2010,29 @@ async function nextCockpitConflictSettle(session, through){
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
     const saved = await response.json();
     if(!saved || saved.ok !== true) throw new Error("settle not confirmed");
+    /* `persisted` was ignored here, so a settle whose write did not land
+       reopened the block looking exactly as it had before the press: the
+       store sets the mark in this process before it writes, and the refresh
+       on the next line reloads the file and drops it. The cue rides the held
+       fields' lane and is drawn inside the block by `nextCockpitConflict`
+       (decisions.md, DRC-4543). Nothing is marked for a settle that landed:
+       the block's own settled sentence, read from the store on the next
+       payload, is that report. */
+    const settleKey = nextCockpitHeldKey(session, "settle");
+    if(saved.persisted !== true){
+      nextCockpitHeldMark(settleKey,
+        String(saved.outcome || "") === "refused" ? "settle-refused" : "settle-unpersisted");
+    }else{
+      /* Cleared rather than left alone. A press that failed and a press that
+         landed share one lane and one key, so a failure cue outlived its
+         failure for the lane's whole TTL and was drawn directly above the
+         block's own "You settled this ... ago": the block then said both
+         that the mark had been dropped and that it was held. Reaching it
+         needs a store unwritable and then writable inside that TTL, which
+         is exactly the retry a reader makes after the first cue tells them
+         to. */
+      nextCockpitHeldStates.delete(settleKey);
+    }
     await refreshNext();
   }catch(_error){
     // The block stays open, which is the safe direction: a settlement that did
@@ -1967,9 +2072,16 @@ async function nextCockpitHeldSave(session, kind){
        next line starts one. Dropping the draft here therefore destroyed the
        only remaining copy of what someone typed, while the cue beside it
        warned the words would be gone at a refresh that had already run. */
-    const persisted = saved.persisted === true;
-    if(persisted && nextCockpitHeldDrafts.get(key) === sent) nextCockpitHeldDrafts.delete(key);
-    nextCockpitHeldMark(key, persisted ? "saved" : "unpersisted");
+    /* And the cue from the store's own token rather than from `persisted`,
+       which is one bit for four sentences; `NEXT_COCKPIT_HELD_CUES` records
+       what each bit hid. The draft goes only where the words are on disk,
+       which is a minted revision or a repeat of the one already there. */
+    const outcome = String(saved.outcome || "");
+    const kind = NEXT_COCKPIT_HELD_OUTCOME_CUES[outcome] ||
+      (saved.persisted === true ? "saved" : "unpersisted");
+    const onDisk = kind === "saved" || kind === "unchanged";
+    if(onDisk && nextCockpitHeldDrafts.get(key) === sent) nextCockpitHeldDrafts.delete(key);
+    nextCockpitHeldMark(key, kind);
     await refreshNext();
   }catch(_error){
     // The draft stays. Losing what someone typed to report a failure is the

@@ -21,6 +21,12 @@ deliverable claim resting on nothing that demonstrates work is unrenderable
 because the constraint is either never put to the model, or demoted before it
 is published.
 
+The numbering is bound the same way. `build_prompt` returns a `Selection`,
+the handle for exactly the rows the model was shown, and `resolve` accepts
+nothing else: a caller handing it the whole ledger where the selected slice
+belongs used to type-check, because both were sequences of the same entry,
+and every citation then resolved against a row the model never saw.
+
 Rule 4 is weaker and the docstring used to overstate it. **One model string
 does reach the page**: a departure's `detail`. No model string is ever printed
 as a *verdict* -- the verdict is a token this module maps to a sentence it owns
@@ -42,6 +48,7 @@ import shutil
 import subprocess
 import threading
 import unicodedata
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from . import observer, records
@@ -89,7 +96,41 @@ ASSESSMENT_KEYS = (
     "ended_at_read",
     "criteria",
 )
-CRITERION_KEYS = ("result", "cites", "detail", "clause")
+CRITERION_KEYS = ("result", "cites", "detail", "clause", "why")
+
+# Why a row is `not verifiable`, as a closed token set. Six demotions stored
+# byte-identically before this to a model that had said `unverifiable` itself:
+# a constraint never put to the model (rule 5), a departure citing nothing
+# (rule 3), rule 4's backstop, and rule 7's three. Rule 2 is the one that did
+# not, and it was measured rather than assumed: an unreadable reply leaves
+# `result` absent, so `WHY_UNREADABLE` only ever accompanies an absent result
+# and the page answers that row from its own rule 2 before this field is
+# consulted. The page was right on screen, because it re-derives the limit
+# from today's harness, and
+# wrong in the store, because a reading re-read later could not say which --
+# and the store is the half DEC-15b exists for. Tokens rather than sentences,
+# per decisions.md (DRC-4544 item 3): the page keeps its own derivation
+# authoritative and maps a token to a sentence it already owns, so no producer
+# prose reaches the page through this field either. The empty token means the
+# result stands as the model gave it.
+WHY_STANDS = ""
+WHY_NOT_ASKED = "not-asked"
+WHY_UNREADABLE = "unreadable"
+WHY_UNCITED = "uncited"
+WHY_NO_WORK_SHOWN = "no-work-shown"
+WHY_BOARD_QUOTING_ITSELF = "board-quoting-itself"
+WHY_UNCORROBORATED = "uncorroborated"
+WHY_VERDICT_STATED = "verdict-stated"
+WHY_TOKENS = (
+    WHY_STANDS,
+    WHY_NOT_ASKED,
+    WHY_UNREADABLE,
+    WHY_UNCITED,
+    WHY_NO_WORK_SHOWN,
+    WHY_BOARD_QUOTING_ITSELF,
+    WHY_UNCORROBORATED,
+    WHY_VERDICT_STATED,
+)
 
 # Rule 7 turns on who wrote an evidence entry, so the answer is a closed
 # set rather than a truthy check. `derived` is the third value and it is the
@@ -353,6 +394,25 @@ class LedgerEntry(TypedDict):
     source: str
 
 
+@dataclass(frozen=True)
+class Selection:
+    """Exactly the entries one prompt carried, in the order it numbered them.
+
+    A handle rather than a bare tuple, on purpose. `resolve` numbers whatever it
+    is given from 1, and the ledger and the selected slice are the same tuple
+    type, so a caller confusing the two produced citations that resolved to the
+    wrong entries -- fully rule-3 compliant, and a departure against an entry
+    the model never saw (DRC-4544 item 1). Only `build_prompt` constructs one
+    in production, so the type says which list the numbering belongs to.
+    """
+
+    entries: tuple[LedgerEntry, ...]
+
+    def by_index(self) -> dict[int, LedgerEntry]:
+        """Menu number to entry, exactly as the prompt printed them."""
+        return dict(enumerate(self.entries, start=1))
+
+
 class Criterion(TypedDict):
     """One constraint's result, as published.
 
@@ -360,12 +420,18 @@ class Criterion(TypedDict):
     rule 2's fallback made structural, and it is a different fact from
     `not verifiable from available evidence`: one says the reading could not be
     read, the other says the evidence does not support a verdict.
+
+    `why` is one of `WHY_TOKENS` and names which rule left the row without a
+    verdict, so the stored reading means the same thing when it is re-read
+    under a build whose harness table has moved. `WHY_STANDS` when the result
+    is the model's own.
     """
 
     result: NotRequired[str]
     cites: tuple[str, ...]
     detail: str
     clause: str
+    why: str
 
 
 class Assessment(TypedDict):
@@ -695,7 +761,7 @@ def build_prompt(
     output: str,
     harness: str,
     max_bytes: int,
-) -> tuple[str, tuple[LedgerEntry, ...]]:
+) -> tuple[str, Selection]:
     """The prompt, and exactly the entries it carried.
 
     Entries are selected newest-first against the byte cap and then printed
@@ -762,7 +828,7 @@ def build_prompt(
         # there is and no entries at all: `cutoff_text` then says none of the
         # record could be read, which is the true sentence and a different one
         # from the record being empty.
-        return header, ()
+        return header, Selection(())
 
     def row_text(index: int, row: LedgerEntry) -> str:
         return records.redact_secrets(
@@ -789,7 +855,7 @@ def build_prompt(
         taken += 1
     selected = tuple(citable[len(citable) - taken :]) if taken else ()
     body = "".join(row_text(index, row) for index, row in enumerate(selected, start=1))
-    return header + body, selected
+    return header + body, Selection(selected)
 
 
 def parse_reply(raw: str) -> dict[str, dict[str, Any]]:
@@ -884,6 +950,36 @@ def _states_a_verdict(detail: str, result: str) -> bool:
     return False
 
 
+def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> str:
+    """Which evidence rule a verdict fails, as its `why` token, or `WHY_STANDS`.
+
+    Three rules, checked in the page's order, so the stored reason and the
+    sentence the page derives for a live row name the same rule when more
+    than one fires: a derived-only citation is also uncorroborated, and the
+    page says "quoting itself" for it.
+    """
+    # Rule 7, as amended: a verdict about the deliverable needs an entry that
+    # demonstrates work. The reader's own request does not, and nor does the
+    # agent saying it finished.
+    if name == CONSTRAINT_OUTPUT and not any(demonstrates_work(entry) for entry in cited):
+        return WHY_NO_WORK_SHOWN
+    # On either constraint, a verdict resting only on Cargento's own paraphrase
+    # is this board quoting itself.
+    if {entry["author"] for entry in cited} == {AUTHOR_DERIVED}:
+        return WHY_BOARD_QUOTING_ITSELF
+    # A `consistent` needs something that speaks to what the session DID. The
+    # reader restating what she wanted is the constraint, not the work, so
+    # agreeing with it is circular -- and it is the shape a reader is most
+    # likely to misread as corroboration, because the words match. A DEPARTURE
+    # on her own words is different and stays: a stated change of direction is
+    # exactly what that evidence is good for.
+    if result == RESULT_CONSISTENT and not any(
+        entry["author"] == AUTHOR_AGENT or demonstrates_work(entry) for entry in cited
+    ):
+        return WHY_UNCORROBORATED
+    return WHY_STANDS
+
+
 def _resolve_one(
     row: Mapping[str, Any],
     by_index: Mapping[int, LedgerEntry],
@@ -899,6 +995,10 @@ def _resolve_one(
     from nothing toward it.
     """
     result = RESULT_BY_TOKEN.get(str(row.get("token") or "").strip().casefold())
+    # Which rule took the verdict away, if one did. Set beside each demotion
+    # below rather than inferred afterwards, because two of them leave the
+    # criterion byte-identical to a model that said `unverifiable` itself.
+    why = WHY_STANDS if result else WHY_UNREADABLE
     raw_cites = row.get("cites")
     # Deduped here as well as in `parse_reply`, because `resolve` is callable
     # with a hand-built dict and the page draws one row per citation: three
@@ -913,38 +1013,23 @@ def _resolve_one(
     cited = [by_index[value] for value in wanted[:MAX_CITES] if _citable(by_index[value])]
     if result in (RESULT_DEPARTURE, RESULT_CONSISTENT) and not cited:
         result = RESULT_UNVERIFIABLE
-    authors = {entry["author"] for entry in cited}
-    # Rule 7, as amended: a verdict about the deliverable needs an entry that
-    # demonstrates work. The reader's own request does not, and nor does the
-    # agent saying it finished.
-    no_work_shown = name == CONSTRAINT_OUTPUT and not any(
-        demonstrates_work(entry) for entry in cited
-    )
-    # On either constraint, a verdict resting only on Cargento's own paraphrase
-    # is this board quoting itself.
-    board_quoting_itself = authors == {AUTHOR_DERIVED}
-    # A `consistent` needs something that speaks to what the session DID. The
-    # reader restating what she wanted is the constraint, not the work, so
-    # agreeing with it is circular -- and it is the shape a reader is most
-    # likely to misread as corroboration, because the words match. A DEPARTURE
-    # on her own words is different and stays: a stated change of direction is
-    # exactly what that evidence is good for.
-    uncorroborated = result == RESULT_CONSISTENT and not any(
-        entry["author"] == AUTHOR_AGENT or demonstrates_work(entry) for entry in cited
-    )
-    if (
-        result
-        and result != RESULT_UNVERIFIABLE
-        and (no_work_shown or board_quoting_itself or uncorroborated)
-    ):
-        result = RESULT_UNVERIFIABLE
+        why = WHY_UNCITED
+    if result and result != RESULT_UNVERIFIABLE:
+        rests_on_nothing = _rests_on_nothing(result, name, cited)
+        if rests_on_nothing:
+            result, why = RESULT_UNVERIFIABLE, rests_on_nothing
     raw_detail = str(row.get("detail") or "")
     # Rule 4's backstop, on the untruncated prose, and only ever a demotion. It
     # never CREATES a result: a reply carrying no usable token keeps rule 2's
     # absence, and a verdict word in its prose must not turn that into a
     # finding.
-    if result and raw_detail and _states_a_verdict(raw_detail, result):
-        result = RESULT_UNVERIFIABLE
+    if (
+        result
+        and result != RESULT_UNVERIFIABLE
+        and raw_detail
+        and _states_a_verdict(raw_detail, result)
+    ):
+        result, why = RESULT_UNVERIFIABLE, WHY_VERDICT_STATED
     detail = records.safe_text(raw_detail, detail_cap_chars)
     if detail and len(raw_detail) > len(detail):
         # A cut sentence loses its qualifier, and the qualifier is always last.
@@ -956,15 +1041,32 @@ def _resolve_one(
         # explanation is the renderer's own constant.
         "detail": detail if result == RESULT_DEPARTURE else "",
         "clause": clause,
+        "why": why,
     }
     if result:
         criterion["result"] = result
     return criterion
 
 
+def _numbered(selection: object) -> dict[int, LedgerEntry]:
+    """The menu numbering, from the one handle allowed to carry it.
+
+    Typed on `object` so the check is reachable: `resolve` is documented as
+    callable with hand-built replies, and a hand-built sequence where the
+    selection belongs is exactly the caller that resolved citations against
+    rows the model never saw. The annotation on `resolve` catches that caller
+    under mypy; this catches the one that was not type-checked (decisions.md,
+    DRC-4544 item 1).
+    """
+    if not isinstance(selection, Selection):
+        msg = "resolve needs the Selection build_prompt returned, not a bare sequence"
+        raise TypeError(msg)
+    return selection.by_index()
+
+
 def resolve(
     parsed: Mapping[str, Mapping[str, Any]],
-    selected: Sequence[LedgerEntry],
+    selection: Selection,
     *,
     goal: str,
     output: str,
@@ -975,13 +1077,16 @@ def resolve(
 
     The renderer applies the same rules again over the entries it actually
     holds, because the two can be looking at collections fetched seconds apart.
+
+    Refuses anything but the `Selection` `build_prompt` returned; `_numbered`
+    holds the check and says why it is a runtime one.
     """
+    by_index = _numbered(selection)
     asked = {
         CONSTRAINT_GOAL: asks_goal(goal),
         CONSTRAINT_OUTPUT: asks_output(output, harness),
     }
     clauses = {CONSTRAINT_GOAL: goal, CONSTRAINT_OUTPUT: output}
-    by_index = dict(enumerate(selected, start=1))
     out: dict[str, Criterion] = {}
     for name in CONSTRAINTS:
         # Bounded and scrubbed like every other published string. It is the
@@ -998,6 +1103,7 @@ def resolve(
                 "cites": (),
                 "detail": "",
                 "clause": clause,
+                "why": WHY_NOT_ASKED,
             }
             continue
         out[name] = _resolve_one(
@@ -1073,7 +1179,7 @@ def produce(
         harness=str(row.get("harness") or ""),
         max_bytes=observer.OBSERVER_MODEL_MAX_PROMPT_BYTES,
     )
-    if not selected:
+    if not selected.entries:
         return None, WITHHELD_LEDGER_EMPTY, False
     raw, status = model(prompt, output_cap_bytes=config.annotation_text_cap_chars * 8)
     if status == "unavailable":
@@ -1092,7 +1198,7 @@ def produce(
     assessment: Assessment = {
         "revision_read": revision if isinstance(revision, int) and revision > 0 else 1,
         "stamp": stamp_text,
-        "cutoff": cutoff_text(selected, len(ledger), now),
+        "cutoff": cutoff_text(selected.entries, len(ledger), now),
         "scope": scope,
         "scope_text": SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,

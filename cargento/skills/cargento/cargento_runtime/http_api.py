@@ -1226,7 +1226,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
         `persisted` is answered honestly, for `_dismiss`'s reason: an unwritable
         home still holds the annotation for this run, and the page says so
-        rather than implying it will survive a restart.
+        rather than implying it will survive a restart. `outcome` beside it is
+        the store's own token (`annotations.OUTCOMES`), because `persisted` is
+        one bit and the page has four sentences: a refusal and a failed write
+        were both `false`, a minted revision and a repeat of the last one were
+        both `true`. `persisted` keeps its meaning -- true whenever the words
+        are on disk, which an unchanged save's are -- so nothing that reads it
+        changes truth value (decisions.md, DRC-4543).
         """
         application = self.server.application
         config = application.config
@@ -1263,7 +1269,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         state = application.state
         settle_through = payload.get("settle_through")
         if payload.get("clear") is True:
-            persisted = annotation_store.clear(
+            outcome = annotation_store.clear(
                 config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
             )
         elif settle_through is not None:
@@ -1273,7 +1279,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # surface's WIDTH. The store clamps `settle_through` to now and
             # refuses a bool, so nothing here needs to re-check the number
             # beyond refusing what is not one.
-            persisted = annotation_store.settle(
+            outcome = annotation_store.settle(
                 config,
                 state,
                 harness,
@@ -1283,7 +1289,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 diagnostic_sink=application.diagnostic_sink,
             )
         else:
-            persisted = annotation_store.annotate(
+            outcome = annotation_store.annotate(
                 config,
                 state,
                 harness,
@@ -1301,7 +1307,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
         answer = {
             "ok": True,
-            "persisted": persisted,
+            "persisted": outcome
+            in (annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED),
+            "outcome": outcome,
             "revision": current["revision"],
             "revision_count": current["revision_count"],
         }

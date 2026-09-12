@@ -438,6 +438,14 @@ function nextSessionDelivery(session){
    sits on a route this page never named, so the input surface existed on
    exactly one route nothing pointed at. */
 function nextSessionHeldLink(session){
+  /* Dropped without a sentence under `--no-annotations`, and deliberately so
+     (decisions.md, DRC-4543): `nextSessionDepartures` above applies the same
+     rule to the unasked switch and records why -- an operator switch that is
+     off leaves no claim to make on the session view, and a line saying so on
+     every row is noise about a feature nobody turned on. The two surfaces this
+     link would reach, the cockpit's Held to tab and the intent log, each say
+     the store is off and how to turn it on. `test_next_session` pins the
+     absence. */
   if(!(nextData && nextData.annotate === true)) return "";
   const project = String(session.project == null ? "" : session.project);
   if(!project) return "";

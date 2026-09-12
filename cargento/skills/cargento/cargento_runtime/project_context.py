@@ -1966,6 +1966,18 @@ def _semantic_actor_claim(source_event: dict[str, Any], raw_kind: str) -> str:
 def _semantic_fact_from_event(
     source_event: dict[str, Any], raw_kind: str, fact_type: str, work_item_id: str
 ) -> dict[str, Any]:
+    # `record_id` joined the hash on 2026-09-12 (DRC-4544 item 2), and only
+    # when present. `_dedupe_project_events` already keys on it, so two events
+    # differing in nothing else both survive as facts, and without it here
+    # they shared one `fact_id`: the reading ledger then emitted two rows under
+    # one citation handle and the page's `Map` kept whichever came last.
+    # Appended conditionally so a fact with no record behind it keeps the id
+    # it had. The ids of record-bearing facts moved once: a citation stored
+    # before this to such a fact no longer resolves and the page demotes it to
+    # UNCITED, and `semantic_history` dedupes on the id so those events are
+    # recorded a second time. Accepted rather than migrated, per decisions.md;
+    # no schema bump.
+    record_id = source_event.get("record_id")
     fact_id = _semantic_id(
         "fact",
         raw_kind,
@@ -1976,6 +1988,7 @@ def _semantic_fact_from_event(
         source_event.get("entity"),
         source_event.get("lineage"),
         source_event.get("title"),
+        *((record_id,) if record_id not in (None, "") else ()),
     )
     fact: dict[str, Any] = {
         "fact_id": fact_id,

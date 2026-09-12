@@ -4019,6 +4019,134 @@ console.log(JSON.stringify({unwritable, keptDraft, written: cue(),
         self.assertEqual("Saved as a new revision.", out["written"])
         self.assertFalse(out["clearedDraft"])
 
+    SAVE_WITH_REPLY = """
+let reply = {ok:true, persisted:true, outcome:"stored", revision:2, revision_count:2};
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => String(url) === "/api/annotate"
+  ? {ok:true, status:200, json: async () => reply}
+  : upstream(url, init);
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+const cue = () => (__els.app.innerHTML
+  .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1];
+"""
+
+    def test_an_unchanged_save_does_not_claim_a_new_revision(self) -> None:
+        """DRC-4543. The store mints nothing for a repeat of the last revision.
+
+        The reply carried `persisted:true` with `revision_count` unchanged, and
+        the page read the bit alone, so it said "Saved as a new revision."
+        over a save that had minted none. Reached from a second dashboard's
+        save between this one's render and press, or a scripted POST, which
+        is why the reply is stubbed here as the cue tests beside it do.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + self.SAVE_WITH_REPLY
+            + """
+reply = {ok:true, persisted:true, outcome:"unchanged", revision:2, revision_count:2};
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({cue: cue(),
+  kept: nextCockpitHeldDrafts.has("held:codex:focus-1:output")}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertNotEqual("Saved as a new revision.", out["cue"])
+        self.assertEqual(
+            "Already stored. These words match the saved revision, so no new revision was minted.",
+            out["cue"],
+        )
+        # The words are on disk, so the draft has nothing left to protect.
+        self.assertFalse(out["kept"])
+
+    def test_a_refused_save_wears_the_refusal_sentence_not_the_lost_write_one(self) -> None:
+        """DRC-4543. A refusal is not a failed write.
+
+        Forced live on 2026-09-12: a save the store refused rendered "Not
+        stored. The store could not be written..." while the store's mtime did
+        not move. Nothing was written and nothing was lost; the sentence was
+        false on both counts. The refusal sentence already exists for the
+        HTTP refusals and is as true of a store refusal.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + self.SAVE_WITH_REPLY
+            + """
+reply = {ok:true, persisted:false, outcome:"refused", revision:2, revision_count:2};
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({cue: cue(),
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output") || null}));
+"""
+        )
+        assert isinstance(out, dict)
+        # The whole sentence, because both cues end "still in the box" and a
+        # substring test could not tell them apart.
+        self.assertEqual(
+            "Not saved. The server refused the write, and your words are still in the box.",
+            out["cue"],
+        )
+        self.assertEqual("Six screenshots", out["draft"])
+
+    def test_the_two_landing_outcomes_are_read_from_the_token_not_the_bit(self) -> None:
+        """DRC-4543 review T2. Two rows of the token map were bound by nothing.
+
+        The `persisted` fallback beside the lookup answers `stored` and
+        `unwritable` the same way the map does, so a wrong sentence on either
+        of them shipped green: mutating `stored` to the unwritable cue made a
+        successful save claim a lost write and keep the draft, and the module
+        stayed OK. Every other cue test here stubs a reply with no `outcome`
+        at all, which is the fallback and not the map. These two carry the
+        token.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + self.SAVE_WITH_REPLY
+            + """
+reply = {ok:true, persisted:true, outcome:"stored", revision:2, revision_count:2};
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+const stored = {cue: cue(),
+  kept: nextCockpitHeldDrafts.has("held:codex:focus-1:output")};
+
+reply = {ok:true, persisted:false, outcome:"unwritable", revision:2, revision_count:2};
+type("output", "Six screenshots and a log");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({stored, unwritable: {cue: cue(),
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output") || null}}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("Saved as a new revision.", out["stored"]["cue"])
+        # The words are on disk, so the draft has nothing left to protect.
+        self.assertFalse(out["stored"]["kept"])
+        self.assertEqual(
+            "Not stored. The store could not be written, so the refresh has already "
+            "dropped these words, and they are still in the box.",
+            out["unwritable"]["cue"],
+        )
+        self.assertEqual("Six screenshots and a log", out["unwritable"]["draft"])
+
     def test_the_saved_cue_expires_and_the_map_stays_bounded(self) -> None:
         # Finding R. The cue was unstamped, so it survived every redraw and a
         # navigation away and back: a reader returning hours later read
@@ -4998,6 +5126,82 @@ console.log(JSON.stringify({
             "the words of the revision this reading read are not retained", out["goalClause"]
         )
 
+    def test_a_stored_reason_renders_where_this_page_derives_none(self) -> None:
+        """DRC-4544 item 3, the renderer half.
+
+        The page re-derives every rule over the entries it holds, and that
+        derivation stays authoritative. What it cannot derive is why a row the
+        producer already marked `not verifiable` was marked so: a constraint
+        never put to the model looks exactly like a model that said
+        `unverifiable`, and until now the limit row came from TODAY's harness
+        rather than from the reading. The stored token fills only the gap the
+        page's own derivation leaves.
+        """
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const unv = "not verifiable from available evidence";
+const rows = (criteria, limit) =>
+  shape(criteria, limit).criteria.map(nextCockpitReadingCriterionRow).join("");
+const row = (key, why, limit) => rows(
+    {[key]: {result: unv, cites: [], detail: "", clause: "typed words", why}}, limit)
+  .split('<div class="next-cockpit-reading-row">').filter(Boolean)
+  .find(r => r.includes(key === "output" ? "EXPECTED OUTPUT" : "TYPED GOAL"));
+console.log(JSON.stringify({
+  notAsked: row("output", "not-asked", ""),
+  unreadable: row("goal", "unreadable", ""),
+  // The shape `resolve` actually writes for rule 2, measured 2026-09-12:
+  // `why` set and no `result` key at all, because rule 2's fallback is an
+  // absent result rather than a present one. Held here as well as above,
+  // because the row with `result` present is a shape the producer cannot
+  // emit for this token, and it is the only one the case above proves.
+  producerUnreadable: rows({goal: {cites: [], detail: "", clause: "typed words",
+    why: "unreadable"}}, "").split('<div class="next-cockpit-reading-row">').filter(Boolean)
+    .find(r => r.includes("TYPED GOAL")),
+  uncited: row("goal", "uncited", ""),
+  stands: row("goal", "", ""),
+  liveLimitWins: row("output", "not-asked", "Codex publishes no demonstrated work results."),
+  future: row("goal", "a-token-from-the-future", ""),
+  liveRulesWin: shape({goal: {result: "departure", cites: ["u1"], detail: "drifted",
+    clause: "x", why: "uncited"}}).criteria[0].result,
+  sentence: NEXT_READING_NOT_ASKED,
+  storedUnreadable: NEXT_READING_STORED_WHY["unreadable"],
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        malformed = "The reading did not return a usable result for this constraint."
+        # A stored limit draws the limit row, in the limit's own register.
+        self.assertIn("limit · ", out["notAsked"])
+        self.assertIn(out["sentence"], out["notAsked"])
+        self.assertNotIn('class="next-cockpit-reading-why"', out["notAsked"])
+        # The two rule-2 and rule-3 reasons render the sentences the page owns.
+        self.assertIn(malformed, out["unreadable"])
+        # And on the shape the producer writes, the same sentence arrives from
+        # the page's own rule 2 rather than from the stored token, which is why
+        # a rule-2 row needs no limit slot.
+        self.assertIn(malformed, out["producerUnreadable"])
+        self.assertNotIn("limit · ", out["producerUnreadable"])
+        # The two routes must not drift apart. A rule-2 row reaches the page by
+        # whichever arm sees it first, and a distinct sentence behind the token
+        # would make the same stored row read two ways depending on that.
+        self.assertEqual(malformed, out["storedUnreadable"])
+        self.assertIn("Nothing resolvable was cited", out["uncited"])
+        # A result that stands carries no reason and no limit: the pair above
+        # binds on the sentence, because this row has neither.
+        self.assertNotIn(malformed, out["stands"])
+        self.assertNotIn('class="next-cockpit-reading-why"', out["stands"])
+        self.assertNotIn("limit · ", out["stands"])
+        # Today's limit wins over the stored one where both exist.
+        self.assertIn("Codex publishes no demonstrated work results.", out["liveLimitWins"])
+        self.assertNotIn(out["sentence"], out["liveLimitWins"])
+        # A token this build does not know is the unknown-key asymmetry one
+        # level down: not readable, and said so.
+        self.assertIn(malformed, out["future"])
+        # And the live rules stay authoritative: a stored reason never
+        # overrides a result the page derived from evidence it holds.
+        self.assertEqual("departure", out["liveRulesWin"])
+
     def test_rule_4_the_word_met_cannot_reach_the_page(self) -> None:
         out = self.run_fixture(
             self.ENTRIES
@@ -5333,6 +5537,171 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes("A LATER DIRECTION
         # The newest candidate's own time, not the clock: the mark has to be
         # the moment they actually looked at.
         self.assertEqual("104", out["settle"])
+
+    def settled_with(self, reply: str) -> dict[str, Any]:
+        """Press `The baseline still applies` against a stubbed reply, then
+        read the conflict block the handler's own refresh redrew."""
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + f"""
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+const upstream = __fetchImpl;
+let posted = null;
+__fetchImpl = async (url, init) => {{
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  posted = JSON.parse(init.body);
+  return {{ok:true, status:200, json: async () => ({reply})}};
+}};
+navigateNext({{view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"}});
+await __settle();
+__fire("click", {{target:controls.find(control =>
+  control.dataset.nextCockpitAction === "conflict-settle"), preventDefault(){{}}}});
+await __settle();
+await __settle();
+const html = __els.app.innerHTML;
+const block = (html.match(
+  /<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({{
+  posted,
+  open: block.includes("you gave after you saved the words above"),
+  cue: (block.match(/class="next-cockpit-conflict-cue">([^<]*)</) || [])[1] || "",
+  heldCues: (html.match(/class="next-cockpit-held-cue"/g) || []).length,
+}}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_settle_that_did_not_persist_says_so(self) -> None:
+        """DRC-4543. The settle handler read `ok` alone and drew no cue.
+
+        A settle whose write did not persist left the block open with no
+        reason: the mark was set in this process, the handler's own refresh
+        reloaded the store from disk and dropped it, and the block reopened
+        looking exactly as it had before the press. Worded about what has
+        already happened, because that refresh has run by the time the
+        reader can read the sentence (the save cue's lesson, above).
+        """
+        unwritable = self.settled_with(
+            '{ok:true, persisted:false, outcome:"unwritable", revision:1, revision_count:1}'
+        )
+        refused = self.settled_with(
+            '{ok:true, persisted:false, outcome:"refused", revision:1, revision_count:1}'
+        )
+        stored = self.settled_with(
+            '{ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1}'
+        )
+
+        # The press reached the endpoint with the moment the reader was shown.
+        self.assertEqual(104, unwritable["posted"]["settle_through"])
+        self.assertTrue(unwritable["open"])
+        self.assertEqual(
+            "Not settled. The store could not be written, so the mark has already been "
+            "dropped and the question above still stands.",
+            unwritable["cue"],
+        )
+        self.assertTrue(refused["open"])
+        self.assertEqual(
+            "Not settled. The store refused the mark, so the question above still stands as "
+            "it did.",
+            refused["cue"],
+        )
+        # A settle that landed says nothing here: the block's own settled
+        # sentence is the report, drawn from the store on the next payload.
+        self.assertEqual("", stored["cue"])
+        # And the cue stays inside the block, so the held fields' cue regexes
+        # above still read the field cue and never this one.
+        self.assertEqual(0, stored["heldCues"] + unwritable["heldCues"])
+
+    def settled_twice(self, first: str, second: str) -> dict[str, Any]:
+        """Press `The baseline still applies` twice against two stubbed
+        replies, and read the block the handler's own refresh redrew after
+        the second press. The second reply is a settle the store took, and
+        the payload comes back settled, which is what a reader sees once one
+        lands."""
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + f"""
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+const upstream = __fetchImpl;
+let reply = {first};
+__fetchImpl = async (url, init) => {{
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  return {{ok:true, status:200, json: async () => reply}};
+}};
+navigateNext({{view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"}});
+await __settle();
+const press = () => {{
+  const control = controls.find(candidate =>
+    candidate.dataset.nextCockpitAction === "conflict-settle");
+  if(control) __fire("click", {{target:control, preventDefault(){{}}}});
+  return Boolean(control);
+}};
+const first_pressed = press();
+await __settle();
+await __settle();
+reply = {second};
+__dashboard.sessions[0].annotation_settled_at = 200;
+__dashboard.sessions[0].annotation_settled_through = 104;
+__dashboard.sessions[0].annotation_settled_revision = 1;
+const second_pressed = press();
+await __settle();
+await __settle();
+const html = __els.app.innerHTML;
+const block = (html.match(
+  /<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({{
+  pressed: [first_pressed, second_pressed],
+  cue: (block.match(/class="next-cockpit-conflict-cue">([^<]*)</) || [])[1] || "",
+  settled: block.includes("You settled this"),
+}}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_settle_that_landed_clears_the_cue_the_failed_press_left(self) -> None:
+        """DRC-4543 review T1. The failure cue outlived the failure.
+
+        The handler marked the lane on failure and neither marked nor
+        cleared it on success, so a cue saying the mark had been dropped sat
+        for the lane's whole TTL directly above the block's own `You settled
+        this ... ago`. The block then said both that the settlement was not
+        stored and that it was, which is the class of lie the settle cue was
+        added to remove.
+        """
+        out = self.settled_twice(
+            '{ok:true, persisted:false, outcome:"unwritable", revision:1, revision_count:1}',
+            '{ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1}',
+        )
+
+        self.assertEqual([True, True], out["pressed"])
+        # The second press landed, so the block reads as settled ...
+        self.assertTrue(out["settled"])
+        # ... and says nothing about a mark that was dropped.
+        self.assertEqual("", out["cue"])
 
     def test_a_later_direction_demotes_a_departure_rather_than_filtering_it(self) -> None:
         open_case = self.held(at=100, assessment=self.ASSESSMENT)

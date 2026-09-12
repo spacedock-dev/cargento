@@ -76,6 +76,20 @@ ABSTENTION_CHECK = ABSTENTION_CHECK_NOT_RUN
 NO_GOAL_TYPED = "No goal typed for this session."
 NO_OUTPUT_TYPED = "No expected output typed."
 
+# What one call to a mutator did, as a closed vocabulary rather than a bool
+# (decisions.md, DRC-4543). The reader is shown a sentence per outcome and a
+# bool cannot carry four: `False` covered both a request the store refused,
+# which will never work as sent, and a write it could not complete, which
+# might next time; `True` covered a minted revision and a repeat of the last
+# one, which mints nothing. `save()` itself stays a bool, because it has one
+# job and two answers. The tokens go over the wire as `/api/annotate`'s
+# `outcome`, so they are spelled for a reader of the reply.
+OUTCOME_STORED = "stored"
+OUTCOME_UNCHANGED = "unchanged"
+OUTCOME_REFUSED = "refused"
+OUTCOME_UNWRITABLE = "unwritable"
+OUTCOMES = (OUTCOME_STORED, OUTCOME_UNCHANGED, OUTCOME_REFUSED, OUTCOME_UNWRITABLE)
+
 # Whether the identity this store bound on is the session's whole identity.
 # `exact` is the ordinary case. `prefix` is the one the issue named as a hazard
 # and it is real on this tree: `collectors/claude.py` passes the transcript
@@ -218,6 +232,13 @@ def _criterion(value: Any, cap: int) -> reading.Criterion | None:
     `result` absent and `result` present are both legal and they mean
     different things -- the reading could not be read, versus the evidence
     does not settle it -- so absence is preserved rather than defaulted.
+
+    `why` absent is a reading stored before the field existed and reads back
+    as `WHY_STANDS`: a missing key is a reading with less in it, not a
+    diverged one. `why` present and outside `WHY_TOKENS` refuses the reading
+    whole, like any other bad value here, because the page maps the token to
+    one of its own sentences and a token invented by a rewrite of the file
+    would otherwise render as the board's own words.
     """
     if not isinstance(value, dict) or set(value) - set(reading.CRITERION_KEYS):
         return None
@@ -227,10 +248,14 @@ def _criterion(value: Any, cap: int) -> reading.Criterion | None:
     cites = value.get("cites")
     if not isinstance(cites, (list, tuple)) or not all(isinstance(c, str) for c in cites):
         return None
+    why = value.get("why", reading.WHY_STANDS)
+    if not isinstance(why, str) or why not in reading.WHY_TOKENS:
+        return None
     criterion: reading.Criterion = {
         "cites": tuple(records.safe_text(c, KEY_CAP_CHARS) for c in cites),
         "detail": records.safe_text(value.get("detail"), cap),
         "clause": records.safe_text(value.get("clause"), cap),
+        "why": why,
     }
     if result is not None:
         criterion["result"] = result
@@ -397,6 +422,25 @@ def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
     return _bounded(parsed, config.annotation_max_sessions)
 
 
+def _fsync_directory(path: str) -> None:
+    """Flush the directory entry a rename just wrote.
+
+    `os.replace` is atomic against a concurrent reader and says nothing about
+    power loss: the new bytes can be durable while the directory still names
+    the old file. Opening a directory needs `O_DIRECTORY`, which Windows does
+    not have, so there this returns without syncing; anywhere else the caller
+    decides what an `OSError` means.
+    """
+    flag = getattr(os, "O_DIRECTORY", None)
+    if flag is None:
+        return
+    fd = os.open(path, os.O_RDONLY | flag)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def save(
     config: RuntimeConfig,
     entries: Iterable[Annotation],
@@ -440,13 +484,21 @@ def save(
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
             # A rename is atomic against a concurrent reader and says nothing
-            # about power loss. The one fsync in this lane, and it is here
-            # because this store holds prose a person composed and cannot
-            # retype from anywhere else; every other store is reconstructible
-            # from what the harnesses already wrote.
+            # about power loss. Synced here, and the directory synced again
+            # after the rename, because this store holds prose a person
+            # composed and cannot retype from anywhere else; every other store
+            # is reconstructible from what the harnesses already wrote.
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, target)
+        # The directory sync may fail where the file sync did not (Windows
+        # cannot open a directory; some filesystems refuse to fsync one), and
+        # by then the bytes are durable and the rename has happened -- only the
+        # rename's durability is in doubt. Suppressed rather than reported,
+        # because the failure cue below says the words will be gone, and here
+        # they are on disk (decisions.md, DRC-4544 directory-fsync half).
+        with contextlib.suppress(OSError):
+            _fsync_directory(config.state_home)
     # `TypeError` and `RecursionError` are here for the reason `load` already
     # catches `RecursionError`: an encoder that refuses a payload must reach the
     # reader as the failure cue this arm exists to send, not as a dropped
@@ -583,8 +635,8 @@ def record_reading(
     *,
     assessment: reading.Assessment,
     diagnostic_sink: Callable[[str], None] = print,
-) -> bool:
-    """Store one reading beside the words it read. Returns whether it landed.
+) -> str:
+    """Store one reading beside the words it read. Returns an `OUTCOMES` token.
 
     The count goes up whether or not the reading is usable, because the
     reader's capacity was spent either way and the control shows what they
@@ -612,8 +664,8 @@ def record_withheld(
     reason: str,
     spent: bool,
     diagnostic_sink: Callable[[str], None] = print,
-) -> bool:
-    """Store why there is no reading. Returns whether it landed.
+) -> str:
+    """Store why there is no reading. Returns an `OUTCOMES` token.
 
     `spent` is the difference between a press that reached the model and one
     that never could. A missing Codex CLI costs nothing and must not count
@@ -625,7 +677,7 @@ def record_withheld(
     does not retract it.
     """
     if reason not in reading.WITHHELD:
-        return False
+        return OUTCOME_REFUSED
     return _record(
         config,
         state,
@@ -648,13 +700,17 @@ def _record(
     withheld: str,
     spent: bool,
     diagnostic_sink: Callable[[str], None] = print,
-) -> bool:
-    """The shared write behind `record_reading` and `record_withheld`."""
+) -> str:
+    """The shared write behind `record_reading` and `record_withheld`.
+
+    Speaks the mutators' vocabulary: a reading of a session nobody annotated
+    is `OUTCOME_REFUSED`, like any other request the store will not take.
+    """
     if not config.annotations_enabled:
-        return False
+        return OUTCOME_REFUSED
     key = _key(harness, sid)
     if not key[0] or not key[1]:
-        return False
+        return OUTCOME_REFUSED
     with state.annotation_lock:
         # From disk under the lock, for `annotate`'s reason: a save made by a
         # second dashboard since this one's last collection is carried forward
@@ -665,7 +721,7 @@ def _record(
             # A reading of nothing is not a reading. There is no baseline to
             # have read, and inventing an entry here would put a row on the
             # board for a session nobody annotated.
-            return False
+            return OUTCOME_REFUSED
         updated: Annotation = {
             "harness": existing["harness"],
             "sid": existing["sid"],
@@ -684,7 +740,11 @@ def _record(
         bounded = _bounded([*others, _carried(existing, updated)], config.annotation_max_sessions)
         # Before the write and inside the lock, as every other mutator does.
         state.annotations = _stored(bounded)
-        return save(config, bounded, diagnostic_sink=diagnostic_sink)
+        return (
+            OUTCOME_STORED
+            if save(config, bounded, diagnostic_sink=diagnostic_sink)
+            else OUTCOME_UNWRITABLE
+        )
 
 
 def annotate(
@@ -697,19 +757,21 @@ def annotate(
     output: Any = None,
     now: float | None = None,
     diagnostic_sink: Callable[[str], None] = print,
-) -> bool:
-    """Append a revision to one session's annotation. Returns whether it landed.
+) -> str:
+    """Append a revision to one session's annotation. Returns an `OUTCOMES` token.
 
     Both fields are optional and independent, and a save that repeats the last
     revision verbatim appends nothing: opening the field and closing it is not a
     change of intent, and burning a revision number on it would let an
-    assessment cite one.
+    assessment cite one. That save answers `OUTCOME_UNCHANGED`, not
+    `OUTCOME_STORED`: the words are on disk either way, and only the second
+    minted anything, which is the difference the page's cue states.
     """
     if not config.annotations_enabled:
-        return False
+        return OUTCOME_REFUSED
     key = _key(harness, sid)
     if not key[0] or not key[1]:
-        return False
+        return OUTCOME_REFUSED
     cap = config.annotation_text_cap_chars
     # Type-checked before redaction, not after. `records.safe_text` does
     # `str(value or "")`, so a dict arriving here would publish its Python repr
@@ -725,7 +787,7 @@ def annotate(
     new_goal = records.safe_text(goal, cap) if isinstance(goal, str) else None
     new_output = records.safe_text(output, cap) if isinstance(output, str) else None
     if new_goal is None and new_output is None:
-        return False
+        return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
 
     with state.annotation_lock:
@@ -745,7 +807,7 @@ def annotate(
                 # cache is how this process went on reporting "no goal typed"
                 # for words the other one had already saved.
                 state.annotations = _stored(_bounded(current, config.annotation_max_sessions))
-                return True
+                return OUTCOME_UNCHANGED
             revision: Revision = {
                 "n": last["n"] + 1,
                 "at": stamp,
@@ -783,7 +845,11 @@ def annotate(
         # one session both read the pre-write store, both mint revision n+1, and
         # the later write erases the earlier one. Holding the lock across the
         # write costs one file write and closes the whole in-process window.
-        return save(config, bounded, diagnostic_sink=diagnostic_sink)
+        return (
+            OUTCOME_STORED
+            if save(config, bounded, diagnostic_sink=diagnostic_sink)
+            else OUTCOME_UNWRITABLE
+        )
 
 
 def settle(
@@ -795,8 +861,8 @@ def settle(
     through: Any,
     now: float | None = None,
     diagnostic_sink: Callable[[str], None] = print,
-) -> bool:
-    """Record that the reader has answered a later direction. Returns whether it landed.
+) -> str:
+    """Record that the reader has answered a later direction. Returns an `OUTCOMES` token.
 
     `through` comes from the client, because the moment being settled is the
     one the reader was looking at and this process has no access to the
@@ -809,12 +875,12 @@ def settle(
     about a baseline, and there is no baseline to answer about.
     """
     if not config.annotations_enabled:
-        return False
+        return OUTCOME_REFUSED
     key = _key(harness, sid)
     if not key[0] or not key[1]:
-        return False
+        return OUTCOME_REFUSED
     if isinstance(through, bool) or not isinstance(through, (int, float)):
-        return False
+        return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
 
     with state.annotation_lock:
@@ -824,7 +890,7 @@ def settle(
         current = load(config)
         existing = find(current, *key)
         if existing is None:
-            return False
+            return OUTCOME_REFUSED
         updated: Annotation = {
             "harness": existing["harness"],
             "sid": existing["sid"],
@@ -843,7 +909,11 @@ def settle(
         # endpoint reads back through it on the same request, so a settle that
         # skipped this would answer with the mark it had just written missing.
         state.annotations = _stored(bounded)
-        return save(config, bounded, diagnostic_sink=diagnostic_sink)
+        return (
+            OUTCOME_STORED
+            if save(config, bounded, diagnostic_sink=diagnostic_sink)
+            else OUTCOME_UNWRITABLE
+        )
 
 
 def clear(
@@ -853,20 +923,24 @@ def clear(
     sid: Any,
     *,
     diagnostic_sink: Callable[[str], None] = print,
-) -> bool:
-    """Forget one session's words entirely. Returns whether the store was rewritten.
+) -> str:
+    """Forget one session's words entirely. Returns an `OUTCOMES` token.
 
     Every revision goes, not just the latest. A reader clearing the field is
     withdrawing the request, and leaving the history behind would keep it
     citable by an assessment.
     """
     if not config.annotations_enabled:
-        return False
+        return OUTCOME_REFUSED
     key = _key(harness, sid)
     if not key[0] or not key[1]:
-        return False
+        return OUTCOME_REFUSED
     with state.annotation_lock:
         kept = tuple(e for e in load(config) if (e["harness"], e["sid"]) != key)
         state.annotations = _stored(kept)
         # Inside the lock, for `annotate`'s reason.
-        return save(config, kept, diagnostic_sink=diagnostic_sink)
+        return (
+            OUTCOME_STORED
+            if save(config, kept, diagnostic_sink=diagnostic_sink)
+            else OUTCOME_UNWRITABLE
+        )

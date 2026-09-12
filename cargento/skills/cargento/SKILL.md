@@ -241,7 +241,13 @@ only when the box differs from what is stored, and Escape puts the stored value 
 page. It writes a numbered revision; an earlier revision is never edited, so anything citing
 revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely,
 or `settle_through` with a timestamp to mark the directions given up to that moment as settled
-against the current baseline.
+against the current baseline. The reply says what happened: `persisted` is whether the words are
+on disk, and `outcome` is which of four things the store did — `stored` (a new revision),
+`unchanged` (the same words again, so no revision was minted and `persisted` is still true),
+`refused` (the request named nothing the store would take, such as a settle on a session with no
+words, and nothing was written) or `unwritable` (the write failed, so the words are held for this
+run only). The page draws a different sentence for each, and re-saving the same words never mints
+a revision.
 
 They are held in `cargento-annotations.json`, bounded by how many sessions carry words and how many
 revisions each keeps rather than by age, because a session still on the board should not lose what
@@ -454,6 +460,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
 | `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
 | `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
+| `POST /api/annotate` | Record a goal or expected output against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
 | `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the `Held to` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or while the abstention check has not been run, which is every build so far. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
