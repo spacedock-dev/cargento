@@ -120,6 +120,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "delivery_mixed",
         "delivery_mixed_why",
         "delivery_binding_why",
+        "delivery_departure",
         "browser_lane",
         "browser_lane_at",
         "browser_lane_why",

@@ -6548,17 +6548,13 @@ console.log(JSON.stringify({
             f"__dashboard.unasked = true;\n"
             f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
             '__dashboard.sessions[0].departure_why = "";\n'
-            "__dashboard.sessions[0].delivery_raises = 2;\n"
-            '__dashboard.sessions[0].delivery_outcome = "handed-over";\n'
-            "__dashboard.sessions[0].delivery_why = \"Handed to this machine's notification "
-            'service, which accepted it.";\n'
-            "__dashboard.sessions[0].delivery_mixed = true;\n"
-            '__dashboard.sessions[0].delivery_mixed_why = "Earlier raises about this session '
-            'did not all end the same way as this one.";\n'
-            '__dashboard.sessions[0].delivery_binding_why = "Matched on an eight-character '
-            'identity prefix.";\n'
-            '__dashboard.sessions[0].browser_lane_why = "No dashboard tab has reported a '
-            'notification lane.";\n'
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 2,"
+            ' delivery_outcome: "handed-over",'
+            " delivery_why: \"Handed to this machine's notification service, which accepted"
+            ' it.", delivery_mixed: true, delivery_mixed_why: "Earlier raises about this '
+            'session did not all end the same way as this one.",'
+            ' delivery_binding_why: "Matched on an eight-character identity prefix.",'
+            ' browser_lane_why: "No dashboard tab has reported a notification lane."};\n'
         )
 
         self.assertIn("which accepted it.", out["visible"])
@@ -6574,9 +6570,9 @@ console.log(JSON.stringify({
             f"__dashboard.unasked = true;\n"
             f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
             '__dashboard.sessions[0].departure_why = "";\n'
-            "__dashboard.sessions[0].delivery_raises = 0;\n"
-            '__dashboard.sessions[0].delivery_none_why = "No notification raise about this '
-            'session is on record, so nothing here says one was attempted.";\n'
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 0,"
+            ' delivery_none_why: "No notification raise about this session is on record, so '
+            'nothing here says one was attempted."};\n'
         )
 
         self.assertIn("No notification raise about this session is on record", out["visible"])
@@ -6588,13 +6584,11 @@ console.log(JSON.stringify({
             "__dashboard.browser_lane = false;\n"
             f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
             '__dashboard.sessions[0].departure_why = "";\n'
-            "__dashboard.sessions[0].delivery_raises = 1;\n"
-            '__dashboard.sessions[0].delivery_outcome = "no-lane";\n'
-            '__dashboard.sessions[0].delivery_why = "This platform has no notification '
-            'backend in this build.";\n'
-            '__dashboard.sessions[0].browser_lane_why = "No dashboard tab has reported a '
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
+            ' delivery_outcome: "no-lane", delivery_why: "This platform has no notification '
+            'backend in this build.", browser_lane_why: "No dashboard tab has reported a '
             "notification lane. A tab that opens sends a report and a tab that closes sends "
-            'none, so this says nothing about whether the page raised one.";\n'
+            'none, so this says nothing about whether the page raised one."};\n'
         )
 
         self.assertIn("so this says nothing about whether the page raised one.", out["visible"])
@@ -6613,8 +6607,8 @@ console.log(JSON.stringify({
         )
 
         values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
-        self.assertEqual(["2", "2", "2", "1"], values)
-        # No ratio, no percentage, and no fifth figure composed from these four.
+        self.assertEqual(["not published", "2", "2", "2", "1"], values)
+        # No ratio, no percentage, and no further figure composed from these.
         self.assertNotIn("%", out["visible"])
         self.assertNotIn(" of 2", out["visible"])
 
@@ -6629,7 +6623,72 @@ console.log(JSON.stringify({
         )
 
         values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
-        self.assertEqual(["1", "3", "not published", "not published"], values)
+        self.assertEqual(["not published", "1", "3", "not published", "not published"], values)
+
+    def test_the_departure_figure_is_absent_rather_than_zero_when_nothing_watches(self) -> None:
+        """The one figure that was exempt from the rule the test above states.
+
+        `base_session` declares `departures` at `[]` on every row whether or not
+        the lane ran, so a length read off it is always a number. Measured on a
+        default board: "Departures raised about this session 0" printed directly
+        under "Nothing watches for a departure on its own".
+        """
+        out = self.review(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+        self.assertIn("Nothing watches for a departure on its own", out["visible"])
+        self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
+
+    def test_each_figure_counts_the_rows_its_own_part_rendered(self) -> None:
+        """The shared contract's second rule, and the DRC-4453 defect class.
+
+        The section renders two collections under one heading. One figure
+        counting one of them read "Departures raised about this session 1" under
+        two rendered rows, and read 0 under a rendered row when the only
+        departure came from the reading.
+        """
+        setup = (
+            '__dashboard.sessions[0].annotation_goal = "do not change the board while '
+            'capturing";\n'
+            '__dashboard.sessions[0].annotation_goal_why = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+            '__dashboard.sessions[0].annotation_output_why = "";\n'
+            "__dashboard.sessions[0].annotation_revision = 1;\n"
+            "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+            "__dashboard.sessions[0].annotation_at = 200;\n"
+            '__dashboard.sessions[0].annotation_binding_why = "";\n'
+            "__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{"
+            ' goal:{result:"departure", detail:"It changed the board mid-capture.",'
+            ' cites:["fo-a"]}}};\n'
+        )
+        reading_only = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 1, attempted: 1, handed_over: 0};\n"
+            + setup
+            + "__dashboard.sessions[0].departures = [];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+        both = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 1, attempted: 1, handed_over: 0};\n"
+            + setup
+            + f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn("It changed the board mid-capture.", reading_only["visible"])
+        self.assertEqual(
+            ["1", "0", "1", "1", "0"],
+            re.findall(r'class="next-cockpit-count-value">([^<]*)<', reading_only["block"]),
+        )
+        self.assertEqual(
+            ["1", "1", "1", "1", "0"],
+            re.findall(r'class="next-cockpit-count-value">([^<]*)<', both["block"]),
+        )
 
     def test_the_review_surface_never_implies_a_reading_can_be_asked_for(self) -> None:
         """AC-untouched. DEC-17's abstention check has not run in any build.
@@ -6696,14 +6755,70 @@ console.log(JSON.stringify({
 
     def test_the_section_points_at_where_a_raise_is_kept(self) -> None:
         # The design's order ends at "where it is kept", and the Intent log is
-        # the only surface a raise survives its session on.
+        # the only surface a raise survives its session on. It is the TAB's last
+        # slot rather than this section's: emitted as the section's last child
+        # it landed above HOW IT LANDED, because the six-slot tab order had been
+        # re-read as five slots internal to the section.
         out = self.review(
             f"__dashboard.unasked = true;\n"
             f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
             '__dashboard.sessions[0].departure_why = "";\n'
         )
+        html = out["html"]
 
-        self.assertIn('href="#n=intent"', out["block"])
+        self.assertIn('href="#n=intent"', html)
+        self.assertNotIn('href="#n=intent"', out["block"])
+        self.assertLess(html.find("<h2>DEPARTURES RAISED TO YOU</h2>"), html.find("HOW IT LANDED"))
+        self.assertLess(html.find("HOW IT LANDED"), html.find("next-cockpit-departures-kept"))
+
+    def test_no_departure_standing_draws_no_sentence_about_how_one_was_raised(self) -> None:
+        """A delivery sentence for a raise that does not exist.
+
+        `delivery_*` is filled on every row from every lane -- gate, ask, hook
+        and departure -- so a default board with a needs-input banner and no
+        departure at all printed "One notification was raised about this
+        session" under HOW IT WAS RAISED, four lines below the heading saying
+        nothing watches for a departure.
+        """
+        out = self.review(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
+            ' delivery_outcome: "handed-over", delivery_why: "Handed to this machine\'s '
+            'notification service, which accepted it."};\n'
+        )
+
+        self.assertIn("Nothing watches for a departure on its own", out["visible"])
+        self.assertNotIn("HOW IT WAS RAISED", out["block"])
+        self.assertNotIn("which accepted it.", out["block"])
+
+    def test_the_outcome_beside_a_departure_is_that_lane_s_and_not_the_board_s(self) -> None:
+        """Four lanes write the delivery store and one sentence is published.
+
+        Measured: a departure raise handed over, and an unrelated hook refusal
+        an hour later, printed "The notification service returned an error"
+        beside the departure that got out -- and the amber rule painted it.
+        `delivery_mixed_why` cannot cover this: it says earlier raises ended
+        differently, never that some were not about a departure.
+        """
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+            "__dashboard.sessions[0].delivery_raises = 2;\n"
+            '__dashboard.sessions[0].delivery_outcome = "refused";\n'
+            '__dashboard.sessions[0].delivery_why = "The notification service returned an '
+            'error, so no banner was created.";\n'
+            "__dashboard.sessions[0].delivery_mixed = true;\n"
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
+            ' delivery_outcome: "handed-over",'
+            " delivery_why: \"Handed to this machine's notification service, which accepted"
+            ' it."};\n'
+        )
+
+        self.assertIn("which accepted it.", out["visible"])
+        self.assertNotIn("The notification service returned an error", out["block"])
+        self.assertIn('data-next-delivery="handed-over"', out["block"])
+        self.assertNotIn('data-next-delivery="refused"', out["block"])
 
 
 if __name__ == "__main__":

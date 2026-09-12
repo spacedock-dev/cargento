@@ -740,6 +740,7 @@ class DismissEndpointTest(RuntimeTestCase):
                     "revision": 1,
                     "cutoff": 1_000.0,
                     "cutoff_text": "",
+                    "withdrawn": False,
                 }
             ],
         )
@@ -3116,6 +3117,16 @@ class AnnotateRouteTest(unittest.TestCase):
         finally:
             conn.close()
 
+    @staticmethod
+    def _get_annotations(port: int) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/annotations")
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
     def test_settling_a_later_direction_is_a_third_arm_on_this_route(self) -> None:
         """DRC-4508's baseline-conflict block writes its answer here.
 
@@ -3328,6 +3339,66 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertIsNone(json.loads(body)["revision"])
         self.assertEqual((), annotation_store.load(config))
+
+    def test_clearing_withdraws_what_was_raised_against_the_cleared_words(self) -> None:
+        """DRC-4514. `SECURITY.md` says a clear takes the words off this route.
+
+        `annotations.clear` deletes every revision and reaches no other store,
+        and `/api/annotations` began serving the departure store on the same
+        branch, so the invariant went false: measured end to end, a goal cleared
+        and replaced served the withdrawn clause verbatim under a model's
+        sentence about it. The ROW survives, because it is what bounds the
+        lane's spend, and only its quotations go.
+        """
+        config, state = self._runtime()
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "s",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "never touch production credentials in this run",
+                    "reading": "It reached for the deploy key.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "Read 4 of 4 entries in the observed record.",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(
+                port,
+                json.dumps(
+                    {
+                        "harness": "pi",
+                        "sid": "s",
+                        "goal": "never touch production credentials in this run",
+                    }
+                ).encode(),
+            )
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode())
+            self._post(
+                port,
+                json.dumps({"harness": "pi", "sid": "s", "goal": "ship the cockpit"}).encode(),
+            )
+            status, body = self._get_annotations(port)
+
+        self.assertEqual(200, status)
+        rows = json.loads(body)["annotations"]
+        self.assertEqual(1, len(rows))
+        self.assertEqual([], rows[0]["departures"])
+        self.assertNotIn("production credentials", body.decode())
+        self.assertNotIn("It reached for the deploy key.", body.decode())
+        # The row itself stays: a withdrawal is not a refund of the subprocess
+        # those checks spent.
+        stored = departures.load(config)
+        self.assertEqual(1, len(stored))
+        self.assertIs(True, stored[0]["withdrawn"])
+        self.assertEqual("", stored[0]["clause"])
 
     def test_the_off_switch_answers_503_rather_than_404(self) -> None:
         """503 for `/api/dismiss`'s reason: under the off switch the route

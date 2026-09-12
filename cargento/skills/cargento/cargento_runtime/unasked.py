@@ -344,6 +344,7 @@ class Lane:
             "revision": assessment["revision_read"],
             "cutoff": now,
             "cutoff_text": str(assessment.get("cutoff") or ""),
+            "withdrawn": False,
         }
 
     def _departures(
@@ -379,6 +380,9 @@ class Lane:
                     # cutoff was never actually recorded.
                     "cutoff": now,
                     "cutoff_text": str(assessment.get("cutoff") or ""),
+                    # Set by `departures.withdraw` when the reader clears the
+                    # words this read, never by the lane.
+                    "withdrawn": False,
                 }
             )
         return out

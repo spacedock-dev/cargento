@@ -552,7 +552,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # whether a dashboard tab has reported a notification lane of its own.
         # Declared here at their absent values on the rule above, and left empty
         # here for the same reason: this module has no runtime imports.
-        # `Application._delivery_fields` fills all eight from
+        # `Application._delivery_fields` fills all nine from
         # `deliveries.published(...)`, which owns every sentence.
         #
         # The browser lane is board-wide rather than per session, and rides on
@@ -569,6 +569,14 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "delivery_mixed": False,
         "delivery_mixed_why": "",
         "delivery_binding_why": "",
+        # The same set again, narrowed to the lane that raises a departure. A
+        # sentence printed BESIDE a departure may not come from the flat keys
+        # above: those carry the latest raise of any of the four lanes that
+        # write the store, so an unrelated hook refusal spoke for a departure
+        # that had been handed over. Nested rather than seven more flat names,
+        # and never in session history, so the flat-fields rule above does not
+        # reach it. `None` is a payload that carries no delivery scope at all.
+        "delivery_departure": None,
         "browser_lane": False,
         "browser_lane_at": None,
         "browser_lane_why": "",

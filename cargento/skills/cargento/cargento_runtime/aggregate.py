@@ -898,14 +898,33 @@ class Application:
         entries = deliveries.load(self.config)
         lane_reported_at = self.state.lane_reported_at
         for row in rows:
+            harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+            by_prefix = _identity_is_a_prefix(row)
             row.update(
                 deliveries.published(
                     entries,
-                    str(row.get("harness") or ""),
-                    str(row.get("sid") or ""),
+                    harness,
+                    sid,
                     lane_reported_at=lane_reported_at,
-                    by_prefix=_identity_is_a_prefix(row),
+                    by_prefix=by_prefix,
                 )
+            )
+            # The same sentences again, narrowed to the lane that raises a
+            # departure, because the flat keys above carry the LATEST raise of
+            # ANY lane and four lanes write this store. A surface printing an
+            # outcome BESIDE a departure reads this one; the session page's
+            # NOTIFICATIONS block, which is about the notifications and not
+            # about a departure, keeps the flat keys. One nested carrier rather
+            # than seven more flat names, and it never enters session history,
+            # so `history.PROMPT_TEXT_ALLOWLIST`'s reason for the flat
+            # annotation fields does not reach it.
+            row["delivery_departure"] = deliveries.published(
+                entries,
+                harness,
+                sid,
+                lane_reported_at=lane_reported_at,
+                by_prefix=by_prefix,
+                lane=unasked.LANE,
             )
         return {
             "delivery_counts": deliveries.counts(entries),

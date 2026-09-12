@@ -656,16 +656,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "18df55e08478d59523e92cee046a623f277f7129f6043618d3d9ff64d968e836",
             ),
             "next-intent.js": (
-                9_723,
-                "2ee3671871d737cac1e561bb3152cd90595edb8d40dc10f89f86656d8edca676",
+                10_502,
+                "3933025d6a883841e3a376415a7bacff9359633b4e55a13f4153db5c5cf30db1",
             ),
             "next-activity.js": (
                 6_632,
                 "62f971c5e2a570068b7e2c3ee72b2499774d14a3b739f6f908962f91b98382f1",
             ),
             "next-session.js": (
-                30_409,
-                "0d2711863d47b914ef1fb6dbe31603147e47a5680bec9ccaeaf83d891dbb9572",
+                31_876,
+                "6d4d9b998e7dbe62967af940ef754da3821e6401ec55cdbaab0934e54acb1280",
             ),
             "next-workstream.js": (
                 18_659,
@@ -680,8 +680,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
-                171_842,
-                "3d5f9ad62a4e252c0d5ebebe971ed622acc3b11201528bf7bb4c706cbed4d05d",
+                175_610,
+                "bdd805fa472f1268b533da8e68227f28a94afe1f706964cd60ba7b0746c123f5",
             ),
             "next-render.js": (
                 8_901,
@@ -700,21 +700,64 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(106_101, len(styles))
+        self.assertEqual(106_846, len(styles))
         self.assertEqual(
-            "9f9f4d88ced7e339f380fbcfb3a98dacec021041fb91c4101668f4d52f57148e",
+            "8daaef86db76386b9ce8301c760436d687e50158529ad675768a6fb43e51d313",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(849_911, len(assembled))
+        self.assertEqual(856_670, len(assembled))
         self.assertEqual(
-            "c64c3945b542b25d2063444aa4461e25d63d9c9f40ad9e00b1f816c79b93eba4",
+            "224a980731278cc67509b8c63a9241096742b2155f7c746df7ffef82bb54c69b",
             hashlib.sha256(assembled).hexdigest(),
         )
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class OneDepartureRowTreatmentTest(unittest.TestCase):
+    """DRC-4514. The design's own note: reuse this row, do not invent a second.
+
+    The review section puts two collections under one heading, and until this
+    was pinned the two rows in it rendered in four different sizes each -- 10px
+    against 12.5px for the constraint, 12.5px against 11.5px for the clause,
+    13.5px against 12.5px for the model's sentence, 10px against 11.5px for the
+    evidence line. The third treatment's band is 13 to 13.5px, so the sentence
+    at 12.5px was outside it as well as different from its neighbour.
+
+    Asserted as shared SELECTORS rather than as matching values, because two
+    declaration lists that happen to agree today are the state this drifted out
+    of. One rule cannot disagree with itself.
+    """
+
+    def test_the_two_departure_rows_are_declared_by_one_rule_each(self) -> None:
+        styles = frontend_page.asset_path("styles.css").read_bytes().decode()
+        rules: dict[str, list[str]] = {}
+        for chunk in styles.split("}"):
+            head, _, body = chunk.rpartition("{")
+            if head:
+                rules.setdefault(head.strip().splitlines()[-1].strip(), []).append(body)
+
+        for cockpit, session in (
+            (".next-cockpit-departure", ".next-session-departure"),
+            (".next-cockpit-reading-name", ".next-session-departure-name"),
+            (".next-cockpit-reading-clause", ".next-session-departure-clause"),
+            (".next-cockpit-reading-detail", ".next-session-departure-reading"),
+            (".next-cockpit-reading-evidence", ".next-session-departure-base"),
+        ):
+            with self.subTest(pair=session):
+                shared = [
+                    head
+                    for head in rules
+                    if cockpit in head.split(",") and session in head.split(",")
+                ]
+                self.assertEqual(
+                    1,
+                    len(shared),
+                    f"{session} must share exactly one declaration list with {cockpit}",
+                )
+
+
 class NextPageBehaviorTest(NextPageJsHarness):
     def test_the_next_bundle_reads_query_values(self) -> None:
         out = self._run_page_js(

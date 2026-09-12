@@ -136,13 +136,16 @@ What was raised is reviewable rather than only raised. The Held to tab collects,
 the departures a reading you asked for produced, the departures the checks run while you were away
 produced, what became of the raise, and the figures; the Intent log carries a line per session
 saying what was raised against the words on it, and keeps that after the row leaves the board.
-Where it stops is the follow-up. What later evidence showed is derived from later checks in the
-same store, so the common answer is that there is none yet, and the board says which of two reasons
+Where it stops is the follow-up. What came after a raise is derived from later checks in the same
+store, so the common answer is that no later check has read the session, and the board says that
 rather than leaving a blank that would read as nothing having gone wrong. Where a later check did
-read evidence from after the raise, the sentence says what that evidence showed and never that the
-raise caused it. The figures are attempts and hand-overs, published separately with no arithmetic
-between them: a count identifies a session worth reading and settles nothing about whether the
-brief, the agent or Cargento's own judgement was poor.
+run, the sentence says what that check found and never that the raise caused it — and it says a
+later check ran rather than that it read newer evidence, because the store records when each check
+ran and holds no evidence bound to support the stronger claim. The figures are five labelled lines
+with no arithmetic between them: the departures each of the two collections raised, counted from
+the rows it renders, and the board's raises, attempts and hand-overs. A count identifies a session
+worth reading and settles nothing about whether the brief, the agent or Cargento's own judgement
+was poor.
 
 A notification the board raised now carries what became of it, so a signal that never left the
 machine is not read as one you ignored. What it can say stops at the hand-over: on macOS the

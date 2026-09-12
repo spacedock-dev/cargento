@@ -326,6 +326,32 @@ console.log(JSON.stringify({
         self.assertIn("has not checked this session against what you asked for", visible)
         self.assertNotIn("0 departures", visible)
 
+    def test_a_row_says_nothing_about_a_check_when_the_lane_is_not_running(self) -> None:
+        """The same board state was getting two accounts on two surfaces.
+
+        `departures.why` is called by the route with no lane gate, defensibly:
+        with the switch off the store is empty and "not checked" is literally
+        true. But the session page and the departure review both DROP the block
+        under the same switch, so a default board printed "Cargento has not
+        checked this session against what you asked for" on every row here,
+        four words above the closing note's own "and nothing watches for one".
+        A feature that is not running is not a check merely pending. The switch
+        is explained once for the view, in that note, rather than once a row.
+        """
+        off = self.render(
+            [
+                self._row(
+                    departure_why="Cargento has not checked this session against what you "
+                    "asked for. Nothing here says whether it would have found anything."
+                )
+            ]
+        )
+
+        visible = off["visible"]
+        assert isinstance(visible, str)
+        self.assertNotIn("has not checked this session against what you asked for", visible)
+        self.assertIn("and nothing watches for one", visible)
+
     def test_the_closing_line_stops_claiming_nothing_watches_when_something_does(self) -> None:
         """The clause was unconditional in both branches and false under the switch."""
         off = self.render([self._row()])

@@ -111,8 +111,20 @@ function nextIntentClose(ordered){
    published list the Held to tab renders from, which filters the checks that
    raised nothing, so it is a count of raises and not of store rows. Where there
    is none, the server's own sentence says which of the four reasons, because a
-   bare zero here would read as a session found to be on track. */
+   bare zero here would read as a session found to be on track.
+
+   Nothing at all when the lane is off, which is the rule the session page and
+   the departure review already apply to the same switch. `departures.why` is
+   called by the route with no lane gate -- defensibly, since an empty store
+   makes "not checked" literally true -- and this row printed the result, so a
+   default board said "Cargento has not checked this session against what you
+   asked for" on every row, four words above the closing note's own "and nothing
+   watches for one". A check merely pending and a feature not running are
+   different states and the same board state was getting both accounts. The
+   closing note is where the switch is explained, once for the view, rather than
+   once per row. */
 function nextIntentDepartures(row){
+  if(!(nextData && nextData.unasked === true)) return "";
   const rows = Array.isArray(row && row.departures) ? row.departures : [];
   if(rows.length){
     return `${rows.length === 1 ? "One departure" : `${rows.length} departures`} raised`;

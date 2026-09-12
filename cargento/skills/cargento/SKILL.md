@@ -276,14 +276,16 @@ later direction is unsettled a reading states no departure at all.
 `DEPARTURES RAISED TO YOU` is where a raise is reviewed, and it keeps two collections apart. One
 holds what a reading you asked for raised; the other holds what the checks run while you were away
 raised, with the annotation revision each read against and where its evidence stopped. Under both
-sits what became of the raise, and a raise with no delivery record on file says that rather than
-showing nothing. Each raised constraint carries what later evidence showed, derived from later
+sits what became of that lane's raise, and a raise with no delivery record on file says that rather
+than showing nothing. Each raised constraint carries what a later check found, derived from later
 checks rather than from a second reading: the usual answer is that no later check has read the
-session, and where one has, the sentence says what its evidence showed and never that the raise
-caused it. The figures beneath are departures on this session and, for the board, raises, attempts
-and hand-overs, printed as separate lines with no arithmetic between them. A count identifies a
-session worth reading and settles nothing else. The Intent log carries the same raises a line at a
-time, and keeps them after the session leaves the board.
+session, and where one has, the sentence says what it found and never that the raise caused it. The
+figures beneath are one line per collection — the departures the reading raised and the departures
+the away checks raised, each counted from the rows shown beside it — then the board's raises,
+attempts and hand-overs, with no arithmetic between any of them. A count identifies a session worth
+reading and settles nothing else. Clearing what you asked withdraws the raises made against it: the
+words go from the departure record too, and only the fact that a check ran stays. The Intent log
+carries the same raises a line at a time, and keeps them after the session leaves the board.
 
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer

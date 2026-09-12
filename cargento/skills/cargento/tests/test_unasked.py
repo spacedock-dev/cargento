@@ -313,6 +313,7 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
                 "revision": 4,
                 "cutoff": 900.0,
                 "cutoff_text": "",
+                "withdrawn": False,
             }
             for n in range(20)
             for _ in range(self.harness.config.unasked_session_cap)
@@ -498,6 +499,29 @@ class TheRaiseCarriesItsOwnBaselineTest(unittest.TestCase):
         self.assertEqual("", stored["cutoff_text"])
         self.assertEqual(5_000.0, stored["cutoff"], "the moment is still recorded")
 
+    def test_the_cutoff_is_the_same_clock_as_the_moment_the_check_ran(self) -> None:
+        """The premise `departures.follow_up` may not compare, bound here.
+
+        Both write sites record `cutoff = now`, so it is an upper bound on the
+        evidence and not a second, comparable number. `follow_up` once tested
+        one row's cutoff against another's and reported that the later check had
+        "read evidence from after this raise"; that test was `at > at` written
+        twice, and its own fixture built a row with `at` 2000 and `cutoff` 900,
+        which neither of these two sites can produce. If a real evidence bound
+        is ever recorded, this assertion is the one that must be changed first.
+        """
+        raised = departures.load(self.harness.config)[0]
+        quiet = _Harness(
+            _config(Path(self.temp.name) / "quiet"), _assessment(reading.RESULT_CONSISTENT)
+        )
+        quiet.consider([_row(state="working")])
+        quiet.consider([_row(state="idle")])
+        check = departures.load(quiet.config)[0]
+
+        self.assertEqual(raised["at"], raised["cutoff"])
+        self.assertEqual("", check["constraint"], "the row for a check that raised nothing")
+        self.assertEqual(check["at"], check["cutoff"])
+
 
 class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
     """AC5. The reader is by construction not present, so "nothing departed" and
@@ -527,6 +551,7 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
                 "revision": 4,
                 "cutoff": 4_000.0 + n,
                 "cutoff_text": "",
+                "withdrawn": False,
             }
             for n in range(count)
         ]
@@ -749,6 +774,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
                     "revision": 4,
                     "cutoff": 900.0,
                     "cutoff_text": "",
+                    "withdrawn": False,
                 }
             ],
             diagnostic_sink=lambda _line: None,
@@ -784,6 +810,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
                 "revision": 4,
                 "cutoff": 900.0,
                 "cutoff_text": "",
+                "withdrawn": False,
             }
             for n in range(3)
         ]

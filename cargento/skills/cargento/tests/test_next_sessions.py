@@ -1200,13 +1200,18 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
         Measured on the board: two departures rendered with the notifications
         block simply absent, so nothing distinguished a raise that failed from
         a departure nobody was ever alerted to.
+
+        Read from the DEPARTURE LANE's own figures rather than the flat keys,
+        because those carry the latest raise of any of the four lanes that write
+        the store: a gate raise on the same session would otherwise cancel this
+        sentence beside a departure nothing was raised about.
         """
         html = self.detail(
             'departures: [{constraint: "Goal", clause: "", reading: "went elsewhere",'
             ' evidence: "", revision: 2, cutoff: 1700000000, follow_up: ""}],'
-            ' departure_why: "", delivery_raises: 0, delivery_why: "",'
+            ' departure_why: "", delivery_raises: 3, delivery_departure: {delivery_raises: 0,'
             ' delivery_none_why: "No notification raise about this session is on record, so '
-            'nothing here says one was attempted.", browser_lane_why: ""'
+            'nothing here says one was attempted."}, browser_lane_why: ""'
         )
 
         self.assertIn("No notification raise about this session is on record", html)
@@ -1216,8 +1221,8 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
         # neither draws neither panel.
         html = self.detail(
             'departures: [], departure_why: "Cargento has checked this session.",'
-            ' delivery_raises: 0, delivery_none_why: "No notification raise about this session '
-            'is on record.", browser_lane_why: ""'
+            ' delivery_departure: {delivery_raises: 0, delivery_none_why: "No notification '
+            'raise about this session is on record."}, browser_lane_why: ""'
         )
 
         self.assertNotIn("No notification raise about this session is on record", html)

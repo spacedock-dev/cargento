@@ -468,7 +468,7 @@ def browser_lane_why(lane_reported_at: float, raised_at: float | None) -> str:
 
 
 def _mine(
-    entries: Iterable[Delivery], harness: str, sid: str, *, by_prefix: bool
+    entries: Iterable[Delivery], harness: str, sid: str, *, by_prefix: bool, lane: str
 ) -> list[Delivery]:
     """This session's raises, under whichever binding the caller established.
 
@@ -476,8 +476,18 @@ def _mine(
     one, so a stored raise counts when its own sid starts with it. Comparing
     both ways would let an eight-character stored key claim every longer session
     that happens to begin with it.
+
+    `lane` empty is every lane, which is what the NOTIFICATIONS block on the
+    session page wants: it is about the notifications raised, whatever raised
+    them. A caller printing a sentence BESIDE a departure passes the departure
+    lane instead, because four lanes write this store and the sentence published
+    is the latest raise's: measured, a departure handed over and an unrelated
+    hook refusal an hour later printed "the notification service returned an
+    error" beside the departure that got out.
     """
     rows = [row for row in entries if row["harness"] == harness]
+    if lane:
+        rows = [row for row in rows if row["lane"] == lane]
     if not sid:
         return []
     if not by_prefix:
@@ -492,14 +502,19 @@ def published(
     *,
     lane_reported_at: float = 0.0,
     by_prefix: bool = False,
+    lane: str = "",
 ) -> dict[str, Any]:
     """What one session's row says about the raises made against it.
 
     The browser lane rides here rather than at the top of the payload even
     though it is board-wide, because its sentence is relative to the raise it
     sits beside and a single top-level sentence could not carry that gap.
+
+    `lane` narrows every figure and every sentence to one producer, and the key
+    names are unchanged so a caller renders either scope with one body. See
+    `_mine` for why a sentence printed beside a departure needs the narrow one.
     """
-    mine = _mine(entries, harness, sid, by_prefix=by_prefix)
+    mine = _mine(entries, harness, sid, by_prefix=by_prefix, lane=lane)
     latest = max(mine, key=lambda row: row["at"], default=None)
     raised_at = latest["at"] if latest else None
     return {

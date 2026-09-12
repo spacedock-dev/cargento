@@ -368,19 +368,35 @@ function nextUnaskedDepartureBody(session){
     nextDeliveryAbsence(session, rows.length > 0);
 }
 
+/* The delivery figures for the lane that raises a departure, and never the
+   board's.
+
+   The flat `delivery_*` keys carry the LATEST raise of ANY lane, and four write
+   the store: gate, ask, hook and departure. Beside a departure that is the
+   wrong scope in both directions -- a session with no departure at all printed
+   another lane's outcome under a heading about raises, and a departure that was
+   handed over printed a later hook refusal's sentence. `deliveries.published`
+   is called a second time narrowed to the lane, under this one key, with the
+   same key names inside, so the two scopes cannot be worded differently. */
+function nextDepartureDelivery(session){
+  const scoped = session && session.delivery_departure;
+  return scoped && typeof scoped === "object" ? scoped : null;
+}
+
 /* The sentence for a departure no raise was ever recorded against.
 
-   Printed only beside a departure and only when the store holds no raise for
-   this session. Walked on the board: two departures rendered with the
+   Printed only beside a departure and only when the DEPARTURE LANE holds no
+   raise for this session. Walked on the board: two departures rendered with the
    notifications block simply absent, so nothing on screen distinguished a raise
    that failed from a departure the reader was never alerted to. `deliveries`
    owns the sentence, for the reason it owns the other five. */
 function nextDeliveryAbsence(session, hasDeparture){
   if(!hasDeparture) return "";
-  const raises = Number(session && session.delivery_raises);
+  const scoped = nextDepartureDelivery(session);
+  if(!scoped) return "";
+  const raises = Number(scoped.delivery_raises);
   if(Number.isFinite(raises) && raises > 0) return "";
-  const none = String((session && session.delivery_none_why) == null
-    ? "" : session.delivery_none_why);
+  const none = String(scoped.delivery_none_why == null ? "" : scoped.delivery_none_why);
   return none ? `<p class="next-session-delivery-why">${esc(none)}</p>` : "";
 }
 
@@ -412,8 +428,17 @@ function nextSessionDepartureRow(row){
   const at = Number(row.at);
   const when = Number.isFinite(at) && at > 0
     ? `<span class="next-session-departure-at">${esc(nextSessionClock(at))}</span>` : "";
+  /* One row treatment for both parts of the review section (DRC-4514). The
+     container, the constraint name, the clause, the model's sentence and the
+     evidence line all take the cockpit reading row's declarations, which is
+     where the design's third treatment is written down: two departure rows side
+     by side under one heading, in four different sizes, is the second treatment
+     the design forbids. The name and the stamp share a head row because the
+     shared container is a flex column and a float does not survive one. */
   return '<div class="next-session-departure">' +
+    '<div class="next-session-departure-head">' +
     `<span class="next-session-departure-name">${esc(text("constraint"))}</span>${when}` +
+    "</div>" +
     (text("clause") ? `<span class="next-session-departure-clause">${esc(text("clause"))}` +
       "</span>" : "") +
     `<p class="next-session-departure-reading">${esc(text("reading"))}</p>` +

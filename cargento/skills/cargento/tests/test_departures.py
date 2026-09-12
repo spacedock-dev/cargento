@@ -49,6 +49,7 @@ def _check(**over: Any) -> departures.Check:
         "revision": 2,
         "cutoff": 1_000.0,
         "cutoff_text": "Evidence stops at 13:22.",
+        "withdrawn": False,
     }
     row.update(over)
     return row  # type: ignore[return-value]
@@ -111,17 +112,36 @@ class DepartureFollowUpTest(unittest.TestCase):
 
         self.assertEqual(departures.FOLLOW_UP_NO_LATER_CHECK, rows[0]["follow_up"])
 
-    def test_a_later_check_whose_evidence_predates_the_raise_says_so(self) -> None:
-        stored = (
-            _check(),
-            # Ran later by the clock, read older evidence. A reading of the
-            # record as it stood before the raise says nothing about after it.
-            _check(at=2_000.0, cutoff=900.0, constraint=""),
+    def test_the_sentence_claims_a_later_check_ran_and_never_what_it_read(self) -> None:
+        """The store holds no evidence bound, so no sentence may rest on one.
+
+        Both producer write sites record `cutoff = now`, so two checks over
+        byte-identical evidence carry different cutoffs and two checks over
+        different evidence can carry the same one. The branch that reported "a
+        later check read evidence from after this raise" compared those two
+        numbers, and its own test built a row the runtime cannot write: `at`
+        2000 against `cutoff` 900.
+        """
+        same_evidence = (
+            _check(cutoff_text="Read 12 of 12 entries in the observed record."),
+            _check(
+                at=2_000.0,
+                cutoff=2_000.0,
+                cutoff_text="Read 12 of 12 entries in the observed record.",
+                constraint="",
+            ),
         )
 
-        rows = departures.published(stored, "claude", "abcd1234")
+        rows = departures.published(same_evidence, "claude", "abcd1234")
 
-        self.assertEqual(departures.FOLLOW_UP_EVIDENCE_PREDATES, rows[0]["follow_up"])
+        self.assertEqual(departures.FOLLOW_UP_NOT_RAISED_AGAIN, rows[0]["follow_up"])
+        for sentence in (
+            departures.FOLLOW_UP_NOT_RAISED_AGAIN,
+            departures.FOLLOW_UP_RAISED_AGAIN,
+        ):
+            with self.subTest(sentence=sentence[:24]):
+                self.assertIn("A later check ran after this raise", sentence)
+                self.assertNotIn("evidence", sentence)
 
     def test_a_later_check_that_raised_nothing_reports_the_evidence_not_an_effect(self) -> None:
         stored = (_check(), _check(at=2_000.0, cutoff=2_000.0, constraint="", clause=""))
@@ -183,6 +203,121 @@ class DepartureCountsAreNotRaiseCountsTest(unittest.TestCase):
         # store rows would tell the reader this session departed fourteen times.
         self.assertEqual(14, len(stored))
         self.assertEqual(2, len(rows))
+
+
+class DepartureWithdrawalTest(unittest.TestCase):
+    """Clearing what you asked withdraws the raises made against those words.
+
+    `GET /api/annotations` serves the departure store for sessions that have
+    left the board, and `SECURITY.md` says words withdrawn with a clear are gone
+    from that response. `annotations.clear` deletes every revision and reaches
+    no other store, so a session cleared and re-annotated served the withdrawn
+    clause verbatim under a model's sentence about it.
+    """
+
+    def setUp(self) -> None:
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.config = _config(Path(self._dir.name))
+        departures.save(self.config, (_check(), _check(at=1_001.0, constraint="")))
+
+    def test_the_words_go_and_the_row_stays(self) -> None:
+        self.assertIs(True, departures.withdraw(self.config, "claude", "abcd1234"))
+        stored = departures.load(self.config)
+
+        # The row is still there, because it is what the caps count.
+        self.assertEqual(2, len(stored))
+        for row in stored:
+            with self.subTest(at=row["at"]):
+                self.assertIs(True, row["withdrawn"])
+                self.assertEqual("", row["clause"])
+                self.assertEqual("", row["reading"])
+                self.assertEqual("", row["constraint"])
+                self.assertEqual("", row["evidence"])
+                self.assertEqual("", row["cutoff_text"])
+        # And the raise leaves the wire it was leaking through.
+        self.assertEqual([], departures.published(stored, "claude", "abcd1234"))
+
+    def test_another_session_s_raise_is_untouched(self) -> None:
+        departures.save(
+            self.config,
+            (*departures.load(self.config), _check(sid="zzzz9999", at=1_002.0)),
+        )
+
+        departures.withdraw(self.config, "claude", "abcd1234")
+
+        rows = departures.published(departures.load(self.config), "claude", "zzzz9999")
+        self.assertEqual("do not change the board while capturing", rows[0]["clause"])
+
+    def test_a_withdrawn_session_reads_as_never_checked_against_what_you_ask_now(self) -> None:
+        departures.withdraw(self.config, "claude", "abcd1234")
+
+        why = departures.why(
+            self.config, departures.load(self.config), "claude", "abcd1234", now=2_000.0
+        )
+
+        # Not NOTHING_DEPARTED, which would say the words on the row now had
+        # been read and found clean. Nothing has read them at all.
+        self.assertEqual(departures.NEVER_CHECKED, why)
+
+    def test_a_withdrawal_is_not_a_refund_of_the_cap_it_spent(self) -> None:
+        """The row stays for exactly this reason, and the sentence must say so.
+
+        Deleting the rows would hand the session its per-session cap back, and
+        the caps are what bound a `codex` subprocess at `reasoning_effort=max`:
+        five healthy sessions ran 480 of them in a simulated day against a daily
+        cap of 12 on the version that counted raises instead of checks.
+        """
+        spent = tuple(
+            _check(at=1_000.0 + n, cutoff=1_000.0 + n, constraint="")
+            for n in range(self.config.unasked_session_cap)
+        )
+        departures.save(self.config, spent)
+        departures.withdraw(self.config, "claude", "abcd1234")
+        stored = departures.load(self.config)
+
+        mine, _today = departures.counts(stored, "claude", "abcd1234", since=0.0)
+        self.assertEqual(self.config.unasked_session_cap, mine)
+        # And the board says the cap is spent rather than only that nothing has
+        # been checked, because no further check will run either way.
+        self.assertEqual(
+            departures.SESSION_EXHAUSTED,
+            departures.why(self.config, stored, "claude", "abcd1234", now=2_000.0),
+        )
+
+    def test_nothing_to_withdraw_is_a_success_and_not_a_write(self) -> None:
+        before = Path(departures.store_path(self.config)).read_bytes()
+
+        self.assertIs(True, departures.withdraw(self.config, "claude", "no-such-session"))
+
+        self.assertEqual(before, Path(departures.store_path(self.config)).read_bytes())
+
+    def test_a_rewritten_file_cannot_serve_a_withdrawn_raise_by_keeping_a_constraint(
+        self,
+    ) -> None:
+        """The mark is tested, not only the blanking it comes with.
+
+        `withdraw` blanks the quotations AND marks the row, so the constraint
+        filter alone happens to hide what it produces and a test through the
+        producer cannot tell the two guards apart. This file is writable by any
+        local process, which is the whole reason `_entry` type-checks it, and a
+        row marked withdrawn while still carrying a constraint is what that
+        process would write.
+        """
+        departures.save(
+            self.config,
+            (_check(withdrawn=True), _check(at=1_003.0, constraint="EXPECTED OUTPUT")),
+        )
+
+        rows = departures.published(departures.load(self.config), "claude", "abcd1234")
+
+        self.assertEqual(["EXPECTED OUTPUT"], [row["constraint"] for row in rows])
+
+    def test_the_mark_never_reaches_the_wire(self) -> None:
+        """A served row is by construction not withdrawn, so the key is noise."""
+        rows = departures.published(departures.load(self.config), "claude", "abcd1234")
+
+        self.assertNotIn("withdrawn", rows[0])
 
 
 if __name__ == "__main__":  # pragma: no cover

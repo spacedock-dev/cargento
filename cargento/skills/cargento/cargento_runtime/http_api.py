@@ -60,6 +60,29 @@ def _websocket_frame(opcode: int, payload: bytes) -> bytes:
     return header + payload
 
 
+def _withdraw_raises(application: Application, outcome: str, harness: str, sid: str) -> None:
+    """Take the cleared words out of the departure store as well.
+
+    A withdrawal is one act over two stores. A departure quotes the cleared
+    clause and carries a model's paragraph about it, and `/api/annotations`
+    serves both for sessions that have left the board, so clearing the
+    annotation alone left the words readable there: measured, a goal cleared and
+    replaced served the old clause verbatim. `departures.withdraw` blanks them
+    and keeps the row, because the row is what bounds the lane's spend.
+
+    Only after a clear that landed. A refused or unwritable clear left the words
+    in the annotation store, and taking the raises out beneath them would leave
+    the two stores disagreeing about whether the withdrawal happened. The reply
+    is unchanged either way: `persisted` and `outcome` are about the annotation
+    store, which is what the reader typed into.
+    """
+    if outcome != annotation_store.OUTCOME_STORED:
+        return
+    departures.withdraw(
+        application.config, harness, sid, diagnostic_sink=application.diagnostic_sink
+    )
+
+
 def normalize_host(value: str) -> str:
     """Reduce a ``Host`` header to a bare, lowercased hostname.
 
@@ -1286,6 +1309,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             outcome = annotation_store.clear(
                 config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
             )
+            _withdraw_raises(application, outcome, harness, sid)
         elif settle_through is not None:
             # A third arm on this route rather than a route of its own: the
             # subject is the same session's annotation, the reply shape is the
