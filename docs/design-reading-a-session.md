@@ -317,6 +317,44 @@ What this costs is that the marker is also the person who wants the feature, so 
 permissive direction has nobody to catch it. The mitigation is the first of those three, and it is
 weaker than a second reader.
 
+#### How the check is run, 2026-09-12
+
+Two scripts, both outside the gate and neither in CI. `scripts/mark_abstention.py --build` draws
+cases from the live board into `~/.cargento/abstention-cases.json`, and its marking mode collects
+the captain's `judge` or `abstain` per constraint into `~/.cargento/abstention-marks.json`.
+`scripts/score_abstention.py --score` then hands each case to `reading.produce` with the two
+constant yardstick sentences as a synthetic revision, through `reading.CodexReadingModel`, and
+writes two halves: a local results file beside the cases, and a committable summary under
+`docs/abstention/`. Where the cases live and what each file may hold is the security ruling, in
+[SECURITY.md](../SECURITY.md#the-abstention-check).
+
+Each (case, constraint) lands in exactly one of `withheld:<reason>`, `unparsed`, `abstained`,
+`judged:consistent` or `judged:departure`. Withheld is its own column because the corpus this was
+written against made the trap concrete: twenty of twenty three cases had an empty ledger, so the
+producer refused them before any model call. Folding that into "abstained" would have reported a
+producer that never abstains as one that always does, on three exercised sessions. A withheld case
+counts for neither side. `unparsed` is kept apart from `abstained` because rule 2's fallback renders
+the same sentence and is a different fact.
+
+The output column is mostly the ruling's. Only a work-evidence harness is asked the Expected
+Output question (`asks_output`), the collector fixes the mark to `abstain` everywhere else, and
+`resolve` answers `not verifiable` there without asking. The scorer records `asks_output` per case
+and the report says how many output columns were never asked, so twenty three abstentions on a
+corpus with no Pi session read as the ruling's answer rather than as the model abstaining twenty
+three times.
+
+PASS therefore needs two things. No case marked should-abstain judged; a judge mark that abstains is
+recorded and does not fail. And the coverage floor: at least one evidence-bearing, kind-tagged,
+recorded case per DEC-15 kind, on both Claude and Codex, that reached the model. Ten, minimum. The
+kind tags come from the rubric expectation file's `recorded` entries, so tagging a case after the
+fact does not touch the marks. Below the floor the verdict is `short` and PASS is refused with the
+shortfall printed per harness. The summary also carries the sha256 of the marks file as scored, and
+a later report whose marks no longer hash to it says the marks moved and refuses PASS.
+
+The scorer never writes to the annotation store, never posts to the reading route, and never flips
+`annotations.ABSTENTION_CHECK`. The flip is a separate change, made by hand, after a run has passed
+on a corpus that meets the floor.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,
@@ -413,6 +451,17 @@ DRC-4542 before any session is read, and it may need a ruling of its own. Synthe
 instead is cheaper and carries no disclosure risk, but DEC-17 warns that a rubric validated on
 fixtures the same pass writes is not validated, so the two pull opposite ways and the answer is
 written down rather than settled by convenience.
+
+Settled 2026-09-10, and built 2026-09-12: the cases stay local and uncommitted, only expectations
+and results are committed, `records.safe_text` applies to anything synthesised, and a synthesised
+case is admitted only when a different agent verified it than generated it. The rubric scores
+judgement and extraction as two columns, never one. Judgement lands in one of five outcomes,
+`correct`, `false-reassurance`, `false-alarm`, `missed-departure` and `over-abstention`, and the
+report carries them as five counts with no composite figure, because the composite is exactly what
+hides the one DEC-15 calls most damaging. Extraction is which expected citations the producer hit,
+which it missed, and which it cited that were not expected. The file format and the admission rule
+are in [docs/abstention/README.md](abstention/README.md); the cases and expectations themselves are
+the captain's to write.
 
 ### What the build had to decide, 2026-09-11
 
