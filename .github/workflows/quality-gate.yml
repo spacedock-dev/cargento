@@ -212,7 +212,10 @@ jobs:
             scripts.tests.test_derive_prompt_shapes \
             scripts.tests.test_capture_team_registry \
             scripts.tests.test_capture_terminal_identity \
-            scripts.tests.test_capture_focus_raise
+            scripts.tests.test_capture_focus_raise \
+            scripts.tests.test_serve_operator_cockpit \
+            scripts.tests.test_mark_abstention \
+            scripts.tests.test_score_abstention
 
   test:
     name: Tests + coverage threshold
@@ -249,7 +252,10 @@ jobs:
             scripts.tests.test_derive_prompt_shapes \
             scripts.tests.test_capture_team_registry \
             scripts.tests.test_capture_terminal_identity \
-            scripts.tests.test_capture_focus_raise
+            scripts.tests.test_capture_focus_raise \
+            scripts.tests.test_serve_operator_cockpit \
+            scripts.tests.test_mark_abstention \
+            scripts.tests.test_score_abstention
 
       # No `coverage report` here. It reads `fail_under` from pyproject and
       # exits non-zero, and it ran BEFORE the label check below, so a PR

@@ -124,6 +124,18 @@ seeds a distinctive prompt into a fixture store and asserts the whole output car
 Discovering a new prose prefix is out of scope for the same reason: it cannot be done without
 printing prose.
 
+`scripts/mark_abstention.py` and `scripts/score_abstention.py` are outside the gate too, and are a
+pair. The first draws cases from a running dashboard (`--build`, against `--port`, 4553 by
+default) and collects the answer key for DEC-17's abstention check, one `judge` or `abstain` per
+constraint, from whoever is not the author of the reading prompt. The second runs the reading
+producer over those cases and reports, per case and per constraint, where each landed. `--build`
+and `--score` need the dashboard running; `--report` and marking read local files only. Scoring
+spends Codex capacity: one `codex exec` per case whose ledger holds anything citable, so run
+`--report` first, which spends nothing, and `--score` on purpose. Neither
+runs in CI, and neither may: the marks are a person's, and the run costs the operator's own quota.
+What each file may hold and where the committed half lands is in `SECURITY.md` under The abstention
+check, and the committed half's own README is `docs/abstention/README.md`.
+
 ### Tests
 
 Every behavior change to `server.py` or `cargento_runtime/` needs a regression test in

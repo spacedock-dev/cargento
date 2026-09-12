@@ -950,6 +950,46 @@ A failed call falls back to local analysis. No raw model stdout or stderr is ser
 An absent or relative `shutil.which("codex")` result is refused. An absolute installed executable
 is still trusted code; replacing it as the owning user is outside this boundary.
 
+### The abstention check
+
+The `Ask for a reading` control stays disabled until a check has run: does the producer say
+`not verifiable from available evidence` on every case a person marked, in advance, as one it
+should not judge. Two scripts run it, both outside the gate and neither in CI, and the ruling of
+2026-09-10 on what they may hold is restated here so it is not rediscovered.
+
+The cases stay local and uncommitted. `scripts/mark_abstention.py --build` writes
+`abstention-cases.json`, and that file stays on this machine, under `~/.cargento`: it names the
+session ids the cases were drawn from, and for a Claude session it carries the opening user turn,
+which is prompt text. It is never committed. Only the expectations and the results are committed.
+`abstention-marks.json` holds one sixteen-character hash of `(harness, sid)` per case and two tokens,
+`judge` or `abstain`, and nothing else. `abstention-results.json`, the scorer's local half, may
+carry the producer's withheld reason and its cutoff sentence and also stays under `~/.cargento`; the
+committable summary the scorer writes to `docs/abstention/` carries case ids, marks, outcomes,
+counts, coverage, the sha256 of the marks file as scored and a timestamp. No session id, no
+project, no title, no prompt text and no model prose reach the repository from either script, and
+a test asserts that none of the local half's fields (the session id, the project, the title, the
+opening ask, the cutoff sentence, the model's detail) appears anywhere in the summary.
+
+A scoring run spends the operator's Codex capacity once per case whose ledger holds anything
+citable, through `reading.CodexReadingModel`, the same subprocess and the same sandbox flags as
+`POST /api/reading` above. It sends exactly what that route sends for the same session: the two
+yardstick sentences in place of the reader's typed words, and the bounded, redacted menu of
+ledger entries. A case the producer refuses before the model, an empty ledger or a session the
+board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
+the run writes nothing to `cargento-annotations.json` and increments no reading count.
+
+Synthesised cases are admissible in the rubric expectation file, cross-verified by a different
+agent than generated them, and their text is agent-written rather than recorded. It goes through
+`records.safe_text` before the producer sees it: redaction before the clip, in that order, the same
+as anything derived from a transcript. The rubric file also stays under `~/.cargento`; the summary
+records for each of its cases the kind, the origin, whether it was admitted and why not, and the
+two scored columns, never the case body. Each of those is a closed token or empty: the file is
+hand-written, so an entry naming anything else -- a kind, an origin or a harness outside the sets,
+or a key that is not a case id -- is refused rather than copied into the summary.
+
+A violation here is a committed file under `docs/abstention/` carrying a session id, prompt text or
+model prose, or a scoring run that reaches the annotation store or the reading route.
+
 ### Cockpit dispatch and terminal reads
 
 Dispatch markdown is read from `XDG_RUNTIME_DIR/spacedock-dispatch` when available, with the
