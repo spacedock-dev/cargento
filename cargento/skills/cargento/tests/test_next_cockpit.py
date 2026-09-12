@@ -4998,6 +4998,64 @@ console.log(JSON.stringify({
             "the words of the revision this reading read are not retained", out["goalClause"]
         )
 
+    def test_a_stored_reason_renders_where_this_page_derives_none(self) -> None:
+        """DRC-4544 item 3, the renderer half.
+
+        The page re-derives every rule over the entries it holds, and that
+        derivation stays authoritative. What it cannot derive is why a row the
+        producer already marked `not verifiable` was marked so: a constraint
+        never put to the model looks exactly like a model that said
+        `unverifiable`, and until now the limit row came from TODAY's harness
+        rather than from the reading. The stored token fills only the gap the
+        page's own derivation leaves.
+        """
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const unv = "not verifiable from available evidence";
+const rows = (criteria, limit) =>
+  shape(criteria, limit).criteria.map(nextCockpitReadingCriterionRow).join("");
+const row = (key, why, limit) => rows(
+    {[key]: {result: unv, cites: [], detail: "", clause: "typed words", why}}, limit)
+  .split('<div class="next-cockpit-reading-row">').filter(Boolean)
+  .find(r => r.includes(key === "output" ? "EXPECTED OUTPUT" : "TYPED GOAL"));
+console.log(JSON.stringify({
+  notAsked: row("output", "not-asked", ""),
+  unreadable: row("goal", "unreadable", ""),
+  uncited: row("goal", "uncited", ""),
+  stands: row("goal", "", ""),
+  liveLimitWins: row("output", "not-asked", "Codex publishes no demonstrated work results."),
+  future: row("goal", "a-token-from-the-future", ""),
+  liveRulesWin: shape({goal: {result: "departure", cites: ["u1"], detail: "drifted",
+    clause: "x", why: "uncited"}}).criteria[0].result,
+  sentence: NEXT_READING_NOT_ASKED,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        malformed = "The reading did not return a usable result for this constraint."
+        # A stored limit draws the limit row, in the limit's own register.
+        self.assertIn("limit · ", out["notAsked"])
+        self.assertIn(out["sentence"], out["notAsked"])
+        self.assertNotIn('class="next-cockpit-reading-why"', out["notAsked"])
+        # The two rule-2 and rule-3 reasons render the sentences the page owns.
+        self.assertIn(malformed, out["unreadable"])
+        self.assertIn("Nothing resolvable was cited", out["uncited"])
+        # A result that stands carries no reason and no limit: the pair above
+        # binds on the sentence, because this row has neither.
+        self.assertNotIn(malformed, out["stands"])
+        self.assertNotIn('class="next-cockpit-reading-why"', out["stands"])
+        self.assertNotIn("limit · ", out["stands"])
+        # Today's limit wins over the stored one where both exist.
+        self.assertIn("Codex publishes no demonstrated work results.", out["liveLimitWins"])
+        self.assertNotIn(out["sentence"], out["liveLimitWins"])
+        # A token this build does not know is the unknown-key asymmetry one
+        # level down: not readable, and said so.
+        self.assertIn(malformed, out["future"])
+        # And the live rules stay authoritative: a stored reason never
+        # overrides a result the page derived from evidence it holds.
+        self.assertEqual("departure", out["liveRulesWin"])
+
     def test_rule_4_the_word_met_cannot_reach_the_page(self) -> None:
         out = self.run_fixture(
             self.ENTRIES

@@ -101,6 +101,30 @@ Named and not admitted: `assessment_at`, `assessment_cutoff`, `assessment_revisi
 serves them and the store may not hold them. The names are recorded here and in SECURITY.md so the
 change that admits them does not re-argue the naming, and each still needs its own allowlist line.
 
+### Amended 2026-09-12: a stored row says why it is not verifiable
+
+A stored reading has to mean the same thing when it is read back later, and four of its rows did
+not. A constraint never put to the model, a reply that could not be read, a departure the rules
+demoted for citing nothing, and a model that itself said `unverifiable` all stored as
+`not verifiable from available evidence` with nothing else. The page was right on screen, because
+it derives the limit from today's harness table, and wrong in the store, because a reading re-read
+after that table moved rendered a never-asked constraint as a model verdict.
+
+Each criterion now carries `why`, a token from a closed set the producer owns: empty when the
+result is the model's own, otherwise the rule that withdrew it. The page maps a token to a sentence
+it already owns rather than printing it, so this field is not a second route for producer prose.
+Tokens rather than sentences was the call, and it was made on the same ground the shape contract
+stands on: the page's own re-derivation stays authoritative, and a stored reason fills only the gap
+that derivation leaves.
+
+This is the second downgrade cost stacked in one release, beside `revision_read_at`. Both land in
+the same release on purpose: no shipped release carries either, so a reader stepping back meets one
+refusal, not two. The refusal is the existing one. A build that does not know the key refuses the
+reading whole, publishes `reading_refused` beside the press count, and writes the raw reading back
+untouched, so stepping forward again reads it. A reading stored before the field reads back with
+the reason absent, which is a reading with less in it, not a diverged one; a token this build does
+not know refuses the reading whole, like every other bad value in the store.
+
 ## DEC-16: Cargento does not write into a session
 
 A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
@@ -208,7 +232,21 @@ only under a departure. The word list is the second line and it is a judgement r
 measurement. Saying otherwise would be the same overstated claim the rule exists to stop the model
 making.
 
-### The two typed fields are one line each, and that is a security decision
+### Amended 2026-09-12: rules 2, 3 and 5 are told apart in the stored shape
+
+The seven rules say what a row may conclude and did not say how a row records which rule
+concluded it. Rule 5's limit row and rule 2's fallback are told apart on the page, which derives
+the limit itself, and were not told apart in the store, where the limit was never written. Rule
+3's demotion of an uncited departure stored byte-identically to a model that said `unverifiable`
+on its own.
+
+Every row now names the rule that left it without a verdict, as a token: `not-asked` for rule 5,
+`unreadable` for rule 2, `uncited` for rule 3, `verdict-stated` for rule 4's backstop, and
+`no-work-shown`, `board-quoting-itself` and `uncorroborated` for rule 7 and the two rules added
+beside it. Where more than one fires the producer records the one the page would have said, in the
+page's order, so a live row and its stored copy never disagree about the reason. The contract
+otherwise stands as written: the results are unchanged, the fallback for an unreadable reply is
+still an absent result rather than a present one, and the token set is closed on both sides.
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a
 single line by the same control character scrub that stops a pasted private key body surviving into

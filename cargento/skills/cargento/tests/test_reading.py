@@ -755,6 +755,108 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
         self.assertNotIn("\x1b", criterion["clause"])
         self.assertLessEqual(len(criterion["clause"]), 1000)
 
+    def test_a_reader_can_later_tell_a_limit_from_a_reading_that_could_not_be_read(self) -> None:
+        """DRC-4544 item 3: unverifiable rows that stored alike for different reasons.
+
+        A constraint never put to the model (rule 5), a reply that could not be
+        read (rule 2), a departure citing nothing (rule 3) and a model that
+        itself said `unverifiable` all stored as `not verifiable`, and a
+        reading re-read later could not say which. The page derives the limit
+        from today's harness, so it was right on screen and wrong in the
+        store: the store is the half DEC-15b exists for.
+        """
+        selection = reading.Selection(self.person)
+
+        def read(parsed: Any, *, output: str = "") -> dict[str, reading.Criterion]:
+            return reading.resolve(
+                parsed,
+                selection,
+                goal="ship the parser",
+                output=output,
+                harness="claude",
+                detail_cap_chars=200,
+            )
+
+        not_asked = read(
+            reply("consistent", "consistent", goal_cites=(1,), output_cites=(1,)),
+            output="a written report",
+        )[reading.CONSTRAINT_OUTPUT]
+        self.assertIn("why", not_asked)
+        unreadable = read(reading.parse_reply("not json at all"))[reading.CONSTRAINT_GOAL]
+        uncited = read(reply("departure", goal_cites=(99,), goal_detail="it went elsewhere"))[
+            reading.CONSTRAINT_GOAL
+        ]
+        stands = read(reply("unverifiable"))[reading.CONSTRAINT_GOAL]
+
+        self.assertEqual(not_asked["why"], reading.WHY_NOT_ASKED)
+        self.assertEqual(unreadable["why"], reading.WHY_UNREADABLE)
+        self.assertEqual(uncited["why"], reading.WHY_UNCITED)
+        self.assertEqual(stands["why"], reading.WHY_STANDS)
+        self.assertEqual(
+            4, len({not_asked["why"], unreadable["why"], uncited["why"], stands["why"]})
+        )
+        # The results themselves did not move: three say `not verifiable` and
+        # the unreadable one still says nothing, which is rule 2 kept intact.
+        for row in (not_asked, uncited, stands):
+            self.assertEqual(row.get("result"), reading.RESULT_UNVERIFIABLE)
+        self.assertNotIn("result", unreadable)
+
+    def test_every_demotion_names_itself_with_a_token_the_store_accepts(self) -> None:
+        """The other four demotions, each its own token, all inside the closed set."""
+        claim = entry(id="a1", type="assistant_message", summary="I've written ./out.csv")
+        cases: tuple[tuple[str, Any, tuple[reading.LedgerEntry, ...], str, str, str], ...] = (
+            (
+                reading.WHY_NO_WORK_SHOWN,
+                reply(output_token="consistent", output_cites=(1,)),  # noqa: S106 - a verdict token, not a credential
+                (claim,),
+                reading.CONSTRAINT_OUTPUT,
+                "a CSV at ./out.csv",
+                "pi",
+            ),
+            (
+                reading.WHY_BOARD_QUOTING_ITSELF,
+                reply("consistent", goal_cites=(1,)),
+                (derived_entry(),),
+                reading.CONSTRAINT_GOAL,
+                "",
+                "claude",
+            ),
+            (
+                reading.WHY_UNCORROBORATED,
+                reply("consistent", goal_cites=(1,)),
+                (person_entry(),),
+                reading.CONSTRAINT_GOAL,
+                "",
+                "claude",
+            ),
+            (
+                reading.WHY_VERDICT_STATED,
+                reply("departure", goal_cites=(1,), goal_detail="the goal was met and delivered"),
+                (entry(),),
+                reading.CONSTRAINT_GOAL,
+                "",
+                "claude",
+            ),
+        )
+        seen: set[str] = set()
+        for expected, parsed, rows, constraint, output, harness in cases:
+            with self.subTest(why=expected):
+                criterion = reading.resolve(
+                    parsed,
+                    reading.Selection(rows),
+                    goal="ship the parser",
+                    output=output,
+                    harness=harness,
+                    detail_cap_chars=200,
+                )[constraint]
+                self.assertEqual(criterion.get("result"), reading.RESULT_UNVERIFIABLE)
+                self.assertEqual(criterion["why"], expected)
+                self.assertIn(expected, reading.WHY_TOKENS)
+                seen.add(expected)
+        self.assertEqual(4, len(seen))
+        self.assertEqual(8, len(reading.WHY_TOKENS))
+        self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
+
 
 class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
     """DEC-17 rule 7 and the derived column beside it."""

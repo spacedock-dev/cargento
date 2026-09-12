@@ -72,7 +72,13 @@ def _assessment(*results: str) -> reading.Assessment:
         "scope_text": "",
         "ended_at_read": None,
         "criteria": {
-            f"c{n}": {"result": result, "cites": ("e1",), "detail": "went elsewhere", "clause": "G"}
+            f"c{n}": {
+                "result": result,
+                "cites": ("e1",),
+                "detail": "went elsewhere",
+                "clause": "G",
+                "why": reading.WHY_STANDS,
+            }
             for n, result in enumerate(results)
         },
     }

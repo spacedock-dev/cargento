@@ -721,6 +721,18 @@ class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
             self._js_list(self.source, "NEXT_READING_WORK_TYPES"),
         )
 
+    def test_the_page_names_a_sentence_for_every_reason_the_producer_may_store(self) -> None:
+        """A stored `why` the page cannot map renders as an unreadable reply.
+
+        That is the safe direction and it is silent, so the token set is
+        compared here rather than discovered on screen. The producer's empty
+        token means the result stands and needs no sentence.
+        """
+        start = self.source.index("const NEXT_READING_STORED_WHY = {")
+        body = self.source[start : self.source.index("};", start)]
+        keys = set(re.findall(r'"([a-z-]+)":', body))
+        self.assertEqual(set(reading.WHY_TOKENS) - {reading.WHY_STANDS}, keys)
+
     def test_the_page_reads_the_revision_key_the_producer_actually_writes(self) -> None:
         # The specific spelling, because this is the pair that fails silently.
         self.assertIn("source.revision_read", self.source)

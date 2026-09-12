@@ -1157,6 +1157,74 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
             )
         )
 
+    def test_a_stored_reading_keeps_why_each_row_is_unverifiable(self) -> None:
+        # DRC-4544 item 3. The reason a row is `not verifiable` is part of what
+        # the reading means, and a reading re-read under a later build cannot
+        # re-derive it from today's harness.
+        criteria = {
+            "goal": {
+                "result": runtime_reading.RESULT_UNVERIFIABLE,
+                "cites": (),
+                "detail": "",
+                "clause": "rename the flag",
+                "why": runtime_reading.WHY_UNREADABLE,
+            },
+            "output": {
+                "result": runtime_reading.RESULT_UNVERIFIABLE,
+                "cites": (),
+                "detail": "",
+                "clause": "",
+                "why": runtime_reading.WHY_NOT_ASKED,
+            },
+        }
+        annotation_store.record_reading(
+            self.config, self.state, "claude", "s1", assessment=self._assessment(criteria=criteria)
+        )
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        stored = entry.get("assessment")
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(runtime_reading.WHY_UNREADABLE, stored["criteria"]["goal"]["why"])
+        self.assertEqual(runtime_reading.WHY_NOT_ASKED, stored["criteria"]["output"]["why"])
+
+    def test_a_reason_this_build_does_not_know_refuses_the_reading_whole(self) -> None:
+        # A closed set, refused whole like every other bad key: a half-read
+        # reading is worse than none, and a reason invented by a rewrite of the
+        # file would otherwise render as the board's own sentence.
+        def criteria(why: Any) -> dict[str, Any]:
+            return {
+                "goal": {
+                    "result": runtime_reading.RESULT_UNVERIFIABLE,
+                    "cites": (),
+                    "detail": "",
+                    "clause": "g",
+                    "why": why,
+                },
+                "output": {
+                    "result": runtime_reading.RESULT_UNVERIFIABLE,
+                    "cites": (),
+                    "detail": "",
+                    "clause": "",
+                    "why": "",
+                },
+            }
+
+        for why in ("a-token-from-the-future", 3, None, ["uncited"]):
+            with self.subTest(why=why):
+                self.assertIsNone(
+                    annotation_store._assessment(self._assessment(criteria=criteria(why)), 240)
+                )
+        # And a reading stored before the field existed reads back with the
+        # reason absent rather than being refused: a missing key is a reading
+        # with less in it, not a diverged one.
+        criteria_before = criteria("")
+        for row in criteria_before.values():
+            del row["why"]
+        parsed = annotation_store._assessment(self._assessment(criteria=criteria_before), 240)
+        assert parsed is not None
+        self.assertEqual(runtime_reading.WHY_STANDS, parsed["criteria"]["goal"]["why"])
+
 
 class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.TestCase):
     """`final` is a durable claim about a session id, not a state of the page.
@@ -1446,6 +1514,56 @@ class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
         with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
             written = json.load(handle)
         self.assertNotIn("refused", written["entries"][0])
+
+    def test_a_reading_carrying_why_is_refused_whole_by_a_build_that_predates_it(self) -> None:
+        """DRC-4544 item 3, the downgrade half: what v0.23.0 does with `why`.
+
+        The older build is simulated by its criterion key list. It must refuse
+        the reading whole, publish the refusal beside the press count, and
+        write the raw reading back untouched so this build reads it again --
+        the path `revision_read_at` already takes at the assessment level.
+        """
+        stored = {
+            "revision_read": 1,
+            "revision_read_at": 100.0,
+            "stamp": "read at 10:00",
+            "cutoff": "Read 1 of 1 entries",
+            "scope": runtime_reading.SCOPE_FINAL,
+            "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
+            "ended_at_read": 99.0,
+            "criteria": {
+                "goal": {
+                    "result": runtime_reading.RESULT_UNVERIFIABLE,
+                    "cites": [],
+                    "detail": "",
+                    "clause": "ship it",
+                    "why": "unreadable",
+                },
+                "output": {
+                    "result": runtime_reading.RESULT_UNVERIFIABLE,
+                    "cites": [],
+                    "detail": "",
+                    "clause": "",
+                    "why": "not-asked",
+                },
+            },
+        }
+        older_build = ("result", "cites", "detail", "clause")
+        with mock.patch.object(runtime_reading, "CRITERION_KEYS", older_build):
+            row = self._write(stored)
+            self.assertIsNone(row["assessment"])
+            self.assertTrue(row["reading_refused"])
+            self.assertEqual(1, row["reading_count"])
+            entries = annotation_store.load(self.config)
+            self.assertTrue(annotation_store.save(self.config, entries, diagnostic_sink=print))
+        with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertEqual(stored, written["entries"][0]["assessment"])
+        # This build reads what the older one carried.
+        current = self._write(stored)
+        self.assertFalse(current["reading_refused"])
+        assert current["assessment"] is not None
+        self.assertEqual("not-asked", current["assessment"]["criteria"]["output"]["why"])
 
 
 if __name__ == "__main__":

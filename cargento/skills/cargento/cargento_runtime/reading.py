@@ -96,7 +96,37 @@ ASSESSMENT_KEYS = (
     "ended_at_read",
     "criteria",
 )
-CRITERION_KEYS = ("result", "cites", "detail", "clause")
+CRITERION_KEYS = ("result", "cites", "detail", "clause", "why")
+
+# Why a row is `not verifiable`, as a closed token set. Four different things
+# stored byte-identically before this: a constraint never put to the model
+# (rule 5), a reply that could not be read (rule 2), a departure citing
+# nothing (rule 3) and a model that itself said `unverifiable`. The page was
+# right on screen, because it re-derives the limit from today's harness, and
+# wrong in the store, because a reading re-read later could not say which --
+# and the store is the half DEC-15b exists for. Tokens rather than sentences,
+# per decisions.md (DRC-4544 item 3): the page keeps its own derivation
+# authoritative and maps a token to a sentence it already owns, so no producer
+# prose reaches the page through this field either. The empty token means the
+# result stands as the model gave it.
+WHY_STANDS = ""
+WHY_NOT_ASKED = "not-asked"
+WHY_UNREADABLE = "unreadable"
+WHY_UNCITED = "uncited"
+WHY_NO_WORK_SHOWN = "no-work-shown"
+WHY_BOARD_QUOTING_ITSELF = "board-quoting-itself"
+WHY_UNCORROBORATED = "uncorroborated"
+WHY_VERDICT_STATED = "verdict-stated"
+WHY_TOKENS = (
+    WHY_STANDS,
+    WHY_NOT_ASKED,
+    WHY_UNREADABLE,
+    WHY_UNCITED,
+    WHY_NO_WORK_SHOWN,
+    WHY_BOARD_QUOTING_ITSELF,
+    WHY_UNCORROBORATED,
+    WHY_VERDICT_STATED,
+)
 
 # Rule 7 turns on who wrote an evidence entry, so the answer is a closed
 # set rather than a truthy check. `derived` is the third value and it is the
@@ -386,12 +416,18 @@ class Criterion(TypedDict):
     rule 2's fallback made structural, and it is a different fact from
     `not verifiable from available evidence`: one says the reading could not be
     read, the other says the evidence does not support a verdict.
+
+    `why` is one of `WHY_TOKENS` and names which rule left the row without a
+    verdict, so the stored reading means the same thing when it is re-read
+    under a build whose harness table has moved. `WHY_STANDS` when the result
+    is the model's own.
     """
 
     result: NotRequired[str]
     cites: tuple[str, ...]
     detail: str
     clause: str
+    why: str
 
 
 class Assessment(TypedDict):
@@ -910,6 +946,36 @@ def _states_a_verdict(detail: str, result: str) -> bool:
     return False
 
 
+def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> str:
+    """Which evidence rule a verdict fails, as its `why` token, or `WHY_STANDS`.
+
+    Three rules, checked in the page's order, so the stored reason and the
+    sentence the page derives for a live row name the same rule when more
+    than one fires: a derived-only citation is also uncorroborated, and the
+    page says "quoting itself" for it.
+    """
+    # Rule 7, as amended: a verdict about the deliverable needs an entry that
+    # demonstrates work. The reader's own request does not, and nor does the
+    # agent saying it finished.
+    if name == CONSTRAINT_OUTPUT and not any(demonstrates_work(entry) for entry in cited):
+        return WHY_NO_WORK_SHOWN
+    # On either constraint, a verdict resting only on Cargento's own paraphrase
+    # is this board quoting itself.
+    if {entry["author"] for entry in cited} == {AUTHOR_DERIVED}:
+        return WHY_BOARD_QUOTING_ITSELF
+    # A `consistent` needs something that speaks to what the session DID. The
+    # reader restating what she wanted is the constraint, not the work, so
+    # agreeing with it is circular -- and it is the shape a reader is most
+    # likely to misread as corroboration, because the words match. A DEPARTURE
+    # on her own words is different and stays: a stated change of direction is
+    # exactly what that evidence is good for.
+    if result == RESULT_CONSISTENT and not any(
+        entry["author"] == AUTHOR_AGENT or demonstrates_work(entry) for entry in cited
+    ):
+        return WHY_UNCORROBORATED
+    return WHY_STANDS
+
+
 def _resolve_one(
     row: Mapping[str, Any],
     by_index: Mapping[int, LedgerEntry],
@@ -925,6 +991,10 @@ def _resolve_one(
     from nothing toward it.
     """
     result = RESULT_BY_TOKEN.get(str(row.get("token") or "").strip().casefold())
+    # Which rule took the verdict away, if one did. Set beside each demotion
+    # below rather than inferred afterwards, because two of them leave the
+    # criterion byte-identical to a model that said `unverifiable` itself.
+    why = WHY_STANDS if result else WHY_UNREADABLE
     raw_cites = row.get("cites")
     # Deduped here as well as in `parse_reply`, because `resolve` is callable
     # with a hand-built dict and the page draws one row per citation: three
@@ -939,38 +1009,23 @@ def _resolve_one(
     cited = [by_index[value] for value in wanted[:MAX_CITES] if _citable(by_index[value])]
     if result in (RESULT_DEPARTURE, RESULT_CONSISTENT) and not cited:
         result = RESULT_UNVERIFIABLE
-    authors = {entry["author"] for entry in cited}
-    # Rule 7, as amended: a verdict about the deliverable needs an entry that
-    # demonstrates work. The reader's own request does not, and nor does the
-    # agent saying it finished.
-    no_work_shown = name == CONSTRAINT_OUTPUT and not any(
-        demonstrates_work(entry) for entry in cited
-    )
-    # On either constraint, a verdict resting only on Cargento's own paraphrase
-    # is this board quoting itself.
-    board_quoting_itself = authors == {AUTHOR_DERIVED}
-    # A `consistent` needs something that speaks to what the session DID. The
-    # reader restating what she wanted is the constraint, not the work, so
-    # agreeing with it is circular -- and it is the shape a reader is most
-    # likely to misread as corroboration, because the words match. A DEPARTURE
-    # on her own words is different and stays: a stated change of direction is
-    # exactly what that evidence is good for.
-    uncorroborated = result == RESULT_CONSISTENT and not any(
-        entry["author"] == AUTHOR_AGENT or demonstrates_work(entry) for entry in cited
-    )
-    if (
-        result
-        and result != RESULT_UNVERIFIABLE
-        and (no_work_shown or board_quoting_itself or uncorroborated)
-    ):
-        result = RESULT_UNVERIFIABLE
+        why = WHY_UNCITED
+    if result and result != RESULT_UNVERIFIABLE:
+        rests_on_nothing = _rests_on_nothing(result, name, cited)
+        if rests_on_nothing:
+            result, why = RESULT_UNVERIFIABLE, rests_on_nothing
     raw_detail = str(row.get("detail") or "")
     # Rule 4's backstop, on the untruncated prose, and only ever a demotion. It
     # never CREATES a result: a reply carrying no usable token keeps rule 2's
     # absence, and a verdict word in its prose must not turn that into a
     # finding.
-    if result and raw_detail and _states_a_verdict(raw_detail, result):
-        result = RESULT_UNVERIFIABLE
+    if (
+        result
+        and result != RESULT_UNVERIFIABLE
+        and raw_detail
+        and _states_a_verdict(raw_detail, result)
+    ):
+        result, why = RESULT_UNVERIFIABLE, WHY_VERDICT_STATED
     detail = records.safe_text(raw_detail, detail_cap_chars)
     if detail and len(raw_detail) > len(detail):
         # A cut sentence loses its qualifier, and the qualifier is always last.
@@ -982,6 +1037,7 @@ def _resolve_one(
         # explanation is the renderer's own constant.
         "detail": detail if result == RESULT_DEPARTURE else "",
         "clause": clause,
+        "why": why,
     }
     if result:
         criterion["result"] = result
@@ -1043,6 +1099,7 @@ def resolve(
                 "cites": (),
                 "detail": "",
                 "clause": clause,
+                "why": WHY_NOT_ASKED,
             }
             continue
         out[name] = _resolve_one(

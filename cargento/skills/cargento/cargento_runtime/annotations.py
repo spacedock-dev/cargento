@@ -218,6 +218,13 @@ def _criterion(value: Any, cap: int) -> reading.Criterion | None:
     `result` absent and `result` present are both legal and they mean
     different things -- the reading could not be read, versus the evidence
     does not settle it -- so absence is preserved rather than defaulted.
+
+    `why` absent is a reading stored before the field existed and reads back
+    as `WHY_STANDS`: a missing key is a reading with less in it, not a
+    diverged one. `why` present and outside `WHY_TOKENS` refuses the reading
+    whole, like any other bad value here, because the page maps the token to
+    one of its own sentences and a token invented by a rewrite of the file
+    would otherwise render as the board's own words.
     """
     if not isinstance(value, dict) or set(value) - set(reading.CRITERION_KEYS):
         return None
@@ -227,10 +234,14 @@ def _criterion(value: Any, cap: int) -> reading.Criterion | None:
     cites = value.get("cites")
     if not isinstance(cites, (list, tuple)) or not all(isinstance(c, str) for c in cites):
         return None
+    why = value.get("why", reading.WHY_STANDS)
+    if not isinstance(why, str) or why not in reading.WHY_TOKENS:
+        return None
     criterion: reading.Criterion = {
         "cites": tuple(records.safe_text(c, KEY_CAP_CHARS) for c in cites),
         "detail": records.safe_text(value.get("detail"), cap),
         "clause": records.safe_text(value.get("clause"), cap),
+        "why": why,
     }
     if result is not None:
         criterion["result"] = result

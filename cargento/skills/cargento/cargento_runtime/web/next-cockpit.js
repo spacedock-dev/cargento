@@ -1130,7 +1130,7 @@ const NEXT_READING_BASELINE_OPEN =
    and neither one noticing. */
 const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "stamp", "cutoff",
   "scope", "scope_text", "ended_at_read", "criteria"];
-const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause"];
+const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a
    constant. It is deliberately narrower than "nothing typed": `_criterion`
    coerces a missing clause to "", so this board cannot tell an empty field
@@ -1146,6 +1146,37 @@ const NEXT_READING_OWN_WORDS_ONLY =
   "Rests only on what you asked for, which is the request rather than the work.";
 const NEXT_READING_MALFORMED =
   "The reading did not return a usable result for this constraint.";
+/* Rule 5 as the reading stored it. The limit row used to come from TODAY's
+   harness alone, so a stored Expected Output row re-read after the harness
+   table moved rendered as a model verdict rather than a constraint that was
+   never put to the model. Phrased in the limit's own register because it
+   renders in the limit's slot. */
+const NEXT_READING_NOT_ASKED =
+  "This constraint was not put to the reading when it was made, so no verdict on it was " +
+  "asked for.";
+/* Rule 4's backstop fired in the producer. The page has no word list of its
+   own -- the prose it would check renders only under a departure, which the
+   demotion has already taken away -- so this is the one reason it cannot
+   re-derive and must take from the store. */
+const NEXT_READING_VERDICT_STATED =
+  "The reading's explanation stated whether the work landed, which is a verdict the evidence " +
+  "read does not license, so its result was withdrawn.";
+/* Why a stored row is `not verifiable`, token to sentence. The producer owns
+   the tokens (`reading.WHY_TOKENS`, compared by `ReadingVocabularyIsSpeltOnceTest`)
+   and this page owns every sentence, so no producer prose reaches the page
+   through the field. Consulted only where this page's own derivation left a
+   `not verifiable` row without a reason: the live rules stay authoritative,
+   and a stored reason never overrides a result derived from evidence the
+   page holds (DRC-4544 item 3). */
+const NEXT_READING_STORED_WHY = {
+  "not-asked": NEXT_READING_NOT_ASKED,
+  "unreadable": NEXT_READING_MALFORMED,
+  "uncited": NEXT_READING_UNCITED,
+  "no-work-shown": NEXT_READING_ASSISTANT_ONLY,
+  "board-quoting-itself": NEXT_READING_DERIVED_ONLY,
+  "uncorroborated": NEXT_READING_OWN_WORDS_ONLY,
+  "verdict-stated": NEXT_READING_VERDICT_STATED,
+};
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
    asymmetry in rule 7 turns on it and a truthy check would count every
@@ -1223,6 +1254,8 @@ function nextCockpitConflictCandidates(annotation, entries){
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled){
   const citations = nextReadingCitations(raw, entries);
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
+  const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
+  let limitText = limit || "";
   let result = NEXT_READING_RESULTS.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
   // Rule 2, and it is the reason the default above is not `consistent`: a
   // producer that returned nothing has said nothing, and silence is not a pass.
@@ -1272,6 +1305,14 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_MALFORMED;
   }
+  if(stored && !Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
+    // A reason this build does not know is the unknown-key asymmetry one
+    // level further down: the store refuses it whole, so this arm only fires
+    // in a tab left open across a server upgrade, and it says so rather than
+    // guessing which sentence was meant.
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_MALFORMED;
+  }
   const fromPerson = citations.filter(nextReadingPersonAuthored);
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
@@ -1302,6 +1343,18 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_OWN_WORDS_ONLY;
   }
+  if(result === NEXT_READING_UNVERIFIABLE && !why && !limitText &&
+      Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
+    /* Only the gap the page's own derivation leaves: a row the producer
+       already marked `not verifiable`, with no live rule and no live limit
+       explaining why. Rule 5's token draws the limit row, in the limit's
+       slot, because a constraint never asked has no evidence line to show;
+       every other token is a reason under the result. Today's limit wins
+       where both exist, above, because it describes the harness the reader
+       is looking at now. */
+    if(stored === "not-asked") limitText = NEXT_READING_STORED_WHY[stored];
+    else why = NEXT_READING_STORED_WHY[stored];
+  }
   // Rule 7, the Goal half. A departure on the agent's own narration stands,
   // because a stated change of direction is what that evidence is good for,
   // and a `consistent` resting only on it says so rather than reading as
@@ -1327,10 +1380,10 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
        departure prose underneath the demoted result -- the reader saw the
        finding and the refusal of it at once. */
     detail: result === NEXT_READING_DEPARTURE ? String(raw && raw.detail || "") : "",
-    why, narration, limit: limit || "",
+    why, narration, limit: limitText,
     // Mutually exclusive with `limit`, and never both blank: a row states its
     // evidence or states why it has none.
-    evidence: limit ? [] : citations.map(entry =>
+    evidence: limitText ? [] : citations.map(entry =>
       `${entry.type} · ${entry.source}`),
   };
 }
