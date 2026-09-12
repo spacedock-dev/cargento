@@ -373,6 +373,42 @@ gate's copy — it is the only run of the suite on a PR the detector called pros
 redundant would let a prose edit that breaks a test merge green. `validate.yml` says the same thing
 at the step itself.
 
+## Measured Invariants
+
+Three rules the code keeps that a green suite does not enforce. Each was learned by shipping the
+defect, more than once in two cases, and each is cheap to check while writing and expensive to find
+afterwards.
+
+**A structurally-present default is not a measurement.** A field every row carries whether or not
+anything ran cannot be counted, and a figure derived from one reports a fact about the schema as
+though it were a fact about the session. Three instances in one milestone, none caught by a suite:
+both caps in the unasked lane counted departures raised, so a board of healthy sessions never
+advanced either count and the lane ran unbounded, reproduced at 480 subprocesses in a simulated day
+against a documented cap of twelve; whether a session had been checked was derived from the lane
+being attached, so every row claimed to have been checked the moment the switch was on, including
+rows the lane never reads; and a per-session departure figure read the length of a list
+`base_session` declares empty on every row, so a session nobody checked reported zero departures as
+a finding. The test is to ask what the figure reads when nothing happened, and whether that differs
+from the figure when something happened and found nothing. If it does not, the count is on the wrong
+thing. The frontend's own shared contract says the adjacent half: every count in a sentence is
+derived from the collection the rows render from, never authored.
+
+**A new per-session published field is declared by hand in three places, and they are kept apart on
+purpose.** `sessions.base_session` at its absent value, `DECLARED_SESSION_FIELDS` in
+`tests/test_sessions.py`, and the owning producer's own `published()` mapping. `events.PATCHABLE` is
+a fourth when an envelope may write the field, and `history.OBSERVATION_FIELDS` a fifth when it
+enters session history. Two tests bind it, a constructor set-equality check and a payload
+set-equality check across every harness fixture; the payload half is the one that catches a key
+added after construction, and an undeclared key once left 2,325 tests green without it.
+
+**A store that compares against `ended_at` attaches after the overlay pass, not before.** Only
+`_apply_overlays` writes that field, so attaching earlier reads `None` on every row. Attaching
+first retracted every `final` reading on every collection, each with a sentence saying the end was
+no longer published about an end published seconds later. The comment above the
+`_attach_annotations` call in `Application.collect` records it; read that before reordering
+anything in that sequence, because three of the calls around it are ordered for reasons of their
+own and one of them is deliberately ordered by convention alone.
+
 ## Code Comments
 
 Comments record decisions. The code already says what it does, and a comment that restates it goes stale the first time the line changes.
