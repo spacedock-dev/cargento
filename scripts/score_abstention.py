@@ -71,6 +71,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 import urllib.error
@@ -127,6 +128,22 @@ KINDS = (
 # DEC-17 names these two because their evidence shapes differ. A third
 # harness may be scored; only these two are required.
 COVERAGE_HARNESSES = ("claude", "codex")
+# What a rubric entry's `harness` may say. Three values rather than the
+# runtime's registry: the two the floor requires, and the one work-evidence
+# harness `reading.WORK_EVIDENCE_HARNESSES` names, which is the only other
+# harness this check has a reason to speak about. Anything else is refused
+# rather than copied, because the field lands in a committed file and the
+# rubric is hand-typed. Add a name here when a case is written for one.
+RUBRIC_HARNESSES = (*COVERAGE_HARNESSES, "pi")
+
+ORIGIN_RECORDED = "recorded"
+ORIGIN_SYNTHESISED = "synthesised"
+ORIGINS = (ORIGIN_RECORDED, ORIGIN_SYNTHESISED)
+
+# A case id is `sha256("<harness>|<sid>")[:16]`, and nothing else may key a
+# rubric entry: the key is copied into the committed summary, and a hand-edited
+# file put a session id there.
+CASE_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 
 OUTCOME_ABSTAINED = "abstained"
 OUTCOME_UNPARSED = "unparsed"
@@ -142,13 +159,31 @@ RUBRIC_FALSE_REASSURANCE = "false-reassurance"
 RUBRIC_FALSE_ALARM = "false-alarm"
 RUBRIC_MISSED_DEPARTURE = "missed-departure"
 RUBRIC_OVER_ABSTENTION = "over-abstention"
+# Not a sixth way of being wrong: a constraint whose expectation could not be
+# read is not scored at all, and is counted here so it cannot hide inside
+# `correct`.
+RUBRIC_UNSCORED = "unscored:bad-expectation"
 RUBRIC_OUTCOMES = (
     RUBRIC_CORRECT,
     RUBRIC_FALSE_REASSURANCE,
     RUBRIC_FALSE_ALARM,
     RUBRIC_MISSED_DEPARTURE,
     RUBRIC_OVER_ABSTENTION,
+    RUBRIC_UNSCORED,
 )
+
+# Why a rubric entry may not be scored, as closed tokens. The offending value
+# is never one of them and never reaches the summary.
+REFUSED_SELF_VERIFIED = "self-verified"
+REFUSED_KIND = "bad-kind"
+REFUSED_ORIGIN = "bad-origin"
+REFUSED_HARNESS = "bad-harness"
+REFUSAL_SENTENCES = {
+    REFUSED_SELF_VERIFIED: "generated and verified by the same agent",
+    REFUSED_KIND: "the kind is not one of DEC-15's five",
+    REFUSED_ORIGIN: "the origin is neither recorded nor synthesised",
+    REFUSED_HARNESS: "the harness is not one this check knows",
+}
 
 VERDICT_PASSED = "passed"
 VERDICT_FAILED = "failed"
@@ -216,8 +251,17 @@ def rubric_outcome(expected_token: str, got: str | None) -> str:
     `got` is the producer's published sentence, or None where rule 2 left no
     result at all. Absence is read as an abstention here, because that is
     what the page renders; the DEC-17 column keeps them apart.
+
+    An expectation this cannot read is refused rather than defaulted. Reading a
+    misspelt or missing token as `unverifiable` scored `correct` against a line
+    nobody wrote, and took the matching `missed-departure` off the count. Case
+    and surrounding space are forgiven exactly as `reading.parse_reply` forgives
+    them in the producer's own reply, so the rubric is not stricter than the
+    thing it grades.
     """
-    expected = RESULT_BY_TOKEN.get(expected_token, _UNVERIFIABLE)
+    expected = RESULT_BY_TOKEN.get(expected_token.strip().casefold())
+    if expected is None:
+        return RUBRIC_UNSCORED
     result = got or _UNVERIFIABLE
     if result == expected:
         return RUBRIC_CORRECT
@@ -318,11 +362,46 @@ def score_case(
     }
 
 
+def rubric_refusal(entry: Mapping[str, Any], harness: str) -> str:
+    """Why this entry may not be scored, as a closed token. Empty admits it.
+
+    Every field below is hand-typed and three of them are copied into a
+    committed file, so each is checked against a closed set rather than
+    `str()`-ed through. A rubric file with a session id where the kind should
+    be put that session id under `docs/`.
+    """
+    if str(entry.get("origin") or ORIGIN_RECORDED) not in ORIGINS:
+        return REFUSED_ORIGIN
+    if str(entry.get("kind") or "") not in KINDS:
+        return REFUSED_KIND
+    if not harness:
+        return REFUSED_HARNESS
+    if not admitted(entry):
+        return REFUSED_SELF_VERIFIED
+    return ""
+
+
+def rubric_harness(entry: Mapping[str, Any], record: Mapping[str, Any] | None) -> str:
+    """Which harness this case is, or empty where the entry may not say.
+
+    A recorded case takes it from the record, never from the rubric: the
+    harness is a collector fact, and the coverage floor is the only thing
+    between an all-Claude corpus and PASS, so five Claude cases tagged `codex`
+    by hand would meet the Codex half of it.
+    """
+    if record is not None:
+        return str(record.get("harness") or "")
+    named = str(entry.get("harness") or "")
+    return named if named in RUBRIC_HARNESSES else ""
+
+
 def rubric_case(
     entry: Mapping[str, Any], record: Mapping[str, Any] | None, case_id: str
 ) -> dict[str, Any]:
     """One rubric entry scored against the producer's record for that case."""
-    is_admitted = admitted(entry)
+    harness = rubric_harness(entry, record)
+    refused = rubric_refusal(entry, harness)
+    is_admitted = not refused
     reached = bool(record and record["reached_model"]) and is_admitted
     raw_expect = entry.get("expect")
     expect: dict[str, Any] = raw_expect if isinstance(raw_expect, dict) else {}
@@ -336,12 +415,20 @@ def rubric_case(
         got = criteria.get(name) or {}
         judgement[name] = rubric_outcome(str(wanted.get("result") or ""), got.get("result"))
         cites[name] = extraction(wanted.get("cites") or (), got.get("cites") or ())
+    kind = str(entry.get("kind") or "")
+    origin = str(entry.get("origin") or ORIGIN_RECORDED)
     return {
         "id": case_id,
-        "kind": str(entry.get("kind") or ""),
-        "harness": str(entry.get("harness") or (record or {}).get("harness") or ""),
-        "origin": str(entry.get("origin") or "recorded"),
+        # Closed tokens or nothing. A refused entry keeps its refusal, not the
+        # value that earned it.
+        "kind": kind if kind in KINDS else "",
+        "harness": harness,
+        "origin": origin if origin in ORIGINS else "",
         "admitted": is_admitted,
+        "refused": refused,
+        # Whether the producer ran on this id at all. An entry with no record
+        # is not a case the model withheld; nothing was asked of it.
+        "scored": record is not None,
         "reached_model": reached,
         "judgement": judgement,
         "extraction": cites,
@@ -453,6 +540,8 @@ def summarize(
                     "harness": r["harness"],
                     "origin": r["origin"],
                     "admitted": r["admitted"],
+                    "refused": str(r.get("refused") or ""),
+                    "scored": bool(r.get("scored", True)),
                     "reached_model": r["reached_model"],
                     "judgement": dict(r["judgement"]),
                     "extraction": {k: dict(v) for k, v in r["extraction"].items()},
@@ -505,13 +594,19 @@ def _pair_phrase(name: str, mark: str, got: str, *, asks_output: bool) -> str:
         return "withheld before the model, proves nothing about it"
     if name == "output" and not asks_output:
         return "not asked of this harness: the ruling's answer, not a measurement"
+    if got == OUTCOME_UNPARSED:
+        # Named before the marks are consulted, because it answers neither
+        # mark: the page renders rule 2's fallback as the abstention sentence,
+        # and calling it one here would report a model that said nothing usable
+        # as a model that abstained.
+        return "unparsed: no usable verdict, rendered on the page as an abstention"
     if mark == MARK_ABSTAIN:
         return (
             "abstained as marked"
-            if got in (OUTCOME_ABSTAINED, OUTCOME_UNPARSED)
+            if got == OUTCOME_ABSTAINED
             else "a case marked should-abstain judged"
         )
-    if got in (OUTCOME_ABSTAINED, OUTCOME_UNPARSED):
+    if got == OUTCOME_ABSTAINED:
         return "abstained on a judge mark: recorded, not a failure"
     return "judged as marked"
 
@@ -543,7 +638,11 @@ def _render_rubric(summary: Mapping[str, Any]) -> list[str]:
         lines.append(f"  {name}: {count}")
     for case_id, entry in cases.items():
         if not entry["admitted"]:
-            lines.append(f"  {case_id}  not admitted: generated and verified by the same agent")
+            reason = str(entry.get("refused") or REFUSED_SELF_VERIFIED)
+            lines.append(f"  {case_id}  not admitted: {REFUSAL_SENTENCES.get(reason, reason)}")
+            continue
+        if not entry.get("scored", True):
+            lines.append(f"  {case_id}  no case with this id was scored")
             continue
         if not entry["reached_model"]:
             lines.append(f"  {case_id}  withheld before the model, proves nothing about it")
@@ -606,6 +705,13 @@ def _verdict_sentence(summary: Mapping[str, Any]) -> str:
             "SHORT: no failure, and PASS is refused because the coverage floor is not met. "
             "It wants one evidence-bearing, kind-tagged recorded case per DEC-15 kind on "
             "both Claude and Codex, each reaching the model."
+        )
+    unparsed = int((summary["counts"].get("outcomes") or {}).get(OUTCOME_UNPARSED, 0))
+    if unparsed:
+        return (
+            f"PASSED: no should-abstain case was judged, and the coverage floor is met. "
+            f"{unparsed} pairs were unparsed rather than abstentions: the model said nothing "
+            "usable, and the page renders that as the same sentence."
         )
     return "PASSED: every should-abstain case abstained, and the coverage floor is met."
 
@@ -685,7 +791,24 @@ def _rubric_entries(rubric: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     raw = rubric.get("cases")
     if not isinstance(raw, dict):
         return {}
-    return {str(k): v for k, v in raw.items() if isinstance(v, dict)}
+    return {str(k): v for k, v in raw.items() if isinstance(v, dict) and CASE_ID_RE.match(str(k))}
+
+
+def rubric_skipped(rubric: Mapping[str, Any]) -> int:
+    """Entries dropped before anything read them: the key is not a case id.
+
+    Dropped rather than listed, because here the offending value IS the key,
+    and the summary keys its rubric cases by it.
+    """
+    raw = rubric.get("cases")
+    total = len(raw) if isinstance(raw, dict) else 0
+    return total - len(_rubric_entries(rubric))
+
+
+def _print_rubric_skipped(rubric: Mapping[str, Any]) -> None:
+    skipped = rubric_skipped(rubric)
+    if skipped:
+        print(f"{skipped} rubric entries skipped: the key is not a case id.")
 
 
 def score(
@@ -721,9 +844,12 @@ def score(
         )
         print(case_line(records[case_id]))
     rubric_records = []
+    _print_rubric_skipped(corpus.rubric)
     for case_id, entry in _rubric_entries(corpus.rubric).items():
         record = records.get(case_id)
-        if record is None and admitted(entry) and entry.get("origin") == "synthesised":
+        synthesised = entry.get("origin") == ORIGIN_SYNTHESISED
+        admissible = not rubric_refusal(entry, rubric_harness(entry, None))
+        if record is None and synthesised and admissible:
             row, facts = _synthesised(entry)
             record = score_case(
                 config,
@@ -762,10 +888,11 @@ def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     live = {str(c.get("id")) for c in cases}
     print(f"{sum(1 for k in marks if k in live)} of {len(cases)} cases marked.")
+    _print_rubric_skipped(corpus.rubric)
     tagged = {
         cid
         for cid, e in _rubric_entries(corpus.rubric).items()
-        if e.get("kind") in KINDS and str(e.get("origin") or "recorded") == "recorded"
+        if e.get("kind") in KINDS and str(e.get("origin") or ORIGIN_RECORDED) == ORIGIN_RECORDED
     }
     for harness in COVERAGE_HARNESSES:
         mine = [c for c in cases if c.get("harness") == harness]

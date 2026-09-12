@@ -593,14 +593,19 @@ class TheCommittedHalfCarriesNoSessionIdentity(unittest.TestCase):
                 self._keys(inner, found)
 
     def test_the_summary_has_none_of_the_local_fields(self) -> None:
+        # A departure, because prose survives only under one: an `unverifiable`
+        # reply carries no detail at all, so the fixture would bind nothing.
+        detail = json.dumps(
+            {"goal": {"result": "departure", "cites": [1], "detail": "the model's own prose"}}
+        )
         record = score_abstention.score_case(
             cast("Any", _Config()),
             {**_case("abcd1234abcd1234"), "title": "secret title", "asked_for": "do the thing"},
-            _row(),
+            {**_row(), "project": "secret-project"},
             [_fact("f1")],
             {"goal": "abstain", "output": "abstain"},
             words=(mark_abstention.GOAL, mark_abstention.OUTPUT),
-            model=_FakeModel(_reply("unverifiable", ())),
+            model=_FakeModel(detail),
             now=200.0,
         )
         summary = score_abstention.summarize(
@@ -610,8 +615,40 @@ class TheCommittedHalfCarriesNoSessionIdentity(unittest.TestCase):
         self._keys(summary, found)
         for key in self.FORBIDDEN_KEYS:
             self.assertNotIn(key, found)
-        self.assertNotIn("secret title", json.dumps(summary))
-        self.assertNotIn("s1", json.dumps(summary["cases"]))
+        # The keys are half of it. SECURITY.md claims the six values are absent
+        # too, and a denylist of key names binds none of them: a cutoff sentence
+        # copied into a new field would have passed the loop above.
+        self.assertTrue(record["cutoff"], "the fixture must produce a cutoff to bind")
+        self.assertEqual("the model's own prose", record["criteria"]["goal"]["detail"])
+        text = json.dumps(summary)
+        for value in (
+            record["cutoff"],
+            "secret title",
+            "do the thing",
+            "secret-project",
+            "the model's own prose",
+            "s1",
+        ):
+            self.assertNotIn(value, text)
+
+    def test_a_hand_edited_rubric_entry_reaches_the_summary_as_tokens_only(self) -> None:
+        entry = {
+            "kind": "the session where we ripped out the CSV writer",
+            "harness": "1b7958bc-real-session-id",
+            "origin": "Recorded",
+            "expect": {"goal": {"result": "departure", "cites": ["f1"]}},
+        }
+        scored = score_abstention.rubric_case(entry, None, "1" * 16)
+        summary = score_abstention.summarize(
+            [], marks={}, marks_bytes=b"{}", now=1.0, rubric_records=[scored]
+        )
+        found: set[str] = set()
+        self._keys(summary, found)
+        for key in self.FORBIDDEN_KEYS:
+            self.assertNotIn(key, found)
+        text = json.dumps(summary)
+        for value in ("CSV writer", "1b7958bc-real-session-id", "Recorded"):
+            self.assertNotIn(value, text)
 
     def test_the_local_half_may_carry_the_reason_and_the_sentence(self) -> None:
         record = score_abstention.score_case(
@@ -869,6 +906,215 @@ class ASynthesisedCaseNeverMeetsTheFloor(unittest.TestCase):
         self.assertEqual(0, summary["coverage"]["claude"]["kinds"])
         self.assertEqual(0, summary["coverage"]["codex"]["kinds"])
         self.assertEqual(score_abstention.VERDICT_SHORT, summary["verdict"])
+
+
+class AnUnparsedReplyIsNotAnAbstention(unittest.TestCase):
+    """A reply the producer could not read is not the producer abstaining.
+
+    The page renders the same sentence for both, which is why the composed
+    phrase has to say which one happened: a corpus of unusable replies read as
+    a corpus of abstentions is the vacuous pass this whole module exists for.
+    """
+
+    def test_the_case_line_calls_an_unparsed_reply_unparsed(self) -> None:
+        record = score_abstention.score_case(
+            cast("Any", _Config()),
+            _case("abcd1234abcd1234"),
+            _row(),
+            [_fact("f1", fact_type="assistant_message", by="assistant", summary="added it")],
+            {"goal": "abstain", "output": "abstain"},
+            words=(mark_abstention.GOAL, mark_abstention.OUTPUT),
+            model=_FakeModel("lol no json here"),
+            now=200.0,
+        )
+        self.assertEqual(score_abstention.OUTCOME_UNPARSED, record["outcomes"]["goal"])
+        line = score_abstention.case_line(record)
+        self.assertIn("goal abstain -> unparsed (unparsed:", line)
+        self.assertNotIn("(abstained as marked)", line)
+
+    def test_a_passed_verdict_says_the_pairs_were_unparsed(self) -> None:
+        records: list[dict[str, Any]] = [
+            {
+                "id": f"{h}{i}",
+                "harness": h,
+                "marks": {"goal": "abstain", "output": "abstain"},
+                "outcomes": {"goal": "unparsed", "output": "unparsed"},
+                "reached_model": True,
+                "withheld": "",
+            }
+            for h in ("claude", "codex")
+            for i in range(5)
+        ]
+        rubric_records = [
+            {
+                "id": f"{h}{i}",
+                "kind": kind,
+                "harness": h,
+                "origin": "recorded",
+                "admitted": True,
+                "reached_model": True,
+                "judgement": {"goal": "correct"},
+                "extraction": {"goal": {"hit": 0, "miss": 0, "extra": 0}},
+            }
+            for h in ("claude", "codex")
+            for i, kind in enumerate(score_abstention.KINDS)
+        ]
+        summary = score_abstention.summarize(
+            records,
+            marks={r["id"]: r["marks"] for r in records},
+            marks_bytes=b"{}",
+            now=1.0,
+            rubric_records=rubric_records,
+        )
+        self.assertEqual(score_abstention.VERDICT_PASSED, summary["verdict"])
+        sentence = score_abstention.render(summary)[-1]
+        self.assertIn("unparsed", sentence)
+        self.assertNotIn("every should-abstain case abstained", sentence)
+
+
+class AnExpectationNobodyWroteIsNotScoredCorrect(unittest.TestCase):
+    """The rubric is hand-written, so an unreadable expectation is refused.
+
+    Reading a token the file does not carry as `unverifiable` scored `correct`
+    against a line nobody wrote, and deflated `missed-departure` by the same
+    entry.
+    """
+
+    def test_a_misspelt_expected_token_is_refused(self) -> None:
+        self.assertEqual(
+            score_abstention.RUBRIC_UNSCORED,
+            score_abstention.rubric_outcome("departur", "not verifiable from available evidence"),
+        )
+
+    def test_an_absent_expected_token_is_refused(self) -> None:
+        self.assertEqual(
+            score_abstention.RUBRIC_UNSCORED, score_abstention.rubric_outcome("", "departure")
+        )
+
+    def test_case_and_space_are_forgiven_as_the_producer_forgives_its_own(self) -> None:
+        self.assertEqual(
+            score_abstention.RUBRIC_CORRECT,
+            score_abstention.rubric_outcome("Departure", "departure"),
+        )
+        self.assertEqual(
+            score_abstention.RUBRIC_CORRECT,
+            score_abstention.rubric_outcome(" departure ", "departure"),
+        )
+
+    def test_the_refusal_is_counted_and_printed_apart_from_correct(self) -> None:
+        entry = {
+            "kind": "supported-departure",
+            "harness": "claude",
+            "origin": "recorded",
+            "expect": {"goal": {"result": "departur", "cites": []}},
+        }
+        record = {
+            "id": "1" * 16,
+            "harness": "claude",
+            "reached_model": True,
+            "criteria": {"goal": {"result": "departure", "cites": ("f1",)}},
+        }
+        scored = score_abstention.rubric_case(entry, record, "1" * 16)
+        self.assertEqual(score_abstention.RUBRIC_UNSCORED, scored["judgement"]["goal"])
+        summary = score_abstention.summarize(
+            [], marks={}, marks_bytes=b"{}", now=1.0, rubric_records=[scored]
+        )
+        counts = summary["rubric"]["counts"]
+        self.assertEqual(0, counts[score_abstention.RUBRIC_CORRECT])
+        self.assertEqual(1, counts[score_abstention.RUBRIC_UNSCORED])
+        self.assertIn(score_abstention.RUBRIC_UNSCORED, "\n".join(score_abstention.render(summary)))
+
+
+class ARubricEntryReachesTheCommittedFileAsClosedTokensOnly(unittest.TestCase):
+    """Every rubric field is hand-typed, and three of them land under docs/."""
+
+    RECORD: ClassVar[dict[str, Any]] = {
+        "id": "1" * 16,
+        "harness": "claude",
+        "reached_model": True,
+        "criteria": {"goal": {"result": "departure", "cites": ("f1",)}},
+    }
+
+    def test_a_key_that_is_not_a_case_id_is_dropped_before_anything_reads_it(self) -> None:
+        rubric = {
+            "v": 1,
+            "cases": {
+                "1b7958bc-real-session-id": {"kind": "supported-departure", "origin": "recorded"}
+            },
+        }
+        self.assertEqual({}, score_abstention._rubric_entries(rubric))
+        self.assertEqual(1, score_abstention.rubric_skipped(rubric))
+
+    def test_a_kind_the_ruling_does_not_name_is_refused(self) -> None:
+        entry = {
+            "kind": "the session where we ripped out the CSV writer",
+            "origin": "recorded",
+            "harness": "claude",
+        }
+        scored = score_abstention.rubric_case(entry, None, "1" * 16)
+        self.assertFalse(scored["admitted"])
+        self.assertEqual(score_abstention.REFUSED_KIND, scored["refused"])
+        self.assertEqual("", scored["kind"])
+
+    def test_an_origin_spelt_another_way_is_not_admitted(self) -> None:
+        for origin in ("synthesized", "Synthesised", "Recorded"):
+            entry = {
+                "kind": "supported-departure",
+                "harness": "claude",
+                "origin": origin,
+                "generated_by": "one-agent",
+                "verified_by": "one-agent",
+            }
+            scored = score_abstention.rubric_case(entry, None, "1" * 16)
+            self.assertFalse(scored["admitted"], origin)
+            self.assertEqual(score_abstention.REFUSED_ORIGIN, scored["refused"])
+            self.assertNotIn(origin, json.dumps(scored))
+
+    def test_a_synthesised_entry_naming_an_unknown_harness_is_refused(self) -> None:
+        entry = {
+            "kind": "supported-departure",
+            "origin": "synthesised",
+            "harness": "1b7958bc-real-session-id",
+            "generated_by": "claude-code",
+            "verified_by": "codex",
+        }
+        scored = score_abstention.rubric_case(entry, None, "1" * 16)
+        self.assertEqual(score_abstention.REFUSED_HARNESS, scored["refused"])
+        self.assertNotIn("real-session-id", json.dumps(scored))
+
+    def test_a_recorded_entry_takes_its_harness_from_the_record(self) -> None:
+        # The floor is the only thing between an all-Claude corpus and PASS, so
+        # a rubric that says codex over a Claude record must not meet it.
+        entry = {
+            "kind": "supported-departure",
+            "harness": "codex",
+            "origin": "recorded",
+            "expect": {"goal": {"result": "departure", "cites": ["f1"]}},
+        }
+        scored = score_abstention.rubric_case(entry, self.RECORD, "1" * 16)
+        self.assertEqual("claude", scored["harness"])
+        coverage = score_abstention._coverage(
+            [dict(scored, kind=kind) for kind in score_abstention.KINDS]
+        )
+        self.assertEqual(5, coverage["claude"]["kinds"])
+        self.assertEqual(0, coverage["codex"]["kinds"])
+
+    def test_a_recorded_id_with_no_case_is_not_called_withheld(self) -> None:
+        entry = {"kind": "supported-departure", "harness": "claude", "origin": "recorded"}
+        scored = score_abstention.rubric_case(entry, None, "1" * 16)
+        summary = score_abstention.summarize(
+            [], marks={}, marks_bytes=b"{}", now=1.0, rubric_records=[scored]
+        )
+        text = "\n".join(score_abstention.render(summary))
+        self.assertIn("no case with this id was scored", text)
+        self.assertNotIn("withheld before the model", text)
+
+    def test_the_known_harnesses_hold_the_producers_work_evidence_row(self) -> None:
+        sys.path.insert(0, str(SKILL))
+        from cargento_runtime import reading  # noqa: PLC0415
+
+        for harness in (*score_abstention.COVERAGE_HARNESSES, *reading.WORK_EVIDENCE_HARNESSES):
+            self.assertIn(harness, score_abstention.RUBRIC_HARNESSES)
 
 
 if __name__ == "__main__":

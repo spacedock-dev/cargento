@@ -982,8 +982,10 @@ Synthesised cases are admissible in the rubric expectation file, cross-verified 
 agent than generated them, and their text is agent-written rather than recorded. It goes through
 `records.safe_text` before the producer sees it: redaction before the clip, in that order, the same
 as anything derived from a transcript. The rubric file also stays under `~/.cargento`; the summary
-records for each of its cases the kind, the origin, whether it was admitted, and the two scored
-columns, never the case body.
+records for each of its cases the kind, the origin, whether it was admitted and why not, and the
+two scored columns, never the case body. Each of those is a closed token or empty: the file is
+hand-written, so an entry naming anything else -- a kind, an origin or a harness outside the sets,
+or a key that is not a case id -- is refused rather than copied into the summary.
 
 A violation here is a committed file under `docs/abstention/` carrying a session id, prompt text or
 model prose, or a scoring run that reaches the annotation store or the reading route.
