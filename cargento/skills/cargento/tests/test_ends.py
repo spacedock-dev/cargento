@@ -836,6 +836,31 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
         self.assertEqual(0, run_one_shot_cli(["--diagnose"], self.env))
         self.assertEqual(before, Path(ends.store_path(self.config)).read_bytes())
 
+    def test_the_refusal_under_a_live_board_names_the_store_it_is_also_keeping(self) -> None:
+        # The refusal is one sentence for two files now, and a reader who ran
+        # `--forget` to drop a recorded end learns nothing from a sentence that
+        # names only the history store. The delete is right either way; what is
+        # under test is that the sentence accounts for both files it kept.
+        from cargento_runtime import io as runtime_io  # noqa: PLC0415
+        from cargento_runtime import lifecycle  # noqa: PLC0415
+
+        ends.record(
+            self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=lambda _m: None
+        )
+        running = {"state": "running", "port": 4553, "pid": 4242, "started": 1.0, "log": ""}
+        with (
+            mock.patch.object(lifecycle, "instance_status", return_value=running),
+            mock.patch.object(runtime_io, "diag") as diag,
+        ):
+            self.assertEqual(1, run_one_shot_cli(["--forget"], self.env))
+        self.assertTrue(
+            os.path.exists(ends.store_path(self.config)),
+            "the end store was deleted under a live board",
+        )
+        said = " ".join(str(call) for call in diag.call_args_list)
+        self.assertIn(ends.STORE_FILENAME, said)
+        self.assertIn("--stop", said)
+
     def test_forget_deletes_the_end_store_too(self) -> None:
         # decisions.md, DRC-4547: `--forget` removes the machine's memory of what
         # it observed, and a durable end is exactly that class.
