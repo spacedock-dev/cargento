@@ -78,13 +78,13 @@ The posture rests on two invariants:
    code selected from a closed set or composed from counts it measured.
 
    Two consequences of storing it here rather than in session history, both accepted rather than
-   discovered. `--forget` deletes session history alone and **does not reach this file**, so a
-   reader who wants a model-authored reading gone clears that session's annotation, which deletes
-   the reading with the words that produced it. And there is no fourteen-day expiry: a reading is
-   evicted when its annotation is, oldest-save-first at the session count above. One forwarder
-   writes too:
-   `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
-   name and a timestamp and nothing about the session's content.
+   discovered. `--forget` deletes the session-history and session-end stores and **does not reach
+   this file**, so a reader who wants a model-authored reading gone clears that session's
+   annotation, which deletes the reading with the words that produced it. And there is no
+   fourteen-day expiry: a reading is evicted when its annotation is, oldest-save-first at the
+   session count above. One forwarder writes too: `statusline_hook.py`'s deduplication memo under
+   the same directory, which holds a normalized state name and a timestamp and nothing about the
+   session's content.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
    annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
@@ -1096,7 +1096,7 @@ how hard, to anyone who can read the notification stream. That is stated here ra
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-The server writes nine files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+The server writes ten files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
 authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
 `started`, `log`, `python`); `cargento-<port>.log`, where a detached (`--daemon`) instance's
 output goes; `cargento-dismissals.json`, the sessions the reader marked handled, described in
@@ -1107,10 +1107,11 @@ history of what this server observed, described in Local history above;
 them, named in invariant 2 above and turned off by `--no-annotations`; and
 `cargento-deliveries.json`, what became of each notification this board raised, described in
 Delivery records below; `cargento-departures.json`, what an unasked reading raised, described in
-Unasked readings below and written only with that feature switched on; and
+Unasked readings below and written only with that feature switched on; `cargento-ends.json`, the
+session ends this board observed, described in Session ends below; and
 `semantic-work-history.json`, the operator-cockpit prototype's own store, described under the
-prototype below and not reached by `--forget`. One forwarder writes a
-tenth, in the same directory and named in invariant 2 above:
+prototype below and not reached by `--forget`. One forwarder writes an
+eleventh, in the same directory and named in invariant 2 above:
 `statusline_hook.py` keeps `statusline-<harness>-<session>.json` per conversation, holding a
 normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
@@ -1173,6 +1174,51 @@ that departed, the model's own sentence about it, and the evidence ids it cited.
 prose a model wrote about your session, which is the same class of content the annotation store
 already holds and is bounded the same way. Nothing sends it anywhere. With the switch off the file is
 never created.
+
+## Session ends
+
+A session's end is the one fact a final reading rests on, and until 2026-09-12 the board held it
+only in the memory of the process that saw the `SessionEnd` hook fire. Measured 2026-09-11: three
+sessions that read as ended came back after a restart as merely quiet, and no final reading could
+be taken on any of them again. So the coordinator now writes the end through to
+`~/.cargento/cargento-ends.json`, opened `0600` with the mode in the `open` call and written
+through a temp file and `os.replace`, and a collection reads it back onto a row the running
+coordinator never saw end.
+
+A record holds a harness key, a session id and the harness's own stamp for the end. Nothing else:
+no title, no prompt, no project path, no reason. One record per session id, the later stamp
+winning, and at most 512 of them, the same count the coordinator's own memory refuses new ends
+at, so the file can never restore more than a running board would have held. Nothing sends it
+anywhere. A corrupt, truncated or over-cap file degrades to "no ends", and every row then reads
+exactly as it did before this store existed; one malformed entry is dropped on its own without
+discarding the rest.
+
+What a stored end may not do is invent one. Absence means the end was not observed by any run of
+this board, never that the session is still open, which is the same reading the coordinator's
+memory gives. A stored end also loses to later activity: a session resumed while the board was
+down produced no `session_started` this process could see, so a file written more than the
+activity grace after its end is the only tell that the id is in use again, and the stored end is
+then not applied. Activity here is whatever the row counts as activity, which is wider than the
+session's own transcript: on Claude it is the newest of the task file, the parent transcript, the
+subagent transcripts, the agent files and the child sessions. The exposure accepted with that
+guard is stated rather than solved. A harness that writes any of those after `SessionEnd` would
+have its restored end dropped, and the row reads as it does today, no end observed, which is
+honest rather than wrong. A live end, observed by the running coordinator, takes no such guard,
+because the coordinator retires it itself the moment the id is seen in use.
+
+The coordinator is the only writer, so two flags govern the file by construction rather than by a
+switch of their own. `--no-events` leaves it unread and unwritten, exactly as it leaves the focus
+command with no capability: with no coordinator there is nothing to write an end and the
+collection then reads none back. `--diagnose` builds no coordinator either, so it reads the
+harness stores and never creates or touches this one. `--forget` deletes it along with the history
+store, because the command removes the machine's memory of what it observed and a durable end is
+exactly that class. It is refused while a dashboard is running on the port, and the history store's
+refusal is what covers it: a live coordinator still holds the ends it observed in memory and keeps
+publishing them, so the delete would change the file and not the board.
+
+Two dashboards on one machine share the one file, and two ends landing in the same instant resolve
+last-writer-wins on the whole file, the exposure Dismissals below already accepts; the write lock
+is intra-process, as it is for the delivery record.
 
 ## Delivery records
 
@@ -1691,7 +1737,8 @@ The `proto/operator-cockpit` branch adds project context and an optional read-on
 `GET /api/project-context` reads bounded transcript and workflow evidence, stores semantic history
 under the configured state directory, and can invoke the installed Codex CLI for a derived goal.
 This is separate from quota fetching and from the session-history switch. The prototype retains
-its own semantic-history store; `--forget` continues to delete only the session-history store.
+its own semantic-history store; `--forget` deletes the session-history and session-end stores and
+nothing else.
 
 That store carries session text in both directions, and this document did not say so until the
 annotation work re-counted which files hold what a person typed. A fact's `summary` is bounded at

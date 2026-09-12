@@ -47,6 +47,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── deliveries.py       # what became of each raise, and what may not be said of one
         │   ├── departures.py      # what an unasked reading raised, and the baseline it read
         │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
+        │   ├── ends.py             # the session ends this board observed, kept across a restart
         │   ├── events.py           # the untrusted event envelope and its overlay reducer
         │   ├── focus.py            # the focus command: one socket case, or no raise
         │   ├── git_status.py       # the end-of-session git probe: one command, two scalars

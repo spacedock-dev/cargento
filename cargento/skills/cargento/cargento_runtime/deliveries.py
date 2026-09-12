@@ -19,10 +19,11 @@ else in the runtime, which is what lets `notifications`, `aggregate` and
 
 ## Durable rather than in memory, and that is the decision
 
-An outcome held on `RuntimeState` would be the defect [DRC-4547] records one
-layer over: an observed session end lives only in the memory of the process that
-saw it, so a restart makes every finished session look like it merely went
-quiet. The read here is deliberately later than the write, because the whole
+An outcome held on `RuntimeState` would be the defect [DRC-4547] recorded one
+layer over: an observed session end lived only in the memory of the process that
+saw it, so a restart made every finished session look like it merely went
+quiet (`ends` now carries it across). The read here is deliberately later than
+the write, because the whole
 framing is that you walked away and came back, and a restart in between is the
 expected case rather than an edge. An in-memory record would also make the
 sentence for "no record" fire for every raise before the last restart, and that

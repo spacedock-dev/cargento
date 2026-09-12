@@ -179,7 +179,8 @@ session that ends leaving uncommitted changes says so.
 
 Backed by the finished-and-unread flag, the mark that separates a turn that stopped from a session
 still waiting on a reply that never came, the mark that a session is over so it stops reading as one
-waiting at its prompt, the note on a row read off disk saying that no turn end can be observed
+waiting at its prompt, kept on disk so what Cargento saw end stays ended across a restart of the
+board, the note on a row read off disk saying that no turn end can be observed
 there, a way to mark a session handled so it leaves the board, and the
 end-of-session git probe that shipped in 0.19. And, since the annotation store landed, by what you
 typed the session should achieve and produce: the words are kept beside the two end axes, so a

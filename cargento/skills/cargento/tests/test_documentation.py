@@ -15,6 +15,7 @@ from cargento_runtime import (
     aggregate,
     claude_data,
     cli,
+    ends,
     focus,
     git_status,
     history,
@@ -1087,6 +1088,59 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         self.assertIn("counts porcelain entries rather than files", self.FLAT)
 
 
+class EndStoreContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's session-end section is a contract, so the code must still meet it.
+
+    DRC-4547. The store is written by default under `~/.cargento`, so what the
+    document says it holds, where it lives and what switches it off are claims
+    a reader acts on; each one here is bound to the code rather than grepped
+    from our own prose.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+    SOURCE = (SERVER_PATH.parent / "cargento_runtime" / "ends.py").read_text(encoding="utf-8")
+
+    def test_the_section_exists_and_the_written_paths_list_names_the_file(self) -> None:
+        self.assertIn("## Session ends", self.SECURITY)
+        lifecycle = self.FLAT.split("## Process lifecycle: written paths", 1)[1].split("## ", 1)[0]
+        self.assertIn("`cargento-ends.json`", lifecycle)
+
+    def test_the_store_lives_where_the_contract_says_it_does(self) -> None:
+        config = make_config(state_home="/tmp/cargento-contract")
+        self.assertEqual(
+            os.path.join("/tmp/cargento-contract", "cargento-ends.json"),
+            ends.store_path(config),
+        )
+        self.assertIn("`~/.cargento/cargento-ends.json`", self.FLAT)
+
+    def test_the_documented_mode_is_the_one_in_the_open_call(self) -> None:
+        section = self.FLAT.split("## Session ends", 1)[1].split("## ", 1)[0]
+        self.assertIn("opened `0600` with the mode in the `open` call", section)
+        self.assertIn("os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)", self.SOURCE)
+
+    def test_the_documented_off_switch_and_deletion_command_are_flags_the_parser_accepts(
+        self,
+    ) -> None:
+        # decisions.md, DRC-4547: the store rides `--no-events`, and `--forget`
+        # removes it. Both sentences are bound to the parser, as the history
+        # section's are, so neither is a claim about a build that cannot do it.
+        section = self.FLAT.split("## Session ends", 1)[1].split("## ", 1)[0]
+        self.assertIn("`--no-events` leaves it unread and unwritten", section)
+        self.assertIn("`--forget` deletes it", section)
+        self.assertTrue(cli.build_parser().parse_args(["--no-events"]).no_events)
+        self.assertTrue(cli.build_parser().parse_args(["--forget"]).forget)
+
+    def test_the_section_states_the_guard_and_its_exposure(self) -> None:
+        # decisions.md, DRC-4547: the resumed-while-down guard and what it costs
+        # are written down here rather than implied solved.
+        section = self.FLAT.split("## Session ends", 1)[1].split("## ", 1)[0]
+        self.assertIn("transcript", section)
+        self.assertIn("after its end", section)
+        self.assertIn("reads as it does today", section)
+
+
 class HistoryStoreContractDocumentationTest(unittest.TestCase):
     """SECURITY.md's history section is a contract, so the code must still meet it.
 
@@ -1298,13 +1352,17 @@ class SemanticHistoryContractDocumentationTest(unittest.TestCase):
         # become false: admitting this store to `--forget` is a natural-looking
         # improvement that would silently contradict both paragraphs.
         section = _flat_section(self.SECURITY, "## Operator-cockpit prototype")
-        self.assertIn("`--forget` continues to delete only the session-history store", section)
-        source = (SERVER_PATH.parent / "cargento_runtime" / "history.py").read_text(
-            encoding="utf-8"
+        self.assertIn(
+            "`--forget` deletes the session-history and session-end stores and nothing else",
+            section,
         )
-        forget = source[source.index("def forget(") :]
-        forget = forget[: forget.index("\ndef ")]
-        self.assertNotIn("semantic", forget.lower())
+        # Both `forget` functions the command reaches (DRC-4547 added the
+        # second), so admitting this store through either one turns this red.
+        for module in ("history.py", "ends.py"):
+            source = (SERVER_PATH.parent / "cargento_runtime" / module).read_text(encoding="utf-8")
+            forget = source[source.index("def forget(") :]
+            forget = forget.split("\ndef ", 1)[0]
+            self.assertNotIn("semantic", forget.lower(), module)
 
     def test_the_store_is_written_owner_only_through_a_rename(self) -> None:
         section = _flat_section(self.SECURITY, "## Published text (credential redaction)")
