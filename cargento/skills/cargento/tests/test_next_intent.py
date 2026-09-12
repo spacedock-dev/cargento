@@ -13,7 +13,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import history
@@ -65,7 +65,13 @@ __fetchImpl = async url => String(url) === "/api/annotations"
 __els.app = {innerHTML: ""};
 """
 
-    def render(self, annotations: list[dict[str, Any]], *, annotate: bool = True) -> dict[str, Any]:
+    def render(
+        self,
+        annotations: list[dict[str, Any]],
+        *,
+        annotate: bool = True,
+        unasked: bool = False,
+    ) -> dict[str, Any]:
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             f"const __rows = {json.dumps(annotations)};\n"
@@ -85,7 +91,10 @@ console.log(JSON.stringify({
 """,
             storage_prelude({})
             + "let __annotations = [];\n"
-            + self.FIXTURE.replace("annotate: true", f"annotate: {str(annotate).lower()}"),
+            + self.FIXTURE.replace(
+                "annotate: true",
+                f"annotate: {str(annotate).lower()}, unasked: {str(unasked).lower()}",
+            ),
         )
         assert isinstance(out, dict)
         return out
@@ -111,6 +120,10 @@ console.log(JSON.stringify({
             "assessment": None,
             "reading_count": 0,
             "reading_withheld": "",
+            # Served on the same request as the words, because the payload
+            # holds only sessions still on the board and these rows outlive one.
+            "departures": [],
+            "departure_why": "",
         }
         row.update(over)
         return row
@@ -265,6 +278,102 @@ console.log(JSON.stringify({
         self.assertIn("--no-annotations", off["visible"])
         self.assertNotIn("Nothing has been typed against any session yet", off["visible"])
         self.assertEqual(0, off["rows"])
+
+    DEPARTURE: ClassVar[dict[str, Any]] = {
+        "constraint": "TYPED GOAL",
+        "clause": "Ship the cockpit",
+        "reading": "The work moved to the installer.",
+        "evidence": "turn transcript",
+        "revision": 1,
+        "cutoff": 150,
+        "at": 151,
+        "follow_up": "No later check has read this session, so what happened after this raise "
+        "is not recorded here.",
+    }
+
+    def test_a_row_carries_what_was_raised_against_the_words_beside_it(self) -> None:
+        """DRC-4514. The retention surface retained the words and not the raises."""
+        out = self.render(
+            [
+                self._row(
+                    assessment=_assessment(revision_read=1),
+                    reading_count=1,
+                    departures=[self.DEPARTURE, dict(self.DEPARTURE, constraint="EXPECTED")],
+                )
+            ],
+            unasked=True,
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        # Both lines, not one instead of the other.
+        self.assertIn("read revision 1", visible)
+        self.assertIn("2 departures raised", visible)
+
+    def test_a_row_with_no_raise_carries_the_reason_rather_than_a_bare_zero(self) -> None:
+        out = self.render(
+            [
+                self._row(
+                    departure_why="Cargento has not checked this session against what you "
+                    "asked for. Nothing here says whether it would have found anything."
+                )
+            ],
+            unasked=True,
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("has not checked this session against what you asked for", visible)
+        self.assertNotIn("0 departures", visible)
+
+    def test_a_row_says_nothing_about_a_check_when_the_lane_is_not_running(self) -> None:
+        """The same board state was getting two accounts on two surfaces.
+
+        `departures.why` is called by the route with no lane gate, defensibly:
+        with the switch off the store is empty and "not checked" is literally
+        true. But the session page and the departure review both DROP the block
+        under the same switch, so a default board printed "Cargento has not
+        checked this session against what you asked for" on every row here,
+        four words above the closing note's own "and nothing watches for one".
+        A feature that is not running is not a check merely pending. The switch
+        is explained once for the view, in that note, rather than once a row.
+        """
+        off = self.render(
+            [
+                self._row(
+                    departure_why="Cargento has not checked this session against what you "
+                    "asked for. Nothing here says whether it would have found anything."
+                )
+            ]
+        )
+
+        visible = off["visible"]
+        assert isinstance(visible, str)
+        self.assertNotIn("has not checked this session against what you asked for", visible)
+        self.assertIn("and nothing watches for one", visible)
+
+    def test_the_closing_line_stops_claiming_nothing_watches_when_something_does(self) -> None:
+        """The clause was unconditional in both branches and false under the switch."""
+        off = self.render([self._row()])
+        on = self.render([self._row()], unasked=True)
+
+        for out in (off, on):
+            assert isinstance(out["visible"], str)
+        self.assertIn("and nothing watches for one", off["visible"])
+        self.assertNotIn("and nothing watches for one", on["visible"])
+
+    def test_a_departed_session_gains_the_line_and_keeps_its_own(self) -> None:
+        out = self.render(
+            [self._row(sid="gone-9", goal="Prove the fixes landed", departures=[self.DEPARTURE])],
+            unasked=True,
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("Prove the fixes landed", visible)
+        self.assertIn("Not on the board now, so there is nowhere to open", visible)
+        self.assertIn("One departure raised", visible)
+        self.assertNotIn("gone-9:held-to", out["html"])
 
 
 class TheIntentLogReadsTheStoreAndNotHistoryTest(unittest.TestCase):

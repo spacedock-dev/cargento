@@ -1549,18 +1549,186 @@ const NEXT_COCKPIT_STEER_BY_HAND = "Raised to you and nowhere else. Cargento doe
   "into a session, so steering is by hand; the steer box in Console states the same rule " +
   "about notes you write there.";
 
-function nextCockpitDepartures(shape, source){
+/* The section where a raise is reviewed, and it holds two collections rather
+   than one (DRC-4514).
+
+   A reading the reader asked for raises departures inside itself; the unasked
+   lane raises them on its own, into a durable store, with a different lifetime
+   and a different citation vocabulary. Merging them into one list would make a
+   citation ambiguous about which collection it belongs to, so each keeps its
+   own labelled part. Under it sits what became of the raise and the two counts,
+   because a raise and its outcome were two blocks with two counts and nothing
+   tying a row to a result.
+
+   The order is the design's, and it is load bearing: what was raised, then how
+   it was raised, then the figures, then the ruling. Where it is kept is the
+   tab's LAST slot and not this section's -- the design's order ends "the
+   departures it raised, then how it landed, then where it is kept", and reading
+   those three as five slots inside one section put the Intent-log pointer
+   before HOW IT LANDED. `nextCockpitHeldTo` appends it. */
+function nextCockpitDepartures(shape, source, session){
+  const reading = nextCockpitReadingDepartures(shape, source);
+  /* The lane's rows, counted once and used twice: the delivery part is printed
+     only where one of THESE stands, because only this lane raises a
+     notification, and the figure below must count the rows this section
+     actually rendered.
+
+     `departure_checked` and not the list's own length, because an empty list
+     is two different facts. The lane publishes `[]` for a session it read and
+     found nothing in AND for one it has never reached, and only the first is a
+     figure: walked with the switch on and this session unread, "Departures the
+     checks run while you were away raised 0" printed four lines under
+     "Cargento has not checked this session against what you asked for". The
+     switch test above is the same rule one layer out. */
+  const laneOn = Boolean(nextData && nextData.unasked === true);
+  const laneRows = Array.isArray(session && session.departures) ? session.departures : null;
+  const lane = laneOn && laneRows &&
+    (laneRows.length > 0 || session.departure_checked === true) ? laneRows.length : null;
+  return '<section class="next-cockpit-departures"><header>' +
+    '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
+    reading.html +
+    nextCockpitUnaskedPart(session) +
+    nextCockpitDeliveryPart(session, Boolean(lane)) +
+    nextCockpitDepartureCounts(reading.count, lane) +
+    `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p>` +
+    '</section>';
+}
+
+/* Where a raise is kept, in the tab's last slot. Separate from the section
+   above so the design's order survives: it is a pointer off this tab, like HOW
+   IT LANDED is a block of it, and appending it inside the departures section
+   put it above HOW IT LANDED at every measured offset. */
+function nextCockpitDeparturesKept(){
+  return '<p class="next-cockpit-departures-kept"><a href="#n=intent">The Intent log</a> keeps ' +
+    'what you typed and what was raised against it after the session leaves the board.</p>';
+}
+
+/* What the unasked lane raised, in the section named for it.
+
+   These are the departures actually raised TO the reader, and until now they
+   rendered on the session page and nowhere here, so the section titled
+   DEPARTURES RAISED TO YOU was the one place they did not appear. The body is
+   `next-session.js`'s, verbatim, rather than a second rendering of the same
+   fields.
+
+   The claim that nothing watches is conditional on the switch, which it was
+   not: with `--unasked-readings` on and two raises standing, this section said
+   nothing watches for a departure while the session page listed both. */
+function nextCockpitUnaskedPart(session){
+  const label = '<span class="next-cockpit-departure-label">' +
+    'FROM THE CHECKS RUN WHILE YOU WERE AWAY</span>';
+  if(!(nextData && nextData.unasked === true)){
+    return '<div class="next-cockpit-departure-part">' + label +
+      '<p class="next-cockpit-reading-why">Nothing watches for a departure on its own. ' +
+      'Start with --unasked-readings to have Cargento check a session against what you ' +
+      'asked for while you are away.</p></div>';
+  }
+  const body = nextUnaskedDepartureBody(session);
+  return body ? '<div class="next-cockpit-departure-part">' + label + body + '</div>' : "";
+}
+
+/* What became of the raise, beside the raise. `deliveries` owns every sentence
+   and this chooses only whether to print, which is `nextSessionDelivery`'s rule
+   and the reason the body is shared with it.
+
+   Two gates, and both were measured missing. `standing` is a departure from the
+   unasked lane actually rendered above: without it a default board with no
+   departure at all printed "One notification was raised about this session"
+   under HOW IT WAS RAISED, four lines below a heading saying nothing watches
+   for a departure -- a delivery sentence for a raise that does not exist. And
+   the figures come from `delivery_departure` rather than the flat keys, because
+   those carry the latest raise of ANY lane: a departure handed over at 10:00
+   and an unrelated hook refusal at 11:00 printed the refusal's sentence, in
+   amber, beside the raise that got out. `delivery_mixed_why` cannot rescue
+   either case -- it says earlier raises ended differently, never that some were
+   not about a departure.
+
+   The absence case is not here: it belongs beside a DEPARTURE and rides inside
+   `nextUnaskedDepartureBody`, so a session nobody was ever raised about still
+   draws nothing at all. */
+function nextCockpitDeliveryPart(session, standing){
+  if(!standing) return "";
+  const scoped = nextDepartureDelivery(session);
+  const body = scoped ? nextDeliveryBody(scoped) : "";
+  if(!body) return "";
+  const outcome = String(scoped.delivery_outcome || "");
+  return '<div class="next-cockpit-departure-part" ' +
+    `data-next-delivery="${esc(outcome)}"` +
+    `${scoped.delivery_mixed === true ? ' data-next-delivery-mixed="true"' : ""}>` +
+    '<span class="next-cockpit-departure-label">HOW IT WAS RAISED</span>' + body + '</div>';
+}
+
+/* The figures, as labelled lines with no arithmetic between them.
+
+   Attempts and hand-overs are different questions and a ratio answers neither;
+   neither is a compliance figure, and nothing here interprets one. Both
+   departure figures come from the published lists, which FILTER: the store
+   keeps a row for every check, so counting rows would tell a reader that
+   fourteen quiet checks were fourteen departures.
+
+   ONE LINE PER COLLECTION, and that is the shared contract's second rule rather
+   than a layout choice. This section renders two collections under one heading
+   and the figure counted one of them: one departure in each rendered two rows
+   above "Departures raised about this session 1", and a reading departure with
+   no unasked row rendered a visible row above a 0. Each figure is derived from
+   exactly the rows its own part rendered, in the one pass that renders them.
+
+   A figure the payload does not carry says so rather than rendering zero, which
+   is the shared contract's first rule -- and the per-session departure line was
+   the one exemption from it. On a default board `session.departures` is `[]`
+   whether or not the lane ran, so the ternary that read it always produced a
+   number: the board printed "Departures raised about this session 0" directly
+   under "Nothing watches for a departure on its own". `null` from either
+   collection is an unmeasured figure and prints its absence. */
+function nextCockpitDepartureCounts(fromReading, fromLane){
+  const counts = (nextData && nextData.delivery_counts) || null;
+  const board = counts ? nextNumber(counts.raises) : null;
+  if(!counts || (fromLane == null && !board)) return "";
+  const line = (label, value) =>
+    '<div class="next-cockpit-count">' +
+    `<span class="next-cockpit-count-label">${esc(label)}</span>` +
+    `<span class="next-cockpit-count-value">` +
+    `${esc(value == null ? "not published" : String(value))}</span></div>`;
+  return '<div class="next-cockpit-departure-part">' +
+    '<span class="next-cockpit-departure-label">COUNTS</span>' +
+    '<div class="next-cockpit-departure-counts">' +
+    line("Departures in the reading you asked for", fromReading) +
+    line("Departures the checks run while you were away raised", fromLane) +
+    line("Notification raises on record for this board", board) +
+    line("Raises this board attempted", nextNumber(counts.attempted)) +
+    line("Raises a notification service accepted", nextNumber(counts.handed_over)) +
+    '</div><p class="next-cockpit-reading-why">Five figures, and no arithmetic between ' +
+    'them. A count identifies a session worth reading; it establishes nothing about whether ' +
+    'the brief, the agent or Cargento\u2019s own judgement was poor, and those three are ' +
+    'not separable from it.</p></div>';
+}
+
+/* Returns the part AND the figure for it, in one derivation over one
+   collection. Two passes is how the count came to be scoped to a different set
+   of rows than the ones drawn (the shared contract's second rule, and the
+   DRC-4453 defect class): a caller cannot ask this for a number without the
+   markup that number describes. `count` is null on every branch that renders no
+   rows because it could not read the collection -- no reading, a reading this
+   build cannot parse, or a payload whose observed record has not landed, so the
+   citations cannot resolve. */
+function nextCockpitReadingDepartures(shape, source){
+  const part = (body) =>
+    '<div class="next-cockpit-departure-part">' +
+    '<span class="next-cockpit-departure-label">FROM THE READING YOU ASKED FOR</span>' +
+    body + '</div>';
   /* Rendered whether or not a reading exists. It carried the ruling's
      sentence that steering is manual and the fact that nothing was raised, and
      both were reachable only through a reading nothing produces, so journey
      step 4 had no surface at all. Saying "no reading has been made, so
-     nothing has been raised" needs no model. */
+     nothing has been raised" needs no model.
+
+     Scoped to a reading the reader ASKED for, because the part below now
+     carries the ones nobody asked for and the unqualified sentence was false
+     beside them. */
   if(!shape){
-    return '<section class="next-cockpit-departures"><header>' +
-      '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
-      '<p class="next-cockpit-reading-why">No reading has been made, so nothing has been ' +
-      'raised. Nothing watches for a departure on its own.</p>' +
-      `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p></section>`;
+    return {count: null,
+      html: part('<p class="next-cockpit-reading-why">No reading has been made at your ' +
+        'request, so nothing has been raised from one.</p>')};
   }
   /* An empty departures list had five causes and one sentence, and the
      sentence was the most reassuring of them. `departures` is
@@ -1575,23 +1743,23 @@ function nextCockpitDepartures(shape, source){
      window did exactly this until the caller was changed to pass `all`. This
      is the residual, and a producer is what finally makes the sentence
      reachable in earnest. */
-  const nothing = (text) =>
-    '<section class="next-cockpit-departures"><header>' +
-    '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
-    `<p class="next-cockpit-reading-why">${esc(text)}</p>` +
-    `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p></section>`;
+  const nothing = (text, count) =>
+    ({count, html: part(`<p class="next-cockpit-reading-why">${esc(text)}</p>`)});
   if(shape.malformed){
     return nothing("A reading was made and this board could not read it, so nothing here is " +
-      "raised from it.");
+      "raised from it.", null);
   }
   if(source && String(source.state || "") !== "read"){
     return nothing("The observed record is not on this page right now, so the entries this " +
-      "reading cited cannot be resolved and nothing can be raised from it.");
+      "reading cited cannot be resolved and nothing can be raised from it.", null);
   }
   if(!shape.departures.length && shape.criteria.length &&
       shape.criteria.every(row => row.result === NEXT_READING_UNVERIFIABLE)){
+    /* Zero and not unmeasured: the reading was read, and it raised nothing.
+       The sentence beside the figure is what says the nothing is worth
+       nothing. */
     return nothing("This reading verified neither constraint, so it raised nothing and " +
-      "confirmed nothing.");
+      "confirmed nothing.", 0);
   }
   const rows = shape.departures.map(row =>
     '<div class="next-cockpit-departure">' +
@@ -1608,11 +1776,11 @@ function nextCockpitDepartures(shape, source){
      as the evidence it was raised against. */
   const cutoff = shape.cutoff
     ? `<p class="next-cockpit-reading-why">${esc(shape.cutoff)}</p>` : "";
-  return '<section class="next-cockpit-departures"><header>' +
-    '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
-    (rows || '<p class="next-cockpit-reading-why">The reading raised no departure from the ' +
-      'revision it read.</p>') + cutoff +
-    `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p></section>`;
+  return {
+    count: shape.departures.length,
+    html: part((rows || '<p class="next-cockpit-reading-why">The reading raised no departure ' +
+      'from the revision it read.</p>') + cutoff),
+  };
 }
 
 /* The offer, and the count beside it.
@@ -1687,7 +1855,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
   const raw = annotation && annotation.assessment;
   const withheld = String(annotation && annotation.reading_withheld || "");
   const close = (body, shape) => `${header}</header>${body}</section>` +
-    nextCockpitDepartures(shape, source);
+    nextCockpitDepartures(shape, source, session);
   /* A press that produced nothing is not the same as no press, and the
      reason it produced nothing is a sentence the producer chose from a
      closed set rather than one this page infers. */
@@ -1746,7 +1914,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     '</header>' + stale + nextCockpitReadingBaseline(shape) + scope + why +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
     nextCockpitReadingControl(session, annotation) + '</section>' +
-    nextCockpitDepartures(shape, source);
+    nextCockpitDepartures(shape, source, session);
 }
 
 /* HOW IT LANDED: the two axes `nextObservedLanding` derives, drawn where the
@@ -1924,8 +2092,9 @@ function nextCockpitHeldTo(group, observation){
      of it, then the departures it raised. Intent first, then a reading of the
      intent, so nothing above the reading is a model's words. */
   const observed = nextCockpitFocusedObserved(group, nextCockpitObservedProject(group));
-  /* The design's order inside this tab: what you asked for, then the reading
-     of it, then the departures it raised, then how it landed. */
+  /* The design's order inside this tab, and it is load bearing: what you asked
+     for, any unresolved baseline conflict, the reading, the departures it
+     raised, how it landed, and last where it is kept. */
   /* Above the reading because it constrains one, below the record because it
      cites rows from it. The same open set gates both, so the block and the
      demotion cannot disagree about whether a baseline is settled. */
@@ -1935,7 +2104,8 @@ function nextCockpitHeldTo(group, observation){
     nextCockpitConflict(session, annotation, workSource) +
     nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group), observed,
       unsettled, workSource) +
-    nextCockpitLanded(observed);
+    nextCockpitLanded(observed) +
+    nextCockpitDeparturesKept();
   const cap = nextCockpitHeldCap();
   const revision = nextProjectRevisionLine(annotation) || "No revision saved yet";
   const binding = annotation && annotation.binding_why && (annotation.goal || annotation.output)

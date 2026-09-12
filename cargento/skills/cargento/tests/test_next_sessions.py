@@ -1178,3 +1178,51 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
         html = self.detail('departures: [], departure_why: "Cargento has checked this session."')
 
         self.assertIn("<h2>UNASKED CHECKS</h2>", html)
+
+    def test_a_departure_says_what_later_evidence_showed(self) -> None:
+        """DRC-4514. The follow-up axis, printed verbatim from the server.
+
+        Unknown is the common answer and it is a sentence, never a blank: a row
+        with nothing beside it reads as a raise that came to nothing bad.
+        """
+        html = self.detail(
+            'departures: [{constraint: "Goal", clause: "", reading: "went elsewhere",'
+            ' evidence: "", revision: 2, cutoff: 1700000000,'
+            ' follow_up: "No later check has read this session, so what happened after this '
+            'raise is not recorded here."}], departure_why: ""'
+        )
+
+        self.assertIn("No later check has read this session", html)
+
+    def test_a_departure_with_no_raise_recorded_says_so_rather_than_nothing(self) -> None:
+        """Silence beside a departure reads as a raise the reader ignored.
+
+        Measured on the board: two departures rendered with the notifications
+        block simply absent, so nothing distinguished a raise that failed from
+        a departure nobody was ever alerted to.
+
+        Read from the DEPARTURE LANE's own figures rather than the flat keys,
+        because those carry the latest raise of any of the four lanes that write
+        the store: a gate raise on the same session would otherwise cancel this
+        sentence beside a departure nothing was raised about.
+        """
+        html = self.detail(
+            'departures: [{constraint: "Goal", clause: "", reading: "went elsewhere",'
+            ' evidence: "", revision: 2, cutoff: 1700000000, follow_up: ""}],'
+            ' departure_why: "", delivery_raises: 3, delivery_departure: {delivery_raises: 0,'
+            ' delivery_none_why: "No notification raise about this session is on record, so '
+            'nothing here says one was attempted."}, browser_lane_why: ""'
+        )
+
+        self.assertIn("No notification raise about this session is on record", html)
+
+    def test_a_session_nobody_raised_about_and_nothing_departed_stays_silent(self) -> None:
+        # The absence sentence is only true beside a departure. A session with
+        # neither draws neither panel.
+        html = self.detail(
+            'departures: [], departure_why: "Cargento has checked this session.",'
+            ' delivery_departure: {delivery_raises: 0, delivery_none_why: "No notification '
+            'raise about this session is on record."}, browser_lane_why: ""'
+        )
+
+        self.assertNotIn("No notification raise about this session is on record", html)

@@ -45,7 +45,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── deliveries.py       # what became of each raise, and what may not be said of one
-        │   ├── departures.py      # what an unasked reading raised, and the baseline it read
+        │   ├── departures.py      # what an unasked reading raised, its baseline, and what came after
         │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
         │   ├── ends.py             # the session ends this board observed, kept across a restart
         │   ├── events.py           # the untrusted event envelope and its overlay reducer

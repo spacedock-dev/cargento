@@ -552,7 +552,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # whether a dashboard tab has reported a notification lane of its own.
         # Declared here at their absent values on the rule above, and left empty
         # here for the same reason: this module has no runtime imports.
-        # `Application._delivery_fields` fills all seven from
+        # `Application._delivery_fields` fills all nine from
         # `deliveries.published(...)`, which owns every sentence.
         #
         # The browser lane is board-wide rather than per session, and rides on
@@ -560,21 +560,41 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # and one top-level sentence could not carry that gap.
         "delivery_outcome": "",
         "delivery_why": "",
+        # The absence of a raise, said out loud. Only ever printed beside a
+        # departure: silence there reads as a raise the reader ignored, and a
+        # session nobody was raised about still draws no panel at all.
+        "delivery_none_why": "",
         "delivery_at": None,
         "delivery_raises": 0,
         "delivery_mixed": False,
         "delivery_mixed_why": "",
         "delivery_binding_why": "",
+        # The same set again, narrowed to the lane that raises a departure. A
+        # sentence printed BESIDE a departure may not come from the flat keys
+        # above: those carry the latest raise of any of the four lanes that
+        # write the store, so an unrelated hook refusal spoke for a departure
+        # that had been handed over. Nested rather than seven more flat names,
+        # and never in session history, so the flat-fields rule above does not
+        # reach it. `None` is a payload that carries no delivery scope at all.
+        "delivery_departure": None,
         "browser_lane": False,
         "browser_lane_at": None,
         "browser_lane_why": "",
         # What the unasked reading lane raised about this session, and why there
         # is nothing. Declared here at their absent values on the rule above;
-        # `Application._unasked_fields` fills both from `unasked.published`,
+        # `Application._unasked_fields` fills all three from `unasked.published`,
         # which is where the four sentences live so an exhausted cap cannot read
         # like a session found to be on track.
         "departures": [],
         "departure_why": "",
+        # Whether this session has ever been read against the words it holds
+        # now, which is what makes the list above a measurement. `[]` is the
+        # value on a session the lane never reached AND on one it read and
+        # found nothing in, so a count of that list is a number in one case and
+        # an absence in the other: a review surface printed "Departures the
+        # checks run while you were away raised 0" under "Cargento has not
+        # checked this session against what you asked for".
+        "departure_checked": False,
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the
         # waited-for duration the page prints. Only the Claude, Copilot and

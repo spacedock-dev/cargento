@@ -59,11 +59,10 @@ if TYPE_CHECKING:
 # record for.
 LANE = "departure"
 
-# The window the per-day cap counts over. Rolling rather than calendar, because
-# the reader this exists for walked away at an arbitrary hour: a midnight reset
-# would hand a whole fresh allowance to a board nobody is watching, and a
-# calendar day would need a timezone this runtime does not otherwise carry.
-DAY_SEC = 86_400.0
+# The window the per-day cap counts over, owned by `departures` because the
+# sentence that reports a spent day cap is chosen there and read by three
+# surfaces. Re-exported under the old name, which the lane and its tests use.
+DAY_SEC = departures.DAY_SEC
 
 
 def _spawn(work: Callable[[], None]) -> None:
@@ -345,6 +344,7 @@ class Lane:
             "revision": assessment["revision_read"],
             "cutoff": now,
             "cutoff_text": str(assessment.get("cutoff") or ""),
+            "withdrawn": False,
         }
 
     def _departures(
@@ -380,6 +380,9 @@ class Lane:
                     # cutoff was never actually recorded.
                     "cutoff": now,
                     "cutoff_text": str(assessment.get("cutoff") or ""),
+                    # Set by `departures.withdraw` when the reader clears the
+                    # words this read, never by the lane.
+                    "withdrawn": False,
                 }
             )
         return out
@@ -432,20 +435,14 @@ def published(
     """
     harness = str(row.get("harness") or "")
     sid = str(row.get("sid") or "")
-    mine, today = departures.counts(stored, harness, sid, since=now - DAY_SEC)
-    rows = departures.published(stored, harness, sid)
-    if not departures.checked(stored, harness, sid):
-        # Before the caps, deliberately. A session nobody has checked is not a
-        # session held off by a spent cap, even when the board's day cap is
-        # spent: the first says nothing was looked at here, and the second
-        # implies something was.
-        why = departures.NEVER_CHECKED
-    elif today >= config.unasked_daily_cap:
-        why = departures.DAY_EXHAUSTED
-    elif mine >= config.unasked_session_cap:
-        why = departures.SESSION_EXHAUSTED
-    elif rows:
-        why = ""
-    else:
-        why = departures.NOTHING_DEPARTED
-    return {"departures": rows, "departure_why": why}
+    return {
+        "departures": departures.published(stored, harness, sid),
+        "departure_why": departures.why(config, stored, harness, sid, now=now),
+        # Whether the list above is a measurement at all. It is `[]` both for a
+        # session nobody read and for one that was read and had nothing to
+        # raise, and the review surface counts it: a session the lane had never
+        # reached rendered a departure figure of 0 under the sentence saying it
+        # had not been checked. `departures.checked` is the same test the
+        # sentence uses, so the figure and the sentence cannot disagree.
+        "departure_checked": departures.checked(stored, harness, sid),
+    }

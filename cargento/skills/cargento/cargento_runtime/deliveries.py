@@ -163,6 +163,45 @@ NO_RECORD: Final = (
     "is unknown rather than known to have failed."
 )
 
+# The absence of a raise, said out loud, and published on its own key rather
+# than through `delivery_why`. A session nobody was raised about draws no panel
+# at all and must keep drawing none; this sentence is only true BESIDE a
+# departure, where silence would otherwise read as a raise the reader ignored.
+# Measured on the board: the session page showed two departures and simply
+# omitted the notifications block, so nothing on screen distinguished a raise
+# that failed from a departure nobody was ever alerted to.
+NO_RAISE_RECORDED: Final = (
+    "No notification raise about this session is on record, so nothing here says one was "
+    "attempted. The record is bounded and drops its oldest rows, so an older raise can have "
+    "left it."
+)
+
+# The lane the unasked reading raises under. Duplicated from `unasked.LANE`
+# rather than imported, because this module is a leaf and `unasked` reads it;
+# `test_deliveries` asserts the two are the same token, so the copy cannot
+# drift silently.
+LANE_DEPARTURE: Final = "departure"
+
+# The same absence, said at the scope the caller narrowed to. Keyed on the lane
+# rather than composed, for the reason every other sentence here is a constant:
+# the wording is the product.
+#
+# Measured on the board, and it is why the sentence above may not be reused for
+# a narrowed call. With one hook refusal on record and no departure raise, the
+# session page printed "No notification raise about this session is on record,
+# so nothing here says one was attempted" inside the departure block and "One
+# notification was raised about this session" in the NOTIFICATIONS block
+# directly beneath it. Both were about the same session, one counted one lane
+# and the other counted four, and nothing on screen said so.
+NO_RAISE_BY_LANE: Final[dict[str, str]] = {
+    LANE_DEPARTURE: (
+        "No notification raise about a departure on this session is on record, so nothing here "
+        "says one was attempted. Raises this board made about the session for other reasons are "
+        "not counted here, and the record is bounded and drops its oldest rows, so an older "
+        "raise can have left it."
+    ),
+}
+
 # The outcomes that mean this board actually tried. Named positively rather than
 # as "not no-lane": an unreadable outcome is not an attempt either, and a
 # negative test would have counted one silently the day that case was added.
@@ -455,7 +494,7 @@ def browser_lane_why(lane_reported_at: float, raised_at: float | None) -> str:
 
 
 def _mine(
-    entries: Iterable[Delivery], harness: str, sid: str, *, by_prefix: bool
+    entries: Iterable[Delivery], harness: str, sid: str, *, by_prefix: bool, lane: str
 ) -> list[Delivery]:
     """This session's raises, under whichever binding the caller established.
 
@@ -463,8 +502,18 @@ def _mine(
     one, so a stored raise counts when its own sid starts with it. Comparing
     both ways would let an eight-character stored key claim every longer session
     that happens to begin with it.
+
+    `lane` empty is every lane, which is what the NOTIFICATIONS block on the
+    session page wants: it is about the notifications raised, whatever raised
+    them. A caller printing a sentence BESIDE a departure passes the departure
+    lane instead, because four lanes write this store and the sentence published
+    is the latest raise's: measured, a departure handed over and an unrelated
+    hook refusal an hour later printed "the notification service returned an
+    error" beside the departure that got out.
     """
     rows = [row for row in entries if row["harness"] == harness]
+    if lane:
+        rows = [row for row in rows if row["lane"] == lane]
     if not sid:
         return []
     if not by_prefix:
@@ -479,19 +528,32 @@ def published(
     *,
     lane_reported_at: float = 0.0,
     by_prefix: bool = False,
+    lane: str = "",
 ) -> dict[str, Any]:
     """What one session's row says about the raises made against it.
 
     The browser lane rides here rather than at the top of the payload even
     though it is board-wide, because its sentence is relative to the raise it
     sits beside and a single top-level sentence could not carry that gap.
+
+    `lane` narrows every figure and every sentence to one producer, and the key
+    names are unchanged so a caller renders either scope with one body. See
+    `_mine` for why a sentence printed beside a departure needs the narrow one.
     """
-    mine = _mine(entries, harness, sid, by_prefix=by_prefix)
+    mine = _mine(entries, harness, sid, by_prefix=by_prefix, lane=lane)
     latest = max(mine, key=lambda row: row["at"], default=None)
     raised_at = latest["at"] if latest else None
     return {
         "delivery_outcome": latest["outcome"] if latest else "",
         "delivery_why": DELIVERY.get(latest["outcome"], NO_RECORD) if latest else "",
+        # Exactly one of these two carries a sentence. The absence one is
+        # published on every row and printed only where a departure stands,
+        # and it is the narrowed wording whenever the caller narrowed: a
+        # sentence that counted one lane may not be worded as if it counted
+        # every one. An unknown lane falls back to the board-wide wording,
+        # which is why `test_deliveries` binds the one narrowing caller's
+        # token to a key here.
+        "delivery_none_why": ("" if latest else NO_RAISE_BY_LANE.get(lane, NO_RAISE_RECORDED)),
         "delivery_at": raised_at,
         "delivery_raises": len(mine),
         # Whether the sentence above is the whole story. One sentence is

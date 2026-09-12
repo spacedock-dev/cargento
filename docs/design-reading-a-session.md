@@ -244,8 +244,8 @@ departure, rule 4's backstop and rule 7's three stored byte-identically to a mod
 absent.
 
 Every row now names the rule that left it without a verdict, as a token: `not-asked` for rule 5,
-`unreadable` for rule 2 — a row the page still answers from its own derivation, since that token
-never accompanies a result — `uncited` for rule 3, `verdict-stated` for rule 4's backstop, and
+`unreadable` for rule 2 (a row the page still answers from its own derivation, since that token
+never accompanies a result), `uncited` for rule 3, `verdict-stated` for rule 4's backstop, and
 `no-work-shown`, `board-quoting-itself` and `uncorroborated` for rule 7 and the two rules added
 beside it. Where more than one fires the producer records the one the page would have said, in the
 page's order, so a live row and its stored copy never disagree about the reason. The contract

@@ -231,6 +231,28 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
 
         self.assertEqual([], self.harness.readings)
 
+    def test_two_collections_over_unchanged_evidence_add_no_row(self) -> None:
+        """DRC-4514 AC2, asserted on the store rather than on the lane's log.
+
+        The review surface reads the store, so the claim that matters there is
+        that the file did not grow. Verified, not rebuilt.
+
+        Which side binds, measured by mutation: removing the `changed` gate in
+        `consider` alone leaves this green, because `_claim`'s per-session floor
+        still holds the second reading off. Removing both turns it red at
+        `1 != 2`. So this binds the pair rather than either one, which is the
+        claim the review surface actually rests on.
+        """
+        self.harness.consider([_row(state="working")])
+        self.harness.consider([_row(state="idle")])
+        after_one_change = departures.load(self.harness.config)
+
+        for _ in range(3):
+            self.harness.consider([_row(state="idle")])
+
+        self.assertEqual(1, len(after_one_change))
+        self.assertEqual(after_one_change, departures.load(self.harness.config))
+
     def test_only_one_reading_starts_per_collection(self) -> None:
         # Forty annotated sessions crossing a boundary together must not start
         # forty subprocesses. Written against a SYNCHRONOUS worker on purpose:
@@ -291,6 +313,7 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
                 "revision": 4,
                 "cutoff": 900.0,
                 "cutoff_text": "",
+                "withdrawn": False,
             }
             for n in range(20)
             for _ in range(self.harness.config.unasked_session_cap)
@@ -476,6 +499,29 @@ class TheRaiseCarriesItsOwnBaselineTest(unittest.TestCase):
         self.assertEqual("", stored["cutoff_text"])
         self.assertEqual(5_000.0, stored["cutoff"], "the moment is still recorded")
 
+    def test_the_cutoff_is_the_same_clock_as_the_moment_the_check_ran(self) -> None:
+        """The premise `departures.follow_up` may not compare, bound here.
+
+        Both write sites record `cutoff = now`, so it is an upper bound on the
+        evidence and not a second, comparable number. `follow_up` once tested
+        one row's cutoff against another's and reported that the later check had
+        "read evidence from after this raise"; that test was `at > at` written
+        twice, and its own fixture built a row with `at` 2000 and `cutoff` 900,
+        which neither of these two sites can produce. If a real evidence bound
+        is ever recorded, this assertion is the one that must be changed first.
+        """
+        raised = departures.load(self.harness.config)[0]
+        quiet = _Harness(
+            _config(Path(self.temp.name) / "quiet"), _assessment(reading.RESULT_CONSISTENT)
+        )
+        quiet.consider([_row(state="working")])
+        quiet.consider([_row(state="idle")])
+        check = departures.load(quiet.config)[0]
+
+        self.assertEqual(raised["at"], raised["cutoff"])
+        self.assertEqual("", check["constraint"], "the row for a check that raised nothing")
+        self.assertEqual(check["at"], check["cutoff"])
+
 
 class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
     """AC5. The reader is by construction not present, so "nothing departed" and
@@ -505,6 +551,7 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
                 "revision": 4,
                 "cutoff": 4_000.0 + n,
                 "cutoff_text": "",
+                "withdrawn": False,
             }
             for n in range(count)
         ]
@@ -569,6 +616,36 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
 
         self.assertEqual("", published["departure_why"])
         self.assertEqual(1, len(published["departures"]))
+
+    def test_a_row_says_whether_this_session_was_ever_checked(self) -> None:
+        """DRC-4514, walked on the board. Zero was standing in for unmeasured.
+
+        `departures` is `[]` on a session the lane has never read and on one it
+        read and found nothing in, so a length is not a measurement. The review
+        section printed "Departures the checks run while you were away raised
+        0" four lines under "Cargento has not checked this session against what
+        you asked for". A figure nobody measured has to say so, which is the
+        shared contract's first rule and the rule the lane-off case already
+        obeys.
+        """
+        self._store(1, sid="other", constraint="")
+
+        stored = departures.load(self.config)
+        unread = unasked.published(self.config, stored, _row("s-1"), now=5_000.0)
+
+        self.assertIs(False, unread["departure_checked"])
+        self.assertEqual([], unread["departures"])
+
+    def test_a_checked_session_that_raised_nothing_says_it_was_checked(self) -> None:
+        # The case where zero IS a measurement, and the one the row above must
+        # be distinguishable from.
+        self._store(1, constraint="")
+
+        stored = departures.load(self.config)
+        published = unasked.published(self.config, stored, _row(), now=5_000.0)
+
+        self.assertIs(True, published["departure_checked"])
+        self.assertEqual([], published["departures"])
 
     def test_the_four_sentences_are_four_sentences(self) -> None:
         every = {
@@ -727,6 +804,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
                     "revision": 4,
                     "cutoff": 900.0,
                     "cutoff_text": "",
+                    "withdrawn": False,
                 }
             ],
             diagnostic_sink=lambda _line: None,
@@ -762,6 +840,7 @@ class TheDepartureStoreSurvivesConcurrentWritersTest(unittest.TestCase):
                 "revision": 4,
                 "cutoff": 900.0,
                 "cutoff_text": "",
+                "withdrawn": False,
             }
             for n in range(3)
         ]

@@ -892,16 +892,44 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-reading>header,.next-cockpit-departures>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-cockpit-reading h2,.next-cockpit-departures h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em}
 .next-cockpit-reading-stamp{color:var(--ink3);font-family:var(--mono);font-size:10px}
-.next-cockpit-reading-row,.next-cockpit-departure{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px dotted var(--line2)}
+/* The review section holds two collections and two more parts, so each is
+   fenced and named. The label takes the mono uppercase every other source label
+   on this panel takes; it names a collection rather than quoting one, which is
+   note 7 of the design's own compromise list and is kept deliberately. */
+.next-cockpit-departure-part{display:flex;flex-direction:column;gap:4px;padding:8px 0 0}
+.next-cockpit-departure-part+.next-cockpit-departure-part{margin-top:6px;border-top:1px solid var(--line)}
+.next-cockpit-departure-label{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.08em}
+/* Figures, one per line and never side by side: two numbers on one line invite
+   the division neither of them survives. */
+.next-cockpit-departure-counts{display:flex;flex-direction:column;gap:3px}
+.next-cockpit-count{display:flex;justify-content:space-between;gap:12px}
+.next-cockpit-count-label{color:var(--ink2);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-count-value{color:var(--ink);font:var(--fs-xs)/1.5 var(--mono)}
+.next-cockpit-departures-kept{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-departures-kept a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-cockpit-departures-kept a:hover{text-decoration-color:var(--accent)}
+/* ONE departure row treatment, and the same one the design writes down (note 2
+   of its own list: reuse this row, do not invent a second). The unasked lane's
+   row joins each selector below rather than keeping its own sizes, because the
+   review section puts the two collections side by side under one heading and
+   they were rendering in four different sizes each -- 10px against 12.5px for
+   the constraint, 12.5px against 11.5px for the clause, 13.5px against 12.5px
+   for the model's sentence, 10px against 11.5px for the evidence line. The
+   third treatment's band is 13-13.5px, so the shared body moves up rather than
+   the cockpit row moving down. */
+.next-cockpit-reading-row,.next-cockpit-departure,.next-session-departure{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px dotted var(--line2)}
 .next-cockpit-reading-row+.next-cockpit-reading-row,.next-cockpit-departure+.next-cockpit-departure{margin-top:6px}
-.next-cockpit-reading-name{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
-.next-cockpit-reading-clause{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
+/* The constraint name and the stamp on one line. A float does not survive the
+   flex column above, so the row carries them together. */
+.next-session-departure-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-reading-name,.next-session-departure-name{color:var(--ink3);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.13em}
+.next-cockpit-reading-clause,.next-session-departure-clause{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
 /* The board saying the revision's words are not retained, which is the board
    talking and not a quotation, so sans for the reason the limit line below
    gives. */
 .next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--sans);color:var(--ink3);overflow-wrap:anywhere}
-.next-cockpit-reading-result,.next-cockpit-reading-detail{font:italic 13.5px/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
-.next-cockpit-reading-evidence{color:var(--ink3);font-family:var(--mono);font-size:10px;overflow-wrap:anywhere}
+.next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading{font:italic 13.5px/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
+.next-cockpit-reading-evidence,.next-session-departure-base{color:var(--ink3);font-family:var(--mono);font-size:10px;overflow-wrap:anywhere}
 /* The board talking, not a string a source published, so sans. The
    evidence line above it names a type and a source and stays mono. */
 .next-cockpit-reading-limit{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans);overflow-wrap:anywhere}
@@ -934,20 +962,28 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 /* The sentence saying why there is nothing. Dimmer than a departure, because a
    spent cap and a quiet board are both absences and neither is a finding. */
 .next-session-departures-why{margin:6px 0 0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
-.next-session-departure{margin:8px 0 0;padding-left:10px;border-left:1px dotted var(--line2)}
-.next-session-departure-name{color:var(--ink);font:var(--fs-xs)/1.5 var(--mono)}
-.next-session-departure-clause{margin-left:8px;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
-.next-session-departure-at{float:right;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
-/* Italic, because it is a model's reading and not a string a source published.
-   The one treatment the design is explicit about. */
-.next-session-departure-reading{margin:2px 0 0;color:var(--ink2);
-  font:italic var(--fs-xs)/1.5 var(--sans)}
-.next-session-departure-base{margin:2px 0 0;color:var(--ink3);font:var(--fs-2xs)/1.5 var(--mono)}
-/* What became of a raise. No colour on any of it, and that is the rule rather
-   than a default: the four outcomes are facts of different weights and none of
-   them is a verdict, so a red on "the service returned an error" would read as
-   a fault the reader has to answer for. The heading carries the count and the
-   two paragraphs carry the sentences the server composed. */
+/* Everything typographic about this row is set with the cockpit's above. What
+   is left here is spacing and the one element that row has no counterpart for:
+   the stamp saying when the raise happened. */
+.next-session-departure{margin:8px 0 0}
+.next-session-departure-at{color:var(--ink3);font-family:var(--mono);font-size:10px}
+.next-session-departure-reading,.next-session-departure-base{margin:0}
+/* What later evidence showed. Sans and upright, because it is the board
+   reporting a derivation over its own store and not a model reading, and no
+   colour on any of its four sentences: the common one is unknown, and unknown
+   never takes colour. Dimmer than the reading above it, which is the finding. */
+.next-session-departure-next{margin:2px 0 0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+/* What became of a raise. The heading carries the count and the paragraphs
+   carry the sentences the server composed.
+
+   Colour only where the lane observed something, and never clay: a red on "the
+   service returned an error" would read as a fault the reader has to answer
+   for, which is why this block carried no colour at all until DRC-4514 put it
+   beside the departure it is about. Amber on a raise that did not get out,
+   because that is rule 3's "observed, and wants you" exactly -- the reader is
+   the only one who can act on a signal the machine failed to send. `no-lane` is
+   ink3, because nothing was published. `handed-over` and `did-not-return` stay
+   uncoloured: the first is not a delivery and the second is unknown. */
 .next-session-delivery{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--line2)}
 /* The same label shape as every other fact on this panel, and that is the
    correction rather than a preference: walked on a real board, the block was the
@@ -964,6 +1000,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    evidence than a server-side outcome, and the two reading alike is what would
    let the reader take a tab that was open once for a notification that landed. */
 .next-session-delivery-lane{margin:4px 0 0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+[data-next-delivery="refused"] .next-session-delivery-why,
+[data-next-delivery="not-launched"] .next-session-delivery-why{color:var(--amber)}
+[data-next-delivery="no-lane"] .next-session-delivery-why{color:var(--ink3)}
 .next-session-held-link{margin:10px 0 0;font:var(--fs-xs)/1.5 var(--sans)}
 /* The board's own ink, not the browser's default link colour. Nothing else
    on this page is blue, and an unstyled anchor announced itself as the one

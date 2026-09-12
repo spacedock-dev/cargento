@@ -114,16 +114,19 @@ DECLARED_SESSION_FIELDS = frozenset(
         "annotation_reading_refused",
         "delivery_outcome",
         "delivery_why",
+        "delivery_none_why",
         "delivery_at",
         "delivery_raises",
         "delivery_mixed",
         "delivery_mixed_why",
         "delivery_binding_why",
+        "delivery_departure",
         "browser_lane",
         "browser_lane_at",
         "browser_lane_why",
         "departures",
         "departure_why",
+        "departure_checked",
     }
 )
 

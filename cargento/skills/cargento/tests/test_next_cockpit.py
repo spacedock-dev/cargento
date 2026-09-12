@@ -6414,5 +6414,451 @@ console.log(JSON.stringify({html, names: html.includes("could not read it")}));
         self.assertFalse(out["names"], out["html"])
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitDepartureReviewTest(NextPageJsHarness):
+    """DRC-4514: what was raised while you were away, where you review it.
+
+    The section titled DEPARTURES RAISED TO YOU used to show only the departures
+    of a reader-requested reading, which is a collection nothing on a shipped
+    board can produce. The departures actually raised to the reader — the unasked
+    lane's — appeared one route away on the session page and nowhere here. What
+    is asserted below is the rendered sentence, and where two surfaces show one
+    fact, that they render the same characters.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    DEPARTURE = (
+        '{constraint:"TYPED GOAL", clause:"do not change the board while capturing",'
+        ' reading:"Two turns edited the running board\'s markup between captures.",'
+        ' evidence:"turn transcript · Codex", revision:2, cutoff:100, at:101,'
+        ' follow_up:"No later check has read this session, so what happened after this '
+        'raise is not recorded here."}'
+    )
+
+    def review(self, setup: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const block = (html.match(
+  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
+console.log(JSON.stringify({
+  html, block,
+  visible: block.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").trim(),
+  shared: nextUnaskedDepartureBody(__dashboard.sessions[0]),
+  onSession: nextSessionView("cargento", "codex", "focus-1"),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_raised_departure_is_reachable_from_the_section_that_names_them(self) -> None:
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn("TYPED GOAL", out["visible"])
+        self.assertIn("do not change the board while capturing", out["visible"])
+        self.assertIn("Two turns edited the running board", out["visible"])
+        self.assertIn("read against revision 2", out["visible"])
+        self.assertIn("evidence to", out["visible"])
+        # The sentence the section used to print over two standing departures.
+        self.assertNotIn("No reading has been made, so nothing has been raised.", out["html"])
+
+    def test_a_raise_whose_baseline_did_not_survive_says_so_here_too(self) -> None:
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].departures = [{constraint:"TYPED GOAL", clause:"",'
+            ' reading:"went elsewhere", evidence:"", revision:0, cutoff:0, at:101,'
+            ' follow_up:""}];\n'
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn("the revision it read is not on record", out["visible"])
+        self.assertIn("the evidence window is not on record", out["visible"])
+
+    def test_the_switch_is_what_decides_whether_anything_watches(self) -> None:
+        """AC1b. The claim was unconditional and false under the switch."""
+        on = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+        off = self.review("delete __dashboard.unasked;\n")
+
+        self.assertIn("Nothing watches for a departure on its own", off["visible"])
+        self.assertNotIn("Nothing watches for a departure on its own", on["visible"])
+
+    def test_the_two_surfaces_print_the_same_characters_for_one_raise(self) -> None:
+        """AC1c. One body, two frames, rather than two renderings of one fact."""
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn("TYPED GOAL", out["shared"])
+        self.assertIn(out["shared"], out["block"])
+        self.assertIn(out["shared"], out["onSession"])
+
+    def test_each_of_the_four_absence_sentences_is_printed_verbatim(self) -> None:
+        """AC1c. A spent cap must not be worded one way here and another there."""
+        for sentence in (
+            (
+                "Cargento has not checked this session against what you asked for. Nothing "
+                "here says whether it would have found anything."
+            ),
+            (
+                "Cargento has checked this session against what you asked for and found "
+                "nothing to raise."
+            ),
+            (
+                "This session has reached its limit of unasked checks, so no further check "
+                "will run on it. That is a limit being spent, not a session found to be on "
+                "track."
+            ),
+            (
+                "This board has reached its limit of unasked checks for the day, so no "
+                "further check will run on any session. That is a limit being spent, not a "
+                "board found to be on track."
+            ),
+        ):
+            with self.subTest(sentence=sentence[:32]):
+                out = self.review(
+                    "__dashboard.unasked = true;\n"
+                    "__dashboard.sessions[0].departures = [];\n"
+                    f"__dashboard.sessions[0].departure_why = {json.dumps(sentence)};\n"
+                )
+
+                self.assertIn(sentence, out["visible"])
+                self.assertIn(out["shared"], out["onSession"])
+
+    def test_delivery_renders_beside_the_departure_it_is_about(self) -> None:
+        """AC1d. A raise and what became of it were two blocks and two counts."""
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 2,"
+            ' delivery_outcome: "handed-over",'
+            " delivery_why: \"Handed to this machine's notification service, which accepted"
+            ' it.", delivery_mixed: true, delivery_mixed_why: "Earlier raises about this '
+            'session did not all end the same way as this one.",'
+            ' delivery_binding_why: "Matched on an eight-character identity prefix.",'
+            ' browser_lane_why: "No dashboard tab has reported a notification lane."};\n'
+        )
+
+        self.assertIn("which accepted it.", out["visible"])
+        self.assertIn("did not all end the same way", out["visible"])
+        self.assertIn("eight-character identity prefix", out["visible"])
+        self.assertIn("No dashboard tab has reported a notification lane.", out["visible"])
+        # And the page adds no verdict of its own beside the sentences it got.
+        self.assertNotIn("you saw", out["block"])
+
+    def test_a_departure_with_no_raise_on_record_says_so_rather_than_nothing(self) -> None:
+        """AC1d. Silence there reads as a raise the reader ignored."""
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 0,"
+            ' delivery_none_why: "No notification raise about this session is on record, so '
+            'nothing here says one was attempted."};\n'
+        )
+
+        self.assertIn("No notification raise about this session is on record", out["visible"])
+
+    def test_no_row_turns_the_board_wide_lane_flag_into_a_claim_about_it(self) -> None:
+        """AC1e. `browser_lane` is board-wide; only its per-raise sentence rides."""
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            "__dashboard.browser_lane = false;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
+            ' delivery_outcome: "no-lane", delivery_why: "This platform has no notification '
+            'backend in this build.", browser_lane_why: "No dashboard tab has reported a '
+            "notification lane. A tab that opens sends a report and a tab that closes sends "
+            'none, so this says nothing about whether the page raised one."};\n'
+        )
+
+        self.assertIn("so this says nothing about whether the page raised one.", out["visible"])
+        # Nothing stronger, and nothing about this session's own lane.
+        self.assertNotIn("no notification lane in this browser", out["visible"].lower())
+
+    def test_the_counts_are_labelled_lines_and_never_a_ratio(self) -> None:
+        """AC4. Twelve quiet checks and two raises is a departure figure of two."""
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 2, attempted: 2, handed_over: 1};\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE},"
+            ' {constraint:"EXPECTED OUTPUT", clause:"", reading:"and again", evidence:"",'
+            ' revision:2, cutoff:100, at:102, follow_up:""}];\n'
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "2", "2", "2", "1"], values)
+        # No ratio, no percentage, and no further figure composed from these.
+        self.assertNotIn("%", out["visible"])
+        self.assertNotIn(" of 2", out["visible"])
+
+    def test_a_figure_the_payload_does_not_carry_states_its_absence(self) -> None:
+        # The shared contract's first rule: never a zero standing in for a
+        # number nobody published.
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 3};\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "1", "3", "not published", "not published"], values)
+
+    def test_the_departure_figure_is_absent_rather_than_zero_when_nothing_watches(self) -> None:
+        """The one figure that was exempt from the rule the test above states.
+
+        `base_session` declares `departures` at `[]` on every row whether or not
+        the lane ran, so a length read off it is always a number. Measured on a
+        default board: "Departures raised about this session 0" printed directly
+        under "Nothing watches for a departure on its own".
+        """
+        out = self.review(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+        self.assertIn("Nothing watches for a departure on its own", out["visible"])
+        self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
+
+    def test_a_session_the_lane_never_read_gets_no_departure_figure(self) -> None:
+        """The same rule as the lane-off case, one layer in.
+
+        Walked on a board with the switch on and this session never checked:
+        "Departures the checks run while you were away raised 0" printed four
+        lines under "Cargento has not checked this session against what you
+        asked for". Both sentences were about the same session and only one of
+        them was a measurement.
+        """
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            "__dashboard.sessions[0].departures = [];\n"
+            "__dashboard.sessions[0].departure_checked = false;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session '
+            "against what you asked for. Nothing here says whether it would have found "
+            'anything.";\n'
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+        self.assertIn("Cargento has not checked this session", out["visible"])
+        self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
+
+    def test_a_session_the_lane_read_and_found_nothing_in_gets_a_zero(self) -> None:
+        """The case where the figure is a measurement, and 0 is the right one."""
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            "__dashboard.sessions[0].departures = [];\n"
+            "__dashboard.sessions[0].departure_checked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has checked this session '
+            'against what you asked for and found nothing to raise.";\n'
+        )
+
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        self.assertEqual(["not published", "0", "3", "3", "2"], values)
+
+    def test_each_figure_counts_the_rows_its_own_part_rendered(self) -> None:
+        """The shared contract's second rule, and the DRC-4453 defect class.
+
+        The section renders two collections under one heading. One figure
+        counting one of them read "Departures raised about this session 1" under
+        two rendered rows, and read 0 under a rendered row when the only
+        departure came from the reading.
+        """
+        setup = (
+            '__dashboard.sessions[0].annotation_goal = "do not change the board while '
+            'capturing";\n'
+            '__dashboard.sessions[0].annotation_goal_why = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+            '__dashboard.sessions[0].annotation_output_why = "";\n'
+            "__dashboard.sessions[0].annotation_revision = 1;\n"
+            "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+            "__dashboard.sessions[0].annotation_at = 200;\n"
+            '__dashboard.sessions[0].annotation_binding_why = "";\n'
+            "__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{"
+            ' goal:{result:"departure", detail:"It changed the board mid-capture.",'
+            ' cites:["fo-a"]}}};\n'
+        )
+        reading_only = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 1, attempted: 1, handed_over: 0};\n"
+            + setup
+            + "__dashboard.sessions[0].departures = [];\n"
+            "__dashboard.sessions[0].departure_checked = true;\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+        both = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.delivery_counts = {raises: 1, attempted: 1, handed_over: 0};\n"
+            + setup
+            + f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn("It changed the board mid-capture.", reading_only["visible"])
+        self.assertEqual(
+            ["1", "0", "1", "1", "0"],
+            re.findall(r'class="next-cockpit-count-value">([^<]*)<', reading_only["block"]),
+        )
+        self.assertEqual(
+            ["1", "1", "1", "1", "0"],
+            re.findall(r'class="next-cockpit-count-value">([^<]*)<', both["block"]),
+        )
+
+    def test_the_review_surface_never_implies_a_reading_can_be_asked_for(self) -> None:
+        """AC-untouched. DEC-17's abstention check has not run in any build.
+
+        The control is read straight out of its own renderer, because the tab
+        only reaches it once an annotation and an observer model are present and
+        neither is what is under test here. What IS under test is that nothing
+        this change added moved that paragraph or enabled that button.
+        """
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+        control = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify(nextCockpitReadingControl("
+            '{harness:"codex", sid:"focus-1"}, {goal:"ship it", reading_count:0})));',
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(control, str)
+
+        self.assertIn(
+            "The abstention check this ruling requires has not been run, so a reading cannot "
+            "be asked for yet. The evidence above stays readable without one.",
+            control,
+        )
+        self.assertIn("Ask for a reading</button>", control)
+        self.assertIn(" disabled>", control)
+        # And the review section itself invites no press of its own.
+        self.assertNotIn("Ask for a reading", out["block"])
+
+    def test_an_unsettled_baseline_leaves_no_departure_in_the_reading_part(self) -> None:
+        """AC3, verified rather than rebuilt.
+
+        DRC-4508 built the demotion and
+        `test_a_later_direction_demotes_a_departure_rather_than_filtering_it`
+        pins it at the criterion row. What is checked here is its consequence
+        for this section: the reading part carries no departure row, and the
+        conflict block states the conflict without deciding it.
+        """
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "do not change the board";\n'
+            '__dashboard.sessions[0].annotation_goal_why = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+            '__dashboard.sessions[0].annotation_output_why = "No expected output typed.";\n'
+            "__dashboard.sessions[0].annotation_revision = 1;\n"
+            "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+            "__dashboard.sessions[0].annotation_at = 100;\n"
+            '__dashboard.sessions[0].annotation_binding_why = "";\n'
+            "__dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{"
+            ' goal:{result:"departure", detail:"It changed the board.", cites:["fo-a"]}}};\n'
+            "__dashboard.sessions[0].departures = [];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn("A LATER DIRECTION", out["html"])
+        self.assertNotIn("It changed the board.", out["block"])
+        self.assertIn(
+            "This reading verified neither constraint, so it raised nothing and confirmed nothing.",
+            out["visible"],
+        )
+
+    def test_the_section_points_at_where_a_raise_is_kept(self) -> None:
+        # The design's order ends at "where it is kept", and the Intent log is
+        # the only surface a raise survives its session on. It is the TAB's last
+        # slot rather than this section's: emitted as the section's last child
+        # it landed above HOW IT LANDED, because the six-slot tab order had been
+        # re-read as five slots internal to the section.
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+        html = out["html"]
+
+        self.assertIn('href="#n=intent"', html)
+        self.assertNotIn('href="#n=intent"', out["block"])
+        self.assertLess(html.find("<h2>DEPARTURES RAISED TO YOU</h2>"), html.find("HOW IT LANDED"))
+        self.assertLess(html.find("HOW IT LANDED"), html.find("next-cockpit-departures-kept"))
+
+    def test_no_departure_standing_draws_no_sentence_about_how_one_was_raised(self) -> None:
+        """A delivery sentence for a raise that does not exist.
+
+        `delivery_*` is filled on every row from every lane -- gate, ask, hook
+        and departure -- so a default board with a needs-input banner and no
+        departure at all printed "One notification was raised about this
+        session" under HOW IT WAS RAISED, four lines below the heading saying
+        nothing watches for a departure.
+        """
+        out = self.review(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
+            ' delivery_outcome: "handed-over", delivery_why: "Handed to this machine\'s '
+            'notification service, which accepted it."};\n'
+        )
+
+        self.assertIn("Nothing watches for a departure on its own", out["visible"])
+        self.assertNotIn("HOW IT WAS RAISED", out["block"])
+        self.assertNotIn("which accepted it.", out["block"])
+
+    def test_the_outcome_beside_a_departure_is_that_lane_s_and_not_the_board_s(self) -> None:
+        """Four lanes write the delivery store and one sentence is published.
+
+        Measured: a departure raise handed over, and an unrelated hook refusal
+        an hour later, printed "The notification service returned an error"
+        beside the departure that got out -- and the amber rule painted it.
+        `delivery_mixed_why` cannot cover this: it says earlier raises ended
+        differently, never that some were not about a departure.
+        """
+        out = self.review(
+            f"__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+            "__dashboard.sessions[0].delivery_raises = 2;\n"
+            '__dashboard.sessions[0].delivery_outcome = "refused";\n'
+            '__dashboard.sessions[0].delivery_why = "The notification service returned an '
+            'error, so no banner was created.";\n'
+            "__dashboard.sessions[0].delivery_mixed = true;\n"
+            "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
+            ' delivery_outcome: "handed-over",'
+            " delivery_why: \"Handed to this machine's notification service, which accepted"
+            ' it."};\n'
+        )
+
+        self.assertIn("which accepted it.", out["visible"])
+        self.assertNotIn("The notification service returned an error", out["block"])
+        self.assertIn('data-next-delivery="handed-over"', out["block"])
+        self.assertNotIn('data-next-delivery="refused"', out["block"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
+from cargento_runtime import aggregate, cli, departures, http_api, lifecycle, notifications
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
@@ -714,6 +714,51 @@ class DismissEndpointTest(RuntimeTestCase):
         # And not on an identity long enough to be whole, or the caveat is
         # noise on every row and stops being read.
         self.assertEqual("", by_sid["a-much-longer-identity"]["binding_why"])
+
+    def test_the_reveal_carries_what_was_raised_against_each_row(self) -> None:
+        """DRC-4514. The one surface a retained assessment survives on.
+
+        Departures ride the same request as the words rather than the polled
+        payload, because the payload only holds sessions still on the board and
+        the rows this route exists for have left it. It also keeps a row and its
+        raises consistent with each other: they are read in one pass.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "departed", goal="Prove it landed")
+        annotation_store.annotate(config, state, "claude", "abcd1234", goal="Ship the cockpit")
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "departed",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "Prove it landed",
+                    "reading": "The work moved to the installer.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        by_key = {f"{r['harness']}:{r['sid']}": r for r in json.loads(body)["annotations"]}
+        raised = by_key["pi:departed"]
+        self.assertEqual(1, len(raised["departures"]))
+        self.assertEqual("TYPED GOAL", raised["departures"][0]["constraint"])
+        # A raise carries no absence sentence beside it.
+        self.assertEqual("", raised["departure_why"])
+        # And a session the lane never reached says that, rather than reading
+        # as one that was checked and found clean.
+        quiet = by_key["claude:abcd1234"]
+        self.assertEqual([], quiet["departures"])
+        self.assertEqual(departures.NEVER_CHECKED, quiet["departure_why"])
 
     def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
         config, state = self._runtime()
@@ -3072,6 +3117,16 @@ class AnnotateRouteTest(unittest.TestCase):
         finally:
             conn.close()
 
+    @staticmethod
+    def _get_annotations(port: int) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/annotations")
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
     def test_settling_a_later_direction_is_a_third_arm_on_this_route(self) -> None:
         """DRC-4508's baseline-conflict block writes its answer here.
 
@@ -3284,6 +3339,120 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertIsNone(json.loads(body)["revision"])
         self.assertEqual((), annotation_store.load(config))
+
+    def test_clearing_withdraws_what_was_raised_against_the_cleared_words(self) -> None:
+        """DRC-4514. `SECURITY.md` says a clear takes the words off this route.
+
+        `annotations.clear` deletes every revision and reaches no other store,
+        and `/api/annotations` began serving the departure store on the same
+        branch, so the invariant went false: measured end to end, a goal cleared
+        and replaced served the withdrawn clause verbatim under a model's
+        sentence about it. The ROW survives, because it is what bounds the
+        lane's spend, and only its quotations go.
+        """
+        config, state = self._runtime()
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "s",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "never touch production credentials in this run",
+                    "reading": "It reached for the deploy key.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "Read 4 of 4 entries in the observed record.",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(
+                port,
+                json.dumps(
+                    {
+                        "harness": "pi",
+                        "sid": "s",
+                        "goal": "never touch production credentials in this run",
+                    }
+                ).encode(),
+            )
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode())
+            self._post(
+                port,
+                json.dumps({"harness": "pi", "sid": "s", "goal": "ship the cockpit"}).encode(),
+            )
+            status, body = self._get_annotations(port)
+
+        self.assertEqual(200, status)
+        rows = json.loads(body)["annotations"]
+        self.assertEqual(1, len(rows))
+        self.assertEqual([], rows[0]["departures"])
+        self.assertNotIn("production credentials", body.decode())
+        self.assertNotIn("It reached for the deploy key.", body.decode())
+        # The row itself stays: a withdrawal is not a refund of the subprocess
+        # those checks spent.
+        stored = departures.load(config)
+        self.assertEqual(1, len(stored))
+        self.assertIs(True, stored[0]["withdrawn"])
+        self.assertEqual("", stored[0]["clause"])
+
+    def test_emptying_both_fields_is_not_the_clear_that_withdraws_a_raise(self) -> None:
+        """DRC-4514, walked on the board, and the reason `SECURITY.md` says which.
+
+        The `clear` control beside each field empties the box; the save that
+        follows is a revision with an empty string, and every earlier revision
+        stays on disk. `clear: true` is a different act -- it deletes them all
+        -- and it is the only one that withdraws a raise. Walked end to end:
+        pressing `clear` and `save` on both fields left `/api/annotations`
+        serving the departure clause verbatim, which is correct, because the
+        words themselves are still in the store two revisions up.
+        """
+        config, state = self._runtime()
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "s",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "never touch production credentials in this run",
+                    "reading": "It reached for the deploy key.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "Read 4 of 4 entries in the observed record.",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(
+                port,
+                json.dumps(
+                    {
+                        "harness": "pi",
+                        "sid": "s",
+                        "goal": "never touch production credentials in this run",
+                    }
+                ).encode(),
+            )
+            # What the two controls on the board actually send.
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": ""}).encode())
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "output": ""}).encode())
+            status, body = self._get_annotations(port)
+
+        self.assertEqual(200, status)
+        rows = json.loads(body)["annotations"]
+        self.assertEqual(1, len(rows))
+        self.assertEqual(1, len(rows[0]["departures"]))
+        self.assertIn("production credentials", body.decode())
+        stored = departures.load(config)
+        self.assertIs(False, stored[0]["withdrawn"])
 
     def test_the_off_switch_answers_503_rather_than_404(self) -> None:
         """503 for `/api/dismiss`'s reason: under the off switch the route

@@ -273,6 +273,23 @@ settles them through the newest one shown, which is what `settle_through` record
 control only moves the caret to the goal field, because Cargento cannot author your words. While a
 later direction is unsettled a reading states no departure at all.
 
+`DEPARTURES RAISED TO YOU` is where a raise is reviewed, and it keeps two collections apart. One
+holds what a reading you asked for raised; the other holds what the checks run while you were away
+raised, with the annotation revision each read against and where its evidence stopped. Under both
+sits what became of that lane's raise, and a raise with no delivery record on file says that rather
+than showing nothing. Each raised constraint carries what a later check found, derived from later
+checks rather than from a second reading: the usual answer is that no later check has read the
+session, and where one has, the sentence says what it found and never that the raise caused it. The
+figures beneath are one line per collection — the departures the reading raised and the departures
+the away checks raised, each counted from the rows shown beside it — then the board's raises,
+attempts and hand-overs, with no arithmetic between any of them. A count identifies a session worth
+reading and settles nothing else, and where the away checks have never read the session the figure
+says it was not measured rather than reading zero. The `clear` beside each box empties that box, and
+the save after it keeps every earlier revision, so the raises quoting those words stay. Discarding
+the whole annotation, which is `clear` in a `POST /api/annotate` body, withdraws them: the
+quotations go from the departure record too, and only the fact that a check ran stays. The Intent
+log carries the same raises a line at a time, and keeps them after the session leaves the board.
+
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
@@ -462,7 +479,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
 | `POST /api/annotate` | Record a goal or expected output against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
-| `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
+| `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
 | `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the `Held to` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or while the abstention check has not been run, which is every build so far. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
 
 ## Interpretation notes (share with the user if asked)

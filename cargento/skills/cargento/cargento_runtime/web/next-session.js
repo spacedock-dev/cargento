@@ -338,8 +338,22 @@ function nextSessionFooter(session){
    noise about a feature nobody turned on. */
 function nextSessionDepartures(session){
   if(!(nextData && nextData.unasked === true)) return "";
-  const rows = Array.isArray(session.departures) ? session.departures : [];
-  const why = String(session.departure_why == null ? "" : session.departure_why);
+  const body = nextUnaskedDepartureBody(session);
+  if(!body) return "";
+  return '<section class="next-session-departures">' +
+    "<h2>UNASKED CHECKS</h2>" + body + "</section>";
+}
+
+/* The rows and the absence sentence, in one wording for every surface that
+   shows them (DRC-4514).
+
+   Extracted so the departure review on the Held to tab prints the same
+   characters as this page rather than a second rendering of the same fields.
+   The section heading is the caller's, because the two surfaces sit in
+   different frames; everything inside it is here. */
+function nextUnaskedDepartureBody(session){
+  const rows = Array.isArray(session && session.departures) ? session.departures : [];
+  const why = String((session && session.departure_why) == null ? "" : session.departure_why);
   if(!rows.length && !why) return "";
   /* "while you were away" was a claim about the reader, and nothing here
      observes where they were. The store has no expiry either, so a row can be
@@ -348,12 +362,42 @@ function nextSessionDepartures(session){
   const heading = rows.length === 1
     ? "One departure was raised"
     : `${rows.length} departures were raised`;
-  return '<section class="next-session-departures">' +
-    "<h2>UNASKED CHECKS</h2>" +
-    (rows.length ? `<p class="next-session-departures-count">${esc(heading)}</p>` : "") +
+  return (rows.length ? `<p class="next-session-departures-count">${esc(heading)}</p>` : "") +
     rows.map(row => nextSessionDepartureRow(row)).join("") +
     (why ? `<p class="next-session-departures-why">${esc(why)}</p>` : "") +
-    "</section>";
+    nextDeliveryAbsence(session, rows.length > 0);
+}
+
+/* The delivery figures for the lane that raises a departure, and never the
+   board's.
+
+   The flat `delivery_*` keys carry the LATEST raise of ANY lane, and four write
+   the store: gate, ask, hook and departure. Beside a departure that is the
+   wrong scope in both directions -- a session with no departure at all printed
+   another lane's outcome under a heading about raises, and a departure that was
+   handed over printed a later hook refusal's sentence. `deliveries.published`
+   is called a second time narrowed to the lane, under this one key, with the
+   same key names inside, so the two scopes cannot be worded differently. */
+function nextDepartureDelivery(session){
+  const scoped = session && session.delivery_departure;
+  return scoped && typeof scoped === "object" ? scoped : null;
+}
+
+/* The sentence for a departure no raise was ever recorded against.
+
+   Printed only beside a departure and only when the DEPARTURE LANE holds no
+   raise for this session. Walked on the board: two departures rendered with the
+   notifications block simply absent, so nothing on screen distinguished a raise
+   that failed from a departure the reader was never alerted to. `deliveries`
+   owns the sentence, for the reason it owns the other five. */
+function nextDeliveryAbsence(session, hasDeparture){
+  if(!hasDeparture) return "";
+  const scoped = nextDepartureDelivery(session);
+  if(!scoped) return "";
+  const raises = Number(scoped.delivery_raises);
+  if(Number.isFinite(raises) && raises > 0) return "";
+  const none = String(scoped.delivery_none_why == null ? "" : scoped.delivery_none_why);
+  return none ? `<p class="next-session-delivery-why">${esc(none)}</p>` : "";
 }
 
 /* Wall-clock hours and minutes, the way `nextWorkstreamClock` does it. Its own
@@ -384,13 +428,29 @@ function nextSessionDepartureRow(row){
   const at = Number(row.at);
   const when = Number.isFinite(at) && at > 0
     ? `<span class="next-session-departure-at">${esc(nextSessionClock(at))}</span>` : "";
+  /* One row treatment for both parts of the review section (DRC-4514). The
+     container, the constraint name, the clause, the model's sentence and the
+     evidence line all take the cockpit reading row's declarations, which is
+     where the design's third treatment is written down: two departure rows side
+     by side under one heading, in four different sizes, is the second treatment
+     the design forbids. The name and the stamp share a head row because the
+     shared container is a flex column and a float does not survive one. */
   return '<div class="next-session-departure">' +
+    '<div class="next-session-departure-head">' +
     `<span class="next-session-departure-name">${esc(text("constraint"))}</span>${when}` +
+    "</div>" +
     (text("clause") ? `<span class="next-session-departure-clause">${esc(text("clause"))}` +
       "</span>" : "") +
     `<p class="next-session-departure-reading">${esc(text("reading"))}</p>` +
     `<p class="next-session-departure-base">${esc(baseline + window)}` +
-    (text("evidence") ? ` · ${esc(text("evidence"))}` : "") + "</p></div>";
+    (text("evidence") ? ` · ${esc(text("evidence"))}` : "") + "</p>" +
+    /* What later evidence showed, chosen by `departures.follow_up` from later
+       checks in the same store. Unknown is the common answer and it arrives as
+       a sentence naming its reason: a blank here would be read as a raise that
+       came to nothing bad, which is the one thing this axis must not say. */
+    (text("follow_up")
+      ? `<p class="next-session-departure-next">${esc(text("follow_up"))}</p>` : "") +
+    "</div>";
 }
 
 /* What became of the notifications Cargento raised about this session.
@@ -405,7 +465,21 @@ function nextSessionDepartureRow(row){
    session nobody was ever alerted about invents a question the reader did not
    have. */
 function nextSessionDelivery(session){
-  const raises = Number(session.delivery_raises);
+  const body = nextDeliveryBody(session);
+  if(!body) return "";
+  const text = key => String(session[key] == null ? "" : session[key]);
+  return '<section class="next-session-delivery" ' +
+    `data-next-delivery="${esc(text("delivery_outcome"))}"` +
+    `${session.delivery_mixed === true ? ' data-next-delivery-mixed="true"' : ""}>` +
+    `<h2>NOTIFICATIONS</h2>${body}</section>`;
+}
+
+/* The four published sentences and the count that scopes them, in one wording
+   for every surface (DRC-4514). Shared with the departure review for
+   `nextUnaskedDepartureBody`'s reason: the wording is the product, and the
+   least true reading is the one that gets reworded into the most reassuring. */
+function nextDeliveryBody(session){
+  const raises = Number(session && session.delivery_raises);
   if(!Number.isFinite(raises) || raises < 1) return "";
   const text = key => String(session[key] == null ? "" : session[key]);
   /* The sentence describes the LATEST raise and no other, so the count and the
@@ -417,20 +491,19 @@ function nextSessionDelivery(session){
   const count = raises === 1
     ? "One notification was raised about this session"
     : `${raises} notifications were raised about this session. The most recent:`;
-  return '<section class="next-session-delivery" ' +
-    `data-next-delivery="${esc(text("delivery_outcome"))}"` +
-    `${session.delivery_mixed === true ? ' data-next-delivery-mixed="true"' : ""}>` +
-    `<h2>NOTIFICATIONS</h2>` +
-    `<p class="next-session-delivery-count">${esc(count)}</p>` +
+  return `<p class="next-session-delivery-count">${esc(count)}</p>` +
     (text("delivery_why")
       ? `<p class="next-session-delivery-why">${esc(text("delivery_why"))}</p>` : "") +
     (session.delivery_mixed === true && text("delivery_mixed_why")
       ? `<p class="next-session-delivery-note">${esc(text("delivery_mixed_why"))}</p>` : "") +
     (text("delivery_binding_why")
       ? `<p class="next-session-delivery-note">${esc(text("delivery_binding_why"))}</p>` : "") +
+    /* `browser_lane_why` and never `browser_lane`. The flag is board-wide and
+       says nothing about one session; the sentence is relative to this raise,
+       which is why it is published per row and the flag at the top
+       ([DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery)). */
     (text("browser_lane_why")
-      ? `<p class="next-session-delivery-lane">${esc(text("browser_lane_why"))}</p>` : "") +
-    "</section>";
+      ? `<p class="next-session-delivery-lane">${esc(text("browser_lane_why"))}</p>` : "") + "";
 }
 
 /* The way back to the reader's own words. Every session link on the board
