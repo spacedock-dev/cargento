@@ -1,0 +1,730 @@
+"""An observed session end survives a restart of the board that observed it.
+
+DRC-4547. The end mark lived only in the coordinator's memory, so a restart
+turned every finished session back into one that merely went quiet: three
+Claude sessions that published `session end observed` came back as `no end
+observed`, and the final reading DEC-15 permits on an ended session could never
+be taken on any of them. Nothing here invents an end. A store carrying no end
+for a session is read as no end, and a stored end loses to transcript activity
+later than the end plus the activity grace.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import dataclasses
+import json
+import os
+import shutil
+import stat
+import tempfile
+import threading
+import time
+import unittest
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from unittest import mock
+
+from cargento_runtime import aggregate, ends, observation, reading
+from cargento_runtime import annotations as annotation_store
+from cargento_runtime.config import build_runtime_config
+
+from . import support
+from .next_harness import NextPageJsHarness
+from .test_history import (
+    isolated_environment,
+    no_instance,
+    run_one_shot_cli,
+    seed_claude_transcript,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from cargento_runtime.config import RuntimeConfig
+
+SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
+PREFIX = "abcdef12"
+# The end, and the board's clock. Well inside the display window, so the row is
+# still produced from the transcript after the restart.
+END_AT = support.SERVER_STARTED - 600
+NOW = support.SERVER_STARTED
+
+
+def _config(root: Path) -> Any:
+    return build_runtime_config(
+        environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+        platform_name="linux",
+        os_name="posix",
+        launcher_path=root / "server.py",
+    )
+
+
+class TheEndSurvivesARestartTest(unittest.TestCase):
+    """The store contract: stored values, not sentences."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _config(Path(self.temp.name))
+        self.quiet = lambda _line: None
+
+    def test_a_recorded_end_is_read_back_by_a_fresh_load(self) -> None:
+        self.assertTrue(
+            ends.record(
+                self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=self.quiet
+            )
+        )
+        loaded = ends.load(self.config)
+        self.assertEqual(1, len(loaded))
+        self.assertEqual(
+            ("claude", PREFIX, 100.0), (loaded[0]["harness"], loaded[0]["sid"], loaded[0]["at"])
+        )
+        self.assertEqual({("claude", PREFIX): 100.0}, ends.restored(loaded))
+
+    def test_a_redelivered_older_end_does_not_pull_the_stamp_backwards(self) -> None:
+        # `observation._mark_ended`'s max rule, kept on disk as well: delivery is
+        # at-least-once and possibly reordered.
+        ends.record(self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=self.quiet)
+        ends.record(self.config, harness="claude", sid=PREFIX, at=90.0, diagnostic_sink=self.quiet)
+        self.assertEqual({("claude", PREFIX): 100.0}, ends.restored(ends.load(self.config)))
+        self.assertEqual(1, len(ends.load(self.config)), "one record per session id")
+
+    def test_a_lifted_end_is_gone_from_disk(self) -> None:
+        ends.record(self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=self.quiet)
+        ends.record(self.config, harness="codex", sid="other", at=101.0, diagnostic_sink=self.quiet)
+        self.assertTrue(
+            ends.lift(self.config, harness="claude", sid=PREFIX, diagnostic_sink=self.quiet)
+        )
+        self.assertEqual({("codex", "other"): 101.0}, ends.restored(ends.load(self.config)))
+
+    def test_lifting_an_end_that_was_never_recorded_creates_no_file(self) -> None:
+        # A `session_started` for a session nothing ever saw end is the common
+        # case, and the store must not come into being on it.
+        self.assertFalse(
+            ends.lift(self.config, harness="claude", sid=PREFIX, diagnostic_sink=self.quiet)
+        )
+        self.assertFalse(os.path.exists(ends.store_path(self.config)))
+
+    def test_a_zero_or_negative_stamp_is_refused_rather_than_stored(self) -> None:
+        self.assertFalse(
+            ends.record(
+                self.config, harness="claude", sid=PREFIX, at=0.0, diagnostic_sink=self.quiet
+            )
+        )
+        self.assertFalse(
+            ends.record(
+                self.config, harness="claude", sid=PREFIX, at=-5.0, diagnostic_sink=self.quiet
+            )
+        )
+        self.assertFalse(os.path.exists(ends.store_path(self.config)))
+
+    def test_the_store_lives_beside_the_state_file_and_not_per_port(self) -> None:
+        self.assertEqual(
+            os.path.join(self.config.state_home, "cargento-ends.json"), ends.store_path(self.config)
+        )
+
+    @unittest.skipIf(os.name == "nt", "POSIX file modes")
+    def test_the_file_is_owner_only(self) -> None:
+        ends.record(self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=self.quiet)
+        mode = stat.S_IMODE(os.stat(ends.store_path(self.config)).st_mode)
+        self.assertEqual(0o600, mode)
+
+    def test_the_newest_entries_survive_the_cap(self) -> None:
+        config = self.config
+        for index in range(5):
+            ends.record(
+                config,
+                harness="claude",
+                sid=f"s{index}",
+                at=100.0 + index,
+                diagnostic_sink=self.quiet,
+            )
+        capped = ends.load(dataclasses.replace(config, end_max_entries=2))
+        self.assertEqual(
+            {("claude", "s3"), ("claude", "s4")}, {(e["harness"], e["sid"]) for e in capped}
+        )
+
+    def test_forget_deletes_the_store_and_reports_whether_there_was_one(self) -> None:
+        self.assertFalse(ends.forget(self.config))
+        ends.record(self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=self.quiet)
+        self.assertTrue(ends.forget(self.config))
+        self.assertFalse(os.path.exists(ends.store_path(self.config)))
+
+
+class AStoreCarryingNoEndIsNotReadAsOneTest(unittest.TestCase):
+    """AC4, the store half: nothing claims an end it did not see."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _config(Path(self.temp.name))
+        os.makedirs(self.config.state_home, mode=0o700, exist_ok=True)
+
+    def _write(self, raw: bytes) -> None:
+        with open(ends.store_path(self.config), "wb") as handle:
+            handle.write(raw)
+
+    def test_garbage_entries_are_dropped_one_at_a_time_and_this_session_has_none(self) -> None:
+        self._write(
+            json.dumps(
+                {
+                    "v": ends.SCHEMA_VERSION,
+                    "entries": [
+                        {"harness": "codex", "sid": "elsewhere", "at": 50.0},
+                        {"harness": "claude", "sid": PREFIX, "at": 0},
+                        {"harness": "claude", "sid": PREFIX, "at": "yesterday"},
+                        ["claude", PREFIX, 100.0],
+                        {"harness": "claude", "sid": PREFIX},
+                        {"harness": "claude", "sid": PREFIX, "at": True},
+                    ],
+                }
+            ).encode()
+        )
+        restored = ends.restored(ends.load(self.config))
+        self.assertNotIn(("claude", PREFIX), restored)
+        self.assertEqual({("codex", "elsewhere"): 50.0}, restored, "the one sound record survives")
+
+    def test_an_over_cap_file_degrades_to_no_ends(self) -> None:
+        self._write(b'{"v": 1, "entries": [' + b" " * (self.config.end_read_cap_bytes + 1) + b"]}")
+        self.assertEqual((), ends.load(self.config))
+
+    def test_a_truncated_file_degrades_to_no_ends(self) -> None:
+        self._write(b'{"v": 1, "entries": [{"harness": "claude", "sid": "' + PREFIX.encode())
+        self.assertEqual((), ends.load(self.config))
+
+    def test_a_file_of_the_wrong_shape_degrades_to_no_ends(self) -> None:
+        for raw in (b"[]", b"null", b'{"entries": {}}', b'{"v": 1}'):
+            with self.subTest(raw=raw):
+                self._write(raw)
+                self.assertEqual((), ends.load(self.config))
+
+    def test_a_missing_file_is_no_ends_and_is_not_created_by_a_read(self) -> None:
+        self.assertEqual((), ends.load(self.config))
+        self.assertFalse(os.path.exists(ends.store_path(self.config)))
+
+
+class ConcurrentWritersKeepEveryEndTest(unittest.TestCase):
+    """AC5: the lock and the per-thread temp name, measured rather than read.
+
+    `deliveries` shipped this shape without a lock and lost a record in 60 of 60
+    two-writer trials. `session_ended` and `session_started` reach `record` and
+    `lift` from `ThreadingHTTPServer` handler threads, one per hook POST, so two
+    sessions ending together is the ordinary case rather than a stress test.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _config(Path(self.temp.name))
+
+    def _record(self, n: int) -> None:
+        ends.record(
+            self.config,
+            harness="claude",
+            sid=f"s-{n}",
+            at=100.0 + n,
+            diagnostic_sink=lambda _line: None,
+        )
+
+    def test_two_simultaneous_writers_both_land(self) -> None:
+        ready = threading.Barrier(2)
+
+        def write(n: int) -> None:
+            ready.wait()
+            self._record(n)
+
+        threads = [threading.Thread(target=write, args=(n,)) for n in (1, 2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(2, len(ends.load(self.config)))
+
+    def test_many_writers_leave_a_store_that_still_parses(self) -> None:
+        threads = [threading.Thread(target=self._record, args=(n,)) for n in range(12)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        rows = ends.load(self.config)
+        self.assertEqual(12, len(rows))
+        self.assertEqual(12, len({row["sid"] for row in rows}))
+
+    def test_no_two_records_write_the_store_at_the_same_time(self) -> None:
+        depth = 0
+        deepest = 0
+        real_open = os.open
+
+        def watched(path: str, *args: Any, **kwargs: Any) -> int:
+            nonlocal depth, deepest
+            if not str(path).endswith(".tmp"):
+                return real_open(path, *args, **kwargs)
+            depth += 1
+            deepest = max(deepest, depth)
+            try:
+                time.sleep(0.01)
+                return real_open(path, *args, **kwargs)
+            finally:
+                depth -= 1
+
+        with mock.patch.object(os, "open", watched):
+            threads = [threading.Thread(target=self._record, args=(n,)) for n in range(6)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertEqual(1, deepest, "two writers were inside the store write at once")
+        self.assertEqual(6, len(ends.load(self.config)))
+
+    def test_two_concurrent_saves_do_not_share_a_temp_path(self) -> None:
+        opened: list[str] = []
+        both_open = threading.Barrier(2, timeout=5)
+        real_open = os.open
+
+        def watched(path: str, *args: Any, **kwargs: Any) -> int:
+            if not str(path).endswith(".tmp"):
+                return real_open(path, *args, **kwargs)
+            opened.append(str(path))
+            handle = real_open(path, *args, **kwargs)
+            both_open.wait()
+            return handle
+
+        def save(n: int) -> None:
+            row: ends.End = {"harness": "claude", "sid": f"s-{n}", "at": float(n + 1)}
+            ends.save(self.config, [row], diagnostic_sink=lambda _line: None)
+
+        with mock.patch.object(os, "open", watched):
+            threads = [threading.Thread(target=save, args=(n,)) for n in (1, 2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertEqual(2, len(opened))
+        self.assertEqual(2, len(set(opened)), "two writers shared one temp path")
+
+
+class ColdSource:
+    """A coordinator that started after the end: it remembers nothing.
+
+    Every reading absent, on the shape of the eleven stubs in
+    `test_observation`, so what reaches the row can only have come from disk.
+    """
+
+    def overlays_for(self, harness: str, sid: str) -> list[Any]:
+        del harness, sid
+        return []
+
+    def finished_at(self, harness: str, sid: str) -> float:
+        del harness, sid
+        return 0.0
+
+    def ended_at(self, harness: str, sid: str) -> float:
+        del harness, sid
+        return 0.0
+
+    def git_for(self, harness: str, sid: str) -> None:
+        del harness, sid
+
+    def focusable(self, harness: str, sid: str) -> bool:
+        del harness, sid
+        return False
+
+    def note_rows(self, keys: set[tuple[str, str]]) -> None:
+        pass
+
+    def drop_counters(self) -> dict[str, int]:
+        return {}
+
+
+class LiveEndSource(ColdSource):
+    """The coordinator that saw the end itself, still running."""
+
+    def ended_at(self, harness: str, sid: str) -> float:
+        return END_AT if (harness, sid) == ("claude", PREFIX) else 0.0
+
+
+class ColdRowTestCase(support.RuntimeTestCase):
+    """One quiet Claude session on a redirected store, over a redirected state home.
+
+    Shaped on `test_observation.ApplicationOverlayTest._seeded`, plus the state
+    home redirect that suite does not need: the store under test lives beside
+    the state file, and reading the developer's own would make every assertion
+    here about their board rather than the code.
+    """
+
+    @contextlib.contextmanager
+    def _board(
+        self, *, last_activity: float = END_AT - 100
+    ) -> Iterator[tuple[aggregate.Application, RuntimeConfig]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            project = projects / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / f"{SESSION}.jsonl"
+            transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
+            os.utime(transcript, (last_activity, last_activity))
+            with (
+                mock.patch.dict(os.environ, {"CARGENTO_HOME": os.path.join(tmp, "state")}),
+                support.store_patch(PROJECTS_DIR=str(projects)),
+                support.store_patch(TASKS_DIR=str(projects / "tasks")),
+            ):
+                config, _state = support.runtime()
+                self.assertEqual(
+                    (str(projects),),
+                    config.store_roots["claude.projects"],
+                    "the store redirect did not take, so this read the real store",
+                )
+                self.assertTrue(
+                    config.state_home.startswith(tmp), "the state home redirect did not take"
+                )
+                yield self._application(), config
+
+    @staticmethod
+    def _application() -> aggregate.Application:
+        app = support.build_app()
+        app.clock = lambda: NOW
+        return app
+
+    def _row(self, app: aggregate.Application) -> dict[str, Any]:
+        collection = app.collect(show_all=False)
+        rows = [s for s in collection["sessions"] if s["sid"] == PREFIX]
+        self.assertEqual(1, len(rows), "the seeded session was not collected")
+        row: dict[str, Any] = rows[0]
+        return row
+
+    def _end_then_restart(self, app: aggregate.Application) -> aggregate.Application:
+        """The first run sees the end; the second is a fresh process over the same home."""
+        first = observation.Observation(app, clock=lambda: END_AT, diagnostic_sink=lambda _m: None)
+        app.overlays = first
+        self.assertEqual(
+            "accepted",
+            first.submit("claude", {"v": 1, "event": "session_ended", "session_id": SESSION}),
+        )
+        second = self._application()
+        second.overlays = observation.Observation(
+            second, clock=lambda: NOW, diagnostic_sink=lambda _m: None
+        )
+        return second
+
+
+class AStoredEndReachesAColdRowTest(ColdRowTestCase):
+    """AC1 and AC2 at the row: the value, then the eligibility path."""
+
+    def test_a_stored_end_is_published_on_a_row_the_coordinator_never_saw(self) -> None:
+        with self._board() as (app, config):
+            ends.record(
+                config, harness="claude", sid=PREFIX, at=END_AT, diagnostic_sink=lambda _m: None
+            )
+            app.overlays = ColdSource()
+            row = self._row(app)
+        self.assertEqual("idle", row["state"], "the collector still owns the state")
+        self.assertEqual(END_AT, row["ended_at"])
+        self.assertIsNone(row["finished_at"], "an end is not a stop")
+
+    def test_a_final_reading_is_takeable_on_the_cold_row(self) -> None:
+        # AC2: `eligibility` reads `ended_at` off the row, so the restored end is
+        # what lets it return a final scope after the restart.
+        with self._board() as (app, config):
+            ends.record(
+                config, harness="claude", sid=PREFIX, at=END_AT, diagnostic_sink=lambda _m: None
+            )
+            app.overlays = ColdSource()
+            row = self._row(app)
+        self.assertEqual("session-end", reading.end_kind(row))
+        self.assertEqual(
+            (reading.SCOPE_FINAL, ""),
+            reading.eligibility(row, latest_revision_at=0.0, now=NOW, settle_sec=8.0),
+        )
+
+    def test_the_end_the_first_run_observed_reaches_the_second_run_through_the_store(self) -> None:
+        # The whole journey rather than a hand-written store: a real coordinator
+        # takes the end, a second Application over the same home reads it cold.
+        with self._board() as (app, _config):
+            second = self._end_then_restart(app)
+            row = self._row(second)
+        self.assertEqual(END_AT, row["ended_at"])
+
+    def test_a_previously_stored_final_reading_is_no_longer_withdrawn(self) -> None:
+        # The second symptom: `_withdraw_stale_finality` compares the row's end to
+        # the one the reading rested on, and a cold row carrying None retracted
+        # every final reading on every restart.
+        assessment: Any = {
+            "revision_read": 1,
+            "stamp": "",
+            "cutoff": "",
+            "scope": reading.SCOPE_FINAL,
+            "scope_text": reading.SCOPE_TEXT[reading.SCOPE_FINAL],
+            "ended_at_read": END_AT,
+            "criteria": {
+                name: {
+                    "result": reading.RESULT_UNVERIFIABLE,
+                    "cites": (),
+                    "detail": "",
+                    "clause": "",
+                }
+                for name in reading.CONSTRAINTS
+            },
+        }
+        with self._board() as (app, config):
+            annotation_store.annotate(
+                config, app.state, "claude", PREFIX, goal="rename", now=END_AT - 200
+            )
+            annotation_store.record_reading(
+                config, app.state, "claude", PREFIX, assessment=assessment
+            )
+            second = self._end_then_restart(app)
+            row = self._row(second)
+        published = row["annotation_assessment"]
+        self.assertEqual(reading.SCOPE_FINAL, published["scope"])
+        self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_FINAL], published["scope_text"])
+        self.assertEqual(
+            row["ended_at"], published["ended_at_read"], "the stamp round-trips exactly"
+        )
+
+    def test_under_no_events_the_store_is_neither_read_nor_written(self) -> None:
+        # decisions.md, DRC-4547: Option A. The coordinator is the only writer,
+        # and with none the store is left alone in both directions.
+        with self._board() as (app, config):
+            ends.record(
+                config, harness="claude", sid=PREFIX, at=END_AT, diagnostic_sink=lambda _m: None
+            )
+            before = Path(ends.store_path(config)).read_bytes()
+            app.overlays = None
+            row = self._row(app)
+            after = Path(ends.store_path(config)).read_bytes()
+        self.assertIsNone(row["ended_at"])
+        self.assertEqual(before, after)
+
+
+class NothingClaimsAnEndItDidNotSeeTest(ColdRowTestCase):
+    """AC4 at the row, and the resumed-while-down guard."""
+
+    def test_a_store_with_no_end_for_this_session_publishes_none(self) -> None:
+        with self._board() as (app, config):
+            os.makedirs(config.state_home, mode=0o700, exist_ok=True)
+            Path(ends.store_path(config)).write_text(
+                json.dumps(
+                    {
+                        "v": ends.SCHEMA_VERSION,
+                        "entries": [
+                            {"harness": "codex", "sid": "elsewhere", "at": END_AT},
+                            {"harness": "claude", "sid": PREFIX, "at": 0},
+                            {"harness": "claude", "sid": PREFIX, "at": "yesterday"},
+                        ],
+                    }
+                )
+            )
+            app.overlays = ColdSource()
+            row = self._row(app)
+        self.assertIsNone(row["ended_at"])
+        self.assertEqual("idle-unknown", reading.end_kind(row))
+
+    def test_a_corrupt_store_publishes_none_and_every_row_still_renders(self) -> None:
+        with self._board() as (app, config):
+            os.makedirs(config.state_home, mode=0o700, exist_ok=True)
+            Path(ends.store_path(config)).write_bytes(b'{"v": 1, "entries": [{"harness": "cl')
+            app.overlays = ColdSource()
+            row = self._row(app)
+        self.assertIsNone(row["ended_at"])
+
+    def test_a_stored_end_loses_to_transcript_activity_after_it(self) -> None:
+        # decisions.md, DRC-4547: a session `--resume`d while the board was down
+        # produced no event this process saw, so the only tell that the id is in
+        # use again is the transcript writing after the end. The exposure that
+        # comes with it is written in SECURITY.md: a harness that writes its
+        # transcript after SessionEnd loses the restored end and the row reads as
+        # it does today, which is honest rather than wrong.
+        with self._board(last_activity=END_AT + 10.0 + 1) as (app, config):
+            self.assertEqual(
+                10.0,
+                config.overlay_wait_activity_grace_sec,
+                "the grace this test is built on moved",
+            )
+            ends.record(
+                config, harness="claude", sid=PREFIX, at=END_AT, diagnostic_sink=lambda _m: None
+            )
+            app.overlays = ColdSource()
+            row = self._row(app)
+        self.assertIsNone(row["ended_at"])
+        self.assertNotEqual("session-end", reading.end_kind(row))
+
+    def test_activity_inside_the_grace_keeps_the_stored_end(self) -> None:
+        # The boundary from the other side: the a1 arm of the session-end capture
+        # put the end 5.581 s after the last Stop, and a transcript write inside
+        # the grace is that ordering rather than a resumption.
+        with self._board(last_activity=END_AT + 9.0) as (app, config):
+            ends.record(
+                config, harness="claude", sid=PREFIX, at=END_AT, diagnostic_sink=lambda _m: None
+            )
+            app.overlays = ColdSource()
+            row = self._row(app)
+        self.assertEqual(END_AT, row["ended_at"])
+
+    def test_a_live_end_stays_unguarded(self) -> None:
+        # The boring outcome, pinned so the guard above cannot leak: a live end is
+        # retired by `_lift_ended` when the id is seen in use again, so
+        # `events._side_channel_patch` applies no activity guard to it and this
+        # change must not add one by another door.
+        with self._board(last_activity=END_AT + 100.0) as (app, _config):
+            app.overlays = LiveEndSource()
+            row = self._row(app)
+        self.assertEqual(END_AT, row["ended_at"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheColdRowRendersAsEndedTest(ColdRowTestCase, NextPageJsHarness):
+    """AC1 and AC3 on the rendered row, on all three surfaces that derive it.
+
+    The Sessions list tag (`next-sessions.js`), the session page OUTCOME row and
+    the Held-to END EVIDENCE card (both off `nextObservedLanding`, the card
+    drawn by `next-cockpit.js`) each derive the sentence separately, so one
+    assertion on the stored value proves none of them. The row is a real
+    collected row, JSON-spliced into the page's payload, never a fixture typed
+    to look like one.
+    """
+
+    def _rendered(self, row: dict[str, Any]) -> dict[str, Any]:
+        payload = {
+            "generated": NOW,
+            "ask": True,
+            "rate_window_sec": 600,
+            "summary": {"working": 0, "needs_input": 0},
+            "harnesses": [
+                {
+                    "key": "claude",
+                    "label": "Claude",
+                    "discovered": True,
+                    "reports_needs_input": True,
+                    "reports_rate": True,
+                }
+            ],
+            "sessions": [row],
+            "asks": [],
+            "history": [],
+            "usage": [],
+        }
+        out = self._run_page_js(
+            f"const payload = {json.dumps(payload)};\n"
+            """
+nextData = payload;
+const m = nextObserved(payload);
+const s = m.sessions[0];
+const listRow = nextOperationsObservedRow(s, payload.sessions[0], new Map([["claude", "Claude"]]),
+  nextOperationsAsks(payload.sessions), true);
+const card = nextCockpitLanded(s);
+console.log(JSON.stringify({
+  tag: (listRow.match(/next-operation-state">([A-Z]*)</) || [, ""])[1],
+  now: (listRow.match(/NOW · [A-Z ]*/) || [""])[0],
+  outcome: s.outcomeText,
+  endKind: s.landing.endKind,
+  endEvidence: (card.match(/landed-label">END EVIDENCE<\\/span><span class="[^"]*">([^<]*)</) || [, ""])[1],
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_session_that_ended_before_a_restart_still_renders_as_ended(self) -> None:
+        with self._board() as (app, _config):
+            second = self._end_then_restart(app)
+            row = self._row(second)
+        out = self._rendered(row)
+        self.assertEqual("ENDED", out["tag"])
+        self.assertEqual("NOW · ENDED", out["now"])
+        self.assertEqual("Session ended; git state not measured", out["outcome"])
+        self.assertEqual("A session end was observed", out["endEvidence"])
+        self.assertEqual("session-end", out["endKind"])
+
+    def test_a_session_that_never_ended_is_unaffected_by_a_restart(self) -> None:
+        # AC3. A stop is observed in the first run so the write path had an event
+        # to be tempted by; the second run has no stop mark, so the row is the
+        # plain quiet one, and no store file may have come into being.
+        with self._board() as (app, config):
+            first = observation.Observation(
+                app, clock=lambda: END_AT, diagnostic_sink=lambda _m: None
+            )
+            app.overlays = first
+            first.submit("claude", {"v": 1, "event": "turn_stopped", "session_id": SESSION})
+            first.submit("claude", {"v": 1, "event": "session_started", "session_id": SESSION})
+            second = self._application()
+            second.overlays = observation.Observation(
+                second, clock=lambda: NOW, diagnostic_sink=lambda _m: None
+            )
+            row = self._row(second)
+            store_exists = os.path.exists(ends.store_path(config))
+        self.assertFalse(store_exists, "a session that never ended created an end store")
+        out = self._rendered(row)
+        self.assertEqual("QUIET", out["tag"])
+        self.assertEqual("No stop or end observed", out["outcome"])
+        self.assertEqual(
+            "Idle with completion unknown: no stop and no end was observed", out["endEvidence"]
+        )
+
+    def test_without_the_store_the_same_row_renders_quiet(self) -> None:
+        # The mutation check the issue map asks for, kept as a test: delete the
+        # store between the runs and the three surfaces must fall back to what
+        # they say today. It is what makes the ended assertions above bind to
+        # the store rather than to anything the fixture happened to carry.
+        with self._board() as (app, config):
+            second = self._end_then_restart(app)
+            os.unlink(ends.store_path(config))
+            row = self._row(second)
+        out = self._rendered(row)
+        self.assertEqual("QUIET", out["tag"])
+        self.assertEqual("No stop or end observed", out["outcome"])
+        self.assertEqual(
+            "Idle with completion unknown: no stop and no end was observed", out["endEvidence"]
+        )
+
+
+class OneShotCommandsAndTheStoreTest(unittest.TestCase):
+    """AC6: `--diagnose` neither creates nor writes the store; `--forget` removes it."""
+
+    def setUp(self) -> None:
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        state = tempfile.TemporaryDirectory()
+        self.addCleanup(state.cleanup)
+        self.state_home = state.name
+        self.env = isolated_environment(self.state_home, home.name)
+        # One discoverable session, so a collection actually runs: `--diagnose`
+        # over a machine with no stores collects nothing and would pass for the
+        # defect too (the same trap `test_history` records).
+        seed_claude_transcript(
+            Path(self.env["CLAUDE_CONFIG_DIR"]) / "projects",
+            "-home-cargento-test-repos-recce-cargento",
+            when=time.time(),
+        )
+        self.config = build_runtime_config(
+            environ=self.env,
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=Path(home.name) / "server.py",
+        )
+
+    def test_diagnose_over_a_discovered_session_creates_no_end_store(self) -> None:
+        self.assertEqual(0, run_one_shot_cli(["--diagnose"], self.env))
+        self.assertFalse(os.path.exists(ends.store_path(self.config)))
+
+    def test_diagnose_leaves_an_existing_end_store_byte_identical(self) -> None:
+        ends.record(
+            self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=lambda _m: None
+        )
+        before = Path(ends.store_path(self.config)).read_bytes()
+        self.assertEqual(0, run_one_shot_cli(["--diagnose"], self.env))
+        self.assertEqual(before, Path(ends.store_path(self.config)).read_bytes())
+
+    def test_forget_deletes_the_end_store_too(self) -> None:
+        # decisions.md, DRC-4547: `--forget` removes the machine's memory of what
+        # it observed, and a durable end is exactly that class.
+        ends.record(
+            self.config, harness="claude", sid=PREFIX, at=100.0, diagnostic_sink=lambda _m: None
+        )
+        with no_instance():
+            self.assertEqual(0, run_one_shot_cli(["--forget"], self.env))
+        self.assertFalse(os.path.exists(ends.store_path(self.config)))

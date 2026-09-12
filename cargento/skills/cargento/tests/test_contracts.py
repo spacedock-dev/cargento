@@ -1289,6 +1289,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.deliveries",
             "cargento_runtime.departures",
             "cargento_runtime.dismissals",
+            "cargento_runtime.ends",
             "cargento_runtime.events",
             "cargento_runtime.git_status",
             "cargento_runtime.io",
@@ -1306,6 +1307,16 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # reads it, and none of those could depend on it if it depended on any
         # of them.
         "cargento_runtime.departures": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+        },
+        # A leaf over the same three, for DRC-4547: `observation` writes it
+        # through on the event that sets the end mark and `aggregate` reads it
+        # back onto a cold row, and those two are joined only by the
+        # `OverlaySource` protocol. A store either of them depended on would
+        # give the pair a second, real edge.
+        "cargento_runtime.ends": {
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.records",
@@ -1330,6 +1341,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.diagnostics",
+            "cargento_runtime.ends",
             "cargento_runtime.history",
             "cargento_runtime.http_api",
             "cargento_runtime.interaction_prototype",
@@ -1624,6 +1636,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         "cargento_runtime.observation": {
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
+            "cargento_runtime.ends",
             "cargento_runtime.events",
             "cargento_runtime.focus",
             "cargento_runtime.git_status",

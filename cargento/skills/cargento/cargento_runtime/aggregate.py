@@ -20,6 +20,7 @@ from . import (
     sessions,
     unasked,
 )
+from . import ends as runtime_ends
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -1119,12 +1120,23 @@ class Application:
             # No ledger to patch from, but the history still records: `overlays`
             # is None forever under --no-events, and a store that went quiet on
             # that flag would be an off switch with a second, undocumented name.
+            #
+            # The session-end store is deliberately NOT read here, and that is
+            # the opposite call from the history store's for a reason that is
+            # written down: the coordinator is that store's only writer, so
+            # under --no-events it is left alone in both directions and the
+            # flag is documented as its off switch (decisions.md, DRC-4547).
             return self._history_fields(out_sessions, now=now)
+        # Once per collection, like the delivery record, and after the branch
+        # above so --no-events never opens the file.
+        stored_ends = runtime_ends.restored(runtime_ends.load(self.config))
         for session in out_sessions:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
             finished_at = source.finished_at(harness, sid)
-            ended_at = source.ended_at(harness, sid)
+            ended_at = source.ended_at(harness, sid) or self._restored_end(
+                session, stored_ends.get((harness, sid), 0.0)
+            )
             git = source.git_for(harness, sid)
             # Written straight onto the row rather than reduced through the
             # patch: a target is not a display claim that an overlay could
@@ -1175,6 +1187,34 @@ class Application:
             for key in [k for k in self.state.dispute_episodes if k not in collected]:
                 del self.state.dispute_episodes[key]
         return self._history_fields(out_sessions, now=now)
+
+    def _restored_end(self, session: Session, stored: float) -> float:
+        """A session end an earlier run of this board observed, or 0.0.
+
+        DRC-4547: the coordinator's memory of an end dies with its process, so a
+        cold row reads the end back from the store the coordinator wrote through
+        to. 0.0 keeps the coordinator's own meaning, NOT OBSERVED, and the value
+        then rides `events.reduce_overlays` exactly as a live end does, so a live
+        working or needs-input overlay still beats it.
+
+        Guarded on transcript activity where a live end is not, and the
+        difference is the point (decisions.md, DRC-4547). A live end is retired
+        by `_lift_ended` the moment the id is seen in use again; an id
+        `--resume`d while the board was down produced no event this process saw,
+        so the transcript writing well after the end is the only tell. The grace
+        is the reducer's own, because it absorbs the same ordering: a real end
+        lands a few seconds after the last write (5.581 s in the a1 arm of
+        docs/captures/claude/session-end-2.1.261-macos.jsonl). The exposure that
+        comes with it is stated in SECURITY.md rather than solved: a harness that
+        writes its transcript after `SessionEnd` loses the restored end, and the
+        row then reads as it does today, which is honest rather than wrong.
+        """
+        if not stored:
+            return 0.0
+        activity = float(session.get("last_activity") or 0.0)
+        if activity > stored + self.config.overlay_wait_activity_grace_sec:
+            return 0.0
+        return stored
 
     def _note_dispute(
         self,

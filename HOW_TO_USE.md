@@ -331,15 +331,16 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
-`--forget` deletes the local history store and exits. It belongs with `--status` and `--stop` rather
+`--forget` deletes the local history store and the session-end store, and exits. It belongs with `--status` and `--stop` rather
 than in the table below, because what it does is not undone by running the next command without it:
 
 ```bash
 python3 "<skill-dir>/server.py" --forget
 ```
 
-It removes the file whether or not the store was enabled, so turning the feature off and then asking
-for the file to go does what it says. Nothing over the loopback port can delete history; this is the
+It removes the history file whether or not the store was enabled, so turning the feature off and then
+asking for the file to go does what it says. The session-end store goes with it, because both are the
+machine's memory of what it observed, and a session whose end was recorded then reads as quiet again. Nothing over the loopback port can delete history; this is the
 only way. It does not reach the annotation store: the goal and the expected output you typed against
 a session, and any reading made against them, go when you clear that session's fields in its Held to
 tab.
@@ -359,7 +360,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-ask` | The ask lane, in both directions. See the off switch above |
 | `--no-usage` | The one outbound request Cargento makes. No quota is fetched and no section renders |
 | `--no-dismiss` | Marking a session handled, and the store that remembers it |
-| `--no-events` | The event coordinator. State comes from scanning stores rather than from pushed events |
+| `--no-events` | The event coordinator. State comes from scanning stores rather than from pushed events, and the session-end store is neither read nor written |
 | `--no-spacedock` | Reading Spacedock workflow state out of a project |
 | `--no-git` | The end-of-session git probe. No git command runs inside any repository |
 | `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
