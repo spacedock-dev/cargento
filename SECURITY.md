@@ -91,9 +91,13 @@ The posture rests on two invariants:
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
    annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
-   ever had, which serves only what is live. It is same-origin only, refuses a cross-site
-   navigation, answers 503 under `--no-annotations`, and reads the annotation store alone rather
-   than session history, so words you withdrew with a clear are gone from it. It is not on the
+   ever had, which serves only what is live. It also serves what the unasked lane raised against
+   those words, read from the departure store in the same pass, so the Intent log can show a raise
+   on a session the board no longer carries. That adds a model's sentence about a departed session
+   to the same response, and nothing else. It is same-origin only, refuses a cross-site
+   navigation, answers 503 under `--no-annotations`, and reads the annotation store and the
+   departure store rather than session history, so words you withdrew with a clear are gone
+   from it. It is not on the
    refresh loop: the words leave the server when the Intent log is opened, and the route's own
    docstring records that reasoning. The POST-route inventory in the test suite cannot see a `GET`,
    so this paragraph is the accounting for it.

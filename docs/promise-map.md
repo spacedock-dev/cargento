@@ -132,6 +132,18 @@ and a per-day limit, and a spent limit is stated rather than passed over, becaus
 checked and a session checked and found clean are the two things you cannot tell apart from an empty
 board.
 
+What was raised is reviewable rather than only raised. The Held to tab collects, in one place,
+the departures a reading you asked for produced, the departures the checks run while you were away
+produced, what became of the raise, and the figures; the Intent log carries a line per session
+saying what was raised against the words on it, and keeps that after the row leaves the board.
+Where it stops is the follow-up. What later evidence showed is derived from later checks in the
+same store, so the common answer is that there is none yet, and the board says which of two reasons
+rather than leaving a blank that would read as nothing having gone wrong. Where a later check did
+read evidence from after the raise, the sentence says what that evidence showed and never that the
+raise caused it. The figures are attempts and hand-overs, published separately with no arithmetic
+between them: a count identifies a session worth reading and settles nothing about whether the
+brief, the agent or Cargento's own judgement was poor.
+
 A notification the board raised now carries what became of it, so a signal that never left the
 machine is not read as one you ignored. What it can say stops at the hand-over: on macOS the
 scripting bridge exits zero under Do Not Disturb and with the hosting application's notifications
