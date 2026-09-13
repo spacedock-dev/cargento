@@ -839,6 +839,12 @@ class Application:
                         # button that sends their words to OpenAI on their own
                         # Codex capacity.
                         "reading_disclosure": reading.DISCLOSURE,
+                        # The discard control's sentences, published for
+                        # `reading_disclosure`'s reason and one more: the
+                        # success sentence claims something about the
+                        # departure store, which the page never reads, so
+                        # the page must not compose it (DRC-4561).
+                        "annotate_discard": annotation_store.DISCARD_SENTENCES,
                     }
                     if config.annotations_enabled
                     else {}
@@ -960,7 +966,7 @@ class Application:
         """
         stored = departures.load(self.config)
         for row in rows:
-            row.update(unasked.published(self.config, stored, row, now=now))
+            row.update(unasked.published(self.config, stored, row, entries=entries, now=now))
         if self.unasked_lane is not None:
             self.unasked_lane.consider(self.state, rows, entries, now=now)
         # The capability flag, keyed the way `dismiss` and `annotate` are:

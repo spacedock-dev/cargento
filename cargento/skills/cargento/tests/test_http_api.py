@@ -760,6 +760,43 @@ class DismissEndpointTest(RuntimeTestCase):
         self.assertEqual([], quiet["departures"])
         self.assertEqual(departures.NEVER_CHECKED, quiet["departure_why"])
 
+    def test_the_reveal_will_not_say_a_blanked_entry_was_checked_against_words(self) -> None:
+        """DRC-4560. The route holds an entry for every row, so a hard-coded
+        True here would look right and keep the defect.
+
+        The entry standing with nothing typed in it is what the board's `clear`
+        plus the save after it leaves behind, and the Intent log is a surface
+        that outlives the session, so the wrong sentence outlives it too.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "blanked", goal="Prove it landed")
+        annotation_store.annotate(config, state, "pi", "blanked", goal="")
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "blanked",
+                    "at": 1_000.0,
+                    "constraint": "",
+                    "clause": "",
+                    "reading": "",
+                    "evidence": "",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        row = json.loads(body)["annotations"][0]
+        self.assertEqual(departures.NEVER_CHECKED, row["departure_why"])
+        self.assertNotEqual(departures.NOTHING_DEPARTED, row["departure_why"])
+
     def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
         config, state = self._runtime()
         annotation_store.annotate(config, state, "pi", "s1", goal="withdraw me")
@@ -3399,6 +3436,35 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertEqual(1, len(stored))
         self.assertIs(True, stored[0]["withdrawn"])
         self.assertEqual("", stored[0]["clause"])
+
+    def test_the_reply_to_a_clear_carries_the_token_the_control_reads(self) -> None:
+        """DRC-4561. The discard control picks its sentence from `outcome`.
+
+        A clear answers one of three of the four tokens — it never mints and
+        never repeats a revision, so `unchanged` is unreachable from it — and
+        `revision_count` is 0 because there is no entry left to publish one.
+        The page's three discard sentences rest on exactly that.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "s", goal="Ship the cockpit")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            _status, body = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
+            )
+
+        answer = json.loads(body)
+        self.assertIs(True, answer["ok"])
+        self.assertEqual(annotation_store.OUTCOME_STORED, answer["outcome"])
+        self.assertIn(
+            answer["outcome"],
+            (
+                annotation_store.OUTCOME_STORED,
+                annotation_store.OUTCOME_REFUSED,
+                annotation_store.OUTCOME_UNWRITABLE,
+            ),
+        )
+        self.assertIsNone(answer["revision"])
+        self.assertEqual(0, answer["revision_count"])
 
     def test_emptying_both_fields_is_not_the_clear_that_withdraws_a_raise(self) -> None:
         """DRC-4514, walked on the board, and the reason `SECURITY.md` says which.

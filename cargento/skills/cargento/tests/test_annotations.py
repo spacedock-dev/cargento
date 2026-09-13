@@ -766,6 +766,151 @@ class AnnotationWiringTest(unittest.TestCase):
         )
 
 
+class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
+    """DRC-4561. Two acts, one word, and only the weaker one had a control.
+
+    The board's `clear` empties a box; the save after it mints a revision
+    holding an empty string, every earlier revision survives, and every
+    departure quoting the deleted words keeps quoting them on the wire. The
+    endpoint's `clear` arm is the other act and nothing reached it. The
+    sentences for it live here, beside the store that performs it, because the
+    success sentence claims something about the departure store the page never
+    reads.
+    """
+
+    def test_the_success_sentence_names_every_effect_and_counts_nothing(self) -> None:
+        said = annotation_store.DISCARD_STORED
+
+        # Every revision, the reading kept beside them, and the quotations in
+        # the other store — `clear` drops the whole entry and
+        # `_withdraw_raises` blanks the rows.
+        self.assertIn("Every revision", said)
+        self.assertIn("reading", said)
+        self.assertIn("quotes them any more", said)
+        # And the row that survives on purpose, because it is what bounds the
+        # lane's spend.
+        self.assertIn("bounds how often one may run", said)
+        # No count of anything: `departures.withdraw` returns True whether it
+        # blanked five rows or none, so nothing here could measure one.
+        self.assertFalse([word for word in said.split() if word.isdigit()])
+
+    def test_the_standing_sentence_separates_the_two_acts_by_name(self) -> None:
+        said = annotation_store.DISCARD_WHY
+
+        self.assertIn("clear", said)
+        self.assertIn("keeps every earlier revision", said)
+        self.assertIn("Discarding everything", said)
+
+    def test_no_discard_sentence_is_one_of_the_save_cues(self) -> None:
+        """ "Saved as a new revision." after a deletion is DRC-4543 re-shipped."""
+        said = set(annotation_store.DISCARD_SENTENCES.values())
+
+        self.assertEqual(5, len(said))
+        self.assertNotIn("Saved as a new revision.", said)
+        for sentence in said:
+            with self.subTest(sentence=sentence[:32]):
+                self.assertNotIn("still in the box", sentence)
+
+    def test_clearing_a_session_with_no_entry_still_answers_stored(self) -> None:
+        """Pinned as it is, not fixed. `UNCHANGED` would look tidier and skip
+        `_withdraw_raises`, and the reachable state where an annotation was
+        evicted while its departure rows survive would then keep the
+        quotations standing forever. The control is gated on
+        `revision_count > 0` instead, which is why nothing here needs to move.
+        """
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        config, state = make_runtime(state_home=home, state_dir=Path(home))
+
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.clear(
+                config, state, "pi", "never-annotated", diagnostic_sink=lambda _line: None
+            ),
+        )
+
+    def test_the_sentences_ride_the_payload_only_where_the_store_is_live(self) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        on_config, on_state = make_runtime(state_home=home, state_dir=Path(home))
+        off_config, off_state = make_runtime(
+            state_home=home, state_dir=Path(home), annotations_enabled=False
+        )
+
+        self.assertEqual(
+            annotation_store.DISCARD_SENTENCES,
+            cli.build_application(on_config, on_state, clock=lambda: 0.0)
+            .collect(show_all=True)
+            .get("annotate_discard"),
+        )
+        self.assertIsNone(
+            cli.build_application(off_config, off_state, clock=lambda: 0.0)
+            .collect(show_all=True)
+            .get("annotate_discard")
+        )
+
+
+class WordsAreWhatAReadingCouldHaveReadTest(unittest.TestCase):
+    """DRC-4560. An entry can stand with nothing typed in it, and does.
+
+    `has_typed_words` is the predicate the unasked path is told, because
+    `departures` is a leaf that cannot ask this store. It is the same test
+    `reading._readable` applies before spending anything, so "nothing to read
+    against" means one thing on the asked and the unasked path.
+    """
+
+    NOW = 1_800_000_000.0
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.config = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(self.root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+        )
+        self.state = build_runtime_state(self.config, started=self.NOW)
+
+    def test_no_entry_at_all_has_no_words(self) -> None:
+        self.assertIs(False, annotation_store.has_typed_words(None))
+
+    def test_a_blank_save_leaves_an_entry_standing_with_nothing_in_it(self) -> None:
+        """The reachable route, run rather than read: clear the box, then save.
+
+        The board's `clear` control empties the box and the save after it posts
+        `goal: ""`. That is the `annotate` arm and not the `clear` arm, so a
+        revision holding two empty strings is minted and the entry survives.
+        """
+        annotation_store.annotate(
+            self.config, self.state, "pi", "sess-1", goal="Ship the cockpit", now=self.NOW
+        )
+
+        annotation_store.annotate(
+            self.config, self.state, "pi", "sess-1", goal="", now=self.NOW + 10
+        )
+
+        entry = annotation_store.find(
+            annotation_store.active(self.config, self.state), "pi", "sess-1"
+        )
+        assert entry is not None
+        self.assertEqual(2, len(entry["revisions"]))
+        self.assertEqual("", entry["revisions"][-1]["goal"])
+        self.assertEqual("", entry["revisions"][-1]["output"])
+        self.assertIs(False, annotation_store.has_typed_words(entry))
+
+    def test_words_in_either_field_of_the_latest_revision_are_words(self) -> None:
+        annotation_store.annotate(
+            self.config, self.state, "pi", "sess-2", output="Six screenshots", now=self.NOW
+        )
+
+        entry = annotation_store.find(
+            annotation_store.active(self.config, self.state), "pi", "sess-2"
+        )
+        self.assertIs(True, annotation_store.has_typed_words(entry))
+
+
 class AnnotationOnTheRowTest(unittest.TestCase):
     """The store reaching the published payload.
 

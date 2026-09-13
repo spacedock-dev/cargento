@@ -7,6 +7,16 @@ const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same director
    it about every row it lists. */
 const NEXT_READING_NOT_A_VERIFICATION =
   "A reading is never a verification that the work was done.";
+/* What --unasked-readings being off does and does not do, owned here for
+   NEXT_READING_NOT_A_VERIFICATION's reason: three surfaces state it and a
+   second wording would be a second promise. The switch decides whether a new
+   check runs; the store is read whichever way it is set, so every raise on
+   record is on the wire either way and the three surfaces used to throw it
+   away. No count in it: the rows carry their own, and on the Intent log a
+   per-view figure would be a cross-session sum no producer owns. */
+const NEXT_UNASKED_LANE_OFF_RECORD =
+  "The checks that run while you were away are off for this run, so nothing new is being " +
+  "checked. What was already raised is still on record.";
 const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions", "intent"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
 /* Tabs that exist only while one session is in focus. Empty at project scope

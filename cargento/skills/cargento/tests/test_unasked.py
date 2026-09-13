@@ -382,7 +382,8 @@ class OnlyDeparturesAreRaisedTest(unittest.TestCase):
         stored = departures.load(harness.config)
         self.assertEqual(1, len(stored))
         self.assertEqual("", stored[0]["constraint"])
-        self.assertIs(True, departures.checked(stored, "claude", "s-1"))
+        # The words are still typed here: the lane just read them.
+        self.assertIs(True, departures.checked(stored, "claude", "s-1", has_words=True))
 
     def test_an_unverifiable_reading_raises_nothing(self) -> None:
         harness = self._run(_assessment(reading.RESULT_UNVERIFIABLE))
@@ -557,9 +558,19 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         ]
         departures.record(self.config, rows, diagnostic_sink=lambda _line: None)
 
-    def _why(self, sid: str = "s-1") -> str:
+    def _why(self, sid: str = "s-1", *, entries: Any = None) -> str:
         stored = departures.load(self.config)
-        return str(unasked.published(self.config, stored, _row(sid), now=5_000.0)["departure_why"])
+        # A real annotation with words in it, because the sentence is about
+        # what a check could have read and every one of these cases is a
+        # session that HAS typed words (DRC-4560).
+        published = unasked.published(
+            self.config,
+            stored,
+            _row(sid),
+            entries=(_annotation(sid),) if entries is None else entries,
+            now=5_000.0,
+        )
+        return str(published["departure_why"])
 
     def test_a_session_nobody_checked_says_so(self) -> None:
         self.assertEqual(departures.NEVER_CHECKED, self._why())
@@ -612,7 +623,9 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         self._store(1)
 
         stored = departures.load(self.config)
-        published = unasked.published(self.config, stored, _row(), now=5_000.0)
+        published = unasked.published(
+            self.config, stored, _row(), entries=(_annotation(),), now=5_000.0
+        )
 
         self.assertEqual("", published["departure_why"])
         self.assertEqual(1, len(published["departures"]))
@@ -631,7 +644,9 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         self._store(1, sid="other", constraint="")
 
         stored = departures.load(self.config)
-        unread = unasked.published(self.config, stored, _row("s-1"), now=5_000.0)
+        unread = unasked.published(
+            self.config, stored, _row("s-1"), entries=(_annotation("s-1"),), now=5_000.0
+        )
 
         self.assertIs(False, unread["departure_checked"])
         self.assertEqual([], unread["departures"])
@@ -642,10 +657,44 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         self._store(1, constraint="")
 
         stored = departures.load(self.config)
-        published = unasked.published(self.config, stored, _row(), now=5_000.0)
+        published = unasked.published(
+            self.config, stored, _row(), entries=(_annotation(),), now=5_000.0
+        )
 
         self.assertIs(True, published["departure_checked"])
         self.assertEqual([], published["departures"])
+
+    def test_a_check_whose_words_are_gone_does_not_claim_it_read_them(self) -> None:
+        """DRC-4560. The state the blank-save path leaves behind.
+
+        The lane never checks a wordless session, so this is only reachable
+        after the fact: the check is recorded, the reader empties the box and
+        saves, and the entry stands with a revision holding two empty strings.
+        Neither the sentence nor the figure may go on claiming a reading of
+        words that are not there.
+        """
+        self._store(1, constraint="")
+        blank: Any = {
+            "harness": "claude",
+            "sid": "s-1",
+            "revisions": ({"n": 5, "goal": "", "output": "", "at": 20.0},),
+        }
+
+        stored = departures.load(self.config)
+        published = unasked.published(self.config, stored, _row(), entries=(blank,), now=5_000.0)
+
+        self.assertEqual(departures.NEVER_CHECKED, published["departure_why"])
+        self.assertIs(False, published["departure_checked"])
+
+    def test_a_session_with_no_annotation_at_all_is_the_same_answer(self) -> None:
+        """The other route to it: the annotation store evicted or lost."""
+        self._store(1, constraint="")
+
+        stored = departures.load(self.config)
+        published = unasked.published(self.config, stored, _row(), entries=(), now=5_000.0)
+
+        self.assertEqual(departures.NEVER_CHECKED, published["departure_why"])
+        self.assertIs(False, published["departure_checked"])
 
     def test_the_four_sentences_are_four_sentences(self) -> None:
         every = {

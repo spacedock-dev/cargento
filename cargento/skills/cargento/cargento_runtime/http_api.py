@@ -1027,9 +1027,21 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 # What was raised against these words, and — where nothing was
                 # — which of the four reasons. `departures` owns both, so the
                 # log cannot word a spent cap differently from the session page.
+                #
+                # `has_words` per entry and never a hard-coded True, even
+                # though this route iterates annotations: an entry whose latest
+                # revision is two empty strings is exactly what the board's
+                # `clear` plus the save after it leaves behind, and a constant
+                # here would look right and keep the defect on the one surface
+                # that outlives the session (DRC-4560).
                 "departures": departures.published(raised, entry["harness"], entry["sid"]),
                 "departure_why": departures.why(
-                    application.config, raised, entry["harness"], entry["sid"], now=now
+                    application.config,
+                    raised,
+                    entry["harness"],
+                    entry["sid"],
+                    has_words=annotation_store.has_typed_words(entry),
+                    now=now,
                 ),
             }
             for entry in entries

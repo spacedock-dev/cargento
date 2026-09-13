@@ -317,7 +317,7 @@ def counts(entries: Iterable[Check], harness: str, sid: str, *, since: float) ->
     return mine, sum(1 for row in rows if row["at"] >= since)
 
 
-def checked(entries: Iterable[Check], harness: str, sid: str) -> bool:
+def checked(entries: Iterable[Check], harness: str, sid: str, *, has_words: bool) -> bool:
     """Whether THIS session has ever been checked against the words it holds now.
 
     Per session and not per board. The lane being attached says the feature is
@@ -328,8 +328,18 @@ def checked(entries: Iterable[Check], harness: str, sid: str) -> bool:
     cleared, so nothing has been checked against what they are asking for now,
     and `NEVER_CHECKED` is the true sentence. The spend it made still counts,
     which is `counts` and not this.
+
+    `has_words` is the same fact arriving by a second route, and it is a
+    required argument rather than a defaulted one because a default of True
+    keeps the defect at any call site that forgets it (DRC-4560). The lane
+    itself never checks a wordless session, but the words can go afterwards:
+    the `clear` beside a box empties it and the save after it mints a revision
+    holding two empty strings, leaving the entry standing with nothing in it
+    and the checks against the earlier revisions not withdrawn. This module is
+    a leaf over config, io and records and cannot ask the annotation store, so
+    it is told.
     """
-    return any(
+    return has_words and any(
         row["harness"] == harness and row["sid"] == sid and not row["withdrawn"] for row in entries
     )
 
@@ -340,6 +350,7 @@ def why(
     harness: str,
     sid: str,
     *,
+    has_words: bool,
     now: float,
 ) -> str:
     """Which of the four absence sentences this session has earned, or none.
@@ -353,7 +364,7 @@ def why(
     """
     stored = list(entries)
     mine, today = counts(stored, harness, sid, since=now - DAY_SEC)
-    if not checked(stored, harness, sid) and mine < config.unasked_session_cap:
+    if not checked(stored, harness, sid, has_words=has_words) and mine < config.unasked_session_cap:
         # Before the caps, deliberately. A session nobody has checked is not a
         # session held off by a spent cap, even when the board's day cap is
         # spent: the first says nothing was looked at here, and the second

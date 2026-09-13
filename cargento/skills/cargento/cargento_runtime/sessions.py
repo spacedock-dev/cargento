@@ -594,6 +594,12 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # an absence in the other: a review surface printed "Departures the
         # checks run while you were away raised 0" under "Cargento has not
         # checked this session against what you asked for".
+        #
+        # "the words it holds now" is load bearing and was not kept: a check
+        # outlives the words it read, so an entry blanked by the board's
+        # `clear` plus the save after it left this True with nothing typed
+        # against the session (DRC-4560). `unasked.published` now reads the
+        # annotation entries for that half.
         "departure_checked": False,
         "acquisition": None,
         # When the standing wait began, for the row_order gate queue and the

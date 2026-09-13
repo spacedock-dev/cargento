@@ -35,7 +35,7 @@ import contextlib
 import json
 import os
 import time
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, NotRequired, TypedDict, cast
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import reading, records
@@ -75,6 +75,53 @@ ABSTENTION_CHECK = ABSTENTION_CHECK_NOT_RUN
 
 NO_GOAL_TYPED = "No goal typed for this session."
 NO_OUTPUT_TYPED = "No expected output typed."
+
+# What discarding a whole annotation is, and what it is not (DRC-4561).
+#
+# Here rather than in the page's own cue table, which every other control on
+# this block reads, because these claim something about the DEPARTURE store:
+# `clear` drops the entry and `http_api._withdraw_raises` blanks the rows that
+# quoted it, and the page never reads that store. A sentence about it cannot be
+# checked where it is written, so it is written where it can be. The precedent
+# is `reading.DISCLOSURE`, published for the same reason.
+#
+# The first is the disclosure the walk measured the need for: a reader presses
+# the `clear` beside the box, saves, and believes the words are gone while a
+# departure still quotes them verbatim on the wire. Naming both acts where the
+# reader meets them is what closes that belief, and SECURITY.md already says
+# the shorter name is the one printed on the button.
+DISCARD_WHY = (
+    "The clear beside each box empties that box, and the save after it keeps every earlier "
+    "revision, so anything raised against those words goes on quoting them. Discarding "
+    "everything is the other act."
+)
+DISCARD_ARMED = (
+    "Press it again to discard. Nothing has been deleted yet, and this offer lapses on its own."
+)
+# Categorical and with no count. Nothing measures how many raises were
+# withdrawn: `departures.withdraw` answers True whether it blanked five rows or
+# none, and a figure derived from the row's own `departures` list would be the
+# first Measured Invariant's defect again.
+DISCARD_STORED = (
+    "Discarded. Every revision of what you asked of this session is gone, along with any "
+    "reading of it, and nothing raised against those words quotes them any more. The record "
+    "that a check ran stays, because it is what bounds how often one may run."
+)
+DISCARD_REFUSED = (
+    "Not discarded. The server refused, so every revision is still stored and nothing raised "
+    "against them was withdrawn."
+)
+DISCARD_UNWRITABLE = (
+    "Not discarded. The store could not be written, so the next collection reads every "
+    "revision back and nothing raised against them was withdrawn."
+)
+DISCARD_SENTENCES: Final[dict[str, str]] = {
+    "why": DISCARD_WHY,
+    "armed": DISCARD_ARMED,
+    "stored": DISCARD_STORED,
+    "refused": DISCARD_REFUSED,
+    "unwritable": DISCARD_UNWRITABLE,
+}
 
 # What one call to a mutator did, as a closed vocabulary rather than a bool
 # (decisions.md, DRC-4543). The reader is shown a sentence per outcome and a
@@ -559,6 +606,26 @@ def find(entries: Iterable[Annotation], harness: Any, sid: Any) -> Annotation | 
         if (entry["harness"], entry["sid"]) == key:
             return entry
     return None
+
+
+def has_typed_words(entry: Annotation | None) -> bool:
+    """Whether there is anything here for a check to have read.
+
+    The latest revision rather than the entry's existence, and that is the
+    whole of it (DRC-4560): the board's `clear` empties a box and the save
+    after it mints a revision holding two empty strings, so an entry can stand
+    with nothing in it while checks recorded against the earlier revisions stay
+    standing. An entry-existence test would call that state annotated and let a
+    session with nothing typed keep the sentence saying it was checked against
+    what the reader asked for.
+
+    The same test `reading._readable` applies before it spends anything, so the
+    asked and the unasked path mean one thing by "nothing to read against".
+    """
+    latest: Revision | None = entry["revisions"][-1] if entry and entry["revisions"] else None
+    if latest is None:
+        return False
+    return bool(str(latest.get("goal") or "").strip() or str(latest.get("output") or "").strip())
 
 
 def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> dict[str, Any]:

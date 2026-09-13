@@ -612,8 +612,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                25_082,
-                "d51c02457dcfee46f3c2f73c4d7e1cada5cf207ed7e4127908700ff16be59243",
+                25_793,
+                "9dc366fbf3d02963d1a3f616bd00a912007e4f04ff48a72992ed0f54b32e779c",
             ),
             "next-observed.js": (
                 30_931,
@@ -656,16 +656,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "18df55e08478d59523e92cee046a623f277f7129f6043618d3d9ff64d968e836",
             ),
             "next-intent.js": (
-                10_502,
-                "3933025d6a883841e3a376415a7bacff9359633b4e55a13f4153db5c5cf30db1",
+                11_469,
+                "b9b1b287fab43124000f2ac6c434da4fc39b73e2932922e2a89b67c58202b54d",
             ),
             "next-activity.js": (
                 6_632,
                 "62f971c5e2a570068b7e2c3ee72b2499774d14a3b739f6f908962f91b98382f1",
             ),
             "next-session.js": (
-                31_876,
-                "6d4d9b998e7dbe62967af940ef754da3821e6401ec55cdbaab0934e54acb1280",
+                32_623,
+                "c318500391a2870fdb0388581f68c8e4634420eecc539c2f14b28fd130563497",
             ),
             "next-workstream.js": (
                 18_659,
@@ -680,8 +680,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
-                176_275,
-                "c656e401b36ab5acfad9ff9fc1d0d2502f0e15869f9e41c361d9e70e72df8f4e",
+                183_750,
+                "fea312d0b3b5409808189715036aba301bb4d4f8ddb6c7466db7e17d33b860a8",
             ),
             "next-render.js": (
                 8_901,
@@ -700,16 +700,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(106_846, len(styles))
+        self.assertEqual(107_347, len(styles))
         self.assertEqual(
-            "8daaef86db76386b9ce8301c760436d687e50158529ad675768a6fb43e51d313",
+            "02b95c1af1739b7c85a0a85aa12f7e98b61e16baf4a69deb5d4e1538e8c28655",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(857_335, len(assembled))
+        self.assertEqual(867_736, len(assembled))
         self.assertEqual(
-            "6250de1de356d758e18414ab56abb13e4eb916e9b6ebf72128f131bd7834ef31",
+            "ebefadeb36ddb79df73ec95854d2940b7f11f454e758460a552252a2b8be573e",
             hashlib.sha256(assembled).hexdigest(),
         )
 
