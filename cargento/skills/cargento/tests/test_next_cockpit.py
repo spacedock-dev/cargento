@@ -7643,10 +7643,70 @@ console.log(JSON.stringify({
 
         self.assertEqual([], out["armed"]["polite"])
         self.assertEqual([annotation_store.DISCARD_ARMED], out["armed"]["alert"])
-        # The act itself is the polite region's, and the alert region is not
-        # written to again: the reader is no longer about to do anything.
+        # The act itself is the polite region's, and the alert region is emptied
+        # before it: the warning says nothing has been deleted yet, and by now
+        # something has.
         self.assertEqual([annotation_store.DISCARD_STORED], out["polite"])
-        self.assertEqual([annotation_store.DISCARD_ARMED], out["alert"])
+        self.assertEqual([annotation_store.DISCARD_ARMED, ""], out["alert"])
+
+    def test_the_armed_warning_is_taken_back_once_the_arm_no_longer_stands(self) -> None:
+        """The sentence that goes false, and the one place it survives.
+
+        Measured in the accessibility tree on a live board: after a completed
+        discard the alert node still read `Nothing has been deleted yet` beside
+        a status node reading `Discarded ... is gone`. The paragraph the render
+        drew is gone by then, so the region is the only place that sentence
+        survives, and it is the one that says nothing has happened. Two
+        channels of one page disagreeing about whether an irreversible act
+        took place is a shipped defect class here.
+
+        Emptying a region is a removal rather than an addition, so taking the
+        warning back is silent where writing it was not. That is what makes the
+        retraction safe to do at every site that stops an arm, and the writes
+        below are what says it happens at each of them.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + CockpitHeldToTabTest.DISCARD_WITH_REPLY
+            + """
+press();
+await __settle();
+const armed = [...wrote("next-cockpit-cue-alert")];
+__fire("keydown", {key:"Escape", target:discardControl(), preventDefault(){}});
+await __settle();
+const afterEscape = [...wrote("next-cockpit-cue-alert")];
+press();
+await __settle();
+// Past NEXT_CONTROL_STATE_TTL_MS: the arm lapses on its own at the next read.
+__setNow(__nowSec + 60);
+renderNext();
+const afterLapse = [...wrote("next-cockpit-cue-alert")];
+press();
+await __settle();
+dwell();
+press();
+await __settle();
+console.log(JSON.stringify({
+  armed, afterEscape, afterLapse,
+  alert: wrote("next-cockpit-cue-alert"),
+  polite: wrote("next-cockpit-cue-status"),
+}));
+"""
+        )
+
+        armed = annotation_store.DISCARD_ARMED
+        self.assertEqual([armed], out["armed"])
+        # Escape disarms, so the offer the sentence describes is off the table.
+        self.assertEqual([armed, ""], out["afterEscape"])
+        # And so does the window running out, which is read at a render rather
+        # than by anything the reader did.
+        self.assertEqual([armed, "", armed, ""], out["afterLapse"])
+        # The act itself: the outcome is the polite region's, and the warning
+        # that said nothing had been deleted yet is taken back before it.
+        self.assertEqual([armed, "", armed, "", armed, ""], out["alert"])
+        self.assertEqual([annotation_store.DISCARD_STORED], out["polite"])
 
     def test_an_arm_that_lapsed_is_warned_about_again_when_it_is_re_armed(self) -> None:
         """The cost of the repeat guard, and where it has to stop.
@@ -7678,7 +7738,7 @@ console.log(JSON.stringify({
         )
 
         self.assertEqual(
-            [annotation_store.DISCARD_ARMED, annotation_store.DISCARD_ARMED], out["alert"]
+            [annotation_store.DISCARD_ARMED, "", annotation_store.DISCARD_ARMED], out["alert"]
         )
         self.assertTrue(out["armedNow"])
 
@@ -7713,7 +7773,7 @@ console.log(JSON.stringify({
 
         self.assertFalse(out["disarmed"], "Escape disarms the control")
         self.assertEqual(
-            [annotation_store.DISCARD_ARMED, annotation_store.DISCARD_ARMED], out["alert"]
+            [annotation_store.DISCARD_ARMED, "", annotation_store.DISCARD_ARMED], out["alert"]
         )
         self.assertTrue(out["armedNow"])
 

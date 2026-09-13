@@ -902,16 +902,39 @@ function nextCockpitHeldSentence(kind){
    because a lapsed or dismissed arm pressed again is a new warning. */
 const nextCockpitAnnouncedCues = new Map();
 
-/* One drop, both lanes. Four of the six sites that drop a mark did not clear
-   the guard while it was a single string, and this file, the reader-state
-   inventory and the commit that introduced it all said they did; a helper is
-   the shape that cannot drift apart again. The delete inside
+/* Whose armed warning the assertive region is holding, or nothing. The region
+   carries that one warning, so it holds it only while that arm stands.
+
+   Measured in the accessibility tree on a live board: after a completed
+   discard the alert node still read "Nothing has been deleted yet" beside a
+   status node reading "Discarded ... is gone". The render had already taken
+   the paragraph away, so the region was the only place the sentence survived,
+   and it was the one saying the act had not happened.
+
+   Retracting costs nothing to say: emptying a region is a removal, and
+   `aria-relevant` does not cover removals, so taking the warning back is
+   silent where writing it was not. */
+let nextCockpitArmedAnnouncedKey = null;
+
+function nextCockpitRetractArmed(key){
+  if(nextCockpitArmedAnnouncedKey === null) return;
+  if(key != null && key !== nextCockpitArmedAnnouncedKey) return;
+  const region = nextCockpitCueAlert(document.getElementById("app"));
+  if(region) region.textContent = "";
+  nextCockpitArmedAnnouncedKey = null;
+}
+
+/* One drop, all three lanes. Four of the six sites that drop a mark did not
+   clear the guard while it was a single string, and this file, the
+   reader-state inventory and the commit that introduced it all said they did;
+   a helper is the shape that cannot drift apart again. The delete inside
    `nextCockpitHeldMark` is deliberately not routed through it: that one
    re-stamps a mark rather than dropping it, and clearing the guard there would
    be the repeat the guard exists to stop. */
 function nextCockpitHeldDrop(key){
   nextCockpitHeldStates.delete(key);
   nextCockpitAnnouncedCues.delete(key);
+  nextCockpitRetractArmed(key);
 }
 
 function nextCockpitAnnounceCue(key, sentence, assertive){
@@ -924,6 +947,7 @@ function nextCockpitAnnounceCue(key, sentence, assertive){
   if(!region) return;
   region.textContent = sentence;
   nextCockpitAnnouncedCues.set(key, sentence);
+  if(assertive) nextCockpitArmedAnnouncedKey = key;
   /* Bounded on the same count as the marks. Most entries are dropped with
      their mark, but the settle that lands drops its mark and then announces,
      so one key per settled session would otherwise outlive every mark. */
@@ -943,7 +967,13 @@ function nextCockpitHeldMark(key, kind){
   /* Pushed from here rather than from the render: this is the one point all
      four cue families pass through, it runs before the render that follows,
      and it fires once per press where a render fires on every fallback poll.
-     Assertive for the arm alone; see the region factories for why. */
+     Assertive for the arm alone; see the region factories for why.
+
+     The outcome retracts the warning before it reports: this is the site that
+     replaces an arm rather than dropping one, so `nextCockpitHeldDrop` never
+     runs on it, and the sentence it leaves standing says nothing has been
+     deleted yet. */
+  if(kind !== "discard-armed") nextCockpitRetractArmed(key);
   nextCockpitAnnounceCue(key, nextCockpitHeldSentence(kind), kind === "discard-armed");
 }
 

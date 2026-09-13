@@ -2162,14 +2162,16 @@ class ReaderStateInventoryTest(unittest.TestCase):
 
     def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
         # The test above derives only `Capture`/`Restore` names, so these
-        # eight survive a redraw with nothing deriving their rows. Renaming any
-        # would otherwise leave the table citing a symbol that is gone. The
-        # last two joined on 2026-09-11: both landed with rows in the table and
+        # nine survive a redraw with nothing deriving their rows. Renaming any
+        # would otherwise leave the table citing a symbol that is gone. Two
+        # joined on 2026-09-11: both landed with rows in the table and
         # neither was pinned here, which is the gap this test exists to close.
-        # The three cue-region names joined with DRC-4564: two nodes that
-        # outlive every redraw because they are held outside `#app`, and the
+        # The four cue-region names joined with DRC-4564: two nodes that
+        # outlive every redraw because they are held outside `#app`, the
         # map that stops one sentence being written into them twice for the
-        # same standing mark.
+        # same standing mark, and the key that says whose armed warning the
+        # assertive region is holding, so the warning can be taken back when
+        # that arm stops standing.
         for name, lane in (
             ("next-controls.js", "nextControlsProjectState"),
             ("next-workstream.js", "nextWorkstreamCollapsed"),
@@ -2179,6 +2181,7 @@ class ReaderStateInventoryTest(unittest.TestCase):
             ("next-chrome.js", "nextCockpitCueStatusElement"),
             ("next-chrome.js", "nextCockpitCueAlertElement"),
             ("next-cockpit.js", "nextCockpitAnnouncedCues"),
+            ("next-cockpit.js", "nextCockpitArmedAnnouncedKey"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
