@@ -130,7 +130,11 @@ reassurance, because an unasked "this looks fine" is the output the evidence-flo
 most damaging and it is worth nothing to someone who is not at the desk. It stops at a per-session
 and a per-day limit, and a spent limit is stated rather than passed over, because a session nobody
 checked and a session checked and found clean are the two things you cannot tell apart from an empty
-board.
+board. The sentence is about your words rather than about the machine's history, so a check whose
+words you have since taken out of the boxes reads as not checked against what you are asking for
+now. And turning the switch off stops new checks without retracting the old ones: what was already
+raised still shows on the session, in the review and in the Intent log, under a line saying nothing
+new is being checked.
 
 What was raised is reviewable rather than only raised. The Held to tab collects, in one place,
 the departures a reading you asked for produced, the departures the checks run while you were away
@@ -144,8 +148,9 @@ later check ran rather than that it read newer evidence, because the store recor
 ran and holds no evidence bound to support the stronger claim. The figures are five labelled lines
 with no arithmetic between them: the departures each of the two collections raised, counted from
 the rows it renders, and the board's raises, attempts and hand-overs. A figure nobody measured says
-so rather than reading zero, which covers both the switch being off and the away checks never having
-read this particular session. An empty list is the same value in either case. A count identifies a
+so rather than reading zero, which covers the switch being off with nothing on record and the away
+checks never having read this particular session. An empty list is the same value in either case.
+With the switch off and raises on record the figure is the rows the review actually drew. A count identifies a
 session
 worth reading and settles nothing about whether the brief, the agent or Cargento's own judgement
 was poor.
@@ -203,14 +208,19 @@ there, a way to mark a session handled so it leaves the board, and the
 end-of-session git probe that shipped in 0.19. And, since the annotation store landed, by what you
 typed the session should achieve and produce: the words are kept beside the two end axes, so a
 session that ended can be read against what was asked of it rather than only against whether it
-stopped. The Intent log keeps them after the row leaves the board.
+stopped. The Intent log keeps them after the row leaves the board. Taking them back is one act
+and it is on the board: `discard everything` deletes every revision, deletes any reading of them,
+and withdraws the quotations from anything raised against them, leaving only that a check ran.
 
 Where it stops: nothing reads your words for you at the end. The two axes say what ended and who
 claims it finished, drawn separately because neither implies the other, and the comparison against
 what you asked for is yours to make. A model reading of it is built and is asked for rather than
 running, and the control that asks is disabled until an abstention check has been run and
 recorded, so there is no verdict here today to trust or distrust. The words are kept under a
-session count rather than a date, so an old enough annotation is evicted rather than expired. And both of those
+session count rather than a date, so an old enough annotation is evicted rather than expired. The
+`clear` beside each box is not the discard: it empties the box, and the save after it keeps every
+earlier revision, so anything raised against those words goes on quoting them. The board says which
+is which where the two controls sit. And both of those
 marks reach only the harnesses whose adapter maps the event that
 carries them. An absent mark means no end was observed, never that a session is alive, so it covers
 the harnesses with no adapter, a session that predates this server process, and a run under

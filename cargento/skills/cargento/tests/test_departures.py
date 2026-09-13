@@ -64,14 +64,14 @@ class DepartureWhySentenceTest(unittest.TestCase):
         self.config = _config(Path(self._dir.name))
 
     def test_a_session_nobody_checked_is_not_a_session_found_to_be_on_track(self) -> None:
-        why = departures.why(self.config, (), "claude", "abcd1234", now=2_000.0)
+        why = departures.why(self.config, (), "claude", "abcd1234", has_words=True, now=2_000.0)
 
         self.assertEqual(departures.NEVER_CHECKED, why)
 
     def test_a_checked_session_with_no_raise_says_nothing_departed(self) -> None:
         stored = (_check(constraint="", clause="", reading="", evidence=""),)
 
-        why = departures.why(self.config, stored, "claude", "abcd1234", now=2_000.0)
+        why = departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=2_000.0)
 
         self.assertEqual(departures.NOTHING_DEPARTED, why)
 
@@ -81,7 +81,7 @@ class DepartureWhySentenceTest(unittest.TestCase):
             for n in range(self.config.unasked_session_cap)
         )
 
-        why = departures.why(self.config, stored, "claude", "abcd1234", now=2_000.0)
+        why = departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=2_000.0)
 
         self.assertEqual(departures.SESSION_EXHAUSTED, why)
 
@@ -94,14 +94,76 @@ class DepartureWhySentenceTest(unittest.TestCase):
             _check(constraint=""),
         )
 
-        why = departures.why(self.config, stored, "claude", "abcd1234", now=1_100.0)
+        why = departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=1_100.0)
 
         self.assertEqual(departures.DAY_EXHAUSTED, why)
 
     def test_a_session_with_a_raise_earns_no_absence_sentence(self) -> None:
-        why = departures.why(self.config, (_check(),), "claude", "abcd1234", now=2_000.0)
+        why = departures.why(
+            self.config, (_check(),), "claude", "abcd1234", has_words=True, now=2_000.0
+        )
 
         self.assertEqual("", why)
+
+    def test_a_checked_session_with_no_words_left_is_not_a_session_found_on_track(self) -> None:
+        """DRC-4560. The blank-save route leaves a check with nothing behind it.
+
+        `clear` beside the box empties it and the save after it mints a
+        revision holding two empty strings, so the entry survives with nothing
+        in it while the check recorded against the earlier revisions stays
+        standing. Read against those words, nothing has been checked.
+        """
+        stored = (_check(constraint="", clause="", reading="", evidence=""),)
+
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+        )
+
+        self.assertEqual(departures.NEVER_CHECKED, why)
+
+    def test_a_check_with_no_words_behind_it_is_not_a_check_of_what_you_ask_now(self) -> None:
+        """The figure and the sentence move together, on one predicate."""
+        stored = (_check(constraint="", clause="", reading="", evidence=""),)
+
+        self.assertIs(False, departures.checked(stored, "claude", "abcd1234", has_words=False))
+        self.assertIs(True, departures.checked(stored, "claude", "abcd1234", has_words=True))
+
+    def test_a_standing_raise_is_never_printed_under_the_never_checked_sentence(self) -> None:
+        """DRC-4560, the half the words test would otherwise have introduced.
+
+        `published` serves every non-withdrawn row whatever the words now say,
+        and both surfaces print this sentence directly beneath those rows, so
+        the wordless session read "One departure was raised", the raise itself,
+        and then "Cargento has not checked this session against what you asked
+        for" on one screen. That is the contradiction class DRC-4560 exists to
+        remove, arriving from the other side.
+        """
+        stored = (_check(),)
+
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+        )
+
+        self.assertEqual("", why)
+        # And the figure stays unmeasured, which is what DRC-4560 wanted: the
+        # check read words that are gone, so nothing counts it as a reading of
+        # what the reader asks for now.
+        self.assertIs(False, departures.checked(stored, "claude", "abcd1234", has_words=False))
+
+    def test_a_spent_cap_still_outranks_a_standing_raise_with_no_words(self) -> None:
+        """The stand-down is only over the never-checked sentence.
+
+        A cap that is spent is a fact about what will run next, and it stays
+        true of a session whose words have gone; only the sentence claiming
+        nothing was ever looked at here is the false one.
+        """
+        stored = tuple(_check(at=1_000.0 + n) for n in range(self.config.unasked_session_cap))
+
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+        )
+
+        self.assertEqual(departures.SESSION_EXHAUSTED, why)
 
 
 class DepartureFollowUpTest(unittest.TestCase):
@@ -253,7 +315,12 @@ class DepartureWithdrawalTest(unittest.TestCase):
         departures.withdraw(self.config, "claude", "abcd1234")
 
         why = departures.why(
-            self.config, departures.load(self.config), "claude", "abcd1234", now=2_000.0
+            self.config,
+            departures.load(self.config),
+            "claude",
+            "abcd1234",
+            has_words=True,
+            now=2_000.0,
         )
 
         # Not NOTHING_DEPARTED, which would say the words on the row now had
@@ -282,7 +349,7 @@ class DepartureWithdrawalTest(unittest.TestCase):
         # been checked, because no further check will run either way.
         self.assertEqual(
             departures.SESSION_EXHAUSTED,
-            departures.why(self.config, stored, "claude", "abcd1234", now=2_000.0),
+            departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=2_000.0),
         )
 
     def test_nothing_to_withdraw_is_a_success_and_not_a_write(self) -> None:

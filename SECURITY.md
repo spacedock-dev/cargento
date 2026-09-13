@@ -107,10 +107,15 @@ The posture rests on two invariants:
    departure store rather than session history. Discarding a session's annotation withdraws from
    both: it deletes every revision and blanks the quotations from the departure rows those
    revisions were read against, keeping only that a check ran, so words discarded that way are
-   gone from this response and from disk. That is the `clear` field of a `POST /api/annotate`
-   body, and it is not the `clear` control beside each box on the board: that one empties the box,
-   and the save after it writes a revision with an empty string while every earlier revision, and
-   every raise quoting one, stays. Nothing else removes a departure row's words. It is not on the
+   gone from this response and from disk. The two stores are written one after the other and the
+   second write can fail on its own, in which case the annotation is gone and the quotations are
+   not; the reply carries that answer as `withdrew` and the board prints a sentence saying the
+   raises still quote those words, rather than the one saying nothing does. That is the `clear`
+   field of a `POST /api/annotate`
+   body, sent by the `discard everything` control under the two boxes on the `Held to` tab, and it
+   is not the `clear` control beside each box: that one empties the box, and the save after it
+   writes a revision with an empty string while every earlier revision, and every raise quoting
+   one, stays. Nothing else removes a departure row's words. It is not on the
    refresh loop: the words leave the server when the Intent log is opened, and the route's own
    docstring records that reasoning. The POST-route inventory in the test suite cannot see a `GET`,
    so this paragraph is the accounting for it.
@@ -1195,6 +1200,12 @@ prose a model wrote about your session, which is the same class of content the a
 already holds and is bounded the same way. Nothing sends it anywhere. With the switch off the file is
 never created.
 
+The switch governs writing, not reading. A file that already exists is read on every collection and
+on every `GET /api/annotations` whether or not `--unasked-readings` was passed, and every raise it
+holds is published on the row it belongs to, so turning the feature off stops new checks and
+retracts no record. The board says as much rather than leaving the reader to infer it from a panel
+that has gone quiet.
+
 Discarding what you asked of a session withdraws its raises too. The constraint, the clause, the
 model's sentence, the evidence ids and the producer's account of what it read are blanked in place
 and the row is marked withdrawn, so nothing quoting the words you took back survives on disk or on
@@ -1202,10 +1213,13 @@ and the row is marked withdrawn, so nothing quoting the words you took back surv
 row is what the two caps above count and deleting it would refund the subprocess it spent.
 
 Discarding here means the `clear` field of a `POST /api/annotate` body, which deletes every
-revision. The board's own `clear` control is a different act with the same word on it: it empties
+revision. It is reachable from the board as `discard everything`, a control under the two boxes on
+the `Held to` tab, offered only where a revision is stored and armed by one press before a second
+performs it. The board's own `clear` control is a different act with the same word on it: it empties
 one box, and the save that follows appends a revision holding an empty string. The words you typed
 are still in the earlier revisions and a raise quoting them is still quoting them, so nothing is
-withdrawn. Naming both is the point, because the shorter name is the one printed on the button.
+withdrawn. Naming both is the point, because the shorter name is the one printed on the button, and
+the board now says so where the reader meets the two controls rather than only here.
 
 ## Session ends
 

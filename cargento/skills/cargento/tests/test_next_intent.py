@@ -352,6 +352,35 @@ console.log(JSON.stringify({
         self.assertNotIn("has not checked this session against what you asked for", visible)
         self.assertIn("and nothing watches for one", visible)
 
+    def test_a_raise_on_record_survives_the_switch_that_stops_new_checks(self) -> None:
+        """DRC-4559. This log is the only surface a departed session's raise
+        lives on, and the switch took the cell off every row.
+
+        The row keeps saying a raise is on record; the closing note is where
+        the switch is explained, once for the view, and it now distinguishes
+        nothing watching now from nothing ever having been raised.
+        """
+        out = self.render([self._row(sid="gone-9", departures=[self.DEPARTURE])])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("One departure raised", visible)
+        self.assertIn("and nothing watches for one", visible)
+        self.assertIn(
+            "The checks that run while you were away are off for this run, so nothing new "
+            "is being checked. What was already raised is still on record.",
+            visible,
+        )
+
+    def test_the_lane_off_note_says_nothing_extra_when_nothing_was_raised(self) -> None:
+        """The clause is keyed on rows on record, never on the switch alone."""
+        out = self.render([self._row()])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("and nothing watches for one", visible)
+        self.assertNotIn("What was already raised is still on record", visible)
+
     def test_the_closing_line_stops_claiming_nothing_watches_when_something_does(self) -> None:
         """The clause was unconditional in both branches and false under the switch."""
         off = self.render([self._row()])

@@ -806,6 +806,21 @@ function nextCockpitHeldToggle(field, action, shown){
    `nextCockpitConflict`, worded about what has already happened, because the
    handler's own refresh has run by the time the reader can read them. */
 const NEXT_COCKPIT_HELD_CUE_LIMIT = 16;
+/* How long the armed discard refuses to be confirmed. Above the one second a
+   macOS double-click interval can be set to and above the quarter second its
+   key-repeat delay starts at, because both gestures deliver the second press
+   through this one listener: the click handler is delegated on `document` and
+   `renderNext` is synchronous, so the replacement button is already under the
+   pointer, carrying the same action, before the second click of a double-click
+   is dispatched. Measured on the shipped control: one ordinary double-click
+   armed and confirmed, deleting every revision, the stored reading and the
+   departure quotations with nothing read in between.
+
+   A floor and not a disabled interval, because a disabled button would move
+   focus and the arm is meant to lapse on its own. A press inside it re-arms
+   rather than being dropped, so a slip cannot silently undo the deliberate
+   press before it, and a held key never accumulates its way to a confirm. */
+const NEXT_COCKPIT_DISCARD_DWELL_MS = 1_200;
 const NEXT_COCKPIT_HELD_CUES = {
   error: "Not saved. The server refused the write, and your words are still in the box.",
   unpersisted: "Not stored. The store could not be written, so the refresh has already " +
@@ -825,7 +840,12 @@ const NEXT_COCKPIT_HELD_OUTCOME_CUES = {
   stored: "saved", unchanged: "unchanged", refused: "error", unwritable: "unpersisted",
 };
 
-function nextCockpitHeldCue(key){
+/* The stamped kind, or nothing once it has expired. Split out from the cue
+   below because the discard block reads the kind rather than a sentence: its
+   sentences are published (`annotate_discard`) and its armed state is a state
+   and not a cue, and both ride this one lane so the block keeps two rows in
+   docs/design-reader-state.md rather than four. */
+function nextCockpitHeldKind(key){
   const held = nextCockpitHeldStates.get(key);
   if(!held) return "";
   // The same clock and the same window the row controls use, so two cues on
@@ -834,7 +854,11 @@ function nextCockpitHeldCue(key){
     nextCockpitHeldStates.delete(key);
     return "";
   }
-  return NEXT_COCKPIT_HELD_CUES[held.kind] || "";
+  return held.kind;
+}
+
+function nextCockpitHeldCue(key){
+  return NEXT_COCKPIT_HELD_CUES[nextCockpitHeldKind(key)] || "";
 }
 
 function nextCockpitHeldMark(key, kind){
@@ -1582,8 +1606,14 @@ function nextCockpitDepartures(shape, source, session){
      switch test above is the same rule one layer out. */
   const laneOn = Boolean(nextData && nextData.unasked === true);
   const laneRows = Array.isArray(session && session.departures) ? session.departures : null;
-  const lane = laneOn && laneRows &&
-    (laneRows.length > 0 || session.departure_checked === true) ? laneRows.length : null;
+  /* With the lane off the figure is the rows this section actually drew, and
+     only where it drew some: `departure_checked` is not consulted there,
+     because a switch that is off publishes no capability key and a length read
+     off a list `base_session` declares empty on every row would report the
+     schema (DRC-4559, the first Measured Invariant). */
+  const lane = laneRows && (laneOn
+    ? (laneRows.length > 0 || session.departure_checked === true)
+    : laneRows.length > 0) ? laneRows.length : null;
   return '<section class="next-cockpit-departures"><header>' +
     '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
     reading.html +
@@ -1618,10 +1648,21 @@ function nextCockpitUnaskedPart(session){
   const label = '<span class="next-cockpit-departure-label">' +
     'FROM THE CHECKS RUN WHILE YOU WERE AWAY</span>';
   if(!(nextData && nextData.unasked === true)){
+    /* Two sentences and two subjects. The first is about the present and is
+       true either way; the second is about the record, and it is printed with
+       the rows it is about because the store is read with the lane off and
+       every standing raise was already on the wire (DRC-4559). Separate
+       paragraphs, so neither can be read as qualifying the other. */
+    const rows = Array.isArray(session && session.departures) ? session.departures : [];
+    const standing = rows.length ? nextUnaskedDepartureBody(session) : "";
     return '<div class="next-cockpit-departure-part">' + label +
       '<p class="next-cockpit-reading-why">Nothing watches for a departure on its own. ' +
       'Start with --unasked-readings to have Cargento check a session against what you ' +
-      'asked for while you are away.</p></div>';
+      'asked for while you are away.</p>' +
+      (standing
+        ? `<p class="next-cockpit-reading-why">${esc(NEXT_UNASKED_LANE_OFF_RECORD)}</p>` +
+          standing
+        : "") + '</div>';
   }
   const body = nextUnaskedDepartureBody(session);
   return body ? '<div class="next-cockpit-departure-part">' + label + body + '</div>' : "";
@@ -2068,6 +2109,57 @@ function nextCockpitHeldReEntry(session){
   return `<p class="next-cockpit-held-reentry">${link}${esc(raise)} ${esc(resume)}</p>`;
 }
 
+/* The act the endpoint has always had and no control reached (DRC-4561).
+
+   Section scope, not field scope: `annotations.clear` drops the whole entry,
+   so a control inside the three-column field grid would offer an act it cannot
+   perform. Labelled `discard everything` and never `clear` -- the shorter word
+   is already printed on the button beside each box for a weaker act on a
+   different store, and two buttons in one block carrying one word is the
+   defect rather than the fix. SECURITY.md says the same thing in the same
+   words.
+
+   Every sentence here is the server's. The success one claims the departure
+   store no longer quotes these words, and the page never reads that store, so
+   it must not compose the claim.
+
+   Armed by the first press and performed by the second, through the cue lane
+   and its 30 second TTL rather than a dialog: the bundle has no dialog
+   anywhere, the same block already ships a deliberate two-step for the weaker
+   act, and an arm that lapses on its own leaves a reader who walked away with
+   a disarmed control. */
+function nextCockpitHeldDiscardBlock(session, annotation){
+  const said = (nextData && nextData.annotate_discard) || {};
+  const key = nextCockpitHeldKey(session, "discard");
+  const kind = nextCockpitHeldKind(key);
+  const armed = kind === "discard-armed";
+  const landed = kind && !armed ? String(said[kind.slice("discard-".length)] || "") : "";
+  /* `revision_count` is `len(entry["revisions"])` for a real entry and 0 for
+     none, so the OFFER is a measured value and not a structurally-present
+     default: it never offers to discard nothing.
+
+     The account of a discard that already happened is not gated on it, and
+     that is the whole of this branch. A landed discard deletes the entry, the
+     next payload publishes 0, and the gate would close over the one sentence
+     saying what became of the words -- measured: every discard succeeded
+     silently, and only the two failures, which leave the revisions in place,
+     ever printed theirs. */
+  const offer = nextNumber(annotation && annotation.revision_count) > 0;
+  if(!offer && !landed) return "";
+  const why = String(said.why || "");
+  return '<div class="next-cockpit-held-discard">' +
+    (offer && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
+    (offer
+      ? '<button type="button" data-next-cockpit-action="held-discard" ' +
+        `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}">` +
+        `${armed ? "confirm discard" : "discard everything"}</button>`
+      : "") +
+    (offer && armed && said.armed
+      ? `<p class="next-cockpit-held-absent">${esc(String(said.armed))}</p>` : "") +
+    (landed ? `<small class="next-cockpit-held-cue">${esc(landed)}</small>` : "") +
+    '</div>';
+}
+
 function nextCockpitHeldTo(group, observation){
   const session = nextCockpitFocusedSession(group);
   if(!session){
@@ -2128,7 +2220,8 @@ function nextCockpitHeldTo(group, observation){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    binding + ended + nextCockpitHeldReEntry(session) + '</section>' + evidence;
+    binding + ended + nextCockpitHeldDiscardBlock(session, annotation) +
+    nextCockpitHeldReEntry(session) + '</section>' + evidence;
 }
 
 /* The reader's answer, posted to the same route their words go to. `through`
@@ -2208,6 +2301,58 @@ async function nextCockpitConflictSettle(session, through){
     // The block stays open, which is the safe direction: a settlement that did
     // not land must not read as one that did.
     renderNext();
+  }
+}
+
+/* The endpoint's whole-annotation arm, reached from the second press.
+
+   Shaped on `nextCockpitHeldSave` and deliberately not sharing its cue table:
+   "Saved as a new revision." over a deletion, and "...they are still in the
+   box" for an act with no box, are both DRC-4543's defect re-shipped. The
+   sentences come from the payload instead, so the one that claims the
+   departure store no longer quotes these words is written where that store
+   can be tested. */
+async function nextCockpitDiscardAnnotation(session){
+  const key = nextCockpitHeldKey(session, "discard");
+  try{
+    const response = await fetch("/api/annotate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid, clear: true}),
+    });
+    if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
+    const answer = await response.json();
+    if(!answer || answer.ok !== true) throw new Error("discard not confirmed");
+    const outcome = String(answer.outcome || "");
+    /* The store's own token, with `persisted` as the fallback an older or
+       newer server leaves: one bit cannot carry three sentences, which is
+       what `NEXT_COCKPIT_HELD_CUES` records about the save path. */
+    const answered = ["stored", "refused", "unwritable"].includes(outcome)
+      ? `discard-${outcome}`
+      : (answer.persisted === true ? "discard-stored" : "discard-unwritable");
+    /* A discard is one act over two stores and the second half fails on its
+       own. `withdrew` is the departure store's answer, so the categorical
+       sentence is not printed over rows this page is about to redraw with the
+       discarded words still in them. `=== false` and not falsiness: a server
+       that predates the field omits it, and an absent answer must leave the
+       sentence it had. */
+    const kind = answered === "discard-stored" && answer.withdrew === false
+      ? "discard-unwithdrawn" : answered;
+    if(kind === "discard-stored" || kind === "discard-unwithdrawn"){
+      /* The drafts go with the annotation. They are an independent lane, so a
+         half-typed box would otherwise sit over an empty store and the next
+         save would mint revision 1 of what the reader just discarded. */
+      for(const spec of NEXT_COCKPIT_HELD_FIELDS){
+        nextCockpitHeldDrafts.delete(nextCockpitHeldKey(session, spec[0]));
+      }
+    }
+    nextCockpitHeldMark(key, kind);
+    await refreshNext();
+  }catch(_error){
+    // Nothing was deleted that this page can see, which is what the refusal
+    // sentence says. No retry: a second press is the reader's to make.
+    nextCockpitHeldMark(key, "discard-refused");
+    renderNext({named: key});
   }
 }
 
@@ -3108,6 +3253,28 @@ document.addEventListener("click", event => {
     nextCockpitConflictSettle(session, Number(target.dataset.arg || 0));
     return;
   }
+  if(action === "held-discard"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    const key = nextCockpitHeldKey(session, "discard");
+    // Read before the kind, which drops the state on expiry.
+    const held = nextCockpitHeldStates.get(key);
+    const armedAt = held && held.kind === "discard-armed" ? held.at : 0;
+    const slip = Number(event.detail) > 1
+      || Date.now() - armedAt < NEXT_COCKPIT_DISCARD_DWELL_MS;
+    if(nextCockpitHeldKind(key) !== "discard-armed" || slip){
+      /* Arm, or re-arm. Nothing is posted until the reader has read what the
+         second press will do and pressed again -- and a press too soon after
+         the arm to have read it is the double-click that used to confirm in
+         one gesture, so it buys another dwell rather than the write. */
+      nextCockpitHeldMark(key, "discard-armed");
+      renderNext({named: key});
+      return;
+    }
+    nextCockpitDiscardAnnotation(session);
+    return;
+  }
   if(action === "held-clear" || action === "held-save"){
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;
@@ -3188,6 +3355,23 @@ document.addEventListener("click", event => {
 });
 
 function nextCockpitHandleKeydown(event){
+  /* Escape on the ARMED discard control, and only then. `next-chrome.js`
+     excuses input, select and textarea from its own Escape handler and a
+     button falls through it, so Escape here navigated the reader out of the
+     cockpit with the arm still stamped in a Map that outlives the navigation:
+     they came back to a control one press from destroying an annotation.
+     Unarmed, Escape keeps meaning "leave this view". */
+  const discard = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-discard-key]") : null;
+  if(event.key === "Escape" && discard){
+    const key = String(discard.dataset.nextCockpitDiscardKey || "");
+    if(nextCockpitHeldKind(key) === "discard-armed"){
+      event.preventDefault();
+      nextCockpitHeldStates.delete(key);
+      renderNext({named: key});
+      return true;
+    }
+  }
   const held = event.target && event.target.closest
     ? event.target.closest("[data-next-cockpit-held-key]") : null;
   if(event.key === "Escape" && held){

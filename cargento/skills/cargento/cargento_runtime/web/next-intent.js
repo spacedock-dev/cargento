@@ -95,7 +95,15 @@ function nextIntentClose(ordered){
     ? `No reading has been made against any of these${tail}`
     : `${withReading} of these ${total} ${withReading === 1 ? "carries" : "carry"} a reading` +
       tail;
-  return `<p class="next-intent-note">${lead}${NEXT_READING_NOT_A_VERIFICATION}</p></section>`;
+  /* And once for the view, where a raise is on record and nothing is watching
+     now. Derived over the rows this view is holding, like the count above:
+     "nothing watches for one" is about the present and read as "nothing was
+     ever raised" beside rows that carry one (DRC-4559). */
+  const standing = !watching &&
+    (ordered || []).some(row => Array.isArray(row && row.departures) && row.departures.length);
+  const record = standing ? `${NEXT_UNASKED_LANE_OFF_RECORD} ` : "";
+  return `<p class="next-intent-note">${lead}${record}` +
+    `${NEXT_READING_NOT_A_VERIFICATION}</p></section>`;
 }
 
 /* What was raised against this session's words, in the space a list row has.
@@ -124,8 +132,17 @@ function nextIntentClose(ordered){
    closing note is where the switch is explained, once for the view, rather than
    once per row. */
 function nextIntentDepartures(row){
-  if(!(nextData && nextData.unasked === true)) return "";
   const rows = Array.isArray(row && row.departures) ? row.departures : [];
+  if(!(nextData && nextData.unasked === true)){
+    /* The counted raise and never `departure_why`, which is the defect the
+       paragraph above records: the row keys on rows being on record, so a
+       default board still says nothing at all (DRC-4559). This log is the one
+       surface a departed session's raise survives on, and the switch took the
+       cell off every row of it. */
+    return rows.length
+      ? `${rows.length === 1 ? "One departure" : `${rows.length} departures`} raised`
+      : "";
+  }
   if(rows.length){
     return `${rows.length === 1 ? "One departure" : `${rows.length} departures`} raised`;
   }

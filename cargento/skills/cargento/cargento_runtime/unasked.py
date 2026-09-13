@@ -418,6 +418,7 @@ def published(
     stored: Sequence[departures.Check],
     row: Mapping[str, Any],
     *,
+    entries: Sequence[annotation_store.Annotation],
     now: float,
 ) -> dict[str, Any]:
     """What one session's row says about unasked checks.
@@ -432,17 +433,28 @@ def published(
 
     The four sentences are `departures`', not this module's, so the board cannot
     word an exhausted cap one way here and another way on the review surface.
+
+    Whether there is anything to have been checked AGAINST is read from the
+    annotation entries rather than assumed, and `entries` is required for that
+    reason (DRC-4560). A check outlives the words it read: the `clear` beside a
+    box empties it and the save after it mints a revision holding two empty
+    strings, and the row then said it had been checked against what the reader
+    asked for eight lines under the reading block's own "Nothing has been typed
+    for this session". Read off the entries and not off the row's attached
+    `annotation_*` keys, which happen to be there only because
+    `_attach_annotations` runs first: that is an ordering nothing states.
     """
     harness = str(row.get("harness") or "")
     sid = str(row.get("sid") or "")
+    has_words = annotation_store.has_typed_words(annotation_store.find(entries, harness, sid))
     return {
         "departures": departures.published(stored, harness, sid),
-        "departure_why": departures.why(config, stored, harness, sid, now=now),
+        "departure_why": departures.why(config, stored, harness, sid, has_words=has_words, now=now),
         # Whether the list above is a measurement at all. It is `[]` both for a
         # session nobody read and for one that was read and had nothing to
         # raise, and the review surface counts it: a session the lane had never
         # reached rendered a departure figure of 0 under the sentence saying it
         # had not been checked. `departures.checked` is the same test the
         # sentence uses, so the figure and the sentence cannot disagree.
-        "departure_checked": departures.checked(stored, harness, sid),
+        "departure_checked": departures.checked(stored, harness, sid, has_words=has_words),
     }

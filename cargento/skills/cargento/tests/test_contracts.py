@@ -672,6 +672,58 @@ def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
     return unwired
 
 
+class LaneOffSentenceIsOwnedOnceTest(unittest.TestCase):
+    """DRC-4559. One sentence, three surfaces, and no second wording.
+
+    The session page, the departure review and the Intent log each state that
+    the away-checking lane is off and that what was already raised is still on
+    record. Three literals is how the least true wording becomes the most
+    reassuring, so the string is defined once in `next-boot.js` — first in
+    `APP_PARTS`, so all three see it — and referenced by name everywhere else.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+    NAME = "NEXT_UNASKED_LANE_OFF_RECORD"
+    SENTENCE = (
+        "The checks that run while you were away are off for this run, so nothing new is "
+        "being checked. What was already raised is still on record."
+    )
+
+    @staticmethod
+    def _joined(source: str) -> str:
+        """Source with its `" + "` string joins closed up.
+
+        The bundle wraps long literals at the line limit, so the sentence is
+        never one token in the file it is defined in.
+        """
+        return re.sub(r'"\s*\+\s*"', "", source)
+
+    def test_the_sentence_is_written_once_and_referenced_by_name(self) -> None:
+        wrote = {
+            path.name: path.read_text(encoding="utf-8") for path in sorted(self.WEB.glob("*.js"))
+        }
+
+        literal = {name for name, body in wrote.items() if self.SENTENCE in self._joined(body)}
+        self.assertEqual({"next-boot.js"}, literal)
+        self.assertIn(f"const {self.NAME} =", wrote["next-boot.js"])
+        for name in ("next-session.js", "next-cockpit.js", "next-intent.js"):
+            with self.subTest(surface=name):
+                self.assertIn(self.NAME, wrote[name])
+
+    def test_the_owner_is_loaded_before_every_surface_that_reads_it(self) -> None:
+        # A constant declared with `const` after its first reader in the
+        # concatenated scope is a temporal-dead-zone ReferenceError at render
+        # rather than a lint failure.
+        order = list(frontend_page.APP_PARTS)
+        self.assertLess(
+            order.index("next-boot.js"),
+            min(
+                order.index(name)
+                for name in ("next-session.js", "next-cockpit.js", "next-intent.js")
+            ),
+        )
+
+
 class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
     """The producer and the page must agree on every key and every sentence.
 

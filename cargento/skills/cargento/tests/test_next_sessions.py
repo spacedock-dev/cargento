@@ -1126,6 +1126,30 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
 
         self.assertNotIn("next-session-departures", html)
 
+    def test_a_standing_raise_survives_the_switch_that_stops_new_checks(self) -> None:
+        """DRC-4559. The section was dropped from the document, not reworded.
+
+        With the lane off the server still reads the store and still publishes
+        every raise on the row; this page threw them away, so the record a
+        reader most needs after coming back was reachable only by restarting
+        the server with a flag.
+        """
+        html = self.detail(
+            'departures: [{constraint: "TYPED GOAL",'
+            ' clause: "do not change the board while capturing",'
+            ' reading: "Two turns edited the running board.", evidence: "e1",'
+            ' revision: 2, cutoff: 1700000000}], departure_why: ""',
+            head=self.OFF,
+        )
+
+        self.assertIn("next-session-departures", html)
+        self.assertIn(
+            "The checks that run while you were away are off for this run, so nothing new "
+            "is being checked. What was already raised is still on record.",
+            html,
+        )
+        self.assertIn("do not change the board while capturing", html)
+
     def test_nothing_checked_and_nothing_departed_are_different_sentences(self) -> None:
         unchecked = self.detail(
             'departures: [], departure_why: "Cargento has not checked this session '

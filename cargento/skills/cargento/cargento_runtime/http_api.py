@@ -60,7 +60,7 @@ def _websocket_frame(opcode: int, payload: bytes) -> bytes:
     return header + payload
 
 
-def _withdraw_raises(application: Application, outcome: str, harness: str, sid: str) -> None:
+def _withdraw_raises(application: Application, outcome: str, harness: str, sid: str) -> bool:
     """Take the cleared words out of the departure store as well.
 
     A withdrawal is one act over two stores. A departure quotes the cleared
@@ -72,13 +72,22 @@ def _withdraw_raises(application: Application, outcome: str, harness: str, sid: 
 
     Only after a clear that landed. A refused or unwritable clear left the words
     in the annotation store, and taking the raises out beneath them would leave
-    the two stores disagreeing about whether the withdrawal happened. The reply
-    is unchanged either way: `persisted` and `outcome` are about the annotation
-    store, which is what the reader typed into.
+    the two stores disagreeing about whether the withdrawal happened.
+
+    Returns whether the quotations are where the reply is about to say they
+    are. `persisted` and `outcome` stay about the annotation store, which is
+    what the reader typed into, so this is a second answer and not a
+    correction to the first: the entry is gone whatever this says. It used to
+    be discarded, and the board then printed "nothing raised against those
+    words quotes them any more" over rows it was redrawing with those words in
+    them -- `departures.withdraw` answers False on a store it could not write,
+    and `unasked.published` goes on serving every row it did not blank.
     """
     if outcome != annotation_store.OUTCOME_STORED:
-        return
-    departures.withdraw(
+        # Nothing was owed, so nothing is out of step. The caller's other
+        # tokens already say the clear did not land.
+        return True
+    return departures.withdraw(
         application.config, harness, sid, diagnostic_sink=application.diagnostic_sink
     )
 
@@ -1027,9 +1036,21 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 # What was raised against these words, and — where nothing was
                 # — which of the four reasons. `departures` owns both, so the
                 # log cannot word a spent cap differently from the session page.
+                #
+                # `has_words` per entry and never a hard-coded True, even
+                # though this route iterates annotations: an entry whose latest
+                # revision is two empty strings is exactly what the board's
+                # `clear` plus the save after it leaves behind, and a constant
+                # here would look right and keep the defect on the one surface
+                # that outlives the session (DRC-4560).
                 "departures": departures.published(raised, entry["harness"], entry["sid"]),
                 "departure_why": departures.why(
-                    application.config, raised, entry["harness"], entry["sid"], now=now
+                    application.config,
+                    raised,
+                    entry["harness"],
+                    entry["sid"],
+                    has_words=annotation_store.has_typed_words(entry),
+                    now=now,
                 ),
             }
             for entry in entries
@@ -1305,11 +1326,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         state = application.state
         settle_through = payload.get("settle_through")
+        withdrew = True
         if payload.get("clear") is True:
             outcome = annotation_store.clear(
                 config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
             )
-            _withdraw_raises(application, outcome, harness, sid)
+            withdrew = _withdraw_raises(application, outcome, harness, sid)
         elif settle_through is not None:
             # A third arm on this route rather than a route of its own: the
             # subject is the same session's annotation, the reply shape is the
@@ -1350,6 +1372,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "outcome": outcome,
             "revision": current["revision"],
             "revision_count": current["revision_count"],
+            # The second store's answer, and never folded into `outcome`: the
+            # four tokens are the annotation store's closed vocabulary and the
+            # page's save path reads them too. True on every arm that owes no
+            # withdrawal, so a reader of the wire sees one field with one
+            # meaning rather than a key that appears only sometimes.
+            "withdrew": withdrew,
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 

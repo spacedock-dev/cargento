@@ -333,15 +333,25 @@ function nextSessionFooter(session){
    check that never ran. The server owns all four sentences in `departures`, so
    this chooses whether to print and never what.
 
-   Drawn only where the lane is live. With the switch off there is no check and
-   no claim to make, and a panel saying so on every row of an installed board is
-   noise about a feature nobody turned on. */
+   With the switch off the panel is drawn only where a raise is on record, and
+   that qualification is the whole of DRC-4559. The empty case keeps the
+   original ruling: a panel on every row of an installed board is noise about a
+   feature nobody turned on. The other case is not noise -- the server reads the
+   departure store whether or not the lane is attached, so this page was handed
+   every standing raise and dropped the entire section from the document, and
+   the only way back to the record was to restart the server with a flag. */
 function nextSessionDepartures(session){
-  if(!(nextData && nextData.unasked === true)) return "";
+  const laneOn = Boolean(nextData && nextData.unasked === true);
+  const rows = Array.isArray(session && session.departures) ? session.departures : [];
+  if(!laneOn && !rows.length) return "";
   const body = nextUnaskedDepartureBody(session);
   if(!body) return "";
+  /* The switch sentence above the rows rather than instead of them: a sentence
+     alone tells the reader something exists that they cannot see. */
+  const off = laneOn ? ""
+    : `<p class="next-session-departures-why">${esc(NEXT_UNASKED_LANE_OFF_RECORD)}</p>`;
   return '<section class="next-session-departures">' +
-    "<h2>UNASKED CHECKS</h2>" + body + "</section>";
+    "<h2>UNASKED CHECKS</h2>" + off + body + "</section>";
 }
 
 /* The rows and the absence sentence, in one wording for every surface that

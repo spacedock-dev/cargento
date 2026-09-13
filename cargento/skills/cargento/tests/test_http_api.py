@@ -760,6 +760,84 @@ class DismissEndpointTest(RuntimeTestCase):
         self.assertEqual([], quiet["departures"])
         self.assertEqual(departures.NEVER_CHECKED, quiet["departure_why"])
 
+    def test_the_reveal_will_not_say_a_blanked_entry_was_checked_against_words(self) -> None:
+        """DRC-4560. The route holds an entry for every row, so a hard-coded
+        True here would look right and keep the defect.
+
+        The entry standing with nothing typed in it is what the board's `clear`
+        plus the save after it leaves behind, and the Intent log is a surface
+        that outlives the session, so the wrong sentence outlives it too.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "blanked", goal="Prove it landed")
+        annotation_store.annotate(config, state, "pi", "blanked", goal="")
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "blanked",
+                    "at": 1_000.0,
+                    "constraint": "",
+                    "clause": "",
+                    "reading": "",
+                    "evidence": "",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        row = json.loads(body)["annotations"][0]
+        self.assertEqual(departures.NEVER_CHECKED, row["departure_why"])
+        self.assertNotEqual(departures.NOTHING_DEPARTED, row["departure_why"])
+
+    def test_the_reveal_never_serves_a_raise_under_the_never_checked_sentence(self) -> None:
+        """DRC-4560. Both halves of the row are derived here, so they can disagree.
+
+        The route serves `departures` and `departure_why` from one store read,
+        and the page prints the second directly under the first. The blank save
+        leaves the entry standing with nothing in it while the raise made
+        against the earlier revision stays, so the sentence claiming nothing
+        was read here would go out over the wire beside the quotation of what
+        was read.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(
+            config, state, "pi", "blanked", goal="do not change the board while capturing"
+        )
+        annotation_store.annotate(config, state, "pi", "blanked", goal="")
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "blanked",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "do not change the board while capturing",
+                    "reading": "Two turns edited the running board between captures.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._get(port, "/api/annotations")
+
+        self.assertEqual(200, status)
+        row = json.loads(body)["annotations"][0]
+        self.assertEqual(1, len(row["departures"]))
+        self.assertEqual("", row["departure_why"])
+
     def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
         config, state = self._runtime()
         annotation_store.annotate(config, state, "pi", "s1", goal="withdraw me")
@@ -3399,6 +3477,83 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertEqual(1, len(stored))
         self.assertIs(True, stored[0]["withdrawn"])
         self.assertEqual("", stored[0]["clause"])
+
+    def test_the_reply_to_a_clear_carries_the_token_the_control_reads(self) -> None:
+        """DRC-4561. The discard control picks its sentence from `outcome`.
+
+        A clear answers one of three of the four tokens — it never mints and
+        never repeats a revision, so `unchanged` is unreachable from it — and
+        `revision_count` is 0 because there is no entry left to publish one.
+        The page's three discard sentences rest on exactly that.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "s", goal="Ship the cockpit")
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            _status, body = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
+            )
+
+        answer = json.loads(body)
+        self.assertIs(True, answer["ok"])
+        self.assertEqual(annotation_store.OUTCOME_STORED, answer["outcome"])
+        self.assertIn(
+            answer["outcome"],
+            (
+                annotation_store.OUTCOME_STORED,
+                annotation_store.OUTCOME_REFUSED,
+                annotation_store.OUTCOME_UNWRITABLE,
+            ),
+        )
+        self.assertIsNone(answer["revision"])
+        self.assertEqual(0, answer["revision_count"])
+        self.assertIs(True, answer["withdrew"])
+
+    def test_a_clear_says_when_the_quotations_did_not_go_with_the_words(self) -> None:
+        """DRC-4561. A discard is one act over two stores, and one can fail.
+
+        The entry is gone by then and cannot be put back, so this is not a
+        failed clear: it is a landed one with an effect missing. The route
+        threw `departures.withdraw`'s answer away, so the reply said `stored`
+        and the board printed "nothing raised against those words quotes them
+        any more" over rows it was about to redraw with those words in them.
+        """
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "pi", "s", goal="do not touch the board")
+        departures.record(
+            config,
+            [
+                {
+                    "harness": "pi",
+                    "sid": "s",
+                    "at": 1_000.0,
+                    "constraint": "TYPED GOAL",
+                    "clause": "do not touch the board",
+                    "reading": "It edited the running board.",
+                    "evidence": "turn transcript",
+                    "revision": 1,
+                    "cutoff": 1_000.0,
+                    "cutoff_text": "",
+                    "withdrawn": False,
+                }
+            ],
+        )
+        # What an unwritable departure store looks like from the route: its own
+        # except branch answers False and the row stays as it was.
+        with (
+            mock.patch.object(departures, "save", return_value=False),
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+        ):
+            _status, body = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
+            )
+
+        answer = json.loads(body)
+        self.assertEqual(annotation_store.OUTCOME_STORED, answer["outcome"])
+        self.assertIs(False, answer["withdrew"])
+        # And the reply is honest about both halves at once: the words the
+        # reader typed are gone, and the quotation of them is not.
+        self.assertEqual((), annotation_store.load(config))
+        self.assertEqual("do not touch the board", departures.load(config)[0]["clause"])
 
     def test_emptying_both_fields_is_not_the_clear_that_withdraws_a_raise(self) -> None:
         """DRC-4514, walked on the board, and the reason `SECURITY.md` says which.

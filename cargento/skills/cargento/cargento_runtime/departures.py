@@ -317,7 +317,7 @@ def counts(entries: Iterable[Check], harness: str, sid: str, *, since: float) ->
     return mine, sum(1 for row in rows if row["at"] >= since)
 
 
-def checked(entries: Iterable[Check], harness: str, sid: str) -> bool:
+def checked(entries: Iterable[Check], harness: str, sid: str, *, has_words: bool) -> bool:
     """Whether THIS session has ever been checked against the words it holds now.
 
     Per session and not per board. The lane being attached says the feature is
@@ -328,8 +328,18 @@ def checked(entries: Iterable[Check], harness: str, sid: str) -> bool:
     cleared, so nothing has been checked against what they are asking for now,
     and `NEVER_CHECKED` is the true sentence. The spend it made still counts,
     which is `counts` and not this.
+
+    `has_words` is the same fact arriving by a second route, and it is a
+    required argument rather than a defaulted one because a default of True
+    keeps the defect at any call site that forgets it (DRC-4560). The lane
+    itself never checks a wordless session, but the words can go afterwards:
+    the `clear` beside a box empties it and the save after it mints a revision
+    holding two empty strings, leaving the entry standing with nothing in it
+    and the checks against the earlier revisions not withdrawn. This module is
+    a leaf over config, io and records and cannot ask the annotation store, so
+    it is told.
     """
-    return any(
+    return has_words and any(
         row["harness"] == harness and row["sid"] == sid and not row["withdrawn"] for row in entries
     )
 
@@ -340,6 +350,7 @@ def why(
     harness: str,
     sid: str,
     *,
+    has_words: bool,
     now: float,
 ) -> str:
     """Which of the four absence sentences this session has earned, or none.
@@ -353,7 +364,22 @@ def why(
     """
     stored = list(entries)
     mine, today = counts(stored, harness, sid, since=now - DAY_SEC)
-    if not checked(stored, harness, sid) and mine < config.unasked_session_cap:
+    # Whether `published` is about to serve this session a row, on the same
+    # test it selects them with. Read once and used twice, because the two
+    # answers appear on one screen: every surface prints this sentence directly
+    # beneath those rows.
+    standing = any(
+        row["harness"] == harness
+        and row["sid"] == sid
+        and row["constraint"]
+        and not row["withdrawn"]
+        for row in stored
+    )
+    if (
+        not standing
+        and not checked(stored, harness, sid, has_words=has_words)
+        and mine < config.unasked_session_cap
+    ):
         # Before the caps, deliberately. A session nobody has checked is not a
         # session held off by a spent cap, even when the board's day cap is
         # spent: the first says nothing was looked at here, and the second
@@ -365,18 +391,19 @@ def why(
         # further check will run. Saying only the first would read as "not
         # checked yet". A session with no rows at all has spent nothing, so this
         # test cannot change what it earns.
+        #
+        # `standing` is the second exception and it arrived with `has_words`:
+        # a session whose box was emptied and saved keeps every raise made
+        # against the earlier revisions, so this sentence would print under
+        # rows quoting the words it says were never read. The figure stays
+        # unmeasured either way -- `checked` is not consulted here -- which is
+        # the half the sentence was wanted for.
         return NEVER_CHECKED
     if today >= config.unasked_daily_cap:
         return DAY_EXHAUSTED
     if mine >= config.unasked_session_cap:
         return SESSION_EXHAUSTED
-    if any(
-        row["harness"] == harness
-        and row["sid"] == sid
-        and row["constraint"]
-        and not row["withdrawn"]
-        for row in stored
-    ):
+    if standing:
         return ""
     return NOTHING_DEPARTED
 

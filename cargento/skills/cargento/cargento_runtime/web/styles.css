@@ -864,6 +864,12 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-held-field button[hidden]{display:none}
 .next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink3);font-size:var(--fs-xs)}
+/* Section scope, outside the field grid: the act is per annotation and the
+   grid has exactly three columns for the counter and the two field controls.
+   No colour on it -- `--clay` reads as an observation about the session under
+   the design's rule 3, and this is a control. */
+.next-cockpit-held-discard{display:grid;gap:4px;justify-items:start;margin-top:10px}
+.next-cockpit-held-discard button{border:0;background:none;color:var(--ink2);font:var(--fs-xs) var(--mono);cursor:pointer;padding:0}
 /* DRC-4509's work evidence. Mono throughout: every string in a row is one a
    source published, including the type. The limit line is the board talking,
    so it is sans. */

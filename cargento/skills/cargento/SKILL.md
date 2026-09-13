@@ -286,8 +286,10 @@ attempts and hand-overs, with no arithmetic between any of them. A count identif
 reading and settles nothing else, and where the away checks have never read the session the figure
 says it was not measured rather than reading zero. The `clear` beside each box empties that box, and
 the save after it keeps every earlier revision, so the raises quoting those words stay. Discarding
-the whole annotation, which is `clear` in a `POST /api/annotate` body, withdraws them: the
-quotations go from the departure record too, and only the fact that a check ran stays. The Intent
+the whole annotation withdraws them: the quotations go from the departure record too, and only the
+fact that a check ran stays. That act is `discard everything`, under the two boxes and offered only
+where a revision is stored; it takes two presses, and between them the board names what it will
+delete and what it will withdraw. The Intent
 log carries the same raises a line at a time, and keeps them after the session leaves the board.
 
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
@@ -323,7 +325,9 @@ only thing here that spends your model capacity with nobody watching. It checks 
 change rather than every turn, it raises a departure and never a reassurance, and it stops at a
 per-session and a per-day limit. A spent limit is said out loud: a session nobody checked and a
 session checked and found clean are different sentences on the board, because you were not there to
-know which one you are looking at.
+know which one you are looking at. Turning it off stops new checks and retracts nothing: what was
+already raised still shows on the session, in the review and in the Intent log, under a line saying
+nothing new is being checked.
 
 What became of an alert about a session is now recorded, one entry per raise, and that session's
 panel prints it. There are five outcomes and they mean different things: handed to this machine's
