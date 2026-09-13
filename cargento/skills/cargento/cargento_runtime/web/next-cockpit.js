@@ -833,6 +833,16 @@ const NEXT_COCKPIT_HELD_CUES = {
   "settle-unpersisted": "Not settled. The store could not be written, so the mark has " +
     "already been dropped and the question above still stands.",
 };
+/* The one cue sentence this page owns rather than reads.
+
+   A settle that LANDS prints nothing: the block re-renders its own "You
+   settled this ... ago" out of the store, which the refresh on the next line
+   has not read yet, so there is no published sentence to carry at the moment
+   the press is made. Covering only the table above would leave the outcome a
+   reader most wants confirmed as the one that says nothing at all. Worded off
+   the block's own second sentence, so a reader who hears this recognises what
+   they then read. */
+const NEXT_COCKPIT_SETTLE_LANDED = "Settled. A direction given after this will raise it again.";
 /* The reply's `outcome` token (`annotations.OUTCOMES`) to the cue it earns. An
    unknown token, from a server newer than this page, falls back on
    `persisted`, which keeps its meaning across builds. */
@@ -852,6 +862,11 @@ function nextCockpitHeldKind(key){
   // one page do not disagree about how long a confirmation is worth.
   if(Date.now() - held.at >= NEXT_CONTROL_STATE_TTL_MS){
     nextCockpitHeldStates.delete(key);
+    /* And the repeat guard with it. A mark that has lapsed is no longer
+       standing, so the next one is a new report rather than a repeat -- a
+       reader who walked away, came back to a disarmed control and pressed it
+       again needs the warning they were given 30 seconds ago. */
+    nextCockpitAnnouncedCue = "";
     return "";
   }
   return held.kind;
@@ -861,12 +876,46 @@ function nextCockpitHeldCue(key){
   return NEXT_COCKPIT_HELD_CUES[nextCockpitHeldKind(key)] || "";
 }
 
+/* One sentence per marked kind, for the element that draws it and the region
+   that carries it (DRC-4564). Two derivations of one cue is how a region comes
+   to say something the block never printed, and the discard family's sentences
+   are the server's rather than this page's, so the resolver is the only place
+   that knows which table a kind belongs to. */
+function nextCockpitHeldSentence(kind){
+  if(!kind) return "";
+  if(kind.startsWith("discard-")){
+    const said = (nextData && nextData.annotate_discard) || {};
+    return String(said[kind.slice("discard-".length)] || "");
+  }
+  return NEXT_COCKPIT_HELD_CUES[kind] || "";
+}
+
+/* The last sentence written to either region, while the mark that produced it
+   is still standing. A reader who presses save twice against the same failing
+   store gets one report of it, not two, and a redraw between the presses
+   cannot replay either. Cleared wherever a mark is dropped rather than
+   replaced, because a lapsed arm pressed again is a new warning. */
+let nextCockpitAnnouncedCue = "";
+
+function nextCockpitAnnounceCue(sentence, assertive){
+  if(!sentence || sentence === nextCockpitAnnouncedCue) return;
+  nextCockpitAnnouncedCue = sentence;
+  const app = document.getElementById("app");
+  const region = assertive ? nextCockpitCueAlert(app) : nextCockpitCueStatus(app);
+  if(region) region.textContent = sentence;
+}
+
 function nextCockpitHeldMark(key, kind){
   nextCockpitHeldStates.delete(key);
   nextCockpitHeldStates.set(key, {kind, at: Date.now()});
   while(nextCockpitHeldStates.size > NEXT_COCKPIT_HELD_CUE_LIMIT){
     nextCockpitHeldStates.delete(nextCockpitHeldStates.keys().next().value);
   }
+  /* Pushed from here rather than from the render: this is the one point all
+     four cue families pass through, it runs before the render that follows,
+     and it fires once per press where a render fires on every fallback poll.
+     Assertive for the arm alone; see the region factories for why. */
+  nextCockpitAnnounceCue(nextCockpitHeldSentence(kind), kind === "discard-armed");
 }
 
 function nextCockpitHeldField(session, annotation, spec, cap){
@@ -1939,10 +1988,12 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
   }
   const current = nextNumber(annotation && annotation.revision);
   /* The one warm ink the design allows near a reading, and it is not part of
-     one: which revision was read is an observation about revisions. */
-  const stale = shape.revisionRead != null && current != null && shape.revisionRead !== current
-    ? `<p class="next-cockpit-reading-stale">This reading read revision ${shape.revisionRead}. ` +
-      `Revision ${current} is current, so it does not describe what you are asking for now.</p>`
+     one: which revision was read is an observation about revisions. The
+     characters are `nextRevisionSuperseded`'s, because the raises below this
+     block say the same thing about themselves. */
+  const superseded = nextRevisionSuperseded("This reading", shape.revisionRead, current);
+  const stale = superseded
+    ? `<p class="next-cockpit-reading-stale">${esc(superseded)}</p>`
     : "";
   /* From the reading rather than from the live row. A reading describes the
      moment it was taken, and the producer already agreed with the HOW IT
@@ -2133,7 +2184,8 @@ function nextCockpitHeldDiscardBlock(session, annotation){
   const key = nextCockpitHeldKey(session, "discard");
   const kind = nextCockpitHeldKind(key);
   const armed = kind === "discard-armed";
-  const landed = kind && !armed ? String(said[kind.slice("discard-".length)] || "") : "";
+  const landed = kind && !armed ? nextCockpitHeldSentence(kind) : "";
+  const warning = armed ? nextCockpitHeldSentence("discard-armed") : "";
   /* `revision_count` is `len(entry["revisions"])` for a real entry and 0 for
      none, so the OFFER is a measured value and not a structurally-present
      default: it never offers to discard nothing.
@@ -2149,13 +2201,21 @@ function nextCockpitHeldDiscardBlock(session, annotation){
   const why = String(said.why || "");
   return '<div class="next-cockpit-held-discard">' +
     (offer && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
+    /* The warning is the control's description rather than the sibling after
+       it (DRC-4564). Measured in the accessibility tree: a reader who tabs to
+       the armed control was told exactly "confirm discard, button", with the
+       four effects of the second press sitting in a node they had to go
+       looking for. No live region reaches that state, because nothing mutates
+       when you tab. */
     (offer
       ? '<button type="button" data-next-cockpit-action="held-discard" ' +
-        `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}">` +
+        `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}"` +
+        (warning ? ' aria-describedby="next-cockpit-discard-armed"' : "") + ">" +
         `${armed ? "confirm discard" : "discard everything"}</button>`
       : "") +
-    (offer && armed && said.armed
-      ? `<p class="next-cockpit-held-absent">${esc(String(said.armed))}</p>` : "") +
+    (offer && warning
+      ? '<p class="next-cockpit-held-absent" id="next-cockpit-discard-armed">' +
+        `${esc(warning)}</p>` : "") +
     (landed ? `<small class="next-cockpit-held-cue">${esc(landed)}</small>` : "") +
     '</div>';
 }
@@ -2295,6 +2355,9 @@ async function nextCockpitConflictSettle(session, through){
          is exactly the retry a reader makes after the first cue tells them
          to. */
       nextCockpitHeldStates.delete(settleKey);
+      /* The one push outside `nextCockpitHeldMark`, because this outcome is
+         the one that deliberately marks nothing. */
+      nextCockpitAnnounceCue(NEXT_COCKPIT_SETTLE_LANDED, false);
     }
     await refreshNext();
   }catch(_error){
@@ -3368,6 +3431,8 @@ function nextCockpitHandleKeydown(event){
     if(nextCockpitHeldKind(key) === "discard-armed"){
       event.preventDefault();
       nextCockpitHeldStates.delete(key);
+      // Dropped deliberately, so the next arm is not a repeat of this one.
+      nextCockpitAnnouncedCue = "";
       renderNext({named: key});
       return true;
     }

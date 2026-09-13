@@ -6894,6 +6894,32 @@ console.log(JSON.stringify({
         values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
 
+    def test_a_raise_read_against_a_superseded_revision_says_so_here_too(self) -> None:
+        """DRC-4563. The comparison the reading block makes inches above these rows.
+
+        The second half re-asserts the one-body invariant under the new
+        setup: the current revision has to be read from the session row inside
+        the shared function, because a value handed in by either caller would
+        let the two surfaces print different characters.
+        """
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            "__dashboard.sessions[0].annotation_revision = 3;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertIn(
+            "This raise read revision 2. Revision 3 is current, so it does not describe "
+            "what you are asking for now.",
+            out["visible"],
+        )
+        # The needle binds: an empty shared body would satisfy the two
+        # substring checks below without either surface rendering a row.
+        self.assertIn("TYPED GOAL", out["shared"])
+        self.assertIn(out["shared"], out["block"])
+        self.assertIn(out["shared"], out["onSession"])
+
     def test_the_two_surfaces_print_the_same_characters_for_one_raise(self) -> None:
         """AC1c. One body, two frames, rather than two renderings of one fact."""
         out = self.review(
@@ -7254,6 +7280,376 @@ console.log(JSON.stringify({
         self.assertNotIn("The notification service returned an error", out["block"])
         self.assertIn('data-next-delivery="handed-over"', out["block"])
         self.assertNotIn('data-next-delivery="refused"', out["block"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitCuesReachTheReaderTest(NextPageJsHarness):
+    """DRC-4564: the four cue families, and the region that carries them.
+
+    None of these tests asserts that anything is spoken. The stub document has
+    no accessibility tree, so what is checkable here is the shape a reader's
+    software reads: where the region sits, that it is the same node across
+    every redraw, its role and politeness, the ordered list of writes into it,
+    and the attribute that ties the armed warning to the control it warns
+    about. That any of it is announced was measured in a browser, not here.
+
+    The regions are held OUTSIDE `#app` for the reason the attention announcer
+    is: `renderNext` assigns `#app`'s inner HTML wholesale, so a region drawn
+    inside it is destroyed and recreated with its text already in place on
+    every render, which is the shape a reader's software skips.
+    """
+
+    FIXTURE = CockpitHeldToTabTest.FIXTURE
+    ANNOTATED = CockpitHeldToTabTest.ANNOTATED
+    # The held-to DOM stub, plus the two things the announcer lane needs from
+    # a document: an element factory whose nodes remember every write, and an
+    # `#app` that accepts a sibling.
+    ANNOUNCER_DOM = (
+        CockpitHeldToTabTest.FOCUS_DOM
+        + """
+let __regions = [];
+document.createElement = () => ({
+  style: {}, appendChild(){}, writes: [], attrs: {},
+  setAttribute(name, value){ this.attrs[name] = value; },
+  get textContent(){ return this.text || ""; },
+  set textContent(value){ this.text = String(value); this.writes.push(String(value)); }
+});
+__els.app.insertAdjacentElement = (position, node) => {
+  __regions.push({position, id: node.id, node});
+};
+const region = id => (__regions.find(entry => entry.id === id) || {}).node;
+const wrote = id => (region(id) || {writes: []}).writes;
+renderNext();
+"""
+    )
+
+    def run_fixture(self, checks: str) -> Any:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_two_regions_are_held_outside_the_application_node_across_renders(self) -> None:
+        """AC7 and AC10, as far as a stub document can carry them.
+
+        Ensured on every render beside the attention announcer rather than
+        lazily from a handler: lazy creation is the defect in the two
+        announcers that are not the attention one, where the node and its first
+        message arrive together and a node that arrives carrying its text is
+        the one a reader's software skips.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const first = __regions.map(entry => entry.node);
+renderNext();
+renderNext();
+console.log(JSON.stringify({
+  ids: __regions.map(entry => entry.id),
+  positions: [...new Set(__regions.map(entry => entry.position))],
+  same: __regions.every((entry, index) => entry.node === first[index]),
+  roles: __regions.map(entry => entry.node.role),
+  live: __regions.map(entry => entry.node.ariaLive),
+  atomic: __regions.map(entry => entry.node.ariaAtomic),
+  hidden: __regions.map(entry => entry.node.className),
+}));
+"""
+        )
+
+        self.assertEqual(
+            ["next-attention-status", "next-cockpit-cue-status", "next-cockpit-cue-alert"],
+            out["ids"],
+        )
+        self.assertEqual(["afterend"], out["positions"])
+        self.assertTrue(out["same"], "one node per region for the life of the tab")
+        self.assertEqual(["status", "status", "alert"], out["roles"])
+        self.assertEqual(["polite", "polite", "assertive"], out["live"])
+        self.assertEqual(["true", "true", "true"], out["atomic"])
+        self.assertEqual(["next-visually-hidden"] * 3, out["hidden"])
+
+    def test_no_live_region_is_added_inside_the_application_node(self) -> None:
+        """AC8. The count inside `#app` stays at the zero the walk measured."""
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  live: (html.match(/aria-live=/g) || []).length,
+  status: (html.match(/role="status"/g) || []).length,
+  alert: (html.match(/role="alert"/g) || []).length,
+}));
+"""
+        )
+
+        self.assertEqual(0, out["live"])
+        self.assertEqual(0, out["status"])
+        self.assertEqual(0, out["alert"])
+
+    def test_the_save_cue_is_written_to_the_polite_region_once_per_press(self) -> None:
+        """AC7 for the save family, and the guard against writing it twice.
+
+        The write is pushed from the mark, which fires once per press, rather
+        than from the render, which runs on every fallback poll.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + """
+let persisted = false;
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => String(url) === "/api/annotate"
+  ? {ok:true, status:200, json: async () => ({ok:true, persisted, revision:2, revision_count:2})}
+  : upstream(url, init);
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+type("output", "Six screenshots again");
+await __settle();
+save("output");
+await __settle();
+persisted = true;
+type("output", "Seven screenshots");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({
+  polite: wrote("next-cockpit-cue-status"),
+  alert: wrote("next-cockpit-cue-alert"),
+  onScreen: (__els.app.innerHTML
+    .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1],
+}));
+"""
+        )
+
+        # Two presses the store could not write, then one it could: the
+        # repeated sentence is written once, and the sentence that differs is
+        # written when it differs.
+        self.assertEqual(
+            [
+                (
+                    "Not stored. The store could not be written, so the refresh has already "
+                    "dropped these words, and they are still in the box."
+                ),
+                "Saved as a new revision.",
+            ],
+            out["polite"],
+        )
+        self.assertEqual([], out["alert"])
+        # And the region says what the block says, rather than a second wording.
+        self.assertEqual("Saved as a new revision.", out["onScreen"])
+
+    def test_the_armed_control_carries_the_warning_as_its_description(self) -> None:
+        """AC9's markup half, and the highest-value item in the issue.
+
+        Measured in the accessibility tree: a reader who tabs to the armed
+        control is told exactly `confirm discard, button`. The warning sits
+        after the button as an unlinked sibling — browsable, and reached by
+        no live region, because nothing mutates when you tab.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + f"const __armed = {json.dumps(annotation_store.DISCARD_ARMED)};\n"
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const control = () => controls.find(entry =>
+  entry.dataset.nextCockpitAction === "held-discard");
+const before = {
+  described: control().getAttribute("aria-describedby"),
+  label: control().attrs["data-next-cockpit-discard-key"],
+};
+__fire("click", {target:control(), preventDefault(){}});
+await __settle();
+const html = __els.app.innerHTML;
+const described = control().getAttribute("aria-describedby");
+console.log(JSON.stringify({
+  before,
+  described,
+  target: (html.match(new RegExp('id="' + described + '">([^<]*)<')) || [])[1],
+  matches: (html.match(/id="next-cockpit-discard-armed"/g) || []).length,
+  pressed: (html.match(/aria-pressed|aria-expanded/g) || []).length,
+  armedIsTheWarning: (html.match(new RegExp('id="' + described + '">([^<]*)<')) || [])[1]
+    === __armed,
+}));
+"""
+        )
+
+        # Unarmed the control describes nothing, because there is no warning
+        # beside it to describe.
+        self.assertIsNone(out["before"]["described"])
+        self.assertEqual("next-cockpit-discard-armed", out["described"])
+        self.assertEqual(1, out["matches"])
+        self.assertEqual(annotation_store.DISCARD_ARMED, out["target"])
+        self.assertTrue(out["armedIsTheWarning"])
+        # A pressed or expanded state would say a toggle is on. The second
+        # press performs a different, irreversible act rather than an un-press.
+        self.assertEqual(0, out["pressed"])
+
+    def test_the_armed_warning_goes_to_the_alert_region_and_the_outcome_to_the_polite_one(
+        self,
+    ) -> None:
+        """AC7 and AC9's region half, for the two-press act.
+
+        Assertive for the arm alone, and it is the first assertive region in
+        the bundle. After the first press focus returns to the same button and
+        the dwell that refuses a too-fast second press is 1.2 seconds, so a
+        polite message queued behind whatever the redraw is already saying can
+        still be unspoken when the second press lands.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + CockpitHeldToTabTest.DISCARD_WITH_REPLY
+            + """
+press();
+await __settle();
+const armed = {
+  polite: [...wrote("next-cockpit-cue-status")],
+  alert: [...wrote("next-cockpit-cue-alert")],
+};
+dwell();
+press();
+await __settle();
+console.log(JSON.stringify({
+  armed,
+  polite: wrote("next-cockpit-cue-status"),
+  alert: wrote("next-cockpit-cue-alert"),
+}));
+"""
+        )
+
+        self.assertEqual([], out["armed"]["polite"])
+        self.assertEqual([annotation_store.DISCARD_ARMED], out["armed"]["alert"])
+        # The act itself is the polite region's, and the alert region is not
+        # written to again: the reader is no longer about to do anything.
+        self.assertEqual([annotation_store.DISCARD_STORED], out["polite"])
+        self.assertEqual([annotation_store.DISCARD_ARMED], out["alert"])
+
+    def test_an_arm_that_lapsed_is_warned_about_again_when_it_is_re_armed(self) -> None:
+        """The cost of the repeat guard, and where it has to stop.
+
+        The guard is there so one press reports once. An arm that lapsed on its
+        own is not a repeat: the reader walked away, came back to a disarmed
+        control and pressed it again, and the warning they need is the same
+        sentence they were told 30 seconds ago.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + CockpitHeldToTabTest.DISCARD_WITH_REPLY
+            + """
+press();
+await __settle();
+// Past NEXT_CONTROL_STATE_TTL_MS, so the arm has lapsed and the control the
+// reader comes back to is the unarmed one.
+__setNow(__nowSec + 60);
+renderNext();
+press();
+await __settle();
+console.log(JSON.stringify({
+  alert: wrote("next-cockpit-cue-alert"),
+  armedNow: __els.app.innerHTML.includes("confirm discard"),
+}));
+"""
+        )
+
+        self.assertEqual(
+            [annotation_store.DISCARD_ARMED, annotation_store.DISCARD_ARMED], out["alert"]
+        )
+        self.assertTrue(out["armedNow"])
+
+    def test_both_settle_outcomes_are_written_to_the_polite_region(self) -> None:
+        """AC7 for the settle family, which the issue counted as one cue.
+
+        A settle that lands prints no cue at all and re-renders a different
+        element, so covering only the cue table would ship the landed one
+        silent. Its sentence is the page's own, because the block's account of
+        a settle that landed is composed at the next render out of the store
+        the refresh has not read yet.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "do not change the board";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_binding_why = "";
+let reply = {ok:true, persisted:false, outcome:"unwritable", revision:1, revision_count:1};
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => {
+  if(String(url) !== "/api/annotate") return upstream(url, init);
+  return {ok:true, status:200, json: async () => reply};
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const settle = () => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "conflict-settle"), preventDefault(){}});
+settle();
+await __settle();
+await __settle();
+const failed = [...wrote("next-cockpit-cue-status")];
+reply = {ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1};
+settle();
+await __settle();
+await __settle();
+console.log(JSON.stringify({
+  failed,
+  polite: wrote("next-cockpit-cue-status"),
+  alert: wrote("next-cockpit-cue-alert"),
+}));
+"""
+        )
+
+        self.assertEqual(
+            [
+                (
+                    "Not settled. The store could not be written, so the mark has already been "
+                    "dropped and the question above still stands."
+                )
+            ],
+            out["failed"],
+        )
+        self.assertEqual(
+            [
+                (
+                    "Not settled. The store could not be written, so the mark has already been "
+                    "dropped and the question above still stands."
+                ),
+                "Settled. A direction given after this will raise it again.",
+            ],
+            out["polite"],
+        )
+        self.assertEqual([], out["alert"])
 
 
 if __name__ == "__main__":

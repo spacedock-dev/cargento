@@ -372,8 +372,13 @@ function nextUnaskedDepartureBody(session){
   const heading = rows.length === 1
     ? "One departure was raised"
     : `${rows.length} departures were raised`;
+  /* Read here rather than handed in by either caller. An existing test calls
+     this function directly and asserts its result is a substring of both
+     surfaces, so a value that arrived per-caller could differ between them --
+     which is the one thing this shared body exists to prevent. */
+  const current = nextNumber(session && session.annotation_revision);
   return (rows.length ? `<p class="next-session-departures-count">${esc(heading)}</p>` : "") +
-    rows.map(row => nextSessionDepartureRow(row)).join("") +
+    rows.map(row => nextSessionDepartureRow(row, current)).join("") +
     (why ? `<p class="next-session-departures-why">${esc(why)}</p>` : "") +
     nextDeliveryAbsence(session, rows.length > 0);
 }
@@ -424,13 +429,21 @@ function nextSessionClock(stamp){
    is read the annotation may be at a later revision and the evidence window has
    moved, so a row that does not say which words it read and where its evidence
    stopped cannot be checked by the person it was raised to. A raise whose
-   revision did not survive says so rather than borrowing today's. */
-function nextSessionDepartureRow(row){
+   revision did not survive says so rather than borrowing today's.
+
+   And it says, in the one wording the reading block above it uses, when the
+   words it read are no longer the words on record. The revision was already
+   printed and the comparison was not, so a reader had the number and no second
+   source to check it against -- on the session page the baseline line is the
+   only mention of a revision anywhere. */
+function nextSessionDepartureRow(row, current){
   const text = key => String(row[key] == null ? "" : row[key]);
   const revision = Number(row.revision);
-  const baseline = Number.isFinite(revision) && revision > 0
-    ? `read against revision ${revision}`
+  const read = Number.isFinite(revision) && revision > 0 ? revision : null;
+  const baseline = read != null
+    ? `read against revision ${read}`
     : "the revision it read is not on record";
+  const superseded = nextRevisionSuperseded("This raise", read, current);
   const cutoff = Number(row.cutoff);
   const window = Number.isFinite(cutoff) && cutoff > 0
     ? ` · evidence to ${nextSessionClock(cutoff)}`
@@ -454,6 +467,13 @@ function nextSessionDepartureRow(row){
     `<p class="next-session-departure-reading">${esc(text("reading"))}</p>` +
     `<p class="next-session-departure-base">${esc(baseline + window)}` +
     (text("evidence") ? ` · ${esc(text("evidence"))}` : "") + "</p>" +
+    /* Its own element after the base line and never a clause appended to it.
+       The base line is mono in the dimmest ink, the register for a string a
+       source published; this sentence is the board talking, so it is sans and
+       takes the one warm ink the design allows near a reading. Both rules are
+       one declaration list shared with the reading block's own stale line. */
+    (superseded
+      ? `<p class="next-session-departure-stale">${esc(superseded)}</p>` : "") +
     /* What later evidence showed, chosen by `departures.follow_up` from later
        checks in the same store. Unknown is the common answer and it arrives as
        a sentence naming its reason: a blank here would be read as a raise that

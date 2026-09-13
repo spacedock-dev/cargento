@@ -2166,12 +2166,18 @@ class ReaderStateInventoryTest(unittest.TestCase):
         # would otherwise leave the table citing a symbol that is gone. The
         # last two joined on 2026-09-11: both landed with rows in the table and
         # neither was pinned here, which is the gap this test exists to close.
+        # The three cue-region names joined with DRC-4564: two nodes that
+        # outlive every redraw because they are held outside `#app`, and the
+        # string that stops one sentence being written into them twice.
         for name, lane in (
             ("next-controls.js", "nextControlsProjectState"),
             ("next-workstream.js", "nextWorkstreamCollapsed"),
             ("next-cockpit.js", "nextCockpitHeldDrafts"),
             ("next-cockpit.js", "nextCockpitHeldStates"),
             ("next-cockpit.js", "nextCockpitBriefingCopyStates"),
+            ("next-chrome.js", "nextCockpitCueStatusElement"),
+            ("next-chrome.js", "nextCockpitCueAlertElement"),
+            ("next-cockpit.js", "nextCockpitAnnouncedCue"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))

@@ -13,6 +13,8 @@ let nextLastRefreshSuccessAt = null;
 let nextAttentionStatusElement = null;
 let nextSessionCopyStatusElement = null;
 let nextSessionRaiseStatusElement = null;
+let nextCockpitCueStatusElement = null;
+let nextCockpitCueAlertElement = null;
 let nextRaiseInFlight = false;
 const nextAttentionExpandedSections = new Set();
 
@@ -276,6 +278,59 @@ function nextAttentionStatus(app){
   app.insertAdjacentElement("afterend", status);
   nextAttentionStatusElement = status;
   return status;
+}
+
+/* The two regions the Held to tab's cues are written into, built the way
+   `nextAttentionStatus` is and for its reason: `renderNext` assigns `#app`'s
+   inner HTML wholesale, so a region drawn inside it is destroyed and recreated
+   with its text already inside it on every render, and a node that arrives
+   carrying its text is the one a reader's software treats as initial content
+   and skips. The bundle already holds five nodes with that shape; these are
+   siblings instead.
+
+   Two rather than one because politeness cannot be changed reliably on a node
+   already in the tree. The alert region carries the armed discard warning
+   alone: after the first press focus returns to the same button and
+   `NEXT_COCKPIT_DISCARD_DWELL_MS` is 1.2 seconds, so a polite message queued
+   behind whatever the redraw is already saying can still be unspoken when the
+   second press lands, and that press deletes every revision.
+
+   Both are ensured on every render rather than on first use, which is the
+   defect in the two announcers above: their node and their first message
+   arrive together. The `setAttribute` guard is the attention factory's, for a
+   stub element that has none. */
+function nextCockpitCueStatus(app){
+  if(nextCockpitCueStatusElement) return nextCockpitCueStatusElement;
+  nextCockpitCueStatusElement = nextLiveRegion(app, "next-cockpit-cue-status", "status", "polite");
+  return nextCockpitCueStatusElement;
+}
+
+function nextCockpitCueAlert(app){
+  if(nextCockpitCueAlertElement) return nextCockpitCueAlertElement;
+  nextCockpitCueAlertElement = nextLiveRegion(app, "next-cockpit-cue-alert", "alert", "assertive");
+  return nextCockpitCueAlertElement;
+}
+
+/* Shared by the two above and deliberately not by the three announcers before
+   them. Routing those through it would give the copy and raise regions the
+   property assignments they do not have today, and DRC-4564's own criterion is
+   that the three shipped announcers are unchanged in identity, role and
+   politeness. */
+function nextLiveRegion(app, id, role, politeness){
+  if(!app || typeof app.insertAdjacentElement !== "function") return null;
+  const region = document.createElement("p");
+  region.id = id;
+  region.className = "next-visually-hidden";
+  region.role = role;
+  region.ariaLive = politeness;
+  region.ariaAtomic = "true";
+  if(typeof region.setAttribute === "function"){
+    region.setAttribute("role", role);
+    region.setAttribute("aria-live", politeness);
+    region.setAttribute("aria-atomic", "true");
+  }
+  app.insertAdjacentElement("afterend", region);
+  return region;
 }
 
 function nextAnnounceAttention(message){
@@ -671,6 +726,11 @@ function renderNext(focus = nextCaptureFocus()){
   nextCockpitAfterRender();
   nextRestoreInputState(app, inputs);
   nextAttentionStatus(app);
+  /* Ensured here, beside the attention announcer, and never from the handler
+     that writes into one: a region and its first message must not arrive in
+     the same mutation ([reader state](docs/design-reader-state.md#the-inventory)). */
+  nextCockpitCueStatus(app);
+  nextCockpitCueAlert(app);
   nextRestoreFocus(focus, nextAttention);
   nextRenderObserved = null;
 }

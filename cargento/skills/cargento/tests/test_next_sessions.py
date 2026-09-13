@@ -1250,3 +1250,71 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
         )
 
         self.assertNotIn("No notification raise about this session is on record", html)
+
+    def test_a_departure_read_against_a_superseded_revision_says_so(self) -> None:
+        """DRC-4563. The reading line one surface over made this comparison; the row did not.
+
+        The comparison is added beside what the raise found rather than in
+        place of it: the baseline line goes on naming the revision the check
+        actually read, because that is what makes the raise checkable.
+        """
+        html = self.detail(
+            "annotation_revision: 3,"
+            ' departures: [{constraint: "Goal", clause: "Ship the cockpit",'
+            ' reading: "the work moved to the installer", evidence: "e1",'
+            ' revision: 2, cutoff: 1700000000}], departure_why: ""'
+        )
+
+        self.assertIn(
+            "This raise read revision 2. Revision 3 is current, so it does not describe "
+            "what you are asking for now.",
+            html,
+        )
+        self.assertIn("read against revision 2", html)
+        self.assertIn('class="next-session-departure-stale"', html)
+
+    def test_a_departure_read_against_the_current_revision_is_not_compared(self) -> None:
+        """DRC-4563. Equal is no line at all, not a line saying they agree."""
+        html = self.detail(
+            "annotation_revision: 2,"
+            ' departures: [{constraint: "Goal", clause: "Ship the cockpit",'
+            ' reading: "the work moved to the installer", evidence: "e1",'
+            ' revision: 2, cutoff: 1700000000}], departure_why: ""'
+        )
+
+        self.assertIn("read against revision 2", html)
+        self.assertNotIn("is current", html)
+        self.assertNotIn("next-session-departure-stale", html)
+
+    def test_a_row_with_no_current_revision_beside_it_is_not_compared(self) -> None:
+        """DRC-4563. The state a landed clear whose withdrawal failed leaves.
+
+        Without this the other fixtures pass by accident: none of them
+        publishes `annotation_revision` at all, so a guard that omits the
+        current-revision check would never be exercised.
+        """
+        html = self.detail(
+            'departures: [{constraint: "Goal", clause: "Ship the cockpit",'
+            ' reading: "the work moved to the installer", evidence: "e1",'
+            ' revision: 2, cutoff: 1700000000}], departure_why: ""'
+        )
+
+        self.assertIn("read against revision 2", html)
+        self.assertNotIn("is current", html)
+
+    def test_a_raise_whose_revision_did_not_survive_is_never_given_todays(self) -> None:
+        """DRC-4563 against the one ruling the row's own comment makes.
+
+        `0 !== 3` is true, so a comparison guarded only on inequality prints
+        "Revision 3 is current" under "the revision it read is not on record",
+        which is exactly the borrowing that comment forbids.
+        """
+        html = self.detail(
+            "annotation_revision: 3,"
+            ' departures: [{constraint: "Goal", clause: "", reading: "went elsewhere",'
+            ' evidence: "", revision: 0, cutoff: 0}], departure_why: ""'
+        )
+
+        self.assertIn("the revision it read is not on record", html)
+        self.assertNotIn("Revision 3 is current", html)
+        self.assertNotIn("next-session-departure-stale", html)

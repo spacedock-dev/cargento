@@ -612,8 +612,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                25_793,
-                "9dc366fbf3d02963d1a3f616bd00a912007e4f04ff48a72992ed0f54b32e779c",
+                27_352,
+                "b71d627fe8cc06bc4210d23c76c0ee5b2ab644ce15a44c9d617ba66fe398847d",
             ),
             "next-observed.js": (
                 30_931,
@@ -636,8 +636,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "8d404a66a0fe5a8a021854b64fc48c80aeed260628efadde80c64862d07ce63e",
             ),
             "next-chrome.js": (
-                37_149,
-                "2d4498b7b16ab2d702b8be6778110959fe9e81aacba000b1c023a3a348eded8d",
+                40_112,
+                "f7d3fc543edb9c9a52be47a7a297fca29ed8482e1f4af35be7a7ee5d7156ba26",
             ),
             "next-capacity.js": (
                 32_192,
@@ -664,8 +664,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "62f971c5e2a570068b7e2c3ee72b2499774d14a3b739f6f908962f91b98382f1",
             ),
             "next-session.js": (
-                32_623,
-                "c318500391a2870fdb0388581f68c8e4634420eecc539c2f14b28fd130563497",
+                33_968,
+                "7441de3c1556d66668069bbfa3057e231732d922e35efb28359db37b0c545288",
             ),
             "next-workstream.js": (
                 18_659,
@@ -680,8 +680,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "838fd2f076ebd1da0c97dc5f937f43d51435bc12d901f2a5d1136bcafa8987a7",
             ),
             "next-cockpit.js": (
-                186_314,
-                "474e327814c954b7ac54aa4a09e4dd447b19c88457e0bfdb12d69dbfcd1b324b",
+                189_948,
+                "255e5de99abb0c1a620c96f63a7a21ca93ba782a6b33fc3b4d6bcef0383dffb0",
             ),
             "next-render.js": (
                 8_901,
@@ -700,16 +700,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(107_347, len(styles))
+        self.assertEqual(107_377, len(styles))
         self.assertEqual(
-            "02b95c1af1739b7c85a0a85aa12f7e98b61e16baf4a69deb5d4e1538e8c28655",
+            "85fd6d52c20790df2d8b374e418fdb08eb81bf7b5d1abb97817b08342b0e825a",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(870_300, len(assembled))
+        self.assertEqual(879_831, len(assembled))
         self.assertEqual(
-            "83e7c039fd669c311db5d9294e60e39022c9986ed772f4915f571a83d4b7ca16",
+            "e1cb5838f4b6992b3bdd5297589b2d625f36763511988ed5b51a17ed1b5a5adf",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -730,6 +730,26 @@ class OneDepartureRowTreatmentTest(unittest.TestCase):
     of. One rule cannot disagree with itself.
     """
 
+    def test_one_string_in_the_bundle_states_the_superseded_fact(self) -> None:
+        """DRC-4563. Two wordings of one fact is the divergence the log refuses.
+
+        The reading block and the departure row differ only in their subject
+        word, so the characters after it are owned once, in the boot part,
+        beside the other two sentences more than one surface states. A second
+        literal copy anywhere in the bundle is what this counts. It counts
+        characters, so a copy broken over a line join would not be seen; what
+        it is for is the ordinary way a second wording arrives, which is
+        someone typing the sentence again beside the row that wanted it.
+        """
+        tail = "is current, so it does not describe what you are asking for now."
+        counts = {
+            name: frontend_page.asset_path(name).read_bytes().decode().count(tail)
+            for name in frontend_page.APP_PARTS
+        }
+
+        self.assertEqual(1, counts["next-boot.js"], f"the boot part owns it: {counts}")
+        self.assertEqual(1, sum(counts.values()), f"and owns it alone: {counts}")
+
     def test_the_two_departure_rows_are_declared_by_one_rule_each(self) -> None:
         styles = frontend_page.asset_path("styles.css").read_bytes().decode()
         rules: dict[str, list[str]] = {}
@@ -744,6 +764,7 @@ class OneDepartureRowTreatmentTest(unittest.TestCase):
             (".next-cockpit-reading-clause", ".next-session-departure-clause"),
             (".next-cockpit-reading-detail", ".next-session-departure-reading"),
             (".next-cockpit-reading-evidence", ".next-session-departure-base"),
+            (".next-cockpit-reading-stale", ".next-session-departure-stale"),
         ):
             with self.subTest(pair=session):
                 shared = [
