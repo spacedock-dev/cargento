@@ -861,12 +861,11 @@ function nextCockpitHeldKind(key){
   // The same clock and the same window the row controls use, so two cues on
   // one page do not disagree about how long a confirmation is worth.
   if(Date.now() - held.at >= NEXT_CONTROL_STATE_TTL_MS){
-    nextCockpitHeldStates.delete(key);
-    /* And the repeat guard with it. A mark that has lapsed is no longer
+    /* The repeat guard goes with the mark. A mark that has lapsed is no longer
        standing, so the next one is a new report rather than a repeat -- a
        reader who walked away, came back to a disarmed control and pressed it
        again needs the warning they were given 30 seconds ago. */
-    nextCockpitAnnouncedCue = "";
+    nextCockpitHeldDrop(key);
     return "";
   }
   return held.kind;
@@ -890,32 +889,62 @@ function nextCockpitHeldSentence(kind){
   return NEXT_COCKPIT_HELD_CUES[kind] || "";
 }
 
-/* The last sentence written to either region, while the mark that produced it
-   is still standing. A reader who presses save twice against the same failing
-   store gets one report of it, not two, and a redraw between the presses
-   cannot replay either. Cleared wherever a mark is dropped rather than
-   replaced, because a lapsed arm pressed again is a new warning. */
-let nextCockpitAnnouncedCue = "";
+/* The last sentence written to either region for each standing mark, keyed by
+   that mark's own key. A reader who presses save twice against the same
+   failing store gets one report of it, not two, and a redraw between the
+   presses cannot replay either.
 
-function nextCockpitAnnounceCue(sentence, assertive){
-  if(!sentence || sentence === nextCockpitAnnouncedCue) return;
-  nextCockpitAnnouncedCue = sentence;
+   Keyed rather than one string for the whole page, because the cue sentences
+   are field-independent: "Saved as a new revision." is the same characters
+   whichever box was saved, so one string suppressed the second field's write
+   in the ordinary two-field workflow -- two cues on screen and a single write
+   into the region. Dropped with the mark it guards rather than replaced,
+   because a lapsed or dismissed arm pressed again is a new warning. */
+const nextCockpitAnnouncedCues = new Map();
+
+/* One drop, both lanes. Four of the six sites that drop a mark did not clear
+   the guard while it was a single string, and this file, the reader-state
+   inventory and the commit that introduced it all said they did; a helper is
+   the shape that cannot drift apart again. The delete inside
+   `nextCockpitHeldMark` is deliberately not routed through it: that one
+   re-stamps a mark rather than dropping it, and clearing the guard there would
+   be the repeat the guard exists to stop. */
+function nextCockpitHeldDrop(key){
+  nextCockpitHeldStates.delete(key);
+  nextCockpitAnnouncedCues.delete(key);
+}
+
+function nextCockpitAnnounceCue(key, sentence, assertive){
+  if(!sentence || nextCockpitAnnouncedCues.get(key) === sentence) return;
   const app = document.getElementById("app");
   const region = assertive ? nextCockpitCueAlert(app) : nextCockpitCueStatus(app);
-  if(region) region.textContent = sentence;
+  /* Recorded after the write, not before it. A sentence marked announced
+     against a region that could not be built would be suppressed for the life
+     of the tab having reached nobody. */
+  if(!region) return;
+  region.textContent = sentence;
+  nextCockpitAnnouncedCues.set(key, sentence);
+  /* Bounded on the same count as the marks. Most entries are dropped with
+     their mark, but the settle that lands drops its mark and then announces,
+     so one key per settled session would otherwise outlive every mark. */
+  while(nextCockpitAnnouncedCues.size > NEXT_COCKPIT_HELD_CUE_LIMIT){
+    nextCockpitAnnouncedCues.delete(nextCockpitAnnouncedCues.keys().next().value);
+  }
 }
 
 function nextCockpitHeldMark(key, kind){
+  // Deleted and re-set to move the key to the end of the insertion order the
+  // eviction below reads. Not a drop; see `nextCockpitHeldDrop`.
   nextCockpitHeldStates.delete(key);
   nextCockpitHeldStates.set(key, {kind, at: Date.now()});
   while(nextCockpitHeldStates.size > NEXT_COCKPIT_HELD_CUE_LIMIT){
-    nextCockpitHeldStates.delete(nextCockpitHeldStates.keys().next().value);
+    nextCockpitHeldDrop(nextCockpitHeldStates.keys().next().value);
   }
   /* Pushed from here rather than from the render: this is the one point all
      four cue families pass through, it runs before the render that follows,
      and it fires once per press where a render fires on every fallback poll.
      Assertive for the arm alone; see the region factories for why. */
-  nextCockpitAnnounceCue(nextCockpitHeldSentence(kind), kind === "discard-armed");
+  nextCockpitAnnounceCue(key, nextCockpitHeldSentence(kind), kind === "discard-armed");
 }
 
 function nextCockpitHeldField(session, annotation, spec, cap){
@@ -2354,10 +2383,11 @@ async function nextCockpitConflictSettle(session, through){
          needs a store unwritable and then writable inside that TTL, which
          is exactly the retry a reader makes after the first cue tells them
          to. */
-      nextCockpitHeldStates.delete(settleKey);
+      nextCockpitHeldDrop(settleKey);
       /* The one push outside `nextCockpitHeldMark`, because this outcome is
-         the one that deliberately marks nothing. */
-      nextCockpitAnnounceCue(NEXT_COCKPIT_SETTLE_LANDED, false);
+         the one that deliberately marks nothing. Under the settle key all the
+         same, so the failure cue this replaces cannot suppress it. */
+      nextCockpitAnnounceCue(settleKey, NEXT_COCKPIT_SETTLE_LANDED, false);
     }
     await refreshNext();
   }catch(_error){
@@ -3265,7 +3295,7 @@ document.addEventListener("input", event => {
     .replace(NEXT_COCKPIT_HELD_UNSAFE, " ").slice(0, nextCockpitHeldCap());
   if(value !== input.value) input.value = value;
   nextCockpitHeldDrafts.set(key, value);
-  nextCockpitHeldStates.delete(key);
+  nextCockpitHeldDrop(key);
   const field = input.closest ? input.closest("[data-next-cockpit-held-field]") : null;
   if(!field || !field.querySelector) return;
   const count = field.querySelector("[data-next-cockpit-held-count]");
@@ -3352,7 +3382,7 @@ document.addEventListener("click", event => {
     // from the store, so `save` appears and the person commits the clearing
     // deliberately.
     nextCockpitHeldDrafts.set(key, "");
-    nextCockpitHeldStates.delete(key);
+    nextCockpitHeldDrop(key);
     renderNext({named: key});
     return;
   }
@@ -3430,9 +3460,8 @@ function nextCockpitHandleKeydown(event){
     const key = String(discard.dataset.nextCockpitDiscardKey || "");
     if(nextCockpitHeldKind(key) === "discard-armed"){
       event.preventDefault();
-      nextCockpitHeldStates.delete(key);
       // Dropped deliberately, so the next arm is not a repeat of this one.
-      nextCockpitAnnouncedCue = "";
+      nextCockpitHeldDrop(key);
       renderNext({named: key});
       return true;
     }
@@ -3446,7 +3475,7 @@ function nextCockpitHandleKeydown(event){
     // render reads the store whenever the Map has no entry, so this is the
     // one place the two cannot disagree.
     nextCockpitHeldDrafts.delete(key);
-    nextCockpitHeldStates.delete(key);
+    nextCockpitHeldDrop(key);
     renderNext({named: key});
     return true;
   }

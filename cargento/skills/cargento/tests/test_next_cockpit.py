@@ -7394,11 +7394,13 @@ console.log(JSON.stringify({
         self.assertEqual(0, out["status"])
         self.assertEqual(0, out["alert"])
 
-    def test_the_save_cue_is_written_to_the_polite_region_once_per_press(self) -> None:
+    def test_a_repeated_save_against_the_same_failing_store_is_written_once(self) -> None:
         """AC7 for the save family, and the guard against writing it twice.
 
-        The write is pushed from the mark, which fires once per press, rather
-        than from the render, which runs on every fallback poll.
+        Three presses, two writes: what the guard suppresses is the second
+        report of one standing mark, not the second press. The write is pushed
+        from the mark rather than from the render, which runs on every fallback
+        poll.
         """
         out = self.run_fixture(
             self.ANNOUNCER_DOM
@@ -7423,13 +7425,12 @@ type("output", "Six screenshots");
 await __settle();
 save("output");
 await __settle();
-type("output", "Six screenshots again");
-await __settle();
+/* A second press with nothing typed between them. The mark from the first is
+   still standing, and the words and the store are the same, so this is the
+   repeat rather than a second attempt. */
 save("output");
 await __settle();
 persisted = true;
-type("output", "Seven screenshots");
-await __settle();
 save("output");
 await __settle();
 console.log(JSON.stringify({
@@ -7441,9 +7442,8 @@ console.log(JSON.stringify({
 """
         )
 
-        # Two presses the store could not write, then one it could: the
-        # repeated sentence is written once, and the sentence that differs is
-        # written when it differs.
+        # Three presses, two writes: the repeated sentence is written once, and
+        # the sentence that differs is written when it differs.
         self.assertEqual(
             [
                 (
@@ -7457,6 +7457,106 @@ console.log(JSON.stringify({
         self.assertEqual([], out["alert"])
         # And the region says what the block says, rather than a second wording.
         self.assertEqual("Saved as a new revision.", out["onScreen"])
+
+    def test_a_save_after_a_keystroke_is_written_again_though_the_sentence_is_the_same(
+        self,
+    ) -> None:
+        """Where the guard has to stop, on the drop site a keystroke reaches.
+
+        A keystroke drops the mark the cue is drawn from, so the next render
+        takes the cue off the screen and the press after it is a fresh attempt
+        on different words. Suppressing its report would leave a reader who
+        edited and saved again with a cue on screen and silence in the region.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + """
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => String(url) === "/api/annotate"
+  ? {ok:true, status:200, json: async () => ({ok:true, persisted:false,
+      outcome:"unwritable", revision:2, revision_count:2})}
+  : upstream(url, init);
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+type("output", "Six screenshots and a log");
+await __settle();
+const marked = nextCockpitHeldStates.has("held:codex:focus-1:output");
+save("output");
+await __settle();
+console.log(JSON.stringify({marked, polite: wrote("next-cockpit-cue-status")}));
+"""
+        )
+
+        self.assertFalse(out["marked"], "the keystroke drops the mark the cue is drawn from")
+        self.assertEqual(
+            [
+                (
+                    "Not stored. The store could not be written, so the refresh has already "
+                    "dropped these words, and they are still in the box."
+                )
+            ]
+            * 2,
+            out["polite"],
+        )
+
+    def test_a_save_in_each_field_is_written_once_for_each(self) -> None:
+        """The ordinary two-field workflow, and the guard keyed to survive it.
+
+        `Saved as a new revision.` is field-independent, so a guard holding one
+        sentence for the whole page dropped the second field's write: measured
+        two cue nodes on screen against a single write into the region. The
+        guard is keyed by the mark's own key, which is per field.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + """
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => String(url) === "/api/annotate"
+  ? {ok:true, status:200, json: async () => ({ok:true, persisted:true, outcome:"stored",
+      revision:2, revision_count:2})}
+  : upstream(url, init);
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const save = kind => __fire("click", {target:controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  preventDefault(){}});
+const type = (kind, value) => {
+  const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
+  input.value = value;
+  __fire("input", {target:input});
+};
+type("goal", "Ship the cockpit");
+await __settle();
+save("goal");
+await __settle();
+type("output", "Six screenshots");
+await __settle();
+save("output");
+await __settle();
+console.log(JSON.stringify({
+  polite: wrote("next-cockpit-cue-status"),
+  onScreen: (__els.app.innerHTML
+    .match(/class="next-cockpit-held-cue">([^<]*)</g) || []).length,
+}));
+"""
+        )
+
+        self.assertEqual(2, out["onScreen"])
+        self.assertEqual(["Saved as a new revision."] * 2, out["polite"])
 
     def test_the_armed_control_carries_the_warning_as_its_description(self) -> None:
         """AC9's markup half, and the highest-value item in the issue.
@@ -7577,6 +7677,41 @@ console.log(JSON.stringify({
 """
         )
 
+        self.assertEqual(
+            [annotation_store.DISCARD_ARMED, annotation_store.DISCARD_ARMED], out["alert"]
+        )
+        self.assertTrue(out["armedNow"])
+
+    def test_an_arm_dropped_with_escape_is_written_to_the_alert_region_again(self) -> None:
+        """The other deliberate drop, and the one nothing bound.
+
+        Escape on the armed control disarms it, so the press after that is a
+        fresh arm rather than a repeat of the one the reader dismissed. Nothing
+        pinned it: deleting the guard's clear from that handler left the whole
+        cockpit, chrome, documentation and focus suite green.
+        """
+        out = self.run_fixture(
+            self.ANNOUNCER_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + CockpitHeldToTabTest.DISCARD_WITH_REPLY
+            + """
+press();
+await __settle();
+__fire("keydown", {key:"Escape", target:discardControl(), preventDefault(){}});
+await __settle();
+const disarmed = __els.app.innerHTML.includes("confirm discard");
+press();
+await __settle();
+console.log(JSON.stringify({
+  disarmed,
+  alert: wrote("next-cockpit-cue-alert"),
+  armedNow: __els.app.innerHTML.includes("confirm discard"),
+}));
+"""
+        )
+
+        self.assertFalse(out["disarmed"], "Escape disarms the control")
         self.assertEqual(
             [annotation_store.DISCARD_ARMED, annotation_store.DISCARD_ARMED], out["alert"]
         )
