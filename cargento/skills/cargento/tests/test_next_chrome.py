@@ -1623,6 +1623,7 @@ await refreshNext();
 renderNext();
 console.log(JSON.stringify({
   nodes: __statusNodes.length,
+  ids: __statusNodes.map(node => node.id),
   same: first === __statusNodes[0],
   role: first.role,
   ariaLive: first.ariaLive,
@@ -1634,13 +1635,15 @@ console.log(JSON.stringify({
             """
 let __statusNodes = [];
 let __statusWrites = [];
-let __statusText = "";
+// Text per node, writes in one log. Three regions are inserted here and only
+// one of them is ever written to, so a shared text field would let this test
+// read another region's sentence as the attention announcer's.
 document.createElement = () => ({
   style: {},
   appendChild(){},
   setAttribute(){},
-  set textContent(value){ __statusText = String(value); __statusWrites.push(__statusText); },
-  get textContent(){ return __statusText; }
+  set textContent(value){ this.wrote = String(value); __statusWrites.push(this.wrote); },
+  get textContent(){ return this.wrote || ""; }
 });
 __els.app = {
   innerHTML: "",
@@ -1664,7 +1667,15 @@ __fetchImpl = async () => {
 """,
         )
 
-        self.assertEqual(1, out["nodes"])
+        # Three regions, all siblings of `#app` and all ensured on every
+        # render: the attention announcer, and the Held to tab's two cue
+        # regions (DRC-4564). The two unfired announcers below them are still
+        # lazy, so they are not here.
+        self.assertEqual(3, out["nodes"])
+        self.assertEqual(
+            ["next-attention-status", "next-cockpit-cue-status", "next-cockpit-cue-alert"],
+            out["ids"],
+        )
         self.assertTrue(out["same"])
         self.assertEqual("status", out["role"])
         self.assertEqual("polite", out["ariaLive"])

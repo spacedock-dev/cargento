@@ -17,6 +17,33 @@ const NEXT_READING_NOT_A_VERIFICATION =
 const NEXT_UNASKED_LANE_OFF_RECORD =
   "The checks that run while you were away are off for this run, so nothing new is being " +
   "checked. What was already raised is still on record.";
+/* One reading, or one raise, against words that have moved on. Owned here for
+   NEXT_READING_NOT_A_VERIFICATION's reason: the Held to tab states it about the
+   reading it is offering and about every raise standing under it, the session
+   page states it about the same raises, and a second wording would be a second
+   promise -- which is the divergence the Intent log's own revision line already
+   refuses.
+
+   The subject is a parameter because the two rows sit inches apart on the Held
+   to tab, the reading block directly above the departures, so "This reading"
+   inside a raised row has two possible referents there.
+
+   Composed here rather than by the producer, which could: `unasked.published`
+   already holds the annotation entries and already attaches a derived per-row
+   sentence. A Python constant would put a second copy of one English sentence
+   across a language boundary with nothing binding the two, and the whole point
+   of this function is that there is one copy.
+
+   Both numbers reach it through `nextNumber`, so neither can carry payload
+   text and neither is escaped on the way out. Silence on either absence rather
+   than a placeholder: a raise whose revision did not survive says so on its own
+   line and must never be shown today's number instead. */
+function nextRevisionSuperseded(subject, read, current){
+  if(read == null || current == null || read === current) return "";
+  return `${subject} read revision ${read}. Revision ${current} ` +
+    "is current, so it does not describe what you are asking for now.";
+}
+
 const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions", "intent"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
 /* Tabs that exist only while one session is in focus. Empty at project scope

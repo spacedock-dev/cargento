@@ -940,7 +940,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    evidence line above it names a type and a source and stays mono. */
 .next-cockpit-reading-limit{color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans);overflow-wrap:anywhere}
 .next-cockpit-reading-why{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
-.next-cockpit-reading-stale{margin:0;color:var(--amber);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-reading-stale,.next-session-departure-stale{margin:0;color:var(--amber);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-reading button{align-self:flex-start;padding:5px 10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans);cursor:pointer}
 .next-cockpit-reading button[disabled]{color:var(--ink3);cursor:default}
 /* HOW IT LANDED. Two cards side by side and never one verdict: what ended and

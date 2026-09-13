@@ -275,8 +275,10 @@ later direction is unsettled a reading states no departure at all.
 
 `DEPARTURES RAISED TO YOU` is where a raise is reviewed, and it keeps two collections apart. One
 holds what a reading you asked for raised; the other holds what the checks run while you were away
-raised, with the annotation revision each read against and where its evidence stopped. Under both
-sits what became of that lane's raise, and a raise with no delivery record on file says that rather
+raised, with the annotation revision each read against and where its evidence stopped. Where the
+words have since moved to a later revision the row says so, in the same wording the reading block
+uses, and a raise whose revision was never recorded is not given today's number. Under both sits
+what became of that lane's raise, and a raise with no delivery record on file says that rather
 than showing nothing. Each raised constraint carries what a later check found, derived from later
 checks rather than from a second reading: the usual answer is that no later check has read the
 session, and where one has, the sentence says what it found and never that the raise caused it. The
@@ -289,8 +291,10 @@ the save after it keeps every earlier revision, so the raises quoting those word
 the whole annotation withdraws them: the quotations go from the departure record too, and only the
 fact that a check ran stays. That act is `discard everything`, under the two boxes and offered only
 where a revision is stored; it takes two presses, and between them the board names what it will
-delete and what it will withdraw. The Intent
-log carries the same raises a line at a time, and keeps them after the session leaves the board.
+delete and what it will withdraw. That sentence is the control's own description, and it is
+written to the page's live region when the first press arms it, so it reaches a reader who is not
+looking at the screen. The Intent log carries the same raises a line at a time, and keeps them
+after the session leaves the board.
 
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer

@@ -145,9 +145,12 @@ store, so the common answer is that no later check has read the session, and the
 rather than leaving a blank that would read as nothing having gone wrong. Where a later check did
 run, the sentence says what that check found and never that the raise caused it, and it says a
 later check ran rather than that it read newer evidence, because the store records when each check
-ran and holds no evidence bound to support the stronger claim. The figures are five labelled lines
-with no arithmetic between them: the departures each of the two collections raised, counted from
-the rows it renders, and the board's raises, attempts and hand-overs. A figure nobody measured says
+ran and holds no evidence bound to support the stronger claim. A raise goes on quoting the words it
+read, and where those words have since moved to a later revision the row says so, in the same
+wording the reading block uses, so the number on the row has a second source beside it. A raise
+whose revision was never recorded keeps saying that and is never given today's. The figures are five
+labelled lines with no arithmetic between them: the departures each of the two collections raised,
+counted from the rows it renders, and the board's raises, attempts and hand-overs. A figure nobody measured says
 so rather than reading zero, which covers the switch being off with nothing on record and the away
 checks never having read this particular session. An empty list is the same value in either case.
 With the switch off and raises on record the figure is the rows the review actually drew. A count identifies a
