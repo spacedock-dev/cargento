@@ -128,6 +128,43 @@ class DepartureWhySentenceTest(unittest.TestCase):
         self.assertIs(False, departures.checked(stored, "claude", "abcd1234", has_words=False))
         self.assertIs(True, departures.checked(stored, "claude", "abcd1234", has_words=True))
 
+    def test_a_standing_raise_is_never_printed_under_the_never_checked_sentence(self) -> None:
+        """DRC-4560, the half the words test would otherwise have introduced.
+
+        `published` serves every non-withdrawn row whatever the words now say,
+        and both surfaces print this sentence directly beneath those rows, so
+        the wordless session read "One departure was raised", the raise itself,
+        and then "Cargento has not checked this session against what you asked
+        for" on one screen. That is the contradiction class DRC-4560 exists to
+        remove, arriving from the other side.
+        """
+        stored = (_check(),)
+
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+        )
+
+        self.assertEqual("", why)
+        # And the figure stays unmeasured, which is what DRC-4560 wanted: the
+        # check read words that are gone, so nothing counts it as a reading of
+        # what the reader asks for now.
+        self.assertIs(False, departures.checked(stored, "claude", "abcd1234", has_words=False))
+
+    def test_a_spent_cap_still_outranks_a_standing_raise_with_no_words(self) -> None:
+        """The stand-down is only over the never-checked sentence.
+
+        A cap that is spent is a fact about what will run next, and it stays
+        true of a session whose words have gone; only the sentence claiming
+        nothing was ever looked at here is the false one.
+        """
+        stored = tuple(_check(at=1_000.0 + n) for n in range(self.config.unasked_session_cap))
+
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+        )
+
+        self.assertEqual(departures.SESSION_EXHAUSTED, why)
+
 
 class DepartureFollowUpTest(unittest.TestCase):
     """What later evidence showed, and never that the raise caused it."""

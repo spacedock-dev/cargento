@@ -95,8 +95,18 @@ DISCARD_WHY = (
     "revision, so anything raised against those words goes on quoting them. Discarding "
     "everything is the other act."
 )
+# The confirmation, and it carries the whole scope rather than the fact that
+# there is one. It is the only sentence a reader sees before the act, so
+# naming the four effects here is what makes the two presses a decision
+# instead of a speed bump; the shipped one said only that a second press would
+# discard, and the four names arrived after the write. Future tense against
+# DISCARD_STORED's past, same four names in the same order, so a reader who
+# read one recognises the other.
 DISCARD_ARMED = (
-    "Press it again to discard. Nothing has been deleted yet, and this offer lapses on its own."
+    "Press it again to discard. Every revision of what you asked of this session will go, along "
+    "with any reading of it, and nothing raised against those words will quote them any more; "
+    "the record that a check ran stays. Nothing has been deleted yet, and this offer lapses on "
+    "its own."
 )
 # Categorical and with no count. Nothing measures how many raises were
 # withdrawn: `departures.withdraw` answers True whether it blanked five rows or
@@ -115,10 +125,28 @@ DISCARD_UNWRITABLE = (
     "Not discarded. The store could not be written, so the next collection reads every "
     "revision back and nothing raised against them was withdrawn."
 )
+# The half-landed case, and the reason DISCARD_STORED cannot simply be worded
+# more carefully. A discard is one act over two stores: `clear` drops the
+# entry, then `http_api._withdraw_raises` blanks the rows that quoted it, and
+# the second half can fail on its own -- `departures.withdraw` answers False on
+# a store it could not write. The annotation is gone by then and cannot be put
+# back, so this is not a failure of the act; it is the act with one effect
+# missing, and the reader is about to be redrawn the quotations it was told
+# were withdrawn.
+#
+# It stops at what happened and offers no remedy, because there is none on
+# this board: the control is gated on a stored revision and there is no longer
+# one, so a second press is not available to the reader who needs it.
+DISCARD_UNWITHDRAWN = (
+    "Discarded here. Every revision of what you asked of this session is gone, along with any "
+    "reading of it. The departure store could not be written, so anything raised against those "
+    "words goes on quoting them."
+)
 DISCARD_SENTENCES: Final[dict[str, str]] = {
     "why": DISCARD_WHY,
     "armed": DISCARD_ARMED,
     "stored": DISCARD_STORED,
+    "unwithdrawn": DISCARD_UNWITHDRAWN,
     "refused": DISCARD_REFUSED,
     "unwritable": DISCARD_UNWRITABLE,
 }

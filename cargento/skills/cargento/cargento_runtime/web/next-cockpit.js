@@ -806,6 +806,21 @@ function nextCockpitHeldToggle(field, action, shown){
    `nextCockpitConflict`, worded about what has already happened, because the
    handler's own refresh has run by the time the reader can read them. */
 const NEXT_COCKPIT_HELD_CUE_LIMIT = 16;
+/* How long the armed discard refuses to be confirmed. Above the one second a
+   macOS double-click interval can be set to and above the quarter second its
+   key-repeat delay starts at, because both gestures deliver the second press
+   through this one listener: the click handler is delegated on `document` and
+   `renderNext` is synchronous, so the replacement button is already under the
+   pointer, carrying the same action, before the second click of a double-click
+   is dispatched. Measured on the shipped control: one ordinary double-click
+   armed and confirmed, deleting every revision, the stored reading and the
+   departure quotations with nothing read in between.
+
+   A floor and not a disabled interval, because a disabled button would move
+   focus and the arm is meant to lapse on its own. A press inside it re-arms
+   rather than being dropped, so a slip cannot silently undo the deliberate
+   press before it, and a held key never accumulates its way to a confirm. */
+const NEXT_COCKPIT_DISCARD_DWELL_MS = 1_200;
 const NEXT_COCKPIT_HELD_CUES = {
   error: "Not saved. The server refused the write, and your words are still in the box.",
   unpersisted: "Not stored. The store could not be written, so the refresh has already " +
@@ -2114,23 +2129,32 @@ function nextCockpitHeldReEntry(session){
    act, and an arm that lapses on its own leaves a reader who walked away with
    a disarmed control. */
 function nextCockpitHeldDiscardBlock(session, annotation){
-  /* `revision_count` is `len(entry["revisions"])` for a real entry and 0 for
-     none, so this is a measured value and not a structurally-present default:
-     it never offers to discard nothing. */
-  if(!(nextNumber(annotation && annotation.revision_count) > 0)) return "";
   const said = (nextData && nextData.annotate_discard) || {};
   const key = nextCockpitHeldKey(session, "discard");
   const kind = nextCockpitHeldKind(key);
   const armed = kind === "discard-armed";
-  const landed = kind && kind !== "discard-armed"
-    ? String(said[kind.slice("discard-".length)] || "") : "";
+  const landed = kind && !armed ? String(said[kind.slice("discard-".length)] || "") : "";
+  /* `revision_count` is `len(entry["revisions"])` for a real entry and 0 for
+     none, so the OFFER is a measured value and not a structurally-present
+     default: it never offers to discard nothing.
+
+     The account of a discard that already happened is not gated on it, and
+     that is the whole of this branch. A landed discard deletes the entry, the
+     next payload publishes 0, and the gate would close over the one sentence
+     saying what became of the words -- measured: every discard succeeded
+     silently, and only the two failures, which leave the revisions in place,
+     ever printed theirs. */
+  const offer = nextNumber(annotation && annotation.revision_count) > 0;
+  if(!offer && !landed) return "";
   const why = String(said.why || "");
   return '<div class="next-cockpit-held-discard">' +
-    (why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
-    '<button type="button" data-next-cockpit-action="held-discard" ' +
-    `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}">` +
-    `${armed ? "confirm discard" : "discard everything"}</button>` +
-    (armed && said.armed
+    (offer && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
+    (offer
+      ? '<button type="button" data-next-cockpit-action="held-discard" ' +
+        `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}">` +
+        `${armed ? "confirm discard" : "discard everything"}</button>`
+      : "") +
+    (offer && armed && said.armed
       ? `<p class="next-cockpit-held-absent">${esc(String(said.armed))}</p>` : "") +
     (landed ? `<small class="next-cockpit-held-cue">${esc(landed)}</small>` : "") +
     '</div>';
@@ -2303,10 +2327,18 @@ async function nextCockpitDiscardAnnotation(session){
     /* The store's own token, with `persisted` as the fallback an older or
        newer server leaves: one bit cannot carry three sentences, which is
        what `NEXT_COCKPIT_HELD_CUES` records about the save path. */
-    const kind = ["stored", "refused", "unwritable"].includes(outcome)
+    const answered = ["stored", "refused", "unwritable"].includes(outcome)
       ? `discard-${outcome}`
       : (answer.persisted === true ? "discard-stored" : "discard-unwritable");
-    if(kind === "discard-stored"){
+    /* A discard is one act over two stores and the second half fails on its
+       own. `withdrew` is the departure store's answer, so the categorical
+       sentence is not printed over rows this page is about to redraw with the
+       discarded words still in them. `=== false` and not falsiness: a server
+       that predates the field omits it, and an absent answer must leave the
+       sentence it had. */
+    const kind = answered === "discard-stored" && answer.withdrew === false
+      ? "discard-unwithdrawn" : answered;
+    if(kind === "discard-stored" || kind === "discard-unwithdrawn"){
       /* The drafts go with the annotation. They are an independent lane, so a
          half-typed box would otherwise sit over an empty store and the next
          save would mint revision 1 of what the reader just discarded. */
@@ -3226,9 +3258,16 @@ document.addEventListener("click", event => {
     if(!session) return;
     event.preventDefault();
     const key = nextCockpitHeldKey(session, "discard");
-    if(nextCockpitHeldKind(key) !== "discard-armed"){
-      // Arm only. Nothing is posted until the reader has read what the second
-      // press will do and pressed again.
+    // Read before the kind, which drops the state on expiry.
+    const held = nextCockpitHeldStates.get(key);
+    const armedAt = held && held.kind === "discard-armed" ? held.at : 0;
+    const slip = Number(event.detail) > 1
+      || Date.now() - armedAt < NEXT_COCKPIT_DISCARD_DWELL_MS;
+    if(nextCockpitHeldKind(key) !== "discard-armed" || slip){
+      /* Arm, or re-arm. Nothing is posted until the reader has read what the
+         second press will do and pressed again -- and a press too soon after
+         the arm to have read it is the double-click that used to confirm in
+         one gesture, so it buys another dwell rather than the write. */
       nextCockpitHeldMark(key, "discard-armed");
       renderNext({named: key});
       return;

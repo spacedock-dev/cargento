@@ -794,6 +794,38 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
         # blanked five rows or none, so nothing here could measure one.
         self.assertFalse([word for word in said.split() if word.isdigit()])
 
+    def test_the_confirmation_names_the_effects_before_the_act_and_not_after(self) -> None:
+        """The armed sentence is the only one a reader sees before the write.
+
+        It said no more than that a second press would discard, and the four
+        names arrived after the deletion, so `SKILL.md`'s promise that the
+        board says what it will delete and what it will withdraw rested on a
+        sentence printed too late to act on. Same four names as the success
+        sentence, in the future tense.
+        """
+        said = annotation_store.DISCARD_ARMED
+
+        self.assertIn("Every revision", said)
+        self.assertIn("reading", said)
+        self.assertIn("will quote them any more", said)
+        self.assertIn("the record that a check ran stays", said.lower())
+        # And it still says nothing has happened yet, which is what makes it a
+        # confirmation rather than a receipt.
+        self.assertIn("Nothing has been deleted yet", said)
+
+    def test_the_half_landed_sentence_does_not_claim_the_quotations_went(self) -> None:
+        """`departures.withdraw` can fail alone, and the entry is gone by then.
+
+        The categorical success sentence was printed over rows the page was
+        about to redraw with the discarded words in them, because the route
+        threw the departure store's answer away.
+        """
+        said = annotation_store.DISCARD_UNWITHDRAWN
+
+        self.assertIn("Every revision", said)
+        self.assertIn("goes on quoting them", said)
+        self.assertNotIn("quotes them any more", said)
+
     def test_the_standing_sentence_separates_the_two_acts_by_name(self) -> None:
         said = annotation_store.DISCARD_WHY
 
@@ -805,7 +837,7 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
         """ "Saved as a new revision." after a deletion is DRC-4543 re-shipped."""
         said = set(annotation_store.DISCARD_SENTENCES.values())
 
-        self.assertEqual(5, len(said))
+        self.assertEqual(6, len(said))
         self.assertNotIn("Saved as a new revision.", said)
         for sentence in said:
             with self.subTest(sentence=sentence[:32]):

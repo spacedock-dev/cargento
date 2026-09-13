@@ -4028,7 +4028,17 @@ let posted = [];
 const upstream = __fetchImpl;
 __fetchImpl = async (url, init) => {
   if(String(url) !== "/api/annotate") return upstream(url, init);
-  posted.push(JSON.parse(String(init && init.body || "{}")));
+  const body = JSON.parse(String(init && init.body || "{}"));
+  posted.push(body);
+  /* The board the route leaves behind, and not the one the press started
+     from. `annotations.clear` drops the entry and `published` then answers
+     `revision_count` 0, so a fixture that kept 2 would hold a state no server
+     can produce -- and it is exactly the state the success sentence used to
+     be rendered under. */
+  if(body.clear === true && reply.outcome === "stored"){
+    __dashboard.sessions[0].annotation_revision = null;
+    __dashboard.sessions[0].annotation_revision_count = 0;
+  }
   return {ok:true, status:200, json: async () => reply};
 };
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
@@ -4036,6 +4046,11 @@ await __settle();
 const discardControl = () => controls.find(control =>
   control.dataset.nextCockpitAction === "held-discard");
 const press = () => __fire("click", {target:discardControl(), preventDefault(){}});
+/* The reader reading the armed sentence, which is what the second press is
+   supposed to follow. The harness clock stands still unless a test moves it,
+   so a deliberate second press has to say so; two presses with the clock where
+   it was are a double-click, and the control refuses one. */
+const dwell = () => __setNow(__nowSec + 2);
 const cue = () => (__els.app.innerHTML
   .match(/class="next-cockpit-held-cue">([^<]*)</) || [])[1];
 """
@@ -4087,6 +4102,7 @@ console.log(JSON.stringify({
             self.FOCUS_DOM
             + self.ANNOTATED
             + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + f"const __armedSentence = {json.dumps(annotation_store.DISCARD_ARMED)};\n"
             + self.DISCARD_WITH_REPLY
             + """
 press();
@@ -4094,10 +4110,13 @@ await __settle();
 const armed = {posts: posted.length, html: __els.app.innerHTML,
   label: (__els.app.innerHTML.match(
     /data-next-cockpit-action="held-discard"[^>]*>([^<]*)</) || [])[1]};
+dwell();
 press();
 await __settle();
 console.log(JSON.stringify({armed: {posts: armed.posts, label: armed.label,
-  says: armed.html.includes("Press it again to discard.")},
+  says: armed.html.includes("Press it again to discard."),
+  scope: armed.html.includes(__armedSentence),
+  withdrawal: armed.html.includes("will quote them any more")},
   posts: posted, cue: cue()}));
 """
         )
@@ -4106,7 +4125,138 @@ console.log(JSON.stringify({armed: {posts: armed.posts, label: armed.label,
         self.assertEqual(0, out["armed"]["posts"])
         self.assertNotEqual("discard everything", out["armed"]["label"])
         self.assertTrue(out["armed"]["says"])
+        # What the confirmation says before the act, and not only that there is
+        # one. SKILL.md tells a reader the board names what it will delete and
+        # what it will withdraw between the presses; nothing but this held that
+        # sentence to being true. Both halves: the published sentence is what
+        # renders, and the withdrawal is named in it.
+        self.assertTrue(out["armed"]["scope"])
+        self.assertTrue(out["armed"]["withdrawal"])
         self.assertEqual([{"harness": "codex", "sid": "focus-1", "clear": True}], out["posts"])
+        self.assertEqual(annotation_store.DISCARD_STORED, out["cue"])
+
+    def test_one_gesture_cannot_arm_and_confirm(self) -> None:
+        """The commonest slip on a button is the one that deletes the records.
+
+        The listener is delegated on `document` and `renderNext` is
+        synchronous, so the replacement button carries the same action at the
+        same coordinates before the second click of a double-click is
+        dispatched: two presses with nothing read between them discarded every
+        revision, the stored reading and the quotations. Key-repeat on a
+        focused button is the same sequence.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + self.DISCARD_WITH_REPLY
+            + """
+// No settle and no dwell between them: this is one double-click.
+press();
+press();
+await __settle();
+const gesture = {posts: posted.length, armed: nextCockpitHeldStates.has(
+  "held:codex:focus-1:discard"), cue: cue() || null};
+// And the control is not dead — it confirms once the reader has had time to
+// read what the second press does.
+dwell();
+press();
+await __settle();
+console.log(JSON.stringify({gesture, posts: posted.length, cue: cue()}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["gesture"]["posts"])
+        self.assertIsNone(out["gesture"]["cue"])
+        # Still armed rather than disarmed: a slip must not silently undo the
+        # deliberate press that preceded it.
+        self.assertIs(True, out["gesture"]["armed"])
+        self.assertEqual(1, out["posts"])
+        self.assertEqual(annotation_store.DISCARD_STORED, out["cue"])
+
+    def test_the_sentence_after_the_act_survives_the_state_the_act_leaves(self) -> None:
+        """DRC-4561. The block is gated on there being something to discard.
+
+        A landed discard deletes the entry, so the next payload publishes
+        `revision_count` 0 and the gate closes over the very sentence that says
+        what just happened. The offer goes with the entry; the account of what
+        became of it does not.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + self.DISCARD_WITH_REPLY
+            + """
+press();
+await __settle();
+dwell();
+press();
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({cue: cue(), count: __dashboard.sessions[0].annotation_revision_count,
+  offers: (html.match(/data-next-cockpit-action="held-discard"/g) || []).length,
+  why: html.includes("Discarding everything is the other act.")}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["count"])
+        self.assertEqual(annotation_store.DISCARD_STORED, out["cue"])
+        self.assertEqual(0, out["offers"])
+        self.assertFalse(out["why"])
+
+    def test_a_discard_the_departure_store_outlived_does_not_claim_otherwise(self) -> None:
+        """DRC-4561. The one thing the categorical sentence cannot promise.
+
+        `departures.withdraw` answers False on a store it could not write, and
+        the annotation is gone by then either way. The reply carries that
+        second answer so the board can say the quotations stayed rather than
+        redrawing them under a sentence saying nothing quotes those words.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + self.DISCARD_WITH_REPLY
+            + """
+reply = {ok:true, persisted:true, outcome:"stored", revision:null, revision_count:0,
+  withdrew:false};
+press();
+await __settle();
+dwell();
+press();
+await __settle();
+console.log(JSON.stringify({cue: cue(),
+  drafts: nextCockpitHeldDrafts.has("held:codex:focus-1:goal")}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual(annotation_store.DISCARD_UNWITHDRAWN, out["cue"])
+        # The annotation went, so its drafts go with it: this is a landed
+        # discard that only half reached the other store.
+        self.assertFalse(out["drafts"])
+
+    def test_a_reply_without_the_withdrawal_answer_keeps_the_sentence_it_had(self) -> None:
+        """A server older than this page omits the field, and absent is not False."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + self.DISCARD_WITH_REPLY
+            + """
+press();
+await __settle();
+dwell();
+press();
+await __settle();
+console.log(JSON.stringify({cue: cue()}));
+"""
+        )
+
+        assert isinstance(out, dict)
         self.assertEqual(annotation_store.DISCARD_STORED, out["cue"])
 
     def test_a_discard_that_did_not_land_says_the_words_and_the_raises_stand(self) -> None:
@@ -4120,12 +4270,15 @@ console.log(JSON.stringify({armed: {posts: armed.posts, label: armed.label,
 reply = {ok:true, persisted:false, outcome:"refused", revision:null, revision_count:0};
 press();
 await __settle();
+dwell();
 press();
 await __settle();
 const refused = cue();
 reply = {ok:true, persisted:false, outcome:"unwritable", revision:null, revision_count:0};
+dwell();
 press();
 await __settle();
+dwell();
 press();
 await __settle();
 console.log(JSON.stringify({refused, unwritable: cue()}));

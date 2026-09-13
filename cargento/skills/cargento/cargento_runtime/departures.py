@@ -364,7 +364,22 @@ def why(
     """
     stored = list(entries)
     mine, today = counts(stored, harness, sid, since=now - DAY_SEC)
-    if not checked(stored, harness, sid, has_words=has_words) and mine < config.unasked_session_cap:
+    # Whether `published` is about to serve this session a row, on the same
+    # test it selects them with. Read once and used twice, because the two
+    # answers appear on one screen: every surface prints this sentence directly
+    # beneath those rows.
+    standing = any(
+        row["harness"] == harness
+        and row["sid"] == sid
+        and row["constraint"]
+        and not row["withdrawn"]
+        for row in stored
+    )
+    if (
+        not standing
+        and not checked(stored, harness, sid, has_words=has_words)
+        and mine < config.unasked_session_cap
+    ):
         # Before the caps, deliberately. A session nobody has checked is not a
         # session held off by a spent cap, even when the board's day cap is
         # spent: the first says nothing was looked at here, and the second
@@ -376,18 +391,19 @@ def why(
         # further check will run. Saying only the first would read as "not
         # checked yet". A session with no rows at all has spent nothing, so this
         # test cannot change what it earns.
+        #
+        # `standing` is the second exception and it arrived with `has_words`:
+        # a session whose box was emptied and saved keeps every raise made
+        # against the earlier revisions, so this sentence would print under
+        # rows quoting the words it says were never read. The figure stays
+        # unmeasured either way -- `checked` is not consulted here -- which is
+        # the half the sentence was wanted for.
         return NEVER_CHECKED
     if today >= config.unasked_daily_cap:
         return DAY_EXHAUSTED
     if mine >= config.unasked_session_cap:
         return SESSION_EXHAUSTED
-    if any(
-        row["harness"] == harness
-        and row["sid"] == sid
-        and row["constraint"]
-        and not row["withdrawn"]
-        for row in stored
-    ):
+    if standing:
         return ""
     return NOTHING_DEPARTED
 

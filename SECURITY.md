@@ -107,7 +107,11 @@ The posture rests on two invariants:
    departure store rather than session history. Discarding a session's annotation withdraws from
    both: it deletes every revision and blanks the quotations from the departure rows those
    revisions were read against, keeping only that a check ran, so words discarded that way are
-   gone from this response and from disk. That is the `clear` field of a `POST /api/annotate`
+   gone from this response and from disk. The two stores are written one after the other and the
+   second write can fail on its own, in which case the annotation is gone and the quotations are
+   not; the reply carries that answer as `withdrew` and the board prints a sentence saying the
+   raises still quote those words, rather than the one saying nothing does. That is the `clear`
+   field of a `POST /api/annotate`
    body, sent by the `discard everything` control under the two boxes on the `Held to` tab, and it
    is not the `clear` control beside each box: that one empties the box, and the save after it
    writes a revision with an empty string while every earlier revision, and every raise quoting

@@ -686,6 +686,32 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         self.assertEqual(departures.NEVER_CHECKED, published["departure_why"])
         self.assertIs(False, published["departure_checked"])
 
+    def test_the_rows_and_the_never_checked_sentence_never_go_out_together(self) -> None:
+        """DRC-4560, from the other side, on one payload.
+
+        This is the reachable state the walk measured, not a constructed one:
+        the reader empties the box, saves, and the raises made against the
+        earlier revisions stay standing because only a whole-annotation discard
+        withdraws them. `published` goes on serving every one of those rows, so
+        a sentence saying nothing was ever read here would print directly under
+        the quotations of what was read.
+        """
+        self._store(1)
+        blank: Any = {
+            "harness": "claude",
+            "sid": "s-1",
+            "revisions": ({"n": 5, "goal": "", "output": "", "at": 20.0},),
+        }
+
+        stored = departures.load(self.config)
+        published = unasked.published(self.config, stored, _row(), entries=(blank,), now=5_000.0)
+
+        self.assertEqual(1, len(published["departures"]))
+        self.assertEqual("", published["departure_why"])
+        # The figure is still not a measurement of what the reader asks for
+        # now, which is the half the words test was added for.
+        self.assertIs(False, published["departure_checked"])
+
     def test_a_session_with_no_annotation_at_all_is_the_same_answer(self) -> None:
         """The other route to it: the annotation store evicted or lost."""
         self._store(1, constraint="")

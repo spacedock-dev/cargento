@@ -288,7 +288,7 @@ says it was not measured rather than reading zero. The `clear` beside each box e
 the save after it keeps every earlier revision, so the raises quoting those words stay. Discarding
 the whole annotation withdraws them: the quotations go from the departure record too, and only the
 fact that a check ran stays. That act is `discard everything`, under the two boxes and offered only
-where a revision is stored; it takes two presses, and the board says before the first what it will
+where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. The Intent
 log carries the same raises a line at a time, and keeps them after the session leaves the board.
 
