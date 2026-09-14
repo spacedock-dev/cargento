@@ -64,6 +64,80 @@ class CaseIdentityTest(unittest.TestCase):
         self.assertNotIn("claude", marked)
 
 
+class FrozenMarksTest(unittest.TestCase):
+    def test_minimal_replay_asks_against_both_yardsticks_on_a_work_harness(self) -> None:
+        case = {
+            "id": "abcd1234abcd1234",
+            "harness": "pi",
+            "sid": "s1",
+            "row_snapshot": {"harness": "pi", "sid": "s1", "state": "working"},
+            "producer_facts": [],
+        }
+        body = {"v": 4, "goal": "FROZEN GOAL", "output": "FROZEN OUTPUT", "cases": [case]}
+        with tempfile.TemporaryDirectory() as folder:
+            cases = Path(folder, "cases.json")
+            marks = Path(folder, "marks.json")
+            cases.write_text(json.dumps(body))
+            with (
+                mock.patch.object(mark_abstention, "CASES_PATH", str(cases)),
+                mock.patch.object(mark_abstention, "MARKS_PATH", str(marks)),
+                mock.patch.object(mark_abstention, "_ask", side_effect=["judge", "judge"]) as ask,
+                mock.patch("builtins.print"),
+            ):
+                self.assertEqual(0, mark_abstention.mark())
+            self.assertEqual(2, ask.call_count)
+            self.assertIn("FROZEN GOAL", ask.call_args_list[0].args[0])
+            self.assertIn("FROZEN OUTPUT", ask.call_args_list[1].args[0])
+            self.assertEqual("judge", json.loads(marks.read_text())["marks"][case["id"]]["output"])
+
+    def test_a_mark_is_bound_to_the_packet_and_the_actual_ledger_is_shown(self) -> None:
+        case = {
+            "id": "abcd1234abcd1234",
+            "harness": "codex",
+            "sid": "s1",
+            "end_shape": "still running",
+            "citable": 1,
+            "reached": True,
+            "work_results": 0,
+            "producer_facts": [
+                {
+                    "fact_id": "f1",
+                    "type": "user_message",
+                    "summary": "ACTUAL FROZEN FACT",
+                    "evidence": {"source": "transcript", "confidence": "exact"},
+                    "source_session": {"harness": "codex", "sid": "s1"},
+                    "at": 90.0,
+                }
+            ],
+        }
+        body = {"v": 4, "goal": "FROZEN GOAL", "output": "FROZEN OUTPUT", "cases": [case]}
+        printed: list[str] = []
+        with tempfile.TemporaryDirectory() as folder:
+            cases = Path(folder, "cases.json")
+            marks = Path(folder, "marks.json")
+            cases.write_text(json.dumps(body))
+            with (
+                mock.patch.object(mark_abstention, "CASES_PATH", str(cases)),
+                mock.patch.object(mark_abstention, "MARKS_PATH", str(marks)),
+                mock.patch.object(mark_abstention, "_ask", return_value="abstain") as ask,
+                mock.patch("builtins.print", side_effect=_collect(printed)),
+            ):
+                self.assertEqual(0, mark_abstention.mark())
+                saved = marks.read_bytes()
+                self.assertEqual(
+                    mark_abstention.cases_digest(body), json.loads(saved)["cases_digest"]
+                )
+                self.assertEqual(1, ask.call_count)
+                # The same identities with changed evidence must not inherit the key.
+                body["goal"] = "CHANGED GOAL"
+                cases.write_text(json.dumps(body))
+                self.assertEqual(1, mark_abstention.mark())
+                self.assertEqual(saved, marks.read_bytes())
+                self.assertEqual(1, ask.call_count)
+        for text in ("ACTUAL FROZEN FACT", "FROZEN GOAL", "FROZEN OUTPUT"):
+            self.assertIn(text, "\n".join(printed))
+
+
 class EndShapeTest(unittest.TestCase):
     """The three ways a session stops, which a reading treats differently."""
 

@@ -997,12 +997,16 @@ should not judge. Two scripts run it, both outside the gate and neither in CI, a
 The cases stay local and uncommitted. `scripts/mark_abstention.py --build` writes
 `abstention-cases.json`, and that file stays on this machine, under `~/.cargento`: it names the
 session ids the cases were drawn from, and for a Claude session it carries the opening user turn,
-which is prompt text. It is never committed. Only the expectations and the results are committed.
+which is prompt text. Historical replay packets also carry the frozen session row and semantic
+facts; they have the same local-only boundary. It is never committed. Only the expectations and
+the results are committed.
 `abstention-marks.json` holds one sixteen-character hash of `(harness, sid)` per case and two tokens,
-`judge` or `abstain`, and nothing else. `abstention-results.json`, the scorer's local half, may
+`judge` or `abstain`. Replay marks also hold a hash binding them to the frozen packet.
+`abstention-results.json`, the scorer's local half, may
 carry the producer's withheld reason and its cutoff sentence and also stays under `~/.cargento`; the
 committable summary the scorer writes to `docs/abstention/` carries case ids, marks, outcomes,
-counts, coverage, the sha256 of the marks file as scored and a timestamp. No session id, no
+counts, coverage, the sha256 of the marks file as scored and a timestamp. Replay summaries also
+hold a hash of the cases and rubric, so changing either invalidates the report. No session id, no
 project, no title, no prompt text and no model prose reach the repository from either script, and
 a test asserts that none of the local half's fields (the session id, the project, the title, the
 opening ask, the cutoff sentence, the model's detail) appears anywhere in the summary.
@@ -1013,7 +1017,10 @@ citable, through `reading.CodexReadingModel`, the same subprocess and the same s
 yardstick sentences in place of the reader's typed words, and the bounded, redacted menu of
 ledger entries. A case the producer refuses before the model, an empty ledger or a session the
 board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
-the run writes nothing to `cargento-annotations.json` and increments no reading count.
+the run writes nothing to `cargento-annotations.json` and increments no reading count. Historical
+replay reads the frozen row, facts and clock instead of the live board. Reviewer excerpts and
+later context are not model inputs. Its file format and checks are owned by the
+[abstention documentation](docs/abstention/README.md#historical-replay-case-format-4).
 
 Synthesised cases are admissible in the rubric expectation file, cross-verified by a different
 agent than generated them, and their text is agent-written rather than recorded. It goes through

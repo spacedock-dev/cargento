@@ -328,6 +328,12 @@ writes two halves: a local results file beside the cases, and a committable summ
 `docs/abstention/`. Where the cases live and what each file may hold is the security ruling, in
 [SECURITY.md](../SECURITY.md#the-abstention-check).
 
+Historical cases can instead use a frozen row, semantic facts and evaluation clock. This avoids
+scoring today's changed or absent session against yesterday's mark. The packet is prepared before
+marking; the key binds to its digest, and the producer's lifecycle rules still apply at the frozen
+time. The format and procedure live in the
+[abstention documentation](abstention/README.md#historical-replay-case-format-4).
+
 Each (case, constraint) lands in exactly one of `withheld:<reason>`, `unparsed`, `abstained`,
 `judged:consistent` or `judged:departure`. Withheld is its own column because the corpus this was
 written against made the trap concrete: twenty of twenty three cases had an empty ledger, so the

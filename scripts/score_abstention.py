@@ -43,6 +43,10 @@ recorded and does not fail, because over-abstention is the safe direction.
 The kind tags come from the rubric file's `recorded` entries, never from the
 marks file, which is the captain's and is not altered.
 
+Case format 4 replays the frozen `row_snapshot`, `producer_facts` and
+`captured_at` offline. The marks bind to that packet before scoring; malformed
+snapshots never fall back to today's board. Older formats retain live scoring.
+
 The report never prints one figure for all of this and never uses the word
 that would invite one: false reassurance, false alarm, missed departure and
 over-abstention are four counts, and extraction (which citations hit, missed
@@ -55,6 +59,7 @@ carry the withheld reason and the producer's cutoff sentence. The committable
 summary carries case ids (sixteen hex characters of a hash), marks, outcomes,
 counts, coverage, the sha256 of the marks file as scored, and when. A later
 report whose marks no longer hash to that digest says so and refuses PASS.
+Replay summaries also hash the cases and rubric and refuse PASS if either moved.
 
 The yardstick, the two constant sentences in `mark_abstention`, is handed to
 `reading.produce` as a synthetic revision. Nothing is written to the
@@ -69,6 +74,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -83,6 +89,7 @@ import mark_abstention
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
+    from typing import TypeGuard
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SKILL = os.path.join(_ROOT, "cargento", "skills", "cargento")
@@ -794,6 +801,107 @@ def _rubric_entries(rubric: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(k): v for k, v in raw.items() if isinstance(v, dict) and CASE_ID_RE.match(str(k))}
 
 
+def _epoch(value: Any) -> TypeGuard[float]:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value > 0
+    )
+
+
+def replay_refusal(case: Mapping[str, Any]) -> str:
+    """Closed reasons only: neither malformed text nor a foreign fact gets relabelled.
+
+    A missing state looks running to the live producer. Replay must require an
+    observed state, and timestamps must establish the cutoff before production.
+    Review excerpts are deliberately outside this interface.
+    """
+    if case.get("origin") != ORIGIN_RECORDED:
+        return "replay-not-recorded"
+    at = case.get("captured_at")
+    if not _epoch(at):
+        return "replay-bad-time"
+    row = case.get("row_snapshot")
+    if not isinstance(row, dict) or row.get("state") not in ("working", "needs_input", "idle"):
+        return "replay-missing-state"
+    identity = (case.get("harness"), case.get("sid"))
+    if (
+        case.get("harness") not in RUBRIC_HARNESSES
+        or not all(isinstance(part, str) and part.strip() for part in identity)
+        or (row.get("harness"), row.get("sid")) != identity
+        or case.get("id") != mark_abstention._case_id(str(identity[0]), str(identity[1]))  # noqa: SLF001
+    ):
+        return "replay-wrong-session"
+    if any(
+        row.get(field) is not None and (not _epoch(row[field]) or row[field] > at)
+        for field in ("ended_at", "finished_at")
+    ):
+        return "replay-bad-lifecycle-time"
+    return _replay_facts_refusal(case, identity, at)
+
+
+def _replay_facts_refusal(case: Mapping[str, Any], identity: tuple[Any, Any], at: float) -> str:
+    facts = case.get("producer_facts")
+    if not isinstance(facts, list):
+        return "replay-missing-facts"
+    for fact in facts:
+        if not isinstance(fact, dict) or not _epoch(fact.get("at")) or fact["at"] > at:
+            return "replay-undated-or-future-fact"
+        source = fact.get("source_session")
+        if not isinstance(source, dict) or (source.get("harness"), source.get("sid")) != identity:
+            return "replay-foreign-fact"
+    return ""
+
+
+def _inputs_digest(corpus: Corpus) -> str:
+    return mark_abstention.cases_digest({"cases": corpus.cases, "rubric": corpus.rubric})
+
+
+def _replay_marks_match(corpus: Corpus) -> bool:
+    if corpus.marks.get("cases_digest") == mark_abstention.cases_digest(dict(corpus.cases)):
+        return True
+    print("Replay marks are missing or belong to different cases. Mark this frozen packet first.")
+    return False
+
+
+def _replay_preflight(corpus: Corpus) -> bool:
+    """Check the whole packet before spending on even its first marked case."""
+    if corpus.cases.get("v") != 4:
+        print("Frozen snapshots require case format v4; refusing a live fallback.")
+        return False
+    cases = corpus.cases.get("cases")
+    if not isinstance(cases, list) or not cases:
+        print("Replay needs a nonempty cases list.")
+        return False
+    seen: set[str] = set()
+    valid = True
+    for index, case in enumerate(cases, 1):
+        case_id = case.get("id") if isinstance(case, dict) else None
+        if not isinstance(case_id, str) or not CASE_ID_RE.fullmatch(case_id) or case_id in seen:
+            print(f"Case {index}: replay-bad-or-duplicate-id")
+            valid = False
+            continue
+        seen.add(case_id)
+        why = replay_refusal(case)
+        if why:
+            print(f"Case {case_id}: {why}")
+            valid = False
+    if not all(
+        isinstance(corpus.cases.get(key), str) and corpus.cases[key].strip() for key in CONSTRAINTS
+    ):
+        print("Replay needs the goal and output yardstick shown to the marker.")
+        valid = False
+    return valid
+
+
+def _is_replay(corpus: Corpus) -> bool:
+    return corpus.cases.get("v") == 4 or any(
+        isinstance(case, dict) and {"row_snapshot", "producer_facts", "captured_at"} & case.keys()
+        for case in corpus.cases.get("cases") or ()
+    )
+
+
 def rubric_skipped(rubric: Mapping[str, Any]) -> int:
     """Entries dropped before anything read them: the key is not a case id.
 
@@ -822,6 +930,9 @@ def score(
     now: float,
 ) -> int:
     """Run the producer once per case, write both halves, print the report."""
+    replay = _is_replay(corpus)
+    if replay and not (_replay_preflight(corpus) and _replay_marks_match(corpus)):
+        return 2
     cases = {
         str(c["id"]): c
         for c in corpus.cases.get("cases") or ()
@@ -829,7 +940,7 @@ def score(
     }
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001 - the collector's own reader
     words = (str(corpus.cases.get("goal") or ""), str(corpus.cases.get("output") or ""))
-    rows = _board_rows(port)
+    rows = {} if replay else _board_rows(port)
     if rows is None:
         return 2
     records: dict[str, dict[str, Any]] = {}
@@ -837,10 +948,23 @@ def score(
         case = cases.get(case_id)
         if case is None:
             continue
-        row = rows.get((str(case["harness"]), str(case["sid"])))
-        facts = _board_facts(port, case) if row is not None else []
+        row = case["row_snapshot"] if replay else rows.get((str(case["harness"]), str(case["sid"])))
+        facts = (
+            case["producer_facts"]
+            if replay
+            else _board_facts(port, case)
+            if row is not None
+            else []
+        )
         records[case_id] = score_case(
-            config, case, row, facts, mark, words=words, model=model, now=now
+            config,
+            case,
+            row,
+            facts,
+            mark,
+            words=words,
+            model=model,
+            now=case["captured_at"] if replay else now,
         )
         print(case_line(records[case_id]))
     rubric_records = []
@@ -869,6 +993,8 @@ def score(
         now=now,
         rubric_records=rubric_records,
     )
+    if replay:
+        summary["inputs_digest"] = _inputs_digest(corpus)
     mark_abstention._write(results_path, local_results(list(records.values()), summary, home=HOME))  # noqa: SLF001
     os.makedirs(os.path.dirname(summary_path) or ".", exist_ok=True)
     with open(summary_path, "w", encoding="utf-8") as handle:
@@ -882,12 +1008,27 @@ def score(
     return exit_code(summary)
 
 
+def _evidence_bearing(case: Mapping[str, Any], *, replay: bool) -> bool:
+    if not replay:
+        return int(case.get("citable") or 0) > 0
+    _config, reading, _records = _runtime()
+    ledger = reading.build_ledger(case["producer_facts"], case["harness"], case["sid"])
+    return any(reading._citable(entry) for entry in ledger)  # noqa: SLF001
+
+
 def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
     """Where the corpus stands, and what the last run said. Spends nothing."""
     cases = [c for c in corpus.cases.get("cases") or () if isinstance(c, dict)]
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     live = {str(c.get("id")) for c in cases}
     print(f"{sum(1 for k in marks if k in live)} of {len(cases)} cases marked.")
+    if _is_replay(corpus):
+        if not _replay_preflight(corpus):
+            return 2
+        _config, reading, _records = _runtime()
+        print("Historical replay: frozen row, facts and clock; no live board reads.")
+        for case in cases:
+            print(f"  {case['id']}: {reading.end_kind(case['row_snapshot'])}")
     _print_rubric_skipped(corpus.rubric)
     tagged = {
         cid
@@ -896,14 +1037,19 @@ def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
     }
     for harness in COVERAGE_HARNESSES:
         mine = [c for c in cases if c.get("harness") == harness]
-        evidence = sum(1 for c in mine if int(c.get("citable") or 0) > 0)
+        evidence = sum(1 for c in mine if _evidence_bearing(c, replay=_is_replay(corpus)))
         kinds = sum(1 for c in mine if str(c.get("id")) in tagged)
         print(f"  {harness}: {evidence} evidence-bearing, {kinds} kind-tagged, of {len(mine)}")
     if summary is None:
         print("No scoring run has been recorded, so nothing here says what the producer did.")
         return 0
     print()
-    for line in render(check_marks(summary, corpus.marks_bytes)):
+    checked = check_marks(summary, corpus.marks_bytes)
+    if (corpus.cases.get("v") == 4 or "inputs_digest" in summary) and summary.get(
+        "inputs_digest"
+    ) != _inputs_digest(corpus):
+        checked["verdict"] = VERDICT_STALE
+    for line in render(checked):
         print(line)
     return 0
 
