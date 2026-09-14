@@ -4947,6 +4947,72 @@ console.log(JSON.stringify({posts,
         self.assertTrue(out["cue"])
         self.assertEqual(1, out["stillOffersSave"])
 
+    def test_a_reading_press_shows_progress_and_survives_redraws(self) -> None:
+        out = self.run_fixture(r"""
+__dashboard.reading_check = "accepted";
+const session = __dashboard.sessions[0];
+const annotation = {goal:"ship it", reading_count:0};
+const control = () => nextCockpitReadingControl(session, annotation, {enabled:true});
+const releases = [];
+let calls = 0;
+const upstream = __fetchImpl;
+__fetchImpl = (url, init) => String(url) === "/api/reading"
+  ? (calls++, new Promise(resolve => { releases.push(resolve); })) : upstream(url, init);
+const pending = nextCockpitAskForReading(session);
+await __settle();
+renderNext();
+const during = control();
+const duplicate = nextCockpitAskForReading(session);
+const other = nextCockpitReadingControl(__dashboard.sessions[1], annotation, {enabled:true});
+for(const release of releases) release({ok:true, json:async()=>({ok:true, produced:true, reason:""})});
+await Promise.all([pending, duplicate]);
+console.log(JSON.stringify({during, other, after:control(), calls}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("Reading in progress", out["during"])
+        self.assertIn("0 model requests recorded", out["during"])
+        self.assertRegex(out["during"], r'reading-ask"[^>]*disabled')
+        self.assertNotIn("Reading in progress", out["other"])
+        self.assertEqual(1, out["calls"])
+        self.assertIn("Reading received", out["after"])
+        self.assertNotRegex(out["after"], r'reading-ask"[^>]*disabled')
+
+    def test_a_reading_press_reports_refusal_and_failure_without_retrying(self) -> None:
+        out = self.run_fixture(r"""
+__dashboard.reading_check = "accepted";
+const session = __dashboard.sessions[0];
+const annotation = {goal:"ship it", reading_count:0, reading_withheld:"No end was observed."};
+const upstream = __fetchImpl;
+const outcomes = [];
+let calls = 0;
+for(const reply of [
+  {ok:true, json:async()=>({ok:true, produced:false, reason:"turn-stop"})},
+  {ok:false, status:409}, {ok:false, status:503},
+  {ok:true, json:async()=>({ok:false})}, null
+]){
+  __fetchImpl = async (url, init) => {
+    if(String(url) !== "/api/reading") return upstream(url, init);
+    calls++;
+    if(reply === null) throw new Error("network down");
+    return reply;
+  };
+  await nextCockpitAskForReading(session);
+  renderNext();
+  outcomes.push(nextCockpitReadingControl(session, annotation, {enabled:true}));
+}
+console.log(JSON.stringify({outcomes,calls}));
+""")
+        assert isinstance(out, dict)
+        self.assertEqual(5, out["calls"])
+        self.assertIn("No new reading was produced", out["outcomes"][0])
+        self.assertIn("already in progress", out["outcomes"][1])
+        for html in out["outcomes"][2:]:
+            self.assertIn("Could not confirm the reading", html)
+            self.assertIn("not been retried", html)
+        for html in out["outcomes"]:
+            self.assertNotIn("No reading has been asked for", html)
+            self.assertIn('role="status"', html)
+
     def test_a_retained_reading_never_offers_a_new_one_while_the_model_is_unavailable(self) -> None:
         out = self.run_fixture(
             """
@@ -6646,7 +6712,7 @@ console.log(JSON.stringify({
   results: (html.match(/class="next-cockpit-reading-result"/g) || []).length,
   // The control stays on the page, so the reader can ask again.
   control: html.includes('data-next-cockpit-action="reading-ask"'),
-  count: html.includes("1 reading asked for"),
+  count: html.includes("1 model request recorded"),
   // And the departures block says no reading was made, rather than that a
   // reading raised nothing.
   noReading: html.includes("No reading has been made"),
@@ -6966,7 +7032,7 @@ const html = nextCockpitReading(session, annotation, [], model, null, false,
 console.log(JSON.stringify({
   html,
   names: html.includes("could not read it, so nothing from it is shown"),
-  count: html.includes("1 reading asked for"),
+  count: html.includes("1 model request recorded"),
 }));
 """
         )

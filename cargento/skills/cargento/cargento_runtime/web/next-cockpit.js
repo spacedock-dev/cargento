@@ -2,6 +2,7 @@ const NEXT_COCKPIT_MEMO_PREFIX = "cargento.cockpit.memo.v2:";
 const NEXT_COCKPIT_MEMO_LIMIT = 500;
 const nextCockpitContexts = new Map();
 const nextCockpitRequests = new Map();
+const nextCockpitReadingRequests = new Map();
 const nextCockpitMemoDrafts = new Map();
 const nextCockpitMemoStates = new Map();
 const nextCockpitBriefingCopyStates = new Map();
@@ -1956,11 +1957,11 @@ function nextCockpitReadingControl(session, annotation, model){
   const reason = nextCockpitReadingStates(annotation, model) || (authorized ? "" :
     "The abstention check this ruling requires has not been run, so a reading cannot be " +
     "asked for yet. The evidence above stays readable without one.");
-  const enabled = authorized && !reason;
+  const request = nextCockpitReadingRequests.get(sessKey(session));
+  const pending = request && request.pending;
+  const enabled = authorized && !reason && !pending;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
-  const spent = count === 0
-    ? "No reading has been asked for on this session."
-    : `${count} reading${count === 1 ? "" : "s"} asked for on this session.`;
+  const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
   /* Before the button, not after the press. The reading spends the reader's
      own Codex capacity and sends their goal and a slice of the observed
      record off this machine; the offer paragraph above scopes WHAT is sent
@@ -1971,7 +1972,8 @@ function nextCockpitReadingControl(session, annotation, model){
   return disclosure +
     '<button type="button" data-next-cockpit-action="reading-ask" ' +
     `data-next-focus="reading:${esc(sessKey(session))}"${enabled ? "" : " disabled"}>` +
-    'Ask for a reading</button>' +
+    `${pending ? "Reading in progress…" : "Ask for a reading"}</button>` +
+    (request ? `<p class="next-cockpit-reading-why" role="status">${esc(request.message)}</p>` : "") +
     `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
     (reason ? `<p class="next-cockpit-reading-why">${esc(reason)}</p>` : "");
 }
@@ -2388,6 +2390,13 @@ function nextCockpitHeldTo(group, observation){
    What stands in for consent is the press itself, under a disclosure the
    control renders above the button. */
 async function nextCockpitAskForReading(session){
+  const key = sessKey(session);
+  if(nextCockpitReadingRequests.get(key)?.pending) return;
+  /* Session-scoped state survives polling and navigation while the model
+     runs. Another press must not spend capacity on a duplicate request. */
+  const request = {pending: true, message: "Reading in progress. This may take a minute."};
+  nextCockpitReadingRequests.set(key, request);
+  renderNext();
   try{
     const response = await fetch("/api/reading", {
       method: "POST",
@@ -2395,14 +2404,24 @@ async function nextCockpitAskForReading(session){
       body: JSON.stringify({harness: session.harness, sid: session.sid,
         press: true, observer_model: 1}),
     });
+    if(response && response.status === 409){
+      request.message = "A reading is already in progress for this session. " +
+        "Wait for it to finish; this press did not start another.";
+      return;
+    }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
     const answer = await response.json();
-    if(!answer || answer.ok !== true) throw new Error("reading not confirmed");
+    if(!answer || answer.ok !== true || typeof answer.produced !== "boolean"){
+      throw new Error("reading not confirmed");
+    }
+    request.message = answer.produced ? "Reading received." : "No new reading was produced.";
     await refreshNext();
   }catch(_error){
-    /* No retry, deliberately: a fresh press is the only one. A reading costs
-       the reader's own capacity, and a client that retried on their behalf
-       would spend it again without being asked. */
+    /* A lost response does not establish that the model never ran. */
+    request.message = "Could not confirm the reading. The request has not been retried. " +
+      "Refresh to check for a result before asking again.";
+  }finally{
+    request.pending = false;
     renderNext();
   }
 }

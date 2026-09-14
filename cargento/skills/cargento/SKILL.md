@@ -305,7 +305,11 @@ Reading is asked for, never running. Nothing evaluates on a cadence, so there is
 indicator. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control. The accepted case review enables that control; the evidence above stays readable
-whether or not you ask for a reading.
+whether or not you ask for a reading. A press shows progress while the request runs and prevents
+another press in this tab until it finishes. The response says whether a reading arrived or none
+was produced; a failed request says its result could not be confirmed and is never retried
+automatically. The counter reports recorded model requests, so a refusal before the model runs
+does not increase it.
 
 ## Notifications
 
