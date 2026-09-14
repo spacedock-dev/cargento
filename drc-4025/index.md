@@ -40,6 +40,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+review-round:
+    id: round:drc-4025:review:1
+    stage: review
+    cycle: 1
+    briefing:
+        id: briefing:drc-4025:review:round-1
+        digest: sha256:78076a8da2fcd1eb0b8f2e6ab181376ace18da8e318b4c65cbf214aaf47d5f19
+        room-ref: ./review/review/round-1
 ---
 
 [DRC-4025](https://linear.app/recce/issue/DRC-4025) — Linear priority High, estimate M.
@@ -234,6 +242,8 @@ Begin with meaningful failing tests at each boundary: recorded input to socket e
 Full adversarial security/data-handling review: several lenses, a completeness critic and an arbiter that reproduces findings, as required by AGENTS.md. The independent oracle-inventory reader provided discovery only; no completed implementation review is claimed.
 
 ### Feedback Cycles
+
+- Cycle 1: FIXED — retained reviewer/review-1; surface 37/1558 (runtime 13/514, support 17/858, docs 7/186) vs estimate runtime 11–14/450–850, support 12–15/500–950, docs 4–6/100–200; maximum category overrun (+16.7%); AC unchanged
 
 ## Out of scope
 
