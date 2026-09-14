@@ -11,6 +11,15 @@ The repository keeps one shared skill implementation for all clients. Platform-n
 | Hooks | `hooks/codex-hooks.json` | `hooks/hooks.json` | `hooks.json` | `../cargento-gemini/hooks/hooks.json` | Bundled per harness, each in the path that harness reads, each in that harness's own event vocabulary. The vocabularies do not overlap enough to share a file: a foreign event name is skipped with a warning on every session. `scripts/validate_plugins.py` fails the build on a foreign name or a foreign harness argument |
 | Recurring runs | Invoke the skill one pass at a time | Invoke the skill one pass at a time; a scheduler plugin can repeat it | Invoke the skill one pass at a time | Invoke the skill one pass at a time | The skill remains useful as a one-shot workflow |
 
+Command-shape reports cover Claude Code and Codex `PostToolUse`, tool `Bash`, with installed
+hooks. Their input field was measured on macOS; the same bounded Python matcher and subprocess
+containment tests run on all supported CI platforms. Platform-specific shell forms are not admitted.
+Claude's nonzero call emitted `PostToolUseFailure`; Codex's still emitted `PostToolUse`.
+A report therefore does not establish success. Other harnesses say reporting is unsupported.
+`--no-irreversible` and `--no-events` disable the feature, including daemon respawn.
+[SECURITY.md](SECURITY.md#irreversible-actions-hook-side-destructive-shape-matching) owns the exact
+forms, exclusions, current-run retention and qualified timing contract.
+
 ## Platform-specific behavior
 
 This file owns the Python floor. The dashboard server is stdlib-only Python 3.11+, with

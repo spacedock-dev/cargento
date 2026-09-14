@@ -79,6 +79,12 @@ session is running on, desktop notifications on a state change, and a goal and a
 you can type against one session and read back beside the goal its harness published, each on its
 own row with its own source, alongside every observed entry naming that session.
 
+Claude Code and Codex after-tool hooks add fixed command-shape reports to session detail and
+Attention. They show what a hook matched while you were away; they do not establish success.
+Reports are incomplete, may repeat, and last only for the current dashboard run. Missing hooks
+and unmatched commands can look the same. The exact forms and limits belong to the security
+section linked below.
+
 Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
 contained only at the few places
 [SECURITY.md](../SECURITY.md#irreversible-actions-hook-side-destructive-shape-matching) names, each
