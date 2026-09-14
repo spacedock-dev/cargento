@@ -128,9 +128,9 @@ function nextViewBody(){
     return nextSessionsView();
   }
   if(nextRoute.view === "intent"){
-    // Fetched on arrival rather than polled: the words leave the server when
-    // someone opens the log, and the log is not on the refresh loop.
-    if(nextIntentState === "unread") nextIntentLoad();
+    // Only arrival, a changed source, or a failed load due for retry fetches
+    // the words. Unrelated dashboard revisions reuse the current log.
+    if(nextIntentState === "unread" || nextIntentState === "error") nextIntentLoad();
     return nextIntentView();
   }
   return `<section data-next-view-body="${esc(nextRoute.view)}">${nextDetailBody(nextRoute, nextOpenDisclosures)}</section>`;
@@ -176,6 +176,7 @@ async function refreshNext(manual = false){
     nextObserveWorkstream(fresh);
     focus = nextCaptureFocus();
     const previousAttention = nextData == null ? null : nextAttention;
+    nextIntentSync(fresh);
     nextData = fresh;
     nextAttention = freshAttention;
     announcement = nextAttentionAnnouncement(previousAttention, freshAttention);

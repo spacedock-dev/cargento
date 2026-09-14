@@ -21,21 +21,62 @@
    surface exists for. */
 let nextIntentRows = null;
 let nextIntentState = "unread";
+let nextIntentEnabled = false;
+let nextIntentObservedRevision = null;
+let nextIntentRevision = null;
+let nextIntentGeneration = 0;
+let nextIntentLoading = false;
+let nextIntentRetryAt = 0;
+
+function nextIntentInvalidate(){
+  nextIntentGeneration++;
+  nextIntentRows = null;
+  nextIntentRevision = null;
+  nextIntentState = "unread";
+  nextIntentRetryAt = 0;
+}
+
+function nextIntentSync(data){
+  const enabled = Boolean(data && data.annotate === true);
+  const revision = enabled && typeof data.intent_revision === "string"
+    ? data.intent_revision : null;
+  if(enabled === nextIntentEnabled && revision === nextIntentObservedRevision) return;
+  nextIntentEnabled = enabled;
+  nextIntentObservedRevision = revision;
+  // The route can have read a newer store than the dashboard snapshot. When
+  // the dashboard catches up, those already-current rows need no second fetch.
+  if(enabled && revision && revision === nextIntentRevision && nextIntentState === "read") return;
+  nextIntentInvalidate();
+}
 
 async function nextIntentLoad(){
-  if(nextIntentState === "loading") return;
+  if(!nextIntentEnabled || nextIntentLoading || Date.now() < nextIntentRetryAt) return;
+  const generation = nextIntentGeneration;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NEXT_FALLBACK_POLL_MS);
+  nextIntentLoading = true;
   nextIntentState = "loading";
   try{
-    const response = await fetch("/api/annotations");
+    const response = await fetch("/api/annotations", {signal: controller.signal});
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = await response.json();
+    if(generation !== nextIntentGeneration) return;
     nextIntentRows = Array.isArray(body && body.annotations) ? body.annotations : [];
+    nextIntentRevision = typeof body.intent_revision === "string" ? body.intent_revision : null;
     nextIntentState = "read";
   }catch(_error){
-    nextIntentRows = null;
-    nextIntentState = "error";
+    if(generation === nextIntentGeneration){
+      nextIntentRows = null;
+      nextIntentState = "error";
+      nextIntentRetryAt = Date.now() + NEXT_FALLBACK_POLL_MS;
+    }
+  }finally{
+    clearTimeout(timeout);
+    // Invalidations coalesce while the old request settles. Its completion
+    // cannot restore words, but must release the slot for the current load.
+    nextIntentLoading = false;
+    renderNext();
   }
-  renderNext();
 }
 
 /* Which rows are still on the board, and under which project.

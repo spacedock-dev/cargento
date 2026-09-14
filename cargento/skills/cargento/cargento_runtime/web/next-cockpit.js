@@ -2484,6 +2484,9 @@ async function nextCockpitDiscardAnnotation(session){
     const kind = answered === "discard-stored" && answer.withdrew === false
       ? "discard-unwithdrawn" : answered;
     if(kind === "discard-stored" || kind === "discard-unwithdrawn"){
+      // The independent log may already hold these words, even if the next
+      // dashboard fetch fails. Other tabs learn through its source revision.
+      nextIntentInvalidate();
       /* The drafts go with the annotation. They are an independent lane, so a
          half-typed box would otherwise sit over an empty store and the next
          save would mint revision 1 of what the reader just discarded. */
@@ -2492,6 +2495,7 @@ async function nextCockpitDiscardAnnotation(session){
       }
     }
     nextCockpitHeldMark(key, kind);
+    renderNext();
     await refreshNext();
   }catch(_error){
     // Nothing was deleted that this page can see, which is what the refusal

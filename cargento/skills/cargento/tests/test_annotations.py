@@ -2264,5 +2264,141 @@ class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
         self.assertEqual("not-asked", current["assessment"]["criteria"]["output"]["why"])
 
 
+class IntentRevisionTest(unittest.TestCase):
+    """The log changes independently of the sessions still on the board."""
+
+    NOW = 1_800_000_000.0
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.config, self.state = make_runtime(
+            state_home=temporary.name, state_dir=Path(temporary.name), started=self.NOW
+        )
+        self.now = self.NOW
+        self.application = aggregate.Application(
+            self.config,
+            self.state,
+            (),
+            native_notifier=lambda _platform: "",
+            popup_notifier=lambda _title, _body: None,
+            diagnostic_sink=lambda _message: None,
+            clock=lambda: self.now,
+        )
+
+    def _revision(self) -> str:
+        payload = self.application.collect(show_all=False)
+        self.assertIn("intent_revision", payload)
+        revision = payload["intent_revision"]
+        self.assertIsInstance(revision, str)
+        self.assertRegex(revision, r"^[a-f0-9]{64}$")
+        self.assertEqual([], payload["sessions"])
+        return str(revision)
+
+    def _annotate(self, goal: str = "Private goal") -> str:
+        return annotation_store.annotate(
+            self.config, self.state, "pi", "off-board", goal=goal, now=self.now
+        )
+
+    def _check(self) -> None:
+        self.assertTrue(
+            departures.record(
+                self.config,
+                [
+                    {
+                        "harness": "pi",
+                        "sid": "off-board",
+                        "at": self.NOW,
+                        "constraint": "goal",
+                        "clause": "Private goal",
+                        "reading": "A departure",
+                        "evidence": "transcript",
+                        "revision": 1,
+                        "cutoff": self.NOW,
+                        "cutoff_text": "One entry",
+                        "withdrawn": False,
+                    }
+                ],
+            )
+        )
+
+    def test_time_and_unchanged_saves_do_not_change_the_token(self) -> None:
+        self._annotate()
+        first = self._revision()
+        self.now += 10
+        self.assertEqual(first, self._revision())
+        self.assertEqual(annotation_store.OUTCOME_UNCHANGED, self._annotate())
+        self.assertEqual(first, self._revision())
+        self.assertNotIn("Private goal", first)
+
+    def test_off_board_discard_changes_the_token(self) -> None:
+        absent = self._revision()
+        self._annotate()
+        annotated = self._revision()
+        self.assertNotEqual(absent, annotated)
+        annotation_store.clear(self.config, self.state, "pi", "off-board", now=self.now)
+        discarded = self._revision()
+        self.assertNotEqual(annotated, discarded)
+        self.assertNotEqual(absent, discarded)
+
+    def test_another_process_write_is_seen_at_the_next_collection(self) -> None:
+        before = self._revision()
+        other = build_runtime_state(self.config, started=self.NOW + 1)
+        annotation_store.annotate(
+            self.config, other, "pi", "off-board", goal="Written elsewhere", now=self.now
+        )
+        self.assertNotEqual(before, self._revision())
+
+    def test_departures_and_their_withdrawal_change_the_token(self) -> None:
+        self._annotate()
+        before = self._revision()
+        self._check()
+        raised = self._revision()
+        self.assertNotEqual(before, raised)
+        self.assertTrue(departures.withdraw(self.config, "pi", "off-board"))
+        self.assertNotEqual(raised, self._revision())
+
+    def test_daily_cap_expiry_changes_the_token_only_at_the_boundary(self) -> None:
+        self.application.config = dataclasses.replace(self.config, unasked_daily_cap=1)
+        self._annotate()
+        self._check()
+        exhausted = self._revision()
+        self.now += departures.DAY_SEC
+        self.assertEqual(exhausted, self._revision())
+        self.now += 1
+        expired = self._revision()
+        self.assertNotEqual(exhausted, expired)
+        self.now += 1
+        self.assertEqual(expired, self._revision())
+
+    def test_restart_and_cap_changes_are_distinguishable(self) -> None:
+        before = self._revision()
+        self.application.state = build_runtime_state(self.config, started=self.NOW + 1)
+        restarted = self._revision()
+        self.assertNotEqual(before, restarted)
+        self.application.config = dataclasses.replace(self.config, unasked_session_cap=99)
+        self.assertNotEqual(restarted, self._revision())
+
+    def test_failed_write_does_not_claim_changed_persisted_content(self) -> None:
+        self._annotate()
+        before = self._revision()
+        with mock.patch.object(annotation_store, "save", return_value=False):
+            self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, self._annotate("Not saved"))
+        self.assertEqual(before, self._revision())
+
+    def test_disabled_annotations_publish_no_token(self) -> None:
+        self.application.config = dataclasses.replace(self.config, annotations_enabled=False)
+        self.assertNotIn("intent_revision", self.application.collect(show_all=False))
+
+    def test_collection_does_not_read_either_store_again_for_the_token(self) -> None:
+        with (
+            mock.patch.object(annotation_store, "load", wraps=annotation_store.load) as annotations,
+            mock.patch.object(departures, "load", wraps=departures.load) as checks,
+        ):
+            self._revision()
+        annotations.assert_called_once()
+        checks.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
