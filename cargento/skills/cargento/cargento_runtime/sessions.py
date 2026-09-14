@@ -533,6 +533,13 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_revision_count": 0,
         "annotation_at": None,
         "annotation_binding_why": "",
+        # The third answer a discard made possible (DRC-4565). None on every
+        # row nothing was discarded on, which is what the two states above
+        # cannot say between them: `annotation_revision_count` is 0 both for a
+        # session nobody typed against and for one whose words a reader
+        # deleted, and the sentences beside it read alike.
+        "annotation_discarded_at": None,
+        "annotation_discarded_why": "",
         # The reader's answer to "does a later direction change what you asked
         # for", as three scalars: when they answered, what they answered
         # through, and the revision it rested on. None is nobody having

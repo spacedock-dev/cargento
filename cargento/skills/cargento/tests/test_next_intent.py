@@ -93,7 +93,11 @@ console.log(JSON.stringify({
             + "let __annotations = [];\n"
             + self.FIXTURE.replace(
                 "annotate: true",
-                f"annotate: {str(annotate).lower()}, unasked: {str(unasked).lower()}",
+                f"annotate: {str(annotate).lower()}, unasked: {str(unasked).lower()}, "
+                # The server publishes this table whenever the store is live,
+                # and the record's standing-raise sentence is read out of it
+                # rather than composed here (DRC-4565).
+                f"annotate_discard: {json.dumps(annotation_store.DISCARD_SENTENCES)}",
             ),
         )
         assert isinstance(out, dict)
@@ -124,9 +128,37 @@ console.log(JSON.stringify({
             # holds only sessions still on the board and these rows outlive one.
             "departures": [],
             "departure_why": "",
+            # The third state (DRC-4565). Published on every row at its absent
+            # value, because a row that omitted the key would render the
+            # discard branch as `undefined` rather than as not-discarded.
+            "discarded_at": None,
+            "discarded_why": "",
         }
         row.update(over)
         return row
+
+    @classmethod
+    def _record(cls, sid: str = "gone-9", *, at: float = 160.0, **over: Any) -> dict[str, Any]:
+        """A row as `annotations.published` renders a discard record.
+
+        Built from the same helper as a live row so the two differ only in the
+        fields the store actually changes: this is the pair the whole issue is
+        about, and a hand-written second fixture could make them differ by
+        accident and prove nothing.
+        """
+        return cls._row(
+            sid=sid,
+            goal="",
+            goal_why=annotation_store.DISCARDED_GOAL,
+            output="",
+            output_why=annotation_store.DISCARDED_OUTPUT,
+            revision=None,
+            revision_count=0,
+            at=None,
+            discarded_at=at,
+            discarded_why=annotation_store.DISCARD_RECORD,
+            **over,
+        )
 
     def test_the_view_is_reachable_and_names_itself(self) -> None:
         out = self.render([self._row()])
@@ -190,6 +222,125 @@ console.log(JSON.stringify({
         # narrower and true: leaving this list is an eviction, not an expiry.
         self.assertIn("eviction and not an expiry", visible)
         self.assertNotIn("is not what holds these words", visible)
+
+    # --- DRC-4565: the third state on the surface that outlives a session ---
+
+    def test_a_discarded_session_keeps_a_row_and_that_row_says_when(self) -> None:
+        """AC1. Measured before this: the discard REMOVED the session from the
+        log, so the one surface built to outlive a session was the surface a
+        discard erased it from.
+        """
+        out = self.render([self._record(at=140.0)])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertEqual(1, out["rows"])
+        self.assertIn("codex:gone-9", visible)
+        self.assertIn(annotation_store.DISCARD_RECORD, visible)
+        # And when, derived from the moment on the row against the payload's
+        # own `generated`, in the register the revision line already uses.
+        self.assertIn("discarded 1m ago", visible)
+
+    def test_a_discarded_session_and_one_nobody_typed_against_never_read_alike(self) -> None:
+        """AC2. A session nobody typed against has no row here at all, so the
+        pair is a row against no row -- and the row must not be worded as one
+        that could describe an absence.
+        """
+        out = self.render([self._record()])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertNotIn("No goal typed for this session.", visible)
+        self.assertNotIn("No expected output typed.", visible)
+        self.assertNotIn("No revision saved yet", visible)
+        self.assertNotIn("No reading asked for", visible)
+
+    def test_the_leading_count_does_not_claim_words_were_typed_against_a_record(self) -> None:
+        """AC3. The first Measured Invariant's shape: a figure derived from the
+        row count would read a structurally-present row as a measurement.
+
+        Measured before the record existed and still wrong the other way: the
+        count fell from 2 to 1 the moment a discard landed, so the log
+        asserted a smaller history than the reader had lived.
+        """
+        out = self.render([self._row(), self._record()])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("1 session you have typed words against", visible)
+        self.assertIn("1 whose words you discarded", visible)
+        self.assertNotIn("2 sessions you have typed words against", visible)
+
+    def test_the_count_is_unchanged_where_nothing_was_discarded(self) -> None:
+        """The boring outcome, so the clause is not added to every board."""
+        out = self.render([self._row(), self._row(sid="two")])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("2 sessions you have typed words against", visible)
+        self.assertNotIn("discarded", visible)
+
+    def test_the_reading_denominator_does_not_count_a_record(self) -> None:
+        """A record can never carry a reading, so counting it as one of the
+        rows a reading could have been made against understates the figure."""
+        out = self.render(
+            [
+                self._row(assessment=_assessment(revision_read=1), reading_count=1),
+                self._record(),
+            ]
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("1 of these 1 carries a reading", visible)
+        self.assertNotIn("1 of these 2 carries a reading", visible)
+
+    def test_nothing_of_the_discarded_words_reaches_the_rendered_surface(self) -> None:
+        """AC4. The record carries no text, so this is a property of the store
+        as much as of the render -- asserted here because the criterion is
+        about what a reader can see."""
+        out = self.render([self._record()])
+
+        html = out["html"]
+        assert isinstance(html, str)
+        self.assertNotIn("Ship the cockpit", html)
+
+    def test_a_record_does_not_carry_the_not_checked_sentence(self) -> None:
+        """The account of a discard and the account of a check are two
+        subjects, and the second reads as a claim about the past beside the
+        first: "Cargento has not checked this session against what you asked
+        for" is true only because the words are gone, and the record above it
+        has already said that. A raise still on record IS a fact about the
+        record, so the count stays.
+        """
+        why = "Cargento has not checked this session against what you asked for."
+        out = self.render([self._record(departure_why=why)], unasked=True)
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertNotIn(why, visible)
+        self.assertIn(annotation_store.DISCARD_RECORD, visible)
+
+    def test_a_record_whose_raises_still_stand_says_so_and_counts_them(self) -> None:
+        out = self.render(
+            [self._record(departures=[{"constraint": "TYPED GOAL", "clause": "c"}])],
+            unasked=True,
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("One departure raised", visible)
+        self.assertIn(annotation_store.DISCARD_RECORD_STANDING, visible)
+
+    def test_a_record_sorts_below_every_entry_that_still_holds_words(self) -> None:
+        """The closing note says the bottom row is the next to go, and the
+        store evicts records before words. Age alone puts a fresh record above
+        an old entry and makes that sentence false."""
+        out = self.render([self._record(at=190.0), self._row(sid="typed-1", at=100.0)])
+
+        html = out["html"]
+        assert isinstance(html, str)
+        self.assertLess(html.index("codex:typed-1"), html.index("codex:gone-9"))
 
     def test_the_reading_column_states_its_absence_once_for_the_block(self) -> None:
         out = self.render([self._row(), self._row(sid="gone-9")])
@@ -443,11 +594,16 @@ class TheIntentLogReadsTheStoreAndNotHistoryTest(unittest.TestCase):
 
             annotation_store.clear(config, state, "pi", "s1")
 
-            # Gone from the store, so gone from the log. That is the property
-            # a history-backed log would not have.
-            self.assertIsNone(
-                annotation_store.find(annotation_store.active(config, state), "pi", "s1")
-            )
+            # The WORDS are gone from the store, so gone from the log. That is
+            # the property a history-backed log would not have, and it is
+            # unchanged by the discard record left in their place (DRC-4565):
+            # the record holds no revisions and no text, so nothing the reader
+            # took back can be read back off it.
+            entry = annotation_store.find(annotation_store.active(config, state), "pi", "s1")
+            assert entry is not None
+            self.assertEqual((), entry["revisions"])
+            self.assertNotIn("withdraw me", json.dumps(entry))
+            self.assertEqual("", annotation_store.published(entry)["goal"])
 
 
 if __name__ == "__main__":

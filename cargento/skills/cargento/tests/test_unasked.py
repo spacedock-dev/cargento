@@ -12,7 +12,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import departures, reading, unasked
@@ -350,6 +350,50 @@ class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):
             self.harness.lane.consider(self.harness.state, moved, annotations, now=5_000.0)
 
         self.assertEqual(1, reads)
+
+
+class ADiscardRecordIsNotSomethingToCheckTest(unittest.TestCase):
+    """DRC-4565. The free composition, proved rather than reasoned.
+
+    decisions.md says `has_typed_words` already routes this lane correctly for
+    an entry with no revisions, so a discard record needs no gate of its own.
+    The lane's own `not entry.get("revisions")` continue is what does it, and
+    a test is what stops a later reader "tidying" that into an
+    entry-existence check -- which is the exact defect DRC-4560 shipped one
+    layer over.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    RECORD: ClassVar[Any] = {
+        "harness": "claude",
+        "sid": "s-1",
+        "revisions": (),
+        "discarded": 4_000.0,
+    }
+
+    def test_no_reading_is_started_against_a_discard_record(self) -> None:
+        harness = _Harness(_config(self.root), _assessment("departure"))
+
+        # A state change, which is the transition the lane reads on. Without
+        # it nothing runs for any entry and the assertion below is vacuous.
+        harness.lane.consider(harness.state, [_row(state="working")], [self.RECORD], now=5_000.0)
+        harness.lane.consider(harness.state, [_row(state="idle")], [self.RECORD], now=5_000.0)
+
+        self.assertEqual([], harness.readings)
+
+    def test_the_same_transition_with_words_does_start_one(self) -> None:
+        """The positive control. Without it the assertion above is true of any
+        lane that never runs at all."""
+        harness = _Harness(_config(self.root), _assessment("departure"))
+
+        harness.consider([_row(state="working")])
+        harness.consider([_row(state="idle")])
+
+        self.assertEqual(["s-1"], harness.readings)
 
 
 class OnlyDeparturesAreRaisedTest(unittest.TestCase):

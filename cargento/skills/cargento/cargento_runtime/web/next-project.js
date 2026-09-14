@@ -214,6 +214,53 @@ function nextProjectRevisionLine(annotation){
     : `revision ${revision} of ${count}${typed}`;
 }
 
+/* Whether an annotation row is a discard record rather than words, and what a
+   surface says about when (DRC-4565).
+
+   Here beside `nextProjectRevisionLine` and not in either caller, because the
+   Intent log and the Held to tab both need the same two answers and the store
+   already learned this lesson: one wording in one place, or the two surfaces
+   word one state two ways. The sentences themselves are never composed here --
+   they ride the payload as `annotate_discard`, because they claim things about
+   the annotation store and the departure store that this page cannot check.
+
+   Absence, presence and discarded are three states. A caller that tested only
+   `revision_count` would fold the first and third together, which is the false
+   answer the whole issue is about, so this reads the field only the third
+   state carries. */
+function nextAnnotationDiscarded(annotation){
+  return nextNumber(annotation && annotation.discarded_at) != null;
+}
+
+/* The moment, in the register the revision line beside it already uses: mono,
+   derived on the page from the epoch on the row and the payload's own clock,
+   the way "typed 4m ago" is. The sentence is the server's; only the age is
+   this page's, because only this page knows when it is drawing. */
+function nextAnnotationDiscardStamp(annotation){
+  if(!nextAnnotationDiscarded(annotation)) return "";
+  const age = nextDurationSince(nextNumber(annotation.discarded_at));
+  return age == null ? "discarded, and when was not recorded" : `discarded ${age} ago`;
+}
+
+/* The record's account, and the second sentence only where a raise still
+   quotes the words it says are gone (DRC-4565).
+
+   A discard is one act over two stores and the second half fails on its own,
+   so the durable record claims nothing about the departure store and this
+   chooses which published sentence stands beside it. Chosen, never composed:
+   `annotations.DISCARD_SENTENCES` owns both, for `nextCockpitDepartures`'
+   reason. The test is the published departure list, which `departures.published`
+   has already filtered of withdrawn rows -- so a row surviving here is one the
+   withdrawal did not reach. */
+function nextAnnotationDiscardAccount(annotation, departures){
+  if(!nextAnnotationDiscarded(annotation)) return [];
+  const said = (nextData && nextData.annotate_discard) || {};
+  const record = String(annotation.discarded_why || said.record || "");
+  const rows = Array.isArray(departures) ? departures : [];
+  const standing = rows.length ? String(said.record_standing || "") : "";
+  return [record, standing].filter(Boolean);
+}
+
 function nextProjectGoalRow(tag, text, src, known = true){
   return '<div class="next-project-goal-row">' +
     `<span class="next-project-goal-tag">${esc(tag)}</span>` +

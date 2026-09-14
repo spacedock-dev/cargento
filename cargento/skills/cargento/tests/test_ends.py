@@ -29,6 +29,7 @@ from unittest import mock
 from cargento_runtime import aggregate, ends, observation, reading
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime.config import build_runtime_config
+from cargento_runtime.state import build_runtime_state
 
 from . import support
 from .next_harness import NextPageJsHarness
@@ -860,6 +861,27 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
         said = " ".join(str(call) for call in diag.call_args_list)
         self.assertIn(ends.STORE_FILENAME, said)
         self.assertIn("--stop", said)
+
+    def test_forget_removes_a_discard_record_and_not_the_reader_words(self) -> None:
+        """DRC-4565. `--forget` removes the machine's memory of what it
+        observed, and a record that Cargento deleted something is squarely
+        that class. What a reader typed is not, which is why the annotation
+        store is swept rather than deleted -- the module's own docstring says
+        `--forget` does not reach those words and that stays true.
+        """
+        state = build_runtime_state(self.config, started=100.0)
+        annotation_store.annotate(self.config, state, "pi", "keep", goal="still mine", now=100.0)
+        annotation_store.annotate(self.config, state, "pi", "gone", goal="deleted", now=100.0)
+        annotation_store.clear(
+            self.config, state, "pi", "gone", now=200.0, diagnostic_sink=lambda _m: None
+        )
+
+        with no_instance():
+            self.assertEqual(0, run_one_shot_cli(["--forget"], self.env))
+
+        kept = annotation_store.load(self.config)
+        self.assertEqual({"keep"}, {entry["sid"] for entry in kept})
+        self.assertEqual("still mine", kept[0]["revisions"][-1]["goal"])
 
     def test_forget_deletes_the_end_store_too(self) -> None:
         # decisions.md, DRC-4547: `--forget` removes the machine's memory of what

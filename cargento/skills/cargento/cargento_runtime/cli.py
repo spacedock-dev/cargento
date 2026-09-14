@@ -24,6 +24,7 @@ from cargento_runtime import (
     observation,
     unasked,
 )
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import config as runtime_config
 from cargento_runtime import interaction_prototype as runtime_interaction
 from cargento_runtime import io as runtime_io
@@ -595,6 +596,18 @@ def run_one_shot(
             f"Cargento: deleted {ends_path}"
             if ends.forget(config)
             else f"Cargento: no session-end store at {ends_path}",
+            print,
+        )
+        # And the records of what this machine deleted (DRC-4565). A sweep and
+        # not a delete, which is the distinction the whole command rests on:
+        # a record that Cargento discarded something is its memory of an act it
+        # observed, and the words a reader typed are not -- `annotations`'
+        # docstring says `--forget` does not reach those and it still does not.
+        annotations_path = annotation_store.store_path(config)
+        runtime_io.diag(
+            f"Cargento: removed the discard records in {annotations_path}"
+            if annotation_store.forget(config)
+            else f"Cargento: no discard records in {annotations_path}",
             print,
         )
         return 0

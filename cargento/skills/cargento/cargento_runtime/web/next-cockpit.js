@@ -45,7 +45,7 @@ function nextCockpitReadMemo(key){
   }
 }
 
-/* The row's fifteen flat `annotation_*` fields as one object, or null when the
+/* The row's seventeen flat `annotation_*` fields as one object, or null when the
    row carries none. The payload is flat because `history.PROMPT_TEXT_ALLOWLIST`
    admits field names and a name cannot reach inside a mapping; the renderers
    want an object, so the seam is here and they are unchanged.
@@ -55,7 +55,7 @@ function nextCockpitReadMemo(key){
    unannotated row carries its absence sentences. */
 function nextCockpitAnnotation(session){
   if(!session) return null;
-  /* Fifteen published fields, and every one of them is published now:
+  /* Seventeen published fields, and every one of them is published now:
      `base_session` declares all three of the reading's. The comment here
      used to say `assessment` was read but never published, which stopped
      being true when a producer landed -- and `TheAnnotationFieldListIsDerivedTest`
@@ -65,7 +65,7 @@ function nextCockpitAnnotation(session){
   const fields = ["goal", "goal_why", "output", "output_why", "revision",
     "revision_count", "at", "binding_why", "settled_at", "settled_through",
     "settled_revision", "assessment", "reading_count", "reading_withheld",
-    "reading_refused"];
+    "reading_refused", "discarded_at", "discarded_why"];
   const known = fields.some(name => {
     const value = session[`annotation_${name}`];
     return value !== undefined && value !== null && value !== "" && value !== 0;
@@ -1635,6 +1635,15 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
    each criterion says the same three facts three times and pushes the reading
    itself further down a tab that is already the last thing on the page. */
 function nextCockpitReadingStates(annotation, model){
+  /* Before the nothing-typed arm, because a discard record satisfies that one
+     too and the wider answer is the less true of the two (DRC-4565). The
+     sentence is the server's -- `annotations.DISCARD_SENTENCES.unreadable` is
+     the same string `/api/reading` refuses with -- so the block and the route
+     behind its button cannot word one state two ways. */
+  if(nextAnnotationDiscarded(annotation)){
+    const said = (nextData && nextData.annotate_discard) || {};
+    return String(said.unreadable || "");
+  }
   if(!String(annotation && annotation.goal || "").trim() &&
       !String(annotation && annotation.output || "").trim()){
     return "Nothing has been typed for this session, so there is nothing to read it against.";
@@ -2318,7 +2327,20 @@ function nextCockpitHeldTo(group, observation){
     nextCockpitLanded(observed) +
     nextCockpitDeparturesKept();
   const cap = nextCockpitHeldCap();
-  const revision = nextProjectRevisionLine(annotation) || "No revision saved yet";
+  /* The header line, and the discard stamp takes its slot rather than sitting
+     under it (DRC-4565). Both answer "what state are these two boxes in", and
+     "No revision saved yet" is the answer for a session nobody typed against
+     -- printing it above a record of a deletion is the false sentence this
+     issue removes. */
+  const revision = nextAnnotationDiscardStamp(annotation) ||
+    nextProjectRevisionLine(annotation) || "No revision saved yet";
+  /* What became of the words, in the board's own voice, and the second
+     sentence only where a raise still quotes them. Not gated on the offer to
+     discard: `revision_count` is 0 once a discard lands, and gating the
+     account on the control is how the only sentence about a landed discard
+     came to render for the two FAILURE cases alone. */
+  const discarded = nextAnnotationDiscardAccount(annotation, session.departures)
+    .map(said => `<p class="next-cockpit-held-absent">${esc(said)}</p>`).join("");
   const binding = annotation && annotation.binding_why && (annotation.goal || annotation.output)
     ? `<p class="next-cockpit-held-absent">${esc(annotation.binding_why)}</p>` : "";
   /* An ended session may still be annotated, and the store will keep it. What
@@ -2339,7 +2361,7 @@ function nextCockpitHeldTo(group, observation){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    binding + ended + nextCockpitHeldDiscardBlock(session, annotation) +
+    discarded + binding + ended + nextCockpitHeldDiscardBlock(session, annotation) +
     nextCockpitHeldReEntry(session) + '</section>' + evidence;
 }
 

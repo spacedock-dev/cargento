@@ -1403,6 +1403,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # The CLI is the assembly point, so it may import any runtime module.
         "cargento_runtime.cli": {
             "cargento_runtime.aggregate",
+            # `--forget` sweeps the discard records this store keeps
+            # (DRC-4565): a record that Cargento deleted something is the
+            # machine's memory of an act it observed, so the command reaches
+            # it by name the way it reaches history and the ends.
+            "cargento_runtime.annotations",
             "cargento_runtime.config",
             "cargento_runtime.diagnostics",
             "cargento_runtime.ends",
