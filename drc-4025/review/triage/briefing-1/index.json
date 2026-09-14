@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4025:triage:attempt-1:revision-1",
+  "question": "Approve C6 as observed command-shape reporting, with bounded current-run retention and the measured best-effort timing contract?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4025:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/b52c7a26b0c1d6f6a80a0bf0647a1c009828dd98/drc-4025.md",
+      "rev": "sha256:c7e58da4e8bdfc52c361ae9f05abe034f61e7da2b4110a497e6cfdcc3fe82224",
+      "mediaType": "text/markdown",
+      "summary": "Recommend implementation of fixed-label reports for Claude Code and Codex, without copied commands or claims that destructive effects succeeded. Retain at most 20 reports per session and 1000 globally for 24 hours in memory; restart clears them. Accept a nominal 5 ms matcher wait with measured scheduling limits, not a universal deadline, and require the 250 ms forced-stall subprocess checks on supported platforms. Full security review remains required. Triage has 3 done, 0 skipped, 0 failed; live payload and negative timeout evidence are recorded, while implementation proofs remain owed. C6 alone is estimated at 4-7 hours with required rigor retained."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4025:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/4b2120dac7dfe0ca63ebe8c5fc7f28d8d4fc1801/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
