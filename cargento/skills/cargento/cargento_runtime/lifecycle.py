@@ -111,6 +111,7 @@ def write_state(
         "started": started,
         "log": log_path(config, port),
         "python": sys.executable,
+        "irreversible_enabled": bool(capabilities) and config.irreversible_enabled,
     }
     if capabilities:
         payload["capabilities"] = capabilities
@@ -591,6 +592,7 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-focus")
     if args.no_events:
         argv.append("--no-events")
+    argv.extend(["--no-irreversible"] if args.no_irreversible else [])
     if args.no_dismiss:
         argv.append("--no-dismiss")
     if args.no_ask:

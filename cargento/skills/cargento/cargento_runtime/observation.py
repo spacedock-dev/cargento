@@ -122,6 +122,7 @@ from cargento_runtime import events as runtime_events
 from cargento_runtime import focus as runtime_focus
 from cargento_runtime import git_status as runtime_git
 from cargento_runtime import io as runtime_io
+from cargento_runtime import irreversible
 from cargento_runtime import probe as runtime_probe
 
 if TYPE_CHECKING:
@@ -214,6 +215,7 @@ class Observation:
         # by definition, so the ceiling has to be independent of it.
         self._budget: dict[str, tuple[float, float]] = {}
         self._overlays: dict[SessionKey, dict[OverlayKey, runtime_events.Overlay]] = {}
+        self._command_reports = irreversible.Ledger()
         # (harness, sid) -> the stamp of the last stop observed for it. Outside
         # `_overlays` on purpose: `session_ended` pops that ledger whole, and for
         # `claude -p` the stop and the exit arrive back to back, so a mark held
@@ -406,6 +408,11 @@ class Observation:
         does the work. The reporting shim treats every outcome as success, so the
         string is for diagnostics rather than for control flow in the hook.
         """
+        if (
+            payload.get("event") == "command_shape_reported"
+            and not self.config.irreversible_enabled
+        ):
+            return "disabled"
         with self._lock:
             self._arrival_seq += 1
             seq = self._arrival_seq
@@ -429,6 +436,18 @@ class Observation:
         probe_cwd: str | None = None
         with self._lock:
             self._bump(f"event.{event.event}")
+            if event.pattern_id is not None and event.tool_name is not None:
+                self._command_reports.add(
+                    irreversible.Report(
+                        event.harness,
+                        event.sid,
+                        event.pattern_id,
+                        event.tool_name,
+                        event.timestamp,
+                        event.arrival_seq,
+                    ),
+                    now=now,
+                )
             if runtime_events.retires_overlays(event):
                 probe_cwd = self._retire(key, event)
             elif overlay is not None:
@@ -923,6 +942,14 @@ class Observation:
         with self._lock:
             ledger = self._overlays.get((harness, sid))
             return list(ledger.values()) if ledger else []
+
+    def command_reports(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return (
+                self._command_reports.published(now=self.clock())
+                if self.config.irreversible_enabled
+                else []
+            )
 
     def ledger_report(self) -> dict[str, Any]:
         """Every live overlay, flattened, for `/api/overlays`.

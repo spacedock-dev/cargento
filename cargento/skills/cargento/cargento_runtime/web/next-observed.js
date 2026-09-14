@@ -486,7 +486,6 @@ function nextObserved(payload, evidence){
     ...nextObservedPair("capacityEmptyNote", "", "No vendor window has been read for this harness."),
     open: [
       ["C4", "Stated goals across sessions", "Goals shown are whatever a harness publishes. Nothing normalises them yet."],
-      ["C6", "Irreversible actions", "Force pushes and destructive shapes are not reported on this board yet."],
       ["C1", "Subagent tripwires", "Tripwires are held in this browser. No observer enforces them."],
       ["F3", "Attention accounting", "Delegation share is measured per project, not yet aggregated across the week."],
       ["E5", "Ended with unpushed commits", "The board reports uncommitted work, not commits that never reached a remote."],

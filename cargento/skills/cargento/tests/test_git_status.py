@@ -841,13 +841,15 @@ class SingleInvocationTest(unittest.TestCase):
         )
         self.assertEqual(["git_status.py"], offenders)
 
-    def test_only_git_status_quotes_the_program_name(self) -> None:
+    def test_only_the_git_probe_and_lexical_hook_matcher_name_git(self) -> None:
         offenders = sorted(
             path.name
             for path in _shipped_sources()
             if _quotes_git(path.read_text(encoding="utf-8"))
         )
-        self.assertEqual(["git_status.py"], offenders)
+        # The hook compares a literal without executing it; the invocation
+        # oracle immediately above still permits only the probe to spawn git.
+        self.assertEqual(["event_hook.py", "git_status.py"], offenders)
 
     def test_the_shape_oracle_sees_the_evasions_the_grep_cannot(self) -> None:
         # Each of these was introduced into a real shipped file one at a time and
