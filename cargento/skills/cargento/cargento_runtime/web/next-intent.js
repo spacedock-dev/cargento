@@ -94,14 +94,32 @@ function nextIntentClose(ordered){
   const typed = (ordered || []).filter(row => !nextAnnotationDiscarded(row));
   const withReading = typed.filter(row => row && row.assessment).length;
   const total = typed.length;
+  const records = (ordered || []).length - total;
   /* And the watching clause is conditional, which it was not. With
      `--unasked-readings` on, something does watch, and this line said otherwise
      directly beneath rows carrying the departures it had raised. */
   const watching = Boolean(nextData && nextData.unasked === true);
   const tail = watching ? ". " : ", and nothing watches for one. ";
+  /* And the denominator names the set it counted, wherever that set is not
+     the list (DRC-4565). Measured on the review board: four rows on screen
+     and a note reading "1 of these 2", because the count was corrected to
+     drop records and the demonstrative in front of it was not. Before the
+     record existed `total` WAS the rendered row count, so "these" was
+     answered by the list itself; correcting the figure is what took that
+     answer away.
+
+     Two wordings on the same test the lead clause and the eviction rule use,
+     rather than one qualified wording: with no record listed the rows are the
+     set, and naming it would draw a distinction the reader cannot see. The
+     zero case needs neither, and that is a property rather than an oversight
+     -- a record can never carry a reading, so none over the rows that hold
+     words is none over every row on screen. */
+  const counted = records
+    ? `the ${total} that still ${total === 1 ? "holds" : "hold"} words`
+    : `these ${total}`;
   const lead = withReading === 0
     ? `No reading has been made against any of these${tail}`
-    : `${withReading} of these ${total} ${withReading === 1 ? "carries" : "carry"} a reading` +
+    : `${withReading} of ${counted} ${withReading === 1 ? "carries" : "carry"} a reading` +
       tail;
   /* And once for the view, where a raise is on record and nothing is watching
      now. Derived over the rows this view is holding, like the count above:

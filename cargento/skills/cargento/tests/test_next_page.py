@@ -656,8 +656,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "c2c3edbe4b4d1670570b3f10edfa204c8aa2b68747a8f2ea1d1f9f7b74bd6520",
             ),
             "next-intent.js": (
-                16_045,
-                "e65fc2e0f117f91832e000b05ab75500cd2a1f38f77ba5fb29869a0e38d00cd6",
+                17_114,
+                "60610eefe65a81f3fb5b316812dabf101cf880be318f45da9ceaa0f1a6984336",
             ),
             "next-activity.js": (
                 6_632,
@@ -707,9 +707,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(891_621, len(assembled))
+        self.assertEqual(892_690, len(assembled))
         self.assertEqual(
-            "adfd9822e9c9b492e1d049f4f201b063d2bfa6bdb85e30c48b06b4ccfdf943fc",
+            "8468f3660f07ecd401315546a89a223fefc6c85d30c54fb90902b9eb50a81497",
             hashlib.sha256(assembled).hexdigest(),
         )
 

@@ -292,8 +292,53 @@ console.log(JSON.stringify({
 
         visible = out["visible"]
         assert isinstance(visible, str)
-        self.assertIn("1 of these 1 carries a reading", visible)
-        self.assertNotIn("1 of these 2 carries a reading", visible)
+        self.assertIn("1 of the 1 that still holds words carries a reading", visible)
+        self.assertNotIn("of these 2", visible)
+
+    def test_the_reading_count_names_the_rows_it_counted_when_a_record_is_listed(self) -> None:
+        """Found by walking the board. The denominator was fixed to drop
+        records and the word in front of it was not, so a reader looking at
+        four rows read "1 of these 2" and had no way to know which two.
+
+        Measured on the review board: four rows on screen, the note said
+        "1 of these 2 carries a reading". Before the record existed the
+        denominator WAS the rendered row count, so "these" was answered by the
+        list itself; the count this issue corrected is what took that away.
+        """
+        out = self.render(
+            [
+                self._row(assessment=_assessment(revision_read=1), reading_count=1),
+                self._row(sid="gone-9"),
+                self._record(),
+                self._record(sid="gone-8"),
+            ]
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("1 of the 2 that still hold words carries a reading", visible)
+        # And never the bare demonstrative over a list the figure is not
+        # about: four rows are on screen and two of them were counted.
+        self.assertNotIn("of these 2", visible)
+        self.assertNotIn("of these 4", visible)
+
+    def test_the_reading_count_keeps_the_short_wording_where_nothing_was_discarded(self) -> None:
+        """The boring outcome, for the reason the eviction rule has two
+        sentences rather than one qualified one: with no record on the list the
+        rows ARE the set, so naming it would add a distinction the reader
+        cannot see and put the word discarded on a board where nothing was.
+        """
+        out = self.render(
+            [
+                self._row(assessment=_assessment(revision_read=1), reading_count=1),
+                self._row(sid="gone-9"),
+            ]
+        )
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn("1 of these 2 carries a reading", visible)
+        self.assertNotIn("still hold words carries", visible)
 
     def test_nothing_of_the_discarded_words_reaches_the_rendered_surface(self) -> None:
         """AC4. The record carries no text, so this is a property of the store
