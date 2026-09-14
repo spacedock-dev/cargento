@@ -446,10 +446,23 @@ def published(
     """
     harness = str(row.get("harness") or "")
     sid = str(row.get("sid") or "")
-    has_words = annotation_store.has_typed_words(annotation_store.find(entries, harness, sid))
+    entry = annotation_store.find(entries, harness, sid)
+    has_words = annotation_store.has_typed_words(entry)
     return {
         "departures": departures.published(stored, harness, sid),
-        "departure_why": departures.why(config, stored, harness, sid, has_words=has_words, now=now),
+        # Absence, presence and discarded are three answers and not two
+        # (DRC-4565), and `has_words` alone collapses the third into the first:
+        # a record has no words, so the ladder answered "not checked" about a
+        # session it may well have checked before the words went.
+        "departure_why": departures.why(
+            config,
+            stored,
+            harness,
+            sid,
+            has_words=has_words,
+            discarded=annotation_store.is_discarded(entry),
+            now=now,
+        ),
         # Whether the list above is a measurement at all. It is `[]` both for a
         # session nobody read and for one that was read and had nothing to
         # raise, and the review surface counts it: a session the lane had never

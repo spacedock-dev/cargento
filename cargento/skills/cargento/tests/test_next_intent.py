@@ -216,7 +216,7 @@ console.log(JSON.stringify({
         visible = out["visible"]
         assert isinstance(visible, str)
         self.assertIn("keeps the newest 256 and sixteen revisions each", visible)
-        self.assertIn("dropping the oldest save first", visible)
+        self.assertIn("The oldest save goes first", visible)
         # History DOES keep a fourteen-day copy of these two fields, so the
         # surface may not say it is the only place they live. What it says is
         # narrower and true: leaving this list is an eviction, not an expiry.
@@ -341,6 +341,25 @@ console.log(JSON.stringify({
         html = out["html"]
         assert isinstance(html, str)
         self.assertLess(html.index("codex:typed-1"), html.index("codex:gone-9"))
+
+    def test_the_note_states_the_rule_the_order_above_it_follows(self) -> None:
+        """The sort was fixed to match `_eviction_rank` and the sentence under
+        it was not, so the note went on saying the oldest save goes first over
+        a list where a record goes before any words however recent. The
+        conclusion survived and the rule under it was wrong, which is the
+        harder half to notice.
+        """
+        out = self.render([self._record(at=190.0), self._row(sid="typed-1", at=100.0)])
+
+        visible = out["visible"]
+        assert isinstance(visible, str)
+        self.assertIn(
+            "A row whose words you discarded goes before any row that still holds words, and "
+            "the oldest of what is left goes next",
+            visible,
+        )
+        # And not the rule for a list with no record on it, which names age alone.
+        self.assertNotIn("The oldest save goes first", visible)
 
     def test_the_reading_column_states_its_absence_once_for_the_block(self) -> None:
         out = self.render([self._row(), self._row(sid="gone-9")])

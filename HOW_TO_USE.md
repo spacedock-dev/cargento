@@ -340,9 +340,11 @@ python3 "<skill-dir>/server.py" --forget
 ```
 
 It removes the history file whether or not the store was enabled, so turning the feature off and then
-asking for the file to go does what it says. The session-end store goes with it, because both are the
-machine's memory of what it observed, and a session whose end was recorded then reads as quiet again. Nothing over the loopback port can delete history; this is the
-only way. It deletes nothing you typed: the goal and the expected output you wrote against a
+asking for the file to go does what it says. The discard-record sweep follows the same rule for the
+same reason: `--no-annotations` is a switch for one run, not a statement about the file. The
+session-end store goes with it, because both are the machine's memory of what it observed, and a
+session whose end was recorded then reads as quiet again. Nothing over the loopback port can delete
+history; this is the only way. It deletes nothing you typed: the goal and the expected output you wrote against a
 session, and any reading made against them, go when you discard that session's words in its Held to
 tab. The one thing it takes out of that store is the record of a discard, which holds when the act
 happened and no text, and is the machine's memory of something it did rather than anything you
@@ -351,8 +353,10 @@ wrote.
 Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
 it names, because a running server keeps its own copy of the history in memory and writes the
 deleted records back on its next observation, so the delete would report success and be undone a
-few seconds later. It finds the instance with the same probe `--status` and `--stop` use, so
-`--stop` and then `--forget` is the whole procedure.
+few seconds later. The refusal is for the whole command rather than for that one store, so the
+discard records are still there afterwards too, and the message names all three files. It finds the
+instance with the same probe `--status` and `--stop` use, so `--stop` and then `--forget` is the
+whole procedure.
 
 ## Turn a feature off
 

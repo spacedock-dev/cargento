@@ -152,9 +152,21 @@ DISCARD_UNWITHDRAWN = (
 # half fails on its own -- so this sentence speaks only about the annotation
 # store, and the standing sentence below is added beside it by whichever
 # surface can see that a raise still quotes.
+#
+# "kept here" and not "kept", and the qualifier is the whole of what stops this
+# sentence being false. Session history keeps its own copy of `annotation_goal`
+# and `annotation_output` for fourteen days, it is on by default, and nothing in
+# the discard path touches it: measured, the discarded words were still in the
+# store on disk and in every `/api/data` payload's `history` array after the
+# act. The Intent log prints that fourteen-day copy in its own closing note, so
+# an unqualified claim contradicted a sentence rendered in the same view. The
+# other copy is named here rather than left to that note, because this sentence
+# also renders on the Held to tab and the session page, where the note does not.
 DISCARD_RECORD = (
     "Everything you typed against this session was discarded, along with any reading of it. "
-    "None of it is kept: this record says only that the act happened and when."
+    "None of it is kept here: this record says only that the act happened and when. Where "
+    "session history is recording, it holds its own fourteen-day copy of those two fields, "
+    "and --forget deletes that store."
 )
 DISCARD_RECORD_STANDING = (
     "The departure store could not be written when they went, so anything raised against "
@@ -201,6 +213,13 @@ OUTCOME_UNCHANGED = "unchanged"
 OUTCOME_REFUSED = "refused"
 OUTCOME_UNWRITABLE = "unwritable"
 OUTCOMES = (OUTCOME_STORED, OUTCOME_UNCHANGED, OUTCOME_REFUSED, OUTCOME_UNWRITABLE)
+
+# What one `--forget` sweep of this store did (DRC-4565). A closed vocabulary
+# for `OUTCOMES`' reason and not the wire's: these never leave the process, and
+# `cli` picks one of three sentences from them.
+FORGET_SWEPT = "swept"
+FORGET_NOTHING = "nothing"
+FORGET_UNWRITABLE = "unwritable"
 
 # Whether the identity this store bound on is the session's whole identity.
 # `exact` is the ordinary case. `prefix` is the one the issue named as a hazard
@@ -542,6 +561,17 @@ def _bounded(entries: Iterable[Annotation], limit: int) -> tuple[Annotation, ...
 
 
 def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
+    """Every annotation this run may read, or none if there is none to trust.
+
+    The flag gate and nothing else. `_read` is the file, and `forget` needs the
+    file whether or not this run reads annotations (DRC-4565).
+    """
+    if not config.annotations_enabled:
+        return ()
+    return _read(config)
+
+
+def _read(config: RuntimeConfig) -> tuple[Annotation, ...]:
     """Every annotation on disk, or none if there is none to trust.
 
     Read to a cap with RecursionError caught, for `lifecycle.read_state`'s
@@ -549,8 +579,6 @@ def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
     ValueError, and a corrupt store must degrade to "no annotations" rather than
     take down a collection. A malformed record is dropped on its own.
     """
-    if not config.annotations_enabled:
-        return ()
     cap = config.annotation_read_cap_bytes
     try:
         with open(store_path(config), "rb") as handle:
@@ -607,14 +635,27 @@ def save(
 ) -> bool:
     """Write the store, reporting whether it reached disk.
 
+    The flag gate and nothing else. `_write` is the file, for `load`'s reason.
+    """
+    if not config.annotations_enabled:
+        return False
+    return _write(config, entries, diagnostic_sink=diagnostic_sink)
+
+
+def _write(
+    config: RuntimeConfig,
+    entries: Iterable[Annotation],
+    *,
+    diagnostic_sink: Callable[[str], None],
+) -> bool:
+    """Put these entries on disk, reporting whether they reached it.
+
     Temp file plus `os.replace`, and `0o600` in the `os.open` call rather than a
     chmod afterwards, both copied from `lifecycle.write_state`. The mode matters
     more here than on the state file: this one holds prose the reader composed,
     which `SECURITY.md` treats as the same class as the observer sidecar's goal.
     The mode is advisory and Windows ignores it, which SECURITY.md records.
     """
-    if not config.annotations_enabled:
-        return False
     payload = {
         "v": SCHEMA_VERSION,
         "entries": [
@@ -1206,7 +1247,7 @@ def clear(
         )
 
 
-def forget(config: RuntimeConfig) -> bool:
+def forget(config: RuntimeConfig) -> str:
     """Drop every discard record, keeping every entry that still holds words.
 
     A sweep and not a delete, which is the whole of the distinction `--forget`
@@ -1215,11 +1256,25 @@ def forget(config: RuntimeConfig) -> bool:
     the words a reader typed are not. The module docstring's price -- that
     `--forget` does not reach this store -- still holds for those words.
 
-    Answers whether anything went, so the caller can say which of the two
-    sentences is true rather than reporting a deletion that deleted nothing.
+    Reads and writes the file itself rather than going through `load` and
+    `save`, so `annotations_enabled` cannot change the answer. `history.forget`
+    is deliberately independent of its own flag for the reason its docstring
+    gives -- someone turning the feature off and then asking for the file to go
+    must not be told there was nothing to delete -- and a store still holding
+    records is exactly that state: measured under `--no-annotations`, the sweep
+    reported nothing to remove over a file that still held one.
+
+    Three answers and not two, because the caller prints a sentence per answer.
+    A bool folded "there was nothing to remove" together with "the store could
+    not be written", in the one command whose whole product is telling the
+    reader what went. `_write`'s own failure line is silenced here because it
+    says what a reader typed will be gone, which is the opposite of what this
+    failure means: nothing was written, so every record and every word stands.
     """
-    entries = load(config)
+    entries = _read(config)
     kept = tuple(entry for entry in entries if not is_discarded(entry))
     if len(kept) == len(entries):
-        return False
-    return save(config, kept, diagnostic_sink=lambda _line: None)
+        return FORGET_NOTHING
+    if _write(config, kept, diagnostic_sink=lambda _line: None):
+        return FORGET_SWEPT
+    return FORGET_UNWRITABLE

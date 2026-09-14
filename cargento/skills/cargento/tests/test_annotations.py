@@ -8,6 +8,7 @@ this store to. The two it cannot are named in the module docstring of
 from __future__ import annotations
 
 import ast
+import dataclasses
 import json
 import os
 import pathlib
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, project_context, unasked
+from cargento_runtime import aggregate, cli, departures, project_context, unasked
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import reading as runtime_reading
@@ -1023,11 +1024,12 @@ class ADiscardLeavesARecordThatSaysWhenTest(unittest.TestCase):
 
         self.assertEqual([], published["departures"])
         self.assertIs(False, published["departure_checked"])
-        self.assertTrue(published["departure_why"])
-        # And the same call over a session that never had an entry answers
-        # identically, which is correct HERE: neither was checked, and the
-        # sentence saying so is about the check and not about the words. What
-        # must differ is the annotation half, asserted above.
+        # And no sentence at all, which is the half `has_words` could not carry.
+        # It routes the LANE correctly and the ladder still answered "not
+        # checked", a claim about the past printed under a record that has
+        # already said what happened. `discarded` is what stands it down, and
+        # the never-typed session below earns it on the same call.
+        self.assertEqual("", published["departure_why"])
         never = unasked.published(
             self.config,
             (),
@@ -1035,7 +1037,7 @@ class ADiscardLeavesARecordThatSaysWhenTest(unittest.TestCase):
             entries=entries,
             now=self.NOW + 120,
         )
-        self.assertEqual(published["departure_why"], never["departure_why"])
+        self.assertEqual(departures.NEVER_CHECKED, never["departure_why"])
 
     # --- the third state on the published row ------------------------------
 
@@ -1208,16 +1210,48 @@ class ADiscardLeavesARecordThatSaysWhenTest(unittest.TestCase):
         annotation_store.annotate(self.config, self.state, "pi", "live", goal="keep me")
         self._discard("gone")
 
-        self.assertTrue(annotation_store.forget(self.config))
+        self.assertEqual(annotation_store.FORGET_SWEPT, annotation_store.forget(self.config))
 
         sids = {entry["sid"] for entry in annotation_store.load(self.config)}
         self.assertEqual({"live"}, sids)
 
-    def test_forget_answers_false_when_there_is_no_record_to_remove(self) -> None:
+    def test_forget_says_nothing_went_only_when_there_was_nothing_to_remove(self) -> None:
         annotation_store.annotate(self.config, self.state, "pi", "live", goal="keep me")
 
-        self.assertFalse(annotation_store.forget(self.config))
+        self.assertEqual(annotation_store.FORGET_NOTHING, annotation_store.forget(self.config))
         self.assertEqual(1, len(annotation_store.load(self.config)))
+
+    def test_forget_sweeps_a_store_this_run_is_not_reading(self) -> None:
+        """`--no-annotations` is a switch for a run and not a statement about
+        the file. `history.forget` is deliberately independent of its own flag
+        for the reason its docstring gives, and this sibling copied the shape
+        and dropped the guarantee: measured, the sweep answered "nothing to
+        remove" over a store that still held a record.
+        """
+        self._discard("gone")
+        off = dataclasses.replace(self.config, annotations_enabled=False)
+        self.assertEqual((), annotation_store.load(off))
+
+        self.assertEqual(annotation_store.FORGET_SWEPT, annotation_store.forget(off))
+
+        # Read back through the enabled config, because `load` under the off
+        # switch returns nothing whether or not the sweep landed.
+        self.assertEqual((), annotation_store.load(self.config))
+
+    def test_a_store_it_could_not_write_is_not_a_store_with_nothing_in_it(self) -> None:
+        """The boring outcome, which is the one that was wrong. Both failures
+        answered the same token, so the command told a reader their records
+        were gone over a file it had not touched.
+        """
+        self._discard("gone")
+
+        with mock.patch.object(annotation_store, "_write", return_value=False) as write:
+            self.assertEqual(
+                annotation_store.FORGET_UNWRITABLE, annotation_store.forget(self.config)
+            )
+
+        self.assertEqual(1, write.call_count)
+        self.assertEqual({"gone"}, {entry["sid"] for entry in annotation_store.load(self.config)})
 
 
 class WordsAreWhatAReadingCouldHaveReadTest(unittest.TestCase):

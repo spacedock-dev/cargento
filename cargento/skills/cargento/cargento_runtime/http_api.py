@@ -1050,6 +1050,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     entry["harness"],
                     entry["sid"],
                     has_words=annotation_store.has_typed_words(entry),
+                    discarded=annotation_store.is_discarded(entry),
                     now=now,
                 ),
             }

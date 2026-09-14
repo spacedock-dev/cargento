@@ -272,10 +272,26 @@ function nextIntentView(){
   const lead = `${typed.length} ${typed.length === 1 ? "session" : "sessions"} you have typed ` +
     "words against" +
     (records ? `, and ${records} whose words you discarded` : "") + ". ";
+  /* The stated rule and not just the order (DRC-4565). The sort above was
+     fixed to match `annotations._eviction_rank` and this sentence was not, so
+     it went on saying the oldest save goes first over a list where a record of
+     a discard goes before any words however recent it is. The conclusion
+     survived and the rule under it was wrong, which is the harder half to
+     notice.
+
+     Two rules and not one qualified rule, on the same test the lead clause
+     uses: with no record on the list, group-before-age and oldest-first pick
+     the same bottom row, and the longer sentence would put the word
+     "discarded" on a board where nothing was. Each says what governs the rows
+     the reader is looking at. */
+  const evicts = records
+    ? "A row whose words you discarded goes before any row that still holds words, and the " +
+      "oldest of what is left goes next, so the bottom row is the next to go."
+    : "The oldest save goes first, so the bottom row is the next to go.";
   return head +
     `<p class="next-intent-note">${lead}The store ` +
-    "keeps the newest 256 and sixteen revisions each, dropping the oldest save first, so the " +
-    "bottom row is the next to go. Session history keeps a fourteen-day copy of the same two " +
+    `keeps the newest 256 and sixteen revisions each. ${evicts} ` +
+    "Session history keeps a fourteen-day copy of the same two " +
     "fields; this list is not that copy, so a row leaving here is an eviction and not an " +
     "expiry.</p>" +
     ordered.map(row => nextIntentRow(row, live)).join("") + nextIntentClose(ordered);

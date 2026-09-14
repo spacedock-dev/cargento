@@ -6201,6 +6201,11 @@ console.log(JSON.stringify({
   held, reading,
   heldText: held.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
   readingText: reading.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+  /* The whole tab and not the two sections. A contradiction is a property of
+     what is on screen together, and the record and the raise that quotes the
+     discarded words render in different sections: the test named for that
+     property was scraping only the first and could not see the second. */
+  pageText: __els.app.innerHTML.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
   ask: (html.match(/data-next-cockpit-action="reading-ask"/g) || []).length,
   discardControl: (html.match(/data-next-cockpit-action="held-discard"/g) || []).length,
 }));
@@ -6277,6 +6282,19 @@ __dashboard.sessions[0].departures = [{
         assert isinstance(text, str)
         self.assertIn(annotation_store.DISCARD_RECORD, text)
         self.assertIn(annotation_store.DISCARD_RECORD_STANDING, text)
+        # The property the name claims, read off the whole tab. The raise
+        # quotes the discarded clause about twelve hundred characters below the
+        # record, in a section this test used not to scrape, so the two
+        # sentences above could both be present while the page as a whole said
+        # the words were gone and then printed them.
+        page = out["pageText"]
+        assert isinstance(page, str)
+        self.assertIn("do not change the board while capturing", page)
+        # "kept here" is what makes the record and the quotation consistent.
+        # An unqualified claim is the contradiction, and it is also false about
+        # session history, which keeps its own copy of the same two fields.
+        self.assertNotIn("None of it is kept:", page)
+        self.assertIn("None of it is kept here:", page)
 
     def test_a_discard_whose_raises_went_says_nothing_about_a_standing_one(self) -> None:
         """The boring outcome. A sentence printed on every discard would be

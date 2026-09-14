@@ -109,8 +109,12 @@ The posture rests on two invariants:
    departure store rather than session history. Discarding a session's annotation withdraws from
    both: it deletes every revision and blanks the quotations from the departure rows those
    revisions were read against, keeping only that a check ran, so words discarded that way are
-   gone from this response and from disk. What stays in the annotation store in their place is a
-   **discard record**, and it holds three things and no fourth: the harness, the session id, the
+   gone from this response and from both of those stores on disk. Both of those and not every
+   store: session history keeps its own fourteen-day copy of the same two fields, the discard
+   path does not touch it, and `--forget` is what removes that copy. The record's own sentence
+   names it, so a reader meets that fact where the act happened rather than only here.
+   What stays in the annotation store in their place is a
+   **discard record**, and it holds four things and no fifth: the harness, the session id, the
    moment of the act, and the number of the last revision that went. No goal, no expected output,
    no reading, no withheld reason and no press count -- the parser drops every other field of a
    record unread, so a file rewritten by any local process to hang text off one reads back with
