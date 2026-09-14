@@ -13,6 +13,8 @@ either was drawn from. The ruling that fixes this split is restated in
 - `marks_digest`, the sha256 of `~/.cargento/abstention-marks.json` as it was when scored. A later
   `--report` hashes the marks again and refuses PASS if they moved, because a mark written after
   seeing an output is agreement, not a mark.
+- `inputs_digest`, on a historical replay: a hash of the cases and rubric as scored. A later
+  report refuses PASS if either changed. The inputs themselves stay local.
 - `marks`, the captain's answer key: one sixteen-character hash of `(harness, sid)` per case, and
   `judge` or `abstain` for each of the two constraints.
 - `cases`, per case id: the harness, the marks, the outcome the producer landed in for each
@@ -38,6 +40,45 @@ local results (`~/.cargento/abstention-results.json`) carry the producer's withh
 cutoff sentence. The rubric expectation file (`~/.cargento/abstention-rubric.json`) may carry
 synthesised case bodies. All three stay on the machine that made them.
 
+## Historical replay, case format 4
+
+Older case formats fetch the current row and facts from the live board at scoring time. That
+cannot reproduce a historical case: the session may have disappeared, its lifecycle may have
+changed, and its old facts may no longer be served. Format 4 reads a frozen packet offline.
+`mark_abstention.py --build` still produces the older live format; a replay packet must be
+prepared from recorded evidence before marking.
+
+The local `abstention-cases.json` has `v: 4`, the `goal` and `output` yardstick strings, and a
+`cases` list. Each case carries:
+
+| Field | Meaning |
+|---|---|
+| `id`, `harness`, `sid` | The canonical session hash and its recorded identity. Replay admits Claude, Codex and Pi; duplicate IDs and hashes that do not match the identity are refused. |
+| `origin` | `recorded`. Generated cases belong in the separate rubric file. |
+| `captured_at` | A finite, positive Unix timestamp: the time being replayed. |
+| `row_snapshot` | The row observed then, including its explicit `working`, `needs_input` or `idle` state and any observed `ended_at` or `finished_at`. Its identity must match the case. |
+| `producer_facts` | The semantic facts available then, in the runtime fact format. Every fact must name that same session and carry a positive timestamp no later than `captured_at`. An empty list is valid and stays empty. |
+
+The marking screen shows the frozen producer ledger, recorded lifecycle and both yardstick
+strings before asking for a mark. Optional `title` and `asked_for` fields add review context;
+legacy collector counts and output-question flags are not needed. Excerpts and later reviewer
+context may live in the packet for review, but only `producer_facts` enters the producer.
+
+Keep each packet in its own directory under `~/.cargento`, with the standard case and marks
+filenames, and set `CARGENTO_HOME` to that directory for both scripts. Run the scorer's
+`--report` first: it checks every snapshot and lists the recorded lifecycle without spending.
+Then run the marking script interactively. It writes a `cases_digest` alongside the marks and
+refuses to reuse an existing key if the packet changed. Finally, the scorer's `--score` uses those
+bound marks. `--out` selects the summary path; local results stay beside the cases. The rubric
+file can live there too, or be selected with `--rubric`.
+
+Malformed snapshots stop the whole run before any model call or result write. There is no live
+fallback, including when snapshots have the wrong format version. Replay passes `captured_at`
+as the producer's clock, so a settling end does not become settled just because the check runs
+later. An idle row without an observed session end remains withheld. Do not invent an end or
+change a quiet row to working to make it qualify. The normal evidence and eligibility rules,
+coverage floor and manual release gate still apply.
+
 ## How to argue with a result
 
 A case id is `sha256("<harness>|<sid>")[:16]`. Whoever holds the cases file can resolve it; nobody
@@ -47,7 +88,8 @@ the model ran, so the case says nothing about the model, and it is counted for n
 
 The verdict is `failed` when a case marked should-abstain judged, `short` when no case failed but
 fewer than one recorded case per DEC-15 kind reached the model on Claude or on Codex, `stale` when
-the marks no longer hash to `marks_digest`, and `passed` only when none of those hold. The report
+the marks no longer hash to `marks_digest` or replay inputs no longer match `inputs_digest`, and
+`passed` only when none of those hold. The report
 never prints one figure for the whole: false reassurance, false alarm, missed departure and
 over-abstention are four counts, and citations hit, missed or extra are a fifth column beside them.
 

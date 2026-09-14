@@ -114,6 +114,12 @@ OUTPUT = "Something I can check: a diff, a test run, or a file I can open."
 PER_BUCKET = 3
 
 
+def cases_digest(body: dict[str, Any]) -> str:
+    """Bind replay marks to the evidence and yardstick the marker saw."""
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _get(url: str, timeout: int = 30) -> Any:
     with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - fixed loopback
         return json.loads(response.read().decode("utf-8"))
@@ -545,13 +551,67 @@ def _question(case: dict[str, Any]) -> str:
     )
 
 
+def _show_mark_case(body: dict[str, Any], case: dict[str, Any], position: str) -> None:
+    if body.get("v") != 4:
+        _show(case, position)
+        return
+    print("\n" + "=" * 72)
+    print(f"  {position}   {case['harness']} - {case.get('title') or case['id']}")
+    print(f"  Recorded lifecycle: {_reading().end_kind(case.get('row_snapshot') or {})}")
+    if case.get("asked_for"):
+        print(f"  Opening request (review context): {_short(case['asked_for'], 260)}")
+    print(f"\n  GOAL YARDSTICK: {body.get('goal') or ''}")
+    print(f"  OUTPUT YARDSTICK: {body.get('output') or ''}")
+    print("  FROZEN PRODUCER LEDGER (review excerpts are not model evidence)")
+    for entry in _reading().build_ledger(
+        case.get("producer_facts") or [], case["harness"], case["sid"]
+    ):
+        print(f"    {entry['id']} | {entry['type']} | {entry['source']} | {entry['summary']}")
+
+
+def _mark_question(body: dict[str, Any], case: dict[str, Any], constraint: str) -> str:
+    if body.get("v") == 4:
+        return (
+            f"\n  Against this {constraint} yardstick: {body.get(constraint) or ''}\n"
+            "  Should Cargento answer from the frozen ledger, or say it cannot tell?\n"
+            "    y = it has enough to answer    n = it must say it cannot tell\n    [y/n/s/q] "
+        )
+    if constraint == "goal":
+        return _question(case)
+    return (
+        "\n  And could it say whether a checkable deliverable came out,\n"
+        "  a diff, a test run, a file you can open?\n    [y/n/s/q] "
+    )
+
+
+def _mark_asks_output(body: dict[str, Any], case: dict[str, Any]) -> bool:
+    if body.get("v") == 4:
+        return bool(_reading().asks_output(str(body.get("output") or ""), case["harness"]))
+    return bool(case.get("asks_output"))
+
+
+def _bound_marks(body: dict[str, Any], entries: dict[str, Any]) -> dict[str, Any]:
+    if body.get("v") == 4:
+        return {"v": 3, "marks": entries, "cases_digest": cases_digest(body)}
+    return {"v": 2, "marks": entries}
+
+
 def mark() -> int:
     body = _load(CASES_PATH)
     cases = body.get("cases") if isinstance(body.get("cases"), list) else None
     if not cases:
         print(f"No cases at {CASES_PATH}. Run --build first.")
         return 1
-    entries = _marks(_load(MARKS_PATH))
+    saved = _load(MARKS_PATH)
+    entries = _marks(saved)
+    replay = body.get("v") == 4
+    digest = cases_digest(body)
+    if replay and entries and saved.get("cases_digest") != digest:
+        print("These marks belong to a different or unfrozen case set. Nothing was changed.")
+        print(
+            "Keep that key with its original cases; use a separate CARGENTO_HOME for this packet."
+        )
+        return 1
 
     todo = [c for c in cases if c.get("id") not in entries]
     if not todo:
@@ -566,17 +626,14 @@ def mark() -> int:
 
     done = 0
     for index, case in enumerate(todo, 1):
-        _show(case, f"{index}/{len(todo)}")
-        goal = _ask(_question(case))
+        _show_mark_case(body, case, f"{index}/{len(todo)}")
+        goal = _ask(_mark_question(body, case, "goal"))
         if goal is None:
             break
         if goal == "skip":
             continue
-        if case.get("asks_output"):
-            out = _ask(
-                "\n  And could it say whether a checkable deliverable came out,\n"
-                "  a diff, a test run, a file you can open?\n    [y/n/s/q] "
-            )
+        if _mark_asks_output(body, case):
+            out = _ask(_mark_question(body, case, "output"))
             if out is None:
                 break
             if out == "skip":
@@ -591,7 +648,7 @@ def mark() -> int:
         entries[case["id"]] = {"goal": goal, "output": out}
         done += 1
 
-    _write(MARKS_PATH, {"v": 2, "marks": entries})
+    _write(MARKS_PATH, _bound_marks(body, entries))
     _warn_if_unanimous(entries, cases)
 
     left = len([c for c in cases if c.get("id") not in entries])

@@ -568,6 +568,163 @@ class TheScorerLeavesTheReadersStoreAlone(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
 
+class HistoricalReplayTest(unittest.TestCase):
+    """The marked evidence must survive the session disappearing from the board."""
+
+    def setUp(self) -> None:
+        self.case = {
+            **_case(mark_abstention._case_id("claude", "s1")),
+            "origin": "recorded",
+            "captured_at": 100.0,
+            "row_snapshot": _row(),
+            "producer_facts": [_fact("f1", summary="FROZEN evidence")],
+            "excerpts": [{"text": "REVIEWER ONLY"}],
+            "later_reviewer_context": {"text": "FUTURE VERIFIER"},
+        }
+        self.body: dict[str, Any] = {
+            "v": 4,
+            "goal": mark_abstention.GOAL,
+            "output": mark_abstention.OUTPUT,
+            "cases": [self.case],
+        }
+        self.model = _FakeModel(_reply("unverifiable", ()))
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.result = Path(self.temp.name, "local.json")
+        self.summary = Path(self.temp.name, "summary.json")
+
+    def _corpus(self, *, bound: bool = True) -> score_abstention.Corpus:
+        marks = {
+            "v": 3,
+            "cases_digest": mark_abstention.cases_digest(self.body) if bound else "old",
+            "marks": {self.case["id"]: {"goal": "abstain", "output": "abstain"}},
+        }
+        return score_abstention.Corpus(self.body, marks, json.dumps(marks).encode(), {})
+
+    def _score(self, *, bound: bool = True) -> int:
+        with (
+            mock.patch.object(score_abstention, "_get", side_effect=AssertionError("live read")),
+            mock.patch("builtins.print"),
+        ):
+            return score_abstention.score(
+                1,
+                self._corpus(bound=bound),
+                config=_Config(),
+                model=self.model,
+                results_path=str(self.result),
+                summary_path=str(self.summary),
+                now=100000.0,
+            )
+
+    def test_offline_replay_reads_only_frozen_facts_at_the_frozen_time(self) -> None:
+        self.assertEqual(0, self._score())
+        self.assertEqual(1, len(self.model.prompts))
+        self.assertIn("FROZEN evidence", self.model.prompts[0])
+        for absent in ("REVIEWER ONLY", "FUTURE VERIFIER"):
+            self.assertNotIn(absent, self.model.prompts[0])
+        local = json.loads(self.result.read_text())
+        self.assertIn("all within the last hour", local["cases"][self.case["id"]]["cutoff"])
+        committed = self.summary.read_text()
+        for absent in ("FROZEN evidence", "REVIEWER ONLY", "row_snapshot", "producer_facts"):
+            self.assertNotIn(absent, committed)
+
+    def test_replay_does_not_settle_an_end_using_todays_clock(self) -> None:
+        self.case["row_snapshot"].update(state="idle", ended_at=99.0)
+        self.assertEqual(0, self._score())
+        self.assertEqual([], self.model.prompts)
+        local = json.loads(self.result.read_text())
+        self.assertEqual("settling", local["cases"][self.case["id"]]["withheld"])
+
+    def test_a_recorded_settled_end_can_read_finally(self) -> None:
+        self.case["row_snapshot"].update(state="idle", ended_at=91.0)
+        self.assertEqual(0, self._score())
+        self.assertEqual(1, len(self.model.prompts))
+
+    def test_missing_end_evidence_stays_withheld(self) -> None:
+        self.case["row_snapshot"]["state"] = "idle"
+        self.assertEqual(0, self._score())
+        self.assertEqual([], self.model.prompts)
+        local = json.loads(self.result.read_text())
+        self.assertEqual("idle-unknown", local["cases"][self.case["id"]]["withheld"])
+
+    def test_invalid_or_foreign_evidence_refuses_before_any_model_or_write(self) -> None:
+        mutations = (
+            {"captured_at": float("nan")},
+            {"captured_at": True},
+            {"captured_at": 0},
+            {"row_snapshot": {"harness": "claude", "sid": "s1"}},
+            {"row_snapshot": {**_row(), "state": []}},
+            {"row_snapshot": _row(sid="other")},
+            {"row_snapshot": {**_row(), "ended_at": 101}},
+            {"producer_facts": [_fact("future") | {"at": 101}]},
+            {"producer_facts": [_fact("undated") | {"at": None}]},
+            {"producer_facts": [_fact("foreign", sid="other")]},
+            {"producer_facts": None},
+            {"origin": "synthesised"},
+        )
+        original = dict(self.case)
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self.case.clear()
+                self.case.update(original | mutation)
+                self.assertEqual(2, self._score())
+                self.assertEqual([], self.model.prompts)
+                self.assertFalse(self.result.exists())
+                self.assertFalse(self.summary.exists())
+
+    def test_changed_cases_cannot_reuse_the_old_marks(self) -> None:
+        self.assertEqual(2, self._score(bound=False))
+        self.assertEqual([], self.model.prompts)
+        self.assertFalse(self.summary.exists())
+
+    def test_snapshots_with_the_wrong_version_never_fall_back_to_the_board(self) -> None:
+        self.body["v"] = 3
+        self.assertEqual(2, self._score())
+        self.assertEqual([], self.model.prompts)
+
+    def test_one_invalid_case_stops_the_whole_packet_before_spending(self) -> None:
+        self.body["cases"].append({**self.case, "id": "abcd1234abcd5678", "row_snapshot": None})
+        self.assertEqual(2, self._score())
+        self.assertEqual([], self.model.prompts)
+
+    def test_a_session_cannot_be_counted_again_under_another_case_id(self) -> None:
+        self.body["cases"].append({**self.case, "id": "abcd1234abcd5678"})
+        self.assertEqual(2, self._score())
+        self.assertEqual([], self.model.prompts)
+        self.assertFalse(self.summary.exists())
+
+    def test_an_unrecognised_harness_cannot_enter_the_committed_summary(self) -> None:
+        harness = "PRIVATE_HARNESS_LABEL"
+        self.case["harness"] = harness
+        self.case["id"] = mark_abstention._case_id(harness, "s1")
+        self.case["row_snapshot"]["harness"] = harness
+        self.case["producer_facts"][0]["source_session"]["harness"] = harness
+        self.assertEqual(2, self._score())
+        self.assertEqual([], self.model.prompts)
+        self.assertFalse(self.summary.exists())
+
+    def test_report_detects_changed_inputs_and_spends_nothing(self) -> None:
+        self._score()
+        summary = json.loads(self.summary.read_text())
+        corpus = self._corpus()
+        self.case["producer_facts"][0]["summary"] = "changed"
+        printed: list[str] = []
+        with (
+            mock.patch("builtins.print", side_effect=_collect(printed)),
+            mock.patch.object(score_abstention, "_get", side_effect=AssertionError("live read")),
+        ):
+            score_abstention.report(corpus, summary)
+        self.assertIn("STALE", "\n".join(printed))
+        self.assertEqual(1, len(self.model.prompts))
+
+    def test_replay_report_counts_actual_facts_without_legacy_metadata(self) -> None:
+        self.case.pop("citable")
+        printed: list[str] = []
+        with mock.patch("builtins.print", side_effect=_collect(printed)):
+            score_abstention.report(self._corpus(), None)
+        self.assertIn("claude: 1 evidence-bearing", "\n".join(printed))
+
+
 class TheCommittedHalfCarriesNoSessionIdentity(unittest.TestCase):
     """What lands under docs/ is ids, marks, outcomes and counts. Nothing readable."""
 
