@@ -4947,6 +4947,109 @@ console.log(JSON.stringify({posts,
         self.assertTrue(out["cue"])
         self.assertEqual(1, out["stillOffersSave"])
 
+    def test_a_reading_press_shows_progress_and_survives_redraws(self) -> None:
+        out = self.run_fixture(r"""
+__dashboard.reading_check = "accepted";
+const session = __dashboard.sessions[0];
+const annotation = {goal:"ship it", reading_count:0};
+const control = () => nextCockpitReadingControl(session, annotation, {enabled:true});
+const releases = [];
+let calls = 0;
+const upstream = __fetchImpl;
+__fetchImpl = (url, init) => String(url) === "/api/reading"
+  ? (calls++, new Promise(resolve => { releases.push(resolve); })) : upstream(url, init);
+const pending = nextCockpitAskForReading(session);
+await __settle();
+renderNext();
+const during = control();
+const duplicate = nextCockpitAskForReading(session);
+const other = nextCockpitReadingControl(__dashboard.sessions[1], annotation, {enabled:true});
+for(const release of releases) release({ok:true, json:async()=>({ok:true, produced:true, reason:""})});
+await Promise.all([pending, duplicate]);
+console.log(JSON.stringify({during, other, after:control(), calls}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("Reading in progress", out["during"])
+        self.assertIn("0 model requests recorded", out["during"])
+        self.assertRegex(out["during"], r'reading-ask"[^>]*disabled')
+        self.assertNotIn("Reading in progress", out["other"])
+        self.assertEqual(1, out["calls"])
+        self.assertIn("Reading received", out["after"])
+        self.assertNotRegex(out["after"], r'reading-ask"[^>]*disabled')
+
+    def test_a_reading_press_reports_refusal_and_failure_without_retrying(self) -> None:
+        out = self.run_fixture(r"""
+__dashboard.reading_check = "accepted";
+const session = __dashboard.sessions[0];
+const annotation = {goal:"ship it", reading_count:0, reading_withheld:"No end was observed."};
+const upstream = __fetchImpl;
+const outcomes = [];
+let calls = 0;
+for(const reply of [
+  {ok:true, json:async()=>({ok:true, produced:false, reason:"turn-stop"})},
+  {ok:false, status:409}, {ok:false, status:503},
+  {ok:true, json:async()=>({ok:false})}, null
+]){
+  __fetchImpl = async (url, init) => {
+    if(String(url) !== "/api/reading") return upstream(url, init);
+    calls++;
+    if(reply === null) throw new Error("network down");
+    return reply;
+  };
+  await nextCockpitAskForReading(session);
+  renderNext();
+  outcomes.push(nextCockpitReadingControl(session, annotation, {enabled:true}));
+}
+console.log(JSON.stringify({outcomes,calls}));
+""")
+        assert isinstance(out, dict)
+        self.assertEqual(5, out["calls"])
+        self.assertIn("No new reading was produced", out["outcomes"][0])
+        self.assertIn("already in progress", out["outcomes"][1])
+        for html in out["outcomes"][2:]:
+            self.assertIn("Could not confirm the reading", html)
+            self.assertIn("not been retried", html)
+        for html in out["outcomes"]:
+            self.assertNotIn("No reading has been asked for", html)
+            self.assertIn('role="status"', html)
+
+    def test_a_retained_reading_never_offers_a_new_one_while_the_model_is_unavailable(self) -> None:
+        out = self.run_fixture(
+            """
+__dashboard.annotate = true;
+__dashboard.reading_check = "accepted";
+Object.assign(__dashboard.sessions[0], {
+  annotation_goal:"do not change the board", annotation_output:"",
+  annotation_revision:1, annotation_revision_count:1, annotation_at:100,
+  annotation_assessment:{revision_read:1, scope:"mid-flight",
+    scope_text:"This covers only the work so far.",
+    criteria:{goal:{result:"consistent with the evidence read", detail:"", cites:["fo-a"]}}}
+});
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const key = nextCockpitContextKey(group, nextCockpitFocusedSession(group));
+const entry = nextCockpitContexts.get(key);
+const states = [null, {enabled:false}, {enabled:true}].map(model => {
+  entry.data = Object.assign({}, entry.data, {observer_model:model});
+  renderNext();
+  const html = __els.app.innerHTML;
+  return {
+    retained:html.includes("This covers only the work so far."),
+    disabled:/data-next-cockpit-action="reading-ask"[^>]*disabled/.test(html),
+    unread:html.includes("Observer model availability has not been read"),
+    off:html.includes("Observer model is disabled for this run"),
+  };
+});
+console.log(JSON.stringify(states));
+"""
+        )
+        assert isinstance(out, list)
+        self.assertTrue(all(state["retained"] for state in out))
+        self.assertEqual([True, True, False], [state["disabled"] for state in out])
+        self.assertTrue(out[0]["unread"])
+        self.assertTrue(out[1]["off"])
+
     def test_the_reading_has_three_states_and_the_control_waits_on_a_check(self) -> None:
         """DRC-4511. Nothing typed, the model off, and the offer itself."""
         out = self.run_fixture(
@@ -5000,11 +5103,17 @@ entry.data = Object.assign({}, entry.data, {observer_model:{enabled:true, disclo
 renderNext();
 const offered = read();
 
-// And: the check recorded as passed, which is the only thing that enables it.
+// A scored pass or the captain's accepted case review enables it.
 __dashboard.reading_check = "passed";
 renderNext();
 const enabled = read();
-console.log(JSON.stringify({empty, unread, offered, enabled}));
+__dashboard.reading_check = "accepted";
+renderNext();
+const accepted = read();
+__dashboard.reading_check = "unknown";
+renderNext();
+const unknown = read();
+console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown}));
 """
         )
 
@@ -5025,6 +5134,9 @@ console.log(JSON.stringify({empty, unread, offered, enabled}));
         # Enablement reads the recorded result, not a constant.
         self.assertTrue(out["enabled"]["control"])
         self.assertFalse(out["enabled"]["disabled"])
+        self.assertTrue(out["accepted"]["control"])
+        self.assertFalse(out["accepted"]["disabled"])
+        self.assertTrue(out["unknown"]["disabled"])
         # The departures block renders whether or not a reading exists. It
         # carried the DEC-16 sentence and the fact that nothing was raised,
         # and both were reachable only through a reading nothing produces, so
@@ -6600,7 +6712,7 @@ console.log(JSON.stringify({
   results: (html.match(/class="next-cockpit-reading-result"/g) || []).length,
   // The control stays on the page, so the reader can ask again.
   control: html.includes('data-next-cockpit-action="reading-ask"'),
-  count: html.includes("1 reading asked for"),
+  count: html.includes("1 model request recorded"),
   // And the departures block says no reading was made, rather than that a
   // reading raised nothing.
   noReading: html.includes("No reading has been made"),
@@ -6920,7 +7032,7 @@ const html = nextCockpitReading(session, annotation, [], model, null, false,
 console.log(JSON.stringify({
   html,
   names: html.includes("could not read it, so nothing from it is shown"),
-  count: html.includes("1 reading asked for"),
+  count: html.includes("1 model request recorded"),
 }));
 """
         )
@@ -7348,8 +7460,8 @@ console.log(JSON.stringify({
             re.findall(r'class="next-cockpit-count-value">([^<]*)<', both["block"]),
         )
 
-    def test_the_review_surface_never_implies_a_reading_can_be_asked_for(self) -> None:
-        """AC-untouched. DEC-17's abstention check has not run in any build.
+    def test_the_review_surface_does_not_open_a_closed_reading_gate(self) -> None:
+        """The unasked review does not authorize reader-requested readings.
 
         The control is read straight out of its own renderer, because the tab
         only reaches it once an annotation and an observer model are present and
@@ -7363,8 +7475,10 @@ console.log(JSON.stringify({
         )
         control = self._run_page_js(
             "await __settle();\nawait __settle();\n"
+            '__dashboard.reading_check = "not-run";\n'
             "console.log(JSON.stringify(nextCockpitReadingControl("
-            '{harness:"codex", sid:"focus-1"}, {goal:"ship it", reading_count:0})));',
+            '{harness:"codex", sid:"focus-1"}, {goal:"ship it", reading_count:0}, '
+            "{enabled:true})));",
             storage_prelude({}) + self.FIXTURE,
         )
         assert isinstance(control, str)

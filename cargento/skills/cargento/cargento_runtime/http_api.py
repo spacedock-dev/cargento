@@ -1425,10 +1425,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             (not config.observer_model_enabled, 503),
             # The button and this route read the same constant, so they agree
             # by construction and a local `curl` cannot outrun the check.
-            (
-                annotation_store.ABSTENTION_CHECK != annotation_store.ABSTENTION_CHECK_PASSED,
-                503,
-            ),
+            (not annotation_store.reading_enabled(), 503),
             # A lured navigation reads nothing back, but it would still spend
             # the reader's capacity, which is the harm this route carries.
             (self._is_document_navigation() or not self._loopback_resource_ok(), 403),

@@ -59,19 +59,20 @@ KEY_CAP_CHARS = 64
 # contract's first rule is that an absent value states its reason rather than
 # rendering a blank, a dash or a zero. Wording that lives in three files
 # diverges; wording that lives here cannot.
-# Whether the abstention check has been run and passed. It gates the
-# `Ask for a reading` control and nothing else: the ruling says the reading is
-# built now and the control is not enabled until the check has run
-# ([DEC-17](docs/design-reading-a-session.md#dec-17-the-shape-contract)).
-#
-# A recorded fact rather than a switch, and published rather than left absent
-# so the page can tell "this build predates the reading" from "the check has
-# not been run". Running it needs recorded sessions across Claude and Codex
-# and a second person marking each constraint's expected abstention in
-# advance, which is why no flag here can turn it on.
+# The captain accepted the twelve marked recorded cases as sufficient to
+# enable readings on 2026-09-14. `accepted` records that decision separately
+# from a scorer's `passed` verdict. The amendment owns the distinction:
+# [DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
 ABSTENTION_CHECK_NOT_RUN = "not-run"
 ABSTENTION_CHECK_PASSED = "passed"
-ABSTENTION_CHECK = ABSTENTION_CHECK_NOT_RUN
+ABSTENTION_CHECK_ACCEPTED = "accepted"
+ABSTENTION_CHECK = ABSTENTION_CHECK_ACCEPTED
+
+
+def reading_enabled() -> bool:
+    """Either recorded authorization opens the control and its route."""
+    return ABSTENTION_CHECK in (ABSTENTION_CHECK_PASSED, ABSTENTION_CHECK_ACCEPTED)
+
 
 NO_GOAL_TYPED = "No goal typed for this session."
 NO_OUTPUT_TYPED = "No expected output typed."

@@ -289,6 +289,9 @@ suite stays green, because the fixtures bypass the rebuild.
 
 ### The condition on enabling, not on building
 
+The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
+recorded case review to enable the control.
+
 The reading is built now. The `Ask for a reading` control is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
 Codex, with a person other than whoever writes the reading prompt marking each constraint in advance
@@ -316,6 +319,21 @@ case whose generator and verifier are the same agent is not admitted.
 What this costs is that the marker is also the person who wants the feature, so a mark wrong in the
 permissive direction has nobody to catch it. The mitigation is the first of those three, and it is
 weaker than a second reader.
+
+#### Amended 2026-09-14: the captain accepts the case review
+
+After answering all twelve recorded Claude and Codex snapshots, the captain accepted that review
+as sufficient to unlock reader-requested readings. That decision supersedes the requirement to
+wait for a scoring run before enabling the control.
+
+The build publishes `reading_check: "accepted"` and enables the control and its HTTP route.
+`passed` remains the scorer-backed enablement state; accepting the review does not manufacture
+a scoring result. The local answer key is bound to the frozen packet, and the committable
+[acceptance record](abstention/acceptance.json) carries its hashes and marks without session text.
+
+The producer's evidence and lifecycle rules, the explicit press and disclosure, and the
+`--observer-model` opt-in still apply to each request. The evaluator retains its existing verdicts
+and coverage rules for future scoring. This amendment concerns the reader-requested control.
 
 #### How the check is run, 2026-09-12
 
@@ -359,7 +377,8 @@ a later report whose marks no longer hash to it says the marks moved and refuses
 
 The scorer never writes to the annotation store, never posts to the reading route, and never flips
 `annotations.ABSTENTION_CHECK`. The flip is a separate change, made by hand, after a run has passed
-on a corpus that meets the floor.
+on a corpus that meets the floor or the captain has accepted the case review under the amendment
+above.
 
 ### Repeated calls
 

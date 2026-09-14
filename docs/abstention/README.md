@@ -5,6 +5,12 @@ either was drawn from. The ruling that fixes this split is restated in
 [SECURITY.md](../../SECURITY.md#the-abstention-check); the reasoning behind the check is
 [DEC-17](../design-reading-a-session.md#the-condition-on-enabling-not-on-building).
 
+The captain accepted the twelve marked recorded cases as sufficient to enable reader-requested
+readings on 2026-09-14. [acceptance.json](acceptance.json) records that decision and the bound
+answer key. The runtime publishes `accepted`; no scoring verdict is implied. The
+[amended ruling](../design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review)
+owns enablement. The scoring format and verdicts below remain available for evaluating the producer.
+
 ## What lives here
 
 `results.json`, once a scoring run has been committed, written by
@@ -77,7 +83,7 @@ fallback, including when snapshots have the wrong format version. Replay passes 
 as the producer's clock, so a settling end does not become settled just because the check runs
 later. An idle row without an observed session end remains withheld. Do not invent an end or
 change a quiet row to working to make it qualify. The normal evidence and eligibility rules,
-coverage floor and manual release gate still apply.
+coverage floor still apply to scoring. Enablement follows the amended ruling linked above.
 
 ## How to argue with a result
 

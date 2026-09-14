@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Score the reading producer against marks written before it ran.
 
-DEC-17 gates the `Ask for a reading` control on one check: every case the
-captain marked "should abstain" must come back `not verifiable from available
+DEC-17's scoring check requires every case the
+captain marked "should abstain" to come back `not verifiable from available
 evidence`. `mark_abstention.py` collects the marks. This runs the producer over
 the same cases and says, per case and per constraint, what it did.
+The captain's accepted case review enables readings separately; this script
+continues to report measured outcomes and never substitutes acceptance for PASS.
 
     score_abstention.py --report          where the corpus stands; spends nothing
     score_abstention.py --score           run the producer once per case

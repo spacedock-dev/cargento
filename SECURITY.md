@@ -989,10 +989,15 @@ is still trusted code; replacing it as the owning user is outside this boundary.
 
 ### The abstention check
 
-The `Ask for a reading` control stays disabled until a check has run: does the producer say
-`not verifiable from available evidence` on every case a person marked, in advance, as one it
-should not judge. Two scripts run it, both outside the gate and neither in CI, and the ruling of
-2026-09-10 on what they may hold is restated here so it is not rediscovered.
+The `Ask for a reading` control is enabled by the captain's acceptance of the recorded case review
+on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
+[DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
+The acceptance record under `docs/abstention/` carries only marks, hashes and decision metadata.
+
+The evaluator still asks whether the producer says `not verifiable from available evidence` on
+every case a person marked, in advance, as one it should not judge. Two scripts run it, both
+outside the gate and neither in CI, and the ruling of 2026-09-10 on what they may hold is restated
+here so it is not rediscovered.
 
 The cases stay local and uncommitted. `scripts/mark_abstention.py --build` writes
 `abstention-cases.json`, and that file stays on this machine, under `~/.cargento`: it names the

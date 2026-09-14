@@ -88,9 +88,9 @@ boundary in part on 2026-09-02 rather than confirming it, and SECURITY.md is whe
 is drawn.
 An ETA is an estimate, and it says so.
 
-Your words are yours, and nothing compares them to anything. A reading that would is asked for
-rather than running, and the control that asks is disabled until an abstention check has been run
-and recorded, so what ships today is the evidence side by side and the comparison is yours.
+Your words are yours. The accepted case review enables you to ask for a model reading against
+them when the observer model is on. The reading states the evidence it read and its limits;
+the evidence remains readable beside your words without asking for one.
 Demonstrated work results are read on Pi alone, which the work evidence states under itself rather
 than leaving an empty list to read as no work done.
 
@@ -220,9 +220,9 @@ and why the board can tell a session you discarded from one nobody ever typed ag
 
 Where it stops: nothing reads your words for you at the end. The two axes say what ended and who
 claims it finished, drawn separately because neither implies the other, and the comparison against
-what you asked for is yours to make. A model reading of it is built and is asked for rather than
-running, and the control that asks is disabled until an abstention check has been run and
-recorded, so there is no verdict here today to trust or distrust. The words are kept under a
+what you asked for is yours to make. You can ask for a model reading when the observer model is on;
+the accepted case review enables that control. A reading is an account of the evidence, never
+verification that the work was done. The words are kept under a
 session count rather than a date, so an old enough annotation is evicted rather than expired. The
 `clear` beside each box is not the discard: it empties the box, and the save after it keeps every
 earlier revision, so anything raised against those words goes on quoting them. The board says which

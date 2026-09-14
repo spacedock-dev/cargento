@@ -1,0 +1,58 @@
+{
+  "accepted_by": "captain",
+  "accepted_on": "2026-09-14",
+  "cases_digest": "43a3a5803c4a4bcf35fbf6482ac3d9835a3f439dc49712577968710634da9e83",
+  "decision": "accepted",
+  "marks": {
+    "023a14ce3cc8a222": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "26558eba44ce8de2": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "40dda982be7d6721": {
+      "goal": "abstain",
+      "output": "abstain"
+    },
+    "4df1ab6228c39bc2": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "6bf48d78f087db50": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "835614a34716affc": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "a2649177f0667af2": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "ba992615afc4b545": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "be4f1d3ebd9ae8f9": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "ec3d67087f0bf1d5": {
+      "goal": "abstain",
+      "output": "abstain"
+    },
+    "f57563ed29975856": {
+      "goal": "judge",
+      "output": "abstain"
+    },
+    "f62a2e99bd445eab": {
+      "goal": "judge",
+      "output": "abstain"
+    }
+  },
+  "marks_digest": "ec8b3f24e38f1034dd5a5decf887a3994c1322a668ed4fde0fc908ce981dfc0c",
+  "v": 1
+}

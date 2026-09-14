@@ -3020,12 +3020,24 @@ class ReadingRouteTest(unittest.TestCase):
         """The condition on enabling, asserted where a curl would try it."""
         config, state = self._runtime()
         with (
+            mock.patch.object(annotation_store, "ABSTENTION_CHECK", "not-run"),
             self._counting_model() as calls,
             self._serving(self._app(config, state)) as port,
         ):
             status, _ = self._post(port, self._press())
         self.assertEqual(503, status)
         self.assertEqual([], calls, "the model ran behind a closed gate")
+
+    def test_the_accepted_case_review_allows_one_explicit_reading(self) -> None:
+        self.assertEqual("accepted", annotation_store.ABSTENTION_CHECK)
+        config, state = self._runtime()
+        with (
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, _ = self._post(port, self._press())
+        self.assertEqual(200, status)
+        self.assertEqual(1, len(calls))
 
     def test_every_closed_gate_refuses_before_the_model_is_reached(self) -> None:
         cases: tuple[tuple[str, dict[str, Any], dict[str, Any], int], ...] = (
