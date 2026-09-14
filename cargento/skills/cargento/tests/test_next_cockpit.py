@@ -6127,6 +6127,203 @@ console.log(JSON.stringify({
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitADiscardLeavesARecordOnTheTabTest(NextPageJsHarness):
+    """DRC-4565. The Held to tab after the thirty second cue has lapsed.
+
+    Measured on the walk: the block was character-for-character the block a
+    session nobody ever typed against gets -- "No revision saved yet", "No goal
+    typed for this session.", "No expected output typed." -- with no cue and no
+    control. Three states rendering as two, which is the failure this milestone
+    has shipped four times.
+    """
+
+    FIXTURE = CockpitHeldToTabTest.FIXTURE
+    FOCUS_DOM = CockpitHeldToTabTest.FOCUS_DOM
+
+    # The row exactly as `annotations.published` renders a discard record,
+    # written out rather than derived so a change to the store that stopped
+    # publishing one of these keys fails a test rather than quietly rendering
+    # `undefined`.
+    DISCARDED = (
+        """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+// Sixty seconds before the fixture's `generated`, which is twice the cue's
+// own lifetime: the whole point is what the block says once the cue is gone.
+__dashboard.sessions[0].annotation_discarded_at = __dashboard.generated - 60;
+"""
+        f"__dashboard.sessions[0].annotation_goal_why = "
+        f"{json.dumps(annotation_store.DISCARDED_GOAL)};\n"
+        f"__dashboard.sessions[0].annotation_output_why = "
+        f"{json.dumps(annotation_store.DISCARDED_OUTPUT)};\n"
+        f"__dashboard.sessions[0].annotation_discarded_why = "
+        f"{json.dumps(annotation_store.DISCARD_RECORD)};\n"
+        f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+    )
+
+    # The same session with nothing ever typed against it, which is the block
+    # the discarded one must not be mistaken for.
+    NEVER = (
+        """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[0].annotation_discarded_at = null;
+__dashboard.sessions[0].annotation_discarded_why = "";
+"""
+        f"__dashboard.sessions[0].annotation_goal_why = "
+        f"{json.dumps(annotation_store.NO_GOAL_TYPED)};\n"
+        f"__dashboard.sessions[0].annotation_output_why = "
+        f"{json.dumps(annotation_store.NO_OUTPUT_TYPED)};\n"
+        f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+    )
+
+    OPEN = r"""
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const held = (html.match(
+  /<section class="next-cockpit-held">[\s\S]*?<\/section>/) || [""])[0];
+const reading = (html.match(
+  /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+console.log(JSON.stringify({
+  held, reading,
+  heldText: held.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+  readingText: reading.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+  /* The whole tab and not the two sections. A contradiction is a property of
+     what is on screen together, and the record and the raise that quotes the
+     discarded words render in different sections: the test named for that
+     property was scraping only the first and could not see the second. */
+  pageText: __els.app.innerHTML.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+  ask: (html.match(/data-next-cockpit-action="reading-ask"/g) || []).length,
+  discardControl: (html.match(/data-next-cockpit-action="held-discard"/g) || []).length,
+}));
+"""
+
+    def _open(self, annotation: str, extra: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + annotation
+            + extra
+            + self.OPEN,
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_the_block_says_a_discard_happened_and_when(self) -> None:
+        """AC5. Long after the cue, on a freshly loaded page."""
+        out = self._open(self.DISCARDED)
+
+        text = out["heldText"]
+        assert isinstance(text, str)
+        self.assertIn(annotation_store.DISCARD_RECORD, text)
+        self.assertIn("discarded 1m ago", text)
+
+    def test_the_block_never_reads_as_a_session_nobody_typed_against(self) -> None:
+        """AC5's other half, and the one the walk measured: the two blocks were
+        the same characters apart from the session id."""
+        discarded = self._open(self.DISCARDED)["heldText"]
+        never = self._open(self.NEVER)["heldText"]
+        assert isinstance(discarded, str)
+        assert isinstance(never, str)
+
+        self.assertNotEqual(never, discarded)
+        self.assertIn(annotation_store.NO_GOAL_TYPED, never)
+        self.assertNotIn(annotation_store.NO_GOAL_TYPED, discarded)
+        self.assertNotIn(annotation_store.NO_OUTPUT_TYPED, discarded)
+        self.assertIn("No revision saved yet", never)
+        self.assertNotIn("No revision saved yet", discarded)
+        # And nothing on the never-typed block invents a discard.
+        self.assertNotIn(annotation_store.DISCARD_RECORD, never)
+        self.assertNotIn("discarded", never)
+
+    def test_the_record_is_not_gated_on_an_offer_to_discard_again(self) -> None:
+        """The control is withheld, because `revision_count` is 0 and there is
+        nothing left to discard. The ACCOUNT is not: gating it on the offer is
+        how the only sentence about a landed discard came to render for the two
+        failures alone."""
+        out = self._open(self.DISCARDED)
+
+        self.assertEqual(0, out["discardControl"])
+        text = out["heldText"]
+        assert isinstance(text, str)
+        self.assertIn(annotation_store.DISCARD_RECORD, text)
+
+    def test_the_record_and_a_standing_raise_do_not_contradict(self) -> None:
+        """AC6. The half-landed discard: `departures.withdraw` failed, so a
+        raise below still quotes the words the record says are gone. The walk
+        could not force this state; the build owes it a test."""
+        standing = """
+__dashboard.unasked = true;
+__dashboard.sessions[0].departure_checked = true;
+__dashboard.sessions[0].departures = [{
+  constraint: "TYPED GOAL", clause: "do not change the board while capturing",
+  reading: "Two turns edited the running board.", revision: 2,
+  at: __dashboard.generated - 600, cutoff: __dashboard.generated - 600,
+  cutoff_text: "Read 4 of 4 entries in the observed record.",
+  evidence: "turn transcript"}];
+"""
+        out = self._open(self.DISCARDED, standing)
+
+        text = out["heldText"]
+        assert isinstance(text, str)
+        self.assertIn(annotation_store.DISCARD_RECORD, text)
+        self.assertIn(annotation_store.DISCARD_RECORD_STANDING, text)
+        # The property the name claims, read off the whole tab. The raise
+        # quotes the discarded clause about twelve hundred characters below the
+        # record, in a section this test used not to scrape, so the two
+        # sentences above could both be present while the page as a whole said
+        # the words were gone and then printed them.
+        page = out["pageText"]
+        assert isinstance(page, str)
+        self.assertIn("do not change the board while capturing", page)
+        # "kept here" is what makes the record and the quotation consistent.
+        # An unqualified claim is the contradiction, and it is also false about
+        # session history, which keeps its own copy of the same two fields.
+        self.assertNotIn("None of it is kept:", page)
+        self.assertIn("None of it is kept here:", page)
+
+    def test_a_discard_whose_raises_went_says_nothing_about_a_standing_one(self) -> None:
+        """The boring outcome. A sentence printed on every discard would be
+        the same overclaim in the other direction."""
+        out = self._open(self.DISCARDED)
+
+        text = out["heldText"]
+        assert isinstance(text, str)
+        self.assertNotIn(annotation_store.DISCARD_RECORD_STANDING, text)
+
+    def test_the_reading_block_names_the_discard_rather_than_nothing_typed(self) -> None:
+        """AC7. The two states rendered one sentence, and the offer is withheld
+        on both -- so the sentence is the whole of what a reader gets."""
+        discarded = self._open(self.DISCARDED)
+        never = self._open(self.NEVER)
+
+        said = discarded["readingText"]
+        absent = never["readingText"]
+        assert isinstance(said, str)
+        assert isinstance(absent, str)
+        self.assertIn(annotation_store.DISCARD_SENTENCES["unreadable"].split(", so")[0], said)
+        self.assertNotIn("Nothing has been typed for this session", said)
+        self.assertIn("Nothing has been typed for this session", absent)
+        # The offer stays withheld on both, which is what makes the sentence
+        # load-bearing rather than decoration.
+        self.assertEqual(0, discarded["ask"])
+        self.assertEqual(0, never["ask"])
+
+
 class CockpitHeldReEntryTest(NextPageJsHarness):
     """DRC-4509 AC4 and DRC-4511 AC3: the route exposed WITH its limits.
 

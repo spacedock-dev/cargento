@@ -8,6 +8,7 @@ this store to. The two it cannot are named in the module docstring of
 from __future__ import annotations
 
 import ast
+import dataclasses
 import json
 import os
 import pathlib
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, project_context
+from cargento_runtime import aggregate, cli, departures, project_context, unasked
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import reading as runtime_reading
@@ -370,7 +371,14 @@ class AnnotationStoreTest(unittest.TestCase):
 
         entries = annotation_store.active(self.config, self.state)
         self.assertIsNotNone(annotation_store.find(entries, "pi", "keep"))
-        self.assertIsNone(annotation_store.find(entries, "pi", "drop"))
+        # The words go and a discard record stands where they were (DRC-4565).
+        # `find` returning something is not the assertion this test is about;
+        # that nothing typed survives is.
+        dropped = annotation_store.find(entries, "pi", "drop")
+        assert dropped is not None
+        self.assertEqual((), dropped["revisions"])
+        self.assertTrue(annotation_store.is_discarded(dropped))
+        self.assertNotIn("D", json.dumps(dropped))
 
     def test_the_store_is_bounded_by_sessions_and_by_revisions(self) -> None:
         """Two count bounds and no time-to-live, for `dismissals._bounded`'s reason.
@@ -837,7 +845,8 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
         """ "Saved as a new revision." after a deletion is DRC-4543 re-shipped."""
         said = set(annotation_store.DISCARD_SENTENCES.values())
 
-        self.assertEqual(6, len(said))
+        self.assertEqual(len(annotation_store.DISCARD_SENTENCES), len(said))
+        self.assertEqual(10, len(said))
         self.assertNotIn("Saved as a new revision.", said)
         for sentence in said:
             with self.subTest(sentence=sentence[:32]):
@@ -880,6 +889,369 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
             .collect(show_all=True)
             .get("annotate_discard")
         )
+
+
+class ADiscardLeavesARecordThatSaysWhenTest(unittest.TestCase):
+    """DRC-4565. Absence, presence and discarded are three answers, not two.
+
+    `clear` used to delete the entry, so the only account of the act was a cue
+    with a thirty second lifetime and the session vanished from the one surface
+    built to outlive it. The record it leaves now carries no text at all: what
+    it says is that the act happened, when, and how far the revisions had got.
+
+    The half these tests exist for is not the record. It is that the record
+    must never read as a session nobody typed against, which is the failure
+    this milestone has shipped four times.
+    """
+
+    NOW = 1_800_000_000.0
+
+    def setUp(self) -> None:
+        self.home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.config, self.state = make_runtime(state_home=self.home, state_dir=Path(self.home))
+
+    def _discard(self, sid: str = "s") -> None:
+        annotation_store.annotate(
+            self.config, self.state, "pi", sid, goal="Ship the cockpit", now=self.NOW
+        )
+        annotation_store.clear(
+            self.config, self.state, "pi", sid, now=self.NOW + 60, diagnostic_sink=lambda _l: None
+        )
+
+    def _entry(self, sid: str = "s") -> annotation_store.Annotation | None:
+        return annotation_store.find(annotation_store.load(self.config), "pi", sid)
+
+    # --- the record itself -------------------------------------------------
+
+    def test_a_discard_leaves_an_entry_that_says_when_and_holds_no_text(self) -> None:
+        self._discard()
+
+        entry = self._entry()
+        assert entry is not None, "the discard deleted the entry outright"
+        self.assertEqual((), entry["revisions"])
+        self.assertEqual(self.NOW + 60, entry.get("discarded"))
+        # Text-free, and asserted over the whole serialised record rather than
+        # field by field: a field added later that carried the words would pass
+        # a list of names and fail this.
+        self.assertNotIn("Ship the cockpit", json.dumps(entry))
+
+    def test_the_record_survives_a_restart(self) -> None:
+        """The cue lapses in thirty seconds; this is the half that does not."""
+        self._discard()
+        _config, second = make_runtime(state_home=self.home, state_dir=Path(self.home))
+
+        entry = annotation_store.find(annotation_store.active(self.config, second), "pi", "s")
+        assert entry is not None
+        self.assertEqual(self.NOW + 60, entry.get("discarded"))
+
+    def test_discarding_a_session_that_never_had_words_records_nothing(self) -> None:
+        """Discarding nothing is not a discard.
+
+        The outcome stays `STORED`, which
+        `test_clearing_a_session_with_no_entry_still_answers_stored` pins and
+        this must not overturn: it is what keeps `_withdraw_raises` sweeping
+        departure rows whose annotation was evicted out from under them.
+        """
+        outcome = annotation_store.clear(
+            self.config, self.state, "pi", "never", diagnostic_sink=lambda _l: None
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+        self.assertIsNone(self._entry("never"))
+
+    # --- find, and the guard that composes for free ------------------------
+
+    def test_find_returns_the_record_and_has_typed_words_still_says_no(self) -> None:
+        """decisions.md says to prove this rather than reason it.
+
+        `has_typed_words` reads the latest revision and a record has none, so
+        the DRC-4560 guard already routes the away lane and the check sentence
+        without a gate of its own. Proved, because the alternative reading --
+        that an entry existing means words exist -- is the exact defect that
+        guard was built for.
+        """
+        self._discard()
+
+        entry = self._entry()
+        self.assertIsNotNone(entry)
+        self.assertFalse(annotation_store.has_typed_words(entry))
+        # And the two states it must not be confused with, from the same call.
+        self.assertFalse(annotation_store.has_typed_words(None))
+        annotation_store.annotate(self.config, self.state, "pi", "live", goal="G", now=self.NOW)
+        self.assertTrue(annotation_store.has_typed_words(self._entry("live")))
+
+    # --- the board payload, through the overlay pass -----------------------
+
+    def test_two_rows_side_by_side_do_not_carry_the_same_annotation_fields(self) -> None:
+        """The walk's sharpest measurement: all eighteen keys held identical
+        values for a session whose words were discarded and one nobody ever
+        typed against. Compared as whole field sets rather than key by key, so
+        a field added later that fails to distinguish them fails here."""
+        self._discard("gone")
+        rows: list[Any] = [
+            {"harness": "pi", "sid": "gone", "state": "working"},
+            {"harness": "pi", "sid": "never", "state": "working"},
+        ]
+
+        aggregate._attach_annotations(rows, annotation_store.load(self.config))
+
+        discarded = {k: v for k, v in rows[0].items() if k.startswith("annotation_")}
+        absent = {k: v for k, v in rows[1].items() if k.startswith("annotation_")}
+        self.assertNotEqual(absent, discarded)
+        self.assertEqual(self.NOW + 60, discarded["annotation_discarded_at"])
+        self.assertIsNone(absent["annotation_discarded_at"])
+        self.assertNotEqual(annotation_store.NO_GOAL_TYPED, discarded["annotation_goal_why"])
+        self.assertEqual(annotation_store.NO_GOAL_TYPED, absent["annotation_goal_why"])
+        # And no revision of the discarded words reaches the row.
+        self.assertNotIn("Ship the cockpit", json.dumps(rows[0]))
+
+    # --- the away lane, which needs no gate of its own ---------------------
+
+    def test_the_away_lane_skips_a_discard_record_without_a_gate_for_it(self) -> None:
+        """decisions.md says to prove the free composition rather than assume it.
+
+        The lane's own `not entry.get("revisions")` continue is what does it,
+        and `departures.why` is told `has_words=False` through
+        `has_typed_words`, so neither claims a check could have run against
+        words that are gone.
+        """
+        self._discard()
+        entries = annotation_store.load(self.config)
+        row = {"harness": "pi", "sid": "s"}
+
+        published = unasked.published(self.config, (), row, entries=entries, now=self.NOW + 120)
+
+        self.assertEqual([], published["departures"])
+        self.assertIs(False, published["departure_checked"])
+        # And no sentence at all, which is the half `has_words` could not carry.
+        # It routes the LANE correctly and the ladder still answered "not
+        # checked", a claim about the past printed under a record that has
+        # already said what happened. `discarded` is what stands it down, and
+        # the never-typed session below earns it on the same call.
+        self.assertEqual("", published["departure_why"])
+        never = unasked.published(
+            self.config,
+            (),
+            {"harness": "pi", "sid": "never"},
+            entries=entries,
+            now=self.NOW + 120,
+        )
+        self.assertEqual(departures.NEVER_CHECKED, never["departure_why"])
+
+    # --- the third state on the published row ------------------------------
+
+    def test_the_published_row_tells_discarded_from_never_typed(self) -> None:
+        self._discard()
+
+        discarded = annotation_store.published(self._entry())
+        absent = annotation_store.published(None)
+
+        self.assertNotEqual(absent, discarded)
+        self.assertEqual(self.NOW + 60, discarded["discarded_at"])
+        self.assertIsNone(absent["discarded_at"])
+        self.assertTrue(discarded["discarded_why"])
+        self.assertEqual("", absent["discarded_why"])
+        # And the sentence the walk measured as identical on both.
+        self.assertEqual(annotation_store.NO_GOAL_TYPED, absent["goal_why"])
+        self.assertNotEqual(annotation_store.NO_GOAL_TYPED, discarded["goal_why"])
+        self.assertNotEqual(annotation_store.NO_OUTPUT_TYPED, discarded["output_why"])
+
+    def test_a_live_entry_publishes_no_discard(self) -> None:
+        """The third state is a state and not a field every row carries a value
+        in: a session still holding words has not been discarded."""
+        annotation_store.annotate(self.config, self.state, "pi", "live", goal="G", now=self.NOW)
+
+        published = annotation_store.published(self._entry("live"))
+
+        self.assertIsNone(published["discarded_at"])
+        self.assertEqual("", published["discarded_why"])
+        self.assertEqual("", published["goal_why"])
+
+    # --- a save over the record --------------------------------------------
+
+    def test_a_save_over_the_record_makes_the_entry_live_and_drops_it(self) -> None:
+        self._discard()
+
+        outcome = annotation_store.annotate(
+            self.config, self.state, "pi", "s", goal="Something else", now=self.NOW + 120
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+        entry = self._entry()
+        assert entry is not None
+        self.assertNotIn("discarded", entry)
+        self.assertEqual("Something else", entry["revisions"][-1]["goal"])
+        self.assertIsNone(annotation_store.published(entry)["discarded_at"])
+
+    def test_a_save_over_the_record_does_not_reuse_a_discarded_revision_number(self) -> None:
+        """Revision numbers are immutable identities, not a counter that resets.
+
+        Two revisions went; the next is 3. Restarting at 1 would let a
+        withdrawn departure row that recorded "read revision 2" point at text
+        that revision never held, which is the same re-pointing `Revision`'s
+        own docstring refuses in place.
+        """
+        annotation_store.annotate(self.config, self.state, "pi", "s", goal="one", now=self.NOW)
+        annotation_store.annotate(self.config, self.state, "pi", "s", goal="two", now=self.NOW + 1)
+        annotation_store.clear(
+            self.config, self.state, "pi", "s", now=self.NOW + 2, diagnostic_sink=lambda _l: None
+        )
+
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s", goal="three", now=self.NOW + 3
+        )
+
+        entry = self._entry()
+        assert entry is not None
+        self.assertEqual(3, entry["revisions"][-1]["n"])
+
+    # --- nothing may be written onto the record ----------------------------
+
+    def test_a_reading_is_refused_against_the_record(self) -> None:
+        """`_record`'s own reason, one state further on: a reading of nothing
+        is not a reading, and there is no baseline to have read."""
+        self._discard()
+
+        outcome = annotation_store.record_withheld(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            reason=runtime_reading.WITHHELD_LEDGER_EMPTY,
+            spent=True,
+            diagnostic_sink=lambda _l: None,
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+        entry = self._entry()
+        assert entry is not None
+        self.assertNotIn("withheld", entry)
+        self.assertNotIn("readings", entry)
+
+    def test_settling_the_record_is_refused(self) -> None:
+        """The docstring already says a session with nothing typed is refused.
+        A record has nothing typed, and the latest-revision read behind that
+        rule raises on one."""
+        self._discard()
+
+        outcome = annotation_store.settle(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            through=self.NOW + 61,
+            now=self.NOW + 62,
+            diagnostic_sink=lambda _l: None,
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+
+    # --- the bound ---------------------------------------------------------
+
+    def test_a_record_is_evicted_before_any_entry_that_still_holds_words(self) -> None:
+        """A discard may never push out words a reader still has.
+
+        Age alone would: the record is stamped later than every entry typed
+        before it, so oldest-first would evict the reader's own words to keep
+        a tombstone.
+        """
+        config, state = make_runtime(
+            state_home=self.home, state_dir=Path(self.home), annotation_max_sessions=3
+        )
+        annotation_store.annotate(config, state, "pi", "old", goal="oldest", now=self.NOW)
+        annotation_store.annotate(config, state, "pi", "mid", goal="middle", now=self.NOW + 1)
+        annotation_store.annotate(config, state, "pi", "gone", goal="doomed", now=self.NOW + 2)
+        annotation_store.clear(
+            config, state, "pi", "gone", now=self.NOW + 3, diagnostic_sink=lambda _l: None
+        )
+
+        annotation_store.annotate(config, state, "pi", "new", goal="newest", now=self.NOW + 4)
+
+        kept = {entry["sid"] for entry in annotation_store.load(config)}
+        self.assertEqual({"old", "mid", "new"}, kept)
+
+    def test_a_store_of_live_entries_alone_still_evicts_oldest_first(self) -> None:
+        """The boring outcome, tested: a rule that only fires on the
+        interesting input bounds nothing."""
+        config, state = make_runtime(
+            state_home=self.home, state_dir=Path(self.home), annotation_max_sessions=2
+        )
+        annotation_store.annotate(config, state, "pi", "old", goal="oldest", now=self.NOW)
+        annotation_store.annotate(config, state, "pi", "mid", goal="middle", now=self.NOW + 1)
+
+        annotation_store.annotate(config, state, "pi", "new", goal="newest", now=self.NOW + 2)
+
+        self.assertEqual({"mid", "new"}, {entry["sid"] for entry in annotation_store.load(config)})
+
+    def test_the_oldest_record_goes_before_a_newer_one(self) -> None:
+        config, state = make_runtime(
+            state_home=self.home, state_dir=Path(self.home), annotation_max_sessions=2
+        )
+        for index, sid in enumerate(("first", "second")):
+            annotation_store.annotate(config, state, "pi", sid, goal="g", now=self.NOW + index)
+            annotation_store.clear(
+                config, state, "pi", sid, now=self.NOW + 10 + index, diagnostic_sink=lambda _l: None
+            )
+
+        annotation_store.annotate(config, state, "pi", "third", goal="g", now=self.NOW + 20)
+
+        self.assertEqual(
+            {"second", "third"}, {entry["sid"] for entry in annotation_store.load(config)}
+        )
+
+    # --- the machine's memory of the act -----------------------------------
+
+    def test_forget_removes_the_records_and_leaves_the_reader_their_words(self) -> None:
+        """`--forget` deletes the machine's memory of what it observed. A
+        record of a deletion is squarely that class; the words a reader typed
+        are not, which is why this sweeps rather than deleting the store.
+        """
+        annotation_store.annotate(self.config, self.state, "pi", "live", goal="keep me")
+        self._discard("gone")
+
+        self.assertEqual(annotation_store.FORGET_SWEPT, annotation_store.forget(self.config))
+
+        sids = {entry["sid"] for entry in annotation_store.load(self.config)}
+        self.assertEqual({"live"}, sids)
+
+    def test_forget_says_nothing_went_only_when_there_was_nothing_to_remove(self) -> None:
+        annotation_store.annotate(self.config, self.state, "pi", "live", goal="keep me")
+
+        self.assertEqual(annotation_store.FORGET_NOTHING, annotation_store.forget(self.config))
+        self.assertEqual(1, len(annotation_store.load(self.config)))
+
+    def test_forget_sweeps_a_store_this_run_is_not_reading(self) -> None:
+        """`--no-annotations` is a switch for a run and not a statement about
+        the file. `history.forget` is deliberately independent of its own flag
+        for the reason its docstring gives, and this sibling copied the shape
+        and dropped the guarantee: measured, the sweep answered "nothing to
+        remove" over a store that still held a record.
+        """
+        self._discard("gone")
+        off = dataclasses.replace(self.config, annotations_enabled=False)
+        self.assertEqual((), annotation_store.load(off))
+
+        self.assertEqual(annotation_store.FORGET_SWEPT, annotation_store.forget(off))
+
+        # Read back through the enabled config, because `load` under the off
+        # switch returns nothing whether or not the sweep landed.
+        self.assertEqual((), annotation_store.load(self.config))
+
+    def test_a_store_it_could_not_write_is_not_a_store_with_nothing_in_it(self) -> None:
+        """The boring outcome, which is the one that was wrong. Both failures
+        answered the same token, so the command told a reader their records
+        were gone over a file it had not touched.
+        """
+        self._discard("gone")
+
+        with mock.patch.object(annotation_store, "_write", return_value=False) as write:
+            self.assertEqual(
+                annotation_store.FORGET_UNWRITABLE, annotation_store.forget(self.config)
+            )
+
+        self.assertEqual(1, write.call_count)
+        self.assertEqual({"gone"}, {entry["sid"] for entry in annotation_store.load(self.config)})
 
 
 class WordsAreWhatAReadingCouldHaveReadTest(unittest.TestCase):
@@ -1281,7 +1653,16 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
             self.config, self.state, "claude", "s1", assessment=self._assessment()
         )
         annotation_store.clear(self.config, self.state, "claude", "s1")
-        self.assertIsNone(annotation_store.find(annotation_store.load(self.config), "claude", "s1"))
+
+        # The discard record standing in the entry's place carries no reading,
+        # which is what keeps `clear`'s original reasoning true: nothing left
+        # behind is citable, because nothing left behind holds words
+        # (DRC-4565).
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        self.assertTrue(annotation_store.is_discarded(entry))
+        self.assertNotIn("assessment", entry)
+        self.assertIsNone(annotation_store.published(entry)["assessment"])
 
     def test_a_half_written_reading_is_dropped_whole_rather_than_half_shown(self) -> None:
         # The worst of the three outcomes is the middle one: the page renders

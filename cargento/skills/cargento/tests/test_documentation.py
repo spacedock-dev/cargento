@@ -1353,12 +1353,14 @@ class SemanticHistoryContractDocumentationTest(unittest.TestCase):
         # improvement that would silently contradict both paragraphs.
         section = _flat_section(self.SECURITY, "## Operator-cockpit prototype")
         self.assertIn(
-            "`--forget` deletes the session-history and session-end stores and nothing else",
+            "`--forget` deletes the session-history and session-end stores, removes the discard "
+            "records in the annotation store, and reaches nothing else",
             section,
         )
-        # Both `forget` functions the command reaches (DRC-4547 added the
-        # second), so admitting this store through either one turns this red.
-        for module in ("history.py", "ends.py"):
+        # Every `forget` function the command reaches (DRC-4547 added the
+        # second, DRC-4565 the third), so admitting this store through any one
+        # of them turns this red.
+        for module in ("history.py", "ends.py", "annotations.py"):
             source = (SERVER_PATH.parent / "cargento_runtime" / module).read_text(encoding="utf-8")
             forget = source[source.index("def forget(") :]
             forget = forget.split("\ndef ", 1)[0]

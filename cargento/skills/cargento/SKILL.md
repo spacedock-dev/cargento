@@ -206,7 +206,8 @@ running, or that the port belongs to some other process — in which case it cha
 The server writes ten files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
 detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
-`cargento-annotations.json`, the goal and expected output you typed against a session;
+`cargento-annotations.json`, the goal and expected output you typed against a session, plus a
+text-free record of any session you discarded everything for;
 `cargento-deliveries.json`, what became of each notification the board raised;
 `cargento-departures.json`, what an unasked reading raised, written only with `--unasked-readings`;
 `cargento-ends.json`, the session ends the board observed, so a session that finished still reads as
@@ -288,8 +289,10 @@ attempts and hand-overs, with no arithmetic between any of them. A count identif
 reading and settles nothing else, and where the away checks have never read the session the figure
 says it was not measured rather than reading zero. The `clear` beside each box empties that box, and
 the save after it keeps every earlier revision, so the raises quoting those words stay. Discarding
-the whole annotation withdraws them: the quotations go from the departure record too, and only the
-fact that a check ran stays. That act is `discard everything`, under the two boxes and offered only
+the whole annotation withdraws them: the quotations go from the departure record too, and what
+stays is the fact that a check ran and a record of the discard itself, holding when it happened
+and no text at all. That record is why a discarded session still has a line in the Intent log,
+and why the board never describes it as a session nobody typed against. That act is `discard everything`, under the two boxes and offered only
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not
@@ -463,7 +466,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
 | `--stop` | Stop the instance on `--port` over `/api/shutdown`. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
-| `--forget` | Delete the local history store and the session-end store, then exit. A one-shot command like `--stop` and `--status`, not a switch for a run: what it does is not undone by running the next command without it. Refused while a dashboard answers on `--port`, because a running instance holds both in memory: it would write the deleted history records back, and it would go on publishing the ends it observed. |
+| `--forget` | Delete the local history store and the session-end store, remove the record of any session you discarded everything for, and exit. It deletes nothing you typed: a discard record holds when the act happened and no text. A one-shot command like `--stop` and `--status`, not a switch for a run: what it does is not undone by running the next command without it. Refused while a dashboard answers on `--port`, and the refusal names all three stores. Two of them a running instance would undo: it would write the deleted history records back, and it would go on publishing the ends it observed. The annotation store it would not — every write there re-reads the file, so a running board picks the sweep up on its next collection — but the command refuses whole rather than in parts, so the discard records are still there too. Stop it with `--stop` first. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; it writes nothing and transmits nothing. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |

@@ -142,6 +142,49 @@ DISCARD_UNWITHDRAWN = (
     "reading of it. The departure store could not be written, so anything raised against those "
     "words goes on quoting them."
 )
+# What a discard leaves behind once its cue has lapsed (DRC-4565).
+#
+# The cue above is transient by construction and right to be: a thirty second
+# lifetime is what a cue is for. The record is the half that was missing, and
+# what it may say is bounded from two directions. It may not restate the words,
+# because deleting them was the act. And it may not claim anything about the
+# departure store, because a discard is one act over two stores and the second
+# half fails on its own -- so this sentence speaks only about the annotation
+# store, and the standing sentence below is added beside it by whichever
+# surface can see that a raise still quotes.
+#
+# "kept here" and not "kept", and the qualifier is the whole of what stops this
+# sentence being false. Session history keeps its own copy of `annotation_goal`
+# and `annotation_output` for fourteen days, it is on by default, and nothing in
+# the discard path touches it: measured, the discarded words were still in the
+# store on disk and in every `/api/data` payload's `history` array after the
+# act. The Intent log prints that fourteen-day copy in its own closing note, so
+# an unqualified claim contradicted a sentence rendered in the same view. The
+# other copy is named here rather than left to that note, because this sentence
+# also renders on the Held to tab and the session page, where the note does not.
+DISCARD_RECORD = (
+    "Everything you typed against this session was discarded, along with any reading of it. "
+    "None of it is kept here: this record says only that the act happened and when. Where "
+    "session history is recording, it holds its own fourteen-day copy of those two fields, "
+    "and --forget deletes that store."
+)
+DISCARD_RECORD_STANDING = (
+    "The departure store could not be written when they went, so anything raised against "
+    "those words goes on quoting them."
+)
+# The absences on a session whose words were discarded, which must never be
+# the absences on a session nobody ever typed against. Both states render in
+# the same slot, and rendering one sentence for both is the false answer this
+# issue exists to remove.
+DISCARDED_GOAL = "The goal you typed for this session was discarded."
+DISCARDED_OUTPUT = "The expected output you typed for this session was discarded."
+# A discard of a session that had nothing to discard. The control is gated on
+# a stored revision so a reader cannot reach it, but the route can be reached
+# by hand and answered as though an act had landed.
+DISCARD_NOTHING = (
+    "Nothing to discard. Nothing was typed against this session, so nothing was deleted "
+    "and no record of a deletion was made."
+)
 DISCARD_SENTENCES: Final[dict[str, str]] = {
     "why": DISCARD_WHY,
     "armed": DISCARD_ARMED,
@@ -149,6 +192,12 @@ DISCARD_SENTENCES: Final[dict[str, str]] = {
     "unwithdrawn": DISCARD_UNWITHDRAWN,
     "refused": DISCARD_REFUSED,
     "unwritable": DISCARD_UNWRITABLE,
+    "record": DISCARD_RECORD,
+    "record_standing": DISCARD_RECORD_STANDING,
+    "nothing": DISCARD_NOTHING,
+    # The reading route's own refusal, so the block on the tab and the route
+    # behind its button cannot word one state two ways.
+    "unreadable": reading.WITHHELD[reading.WITHHELD_DISCARDED],
 }
 
 # What one call to a mutator did, as a closed vocabulary rather than a bool
@@ -164,6 +213,13 @@ OUTCOME_UNCHANGED = "unchanged"
 OUTCOME_REFUSED = "refused"
 OUTCOME_UNWRITABLE = "unwritable"
 OUTCOMES = (OUTCOME_STORED, OUTCOME_UNCHANGED, OUTCOME_REFUSED, OUTCOME_UNWRITABLE)
+
+# What one `--forget` sweep of this store did (DRC-4565). A closed vocabulary
+# for `OUTCOMES`' reason and not the wire's: these never leave the process, and
+# `cli` picks one of three sentences from them.
+FORGET_SWEPT = "swept"
+FORGET_NOTHING = "nothing"
+FORGET_UNWRITABLE = "unwritable"
 
 # Whether the identity this store bound on is the session's whole identity.
 # `exact` is the ordinary case. `prefix` is the one the issue named as a hazard
@@ -241,9 +297,11 @@ class Annotation(TypedDict):
     construction. The captain amended the ruling on 2026-09-10 once that was
     measured rather than assumed.
 
-    The price is real and recorded rather than hidden: `--forget` deletes
-    session history alone and does not reach this store, so a reader who wants
-    a model-authored reading gone uses `clear()` on that session. There is no
+    The price is real and recorded rather than hidden: `--forget` deletes no
+    reading and no word a reader typed, so a reader who wants a model-authored
+    reading gone uses `clear()` on that session. It reaches this store for one
+    thing only, the text-free discard records `forget` sweeps, which is the
+    machine's memory of an act rather than anything a person wrote. There is no
     fourteen-day expiry either; a reading is evicted when its annotation is.
     """
 
@@ -263,6 +321,15 @@ class Annotation(TypedDict):
     refused_raw: NotRequired[Any]
     readings: NotRequired[int]
     withheld: NotRequired[str]
+    # A discard record, and the only entry shape with no revisions at all
+    # (DRC-4565). `discarded` is when the act happened; `discarded_revision` is
+    # the last revision number that went, kept so the next save mints n+1
+    # rather than reusing a number a withdrawn departure row still records
+    # having read. Neither is text and nothing else survives beside them: the
+    # reasoning `clear` gives is unchanged, because a record carrying no words
+    # leaves nothing citable.
+    discarded: NotRequired[float]
+    discarded_revision: NotRequired[int]
 
 
 def store_path(config: RuntimeConfig) -> str:
@@ -402,12 +469,33 @@ def _settlement(value: Any) -> Settlement | None:
     return {"at": float(at), "through": float(through), "revision": revision}
 
 
+def _discard_record(value: dict[str, Any], harness: str, sid: str) -> Annotation | None:
+    """One untrusted record with no revisions as a discard record, or nothing.
+
+    A record and nothing else: every optional field beside it is dropped
+    unread, which is what makes "carries no text" a property of the parser
+    rather than a promise about the writer. A file rewritten by any local
+    process to hang a reading off a discard record reads back as a discard
+    record with no reading.
+    """
+    at = value.get("discarded")
+    if isinstance(at, bool) or not isinstance(at, (int, float)) or at <= 0:
+        return None
+    entry: Annotation = {"harness": harness, "sid": sid, "revisions": (), "discarded": float(at)}
+    revision = value.get("discarded_revision")
+    if not isinstance(revision, bool) and isinstance(revision, int) and revision > 0:
+        entry["discarded_revision"] = revision
+    return entry
+
+
 def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None:
     """One untrusted record as an annotation, or nothing.
 
-    A record whose revisions all fail validation is dropped whole: an annotation
-    with no words is indistinguishable from no annotation, and publishing it
-    would put an empty row on the board with nothing to say.
+    A record whose revisions all fail validation is dropped whole unless it
+    carries a discard stamp: an annotation with no words and no stamp is
+    indistinguishable from no annotation, and publishing it would put an empty
+    row on the board with nothing to say. A discard record has something to
+    say, which is the whole of DRC-4565.
     """
     if not isinstance(value, dict):
         return None
@@ -421,7 +509,7 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     parsed = [rev for rev in (_revision(item, text_cap) for item in raw) if rev is not None]
     kept = tuple(sorted(parsed, key=lambda rev: rev["n"])[-revision_cap:]) if revision_cap else ()
     if not kept:
-        return None
+        return _discard_record(value, harness, sid)
     entry: Annotation = {"harness": harness, "sid": sid, "revisions": kept}
     settled = _settlement(value.get("settled"))
     if settled is not None:
@@ -452,13 +540,38 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     return entry
 
 
+def _eviction_rank(entry: Annotation) -> tuple[int, float]:
+    """Where this entry stands in the queue to be dropped. Lowest goes first.
+
+    Two keys and not one, because age alone gets it backwards (DRC-4565). A
+    discard record is stamped at the moment of the act, which is later than
+    every entry typed before it, so oldest-first would keep a record of a
+    deletion and evict words the reader still has. Words outrank a record of
+    their absence, and within each group the oldest goes first.
+    """
+    if not entry["revisions"]:
+        return (0, float(entry.get("discarded") or 0.0))
+    return (1, entry["revisions"][-1]["at"])
+
+
 def _bounded(entries: Iterable[Annotation], limit: int) -> tuple[Annotation, ...]:
-    """The most recently annotated `limit` sessions, oldest save evicted first."""
-    ordered = sorted(entries, key=lambda entry: entry["revisions"][-1]["at"])
+    """The `limit` entries worth keeping, by `_eviction_rank`."""
+    ordered = sorted(entries, key=_eviction_rank)
     return tuple(ordered[-limit:]) if limit > 0 else ()
 
 
 def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
+    """Every annotation this run may read, or none if there is none to trust.
+
+    The flag gate and nothing else. `_read` is the file, and `forget` needs the
+    file whether or not this run reads annotations (DRC-4565).
+    """
+    if not config.annotations_enabled:
+        return ()
+    return _read(config)
+
+
+def _read(config: RuntimeConfig) -> tuple[Annotation, ...]:
     """Every annotation on disk, or none if there is none to trust.
 
     Read to a cap with RecursionError caught, for `lifecycle.read_state`'s
@@ -466,8 +579,6 @@ def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
     ValueError, and a corrupt store must degrade to "no annotations" rather than
     take down a collection. A malformed record is dropped on its own.
     """
-    if not config.annotations_enabled:
-        return ()
     cap = config.annotation_read_cap_bytes
     try:
         with open(store_path(config), "rb") as handle:
@@ -524,14 +635,27 @@ def save(
 ) -> bool:
     """Write the store, reporting whether it reached disk.
 
+    The flag gate and nothing else. `_write` is the file, for `load`'s reason.
+    """
+    if not config.annotations_enabled:
+        return False
+    return _write(config, entries, diagnostic_sink=diagnostic_sink)
+
+
+def _write(
+    config: RuntimeConfig,
+    entries: Iterable[Annotation],
+    *,
+    diagnostic_sink: Callable[[str], None],
+) -> bool:
+    """Put these entries on disk, reporting whether they reached it.
+
     Temp file plus `os.replace`, and `0o600` in the `os.open` call rather than a
     chmod afterwards, both copied from `lifecycle.write_state`. The mode matters
     more here than on the state file: this one holds prose the reader composed,
     which `SECURITY.md` treats as the same class as the observer sidecar's goal.
     The mode is advisory and Windows ignores it, which SECURITY.md records.
     """
-    if not config.annotations_enabled:
-        return False
     payload = {
         "v": SCHEMA_VERSION,
         "entries": [
@@ -656,6 +780,31 @@ def has_typed_words(entry: Annotation | None) -> bool:
     return bool(str(latest.get("goal") or "").strip() or str(latest.get("output") or "").strip())
 
 
+def is_discarded(entry: Annotation | None) -> bool:
+    """Whether this entry is a discard record rather than words.
+
+    A predicate rather than a `.get("discarded")` at each of the five places
+    that ask, because the three states this store now has are told apart from
+    each other and not from one field: absent is `entry is None`, present is
+    `has_typed_words`, and discarded is this. A caller that inferred one from
+    the negation of another is the defect DRC-4565 exists to stop shipping.
+    """
+    return entry is not None and not entry["revisions"] and bool(entry.get("discarded"))
+
+
+def discarded_revision(entry: Annotation | None) -> int:
+    """The last revision number a discard took, or 0.
+
+    Read by `annotate` so a save over a record mints n+1. Restarting at 1
+    would re-point a withdrawn departure row that recorded "read revision 2"
+    at text that revision never held, which is the re-pointing `Revision`'s
+    own immutability exists to refuse.
+    """
+    if entry is None or not is_discarded(entry):
+        return 0
+    return int(entry.get("discarded_revision") or 0)
+
+
 def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> dict[str, Any]:
     """The latest revision as the board renders it, absences named.
 
@@ -669,15 +818,25 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
     would show 1 January 1970 for every unannotated session, and `revision 0`
     reads as a revision rather than as none.
     """
-    latest: Revision | None = entry["revisions"][-1] if entry else None
+    latest: Revision | None = entry["revisions"][-1] if entry and entry["revisions"] else None
     settled = entry.get("settled") if entry else None
     goal = latest["goal"] if latest else ""
     output = latest["output"] if latest else ""
+    # The third answer (DRC-4565). Absent, present and discarded render in the
+    # same two slots, and the sentence that says "nobody typed here" over a
+    # session whose words a reader deleted is the false one this replaces.
+    discarded = is_discarded(entry)
     return {
         "goal": goal,
-        "goal_why": "" if goal else NO_GOAL_TYPED,
+        "goal_why": (DISCARDED_GOAL if discarded else NO_GOAL_TYPED) if not goal else "",
         "output": output,
-        "output_why": "" if output else NO_OUTPUT_TYPED,
+        "output_why": (DISCARDED_OUTPUT if discarded else NO_OUTPUT_TYPED) if not output else "",
+        # When the act happened, and the record's own sentence. Two keys, for
+        # the reason `annotation_at` is not folded into the revision line: the
+        # moment is a number a surface renders in its own register, and the
+        # sentence is the store's and never composed on a page.
+        "discarded_at": float(entry["discarded"]) if discarded and entry else None,
+        "discarded_why": DISCARD_RECORD if discarded else "",
         "revision": latest["n"] if latest else None,
         "revision_count": len(entry["revisions"]) if entry else 0,
         "at": latest["at"] if latest else None,
@@ -812,10 +971,15 @@ def _record(
         # rather than written away.
         current = load(config)
         existing = find(current, *key)
-        if existing is None:
+        if existing is None or is_discarded(existing):
             # A reading of nothing is not a reading. There is no baseline to
             # have read, and inventing an entry here would put a row on the
             # board for a session nobody annotated.
+            #
+            # A discard record is the same answer one state further on, and
+            # refusing it is what keeps the record text-free: `withheld` is a
+            # sentence and `readings` a count, and hanging either off a record
+            # would make it an entry with something in it (DRC-4565).
             return OUTCOME_REFUSED
         updated: Annotation = {
             "harness": existing["harness"],
@@ -891,7 +1055,7 @@ def annotate(
         # forward instead of being written away.
         current = load(config)
         existing = find(current, *key)
-        if existing is not None:
+        if existing is not None and not is_discarded(existing):
             last = existing["revisions"][-1]
             text_goal = last["goal"] if new_goal is None else new_goal
             text_output = last["output"] if new_output is None else new_output
@@ -921,12 +1085,18 @@ def annotate(
             # revision's `at` is later than the directions that raised it.
             updated = _carried(existing, updated)
         else:
+            # A save over a discard record makes the entry live again and the
+            # record yields to it: nothing here carries `discarded` forward,
+            # so the row stops saying a discard stands the moment there are
+            # words again. The number does carry, through
+            # `discarded_revision`, so the reborn entry does not reuse a
+            # revision number a withdrawn raise still records having read.
             updated = {
                 "harness": key[0],
                 "sid": key[1],
                 "revisions": (
                     {
-                        "n": 1,
+                        "n": discarded_revision(existing) + 1,
                         "at": stamp,
                         "goal": new_goal or "",
                         "output": new_output or "",
@@ -984,7 +1154,10 @@ def settle(
         # rather than written away.
         current = load(config)
         existing = find(current, *key)
-        if existing is None:
+        # A discard record has no baseline to answer about, which is the rule
+        # the docstring already states; reading its latest revision would also
+        # raise, since it has none.
+        if existing is None or is_discarded(existing):
             return OUTCOME_REFUSED
         updated: Annotation = {
             "harness": existing["harness"],
@@ -1017,21 +1190,54 @@ def clear(
     harness: Any,
     sid: Any,
     *,
+    now: float | None = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
     """Forget one session's words entirely. Returns an `OUTCOMES` token.
 
     Every revision goes, not just the latest. A reader clearing the field is
     withdrawing the request, and leaving the history behind would keep it
-    citable by an assessment.
+    citable by an assessment. That reasoning is unchanged by the record this
+    now leaves in the entry's place (DRC-4565): the record holds no text of
+    any kind, so there is nothing in it for an assessment to cite, and the
+    assessment itself goes with the revisions.
+
+    What the record does hold is the moment, so the act outlives the thirty
+    second cue that announced it, and the last revision number, so a later
+    save does not reuse one. A session that had no entry gets no record:
+    discarding nothing is not a discard, and inventing one here would put a
+    deletion on the board that never happened.
+
+    The outcome for that case stays `STORED` rather than becoming `UNCHANGED`,
+    which the test pinning it gives the reason for: the caller withdraws
+    departure rows only on `STORED`, and an annotation evicted out from under
+    its rows would otherwise leave them quoting forever.
     """
     if not config.annotations_enabled:
         return OUTCOME_REFUSED
     key = _key(harness, sid)
     if not key[0] or not key[1]:
         return OUTCOME_REFUSED
+    stamp = time.time() if now is None else now
     with state.annotation_lock:
-        kept = tuple(e for e in load(config) if (e["harness"], e["sid"]) != key)
+        current = load(config)
+        existing = find(current, *key)
+        others = tuple(e for e in current if (e["harness"], e["sid"]) != key)
+        if existing is None:
+            kept = others
+        elif is_discarded(existing):
+            # Already recorded, and the stamp does not move: the record says
+            # when the words went, and a second press deleted nothing.
+            kept = _bounded([*others, existing], config.annotation_max_sessions)
+        else:
+            record: Annotation = {
+                "harness": existing["harness"],
+                "sid": existing["sid"],
+                "revisions": (),
+                "discarded": stamp,
+                "discarded_revision": existing["revisions"][-1]["n"],
+            }
+            kept = _bounded([*others, record], config.annotation_max_sessions)
         state.annotations = _stored(kept)
         # Inside the lock, for `annotate`'s reason.
         return (
@@ -1039,3 +1245,36 @@ def clear(
             if save(config, kept, diagnostic_sink=diagnostic_sink)
             else OUTCOME_UNWRITABLE
         )
+
+
+def forget(config: RuntimeConfig) -> str:
+    """Drop every discard record, keeping every entry that still holds words.
+
+    A sweep and not a delete, which is the whole of the distinction `--forget`
+    rests on: that command removes the machine's memory of what it OBSERVED,
+    and a record that Cargento deleted something is squarely that class, while
+    the words a reader typed are not. The module docstring's price -- that
+    `--forget` does not reach this store -- still holds for those words.
+
+    Reads and writes the file itself rather than going through `load` and
+    `save`, so `annotations_enabled` cannot change the answer. `history.forget`
+    is deliberately independent of its own flag for the reason its docstring
+    gives -- someone turning the feature off and then asking for the file to go
+    must not be told there was nothing to delete -- and a store still holding
+    records is exactly that state: measured under `--no-annotations`, the sweep
+    reported nothing to remove over a file that still held one.
+
+    Three answers and not two, because the caller prints a sentence per answer.
+    A bool folded "there was nothing to remove" together with "the store could
+    not be written", in the one command whose whole product is telling the
+    reader what went. `_write`'s own failure line is silenced here because it
+    says what a reader typed will be gone, which is the opposite of what this
+    failure means: nothing was written, so every record and every word stands.
+    """
+    entries = _read(config)
+    kept = tuple(entry for entry in entries if not is_discarded(entry))
+    if len(kept) == len(entries):
+        return FORGET_NOTHING
+    if _write(config, kept, diagnostic_sink=lambda _line: None):
+        return FORGET_SWEPT
+    return FORGET_UNWRITABLE

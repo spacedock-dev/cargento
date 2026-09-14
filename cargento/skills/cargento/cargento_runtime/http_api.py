@@ -1050,6 +1050,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     entry["harness"],
                     entry["sid"],
                     has_words=annotation_store.has_typed_words(entry),
+                    discarded=annotation_store.is_discarded(entry),
                     now=now,
                 ),
             }
@@ -1372,6 +1373,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "outcome": outcome,
             "revision": current["revision"],
             "revision_count": current["revision_count"],
+            # When the discard this session carries a record of happened, or
+            # None. Read back through `published` like the two above it, so
+            # one clear arm cannot report a record the store did not make:
+            # discarding a session that never had an entry answered exactly
+            # like discarding two revisions of words (DRC-4565).
+            "discarded": current["discarded_at"],
             # The second store's answer, and never folded into `outcome`: the
             # four tokens are the annotation store's closed vocabulary and the
             # page's save path reads them too. True on every arm that owes no
@@ -1550,6 +1557,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
             entry["revisions"],
             facts,
             now=application.clock(),
+            # A discard record has no revisions, which is also what a session
+            # nobody typed against has. `produce` is handed revisions and
+            # cannot tell them apart, so the caller that holds the entry says
+            # which (DRC-4565).
+            discarded=annotation_store.is_discarded(entry),
             # A stamp: what read it and when. It carried `PROVIDER_NOTE`, a
             # policy sentence, rendered in the position and micro-type where
             # the design says a stamp names the model and the moment. The

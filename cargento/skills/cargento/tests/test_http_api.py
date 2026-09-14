@@ -839,6 +839,14 @@ class DismissEndpointTest(RuntimeTestCase):
         self.assertEqual("", row["departure_why"])
 
     def test_a_withdrawn_annotation_leaves_the_reveal(self) -> None:
+        """The WORDS leave; a text-free record of the act stays (DRC-4565).
+
+        The route used to serve nothing at all here, which is what made a
+        discard erase the session from the one surface built to outlive it.
+        What it serves now is a row carrying no goal, no expected output and
+        no reading -- and saying so in sentences a session nobody typed
+        against would never get.
+        """
         config, state = self._runtime()
         annotation_store.annotate(config, state, "pi", "s1", goal="withdraw me")
         annotation_store.clear(config, state, "pi", "s1")
@@ -846,7 +854,14 @@ class DismissEndpointTest(RuntimeTestCase):
             status, body = self._get(port, "/api/annotations")
 
         self.assertEqual(200, status)
-        self.assertEqual([], json.loads(body)["annotations"])
+        rows = json.loads(body)["annotations"]
+        self.assertEqual(1, len(rows))
+        self.assertNotIn("withdraw me", body.decode())
+        self.assertEqual("", rows[0]["goal"])
+        self.assertEqual("", rows[0]["output"])
+        self.assertIsNone(rows[0]["assessment"])
+        self.assertIsNotNone(rows[0]["discarded_at"])
+        self.assertEqual(annotation_store.DISCARDED_GOAL, rows[0]["goal_why"])
 
     def test_the_annotation_reveal_is_503_under_the_off_switch(self) -> None:
         config, state = self._runtime(annotations_enabled=False)
@@ -3012,6 +3027,61 @@ class ReadingRouteTest(unittest.TestCase):
                 self.assertEqual(expected, status, label)
                 self.assertEqual([], calls, f"{label}: the model ran behind a closed gate")
 
+    def test_a_discarded_session_is_refused_by_name_and_not_as_nothing_typed(self) -> None:
+        """DRC-4565. Two empty states, and the route answered with the wider one.
+
+        A discard record has no revisions, so `_readable`'s `not revisions`
+        arm caught it and the reader was told nothing had ever been typed
+        against a session they had typed against and then deleted. The
+        distinction is not cosmetic here: it is the only place the route can
+        say what became of the words.
+        """
+        config, state = self._runtime()
+        application = self._app(config, state)
+        annotation_store.clear(
+            config, state, "pi", "s1", now=1_700_000_050.0, diagnostic_sink=lambda _m: None
+        )
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(application) as port,
+        ):
+            status, body = self._post(port, self._press())
+
+        self.assertEqual(200, status)
+        answer = json.loads(body)
+        self.assertFalse(answer["produced"])
+        self.assertEqual(runtime_reading.WITHHELD_DISCARDED, answer["reason"])
+        self.assertNotEqual(runtime_reading.WITHHELD_NOTHING_TYPED, answer["reason"])
+        # Refused before the subprocess, like every other gate in this class.
+        self.assertEqual([], calls, "the model ran against a discarded session")
+        # And nothing was written onto the record: it stays text-free.
+        entry = annotation_store.find(annotation_store.load(config), "pi", "s1")
+        assert entry is not None
+        self.assertNotIn("withheld", entry)
+        self.assertNotIn("readings", entry)
+
+    def test_a_session_nobody_typed_against_still_answers_nothing_typed(self) -> None:
+        """The other side of the pair, so the mutation binds in both
+        directions. Swapping the two sentences would leave the test above
+        green on its own."""
+        config, state = self._runtime()
+        application = self._app(config, state)
+        annotation_store.annotate(config, state, "pi", "s1", goal="", output="", now=20.0)
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(application) as port,
+        ):
+            _status, body = self._post(port, self._press())
+
+        self.assertEqual(runtime_reading.WITHHELD_NOTHING_TYPED, json.loads(body)["reason"])
+        self.assertEqual([], calls)
+
     def test_a_lured_request_cannot_spend_a_readers_capacity(self) -> None:
         """Each shape this route refuses that `_local_ok` alone would admit.
 
@@ -3416,7 +3486,53 @@ class AnnotateRouteTest(unittest.TestCase):
             )
         self.assertEqual(200, status)
         self.assertIsNone(json.loads(body)["revision"])
-        self.assertEqual((), annotation_store.load(config))
+        # What was typed is gone; what stands in its place is a record with no
+        # revisions and no text (DRC-4565).
+        stored = annotation_store.load(config)
+        self.assertEqual(1, len(stored))
+        self.assertEqual((), stored[0]["revisions"])
+        self.assertNotIn("G", json.dumps(stored[0]))
+
+    def test_the_reply_says_a_discard_landed_only_where_one_did(self) -> None:
+        """DRC-4565. Discarding nothing answered exactly like discarding words.
+
+        Measured on the walk: a clear against a session that never existed and
+        a clear against one holding two revisions came back byte-identical.
+        The reply now carries the record's own moment, which is None where no
+        record was made, so the wire says which of the two happened.
+        """
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": "G"}).encode())
+            _s, real = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode()
+            )
+            _s2, empty = self._post(
+                port, json.dumps({"harness": "pi", "sid": "never", "clear": True}).encode()
+            )
+
+        landed, nothing = json.loads(real), json.loads(empty)
+        self.assertNotEqual(nothing, landed)
+        self.assertIsNotNone(landed["discarded"])
+        self.assertIsNone(nothing["discarded"])
+
+    def test_a_save_over_a_discard_reports_the_entry_live_and_the_record_gone(self) -> None:
+        """The reborn entry does not describe itself as the first thing ever
+        typed here: two revisions went, so the next is 3."""
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": "one"}).encode())
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "goal": "two"}).encode())
+            self._post(port, json.dumps({"harness": "pi", "sid": "s", "clear": True}).encode())
+            _status, body = self._post(
+                port, json.dumps({"harness": "pi", "sid": "s", "goal": "three"}).encode()
+            )
+
+        answer = json.loads(body)
+        self.assertEqual(annotation_store.OUTCOME_STORED, answer["outcome"])
+        self.assertEqual(3, answer["revision"])
+        self.assertEqual(1, answer["revision_count"])
+        self.assertIsNone(answer["discarded"])
 
     def test_clearing_withdraws_what_was_raised_against_the_cleared_words(self) -> None:
         """DRC-4514. `SECURITY.md` says a clear takes the words off this route.
@@ -3552,8 +3668,15 @@ class AnnotateRouteTest(unittest.TestCase):
         self.assertIs(False, answer["withdrew"])
         # And the reply is honest about both halves at once: the words the
         # reader typed are gone, and the quotation of them is not.
-        self.assertEqual((), annotation_store.load(config))
+        entry = annotation_store.find(annotation_store.load(config), "pi", "s")
+        assert entry is not None
+        self.assertEqual((), entry["revisions"])
+        self.assertNotIn("do not touch the board", json.dumps(entry))
         self.assertEqual("do not touch the board", departures.load(config)[0]["clause"])
+        # The durable record of the act stands beside the standing quotation,
+        # which is the state DRC-4565 must not let the surfaces describe as
+        # both gone and quoted (AC6). The record says only that the words went.
+        self.assertIsNotNone(answer["discarded"])
 
     def test_emptying_both_fields_is_not_the_clear_that_withdraws_a_raise(self) -> None:
         """DRC-4514, walked on the board, and the reason `SECURITY.md` says which.

@@ -351,6 +351,7 @@ def why(
     sid: str,
     *,
     has_words: bool,
+    discarded: bool,
     now: float,
 ) -> str:
     """Which of the four absence sentences this session has earned, or none.
@@ -361,7 +362,19 @@ def why(
     board entirely. A second copy of this ladder is how a spent cap comes to be
     worded one way where the raise is shown and another where it is reviewed,
     and the whole point of these four is that they must never read alike.
+
+    `discarded` is a required argument for `has_words`' reason, and it is not
+    the same fact (DRC-4565). A discard record has no words, so `has_words` is
+    already false and the ladder answers `NEVER_CHECKED` -- which is a claim
+    about the past, wrong twice over. It is false whenever a check DID run
+    before the discard, because withdrawal blanks the row and `checked` needs
+    words. And it is a second account of a state the record beside it has
+    already given in the board's own voice. All three surfaces print it, so
+    the guard belongs here: it shipped on the Intent log alone and the session
+    page and the Held-to tab went on saying it under the record.
     """
+    if discarded:
+        return ""
     stored = list(entries)
     mine, today = counts(stored, harness, sid, since=now - DAY_SEC)
     # Whether `published` is about to serve this session a row, on the same

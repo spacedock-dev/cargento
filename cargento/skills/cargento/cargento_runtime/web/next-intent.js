@@ -83,17 +83,43 @@ function nextIntentReading(row){
 function nextIntentClose(ordered){
   /* Derived from the rows this view is already holding, rather than asserted.
      The constant it replaces said no reading existed while one rendered on the
-     Held to tab for a session listed directly beneath it. */
-  const withReading = (ordered || []).filter(row => row && row.assessment).length;
-  const total = (ordered || []).length;
+     Held to tab for a session listed directly beneath it.
+
+     Over the rows that still hold words and not over every row (DRC-4565). A
+     discard record can never carry a reading, so counting one in the
+     denominator reports the schema rather than the sessions -- the first
+     Measured Invariant, one layer out from where it was last shipped. The
+     standing-raise clause below still reads every row, because a raise on
+     record is a fact about the record and not about the words. */
+  const typed = (ordered || []).filter(row => !nextAnnotationDiscarded(row));
+  const withReading = typed.filter(row => row && row.assessment).length;
+  const total = typed.length;
+  const records = (ordered || []).length - total;
   /* And the watching clause is conditional, which it was not. With
      `--unasked-readings` on, something does watch, and this line said otherwise
      directly beneath rows carrying the departures it had raised. */
   const watching = Boolean(nextData && nextData.unasked === true);
   const tail = watching ? ". " : ", and nothing watches for one. ";
+  /* And the denominator names the set it counted, wherever that set is not
+     the list (DRC-4565). Measured on the review board: four rows on screen
+     and a note reading "1 of these 2", because the count was corrected to
+     drop records and the demonstrative in front of it was not. Before the
+     record existed `total` WAS the rendered row count, so "these" was
+     answered by the list itself; correcting the figure is what took that
+     answer away.
+
+     Two wordings on the same test the lead clause and the eviction rule use,
+     rather than one qualified wording: with no record listed the rows are the
+     set, and naming it would draw a distinction the reader cannot see. The
+     zero case needs neither, and that is a property rather than an oversight
+     -- a record can never carry a reading, so none over the rows that hold
+     words is none over every row on screen. */
+  const counted = records
+    ? `the ${total} that still ${total === 1 ? "holds" : "hold"} words`
+    : `these ${total}`;
   const lead = withReading === 0
     ? `No reading has been made against any of these${tail}`
-    : `${withReading} of these ${total} ${withReading === 1 ? "carries" : "carry"} a reading` +
+    : `${withReading} of ${counted} ${withReading === 1 ? "carries" : "carry"} a reading` +
       tail;
   /* And once for the view, where a raise is on record and nothing is watching
      now. Derived over the rows this view is holding, like the count above:
@@ -133,6 +159,17 @@ function nextIntentClose(ordered){
    once per row. */
 function nextIntentDepartures(row){
   const rows = Array.isArray(row && row.departures) ? row.departures : [];
+  /* On a discard record the raise COUNT stands and the why-sentence does not
+     (DRC-4565). A raise still on record is a fact about the record and the
+     reader needs it; "Cargento has not checked this session against what you
+     asked for" is true only because the words are gone, which the record
+     directly above it has already said in the board's own voice. Two accounts
+     of one state, and the second reads as a claim about the past. */
+  if(nextAnnotationDiscarded(row)){
+    return rows.length
+      ? `${rows.length === 1 ? "One departure" : `${rows.length} departures`} raised`
+      : "";
+  }
   if(!(nextData && nextData.unasked === true)){
     /* The counted raise and never `departure_why`, which is the defect the
        paragraph above records: the row keys on rows being on record, so a
@@ -152,26 +189,52 @@ function nextIntentDepartures(row){
 function nextIntentRow(row, live){
   const key = sessKey(row);
   const project = live.get(key) || "";
-  const label = nextProjectValue(
-    String(row.goal || "").trim() || String(row.output || "").trim(),
-    Boolean(String(row.goal || "").trim() || String(row.output || "").trim()));
+  /* The third state, and the reason this row branches rather than filling the
+     same cells with emptier values (DRC-4565). A discard record has no words,
+     no revision and no reading it could ever carry, so the words cell holds
+     the record's own sentence and the revision cell holds when the act
+     happened. Filling them from the live path instead is what made the log
+     read "No revision saved yet / No reading asked for" over a session the
+     reader had typed against and then deleted. */
+  const discarded = nextAnnotationDiscarded(row);
+  const words = String(row.goal || "").trim() || String(row.output || "").trim();
+  const label = discarded
+    ? nextProjectValue(String(row.discarded_why || ""), false)
+    : nextProjectValue(words, Boolean(words));
   /* `nextProjectRevisionLine` already derives this, already handles a revision
      numbered past the count kept, and already carries the typed-ago suffix. A
      second wording of one fact is the divergence the store's own absence
      strings exist to prevent. */
-  const revision = nextProjectRevisionLine(row) || "No revision saved yet";
+  const revision = discarded
+    ? nextAnnotationDiscardStamp(row)
+    : (nextProjectRevisionLine(row) || "No revision saved yet");
   const departures = nextIntentDepartures(row);
   const reachable = Boolean(project);
   const name = reachable
     ? `<a href="${esc(nextFragmentForRoute({view: "project", project,
         focus: key, tab: "held-to"}))}" data-next-focus="intent:${esc(key)}">${esc(key)}</a>`
     : `<span class="next-intent-gone">${esc(key)}</span>`;
+  /* The reading cell is dropped on a record and not softened. Every sentence
+     it can produce -- "No reading asked for" most of all -- is about a session
+     that could still have one, and a record cannot: the reading went with the
+     revisions. */
+  const reading = discarded
+    ? ""
+    : `<span class="next-intent-revision">${esc(nextIntentReading(row))}</span>`;
+  /* And the standing-raise sentence, where the withdrawal did not land, so the
+     row never says the words are gone beside a count of raises that still
+     quote them. */
+  const standing = discarded
+    ? nextAnnotationDiscardAccount(row, row.departures).slice(1)
+      .map(said => `<span class="next-intent-why">${esc(said)}</span>`).join("")
+    : "";
   return '<div class="next-intent-row">' +
     `<span class="next-intent-key">${name}</span>` +
     `<span class="next-intent-words">${label}</span>` +
     `<span class="next-intent-revision">${esc(revision)}</span>` +
-    `<span class="next-intent-revision">${esc(nextIntentReading(row))}</span>` +
+    reading +
     (departures ? `<span class="next-intent-revision">${esc(departures)}</span>` : "") +
+    standing +
     (reachable ? "" : '<span class="next-intent-why">Not on the board now, so there is ' +
       'nowhere to open. The words are here.</span>') +
     /* The binding caveat, because a list of many sessions is where a shared
@@ -205,13 +268,48 @@ function nextIntentView(){
   const live = nextIntentLiveProjects();
   /* Newest save first, which is also eviction order read backwards: the store
      drops the oldest save first, so the last row here is the next to go. That
-     is derivable from the order already on screen and needs no extra field. */
-  const ordered = [...rows].sort((a, b) => (nextNumber(b.at) || 0) - (nextNumber(a.at) || 0));
+     is derivable from the order already on screen and needs no extra field.
+
+     Records sort below every row that still holds words, because that is the
+     store's own eviction rank (DRC-4565): a discard may never push out words
+     a reader still has, so a record goes first however recent it is. Ordering
+     on the moment alone would put a fresh record above an old entry and make
+     the sentence about the bottom row false. */
+  const ordered = [...rows].sort((a, b) =>
+    (nextAnnotationDiscarded(b) ? 0 : 1) - (nextAnnotationDiscarded(a) ? 0 : 1) ||
+    ((nextNumber(b.at) || nextNumber(b.discarded_at) || 0) -
+      (nextNumber(a.at) || nextNumber(a.discarded_at) || 0)));
+  /* Two figures over one collection, derived in one pass from the rows this
+     view is holding. One count could not carry both: a record is a session
+     the reader typed against and then discarded, so counting it as typed
+     claims words that are gone and dropping it silently claims a smaller
+     history than they lived -- which is what the log did before the record
+     existed, falling from two sessions to one the moment a discard landed. */
+  const typed = ordered.filter(row => !nextAnnotationDiscarded(row));
+  const records = ordered.length - typed.length;
+  const lead = `${typed.length} ${typed.length === 1 ? "session" : "sessions"} you have typed ` +
+    "words against" +
+    (records ? `, and ${records} whose words you discarded` : "") + ". ";
+  /* The stated rule and not just the order (DRC-4565). The sort above was
+     fixed to match `annotations._eviction_rank` and this sentence was not, so
+     it went on saying the oldest save goes first over a list where a record of
+     a discard goes before any words however recent it is. The conclusion
+     survived and the rule under it was wrong, which is the harder half to
+     notice.
+
+     Two rules and not one qualified rule, on the same test the lead clause
+     uses: with no record on the list, group-before-age and oldest-first pick
+     the same bottom row, and the longer sentence would put the word
+     "discarded" on a board where nothing was. Each says what governs the rows
+     the reader is looking at. */
+  const evicts = records
+    ? "A row whose words you discarded goes before any row that still holds words, and the " +
+      "oldest of what is left goes next, so the bottom row is the next to go."
+    : "The oldest save goes first, so the bottom row is the next to go.";
   return head +
-    `<p class="next-intent-note">${ordered.length} ` +
-    `${ordered.length === 1 ? "session" : "sessions"} you have typed words against. The store ` +
-    "keeps the newest 256 and sixteen revisions each, dropping the oldest save first, so the " +
-    "bottom row is the next to go. Session history keeps a fourteen-day copy of the same two " +
+    `<p class="next-intent-note">${lead}The store ` +
+    `keeps the newest 256 and sixteen revisions each. ${evicts} ` +
+    "Session history keeps a fourteen-day copy of the same two " +
     "fields; this list is not that copy, so a row leaving here is an eviction and not an " +
     "expiry.</p>" +
     ordered.map(row => nextIntentRow(row, live)).join("") + nextIntentClose(ordered);

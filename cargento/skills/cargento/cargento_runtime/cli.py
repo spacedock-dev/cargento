@@ -24,6 +24,7 @@ from cargento_runtime import (
     observation,
     unasked,
 )
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import config as runtime_config
 from cargento_runtime import interaction_prototype as runtime_interaction
 from cargento_runtime import io as runtime_io
@@ -557,6 +558,7 @@ def run_one_shot(
         # delete history.
         path = history.store_path(config)
         ends_path = ends.store_path(config)
+        annotations_path = annotation_store.store_path(config)
         # Refused while an instance is up, because a running dashboard holds its
         # own baseline in memory and republishes it on the next transition: the
         # delete reported success and every record came back. The probe is the
@@ -565,16 +567,26 @@ def run_one_shot(
         # this invocation names and cannot see an instance on another one, which
         # is why the lane also drops a baseline whose file has gone.
         if lifecycle.instance_status(config, args.port)["state"] == "running":
-            # Both files, because the refusal keeps both (DRC-4547): a reader who
-            # ran this to drop a recorded end is owed the end store's name, and a
-            # sentence naming the history store alone reads as though the end had
-            # gone. The two clauses differ because the reasons do: the history
-            # lane would write its baseline back, while the coordinator would go
-            # on publishing the ends it still holds.
+            # All three files, because the refusal keeps all three (DRC-4547,
+            # DRC-4565): a reader who ran this to drop a recorded end is owed
+            # the end store's name, and one who ran it for the discard records
+            # is owed the annotation store's. A sentence naming the history
+            # store alone reads as though the rest had gone.
+            #
+            # The clauses differ because the reasons do, and the third is not
+            # the first two. The history lane would write its baseline back and
+            # the coordinator would go on publishing the ends it still holds,
+            # so those two would be undone. The annotation store would not: every
+            # mutator re-reads the file inside the lock and `refresh` picks a
+            # sweep up on the next collection, which is the deliberate opposite
+            # of `history.Lane`. What is true of it is simply that the sweep did
+            # not run, because this command refuses whole rather than in parts.
             runtime_io.diag(
                 f"Cargento: a dashboard is running on port {args.port} and would "
                 f"write {path} back from memory and go on publishing the ends in "
-                f"{ends_path}; stop it with --stop first, then --forget",
+                f"{ends_path}; the discard records in {annotations_path} were not "
+                "swept either, because the command refuses whole; stop it with "
+                "--stop first, then --forget",
                 print,
             )
             return 1
@@ -595,6 +607,34 @@ def run_one_shot(
             f"Cargento: deleted {ends_path}"
             if ends.forget(config)
             else f"Cargento: no session-end store at {ends_path}",
+            print,
+        )
+        # And the records of what this machine deleted (DRC-4565). A sweep and
+        # not a delete, which is the distinction the whole command rests on:
+        # a record that Cargento discarded something is its memory of an act it
+        # observed, and the words a reader typed are not -- `annotations`'
+        # docstring says `--forget` does not reach those and it still does not.
+        #
+        # Three sentences and not two, because a sweep has three answers: an
+        # unwritable store still holds every record, and reporting that as
+        # "no discard records" is the one wrong sentence this command can say.
+        # `forget` silences the store's own failure line so this one stands
+        # alone; that line is worded for a reader losing what they typed, and
+        # here nothing was written and nothing was lost.
+        swept = annotation_store.forget(config)
+        runtime_io.diag(
+            {
+                annotation_store.FORGET_SWEPT: (
+                    f"Cargento: removed the discard records in {annotations_path}"
+                ),
+                annotation_store.FORGET_NOTHING: (
+                    f"Cargento: no discard records in {annotations_path}"
+                ),
+                annotation_store.FORGET_UNWRITABLE: (
+                    f"Cargento: could not write {annotations_path}, so its discard "
+                    "records are still there"
+                ),
+            }[swept],
             print,
         )
         return 0

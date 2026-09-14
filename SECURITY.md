@@ -84,9 +84,11 @@ The posture rests on two invariants:
    code selected from a closed set or composed from counts it measured.
 
    Two consequences of storing it here rather than in session history, both accepted rather than
-   discovered. `--forget` deletes the session-history and session-end stores and **does not reach
-   this file**, so a reader who wants a model-authored reading gone clears that session's
-   annotation, which deletes the reading with the words that produced it. And there is no
+   discovered. `--forget` deletes the session-history and session-end stores and **deletes nothing
+   a reader typed and no reading of it**, so a reader who wants a model-authored reading gone
+   clears that session's annotation, which deletes the reading with the words that produced it.
+   The one thing that command does take out of this file is the discard records described below,
+   which hold no text at all. And there is no
    fourteen-day expiry: a reading is evicted when its annotation is, oldest-save-first at the
    session count above. One forwarder writes too: `statusline_hook.py`'s deduplication memo under
    the same directory, which holds a normalized state name and a timestamp and nothing about the
@@ -107,7 +109,17 @@ The posture rests on two invariants:
    departure store rather than session history. Discarding a session's annotation withdraws from
    both: it deletes every revision and blanks the quotations from the departure rows those
    revisions were read against, keeping only that a check ran, so words discarded that way are
-   gone from this response and from disk. The two stores are written one after the other and the
+   gone from this response and from both of those stores on disk. Both of those and not every
+   store: session history keeps its own fourteen-day copy of the same two fields, the discard
+   path does not touch it, and `--forget` is what removes that copy. The record's own sentence
+   names it, so a reader meets that fact where the act happened rather than only here.
+   What stays in the annotation store in their place is a
+   **discard record**, and it holds four things and no fifth: the harness, the session id, the
+   moment of the act, and the number of the last revision that went. No goal, no expected output,
+   no reading, no withheld reason and no press count -- the parser drops every other field of a
+   record unread, so a file rewritten by any local process to hang text off one reads back with
+   none. It is what lets a surface say a discard happened without restating what was discarded,
+   and it is the only thing in this file `--forget` removes. The two stores are written one after the other and the
    second write can fail on its own, in which case the annotation is gone and the quotations are
    not; the reply carries that answer as `withdrew` and the board prints a sentence saying the
    raises still quote those words, rather than the one saying nothing does. That is the `clear`
@@ -1783,8 +1795,8 @@ The `proto/operator-cockpit` branch adds project context and an optional read-on
 `GET /api/project-context` reads bounded transcript and workflow evidence, stores semantic history
 under the configured state directory, and can invoke the installed Codex CLI for a derived goal.
 This is separate from quota fetching and from the session-history switch. The prototype retains
-its own semantic-history store; `--forget` deletes the session-history and session-end stores and
-nothing else.
+its own semantic-history store; `--forget` deletes the session-history and session-end stores,
+removes the discard records in the annotation store, and reaches nothing else.
 
 That store carries session text in both directions, and this document did not say so until the
 annotation work re-counted which files hold what a person typed. A fact's `summary` is bounded at

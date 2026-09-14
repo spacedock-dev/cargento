@@ -196,6 +196,7 @@ WITHHELD_RECORD_ERROR = "record-error"
 WITHHELD_MODEL_UNAVAILABLE = "model-unavailable"
 WITHHELD_MODEL_FAILED = "model-failed"
 WITHHELD_NOTHING_TYPED = "nothing-typed"
+WITHHELD_DISCARDED = "discarded"
 WITHHELD = {
     WITHHELD_TURN_STOP: (
         "A turn stop was observed and no session end was, so there is no end for a "
@@ -238,6 +239,15 @@ WITHHELD = {
     ),
     WITHHELD_NOTHING_TYPED: (
         "Nothing is typed against this session, so there is nothing to read it against."
+    ),
+    # Not a rewording of the line above it, and the pair is why this vocabulary
+    # is a closed set rather than a bool (DRC-4565). A session nobody typed
+    # against and one whose words a reader deleted are two states, and the
+    # first sentence read as the second was the false account the discard left
+    # behind on every surface it reached.
+    WITHHELD_DISCARDED: (
+        "Everything typed against this session was discarded, so there is nothing left to "
+        "read it against."
     ),
 }
 
@@ -1122,13 +1132,22 @@ def _readable(
     revisions: Sequence[Mapping[str, Any]],
     *,
     now: float,
+    discarded: bool = False,
 ) -> tuple[str, str, str, str]:
     """(goal, output, scope, withheld). A withheld reason means stop here.
 
     Every check in this function is cheaper than the subprocess and comes
     before it, which is the whole point: a gate that answers after spending
     the reader's capacity has not held.
+
+    `discarded` comes from the caller because this function is handed
+    revisions rather than the entry that holds them, and a discard record has
+    none of either. Checked first, so the reader is told which of the two
+    empty states they are in rather than the wider one that happens also to
+    be true (DRC-4565).
     """
+    if discarded:
+        return "", "", "", WITHHELD_DISCARDED
     if not revisions:
         return "", "", "", WITHHELD_NOTHING_TYPED
     latest = revisions[-1]
@@ -1154,6 +1173,7 @@ def produce(
     now: float,
     stamp_text: str,
     model: Callable[..., tuple[str, str]],
+    discarded: bool = False,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -1165,7 +1185,7 @@ def produce(
     Every refusal here happens BEFORE the subprocess. A gate that answers after
     spending the reader's capacity has not held.
     """
-    goal, output, scope, withheld = _readable(config, row, revisions, now=now)
+    goal, output, scope, withheld = _readable(config, row, revisions, now=now, discarded=discarded)
     if withheld:
         return None, withheld, False
     latest = revisions[-1]

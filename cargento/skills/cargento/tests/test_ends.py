@@ -29,6 +29,7 @@ from unittest import mock
 from cargento_runtime import aggregate, ends, observation, reading
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime.config import build_runtime_config
+from cargento_runtime.state import build_runtime_state
 
 from . import support
 from .next_harness import NextPageJsHarness
@@ -837,10 +838,10 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
         self.assertEqual(before, Path(ends.store_path(self.config)).read_bytes())
 
     def test_the_refusal_under_a_live_board_names_the_store_it_is_also_keeping(self) -> None:
-        # The refusal is one sentence for two files now, and a reader who ran
+        # The refusal is one sentence for three files now, and a reader who ran
         # `--forget` to drop a recorded end learns nothing from a sentence that
         # names only the history store. The delete is right either way; what is
-        # under test is that the sentence accounts for both files it kept.
+        # under test is that the sentence accounts for every file it kept.
         from cargento_runtime import io as runtime_io  # noqa: PLC0415
         from cargento_runtime import lifecycle  # noqa: PLC0415
 
@@ -857,9 +858,81 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
             os.path.exists(ends.store_path(self.config)),
             "the end store was deleted under a live board",
         )
-        said = " ".join(str(call) for call in diag.call_args_list)
+        # The message argument, never `str(call)`. A call's repr escapes
+        # backslashes, so on Windows a path in the sentence reads as
+        # `C:\\Users\\...` there and as `C:\Users\...` in the assertion, and
+        # the two never match. Measured: this passed on macOS and failed the
+        # Windows runner on the assertion below, which is the only one of the
+        # four in this pattern that carries a path.
+        said = " ".join(str(call.args[0]) for call in diag.call_args_list)
         self.assertIn(ends.STORE_FILENAME, said)
         self.assertIn("--stop", said)
+        # And the third store the sweep did not reach (DRC-4565). The refusal
+        # returns before that sweep, so a reader who ran the command for their
+        # discard records is owed the file's name here too -- the message named
+        # two of three and the shipped doc claimed all three.
+        self.assertIn(
+            os.path.basename(annotation_store.store_path(self.config)),
+            said,
+            "the refusal does not name the annotation store it also kept",
+        )
+
+    def test_forget_removes_a_discard_record_and_not_the_reader_words(self) -> None:
+        """DRC-4565. `--forget` removes the machine's memory of what it
+        observed, and a record that Cargento deleted something is squarely
+        that class. What a reader typed is not, which is why the annotation
+        store is swept rather than deleted -- the module's own docstring says
+        `--forget` does not reach those words and that stays true.
+        """
+        state = build_runtime_state(self.config, started=100.0)
+        annotation_store.annotate(self.config, state, "pi", "keep", goal="still mine", now=100.0)
+        annotation_store.annotate(self.config, state, "pi", "gone", goal="deleted", now=100.0)
+        annotation_store.clear(
+            self.config, state, "pi", "gone", now=200.0, diagnostic_sink=lambda _m: None
+        )
+
+        with no_instance():
+            self.assertEqual(0, run_one_shot_cli(["--forget"], self.env))
+
+        kept = annotation_store.load(self.config)
+        self.assertEqual({"keep"}, {entry["sid"] for entry in kept})
+        self.assertEqual("still mine", kept[0]["revisions"][-1]["goal"])
+
+    def test_a_sweep_that_could_not_write_says_so_rather_than_nothing_to_remove(self) -> None:
+        """DRC-4565. The one wrong sentence this command can say.
+
+        A store it could not write still holds every record, and reporting
+        that as "no discard records" tells a reader the thing they ran the
+        command for is gone. The store's own failure line is silenced by
+        `forget`, because that line is worded for a reader losing what they
+        typed and nothing here was written at all.
+        """
+        from cargento_runtime import io as runtime_io  # noqa: PLC0415
+
+        state = build_runtime_state(self.config, started=100.0)
+        annotation_store.annotate(self.config, state, "pi", "gone", goal="deleted", now=100.0)
+        annotation_store.clear(
+            self.config, state, "pi", "gone", now=200.0, diagnostic_sink=lambda _m: None
+        )
+        path = annotation_store.store_path(self.config)
+
+        with (
+            no_instance(),
+            mock.patch.object(annotation_store, "_write", return_value=False),
+            mock.patch.object(runtime_io, "diag") as diag,
+        ):
+            self.assertEqual(0, run_one_shot_cli(["--forget"], self.env))
+
+        # The message argument, never `str(call)`. A call's repr escapes
+        # backslashes, so on Windows a path in the sentence reads as
+        # `C:\\Users\\...` there and as `C:\Users\...` in the assertion, and
+        # the two never match. Measured: this passed on macOS and failed the
+        # Windows runner on the assertion below, which is the only one of the
+        # four in this pattern that carries a path.
+        said = " ".join(str(call.args[0]) for call in diag.call_args_list)
+        self.assertIn(f"could not write {path}", said)
+        self.assertNotIn("no discard records", said)
+        self.assertEqual({"gone"}, {entry["sid"] for entry in annotation_store.load(self.config)})
 
     def test_forget_deletes_the_end_store_too(self) -> None:
         # decisions.md, DRC-4547: `--forget` removes the machine's memory of what

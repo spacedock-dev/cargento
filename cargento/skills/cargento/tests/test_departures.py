@@ -64,14 +64,18 @@ class DepartureWhySentenceTest(unittest.TestCase):
         self.config = _config(Path(self._dir.name))
 
     def test_a_session_nobody_checked_is_not_a_session_found_to_be_on_track(self) -> None:
-        why = departures.why(self.config, (), "claude", "abcd1234", has_words=True, now=2_000.0)
+        why = departures.why(
+            self.config, (), "claude", "abcd1234", has_words=True, discarded=False, now=2_000.0
+        )
 
         self.assertEqual(departures.NEVER_CHECKED, why)
 
     def test_a_checked_session_with_no_raise_says_nothing_departed(self) -> None:
         stored = (_check(constraint="", clause="", reading="", evidence=""),)
 
-        why = departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=2_000.0)
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=True, discarded=False, now=2_000.0
+        )
 
         self.assertEqual(departures.NOTHING_DEPARTED, why)
 
@@ -81,7 +85,9 @@ class DepartureWhySentenceTest(unittest.TestCase):
             for n in range(self.config.unasked_session_cap)
         )
 
-        why = departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=2_000.0)
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=True, discarded=False, now=2_000.0
+        )
 
         self.assertEqual(departures.SESSION_EXHAUSTED, why)
 
@@ -94,13 +100,21 @@ class DepartureWhySentenceTest(unittest.TestCase):
             _check(constraint=""),
         )
 
-        why = departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=1_100.0)
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=True, discarded=False, now=1_100.0
+        )
 
         self.assertEqual(departures.DAY_EXHAUSTED, why)
 
     def test_a_session_with_a_raise_earns_no_absence_sentence(self) -> None:
         why = departures.why(
-            self.config, (_check(),), "claude", "abcd1234", has_words=True, now=2_000.0
+            self.config,
+            (_check(),),
+            "claude",
+            "abcd1234",
+            has_words=True,
+            discarded=False,
+            now=2_000.0,
         )
 
         self.assertEqual("", why)
@@ -116,7 +130,7 @@ class DepartureWhySentenceTest(unittest.TestCase):
         stored = (_check(constraint="", clause="", reading="", evidence=""),)
 
         why = departures.why(
-            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+            self.config, stored, "claude", "abcd1234", has_words=False, discarded=False, now=2_000.0
         )
 
         self.assertEqual(departures.NEVER_CHECKED, why)
@@ -141,7 +155,7 @@ class DepartureWhySentenceTest(unittest.TestCase):
         stored = (_check(),)
 
         why = departures.why(
-            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+            self.config, stored, "claude", "abcd1234", has_words=False, discarded=False, now=2_000.0
         )
 
         self.assertEqual("", why)
@@ -160,10 +174,47 @@ class DepartureWhySentenceTest(unittest.TestCase):
         stored = tuple(_check(at=1_000.0 + n) for n in range(self.config.unasked_session_cap))
 
         why = departures.why(
-            self.config, stored, "claude", "abcd1234", has_words=False, now=2_000.0
+            self.config, stored, "claude", "abcd1234", has_words=False, discarded=False, now=2_000.0
         )
 
         self.assertEqual(departures.SESSION_EXHAUSTED, why)
+
+    def test_a_discard_record_earns_no_absence_sentence_at_all(self) -> None:
+        """DRC-4565. The third state, and the reason `has_words` cannot carry it.
+
+        A record has no words, so every argument here matches the wordless
+        session above and the ladder answered `NEVER_CHECKED`. The record
+        beside it has already said what happened, in the board's own voice,
+        and this sentence reads as a second account of it.
+        """
+        why = departures.why(
+            self.config, (), "claude", "abcd1234", has_words=False, discarded=True, now=2_000.0
+        )
+
+        self.assertEqual("", why)
+        # The same inputs without the record earn the sentence, so the argument
+        # and not something else is what stood it down.
+        self.assertEqual(
+            departures.NEVER_CHECKED,
+            departures.why(
+                self.config, (), "claude", "abcd1234", has_words=False, discarded=False, now=2_000.0
+            ),
+        )
+
+    def test_a_record_of_a_session_that_was_checked_says_nothing_about_the_past(self) -> None:
+        """The half the sentence gets wrong twice over.
+
+        A check ran, then the words went and the row was withdrawn. `checked`
+        needs words, so the ladder said this session had never been checked
+        against what the reader asked for -- about a session it had checked.
+        """
+        stored = (_check(constraint="", clause="", reading="", evidence="", withdrawn=True),)
+
+        why = departures.why(
+            self.config, stored, "claude", "abcd1234", has_words=False, discarded=True, now=2_000.0
+        )
+
+        self.assertEqual("", why)
 
 
 class DepartureFollowUpTest(unittest.TestCase):
@@ -320,6 +371,7 @@ class DepartureWithdrawalTest(unittest.TestCase):
             "claude",
             "abcd1234",
             has_words=True,
+            discarded=False,
             now=2_000.0,
         )
 
@@ -349,7 +401,15 @@ class DepartureWithdrawalTest(unittest.TestCase):
         # been checked, because no further check will run either way.
         self.assertEqual(
             departures.SESSION_EXHAUSTED,
-            departures.why(self.config, stored, "claude", "abcd1234", has_words=True, now=2_000.0),
+            departures.why(
+                self.config,
+                stored,
+                "claude",
+                "abcd1234",
+                has_words=True,
+                discarded=False,
+                now=2_000.0,
+            ),
         )
 
     def test_nothing_to_withdraw_is_a_success_and_not_a_write(self) -> None:
