@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4025:review:attempt-1:revision-1",
+  "question": "Merge C6 command-shape reporting after the corrected Windows proof passed independent review?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4025:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/6e30721fcf7feaa85ca7b386718d1ba48fdfdecb/drc-4025/index.md",
+      "rev": "sha256:25856ef17e71ddc5b8e77b95ae63e8e5089c9b611b4ac3677f9eb01e4b348d4e",
+      "mediaType": "text/markdown",
+      "summary": "Independent GO on PR335 a6c3fcb: all six ACs accounted, 12 current-head checks successful, CLEAN; one authorized Windows-proof correction fixed, production unchanged, 37 files/1558 LOC within tolerance."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4025:review:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/4b2120dac7dfe0ca63ebe8c5fc7f28d8d4fc1801/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
