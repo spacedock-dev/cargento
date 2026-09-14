@@ -620,6 +620,251 @@ console.log(JSON.stringify({
         self.assertNotIn("gone-9:held-to", out["html"])
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextIntentRefreshTest(NextPageJsHarness):
+    def run_case(self, checks: str, *, timers: str = "") -> dict[str, Any]:
+        fixture = NextIntentViewTest.FIXTURE.replace(
+            "annotate: true,", 'annotate: true, intent_revision: "before",'
+        ).replace(
+            "({annotations: __annotations})",
+            "({annotations: __annotations, intent_revision: __routeRevision})",
+        )
+        prelude = (
+            storage_prelude({})
+            + timers
+            + f"let __annotations = {json.dumps([NextIntentViewTest._row(goal='withdraw-me')])};\n"
+            + 'let __routeRevision = "before";\n'
+            + fixture
+        )
+        result = self._run_page_js(
+            """
+await __settle(); await __settle();
+navigateNext({view:"intent"});
+await __settle(); await __settle();
+const count = () => __fetchCalls.filter(call => String(call[0]) === "/api/annotations").length;
+const containsWords = () => __els.app.innerHTML.includes("withdraw-me");
+const discard = () => {
+  __dashboard.intent_revision = __routeRevision = "after";
+  __annotations = [{harness:"codex",sid:"live-1",goal:"",output:"",
+    discarded_at:201,discarded_why:"You discarded everything typed against this session."}];
+};
+"""
+            + checks,
+            prelude,
+        )
+        assert isinstance(result, dict)
+        return result
+
+    def test_an_open_log_removes_words_discarded_elsewhere(self) -> None:
+        out = self.run_case("""
+const before = containsWords();
+discard();
+await refreshNext(); await __settle(); await __settle();
+console.log(JSON.stringify({before,after:containsWords(),html:__els.app.innerHTML,calls:count()}));
+""")
+        self.assertTrue(out["before"])
+        self.assertFalse(out["after"])
+        self.assertIn("You discarded everything", out["html"])
+        self.assertEqual(2, out["calls"])
+
+    def test_unrelated_refreshes_do_not_fetch_the_log_again(self) -> None:
+        out = self.run_case("""
+for(let i=0;i<6;i++){
+  __dashboard.generated++;
+  await refreshNext(); renderNext(); await __settle();
+}
+console.log(JSON.stringify({words:containsWords(),calls:count()}));
+""")
+        self.assertTrue(out["words"])
+        self.assertEqual(1, out["calls"])
+
+    def test_a_hidden_log_waits_until_return_to_fetch_changed_words(self) -> None:
+        out = self.run_case("""
+navigateNext({view:"projects"});
+discard(); await refreshNext(); await __settle();
+const hiddenCalls = count();
+navigateNext({view:"intent"});
+const immediate = containsWords();
+await __settle(); await __settle();
+console.log(JSON.stringify({hiddenCalls,immediate,after:containsWords(),calls:count()}));
+""")
+        self.assertEqual(1, out["hiddenCalls"])
+        self.assertFalse(out["immediate"])
+        self.assertFalse(out["after"])
+        self.assertEqual(2, out["calls"])
+
+    def test_a_late_response_cannot_restore_discarded_words(self) -> None:
+        out = self.run_case("""
+let release;
+const normal = __fetchImpl;
+__fetchImpl = async url => String(url) === "/api/annotations"
+  ? {ok:true,json:() => new Promise(resolve => { release = resolve; })}
+  : normal(url);
+__dashboard.intent_revision = "pending";
+await refreshNext(); await __settle();
+discard(); await refreshNext(); await __settle();
+const whilePending = containsWords();
+const pendingCalls = count();
+__fetchImpl = normal;
+if(release) release({annotations:[{harness:"codex",sid:"live-1",goal:"withdraw-me"}],
+  intent_revision:"pending"});
+await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({whilePending,pendingCalls,after:containsWords(),calls:count()}));
+""")
+        self.assertFalse(out["whilePending"])
+        self.assertEqual(2, out["pendingCalls"])
+        self.assertFalse(out["after"])
+        self.assertEqual(3, out["calls"])
+
+    def test_a_route_ahead_of_the_dashboard_does_not_cause_a_fetch_loop(self) -> None:
+        out = self.run_case("""
+__dashboard.intent_revision = "intermediate";
+__routeRevision = "ahead";
+__annotations = [{harness:"codex",sid:"live-1",goal:"Newer words"}];
+await refreshNext(); await __settle(); await __settle();
+for(let i=0;i<4;i++){await refreshNext(); await __settle();}
+__dashboard.intent_revision = "ahead";
+await refreshNext(); await __settle();
+console.log(JSON.stringify({html:__els.app.innerHTML,calls:count()}));
+""")
+        self.assertIn("Newer words", out["html"])
+        self.assertEqual(2, out["calls"])
+
+    def test_a_failed_replacement_withholds_old_words_and_retries_after_a_pause(self) -> None:
+        out = self.run_case("""
+discard();
+const normal = __fetchImpl;
+__fetchImpl = async url => String(url) === "/api/annotations"
+  ? {ok:false,status:503} : normal(url);
+await refreshNext(); await __settle(); await __settle();
+const failed = __els.app.innerHTML;
+for(let i=0;i<5;i++){renderNext(); await __settle();}
+const beforeRetry = count();
+__fetchImpl = normal; __setNow(1061);
+await refreshNext(); await __settle(); await __settle();
+console.log(JSON.stringify({failed,beforeRetry,html:__els.app.innerHTML,calls:count()}));
+""")
+        self.assertNotIn("withdraw-me", out["failed"])
+        self.assertIn("could not be read", out["failed"])
+        self.assertEqual(2, out["beforeRetry"])
+        self.assertIn("You discarded everything", out["html"])
+        self.assertEqual(3, out["calls"])
+
+    def test_turning_annotations_off_does_not_fetch_or_retain_the_log(self) -> None:
+        out = self.run_case("""
+__dashboard.annotate = false;
+await refreshNext(); await __settle();
+navigateNext({view:"projects"}); navigateNext({view:"intent"});
+await __settle();
+console.log(JSON.stringify({html:__els.app.innerHTML,calls:count()}));
+""")
+        self.assertNotIn("withdraw-me", out["html"])
+        self.assertIn("Annotations are off", out["html"])
+        self.assertEqual(1, out["calls"])
+
+    def test_a_confirmed_discard_clears_the_local_log_before_dashboard_refresh(self) -> None:
+        out = self.run_case("""
+const normal = __fetchImpl;
+let release;
+__fetchImpl = async (url, options) => {
+  if(String(url) === "/api/annotate"){
+    discard();
+    return {ok:true,json:async () => ({ok:true,persisted:true,outcome:"stored",withdrew:true})};
+  }
+  if(String(url).startsWith("/api/data")) return new Promise(resolve => {release = resolve;});
+  return normal(url, options);
+};
+const pending = nextCockpitDiscardAnnotation({harness:"codex",sid:"live-1"});
+await __settle();
+navigateNext({view:"projects"}); navigateNext({view:"intent"});
+const immediate = containsWords();
+await __settle(); await __settle();
+const after = containsWords();
+release({ok:true,json:async () => __dashboard}); await pending; await __settle();
+console.log(JSON.stringify({immediate,after,calls:count()}));
+""")
+        self.assertFalse(out["immediate"])
+        self.assertFalse(out["after"])
+        self.assertEqual(2, out["calls"])
+
+    def test_an_unwritable_discard_does_not_claim_the_words_were_removed(self) -> None:
+        out = self.run_case("""
+const normal = __fetchImpl;
+__fetchImpl = async (url, options) => String(url) === "/api/annotate"
+  ? {ok:true,json:async () => ({ok:true,persisted:false,outcome:"unwritable",withdrew:false})}
+  : normal(url, options);
+await nextCockpitDiscardAnnotation({harness:"codex",sid:"live-1"}); await __settle();
+console.log(JSON.stringify({words:containsWords(),calls:count()}));
+""")
+        self.assertTrue(out["words"])
+        self.assertEqual(1, out["calls"])
+
+    def test_returning_to_the_log_during_discard_does_not_leave_its_old_dom_visible(self) -> None:
+        out = self.run_case("""
+const normal = __fetchImpl;
+let confirm, data;
+__fetchImpl = (url, options) => {
+  if(String(url) === "/api/annotate") return new Promise(resolve => {confirm = resolve;});
+  if(String(url).startsWith("/api/data")) return new Promise(resolve => {data = resolve;});
+  if(String(url) === "/api/annotations") return new Promise(() => {});
+  return normal(url, options);
+};
+navigateNext({view:"projects"});
+const pending = nextCockpitDiscardAnnotation({harness:"codex",sid:"live-1"});
+navigateNext({view:"intent"});
+const before = containsWords();
+discard();
+confirm({ok:true,json:async () => ({ok:true,persisted:true,outcome:"stored",withdrew:true})});
+await __settle();
+const after = containsWords();
+data({ok:true,json:async () => __dashboard}); await pending;
+console.log(JSON.stringify({before,after}));
+""")
+        self.assertTrue(out["before"])
+        self.assertFalse(out["after"])
+
+    def test_a_log_opened_with_annotations_off_never_requests_the_store(self) -> None:
+        fixture = NextIntentViewTest.FIXTURE.replace("annotate: true", "annotate: false")
+        out = self._run_page_js(
+            """
+await __settle(); navigateNext({view:"intent"}); await __settle();
+console.log(JSON.stringify({html:__els.app.innerHTML,
+  calls:__fetchCalls.filter(call => String(call[0]) === "/api/annotations").length}));
+""",
+            storage_prelude({}) + "let __annotations = [];\n" + fixture,
+        )
+        self.assertEqual(0, out["calls"])
+        self.assertIn("Annotations are off", out["html"])
+
+    def test_a_stalled_log_request_releases_its_slot_for_a_later_attempt(self) -> None:
+        out = self.run_case(
+            """
+discard();
+const normal = __fetchImpl;
+__fetchImpl = (url, options) => String(url) === "/api/annotations"
+  ? new Promise((resolve, reject) => {
+      if(options && options.signal) options.signal.addEventListener("abort", () => reject(Error("aborted")));
+    }) : normal(url, options);
+await refreshNext(); await __settle();
+for(const expire of __timeouts) expire();
+await __settle(); await __settle();
+const failed = __els.app.innerHTML;
+__fetchImpl = normal; __setNow(1061);
+await refreshNext(); await __settle(); await __settle();
+console.log(JSON.stringify({failed,html:__els.app.innerHTML,calls:count()}));
+""",
+            timers="""
+const __timeouts = [];
+setTimeout = fn => {__timeouts.push(fn); return __timeouts.length;};
+clearTimeout = () => {};
+""",
+        )
+        self.assertNotIn("withdraw-me", out["failed"])
+        self.assertIn("could not be read", out["failed"])
+        self.assertIn("You discarded everything", out["html"])
+        self.assertEqual(3, out["calls"])
+
+
 class TheIntentLogReadsTheStoreAndNotHistoryTest(unittest.TestCase):
     """Why the rows come from the annotation store alone.
 

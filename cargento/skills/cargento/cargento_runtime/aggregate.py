@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections.abc import Callable
@@ -944,6 +945,34 @@ class Application:
             "browser_lane_at": lane_reported_at or None,
         }
 
+    def intent_revision(
+        self,
+        entries: tuple[annotation_store.Annotation, ...],
+        raised: tuple[departures.Check, ...],
+        *,
+        now: float,
+    ) -> str:
+        """Identify the captured log inputs, including sessions off the board.
+
+        This is an equality token, not the collection counter: unrelated
+        activity must not refetch the reader's words. Both routes pass the
+        inputs they already captured, so a concurrent save cannot label old
+        rows with a new token. The day-cap boundary is the one time-dependent
+        input to the log; the clock itself would invalidate it every render.
+        """
+        _mine, today = departures.counts(raised, "", "", since=now - departures.DAY_SEC)
+        source = {
+            "started": self.state.server_started,
+            "annotations": entries,
+            "departures": raised,
+            "session_cap": self.config.unasked_session_cap,
+            "daily_cap": self.config.unasked_daily_cap,
+            "day_exhausted": today >= self.config.unasked_daily_cap,
+        }
+        return hashlib.sha256(
+            json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
     def _unasked_fields(
         self,
         rows: list[Session],
@@ -972,7 +1001,14 @@ class Application:
         # The capability flag, keyed the way `dismiss` and `annotate` are:
         # present exactly when the lane is live, so a page with the switch off
         # draws nothing rather than a panel that never fills.
-        return {"unasked": True} if self.unasked_lane is not None else {}
+        return {
+            **({"unasked": True} if self.unasked_lane is not None else {}),
+            **(
+                {"intent_revision": self.intent_revision(entries, stored, now=now)}
+                if self.config.annotations_enabled
+                else {}
+            ),
+        }
 
     def _history_fields(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Record this collection's transitions, and the payload keys they earn.

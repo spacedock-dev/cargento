@@ -667,6 +667,33 @@ class DismissEndpointTest(RuntimeTestCase):
             get_status, _ = self._get(port, "/api/cleared")
         self.assertEqual((503, 503), (post_status, get_status))
 
+    def test_intent_revision_identifies_the_captured_reveal_rows(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=lambda: 1_800_000_000.0)
+        application.harnesses = ()
+        annotation_store.annotate(config, state, "pi", "departed", goal="Before discard")
+        baseline = application.collect(show_all=False)
+        original = departures.published
+
+        def discard_after_capture(*args: Any, **kwargs: Any) -> Any:
+            annotation_store.clear(config, state, "pi", "departed")
+            return original(*args, **kwargs)
+
+        with self._serving(application) as port:
+            with mock.patch.object(departures, "published", side_effect=discard_after_capture):
+                status, body = self._get(port, "/api/annotations")
+            next_status, next_body = self._get(port, "/api/annotations")
+        self.assertEqual((200, 200), (status, next_status))
+        captured, current = json.loads(body), json.loads(next_body)
+        self.assertIn("intent_revision", captured)
+        self.assertEqual(baseline["intent_revision"], captured["intent_revision"])
+        self.assertEqual("Before discard", captured["annotations"][0]["goal"])
+        self.assertEqual("", current["annotations"][0]["goal"])
+        self.assertNotEqual(captured["intent_revision"], current["intent_revision"])
+        self.assertEqual(
+            application.collect(show_all=False)["intent_revision"], current["intent_revision"]
+        )
+
     def test_the_annotation_reveal_serves_the_store_including_departed_sessions(self) -> None:
         """`GET /api/annotations`, the Intent log's source.
 

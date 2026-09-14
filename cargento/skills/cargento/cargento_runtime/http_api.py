@@ -1057,7 +1057,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
             for entry in entries
         ]
         self._send(
-            json.dumps({"annotations": rows}, separators=(",", ":")).encode(),
+            json.dumps(
+                {
+                    "annotations": rows,
+                    "intent_revision": application.intent_revision(entries, raised, now=now),
+                },
+                separators=(",", ":"),
+            ).encode(),
             "application/json",
         )
 

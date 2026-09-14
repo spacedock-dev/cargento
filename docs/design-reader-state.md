@@ -23,6 +23,7 @@ For where these files sit and which way their dependencies run, see
 |---|---|---|
 | An open disclosure (`<details>`) | Restored | `nextOpenDisclosures` in `next-chrome.js`, keyed by the closed `NEXT_DISCLOSURE_KEYS` list, re-emitted by `nextDisclosureAttr` |
 | An expanded Attention section | Restored | `nextAttentionExpandedSections` in `next-chrome.js`, read by `nextAttentionSectionHtml` |
+| Intent log rows | Kept until their source changes; invalidated words disappear before replacement rows arrive. A hidden view waits until opened to fetch again | `nextIntentSync` and `nextIntentLoad` in `next-intent.js`; see [Intent log freshness](#intent-log-freshness) |
 | The selected quota window | Kept by vendor and window key for the life of the tab, including when its rank falls below the initial three rows; defaults to an existing window when that key disappears, and clears when none remain | `nextCapacitySelectedKey` in `next-capacity.js`; the selected row stays visible, and window buttons use `data-next-focus` for the existing keyboard-focus lane |
 | Keyboard focus | Restored, with scrolling conditional on visibility at capture | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it; see [Document scroll](#document-scroll) |
 | A row control's confirmation cue | Restored for 30 seconds | `nextControlStates` in `next-boot.js`, keyed rather than held by node, and expiring at `NEXT_CONTROL_STATE_TTL_MS`; `NEXT_ROW_CONTROL_LANES` keys the focus lane, not this one |
@@ -75,6 +76,29 @@ code, which cites this file instead:
   That element is still in the DOM and still holding the text, so it writes it back over the cleared
   value. Measured before the fix: the sent sentence stayed in the box for the life of the tab and a
   second send recorded it twice.
+
+## Intent log freshness
+
+The Intent log has its own route because its rows outlive the live board. Fetching that route on
+every redraw would put up to 256 sessions of retained prose on the refresh loop. Keeping its first
+response forever was the opposite failure: after a discard, an open tab continued to print the
+withdrawn words even though the route already returned a text-free record (DRC-4566).
+
+The dashboard now carries a change token for the complete annotation and departure sources,
+including sessions that have left the board. It carries no retained prose. A changed token removes
+the cached rows immediately; a visible log fetches once, and a hidden log waits until opened. A
+confirmed discard also invalidates the initiating tab before its dashboard refresh finishes.
+Unrelated dashboard revisions do not fetch the log.
+
+The annotation response carries a token for the same inputs its rows used. It can be ahead of the
+dashboard snapshot, so tokens are compared for equality and never ordered. When the dashboard
+catches up to rows already fetched, the page keeps them. A request generation prevents a response
+started before invalidation from restoring old words. Changes arriving during a request coalesce
+until it settles, with a twenty-second request timeout. A failed load shows that the store could not be read, withholds the old rows,
+and allows another attempt on a redraw after twenty seconds rather than retrying on every render.
+
+Other tabs and dashboard instances learn about a discard through their normal data updates. An
+offline or browser-suspended tab cannot learn of a remote change until those updates resume.
 
 ## Document scroll
 

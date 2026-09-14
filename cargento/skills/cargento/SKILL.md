@@ -41,7 +41,9 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 The dark-only dashboard opens on **Projects**, grouping sessions by the label their harness publishes.
 **Sessions** keeps active work first and recent history below it. **Intent log** lists every
 session you have typed a goal or an expected output against, including ones that have left the
-board, with the revision count for each; it is the only place those words remain reachable once a
+board, with the revision count for each. An open log refreshes when its stored sources change,
+including a discard made in another tab, without fetching its route on every redraw. It is the
+only place those words remain reachable once a
 session ages off, and it holds them until the store evicts the oldest save rather than until a
 date passes. Each project opens its cockpit:
 a left **Scope** rail selects the project or one exact session, while a persistent briefing shows
