@@ -277,7 +277,7 @@ function nextIntentRow(row, live){
     (departures ? `<span class="next-intent-revision">${esc(departures)}</span>` : "") +
     standing +
     (reachable ? "" : '<span class="next-intent-why">Not on the board now, so there is ' +
-      'nowhere to open. The words are here.</span>') +
+      'nowhere to open.' + (discarded ? '' : ' The words are here.') + '</span>') +
     /* The binding caveat, because a list of many sessions is where a shared
        prefix would actually bite and an absent caveat here reads as exact
        binding. Found by walking the board: the Held to tab says it for one
