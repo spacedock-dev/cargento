@@ -48,6 +48,20 @@ gates:
                 id: briefing:drc-4025:review:attempt-1:revision-1
                 digest: sha256:58c464db4423e5fc9ee93b9547c5b1c19a699cf92f766fdd4e5c124f1b36a6f9
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4025:review:1
+                briefing: briefing:drc-4025:review:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-14T23:55:15.157602Z"
+                decision: approve
+                reason: Independent GO accounts for all six ACs; corrected Windows proof and 12 checks pass on a6c3fcb with CLEAN mergeability, within approved tolerance. Approve delivery and required reconciliation.
+                conn:
+                    quote: yes I approve the scope. go ahead and take your recommended approach for the following tickets needed to close out this milestone, I trust you
+                    source: Captain message in this session, 2026-09-14, approving the presented milestone ticket scopes and recommended approach; subsequent continue directives
+              application:
+                target-stage: done
+                state: pending
 review-round:
     id: round:drc-4025:review:1
     stage: review
