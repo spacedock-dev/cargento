@@ -1,0 +1,6 @@
+{
+  "gate_block": "gates:\n    version: 1\n    records:\n        - id: gate:drc-4025:triage\n          stage: triage\n          attempts:\n            - id: gate-attempt:drc-4025-triage-1\n              briefing:\n                id: briefing:drc-4025:triage:attempt-1:revision-1\n                digest: sha256:feda0d8bf8bf63cf97033bb371c9dd754b59c02a4daeae670447a68f026819d6\n                room-ref: ./drc-4025/review/triage/briefing-1\n              resolution:\n                type: Resolution\n                id: resolution:spacedock:drc-4025:triage:1\n                briefing: briefing:drc-4025:triage:attempt-1:revision-1\n                by: person:captain\n                at: \"2026-09-14T12:10:49.102567Z\"\n                decision: approve\n                reason: Captain approved the presented C6 scope and recommended approach, including current-run retention and qualified timing guarantees.\n              application:\n                target-stage: implementation\n                state: consumed",
+  "room_hashes": {
+    "index.json": "c3ab6a9033b20bae674780a02df64e10c7e2dd557acc1df5c3b75cb9b81ed3f0"
+  }
+}

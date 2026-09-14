@@ -1,0 +1,14 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4025:review:round-1",
+  "question": "Does C6 head 735785d satisfy its six approved acceptance proofs and current-head required checks?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4025:rejected-head-735785d",
+      "uri": "../../../review-rejected-735785d.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:7c1871dc679b8c4474a1929069c55523acd033a4bca2785caf0010b6969ef8b8"
+    }
+  ]
+}

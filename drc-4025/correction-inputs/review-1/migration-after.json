@@ -1,0 +1,8 @@
+{
+  "authority_unchanged_except_room_ref": true,
+  "room_bytes_identical": true,
+  "room_hashes": {
+    "index.json": "c3ab6a9033b20bae674780a02df64e10c7e2dd557acc1df5c3b75cb9b81ed3f0"
+  },
+  "entity": "/Users/jaredmscott/repos/recce/cargento/docs/roadmap-burndown/.spacedock-state/drc-4025/index.md"
+}
