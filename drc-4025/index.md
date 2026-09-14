@@ -543,3 +543,45 @@ State transport: FO authorized id drc-4025 plus folder-form index.md migration a
 ### Summary
 
 Fresh review confirms the retained independent security and reader evidence but rejects this head because Windows leaves required C6 proofs and CI incomplete. Implementation receives one authorized correction with unchanged scope and thresholds; the reviewer remains addressable for the corrected head.
+
+
+## Stage Report: implementation
+
+- DONE: Diagnose and correct the authorized Windows lexical/socket and containment proof failure while preserving all six ACs and production timing thresholds.
+  DCO commits cd37839 and a6c3fcb change only test_irreversible.py; all 90 socket positives and separate real-thread deadline/containment proofs pass on Windows.
+- DONE: Run required changed-boundary checks and current-head CI, preserving exact failure and phase evidence and updating the existing PR with DCO commits.
+  PR335 head a6c3fcb0a0b95301e1731047ff6d9c5e952540a0 has all 12 checks successful and CLEAN; run34909173461 preserves actual Windows phases.
+- DONE: Record all three correction outcomes and actual scope, append the canonical round response and closing advisory Resolution, then return to the retained reviewer.
+  Same review/1 log now includes annotation:drc-4025:windows-proof-fixed and resolution:drc-4025:ensign:review-1; FO owns recording and retained-reviewer dispatch.
+
+### Summary
+
+The correction isolates lexical/privacy proof from allowed best-effort scheduling loss and measures interpreter/import startup separately from actual hook work and real exit. Runtime, web assets, production thresholds, enablement rules, report fields and all six ACs are unchanged.
+The first correction exposed three diagnostic errors on Windows; distinct FO FIX authorized their correction before a6c3fcb edits. Normal-only observation uses the existing 3s bound; forced sleep/spin and completed late success retain 250ms.
+
+### Acceptance evidence
+
+- AC-1/2: recorded Claude/Codex replay and 90 deterministic socket positives enforce the exact six fields and private-byte exclusion; wrong event/tool, malformed/oversized/ambiguous input and forged ingress still abstain. Copying input into a report or admitting an unknown identifier fails these assertions.
+- AC-3: unchanged assembled-reader and Mode2 evidence from735785d retains honest labels, caveats, empty/off/unsupported states and corrected Attention styling; claiming success or all-clear fails the owned reader assertions.
+- AC-4: unchanged composed coordinator/snapshot tests retain duplicates, order disclosure, caps, expiry, end and restart semantics; dropping either report in one collection or persisting across restart fails them.
+- AC-5: fresh off/missing hooks, off replacement ingress and respawn checks still pass; entering the matcher or accepting/re-enabling a report under off fails them.
+- AC-6: Windows sleep and spin returned no report and exited in176.495/219.313ms after88.995/81.363ms startup; each remains below250ms through actual main and real exit.
+- Late success: startup80.394ms, main-to-exit191.419ms; matcher_end2701.1456054 > report_return2701.1229473, report_present=false. Waiting for worker completion replaces arbitrary80ms padding; late publication or wrong ordering fails.
+- Normal matching: five real accepted reports, main-to-exit310.752–322.699ms, startup80.299–105.471ms; measured separately within3s, without a250ms normal-path claim.
+- Injected GIL-regex: timeout250ms after81.792ms startup; exact fixed stderr marker plus empty stdout and no report asserted. Only this test control emits a diagnostic; normal/sleep/spin/late hook stdout and stderr remain empty.
+
+### Verification and preserved failures
+
+- Original Windows735785d run34847818390:3384tests/191.518s, four failures, one error,45skips; script step did not run. Its log alone does not establish the failing timing phase.
+- Windowscd37839 run34850970910:3387tests/229.132s, one failure, two errors,45skips; all90 positives and sleep/spin passed, but normal measurement, fixed late padding and regex file marker failed. Preserved without rewriting this run as green.
+- Final Windowsa6c3fcb run34909173461/job104192628325:3387tests/174.899s,45skips;361scripts/11.384s,4skips; no new skip introduced by this correction.
+- Final local:20 focused tests;3387dashboard/93.451s,2skips;505scripts/19.376s,1skip;86.7%coverage. Skips remain Windows-only path, this host's git-lfs behavior and opt-in Terminal automation.
+- CI coverage:3387tests/98.270s,1skip;505scripts/14.489s,4skips;86.5%. Ruff/format/mypy/embedded/plugin/version/native validators pass; initial formatting check needed one formatter-only correction before final suite.
+- Logs are in the candidate's ignored docs/screenshots: drc-4025-rejected-windows.log, drc-4025-correction-windows.log, drc-4025-correction-final-{focused,dashboard,scripts,static,coverage,windows,ci-coverage}.log. Full phase records are retained there.
+
+### Surface and handoff
+
+- Final PR:37files,+1425/-133 =1558changedLOC, four DCO commits. Runtime13/514 and docs7/186 unchanged; support17/858 versus pre-correction17/688, within approved tolerance.
+- sync-docs found no correction drift; version fields and COMPATIBILITY sync marker unchanged. Prior five-person independent review and browser artifacts remain valid for unchanged runtime; no extra review fanout or full-suite repetition after this green candidate.
+- Proposed FO projection: Cycle 1 — review: 1 owned Material proof failure fixed; 0 declined; final37files/1558changedLOC (runtime13/514 unchanged, support17/858 from17/688, docs7/186 unchanged); all six ACs unchanged; exact-head CI green on a6c3fcb; return to retained reviewer.
+- Canonical response is advisory only. No round recorded, gate prepared, merge, cleanup, or Linear reconciliation performed by this worker.
