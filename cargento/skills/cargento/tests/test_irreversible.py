@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import json
 import os
 import subprocess
@@ -14,7 +15,8 @@ import unittest
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import event_hook
@@ -23,6 +25,9 @@ from cargento_runtime import aggregate, cli, irreversible, lifecycle, observatio
 from . import support
 from .next_harness import NextPageJsHarness
 from .test_events_ingress import FakeApplication
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
 NOW = 1_700_000_000.0
@@ -119,6 +124,32 @@ NEGATIVES = (
 )
 
 
+class _InlineThread:
+    """Deterministic lexical/socket oracle; real timing has separate process proofs."""
+
+    def __init__(self, *, target: Callable[[], None], daemon: bool) -> None:
+        assert daemon
+        self.target = target
+
+    def start(self) -> None:
+        self.target()
+
+    def join(self, timeout: float) -> None:
+        assert timeout == 0.005
+
+    def is_alive(self) -> bool:
+        return False
+
+
+def deterministic_driver() -> str:
+    return (
+        "from collections.abc import Callable; from types import SimpleNamespace\n"
+        + inspect.getsource(_InlineThread)
+        + "\nevent_hook.threading = SimpleNamespace(Thread=_InlineThread)\n"
+        + "event_hook.time = SimpleNamespace(monotonic=lambda: 0.0)"
+    )
+
+
 class CommandSocketTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -212,13 +243,111 @@ class CommandSocketTest(unittest.TestCase):
             result: dict[str, Any] = json.loads(response.read())
             return result
 
+    def timed_hook(
+        self, driver: str, *, after_main: str = ""
+    ) -> subprocess.CompletedProcess[bytes]:
+        ready = Path(self.tmp.name, "hook-ready.json")
+        phases = Path(self.tmp.name, "hook-phases.json")
+        ready.unlink(missing_ok=True)
+        phases.unlink(missing_ok=True)
+        # Only interpreter/import setup precedes readiness. Real main, both socket
+        # paths, the daemon worker and interpreter exit remain in the 250 ms window.
+        code = (
+            (
+                "import time; child_started = time.perf_counter()\n"
+                "import sys, json; from pathlib import Path\n"
+                "sys.path.insert(0, sys.argv[1]); import event_hook\n"
+                "event_hook._shared()\n"
+            )
+            + driver
+            + "\n"
+            + """
+marks = {}
+original_shape = event_hook.command_shape
+original_report = event_hook.irreversible_report
+original_clock = event_hook.time.monotonic
+clock_reads = []
+def observed_shape(command):
+    marks['matcher_start'] = time.perf_counter()
+    result = original_shape(command)
+    marks['matcher_end'] = time.perf_counter()
+    marks['lexical_result'] = result
+    return result
+def observed_clock():
+    value = original_clock()
+    clock_reads.append(value)
+    return value
+def observed_report(*args):
+    result = original_report(*args)
+    marks['report_return'] = time.perf_counter()
+    marks['report_present'] = result is not None
+    return result
+event_hook.command_shape = observed_shape
+event_hook.irreversible_report = observed_report
+event_hook.time.monotonic = observed_clock
+ready = Path(sys.argv[4])
+pending = ready.with_suffix('.tmp')
+pending.write_text(json.dumps({'child_setup_ms': (time.perf_counter()-child_started)*1000}))
+pending.replace(ready)
+sys.stdin.buffer.peek(1)
+marks['main_start'] = time.perf_counter()
+status = event_hook.main(['event_hook', 'claude', sys.argv[2]])
+marks['main_end'] = time.perf_counter()
+"""
+            + after_main
+            + "\n"
+            + """
+marks['clock_reads'] = clock_reads
+Path(sys.argv[3]).write_text(json.dumps(marks))
+raise SystemExit(status)
+"""
+        )
+        started = time.perf_counter()
+        with subprocess.Popen(
+            [sys.executable, "-c", code, str(HOOK.parent), str(self.port), str(phases), str(ready)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={**os.environ, "CARGENTO_HOME": self.tmp.name},
+        ) as proc:
+            try:
+                while not ready.exists():
+                    if proc.poll() is not None or time.perf_counter() - started > 3:
+                        self.fail("hook did not reach its import/readiness boundary")
+                    time.sleep(0.001)
+                setup = json.loads(ready.read_text())
+                call_started = time.perf_counter()
+                setup["parent_startup_ms"] = (call_started - started) * 1000
+                try:
+                    stdout, stderr = proc.communicate(
+                        json.dumps(native("git push --force")).encode(), timeout=0.25
+                    )
+                except subprocess.TimeoutExpired:
+                    print(
+                        "C6_PHASE " + json.dumps({**setup, "outcome": "timeout", "limit_ms": 250})
+                    )
+                    raise
+                elapsed = time.perf_counter() - call_started
+                marks = json.loads(phases.read_text())
+                self.last_phases = {**setup, **marks, "main_to_exit_ms": elapsed * 1000}
+                self.last_phases["total_process_ms"] = (time.perf_counter() - started) * 1000
+                print("C6_PHASE " + json.dumps(self.last_phases, sort_keys=True))
+                self.assertLess(elapsed, 0.25)
+                return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.communicate()
+
     def test_every_literal_and_wrapper_reaches_only_fixed_reports_over_a_socket(self) -> None:
         for harness in ("claude", "codex"):
             for wrapper in ("", "rtk ", "rtk proxy "):
                 for command, pattern in POSITIVES:
                     with self.subTest(harness=harness, wrapper=wrapper, command=command):
                         before = len(self.received)
-                        proc = self.run_hook(native(wrapper + command), harness)
+                        proc = self.run_hook(
+                            native(wrapper + command), harness, driver=deterministic_driver()
+                        )
                         self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
                         self.assertEqual(before + 1, len(self.received))
                         report = self.received[-1]
@@ -267,7 +396,7 @@ class CommandSocketTest(unittest.TestCase):
                 payload["tool_input"] = dict.fromkeys(record["input_fields"], "private-description")
                 payload["tool_input"]["command"] = "git push --force private-replay"
                 before = len(self.received)
-                proc = self.run_hook(payload, harness)
+                proc = self.run_hook(payload, harness, driver=deterministic_driver())
                 self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
                 self.assertEqual(before + int(record["event"] == "PostToolUse"), len(self.received))
 
@@ -323,19 +452,43 @@ class CommandSocketTest(unittest.TestCase):
             "exec('def spin(_):\\n while True: pass'); event_hook.command_shape = spin",
         ]
         for driver in drivers:
-            started = time.monotonic()
-            proc = self.run_hook(native("git push --force"), driver=driver, timeout=0.25)
-            self.assertLess(time.monotonic() - started, 0.25)
+            proc = self.timed_hook(driver)
             self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
+            self.assertIn("matcher_start", self.last_phases)
+            self.assertFalse(self.last_phases["report_present"])
         self.assertEqual([], self.received)
 
     def test_a_gil_held_regex_remains_a_rejected_negative_control(self) -> None:
+        entered = Path(self.tmp.name, "regex-entered")
         driver = (
-            "import re; event_hook.command_shape = lambda _: re.fullmatch('(a+)+$', 'a'*30+'!')"
+            "import re; event_hook.command_shape = lambda _: (Path("
+            + repr(str(entered))
+            + ").write_text('entered'), re.fullmatch('(a+)+$', 'a'*30+'!'))[1]"
         )
         with self.assertRaises(subprocess.TimeoutExpired):
-            self.run_hook(native("git push --force"), driver=driver, timeout=0.25)
+            self.timed_hook(driver)
+        self.assertEqual("entered", entered.read_text())
         self.assertEqual([], self.received)
+
+    def test_completed_late_success_stays_discarded_before_real_process_exit(self) -> None:
+        proc = self.timed_hook(
+            "event_hook.command_shape = lambda _: (time.sleep(.030), 'git_force_push')[1]",
+            after_main="time.sleep(.080)",
+        )
+        self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
+        self.assertEqual("git_force_push", self.last_phases["lexical_result"])
+        self.assertGreater(self.last_phases["matcher_end"], self.last_phases["report_return"])
+        self.assertFalse(self.last_phases["report_present"])
+        self.assertEqual([], self.received)
+
+    def test_normal_matching_reports_its_real_scheduling_and_startup_phases(self) -> None:
+        for _ in range(5):
+            before = len(self.received)
+            proc = self.timed_hook("")
+            self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
+            self.assertEqual(before + int(self.last_phases["report_present"]), len(self.received))
+            if self.last_phases["report_present"]:
+                self.assertEqual("git_force_push", self.received[-1]["pattern_id"])
 
     def test_duplicate_and_reordered_reports_survive_collection_and_end(self) -> None:
         self.post(wire())
@@ -416,6 +569,15 @@ class CommandRetentionTest(unittest.TestCase):
 
 
 class CommandReportTest(unittest.TestCase):
+    def test_a_finished_match_beyond_the_nominal_wait_is_discarded(self) -> None:
+        with (
+            patch.object(event_hook, "threading", SimpleNamespace(Thread=_InlineThread)),
+            patch.object(
+                event_hook, "time", SimpleNamespace(monotonic=iter((1.0, 1.006)).__next__)
+            ),
+        ):
+            self.assertIsNone(event_hook.irreversible_report(native("git push --force"), "claude"))
+
     def test_a_matching_command_reduces_to_six_fixed_routing_fields(self) -> None:
         payload = {
             "hook_event_name": "PostToolUse",
@@ -425,7 +587,11 @@ class CommandReportTest(unittest.TestCase):
             "tool_response": "private-output",
             "cwd": "private-directory",
         }
-        report = event_hook.irreversible_report(payload, "claude")
+        with (
+            patch.object(event_hook, "threading", SimpleNamespace(Thread=_InlineThread)),
+            patch.object(event_hook, "time", SimpleNamespace(monotonic=lambda: 0.0)),
+        ):
+            report = event_hook.irreversible_report(payload, "claude")
         self.assertIsNotNone(report)
         assert report is not None
         self.assertEqual(
