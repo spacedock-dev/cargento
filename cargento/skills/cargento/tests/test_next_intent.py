@@ -186,6 +186,26 @@ console.log(JSON.stringify({
         # And it offers no link that would land on the stale-filter surface.
         self.assertNotIn("gone-9:held-to", out["html"])
 
+    def test_an_off_board_discard_does_not_claim_its_words_remain_beside_retained_words(
+        self,
+    ) -> None:
+        out = self.render(
+            [self._record(at=140.0), self._row(sid="gone-8", goal="Keep this assignment")]
+        )
+
+        self.assertEqual(2, out["rows"])
+        rows = out["html"].split('<div class="next-intent-row">')[1:]
+        discarded = next(row for row in rows if "codex:gone-9" in row)
+        retained = next(row for row in rows if "codex:gone-8" in row)
+        for row in (discarded, retained):
+            self.assertIn("Not on the board now, so there is nowhere to open.", row)
+            self.assertNotIn(":held-to", row)
+        self.assertIn(annotation_store.DISCARD_RECORD, discarded)
+        self.assertIn("discarded 1m ago", discarded)
+        self.assertNotIn("The words are here.", discarded)
+        self.assertIn("Keep this assignment", retained)
+        self.assertIn("The words are here.", retained)
+
     def test_a_prefix_bound_row_says_so_here_too(self) -> None:
         """Found by walking the board, not by the suite.
 
