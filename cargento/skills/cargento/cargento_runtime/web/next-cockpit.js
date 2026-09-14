@@ -1949,8 +1949,14 @@ function nextCockpitReadingDepartures(shape, source){
    press count to render beside the control, which could then only ever have
    shown zero. A reader looking at the amber "revision 3 is current" line had
    no way to ask for a current one. */
-function nextCockpitReadingControl(session, annotation){
-  const passed = nextData && nextData.reading_check === "passed";
+function nextCockpitReadingControl(session, annotation, model){
+  const authorized = nextData && ["passed", "accepted"].includes(nextData.reading_check);
+  /* A stored reading outlives the model option. Only the new request is
+     gated here; retaining the old account never establishes availability. */
+  const reason = nextCockpitReadingStates(annotation, model) || (authorized ? "" :
+    "The abstention check this ruling requires has not been run, so a reading cannot be " +
+    "asked for yet. The evidence above stays readable without one.");
+  const enabled = authorized && !reason;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
   const spent = count === 0
     ? "No reading has been asked for on this session."
@@ -1964,12 +1970,10 @@ function nextCockpitReadingControl(session, annotation){
     ? `<p class="next-cockpit-reading-why">${esc(nextData.reading_disclosure)}</p>` : "";
   return disclosure +
     '<button type="button" data-next-cockpit-action="reading-ask" ' +
-    `data-next-focus="reading:${esc(sessKey(session))}"${passed ? "" : " disabled"}>` +
+    `data-next-focus="reading:${esc(sessKey(session))}"${enabled ? "" : " disabled"}>` +
     'Ask for a reading</button>' +
     `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
-    (passed ? "" : '<p class="next-cockpit-reading-why">The abstention check this ruling ' +
-      'requires has not been run, so a reading cannot be asked for yet. The evidence above ' +
-      'stays readable without one.</p>');
+    (reason ? `<p class="next-cockpit-reading-why">${esc(reason)}</p>` : "");
 }
 
 const NEXT_READING_OFFER =
@@ -2042,7 +2046,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
       : "";
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER} ` +
       `${NEXT_READING_NOT_A_VERIFICATION}</p>`;
-    return close(refused + offer + why + nextCockpitReadingControl(session, annotation), null);
+    return close(refused + offer + why + nextCockpitReadingControl(session, annotation, model), null);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
   if(shape.malformed){
@@ -2052,7 +2056,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     return close(
       `<p class="next-cockpit-reading-why">${esc(NEXT_READING_UNKNOWN_KEY)}</p>` +
       `<p class="next-cockpit-reading-why">Unrecognised: ${esc(shape.malformed)}.</p>` +
-      nextCockpitReadingControl(session, annotation), shape);
+      nextCockpitReadingControl(session, annotation, model), shape);
   }
   const current = nextNumber(annotation && annotation.revision);
   /* The one warm ink the design allows near a reading, and it is not part of
@@ -2073,7 +2077,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
     '</header>' + stale + nextCockpitReadingBaseline(shape) + scope + why +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
-    nextCockpitReadingControl(session, annotation) + '</section>' +
+    nextCockpitReadingControl(session, annotation, model) + '</section>' +
     nextCockpitDepartures(shape, source, session);
 }
 

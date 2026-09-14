@@ -880,7 +880,7 @@ class ReadingControlIsWiredTest(unittest.TestCase):
 
     def test_no_rendered_action_is_reachable_without_a_dispatch_arm(self) -> None:
         source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
-        reachable = annotation_store.ABSTENTION_CHECK == annotation_store.ABSTENTION_CHECK_PASSED
+        reachable = annotation_store.reading_enabled()
         self.assertEqual(
             set(),
             unwired_cockpit_actions(source, reachable=reachable),

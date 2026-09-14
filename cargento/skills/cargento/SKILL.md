@@ -304,8 +304,8 @@ after the session leaves the board.
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
-one control. That control is disabled until an abstention check has been run and recorded, and the
-evidence above stays readable while it is.
+one control. The accepted case review enables that control; the evidence above stays readable
+whether or not you ask for a reading.
 
 ## Notifications
 
@@ -461,7 +461,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits above the button in `Held to`, the press itself stands in for consent rather than a stored answer, and the button stays disabled until the abstention check has been run. Quota consent authorizes neither. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits above the button in `Held to`, the press itself stands in for consent rather than a stored answer, and the button is enabled by the accepted case review. Quota consent authorizes neither. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
@@ -493,7 +493,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/annotate` | Record a goal or expected output against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
-| `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the `Held to` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or while the abstention check has not been run, which is every build so far. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
+| `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the `Held to` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or when the reading gate is closed. The accepted case review opens that gate in this build. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
 
 ## Interpretation notes (share with the user if asked)
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """The answer key for "does a reading know when to say I can't tell".
 
-DEC-17 gates the `Ask for a reading` control on a check nobody can run yet,
-because the check needs expected answers written down BEFORE the producer is
-ever pointed at them. A mark written after seeing an output is agreement, not a
-mark. This is the thing that collects them.
+DEC-17's evaluation needs expected answers written down BEFORE the producer is
+pointed at them. A mark written after seeing an output is agreement, not a
+mark. This collects those answers. The captain accepted the recorded case review
+as sufficient to enable readings on 2026-09-14; scoring remains a separate act.
 
     mark_abstention.py --build      assemble cases from the live board
     mark_abstention.py              mark the unmarked ones, one call each
