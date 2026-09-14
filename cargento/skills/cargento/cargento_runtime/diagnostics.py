@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
+from cargento_runtime import tripwires
 
 if TYPE_CHECKING:
     from cargento_runtime.aggregate import Application
@@ -108,6 +109,11 @@ def diagnose(application: Application) -> dict[str, Any]:
         key = str(session["harness"])
         sessions_by_harness[key] = sessions_by_harness.get(key, 0) + 1
     return {
+        "tripwires": {
+            "enabled": config.tripwires_enabled,
+            "path": tripwires.store_path(config) if config.tripwires_enabled else None,
+            "error": data["tripwires"]["error"],
+        },
         "platform": config.platform_name,
         "python": sys.version.split()[0],
         "executable": sys.executable,
@@ -152,6 +158,11 @@ def render_diagnosis(report: dict[str, Any]) -> str:
         f"  home       {report['home']}",
         f"  sqlite3    {sqlite_info['version'] or 'UNAVAILABLE: ' + str(sqlite_info['error'])}",
     ]
+    stage = report["tripwires"]
+    lines.append(
+        f"  tripwires  {stage['path'] or 'disabled'}"
+        + (": " + stage["error"] if stage["error"] else "")
+    )
     env = report["env"]
     lines.append(
         "  overrides  " + (", ".join(f"{k}={v}" for k, v in env.items()) if env else "none")

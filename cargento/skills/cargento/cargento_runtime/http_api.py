@@ -21,7 +21,7 @@ from urllib.parse import ParseResult, parse_qs, urlparse
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
-from cargento_runtime import departures, dismissals, notifications, quota, records
+from cargento_runtime import departures, dismissals, notifications, quota, records, tripwires
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
@@ -1275,6 +1275,31 @@ class _RequestHandler(BaseHTTPRequestHandler):
         answer = {"ok": True, "reported": reported}
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
+    def _tripwire(self) -> None:
+        application = self.server.application
+        if not application.config.tripwires_enabled:
+            self._reject(503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= 1024:
+            self._reject(413)
+            return
+        try:
+            request = json.loads(self._read_body(length) or b"null")
+        except (ValueError, RecursionError):
+            request = None
+        # Save/Rearm start from current files, even if the preceding GET was memoized.
+        with application.state.collect_memo_lock:
+            application.collect(show_all=False)
+            answer = tripwires.mutate(
+                application.config, application.state, request, application.clock()
+            )
+            application.snapshot.clear()
+        self._send(json.dumps(answer).encode(), "application/json", code=answer["status"])
+
     def _annotate(self) -> None:
         """Record what the reader typed this session should achieve, or clear it.
 
@@ -1716,6 +1741,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._shutdown,
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
+            "/api/tripwire": self._tripwire,
             "/api/annotate": self._annotate,
             "/api/reading": self._reading,
             "/api/focus": self._focus,

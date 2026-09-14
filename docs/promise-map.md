@@ -77,7 +77,11 @@ measured elapsed, its own model and its own liveness, with a teammate that has f
 quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
 session is running on, desktop notifications on a state change, and a goal and an expected output
 you can type against one session and read back beside the goal its harness published, each on its
-own row with its own source, alongside every observed entry naming that session.
+own row with its own source, alongside every observed entry naming that session. Course also saves
+one stage-entry condition per observed Spacedock workflow, with rule management in Projects after
+the source disappears. The first qualifying entity trips it once until Rearm; first sight and gaps
+establish a baseline, skipped stages imply nothing, and notification service acceptance does not
+prove a banner appeared. See [workflow stage conditions](design-tripwires.md).
 
 Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
 contained only at the few places

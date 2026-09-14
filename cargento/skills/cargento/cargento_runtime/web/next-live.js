@@ -93,10 +93,8 @@ function nextStartLive(){
 
   renderNext();
   refreshNext();
-  if(NEXT_LIVE_SUPPORTED){
-    nextElectLeader();
-    setInterval(nextElectLeader, NEXT_LEASE_RENEW_MS);
-  }
+  nextElectLeader();
+  setInterval(nextElectLeader, NEXT_LEASE_RENEW_MS);
   setInterval(
     refreshNext,
     NEXT_LIVE_SUPPORTED ? NEXT_FALLBACK_POLL_MS : NEXT_UNCOORDINATED_POLL_MS,

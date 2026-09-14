@@ -1,3 +1,6 @@
+let nextStageNotifyPrimed = false;
+const nextStageNotified = new Set();
+
 let nextNotifyState = new Map();
 let nextNotifyPrimed = false;
 let nextNotifiedAsks = new Set();
@@ -137,6 +140,18 @@ function nextSyncNotifications(payload){
   }
   nextNotifiedAsks = seenAsks;
   if(fresh.length) nextNotifyAsks(payload, fresh);
+  const stageData = payload && payload.tripwires;
+  if(stageData && stageData.enabled){
+    for(const rule of stageData.rules || []){
+      if(!rule.event_id || nextStageNotified.has(rule.event_id)) continue;
+      nextStageNotified.add(rule.event_id);
+      if(!nextStageNotifyPrimed || !fire || !nextIsLeader) continue;
+      try{
+        new Notification("Workflow stage condition", {body:`${rule.workflow}: ${rule.why}`, tag:rule.event_id});
+      }catch(_error){ /* A lane is not a claim that a banner appeared. */ }
+    }
+    nextStageNotifyPrimed = true;
+  }
   nextNotifyState = seen;
   nextNotifyPrimed = true;
 }

@@ -212,6 +212,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
     parser.add_argument(
+        "--no-tripwires",
+        action="store_true",
+        help="Do not read or write saved workflow stage conditions.",
+    )
+    parser.add_argument(
         "--no-spacedock",
         action="store_true",
         help="do not read Spacedock workflow definitions (drops the stage strips)",
@@ -387,6 +392,7 @@ def build_runtime(
         port=args.port,
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
+        tripwires_enabled=not args.no_tripwires,
         usage_fetch_enabled=not args.no_usage,
         observer_model_enabled=args.observer_model and not args.no_observer_model,
         git_probe_enabled=not args.no_git,

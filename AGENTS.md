@@ -71,6 +71,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── state.py            # mutable process state, locks, and bounded caches
         │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
         │   ├── transcripts.py      # shared metadata, prompt titles, the Codex plan, non-Claude analyzers
+        │   ├── tripwires.py        # saved workflow stage conditions, baselines and durable one-shot latches
         │   ├── turns.py            # generic incremental turn scanning and turn display
         │   ├── unasked.py          # the unasked reading lane: the gate, the caps, the raise
         │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader

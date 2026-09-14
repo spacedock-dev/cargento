@@ -80,6 +80,29 @@ __fetchImpl = async () => __nextShouldFail
 """
         return self._run_page_js(fixture + checks, prelude=self.prelude(**prelude))
 
+    def test_polling_fallback_elects_and_renews_one_stage_notification_owner(self) -> None:
+        for store, expected in (
+            ({}, 1),
+            ({"cargento.next.leader": json.dumps({"id": "other", "ts": 1e15})}, 0),
+        ):
+            with self.subTest(owner=expected):
+                out = self._boot(
+                    """
+await __settle();
+__notifyPermission = "granted";
+nextSyncNotifications({sessions:[],tripwires:{enabled:true,rules:[]}});
+nextSyncNotifications({sessions:[],tripwires:{enabled:true,rules:[{event_id:"stage:new",workflow:"flow",why:"Observed entry"}]}});
+console.log(JSON.stringify({notifications:__notifications.length,leader:nextIsLeader,
+  periods:__intervals.map(item=>item.ms),sources:__sources.length}));
+""",
+                    event_source=False,
+                    store=store,
+                )
+                self.assertEqual(expected, out["notifications"])
+                self.assertEqual(bool(expected), out["leader"])
+                self.assertIn(2000, out["periods"])
+                self.assertEqual(0, out["sources"])
+
     def test_a_lone_next_tab_becomes_leader_and_opens_one_stream(self) -> None:
         out = self._boot(
             """

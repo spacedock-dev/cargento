@@ -54,6 +54,7 @@ class RuntimeConfig:
     port: int
     window_hours: float
     spacedock_enabled: bool
+    tripwires_enabled: bool
     usage_fetch_enabled: bool
     observer_model_enabled: bool
     # Whether the end-of-session git probe runs at all. `--no-git` is the off
@@ -574,6 +575,7 @@ def build_runtime_config(
     port: int = 4553,
     window_hours: float = 24.0,
     spacedock_enabled: bool = True,
+    tripwires_enabled: bool = True,
     usage_fetch_enabled: bool = True,
     observer_model_enabled: bool = False,
     git_probe_enabled: bool = True,
@@ -622,6 +624,7 @@ def build_runtime_config(
         port=port,
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
+        tripwires_enabled=tripwires_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
         observer_model_enabled=observer_model_enabled,
         git_probe_enabled=git_probe_enabled,

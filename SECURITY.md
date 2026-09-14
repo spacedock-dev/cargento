@@ -168,7 +168,7 @@ notifier's `osascript`, `--daemon`'s respawn of the server, and the quota fetche
 ## Project reads (Spacedock stage strips)
 
 One feature reads paths that are not under a store root. When a session declares itself a Spacedock
-first officer, or in Pi's case is taken to be one because its transcript carries a boot envelope,
+first officer, or in Pi and Codex has a supported boot result in its transcript,
 Cargento reads YAML frontmatter, and only frontmatter, from two kinds of file, so it can show where
 each entity sits on its workflow's stage spine:
 
@@ -206,9 +206,11 @@ state) and its `status` names a stage the README declared.
 
 Hard caps: at most 64 KiB read from a README and 8 KiB from an entity file, 400 frontmatter lines
 scanned, 32 stage names taken, 120 characters of the README's `title`, 96 entity files read per
-workflow (newest first), 12 entities rendered per workflow, and 8 workflows per session. Both reads are cached on
-`(realpath, st_mtime_ns, st_size)`, so an unchanged file costs one `stat` per refresh. Entity files
-older than the dashboard's freshness window are not opened at all.
+workflow (newest first), 12 entities rendered per workflow, and 8 workflows per session. Display
+entity reads are cached on `(realpath, st_mtime_ns, st_size)`; the README cache also checks device,
+inode and change time. Stage conditions read current entity frontmatter within the same caps on
+each collection, independently of the display cache. Entity files older than the freshness window
+are not opened; future file stamps cannot become stage-condition evidence.
 
 Only derived scalars reach `/api/data`: stage names (each validated against Spacedock's
 `^[a-z0-9][a-z0-9-]*[a-z0-9]$` grammar), entity slugs, cycle markers, and the README frontmatter's
@@ -219,6 +221,23 @@ control-character and bidi stripping every untrusted string does. No other file 
 body and no filesystem path is ever published, and the page HTML-escapes every value.
 Pass `--no-spacedock` to switch the feature off. The read surface is then exactly the documented
 store paths.
+
+## Saved workflow stage conditions
+
+`cargento-tripwires.json` under Cargento's state directory holds at most 64 stage conditions. A versioned
+SHA-256 digest of the canonical definition and state directory pair identifies a workflow; new
+condition fields expose no paths or copied file bodies. The bounded store uses atomic replacement
+and owner-only temporary files. Corruption refuses mutation and evaluation rather than discarding
+intent. `POST /api/tripwire` accepts only a known action, opaque workflow id, declared stage and
+expected revision, under the loopback origin gate and a 1 KiB body cap.
+
+A latch reaches disk before a notification attempt. Failed latch writes retain pending evidence
+in memory and make no attempt; restarting loses that pending evidence. A saved latch is never
+replayed after restart, including when the process stopped before attempting the notification.
+Simultaneous dashboard processes retain the existing last-writer-wins limitation; the latch is not
+a cross-process exactly-once guarantee. `--no-tripwires` disables all condition-store reads and
+writes. `--no-spacedock` leaves saved intent readable but suspended. See the
+[stage-condition contract](docs/design-tripwires.md) for baselines and delivery wording.
 
 ## Repository git reads (the end-of-session probe)
 

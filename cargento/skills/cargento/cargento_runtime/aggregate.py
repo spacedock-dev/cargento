@@ -19,6 +19,7 @@ from . import (
     reading,
     records,
     sessions,
+    tripwires,
     unasked,
 )
 from . import ends as runtime_ends
@@ -686,8 +687,7 @@ class Application:
             return []
 
     def collect(self, *, show_all: bool) -> Collection:
-        config, state = self.config, self.state
-        window_hours = config.window_hours
+        config, state, window_hours = self.config, self.state, self.config.window_hours
         now = self.clock()
         cleared_marks = dismissals.refresh(config, state)
         # Alongside the dismissal refresh and for its reason: two dashboards can
@@ -774,6 +774,14 @@ class Application:
         # happened — subtracting first would punch gaps in the history of any
         # session the reader ever cleared.
         self._notify_waits(out_sessions, generations)
+        stage_conditions = tripwires.collect(
+            config,
+            state,
+            tripwires.sources_from_sessions(out_sessions),
+            now,
+            self.native_notifier(config.platform_name),
+            self.popup_notifier,
+        )
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         sessions.assign_display_ids(config, out_sessions)
         out_sessions.sort(key=row_order)
@@ -781,6 +789,7 @@ class Application:
         total_tasks = sum(x["total"] for x in out_sessions)
         total_done = sum(x["done"] for x in out_sessions)
         collection: Collection = {
+            "tripwires": stage_conditions,
             "generated": now,
             "window_hours": window_hours,
             # The trailing window every `rate_per_min` below is averaged over.
