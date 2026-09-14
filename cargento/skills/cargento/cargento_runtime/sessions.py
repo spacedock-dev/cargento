@@ -734,6 +734,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "subagent_events": None,
         "tasks": [],
         "spacedock": None,
+        "cached_deterministic_goal": None,
         # The readings this row's collector could not take from a store it
         # opened, by name, from the `UNREAD_*` vocabulary above. Empty is "no
         # unread reading reported" and never "the store held nothing".

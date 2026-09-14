@@ -961,6 +961,34 @@ def read_sidecar(config: RuntimeConfig, harness: str, sid: str) -> dict[str, Any
     return value if isinstance(value, dict) else None
 
 
+def cached_deterministic_goal(
+    config: RuntimeConfig, harness: str, sid: str
+) -> dict[str, Any] | None:
+    """Saved deterministic evidence only; no transcript read or currentness claim.
+
+    A separately retained deterministic line survives a preferred model goal.
+    Undated older sidecars remain useful, but their file mtime is not an
+    observation time. The caller must describe every admitted line as cached.
+    """
+    cached = read_sidecar(config, harness, sid) or {}
+    candidates = [cached.get("deterministic_goal")]
+    if cached.get("goal_source") == "deterministic":
+        candidates.append(cached.get("goal"))
+    for raw in candidates:
+        if not isinstance(raw, str):
+            continue
+        goal = records.safe_text(raw, config.observer_goal_cap_chars).strip()
+        if not goal or _is_no_goal_output(goal):
+            continue
+        raw_at = cached.get("observed_at")
+        try:
+            at = records.norm_epoch(float(raw_at)) if type(raw_at) in (int, float) else 0
+        except OverflowError:
+            at = 0
+        return {"goal": goal, "source": "deterministic", "observed_at": at or None}
+    return None
+
+
 def _mtime(path: str) -> float:
     """One file's mtime, or 0 when it went away between the glob and the stat."""
     try:

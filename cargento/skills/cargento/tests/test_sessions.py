@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -13,7 +14,7 @@ from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events as runtime_events
-from cargento_runtime import records
+from cargento_runtime import observer, records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
@@ -25,6 +26,7 @@ from .support import (
     RuntimeTestCase,
     collect,
     collect_claude,
+    config_patch,
     make_config,
     make_runtime,
     store_patch,
@@ -81,6 +83,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "subagent_events",
         "tasks",
         "spacedock",
+        "cached_deterministic_goal",
         "source_gaps",
         # The two below are written onto the row after `base_session` returns,
         # which is why they went undeclared until the check reached the payload
@@ -1434,3 +1437,46 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
         # matched, so an undeclared name there is a key an untrusted POST can add
         # to a published row. `blocked_since` was one of them.
         self.assertLessEqual(set(runtime_events.PATCHABLE), DECLARED_SESSION_FIELDS)
+
+    def test_collection_republishes_saved_goals_without_producing_observations(self) -> None:
+        key, build = next((k, b) for k, b in HARNESSES if k == "codex")
+        config, _state = support_runtime()
+        path = observer.write_sidecar(
+            config,
+            key,
+            self.SID,
+            {
+                "goal": "Model prose",
+                "goal_source": "model",
+                "deterministic_goal": "Saved goal",
+                "observed_at": 100,
+                "transcript": ["old-signature", 1],
+            },
+        )
+        assert path is not None
+        self.addCleanup(Path(path).unlink, missing_ok=True)
+        with contextlib.ExitStack() as stack:
+            for name in ("analyze", "CodexGoalModel", "write_sidecar", "resolve_transcript"):
+                stack.enter_context(
+                    mock.patch.object(observer, name, side_effect=AssertionError(name))
+                )
+            read = stack.enter_context(
+                mock.patch.object(observer, "read_sidecar", wraps=observer.read_sidecar)
+            )
+            data = self.collect(build, when=self.NOW)
+            rows = self.sessions_for(data, key)
+            self.assertEqual(
+                {"goal": "Saved goal", "source": "deterministic", "observed_at": 100},
+                rows[0]["cached_deterministic_goal"],
+            )
+            self.assertTrue(data["spacedock_enabled"])
+            read.assert_called_once_with(mock.ANY, key, self.SID)
+            Path(path).write_text('{"deterministic_goal":"Changed saved goal"}', encoding="utf-8")
+            rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+            self.assertEqual("Changed saved goal", rows[0]["cached_deterministic_goal"]["goal"])
+            self.assertIsNone(rows[0]["cached_deterministic_goal"]["observed_at"])
+            Path(path).unlink()
+            rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+            self.assertIsNone(rows[0]["cached_deterministic_goal"])
+            with config_patch(spacedock_enabled=False):
+                self.assertFalse(self.collect(build, when=self.NOW)["spacedock_enabled"])
