@@ -1,11 +1,11 @@
 ---
 id: drc-4025
 title: 'C6 · Report the irreversible things that happened'
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4025
 started: 2026-09-14T10:07:20Z
-completed:
-verdict:
+completed: 2026-09-14T23:58:25Z
+verdict: PASSED
 score: 0.5
 worktree: .worktrees/spacedock-ensign-drc-4025
 issue:
@@ -61,7 +61,7 @@ gates:
                     source: Captain message in this session, 2026-09-14, approving the presented milestone ticket scopes and recommended approach; subsequent continue directives
               application:
                 target-stage: done
-                state: pending
+                state: consumed
 review-round:
     id: round:drc-4025:review:1
     stage: review
@@ -70,6 +70,7 @@ review-round:
         id: briefing:drc-4025:review:round-1
         digest: sha256:78076a8da2fcd1eb0b8f2e6ab181376ace18da8e318b4c65cbf214aaf47d5f19
         room-ref: ./review/review/round-1
+archived: 2026-09-14T23:58:26Z
 ---
 
 [DRC-4025](https://linear.app/recce/issue/DRC-4025) — Linear priority High, estimate M.
