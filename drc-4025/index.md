@@ -595,3 +595,46 @@ The first correction exposed three diagnostic errors on Windows; distinct FO FIX
 - sync-docs found no correction drift; version fields and COMPATIBILITY sync marker unchanged. Prior five-person independent review and browser artifacts remain valid for unchanged runtime; no extra review fanout or full-suite repetition after this green candidate.
 - Proposed FO projection: Cycle 1 — review: 1 owned Material proof failure fixed; 0 declined; final37files/1558changedLOC (runtime13/514 unchanged, support17/858 from17/688, docs7/186 unchanged); all six ACs unchanged; exact-head CI green on a6c3fcb; return to retained reviewer.
 - Canonical response is advisory only. No round recorded, gate prepared, merge, cleanup, or Linear reconciliation performed by this worker.
+
+## Stage Report: review (cycle 2)
+
+- DONE: Independently account for all six approved ACs using the actual candidate and boundary evidence, with the required security lenses and reproducing arbitration completed before opening the PR.
+  Runtime/web are byte-unchanged from the five-worker security-reviewed head 735785d; corrected test boundaries and actual Windows phase evidence now close the formerly missing AC-2/AC-6 proof.
+- DONE: Read current-head CI and all top-level/Copilot inline comments, investigate new findings read-only, and route any owned material correction with its evidence and proposed disposition.
+  All 12 check-run objects name a6c3fcb and SUCCESS; actual Windows job and preserved red logs read; top-level reviews and inline comments both empty, including Copilot; F1 fixed, no new finding.
+- DONE: Report GO or NO-GO with exact PR/head/mergeability, review evidence, actual surface, checklist accounting and safe worktree/merge handoff state.
+  GO on PR335 / a6c3fcb0a0b95301e1731047ff6d9c5e952540a0 / CLEAN / MERGEABLE; tracked worktree clean, correction complete, FO retains cleanup/merge ownership.
+
+### Verdict and review depth
+
+**GO / PASSED.** PR https://github.com/spacedock-dev/cargento/pull/335; head `a6c3fcb0a0b95301e1731047ff6d9c5e952540a0`; base `4b2120dac7dfe0ca63ebe8c5fc7f28d8d4fc1801`. All three review checklist items DONE; SKIPPED 0; FAILED 0.
+Full adversarial security depth remains the original three independent lenses, completeness critic and reproducing arbiter. This retained-reviewer pass uses zero additional agents and no broad suite/browser rerun: only test_irreversible.py changed after reviewed head735785d (+180/-10 across two DCO correction commits).
+The immutable review/1 room contains original finding/reviewer revise plus implementation disposition/closing Resolution; pointer `round:drc-4025:review:1` was read. F1 is fixed within its authorized scope; zero declined findings and zero new findings. The room was not edited or recorded again.
+
+### Acceptance evidence
+
+AC-1: retained lens1 capture-hash/live-driver evidence and measured Claude/Codex Bash/tool_input.command replay remain valid. Current deterministic replay still drives real main and socket, including Claude failure-event exclusion; it neither assumes alternate fields nor infers successful effects. No live capture repeated here.
+AC-2: all 90 literal/wrapper/harness positives remain; only worker scheduling and elapsed-clock controls are replaced in that lexical/privacy oracle. Actual matcher, reduction, main, transport, ingress, retained and served projections remain exercised. Independent sensitivity probe passes the control and makes missing matcher result, missing report, wrong fixed label and bypassed main each fail the same authored socket assertion; copied private bytes/unknown patterns remain covered by unchanged negative/forgery tests and the original security lenses.
+AC-3: unchanged reader assets retain lens3 assembled-route/escaping/absence proofs and Mode2 browser routing/redraw/focus evidence. Fixed shape labels, successful-effect disclaimer and empty/off/unsupported wording remain; no new browser walk was warranted for a test-only correction.
+AC-4: unchanged ledger/reader evidence from lens2, lens3, critic and arbiter retains concurrent/coalesced/end survival, 1,530-delivery ordering oracle, 1,000 global/20-session caps, exact logical 24h expiry, restart loss, actual history exclusion and 27-retained/20-displayed counts. No durable history or exactly-once claim is added.
+AC-5: unchanged actual-hook missing/off matcher suppression, off-replacement authenticated ingress and spawn argv through real child parser/config evidence remain. A detached OS daemon was not independently relaunched; the approved enabled-replacement race remains explicit.
+AC-6: fresh Windows log34909173461/job104192628325 shows forced sleep176.495ms and spin219.313ms from parent stdin release through actual main, socket path, daemon worker, diagnostic write and real process exit. Startup88.995/81.363ms is separately measured and excluded, as FO authorized; each containment assertion remains250ms and silent/no-report.
+Completed late success:191.419ms after80.394ms startup; matcher_end2701.1456054 > report_return2701.1229473, report_present=false, no socket report. This proves the worker completed after return and before real exit, rather than relying on fixed padding.
+The injected GIL-regex still times out at250ms after81.792ms startup; its exact fixed stderr marker proves matcher entry, with empty stdout/no report. Only this negative control writes that marker. The production nominal wait stays0.005; the separate completed-worker6ms clock control proves late-result discard without altering that value.
+Normal matching is separate: all five Windows normal observations emitted the expected report, main-to-exit310.752–322.699ms, startup80.299–105.471ms, under the ordinary3s observation bound. Neither this path nor interpreter/import startup is claimed below250ms; no universal scheduling guarantee is claimed.
+
+### Independent sensitivity and preserved CI evidence
+
+Independent probe: code-worktree `docs/screenshots/c6-review-cycle2/oracle-sensitivity.py`, invoked via `python3 -B -m docs.screenshots.c6-review-cycle2.oracle-sensitivity`. It restricts the existing matrix to one literal across both harnesses/three wrappers, then injects four child-process-only counterfactuals; control passes, each mutant gives one expected assertion failure and zero errors. No candidate byte changes; owned fixture listeners/processes cleaned up.
+Fresh raw checks/reviews/comments/Windows log and probe results are under ignored `docs/screenshots/c6-review-cycle2/`. Four workflow check families are green on the exact head: Quality Gate34909173461, Validate34909173482, compatibility34909173491, version guard34909173470. Current-head checks API confirms all12 SHAs and conclusions; no stale badge inference.
+Windows final:3,387 dashboard tests/174.899s/45skips and361 script tests/11.384s/4skips. Quality Gate job summaries show no unsuccessful/skipped steps. CI coverage86.5% (3,387/1skip;505scripts/4skips) is distinct from retained local86.7% (3,387/2skips;505/1skip). No correction added a skip.
+Original735785d Windows red remains four failures/one error/45skips. Intermediatecd37839 red remains one failure/two errors/45skips: fixed late padding exceeded containment, normal timing incorrectly shared250ms, regex file marker was empty. Read retained logs; the final correction replaces those diagnostic mistakes without rewriting them as passes or increasing the forced-case limit.
+
+### Surface and cleanup handoff
+
+Independently recomputed final surface:37files,+1,425/-133=1,558changedLOC. Runtime13/514 and docs7/186 unchanged; support17/858 versus original17/688. Approved ranges are runtime11–14/450–850, support12–15/500–950, docs4–6/100–200 plus25% tolerance; support file overage13.3% and docs16.7% remain within tolerance, every LOC range satisfied. All six ACs and production thresholds/caps remain unchanged.
+Tracked worktree clean and four candidate DCO commits pushed; no pending correction or review-owned process remains. Worktree is ready for FO cleanup after preserving its ignored screenshots/log/probe evidence; FO then owns merge, branch deletion and reconciliation. This reviewer removed nothing, merged nothing, did not touch PR224/siblings, and made no Linear or gate-authority changes.
+
+### Summary
+
+The authorized correction now separates lexical/privacy evidence from scheduling and proves the actual Windows hook/exit boundary without changing the production contract. Current-head CI and the bounded independent review support GO; retained startup, best-effort scheduling, current-run retention and coverage limits remain explicit.
