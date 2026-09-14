@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4020:triage:attempt-1:revision-1",
+  "question": "Approve one saved stage-entry alert per exact workflow, including the measured Codex source prerequisite and explicit rearm?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4020:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/55d195d4ecad4c4769e70d5dbb27d2b271b6d142/drc-4020.md",
+      "rev": "sha256:c336aeedc5f2e1b4ac81ed4bec7bc4910f2e1e9627d41723362de57b2e863f63",
+      "mediaType": "text/markdown",
+      "summary": "Three triage outcomes done. Recommend a one-shot workflow rule using freshly validated entity state, stable opaque binding, persisted trip latch, and visible Course/Projects controls. First sight and gaps reset baselines; no inferred skipped-stage crossing or delivery guarantee. Includes bounded Codex boot attachment. Ten implementation ACs remain owed. Estimated 6–9 hours; runtime 17 files/1150 changed lines, oracles19/1250, docs9/240, packaging1/5, with declared tolerances and scoped full security review."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4020:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/4b2120dac7dfe0ca63ebe8c5fc7f28d8d4fc1801/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
