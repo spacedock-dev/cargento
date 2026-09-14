@@ -213,7 +213,10 @@ typed the session should achieve and produce: the words are kept beside the two 
 session that ended can be read against what was asked of it rather than only against whether it
 stopped. The Intent log keeps them after the row leaves the board. Taking them back is one act
 and it is on the board: `discard everything` deletes every revision, deletes any reading of them,
-and withdraws the quotations from anything raised against them, leaving only that a check ran.
+and withdraws the quotations from anything raised against them. What it leaves is the fact that a
+check ran and a record of the act itself, carrying no text: the moment you discarded, and the last
+revision number that went. That record is why the Intent log still lists the session afterwards,
+and why the board can tell a session you discarded from one nobody ever typed against.
 
 Where it stops: nothing reads your words for you at the end. The two axes say what ended and who
 claims it finished, drawn separately because neither implies the other, and the comparison against

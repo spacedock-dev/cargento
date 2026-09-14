@@ -331,7 +331,8 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
-`--forget` deletes the local history store and the session-end store, and exits. It belongs with `--status` and `--stop` rather
+`--forget` deletes the local history store and the session-end store, removes the records of any
+session you discarded everything for, and exits. It belongs with `--status` and `--stop` rather
 than in the table below, because what it does is not undone by running the next command without it:
 
 ```bash
@@ -341,9 +342,11 @@ python3 "<skill-dir>/server.py" --forget
 It removes the history file whether or not the store was enabled, so turning the feature off and then
 asking for the file to go does what it says. The session-end store goes with it, because both are the
 machine's memory of what it observed, and a session whose end was recorded then reads as quiet again. Nothing over the loopback port can delete history; this is the
-only way. It does not reach the annotation store: the goal and the expected output you typed against
-a session, and any reading made against them, go when you clear that session's fields in its Held to
-tab.
+only way. It deletes nothing you typed: the goal and the expected output you wrote against a
+session, and any reading made against them, go when you discard that session's words in its Held to
+tab. The one thing it takes out of that store is the record of a discard, which holds when the act
+happened and no text, and is the machine's memory of something it did rather than anything you
+wrote.
 
 Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
 it names, because a running server keeps its own copy of the history in memory and writes the
