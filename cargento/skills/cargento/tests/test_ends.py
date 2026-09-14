@@ -858,7 +858,13 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
             os.path.exists(ends.store_path(self.config)),
             "the end store was deleted under a live board",
         )
-        said = " ".join(str(call) for call in diag.call_args_list)
+        # The message argument, never `str(call)`. A call's repr escapes
+        # backslashes, so on Windows a path in the sentence reads as
+        # `C:\\Users\\...` there and as `C:\Users\...` in the assertion, and
+        # the two never match. Measured: this passed on macOS and failed the
+        # Windows runner on the assertion below, which is the only one of the
+        # four in this pattern that carries a path.
+        said = " ".join(str(call.args[0]) for call in diag.call_args_list)
         self.assertIn(ends.STORE_FILENAME, said)
         self.assertIn("--stop", said)
         # And the third store the sweep did not reach (DRC-4565). The refusal
@@ -917,7 +923,13 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
         ):
             self.assertEqual(0, run_one_shot_cli(["--forget"], self.env))
 
-        said = " ".join(str(call) for call in diag.call_args_list)
+        # The message argument, never `str(call)`. A call's repr escapes
+        # backslashes, so on Windows a path in the sentence reads as
+        # `C:\\Users\\...` there and as `C:\Users\...` in the assertion, and
+        # the two never match. Measured: this passed on macOS and failed the
+        # Windows runner on the assertion below, which is the only one of the
+        # four in this pattern that carries a path.
+        said = " ".join(str(call.args[0]) for call in diag.call_args_list)
         self.assertIn(f"could not write {path}", said)
         self.assertNotIn("no discard records", said)
         self.assertEqual({"gone"}, {entry["sid"] for entry in annotation_store.load(self.config)})
