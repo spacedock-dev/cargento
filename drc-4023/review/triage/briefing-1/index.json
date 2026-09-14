@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4023:triage:attempt-1:revision-1",
+  "question": "Approve the bounded C4 Intent log population and provenance implementation?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4023:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/1ed3135c648993f4355dd45812960ef74a704b8f/drc-4023.md",
+      "rev": "sha256:50439b44589f4dae2bc5a9475ec5dc54583cc50cf4919e967d9c59e0460fff11",
+      "mediaType": "text/markdown",
+      "summary": "Include every board session and retained annotation/discard identity once; preserve separately labeled typed, cached deterministic and published workflow goals, honest absence and withdrawal. Seven falsifiable ACs; existing-file scope with separate25percent tolerances; two review lenses plus reproducing arbiter; frontend integrates after C1."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4023:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/4b2120dac7dfe0ca63ebe8c5fc7f28d8d4fc1801/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
