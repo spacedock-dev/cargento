@@ -1120,6 +1120,7 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
     '<div class="next-attention-section-heading"><h2 tabindex="-1">Also at risk, off the session count</h2>' +
     '<p>not sessions, so not in that denominator</p></div>' +
     `<ol>${boardRisks}${modelQuotaRows}</ol></section>` +
+    nextCommandReports() +
     '<section class="next-attention-section" data-next-attention-section="open">' +
     '<div class="next-attention-section-heading"><h2 tabindex="-1">Not on this board yet</h2>' +
     '<p>so a gap reads as a gap, not as good news</p></div>' +

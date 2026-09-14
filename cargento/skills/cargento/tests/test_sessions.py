@@ -65,6 +65,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "dirty",
         "changed",
         "focusable",
+        "command_reports",
         "rate_per_min",
         "session_output_tokens",
         "turn_output_tokens",

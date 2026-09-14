@@ -567,6 +567,33 @@ function nextSessionDetailState(state){
   return null;
 }
 
+function nextCommandReports(session = null){
+  const disabled = !nextData || nextData.irreversible_enabled !== true;
+  const unsupported = session && !["claude", "codex"].includes(session.harness);
+  const reports = disabled || unsupported ? [] : nextObservedRecords(
+    session ? session.command_reports : nextData.command_reports).slice(0, 20);
+  const absent = disabled ? "Command-shape reports are disabled for this run." : unsupported ?
+    "Command-shape reporting is unsupported for this harness." :
+    "No matching reports received; missing hooks and unmatched commands can look the same.";
+  const rows = reports.map(report => {
+    const owner = !session && nextObservedRecords(nextData.sessions).find(source =>
+      source.harness === report.harness && source.sid === report.sid);
+    const route = owner ? nextRouteToken({view: "session", project: owner.project,
+      harness: owner.harness, session: owner.sid}) : "";
+    const identity = session ? "" : `${report.harness} · ${report.sid} · `;
+    const text = `Command shape reported: ${report.label}`;
+    return `<li class="next-attention-risk-identity"><h3>${route ? `<a href="#n=${esc(route)}" data-next-route="${esc(route)}">${esc(text)}</a>` : esc(text)}</h3>` +
+      `<p class="next-attention-risk-source">${esc(identity)}${esc(report.tool_name)} · ${esc(new Date(report.timestamp * 1000).toISOString())}</p></li>`;
+  }).join("");
+  return '<section class="next-attention-section" data-next-command-reports>' +
+    '<div class="next-attention-section-heading"><h2>Command-shape reports</h2>' +
+    (reports.length ? `<p>${reports.length} report${reports.length === 1 ? "" : "s"} shown · newest first</p>` : "") +
+    '</div>' + (reports.length ? `<ol>${rows}</ol>` : `<p>${esc(absent)}</p>`) +
+    '<p>A shape match does not prove the action succeeded.</p>' +
+    '<p>Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. ' +
+    'This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.</p></section>';
+}
+
 function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const session = nextSessionFind(project, harness, sid);
   if(!session){
@@ -604,6 +631,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     nextSessionAskBlock(session, asks, observed) + nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
+    nextCommandReports(session) +
     nextSessionDepartures(session) + nextSessionDelivery(session) +
     nextSessionHeldLink(session) + nextSessionFooter(session) + "</article>";
 }

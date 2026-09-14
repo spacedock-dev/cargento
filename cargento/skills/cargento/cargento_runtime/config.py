@@ -72,6 +72,7 @@ class RuntimeConfig:
     # own (decisions.md, DRC-4547): the coordinator is its only writer, so with
     # none it is neither written nor read back (`ends.py`).
     focus_enabled: bool
+    irreversible_enabled: bool
     # Whether the dismissal store is read and written at all. `--no-dismiss` is
     # the rollback switch, and off means off in both directions: the file is
     # neither consulted during a collection nor created by a request, so a run
@@ -396,7 +397,7 @@ class RuntimeConfig:
     # from disk fills it only as fast as it writes.
     usage_samples_max: int
     # Event ingress. The body cap is far below the notification cap because the
-    # envelope is twelve short fields and nothing else is read from it. The rate
+    # envelope is fourteen short fields and nothing else is read from it. The rate
     # ceiling is independent of the capability: a looping or compromised adapter
     # holds a valid token by definition, so the token cannot be what bounds it.
     # The burst allows one turn's worth of hooks to arrive together.
@@ -580,6 +581,7 @@ def build_runtime_config(
     observer_model_enabled: bool = False,
     git_probe_enabled: bool = True,
     focus_enabled: bool = True,
+    irreversible_enabled: bool = True,
     dismissals_enabled: bool = True,
     annotations_enabled: bool = True,
     unasked_enabled: bool = False,
@@ -629,6 +631,7 @@ def build_runtime_config(
         observer_model_enabled=observer_model_enabled,
         git_probe_enabled=git_probe_enabled,
         focus_enabled=focus_enabled,
+        irreversible_enabled=irreversible_enabled,
         dismissals_enabled=dismissals_enabled,
         annotations_enabled=annotations_enabled,
         unasked_enabled=unasked_enabled,

@@ -1131,6 +1131,9 @@ class WaitDetailTest(unittest.TestCase):
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
 
+        def command_reports(self) -> list[dict[str, Any]]:
+            return []
+
         def drop_counters(self) -> dict[str, int]:
             return {}
 
@@ -1273,6 +1276,9 @@ class StateDisputeTest(unittest.TestCase):
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
+
+        def command_reports(self) -> list[dict[str, Any]]:
+            return []
 
         def drop_counters(self) -> dict[str, int]:
             return dict(self.counters)
@@ -1569,6 +1575,11 @@ class StateDisputeTest(unittest.TestCase):
         self.assertEqual(6, self.state.dispute_total)
 
 
+class _NoCommandReports:
+    def command_reports(self) -> list[dict[str, Any]]:
+        return []
+
+
 class ApplicationOverlayTest(support.RuntimeTestCase):
     """The other half: what a collection does with the ledger.
 
@@ -1631,7 +1642,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         self.assertIsNone(row["acquisition"])
 
     def test_a_live_overlay_patches_the_matching_row(self) -> None:
-        class Source:
+        class Source(_NoCommandReports):
             def __init__(self) -> None:
                 self.noted: set[tuple[str, str]] = set()
 
@@ -1678,7 +1689,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
     def test_the_summary_counts_the_patched_state_not_the_collected_one(self) -> None:
         # Patching after the summary was counted would show a needs-input row in
         # a board reporting zero waiting sessions.
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 if (harness, sid) != ("claude", PREFIX):
                     return []
@@ -1719,7 +1730,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
     def test_a_remembered_stop_reaches_the_row_with_no_overlay_left(self) -> None:
         # The `claude -p` row: the ledger is gone, the mark is not, and the
         # session still has to publish that its turn ended.
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 del harness, sid
                 return []
@@ -1758,7 +1769,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         # only path onto the row is the coordinator's own memory. Activity AFTER
         # the end is deliberate — a real end lands after the transcript's last
         # write — and it proves the stop's staleness guard is not applied here.
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 del harness, sid
                 return []
@@ -1797,7 +1808,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         # so the stubs agreed with the mutant. What shipped in that state was a
         # board where no RAISE renders on any row and the coverage line says so
         # in well-chosen words: a confident absence over a working feature.
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 del harness, sid
                 return []
@@ -1833,7 +1844,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         # None means not observed; it must never read as "did not end", because
         # an absent end is also what a SIGKILL and every adapter-less harness
         # look like.
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 del harness, sid
                 return []
@@ -1923,7 +1934,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         reading = git_status.probe("/", timeout_sec=1.0, runner=runner)
         self.assertIsNotNone(reading, "the fixture never reached the parse")
 
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 del harness, sid  # the ledger `session_ended` popped
                 return []
@@ -1964,7 +1975,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         # AC6 at the wire, and the half a row-level assertion cannot make: the
         # keys must be PRESENT and null, because an absent key and a false one
         # render identically in a consumer that reads `row.dirty || …`.
-        class Source:
+        class Source(_NoCommandReports):
             def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
                 del harness, sid
                 return []
@@ -1999,7 +2010,7 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         self.assertIsNone(row["changed"])
 
     def test_an_overlay_for_an_unknown_session_creates_no_row(self) -> None:
-        class Source:
+        class Source(_NoCommandReports):
             def __init__(self) -> None:
                 self.asked: list[tuple[str, str]] = []
 
@@ -2691,6 +2702,15 @@ class GitProbeConcurrencyTest(ObservationTestCase):
             coordinator._git_prober = lambda _cwd: None
             dispatched = self._collector(coordinator)
             payload = self.envelope(event=name, cwd="/repo/somewhere")
+            if name == "command_shape_reported":
+                payload = {
+                    "v": 1,
+                    "event": name,
+                    "session_id": SESSION,
+                    "timestamp": "2023-11-14T22:13:20Z",
+                    "pattern_id": "git_force_push",
+                    "tool_name": "Bash",
+                }
             self.assertEqual("accepted", coordinator.submit("claude", payload), name)
             if dispatched:
                 dispatching.add(name)

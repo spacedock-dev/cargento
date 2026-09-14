@@ -72,6 +72,9 @@ import json
 import os
 import re
 import sys
+import threading
+import time
+from datetime import UTC, datetime
 from typing import Any
 
 # A sentinel for "read it from this process", so a caller may pass an explicit
@@ -327,7 +330,7 @@ def state_file(port: int) -> str:
     return os.path.join(home, f"cargento-{port}.json")
 
 
-def capability(port: int, harness: str) -> str | None:
+def capability(port: int, harness: str, *, irreversible: bool = False) -> str | None:
     """This run's token for `harness`, or None if there is nothing to read.
 
     None is an ordinary answer: no dashboard running, an older dashboard that
@@ -341,11 +344,158 @@ def capability(port: int, harness: str) -> str | None:
         return None
     if not isinstance(data, dict):
         return None
+    if irreversible and data.get("irreversible_enabled") is not True:
+        return None
     tokens = data.get("capabilities")
     if not isinstance(tokens, dict):
         return None
     token = tokens.get(harness)
     return token if isinstance(token, str) and token else None
+
+
+PLAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@%+=,-")
+COMMAND_LIMIT = 4096
+MATCH_WAIT_SEC = 0.005
+
+
+def _plain(token: str) -> bool:
+    return bool(token) and all(char in PLAIN_CHARS for char in token)
+
+
+def _sql_shape(command: str) -> str | None:
+    quote = "'" if "'" in command else '"'
+    parts = command.split(quote)
+    if len(parts) != 3 or parts[2].strip():
+        return None
+    client = parts[0].split()
+    admitted = client in (["psql", "-c"], ["mysql", "-e"]) or (
+        len(client) == 2
+        and client[0] == "sqlite3"
+        and _plain(client[1])
+        and not client[1].startswith("-")
+    )
+    if not admitted:
+        return None
+    sql = parts[1].strip().removesuffix(";").split()
+    if len(sql) == 5 and [word.upper() for word in sql[2:4]] == ["IF", "EXISTS"]:
+        sql = sql[:2] + sql[4:]
+    if len(sql) != 3 or [word.upper() for word in sql[:2]] != ["DROP", "TABLE"]:
+        return None
+    identifiers = sql[2].split(".")
+    if all(word.isascii() and word.isidentifier() for word in identifiers):
+        return "sql_drop_table"
+    return None
+
+
+def _recursive_shape(tokens: list[str]) -> str | None:
+    flags = {"-r", "-R", "-rf", "-fr", "-Rf", "-fR"}
+    if len(tokens) < 3 or tokens[1] not in flags:
+        return None
+    paths = tokens[2:]
+    if paths and paths[0] == "-f":
+        paths = paths[1:]
+    if paths and paths[0] == "--":
+        paths = paths[1:]
+    if not paths or any(path.startswith("-") or ".." in path.split("/") for path in paths):
+        return None
+    prefixes = ("/tmp/", "/private/tmp/", "/var/tmp/")  # noqa: S108 — lexical exclusions only
+    if any(not path.startswith(prefixes) for path in paths):
+        return "recursive_delete"
+    return None
+
+
+def _plain_shape(tokens: list[str]) -> str | None:
+    if tokens[:2] == ["git", "push"]:
+        flags = {"--force", "-f", "--force-with-lease"}
+        args = tokens[2:]
+        if any(arg in flags for arg in args) and all(
+            not arg.startswith("-") or arg in flags for arg in args
+        ):
+            return "git_force_push"
+    if (
+        tokens[:3] == ["git", "reset", "--hard"]
+        and len(tokens) in (3, 4)
+        and (len(tokens) == 3 or not tokens[3].startswith("-"))
+    ):
+        return "git_hard_reset"
+    if tokens[0] == "rm":
+        return _recursive_shape(tokens)
+    return None
+
+
+def command_shape(command: str) -> str | None:
+    """The lexical table in SECURITY.md; no shell interpretation is performed."""
+    if (
+        len(command) > COMMAND_LIMIT
+        or any(char in command for char in "\\$`&|<>!#")
+        or any(char.isspace() and char not in " \t" for char in command)
+    ):
+        return None
+    tokens = command.split()
+    if not tokens or len(tokens) > 64:
+        return None
+    command = command.strip()
+    if tokens[0] == "rtk":
+        command = command[3:].lstrip()
+        if command.startswith(("proxy ", "proxy\t")):
+            command = command[5:].lstrip()
+        tokens = command.split()
+    if "'" in command or '"' in command:
+        return _sql_shape(command)
+    if not tokens or not all(_plain(token) for token in tokens):
+        return None
+    return _plain_shape(tokens)
+
+
+def irreversible_report(payload: dict[str, Any], harness: str) -> dict[str, Any] | None:
+    """Reduce one measured after-tool payload, discarding any late result.
+
+    The daemon thread is intentional: an executor joins at interpreter exit.
+    A 5 ms join is best effort, not a hard deadline for scheduling or native work;
+    the fixed worker contains no I/O, regex or configurable callback.
+    """
+    if (
+        harness not in {"claude", "codex"}
+        or payload.get("hook_event_name") != "PostToolUse"
+        or payload.get("tool_name") != "Bash"
+    ):
+        return None
+    tool_input = payload.get("tool_input")
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    sid = payload.get("session_id")
+    if (
+        not isinstance(command, str)
+        or len(command) > COMMAND_LIMIT
+        or not isinstance(sid, str)
+        or not sid.strip()
+        or len(sid) > 200
+    ):
+        return None
+    result: list[str | None] = []
+
+    def match() -> None:
+        with contextlib.suppress(Exception):
+            result.append(command_shape(command))
+
+    started = time.monotonic()
+    worker = threading.Thread(target=match, daemon=True)
+    worker.start()
+    worker.join(MATCH_WAIT_SEC)
+    if (
+        worker.is_alive()
+        or time.monotonic() - started > MATCH_WAIT_SEC
+        or not result
+        or result[0] is None
+    ):
+        return None
+    return {
+        "v": ENVELOPE_VERSION,
+        "event": "command_shape_reported",
+        "session_id": sid.strip(),
+        "timestamp": datetime.now(UTC).isoformat(),
+        "pattern_id": result[0],
+        "tool_name": "Bash",
+    }
 
 
 def envelope(
@@ -444,6 +594,16 @@ def main(argv: list[str]) -> int:
             json.dumps(event, separators=(",", ":")).encode(),
             headers={"X-Cargento-Capability": token},
         )
+    with contextlib.suppress(Exception):
+        report_token = capability(port, harness, irreversible=True)
+        if report_token is not None:
+            report = irreversible_report(json.loads(raw), harness)
+            if report is not None:
+                shared.forward(
+                    f"http://127.0.0.1:{port}/api/events/{harness}",
+                    json.dumps(report, separators=(",", ":")).encode(),
+                    headers={"X-Cargento-Capability": report_token},
+                )
     return 0
 
 

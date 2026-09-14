@@ -10,6 +10,14 @@ of a vendor HTTP response, and the claims it backs live in
 [`../design-usage-quota.md`](../design-usage-quota.md). It is kept here because it obeys the rule
 this directory exists for — shapes, never values.
 
+C6's shape-only captures use a one-off recorder: [Claude](claude/command-shapes-2.1.270-macos.jsonl)
+and [Codex](codex/command-shapes-0.154.0-macos.jsonl). They record nested field names and Python
+type names, never values. Both admitted `Bash` with `tool_input.command` as a string. Harmless
+printf and nonzero calls established the difference: Claude emitted `PostToolUseFailure` on
+nonzero; Codex still emitted `PostToolUse`. The latter cannot establish successful effects.
+The recorder was registered in isolated Claude settings and Codex inline TOML; project Codex
+hook-file discovery was a negative registration probe, not negative payload evidence.
+
 ## What is in a record, and what is deliberately not
 
 Each line is one hook invocation, written by `scripts/capture_hook.py`. It records the **names** of

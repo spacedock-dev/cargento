@@ -83,6 +83,12 @@ the source disappears. The first qualifying entity trips it once until Rearm; fi
 establish a baseline, skipped stages imply nothing, and notification service acceptance does not
 prove a banner appeared. See [workflow stage conditions](design-tripwires.md).
 
+Claude Code and Codex after-tool hooks add fixed command-shape reports to session detail and
+Attention. They show what a hook matched while you were away; they do not establish success.
+Reports are incomplete, may repeat, and last only for the current dashboard run. Missing hooks
+and unmatched commands can look the same. The exact forms and limits belong to the security
+section linked below.
+
 Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
 contained only at the few places
 [SECURITY.md](../SECURITY.md#irreversible-actions-hook-side-destructive-shape-matching) names, each

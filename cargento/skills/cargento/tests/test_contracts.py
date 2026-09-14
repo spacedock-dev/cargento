@@ -1438,7 +1438,9 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # collectors apply, and it stopped being that when two of the four
         # readers grew their own copy. `records` is a leaf, so this stays inward
         # and the module stays pure.
+        "cargento_runtime.irreversible": set(),
         "cargento_runtime.events": {
+            "cargento_runtime.irreversible",
             "cargento_runtime.config",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
@@ -1716,6 +1718,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # starts a thread. Nothing imports it except the assembly point and the
         # server that carries it.
         "cargento_runtime.observation": {
+            "cargento_runtime.irreversible",
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.ends",

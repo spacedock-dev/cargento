@@ -57,6 +57,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── interaction_prototype.py # optional registered-session terminal output
         │   ├── project_context.py  # prototype project evidence and semantic projections
         │   ├── semantic_history.py # prototype semantic event history
+        │   ├── irreversible.py     # current-run command reports, bounded separately from hints
         │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown

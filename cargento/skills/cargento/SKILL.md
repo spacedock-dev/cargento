@@ -414,6 +414,14 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 
 The harness name is the first argument and is required. Pass a **port** second for a non-default instance: `python3 "<skill-dir>/event_hook.py" claude 9999`. Note that this differs from `notify_hook.py`, which takes a whole URL.
 
+Claude Code and Codex after-tool hooks also report fixed command shapes: force push, hard reset,
+DROP TABLE in supported SQL-client forms, and recursive delete outside literal temporary prefixes.
+Session detail and Attention show reports, not proof that an action succeeded. Missing hooks and
+unmatched commands can look the same. Reports stay in memory for this run: newest 1,000 globally,
+20 per session, at most 24 hours. Restarting clears them; duplicates and reordered delivery are possible.
+Matching uses a nominal 5 ms best-effort wait, separate from startup and transport. Exact literal forms
+and exclusions are in the project's security documentation; arbitrary shell syntax is not interpreted.
+
 This path needs no configured secret. Each run of the dashboard generates its own capability and publishes it in its state file, which the hook reads; nothing is stored between runs. With no dashboard running the hook reads one small file and exits 0. A dashboard started with `--no-events` publishes no capability, so the hook stays silent.
 
 ### Codex
@@ -487,6 +495,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-spacedock` | Do not read Spacedock workflow definitions. Claude role metadata remains, but stage strips do not; saved stage conditions remain readable and suspended. |
 | `--no-tripwires` | Disable workflow stage conditions and all reads or writes of their saved store. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
+| `--no-irreversible` | Disable command-shape matching, report ingress and publication for this run. `--no-events` also disables it. Ordinary lifecycle hints remain available with only this flag. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The session-end store is neither read nor written, since the coordinator is its only writer, so a session that ended before this run reads as quiet. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
