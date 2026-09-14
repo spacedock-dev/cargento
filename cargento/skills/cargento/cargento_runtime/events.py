@@ -42,7 +42,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
-from cargento_runtime import records
+from cargento_runtime import irreversible, records
 from cargento_runtime import sessions as runtime_sessions
 
 if TYPE_CHECKING:
@@ -73,6 +73,7 @@ EVENT_NAMES: Final = frozenset(
         "tasks_changed",
         "store_changed",
         "reconcile_required",
+        "command_shape_reported",
     }
 )
 
@@ -99,6 +100,8 @@ ALLOWED_FIELDS: Final = frozenset(
         # ordinal on one server, so without this a target outlives its server and
         # names whatever pane inherited the id.
         "tmux_server",
+        "pattern_id",
+        "tool_name",
     }
 )
 
@@ -213,6 +216,8 @@ class Event:
     tmux_socket: str | None = None
     tmux_pane: str | None = None
     tmux_server: str | None = None
+    pattern_id: str | None = None
+    tool_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -414,6 +419,31 @@ def parse(
     if isinstance(identified, Rejected):
         return identified
     name, session_id, sid = identified
+
+    if name == "command_shape_reported":
+        pattern = payload.get("pattern_id")
+        stamp = payload.get("timestamp")
+        if (
+            set(payload) != irreversible.REPORT_FIELDS
+            or harness not in {"claude", "codex"}
+            or not isinstance(pattern, str)
+            or pattern not in irreversible.PATTERNS
+            or payload.get("tool_name") != "Bash"
+            or not isinstance(stamp, str)
+            or len(stamp) > MAX_ID_LEN
+            or records.iso_epoch(stamp) is None
+        ):
+            return Rejected(REJECT_MALFORMED)
+        return Event(
+            harness=harness,
+            event=name,
+            sid=sid,
+            session_id=session_id,
+            timestamp=_parse_timestamp(stamp, config=config, now=now),
+            arrival_seq=arrival_seq,
+            pattern_id=pattern,
+            tool_name="Bash",
+        )
 
     sequence = payload.get("source_sequence")
     if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 0:

@@ -1849,6 +1849,9 @@ class _StubOverlays:
     def drop_counters(self) -> dict[str, int]:
         return {}
 
+    def command_reports(self) -> list[dict[str, Any]]:
+        return []
+
 
 class ApplicationPopupTest(unittest.TestCase):
     """Who notifies for a gate, once the row is final rather than mid-collection.

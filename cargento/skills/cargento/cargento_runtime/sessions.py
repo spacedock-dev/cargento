@@ -662,6 +662,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # own device grammar refuses `/dev/pts/N` and so no raise could ever
         # succeed. A control that does nothing is what that False prevents.
         "focusable": False,
+        "command_reports": None,
         "rate_per_min": 0,
         # Output-token readings from the transcript scanner. The session count
         # is present only after a byte-zero scan; the turn count only after that

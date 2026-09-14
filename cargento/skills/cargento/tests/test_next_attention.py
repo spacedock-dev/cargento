@@ -99,7 +99,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
             r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line2\)',
         )
         self.assertIn("Not on this board yet", html)
-        for code in ("C4", "C6", "C1", "F3", "E5"):
+        for code in ("C4", "C1", "F3", "E5"):
             self.assertIn(f'data-next-open="{code}"', html)
 
     def test_a_risk_owns_its_session_once_and_its_link_opens_that_session(self) -> None:
@@ -1425,7 +1425,7 @@ console.log(JSON.stringify({{html: __els.app.innerHTML, healthy: nextAttention.h
         html = self.render(payload)
 
         self.assertEqual(1, html.count("<h1 "))
-        self.assertEqual(6, html.count("<h2"))
+        self.assertEqual(7, html.count("<h2"))
         self.assertEqual(3, html.count('<ol id="next-attention-'))
         self.assertEqual(4, html.count("<li><article"))
         self.assertEqual(3, html.count('data-next-attention-part="why"><a '))

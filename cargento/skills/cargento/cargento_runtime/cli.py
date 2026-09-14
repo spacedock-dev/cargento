@@ -295,6 +295,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-irreversible",
+        action="store_true",
+        help="disable hook command-shape matching, report ingress and publication for this run",
+    )
+    parser.add_argument(
         "--no-events",
         action="store_true",
         help=(
@@ -391,6 +396,7 @@ def build_runtime(
         observer_model_enabled=args.observer_model and not args.no_observer_model,
         git_probe_enabled=not args.no_git,
         focus_enabled=not args.no_focus,
+        irreversible_enabled=not args.no_irreversible and not args.no_events,
         dismissals_enabled=not args.no_dismiss,
         annotations_enabled=not args.no_annotations,
         unasked_enabled=bool(args.unasked_readings),

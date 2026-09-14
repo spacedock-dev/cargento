@@ -114,6 +114,8 @@ class ParseTest(unittest.TestCase):
             "tmux_socket",
             "tmux_pane",
             "tmux_server",
+            "pattern_id",
+            "tool_name",
         }
         self.assertEqual(events.ALLOWED_FIELDS, carried | {"v"})
 
@@ -346,7 +348,13 @@ class OverlayMappingTest(unittest.TestCase):
                     events.overlay_for(event, config=self.config) is not None
                     or events.retires_overlays(event)
                     or events.requires_reconcile(event)
-                    or name in {"session_started", "store_changed", "tasks_changed"}
+                    or name
+                    in {
+                        "session_started",
+                        "store_changed",
+                        "tasks_changed",
+                        "command_shape_reported",
+                    }
                 )
                 self.assertTrue(classified)
 
@@ -480,6 +488,9 @@ class _StubOverlays:
 
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         del keys  # the real coordinator ages unmatched overlays here; a stub has none
+
+    def command_reports(self) -> list[dict[str, Any]]:
+        return []
 
     def drop_counters(self) -> dict[str, int]:
         return {}
