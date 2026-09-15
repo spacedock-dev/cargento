@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4548:triage:attempt-1:revision-1",
+  "question": "Approve triage for DRC-4548?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4548:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/01cc07073f66f5ac13d27c0f8cbe4f265e7632b1/drc-4548.md",
+      "rev": "sha256:e0020e056234b758ccb0b9acdb000f8a35e3b3be804fd7f0aff342af9a373171",
+      "mediaType": "text/markdown",
+      "summary": "Triage DRC-4548: Render 'No turn in progress' on non-working rows of turn-reporting harnesses"
+    }
+  ]
+}
