@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4346:review:attempt-1:revision-1",
+  "question": "Approve PR #352 for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4346:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/50547a54c22e5b9819e58adf653a06e0196ce688/drc-4346.md",
+      "rev": "sha256:0745b94569399053d9c74140423b03ec77ccc8c3ac68bbcd8023fa7c999b196e",
+      "mediaType": "text/markdown",
+      "summary": "PR #352 passes all 12 CI checks; grandchild worker activity absorbed into teammate liveness and lead session state."
+    }
+  ]
+}
