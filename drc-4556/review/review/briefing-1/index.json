@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4556:review:attempt-1:revision-1",
+  "question": "Merge daemon stdout/stderr line-buffering in PR #348?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4556:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/fd8c13e0fdc544f2c6281c4c9f59e7cbf7ad6afb/drc-4556.md",
+      "rev": "sha256:5bbb8817e7d3b74dd78c5271e7564866e6a26b6c7a5d53fea5b2e58f61e507cd",
+      "mediaType": "text/markdown",
+      "summary": "PR #348 with passing quality gate across all platforms"
+    }
+  ]
+}
