@@ -8,6 +8,8 @@ import json
 import ntpath
 import os
 import posixpath
+import secrets
+import stat
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -221,3 +223,52 @@ def diag(message: str, sink: Callable[[str], object]) -> None:
     except (OSError, ValueError):
         with contextlib.suppress(OSError, ValueError):
             sink(message.encode("ascii", "backslashreplace").decode("ascii"))
+
+
+def ensure_owner_dir(path: str, mode: int = 0o700) -> None:
+    """Create directory with `mode`, or tighten if it exists with looser permissions.
+
+    On POSIX, if the directory already exists with permissions looser than `mode`
+    (e.g., group or other permissions), tightens it to `mode`.
+    The mode is advisory and Windows ignores it.
+    """
+    os.makedirs(path, mode=mode, exist_ok=True)
+    if os.name != "nt":
+        with contextlib.suppress(OSError):
+            current = stat.S_IMODE(os.stat(path).st_mode)
+            if (current & ~mode) != 0:
+                os.chmod(path, mode)
+
+
+def atomic_write_owner_only(
+    target: str,
+    content: bytes | str,
+    *,
+    encoding: str = "utf-8",
+) -> None:
+    """Atomically write `content` to `target` owner-only (0o600).
+
+    Ensures the parent directory exists and is tightened to 0o700.
+    The temporary file is opened with O_WRONLY | O_CREAT | O_EXCL and
+    O_NOFOLLOW (where supported) with mode 0o600 and a randomized name
+    beside `target`. Cleans up the temporary file on error.
+    """
+    directory = os.path.dirname(target)
+    if directory:
+        ensure_owner_dir(directory)
+    rand = secrets.token_hex(4)
+    tmp = f"{target}.{os.getpid()}.{rand}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(tmp, flags, 0o600)
+    try:
+        if isinstance(content, str):
+            with os.fdopen(fd, "w", encoding=encoding) as handle:
+                handle.write(content)
+        else:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(content)
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise

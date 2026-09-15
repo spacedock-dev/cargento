@@ -14,7 +14,6 @@ which is what lets `aggregate`, `notifications` and `http_api` all consult it.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import time
@@ -157,21 +156,14 @@ def save(
         "entries": [dict(entry) for entry in _bounded(entries, config.dismissal_max_entries)],
     }
     target = store_path(config)
-    tmp = f"{target}.{os.getpid()}.tmp"
     try:
-        os.makedirs(config.state_home, mode=0o700, exist_ok=True)
-        handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-        os.replace(tmp, target)
+        runtime_io.atomic_write_owner_only(target, json.dumps(payload))
     except (OSError, ValueError):
         runtime_io.diag(
             f"Cargento: could not write the dismissal store {target}; "
             "cleared sessions will come back at the next restart",
             diagnostic_sink,
         )
-        with contextlib.suppress(OSError, ValueError):
-            os.unlink(tmp)
         return False
     return True
 

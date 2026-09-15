@@ -1774,12 +1774,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # ordering to think about, and nothing it does can reach back into state.
         "cargento_runtime.focus": set(),
         "cargento_runtime.git_status": set(),
-        # `history` imports `config` and nothing else, which is the shape
-        # `git_status` above took rather than the shape `dismissals` took. A
-        # store the collection lane writes continuously must not be able to
-        # reach a module that could grow an edge back toward it, so the
-        # diagnostic sink is a parameter and `io.diag` is inlined instead.
-        "cargento_runtime.history": {"cargento_runtime.config"},
+        # `history` imports `config` and `io` (for the shared owner-only write
+        # helper; DRC-4345), which is narrower than `dismissals` beside it
+        # (that one reaches `records` and `state`).
+        "cargento_runtime.history": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+        },
         "cargento_runtime.probe": {"cargento_runtime.config"},
         "cargento_runtime.records": set(),
         "cargento_runtime.sessions": {"cargento_runtime.config"},
