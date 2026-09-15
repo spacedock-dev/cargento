@@ -43,18 +43,32 @@ It returns one controlled reply without a credential or vendor request.
 ```python
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
-        for delta, reason in [({"role": "assistant", "content": "Controlled local capture."}, None), ({}, "stop")]:
-            chunk = {"id": "capture", "object": "chat.completion.chunk", "created": 1,
-                     "model": "capture-model", "choices": [{"index": 0, "delta": delta, "finish_reason": reason}]}
+        for delta, reason in [
+            ({"role": "assistant", "content": "Controlled local capture."}, None),
+            ({}, "stop"),
+        ]:
+            chunk = {
+                "id": "capture",
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": "capture-model",
+                "choices": [{"index": 0, "delta": delta, "finish_reason": reason}],
+            }
             self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
         self.wfile.write(b"data: [DONE]\n\n")
-    def log_message(self, *args): pass
+
+    def log_message(self, *args):
+        pass
+
+
 HTTPServer(("127.0.0.1", 48682), Handler).serve_forever()
 ```
 

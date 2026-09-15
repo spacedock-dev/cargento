@@ -19,6 +19,15 @@ events for Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and
 `statusline_hook.py` posts Antigravity's status-line state. All four share one transport, so the
 loopback check, the proxy suppression and the redirect refusal have a single implementation.
 
+Two JavaScript adapters run inside their hosts: `opencode_plugin.js` observes parent permission
+callbacks and `pi_extension.js` observes extension UI prompts. They read at most 65,536 bytes from
+this port's ordinary state file, reject non-regular files, and send allowlisted envelopes with the
+current harness capability only to IPv4 loopback. They do not follow redirects, use proxy settings,
+log native contents, or answer prompts. Each has a bounded serial queue and an HTTP deadline
+(OpenCode 250 ms; Pi 500 ms), and returns from the callback without waiting for delivery.
+The [OpenCode](HOW_TO_USE.md#report-opencode-permission-waits) and
+[Pi](HOW_TO_USE.md#report-pi-extension-prompts) procedures state their coverage and loss boundaries. Their transport is JavaScript inside the host, not the Python forwarders' helper.
+
 One of them could do harm if it were registered in the wrong place. Antigravity's `PreToolUse` hook
 may return a `decision` that allows, denies or re-prompts a tool call, and there is no harmless
 output at that position: an empty object there reads as a DENY, so a reporting hook would block the

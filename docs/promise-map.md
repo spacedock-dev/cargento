@@ -129,12 +129,16 @@ Cargento can reach it, and the ask lane: a session calls one tool, the question 
 on the dashboard, the answer goes back, and the session continues. An arriving
 question raises a notification rather than sitting there unseen.
 
-Where it stops: four of the ten harnesses can report a gate at all, and they are Claude Code,
-Codex, Copilot and Cursor. The other six have no gate detection, so the board names that coverage
-gap rather than letting a quiet row read as an all clear. What each of the four can say also
+Where it stops: six of the ten harnesses can report a wait: Claude Code, Codex, Copilot, Cursor,
+OpenCode and Pi. OpenCode requires its project adapter and covers parent permissions only. Pi
+requires its adapter on 0.85.1 and covers extension UI prompts in persisted sessions, excluding
+startup trust. Both need events enabled and lose standing observations on restart.
+The other four have no gate detection, so the board names that coverage
+gap rather than letting a quiet row read as an all clear. What each can say also
 differs: Claude names the gate, Codex says one is open without naming it, Copilot says whether a
 command or a URL is being asked about, Cursor says only that a permission request is standing and
-for how long. The re-entry command is narrower again: two of the ten, Claude Code and Codex,
+for how long. OpenCode and Pi report a wait without its contents; resolving one proves neither
+approval nor tool success. The re-entry command is narrower again: two of the ten, Claude Code and Codex,
 publish a session id their own CLI takes, so a row from the other eight offers no command rather
 than a guessed one. Raising the terminal is narrower still, and on most rows it is not offered at
 all: the session has to be running under tmux, to have started while this server has been up, and

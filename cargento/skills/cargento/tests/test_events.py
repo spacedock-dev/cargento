@@ -178,7 +178,8 @@ class NormalizeSessionIdTest(unittest.TestCase):
         # before it was added. A fifth goes in the same way, not by analogy.
         # Gemini's evidence is docs/captures/gemini/identity-0.53.1-macos.jsonl.
         self.assertEqual(
-            {"claude", "codex", "antigravity", "gemini"}, set(events.IDENTITY_NORMALIZERS)
+            {"claude", "codex", "antigravity", "gemini", "opencode", "pi"},
+            set(events.IDENTITY_NORMALIZERS),
         )
 
     def test_codex_antigravity_and_gemini_key_on_the_whole_id(self) -> None:
