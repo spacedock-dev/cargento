@@ -13,6 +13,7 @@ from typing import Any
 from cargento_runtime import events, observation, sessions
 
 from . import SKILL_DIR, support
+from .next_harness import NextPageJsHarness
 
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
 
@@ -164,6 +165,36 @@ emit('ui_prompt_start'); await pause(650);
 
 
 class PiPublicationTest(support.RuntimeTestCase):
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_person_sees_the_observed_wait_duration_in_the_sessions_row(self) -> None:
+        app = support.build_app()
+        now = support.SERVER_STARTED
+        coordinator = observation.Observation(app, clock=lambda: now)
+        app.overlays = coordinator
+        self.assertEqual(
+            "accepted",
+            coordinator.submit(
+                "pi",
+                {
+                    "v": 1,
+                    "event": "input_requested",
+                    "session_id": SESSION,
+                },
+            ),
+        )
+        row = sessions.base_session("pi", SESSION, "controlled")
+        app._apply_overlays([row], now=now + 95)
+        result = NextPageJsHarness()._run_page_js(
+            f"const source={json.dumps(row)};"
+            f"const session=nextObservedSession(source,[],{{reports_needs_input:true}},{now + 95},1);"
+            "console.log(JSON.stringify({html:nextOperationsObservedRow(session,source,new Map(),[],false)}));"
+        )
+        self.assertIn("Waiting for input · 1m", result["html"])
+        coordinator.submit("pi", {"v": 1, "event": "input_resolved", "session_id": SESSION})
+        row = sessions.base_session("pi", SESSION, "controlled")
+        app._apply_overlays([row], now=now)
+        self.assertIsNone(row["state_detail"])
+
     def test_absent_disabled_and_restarted_reporter_are_unknown(self) -> None:
         app = support.build_app()
         now = support.SERVER_STARTED

@@ -1303,6 +1303,13 @@ class Application:
                     # lose to any overlay saying the session is alive again.
                     git=None if git is None else (git.dirty, git.changed),
                 )
+                if harness in {"pi", "opencode"} and patch.get("state") == "needs_input":
+                    since = patch.get("blocked_since")
+                    if isinstance(since, (int, float)):
+                        # These adapters intentionally omit native prompt text.
+                        # Sessions renders detail, not its separate wait clock.
+                        duration = sessions.fmt_duration(max(0, now - since))
+                        patch["state_detail"] = f"Waiting for input · {duration}"
                 self._note_dispute(session, patch, overlays, now=now)
                 runtime_events.apply_patch(session, _keep_wait_detail(session, patch))
                 if (
