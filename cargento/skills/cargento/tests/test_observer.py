@@ -1255,6 +1255,83 @@ class ObserverRecordShapeTest(unittest.TestCase):
         self.assertEqual("Fix the failing build", result["goal"])
 
 
+class CachedDeterministicGoalTest(unittest.TestCase):
+    def test_only_saved_deterministic_words_reach_the_board(self) -> None:
+        cases: tuple[tuple[dict[str, Any], str | None], ...] = (
+            ({"goal": "Saved", "goal_source": "deterministic"}, "Saved"),
+            ({"goal": "Model", "goal_source": "model"}, None),
+            ({"goal": "Unknown"}, None),
+            ({"goal": "Unknown", "goal_source": []}, None),
+            ({"goal": "Model", "goal_source": "model", "deterministic_goal": "Saved"}, "Saved"),
+            ({"deterministic_goal": "Saved", "transcript": ["stale", 1]}, "Saved"),
+            ({"deterministic_goal": {"text": "Malformed"}}, None),
+            ({"deterministic_goal": " \u202e\u0000 "}, None),
+            ({"deterministic_goal": "No goal derived."}, None),
+            ({"goal": "no goal derived", "goal_source": "deterministic"}, None),
+            ({}, None),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            config = dataclasses.replace(make_config(), state_dir=Path(tmp))
+            for payload, expected in cases:
+                with self.subTest(payload=payload):
+                    observer.write_sidecar(config, "codex", "saved", payload)
+                    result = observer.cached_deterministic_goal(config, "codex", "saved")
+                    if expected is None:
+                        self.assertIsNone(result)
+                    else:
+                        self.assertEqual(
+                            {"goal": expected, "source": "deterministic", "observed_at": None},
+                            result,
+                        )
+
+    def test_a_saved_time_is_preserved_or_unknown_never_invented(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = dataclasses.replace(make_config(), state_dir=Path(tmp))
+            at: object
+            for at in (150.5, None, True, "150", [], -1, 0, float("nan"), float("inf"), 10**400):
+                with self.subTest(at=at):
+                    observer.write_sidecar(
+                        config, "pi", "saved", {"deterministic_goal": "Ship it", "observed_at": at}
+                    )
+                    result = observer.cached_deterministic_goal(config, "pi", "saved")
+                    self.assertIsNotNone(result)
+                    assert result is not None
+                    self.assertEqual(150.5 if at == 150.5 else None, result["observed_at"])
+
+    def test_hostile_saved_words_are_scrubbed_before_the_existing_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = dataclasses.replace(make_config(), state_dir=Path(tmp))
+            cap = config.observer_goal_cap_chars
+            secret = "sk-proj-" + "a" * 160
+            observer.write_sidecar(
+                config,
+                "pi",
+                "saved",
+                {"deterministic_goal": "\u202eShip\u0000 " + "x" * (cap - 30) + " " + secret},
+            )
+            result = observer.cached_deterministic_goal(config, "pi", "saved")
+            assert result is not None
+            self.assertNotIn("a" * 20, result["goal"])
+            self.assertNotIn("\u202e", result["goal"])
+            self.assertNotIn("\u0000", result["goal"])
+            self.assertIn("REDACTED", result["goal"])
+            self.assertLessEqual(len(result["goal"]), cap)
+
+    def test_absent_unreadable_and_oversized_sidecars_publish_no_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = dataclasses.replace(
+                make_config(), state_dir=Path(tmp), state_read_cap_bytes=80
+            )
+            self.assertIsNone(observer.cached_deterministic_goal(config, "pi", "missing"))
+            path = observer.write_sidecar(config, "pi", "saved", {})
+            assert path is not None
+            for raw in ("{", "[]", '\u007b"deterministic_goal":"' + "x" * 100 + '"}'):
+                Path(path).write_text(raw, encoding="utf-8")
+                self.assertIsNone(observer.cached_deterministic_goal(config, "pi", "saved"))
+            with mock.patch("builtins.open", side_effect=OSError("unreadable")):
+                self.assertIsNone(observer.cached_deterministic_goal(config, "pi", "saved"))
+
+
 class ObserverTranscriptResolutionTest(RuntimeTestCase):
     """Which transcript `/api/observe?harness=&sid=` resolves to, per harness."""
 

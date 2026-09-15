@@ -956,9 +956,41 @@ def read_sidecar(config: RuntimeConfig, harness: str, sid: str) -> dict[str, Any
     try:
         with open(path, encoding="utf-8") as handle:
             value = json.loads(handle.read(config.state_read_cap_bytes))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError, RecursionError):
         return None
     return value if isinstance(value, dict) else None
+
+
+def cached_deterministic_goal(
+    config: RuntimeConfig, harness: str, sid: str
+) -> dict[str, Any] | None:
+    """Saved deterministic evidence only; no transcript read or currentness claim.
+
+    A separately retained deterministic line survives a preferred model goal.
+    Undated older sidecars remain useful, but their file mtime is not an
+    observation time. The caller must describe every admitted line as cached.
+    """
+    cached = read_sidecar(config, harness, sid) or {}
+    candidates = [cached.get("deterministic_goal")]
+    if cached.get("goal_source") == "deterministic":
+        candidates.append(cached.get("goal"))
+    for raw in candidates:
+        if not isinstance(raw, str):
+            continue
+        goal = records.safe_text(raw, config.observer_goal_cap_chars).strip()
+        if not goal or _is_no_goal_output(goal):
+            continue
+        raw_at = cached.get("observed_at")
+        try:
+            at = (
+                records.norm_epoch(float(raw_at))
+                if isinstance(raw_at, (int, float)) and not isinstance(raw_at, bool)
+                else 0
+            )
+        except OverflowError:
+            at = 0
+        return {"goal": goal, "source": "deterministic", "observed_at": at or None}
+    return None
 
 
 def _mtime(path: str) -> float:

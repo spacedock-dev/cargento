@@ -99,9 +99,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
             r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line2\)',
         )
         self.assertIn("Not on this board yet", html)
-        for code in ("C4", "F3", "E5", "E6"):
+        for code in ("F3", "E5", "E6"):
             self.assertIn(f'data-next-open="{code}"', html)
-        for delivered in ("C1", "C6"):
+        for delivered in ("C1", "C4", "C6"):
             self.assertNotIn(f'data-next-open="{delivered}"', html)
 
     def test_a_risk_owns_its_session_once_and_its_link_opens_that_session(self) -> None:

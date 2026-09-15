@@ -15,6 +15,7 @@ from . import (
     departures,
     dismissals,
     notifications,
+    observer,
     quota,
     reading,
     records,
@@ -567,6 +568,15 @@ def _identity_is_a_prefix(row: Session) -> bool:
     )
 
 
+def _attach_cached_goals(config: RuntimeConfig, rows: list[Session]) -> None:
+    # Only published board rows incur a bounded sidecar read. The saved line
+    # never participates in annotation history or in a freshness assessment.
+    for row in rows:
+        row["cached_deterministic_goal"] = observer.cached_deterministic_goal(
+            config, row["harness"], row["sid"]
+        )
+
+
 def _attach_annotations(
     rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
 ) -> None:
@@ -689,8 +699,12 @@ class Application:
             return []
 
     def collect(self, *, show_all: bool) -> Collection:
-        config, state, window_hours = self.config, self.state, self.config.window_hours
-        now = self.clock()
+        config, state, window_hours, now = (
+            self.config,
+            self.state,
+            self.config.window_hours,
+            self.clock(),
+        )
         cleared_marks = dismissals.refresh(config, state)
         # Alongside the dismissal refresh and for its reason: two dashboards can
         # bind on one machine and the file is the record, so a save made in the
@@ -785,6 +799,7 @@ class Application:
             self.popup_notifier,
         )
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
+        _attach_cached_goals(config, out_sessions)
         sessions.assign_display_ids(config, out_sessions)
         out_sessions.sort(key=row_order)
         active_sessions = [x for x in out_sessions if x["active"]]
@@ -800,6 +815,7 @@ class Application:
             # the day this configuration changed it.
             "rate_window_sec": config.rate_window_sec,
             "show_all": show_all,
+            "spacedock_enabled": config.spacedock_enabled,
             # How many rows this payload dropped because the reader marked them
             # handled. A count and not a flag on the rows: the tab title, the
             # gate queue and calm's idle clip all derive from `sessions`, and a

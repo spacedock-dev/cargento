@@ -135,8 +135,8 @@ capacity and browser-local tripwires. The terminal bridge and semantic history r
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
 Sessions puts active work above recent history and gives each active session the same four facts: where it
 is, what it is doing now, what it does next, and whether it is blocked.
-Attention collects what needs a human, and the Intent log lists every session you have typed words
-against, including ones that have left the board. Keyboard shortcuts `s`, `p` and `a` reach
+Attention collects what needs a human, and the Intent log lists every board session plus retained
+annotations, with typed, cached deterministic and workflow goals labeled by source. Keyboard shortcuts `s`, `p` and `a` reach
 Sessions, Projects and Attention; the Intent log is a nav link with no shortcut.
 `Escape` returns from a session to its project and otherwise to Projects. The route lives in the
 URL fragment so a reload or a pasted link comes back to the same view.

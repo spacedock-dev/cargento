@@ -87,6 +87,15 @@ the source disappears. The first qualifying entity trips it once until Rearm; fi
 establish a baseline, skipped stages imply nothing, and notification service acceptance does not
 prove a banner appeared. See [workflow stage conditions](design-tripwires.md).
 
+The Intent log brings every board session and retained annotation/discard record into one list,
+with typed goals/output, cached deterministic goals and published workflow titles labeled
+separately. Sessions with no goal or project still appear. An unavailable annotation store does
+not hide the board or its other sources. Saved derivations carry their observation time, or an
+explicit unknown, and say their currentness has not been checked. The list performs no analysis
+and reads no model goal as deterministic evidence. Workflow titles come from the existing
+attachment; a missing title or a disabled source supplies no goal. Withdrawal still removes typed
+words and readings, while separately labeled independent sources can remain.
+
 Claude Code and Codex after-tool hooks add fixed command-shape reports to session detail and
 Attention. They show what a hook matched while you were away; they do not establish success.
 Reports are incomplete, may repeat, and last only for the current dashboard run. Missing hooks

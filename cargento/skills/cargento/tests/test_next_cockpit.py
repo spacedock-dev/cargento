@@ -166,7 +166,7 @@ console.log(JSON.stringify({saved,draft,valid,off,empty,attention:__els.app.inne
         for key in ("off", "empty"):
             self.assertIn("Project reads are off (--no-spacedock)", out[key])
         self.assertNotIn('data-next-open="C1"', out["attention"])
-        self.assertIn('data-next-open="C4"', out["attention"])
+        self.assertNotIn('data-next-open="C4"', out["attention"])
 
     def test_stage_save_restores_focus_after_success_and_error_without_stealing(self) -> None:
         dom = (

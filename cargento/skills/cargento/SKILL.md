@@ -40,12 +40,20 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 The dark-only dashboard opens on **Projects**, grouping sessions by the label their harness publishes.
 **Sessions** keeps active work first and recent history below it. **Intent log** lists every
-session you have typed a goal or an expected output against, including ones that have left the
-board, with the revision count for each. An open log refreshes when its stored sources change,
-including a discard made in another tab, without fetching its route on every redraw. It is the
-only place those words remain reachable once a
-session ages off, and it holds them until the store evicts the oldest save rather than until a
-date passes. Each project opens its cockpit:
+current board session and retained annotation/discard record once, including sessions without a
+project or a goal. It labels typed goal and expected output, cached deterministic goal, and each
+published workflow goal separately. A missing workflow title supplies no goal. Saved deterministic
+evidence is bounded and scrubbed; every line says its currentness has not been checked and gives
+its observation time or says that time is unknown. Opening the log never derives a new goal.
+
+Annotation off/loading/error withholds typed evidence while board sessions and other sources stay
+visible. Retained words, revisions and readings remain reachable after the session leaves the
+board. Discard removes typed words and readings without removing independently labeled sources.
+An open log invalidates withdrawn words before loading their replacement, including a discard
+made in another tab. The annotation store keeps at most 256 records and sixteen revisions each;
+discard records are evicted before retained words, then oldest first. These limits do not apply
+to board-only rows. A present session without a project says so and offers no project link.
+Each project opens its cockpit:
 a left **Scope** rail selects the project or one exact session, while a persistent briefing shows
 **ASSIGNMENT / EXECUTION / COMMAND**, latest evidence, and direction. Assignment retains the
 stated goal, its source, and the reason when no goal is available. Command keeps a project session
