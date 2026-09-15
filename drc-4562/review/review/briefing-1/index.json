@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4562:review:attempt-1:revision-1",
+  "question": "Approve PR #351 for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4562:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/5dab9ced80955fa93cb38a927d52c653c777026a/drc-4562.md",
+      "rev": "sha256:187bf45a5381bbafbc6575e63f0e960b448e7f2060d54ab6ea4b476cd6df7fc8",
+      "mediaType": "text/markdown",
+      "summary": "PR #351 passes all 12 CI checks; cutoff_text rendered beside evidence line on departure rows."
+    }
+  ]
+}
