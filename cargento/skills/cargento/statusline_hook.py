@@ -188,7 +188,12 @@ def envelope(payload: dict[str, Any]) -> dict[str, Any] | None:
     sid = conversation_id(payload)
     if sid is None:
         return None
-    event: dict[str, Any] = {"v": ENVELOPE_VERSION, "event": name, "session_id": sid}
+    event: dict[str, Any] = {
+        "v": ENVELOPE_VERSION,
+        "event": name,
+        "session_id": sid,
+        "source_instance_id": "statusline",
+    }
     cwd = payload.get("cwd")
     if isinstance(cwd, str) and cwd.strip():
         event["cwd"] = cwd.strip()

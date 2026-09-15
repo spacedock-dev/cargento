@@ -136,6 +136,7 @@ PATCHABLE: Final = frozenset(
         "state_detail",
         "active",
         "blocked_since",
+        "wait_unconfirmed",
         "acquisition",
         "finished_at",
         "ended_at",
@@ -146,6 +147,10 @@ PATCHABLE: Final = frozenset(
 
 ACQUISITION_EVENT: Final = "event"
 ACQUISITION_SCAN: Final = "scan-only"
+
+# Source classes: repeating status-line renders vs discrete lifecycle hook events.
+SOURCE_CLASS_REPEATING: Final = "repeating"
+SOURCE_CLASS_DISCRETE: Final = "discrete"
 
 # Rejection reasons. `incompatible` is reported through --diagnose and the
 # acquisition strip rather than dropped silently, because an adapter too old for
@@ -251,6 +256,11 @@ class Overlay:
     effective_at: float = 0.0
     expires_at: float | None = None
     subagent_id: str | None = None
+    event: str = ""
+    source_class: str = SOURCE_CLASS_DISCRETE
+    source_instance_id: str | None = None
+    blocked_since: float | None = None
+    lease_sec: float = 300.0
 
     def applies(self, *, now: float) -> bool:
         if now < self.effective_at:
@@ -535,6 +545,18 @@ def overlay_row(overlay: Overlay, *, now: float) -> dict[str, Any]:
     }
 
 
+def source_class_for(event: Event) -> str:
+    """Classify an event's source as repeating (status-line render) or discrete (lifecycle hook).
+
+    Antigravity's statusline is a repeating render that sends frequent heartbeats
+    carrying a source_instance_id. All other sources (lifecycle hooks, plugins, extensions)
+    are discrete edges.
+    """
+    if event.harness == "antigravity" and event.source_instance_id is not None:
+        return SOURCE_CLASS_REPEATING
+    return SOURCE_CLASS_DISCRETE
+
+
 def overlay_for(event: Event, *, config: RuntimeConfig) -> Overlay | None:
     """The semantic claim an event makes, or None if it only means "look again".
 
@@ -548,6 +570,7 @@ def overlay_for(event: Event, *, config: RuntimeConfig) -> Overlay | None:
     collector already knows better, and it says nothing about whether the agent
     is doing anything.
     """
+    source_class = source_class_for(event)
     if event.event in {"turn_started", "input_resolved"}:
         return Overlay(
             harness=event.harness,
@@ -556,6 +579,9 @@ def overlay_for(event: Event, *, config: RuntimeConfig) -> Overlay | None:
             kind=OVERLAY_WORKING,
             at=event.timestamp,
             expires_at=event.timestamp + config.overlay_working_ttl_sec,
+            event=event.event,
+            source_class=source_class,
+            source_instance_id=event.source_instance_id,
         )
     if event.event == "input_requested":
         return Overlay(
@@ -564,6 +590,11 @@ def overlay_for(event: Event, *, config: RuntimeConfig) -> Overlay | None:
             arrival_seq=event.arrival_seq,
             kind=OVERLAY_NEEDS_INPUT,
             at=event.timestamp,
+            event=event.event,
+            source_class=source_class,
+            source_instance_id=event.source_instance_id,
+            blocked_since=event.timestamp,
+            lease_sec=config.overlay_repeating_wait_lease_sec,
         )
     if event.event == "turn_stopped":
         return Overlay(
@@ -573,6 +604,9 @@ def overlay_for(event: Event, *, config: RuntimeConfig) -> Overlay | None:
             kind=OVERLAY_IDLE,
             at=event.timestamp,
             effective_at=event.timestamp + config.overlay_idle_dwell_sec,
+            event=event.event,
+            source_class=source_class,
+            source_instance_id=event.source_instance_id,
         )
     if event.event in {"subagent_started", "subagent_stopped"}:
         return Overlay(
@@ -583,6 +617,9 @@ def overlay_for(event: Event, *, config: RuntimeConfig) -> Overlay | None:
             at=event.timestamp,
             effective_at=event.timestamp if event.event == "subagent_started" else 0.0,
             subagent_id=event.subagent_id,
+            event=event.event,
+            source_class=source_class,
+            source_instance_id=event.source_instance_id,
         )
     return None
 
@@ -673,6 +710,103 @@ def _side_channel_patch(
     return patch
 
 
+def _is_wait_superseded(wait: Overlay, ordered: list[Overlay]) -> bool:
+    """Whether a needs-input overlay has been permanently retired by a later overlay.
+
+    For repeating sources: ordinary Working and Idle renders (turn_started, turn_stopped)
+    do not retire the wait. Only a matching explicit resolution (input_resolved from the
+    same harness and source_instance_id) permanently retires it.
+
+    For discrete sources: any later discrete overlay in ENDS_A_WAIT (turn_started, turn_stopped)
+    or explicit resolution permanently supersedes the wait.
+    """
+    if wait.source_class == SOURCE_CLASS_REPEATING:
+        return any(
+            other.arrival_seq > wait.arrival_seq
+            and other.event == "input_resolved"
+            and (other.harness, other.source_instance_id) == (wait.harness, wait.source_instance_id)
+            for other in ordered
+        )
+    return any(
+        other.arrival_seq > wait.arrival_seq
+        and (
+            (other.kind in ENDS_A_WAIT and other.source_class != SOURCE_CLASS_REPEATING)
+            or other.event == "input_resolved"
+        )
+        for other in ordered
+    )
+
+
+def _active_repeating_sources(
+    ordered: list[Overlay], *, own_activity: float, grace: float
+) -> set[tuple[str, str | None]]:
+    """Repeating sources with a standing wait that outranks ordinary heartbeats."""
+    return {
+        (o.harness, o.source_instance_id)
+        for o in ordered
+        if o.kind == OVERLAY_NEEDS_INPUT
+        and o.source_class == SOURCE_CLASS_REPEATING
+        and not _is_wait_superseded(o, ordered)
+        and not (own_activity > o.at + grace)
+    }
+
+
+def _is_overlay_suppressed(
+    overlay: Overlay,
+    *,
+    ordered: list[Overlay],
+    active_repeating: set[tuple[str, str | None]],
+    own_activity: float,
+    session_activity: float,
+    grace: float,
+) -> bool:
+    """Whether an overlay should be skipped during reduction."""
+    if overlay.kind == OVERLAY_NEEDS_INPUT:
+        return _is_wait_superseded(overlay, ordered) or own_activity > overlay.at + grace
+    if active_repeating:
+        active_harnesses = {h for (h, _) in active_repeating}
+        if overlay.harness in active_harnesses:
+            return True
+    if overlay.kind == OVERLAY_IDLE:
+        return session_activity > overlay.at + grace
+    return False
+
+
+def _needs_input_patch(overlay: Overlay, ordered: list[Overlay], *, now: float) -> dict[str, Any]:
+    """Build the patch for a needs-input overlay, computing wait lease and unconfirmed state."""
+    blocked_since = overlay.blocked_since if overlay.blocked_since is not None else overlay.at
+    is_unconfirmed = False
+    if overlay.source_class == SOURCE_CLASS_REPEATING:
+        matching = [
+            o
+            for o in ordered
+            if o.kind == OVERLAY_NEEDS_INPUT
+            and o.source_class == SOURCE_CLASS_REPEATING
+            and (o.harness, o.source_instance_id) == (overlay.harness, overlay.source_instance_id)
+            and not _is_wait_superseded(o, ordered)
+        ]
+        if matching:
+            earliest_start = min(
+                o.blocked_since if o.blocked_since is not None else o.at for o in matching
+            )
+            latest_pos = max(o.at for o in matching)
+            lease = max(o.lease_sec for o in matching)
+            blocked_since = earliest_start
+            is_unconfirmed = now >= latest_pos + lease
+    return {
+        "state": "needs_input",
+        "state_detail": overlay.detail,
+        "active": True,
+        "blocked_since": blocked_since,
+        "wait_unconfirmed": is_unconfirmed,
+        "acquisition": ACQUISITION_EVENT,
+        "finished_at": None,
+        "ended_at": None,
+        "dirty": None,
+        "changed": None,
+    }
+
+
 def reduce_overlays(
     overlays: Iterable[Overlay],
     *,
@@ -703,6 +837,15 @@ def reduce_overlays(
     turn still running past `overlay_working_ttl_sec` reverted to "waiting for you"
     while claiming to have been waiting the whole time. Once a turn has started the
     earlier wait is over as a matter of history, and history does not lapse.
+
+    For repeating sources (e.g. status-line renders), ordinary Working and Idle
+    heartbeats neither clear nor renew a standing wait: the wait outranks ordinary
+    heartbeats from that same source, preserving its original `blocked_since`
+    ([N-14](docs/design-needs-input.md#n-14)).
+    After `overlay.lease_sec` (300 seconds) without a fresh positive
+    observation, the wait is visibly marked unconfirmed (`wait_unconfirmed: True`).
+    Only a matching explicit resolution (`input_resolved`) or session end
+    permanently retires it.
 
     A wait is also over once the session's own transcript has moved on past it.
     Claude has no hook for a permission being *granted* — `UserPromptSubmit` and
@@ -757,11 +900,8 @@ def reduce_overlays(
     `_side_channel_patch` says why.
     """
     ordered = sorted(overlays, key=lambda item: item.arrival_seq)
-    # The latest point at which this session was known not to be waiting. Computed
-    # over every such overlay regardless of expiry, which is the whole fix.
-    not_waiting_since = max(
-        (overlay.arrival_seq for overlay in ordered if overlay.kind in ENDS_A_WAIT),
-        default=-1,
+    active_repeating = _active_repeating_sources(
+        ordered, own_activity=own_activity, grace=activity_grace_sec
     )
     patch: dict[str, Any] = _side_channel_patch(
         finished_at=finished_at,
@@ -771,11 +911,14 @@ def reduce_overlays(
         git=git,
     )
     for overlay in ordered:
-        if overlay.kind == OVERLAY_NEEDS_INPUT and overlay.arrival_seq < not_waiting_since:
-            continue
-        if overlay.kind == OVERLAY_NEEDS_INPUT and own_activity > overlay.at + activity_grace_sec:
-            continue
-        if overlay.kind == OVERLAY_IDLE and session_activity > overlay.at + activity_grace_sec:
+        if _is_overlay_suppressed(
+            overlay,
+            ordered=ordered,
+            active_repeating=active_repeating,
+            own_activity=own_activity,
+            session_activity=session_activity,
+            grace=activity_grace_sec,
+        ):
             continue
         if not overlay.applies(now=now):
             continue
@@ -786,6 +929,7 @@ def reduce_overlays(
                     "state_detail": overlay.detail,
                     "active": True,
                     "blocked_since": None,
+                    "wait_unconfirmed": False,
                     "acquisition": ACQUISITION_EVENT,
                     "finished_at": None,
                     # A session doing something has not ended, whatever this
@@ -799,25 +943,7 @@ def reduce_overlays(
                 }
             )
         elif overlay.kind == OVERLAY_NEEDS_INPUT:
-            patch.update(
-                {
-                    "state": "needs_input",
-                    "state_detail": overlay.detail,
-                    "active": True,
-                    "blocked_since": overlay.at,
-                    "acquisition": ACQUISITION_EVENT,
-                    # A gate is the other kind of idle, so the mark from an
-                    # earlier turn must not still be claiming this one ended.
-                    "finished_at": None,
-                    # A session holding a question open is alive and somebody is
-                    # expected to answer it, which is the reading an end buries.
-                    "ended_at": None,
-                    # Waiting on a person means the session is alive past the end
-                    # that produced the reading. Same staleness as Working.
-                    "dirty": None,
-                    "changed": None,
-                }
-            )
+            patch.update(_needs_input_patch(overlay, ordered, now=now))
         elif overlay.kind == OVERLAY_IDLE:
             patch.update(
                 {
@@ -825,6 +951,7 @@ def reduce_overlays(
                     "state_detail": None,
                     "active": False,
                     "blocked_since": None,
+                    "wait_unconfirmed": False,
                     "acquisition": ACQUISITION_EVENT,
                     "finished_at": overlay.at,
                     # `ended_at` is deliberately NOT restated here. A

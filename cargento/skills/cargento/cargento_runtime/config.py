@@ -363,6 +363,7 @@ class RuntimeConfig:
     overlay_wait_activity_grace_sec: float
     overlay_working_ttl_sec: float
     overlay_idle_dwell_sec: float
+    overlay_repeating_wait_lease_sec: float
     # The coordinator. The coalescing window is fixed rather than sliding: a
     # sliding window never closes under a sustained burst, and the board would
     # stop updating entirely. The ledger and pending caps are refusal thresholds,
@@ -758,6 +759,7 @@ def build_runtime_config(
         overlay_wait_activity_grace_sec=10.0,
         overlay_working_ttl_sec=90,
         overlay_idle_dwell_sec=3.0,
+        overlay_repeating_wait_lease_sec=300.0,
         event_coalesce_sec=0.1,
         event_overlay_max_sessions=512,
         event_pending_max=256,

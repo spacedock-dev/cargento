@@ -2622,3 +2622,20 @@ class DiscoveryCostContractTest(unittest.TestCase):
                     used,
                     f"{path.name} discover() calls {used}; use any_glob_under/any_glob_stores",
                 )
+
+
+class RepeatingSourceContractsTest(unittest.TestCase):
+    """DRC-4203 / AC-5: Registry/coverage makes no native AGY reporting claim, and statusline hook maps no wait."""
+
+    def test_antigravity_does_not_claim_needs_input_reporting(self) -> None:
+        spec = next(h for h in aggregate.default_harnesses() if h.key == "antigravity")
+        self.assertFalse(spec.reports_needs_input)
+
+    def test_statusline_envelope_identifies_repeating_source(self) -> None:
+        import statusline_hook  # noqa: PLC0415
+
+        env = statusline_hook.envelope(
+            {"session_id": "12345678-1234-5678-1234-567812345678", "agent_state": "working"}
+        )
+        assert env is not None
+        self.assertEqual("statusline", env.get("source_instance_id"))

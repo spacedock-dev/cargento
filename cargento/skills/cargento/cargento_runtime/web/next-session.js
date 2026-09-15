@@ -121,6 +121,7 @@ function nextSessionMeta(session){
   if(session.state === "needs_input"){
     const blocked = nextDurationSince(session.blocked_since);
     if(blocked != null) parts.push(`blocked ${blocked}`);
+    if(session.wait_unconfirmed) parts.push("unconfirmed: no positive observation in 5m");
   }else if(session.state === "working"){
     const turn = session.turn;
     const elapsed = turn && typeof turn === "object" && !Array.isArray(turn) &&

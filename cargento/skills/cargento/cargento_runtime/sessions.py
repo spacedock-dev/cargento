@@ -615,6 +615,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # None on the rule above, and because it is in `events.PATCHABLE`, which
         # means an untrusted envelope can write it onto any row.
         "blocked_since": None,
+        # Whether a repeating-source wait has exceeded its 300-second evidence
+        # lease without a fresh positive observation. Declared here at False,
+        # and in `events.PATCHABLE` so the overlay reducer can patch it.
+        "wait_unconfirmed": False,
         # When this session id was observed to END, which is a different fact
         # from `finished_at` above: that one marks a TURN stopping, and a session
         # whose turn stopped is usually still open and typeable. Without this the

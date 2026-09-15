@@ -2811,3 +2811,100 @@ class GitPathnamePrivacyTest(unittest.TestCase):
         self.assertTrue(reading.dirty)
         self.assertNotIn(marker, repr(reading))
         self.assertEqual({"dirty", "changed"}, set(dataclasses.asdict(reading)))
+
+
+class RepeatingSourceCoordinatorTest(ObservationTestCase):
+    """DRC-4203 / DRC-4573: Repeating-source coordinator behavior, age preservation, and explicit resolution."""
+
+    def test_repeating_wait_preserves_blocked_since_across_renewals(self) -> None:
+        coordinator = self.build()
+        self.now = 100.0
+        # Initial positive observation
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="input_requested",
+                session_id=SESSION,
+                source_instance_id="statusline",
+            ),
+        )
+        overlays_1 = coordinator.overlays_for("antigravity", SESSION)
+        self.assertEqual(1, len(overlays_1))
+        self.assertEqual(100.0, overlays_1[0].blocked_since)
+
+        # Renewed positive observation at t=200
+        self.now = 200.0
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="input_requested",
+                session_id=SESSION,
+                source_instance_id="statusline",
+            ),
+        )
+        overlays_2 = coordinator.overlays_for("antigravity", SESSION)
+        self.assertEqual(1, len(overlays_2))
+        self.assertEqual(200.0, overlays_2[0].at)
+        self.assertEqual(100.0, overlays_2[0].blocked_since)
+
+    def test_matching_explicit_resolution_pops_wait_slot_from_ledger(self) -> None:
+        coordinator = self.build()
+        self.now = 100.0
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="input_requested",
+                session_id=SESSION,
+                source_instance_id="statusline",
+            ),
+        )
+        self.assertEqual(1, len(coordinator.overlays_for("antigravity", SESSION)))
+
+        # Heartbeat does not pop wait slot
+        self.now = 110.0
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="turn_started",
+                session_id=SESSION,
+                source_instance_id="statusline",
+            ),
+        )
+        kinds = [o.kind for o in coordinator.overlays_for("antigravity", SESSION)]
+        self.assertIn(events.OVERLAY_NEEDS_INPUT, kinds)
+
+        # Matching input_resolved pops wait slot from ledger
+        self.now = 120.0
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="input_resolved",
+                session_id=SESSION,
+                source_instance_id="statusline",
+            ),
+        )
+        kinds_after = [o.kind for o in coordinator.overlays_for("antigravity", SESSION)]
+        self.assertNotIn(events.OVERLAY_NEEDS_INPUT, kinds_after)
+
+    def test_unrelated_source_input_resolved_does_not_pop_wait_slot(self) -> None:
+        coordinator = self.build()
+        self.now = 100.0
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="input_requested",
+                session_id=SESSION,
+                source_instance_id="statusline-1",
+            ),
+        )
+        self.now = 110.0
+        coordinator.submit(
+            "antigravity",
+            self.envelope(
+                event="input_resolved",
+                session_id=SESSION,
+                source_instance_id="statusline-2",
+            ),
+        )
+        kinds = [o.kind for o in coordinator.overlays_for("antigravity", SESSION)]
+        self.assertIn(events.OVERLAY_NEEDS_INPUT, kinds)

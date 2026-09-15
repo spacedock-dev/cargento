@@ -972,3 +972,42 @@ dismissal store.
   edge whose own overlay clears `active` is the one edge that must not be gated on it. Anyone
   reordering those two branches to match the needs-input branch reintroduces it, which is why
   `next-notify.js` carries a comment at the site rather than leaving the order to look arbitrary.
+
+<a id="n-14"></a>
+
+## N-14: repeating-source evidence needs a lease and visible uncertainty, not an inferred answer
+
+Discrete lifecycle hooks and repeating status-line renders have fundamentally different contracts.
+A discrete hook fires once per edge (`UserPromptSubmit`, `Stop`, `PermissionRequest`). A repeating
+status source (such as Antigravity's status line) renders periodic state snapshots. When an agent
+pauses at a gate, the status line may repeat a confirmation flag or fall silent between renders,
+followed by ordinary status updates that do not reflect human interaction with the gate.
+
+Treating ordinary Working or Idle heartbeats from a repeating source as proof of resolution clears
+a standing wait while the user is still blocked. Conversely, treating a repeating wait as permanent
+leaves the board stuck forever if the session drops or the prompt is dismissed without an edge.
+The DRC-4573 ruling resolves this with a source-specific evidence lease and visible uncertainty:
+
+- **Source classification.** Events from status lines carry `source_instance_id` and are classified
+  as repeating sources (`SOURCE_CLASS_REPEATING`). Hook-driven lifecycle events remain discrete
+  sources (`SOURCE_CLASS_DISCRETE`).
+- **Heartbeats neither clear nor renew.** An active repeating wait outranks subsequent Working and
+  Idle renders from that same source. Heartbeats do not clear the wait, nor do they renew its lease.
+- **The 300-second product threshold.** A positive pending observation starts or renews a 300-second
+  evidence lease. The 300-second duration is an approved product threshold rather than a measured
+  safe maximum, because human confirmation prompts can remain open for hours.
+- **Visible uncertainty, never an inferred answer.** After 300 seconds without a fresh positive
+  observation, the wait transitions to an unconfirmed state (`wait_unconfirmed: True`). The board
+  continues to show the session in the needs-input section and adds an explicit disclosure:
+  `Unconfirmed: no positive observation in 5m; prompt may still be standing`. Elapsed time never
+  proves an answer or safety.
+- **Age preservation.** When a fresh positive observation renews the lease, it preserves the original
+  `blocked_since` timestamp from the start of the wait rather than restarting the wait age.
+- **Explicit resolution retirement.** Only a matching explicit resolution (`input_resolved` from that
+  same harness and source instance) or session end permanently retires the wait.
+- **Other harnesses untouched.** OpenCode and Pi explicit-resolution adapters gain no timeout. Claude
+  and Codex lifecycle rules remain intact.
+- **Antigravity admission boundary.** Antigravity's `tool_confirmation_pending` flag remains
+  deliberately unmapped in `statusline_hook.py`, and `reports_needs_input` remains false for
+  Antigravity in the harness registry. Reducer and display prerequisites are delivered without
+  claiming native Antigravity wait detection.

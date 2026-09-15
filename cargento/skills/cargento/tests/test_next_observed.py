@@ -836,3 +836,37 @@ console.log(JSON.stringify({
         # dirty-with-nothing-changed case actually reads as.
         self.assertTrue(out["none"].startswith("0 changed entries were observed"))
         self.assertTrue(out["unmeasured"].startswith("Git state was not measured"))
+
+    def test_repeating_wait_unconfirmed_note_in_observed_block(self) -> None:
+        out = self._run_page_js(
+            """
+const confirmed = nextObserved({
+  harnesses: [{key: "antigravity", reports_needs_input: false}],
+  asks: [],
+  sessions: [{
+    harness: "antigravity", sid: "s1", project: "repo", state: "needs_input",
+    state_detail: "Input signal observed", blocked_since: 9900, wait_unconfirmed: false
+  }]
+}).sessions[0];
+
+const unconfirmed = nextObserved({
+  harnesses: [{key: "antigravity", reports_needs_input: false}],
+  asks: [],
+  sessions: [{
+    harness: "antigravity", sid: "s1", project: "repo", state: "needs_input",
+    state_detail: "Input signal observed", blocked_since: 9900, wait_unconfirmed: true
+  }]
+}).sessions[0];
+
+console.log(JSON.stringify({
+  confirmedNote: confirmed.blockNote,
+  unconfirmedNote: unconfirmed.blockNote,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("Input signal observed", out["confirmedNote"])
+        self.assertEqual(
+            "Unconfirmed: no positive observation in 5m; prompt may still be standing",
+            out["unconfirmedNote"],
+        )

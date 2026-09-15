@@ -109,6 +109,7 @@ rather than losing its alerts to a field it never sets.
 
 from __future__ import annotations
 
+import dataclasses
 import hmac
 import secrets
 import subprocess
@@ -560,6 +561,24 @@ class Observation:
             # newer one is what makes the reducer idempotent under at-least-once.
             self._bump("overlay.stale")
             return
+        if (
+            existing is not None
+            and overlay.kind == runtime_events.OVERLAY_NEEDS_INPUT
+            and overlay.source_class == runtime_events.SOURCE_CLASS_REPEATING
+            and existing.source_class == runtime_events.SOURCE_CLASS_REPEATING
+            and existing.blocked_since is not None
+        ):
+            # A fresh positive observation renews the lease while retaining the original wait start
+            overlay = dataclasses.replace(overlay, blocked_since=existing.blocked_since)
+        if overlay.kind == runtime_events.OVERLAY_WORKING and overlay.event == "input_resolved":
+            wait_slot: OverlayKey = (runtime_events.OVERLAY_NEEDS_INPUT, overlay.subagent_id)
+            existing_wait = ledger.get(wait_slot)
+            if (
+                existing_wait is not None
+                and existing_wait.harness == overlay.harness
+                and existing_wait.source_instance_id == overlay.source_instance_id
+            ):
+                ledger.pop(wait_slot, None)
         ledger[slot] = overlay
 
     def _mark_finished(self, key: SessionKey, overlay: runtime_events.Overlay) -> None:

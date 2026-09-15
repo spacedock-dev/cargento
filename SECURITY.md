@@ -2054,8 +2054,9 @@ It does not apply to a directory that already exists, Windows ignores it, and ro
 way. Any process running as the same user can read the token and post events, and that stays inside
 the trust boundary for the same reason the rest of this section does, since such a process can read
 the user's secret material directly. An overlay may also only ever patch a row a collector produced;
-it can never create or delete one, and it can only write these nine fields: `state`,
-`state_detail`, `active`, `blocked_since`, `acquisition`, `finished_at` (the stamp of the turn's last
+it can never create or delete one, and it can only write these ten fields: `state`,
+`state_detail`, `active`, `blocked_since`, `wait_unconfirmed` (whether a repeating-source wait
+exceeded its evidence lease), `acquisition`, `finished_at` (the stamp of the turn's last
 observed stop), `ended_at` (the stamp of the session id's own end), and `dirty` with `changed` (the
 end-of-session git reading). `--no-events` turns the whole path off for a run.
 

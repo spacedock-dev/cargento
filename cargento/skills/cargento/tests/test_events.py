@@ -1077,16 +1077,18 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual("real title", session["title"])
         self.assertEqual(1234, session["tokens"])
 
-    def test_the_patchable_set_is_exactly_the_documented_nine(self) -> None:
+    def test_the_patchable_set_is_exactly_the_documented_ten(self) -> None:
         # Grew by two for the end-of-session git reading, then by one for the
-        # observed session end (DRC-4036). Written out rather than derived, so
-        # adding a key to the module has to be a deliberate edit here.
+        # observed session end (DRC-4036), then by one for wait_unconfirmed
+        # (DRC-4203). Written out rather than derived, so adding a key to the
+        # module has to be a deliberate edit here.
         self.assertEqual(
             {
                 "state",
                 "state_detail",
                 "active",
                 "blocked_since",
+                "wait_unconfirmed",
                 "acquisition",
                 "finished_at",
                 "ended_at",
@@ -1107,3 +1109,190 @@ class ApplyPatchTest(unittest.TestCase):
                 events.reduce_overlays([overlay], now=NOW + config.overlay_idle_dwell_sec)
             )
         self.assertLessEqual(emitted, set(events.PATCHABLE))
+
+
+class RepeatingSourceWaitLeaseTest(unittest.TestCase):
+    """DRC-4203 / DRC-4573: repeating-source wait lease, heartbeats, and visible uncertainty."""
+
+    def test_ac1_repeating_wait_survives_heartbeats_and_preserves_blocked_since(self) -> None:
+        wait = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=1,
+            kind=events.OVERLAY_NEEDS_INPUT,
+            at=NOW,
+            event="input_requested",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+            blocked_since=NOW,
+        )
+        hb_working = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=2,
+            kind=events.OVERLAY_WORKING,
+            at=NOW + 10,
+            event="turn_started",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+        )
+        hb_idle = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=3,
+            kind=events.OVERLAY_IDLE,
+            at=NOW + 20,
+            event="turn_stopped",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+        )
+        patch = events.reduce_overlays([wait, hb_working, hb_idle], now=NOW + 25)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertEqual(NOW, patch["blocked_since"])
+        self.assertFalse(patch["wait_unconfirmed"])
+
+    def test_ac2_explicit_resolution_permanently_retires_repeating_wait(self) -> None:
+        wait = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=1,
+            kind=events.OVERLAY_NEEDS_INPUT,
+            at=NOW,
+            event="input_requested",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+            blocked_since=NOW,
+        )
+        resolved = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=2,
+            kind=events.OVERLAY_WORKING,
+            at=NOW + 10,
+            expires_at=NOW + 100,
+            event="input_resolved",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+        )
+        patch = events.reduce_overlays([wait, resolved], now=NOW + 15)
+        self.assertEqual("working", patch["state"])
+        self.assertFalse(patch["wait_unconfirmed"])
+        self.assertIsNone(patch["blocked_since"])
+
+        # Beyond working TTL (101 seconds later): old wait does not resurrect
+        lapsed = events.reduce_overlays([wait, resolved], now=NOW + 105)
+        self.assertEqual({}, lapsed)
+
+    def test_ac2_unrelated_source_resolution_does_not_retire_wait(self) -> None:
+        wait = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=1,
+            kind=events.OVERLAY_NEEDS_INPUT,
+            at=NOW,
+            event="input_requested",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline-1",
+            blocked_since=NOW,
+        )
+        other_resolved = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=2,
+            kind=events.OVERLAY_WORKING,
+            at=NOW + 10,
+            expires_at=NOW + 100,
+            event="input_resolved",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline-2",
+        )
+        patch = events.reduce_overlays([wait, other_resolved], now=NOW + 15)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertEqual(NOW, patch["blocked_since"])
+
+    def test_ac3_300s_lease_boundary_heartbeats_and_renewal(self) -> None:
+        wait = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=1,
+            kind=events.OVERLAY_NEEDS_INPUT,
+            at=NOW,
+            event="input_requested",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+            blocked_since=NOW,
+            lease_sec=300.0,
+        )
+        hb_working = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=2,
+            kind=events.OVERLAY_WORKING,
+            at=NOW + 150,
+            event="turn_started",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+        )
+        overlays = [wait, hb_working]
+
+        # Exactly 300 - epsilon: still confirmed
+        patch_before = events.reduce_overlays(overlays, now=NOW + 300.0 - 0.001)
+        self.assertEqual("needs_input", patch_before["state"])
+        self.assertFalse(patch_before["wait_unconfirmed"])
+        self.assertEqual(NOW, patch_before["blocked_since"])
+
+        # Exactly 300: unconfirmed
+        patch_at = events.reduce_overlays(overlays, now=NOW + 300.0)
+        self.assertEqual("needs_input", patch_at["state"])
+        self.assertTrue(patch_at["wait_unconfirmed"])
+        self.assertEqual(NOW, patch_at["blocked_since"])
+
+        # Exactly 300 + epsilon: unconfirmed
+        patch_after = events.reduce_overlays(overlays, now=NOW + 300.0 + 0.001)
+        self.assertEqual("needs_input", patch_after["state"])
+        self.assertTrue(patch_after["wait_unconfirmed"])
+        self.assertEqual(NOW, patch_after["blocked_since"])
+
+        # Fresh positive observation renews lease and reconfirms without resetting age
+        renewed = events.Overlay(
+            harness="antigravity",
+            sid=PREFIX,
+            arrival_seq=3,
+            kind=events.OVERLAY_NEEDS_INPUT,
+            at=NOW + 350.0,
+            event="input_requested",
+            source_class=events.SOURCE_CLASS_REPEATING,
+            source_instance_id="statusline",
+            blocked_since=NOW,
+            lease_sec=300.0,
+        )
+        overlays.append(renewed)
+
+        # At t=400: reconfirmed, wait_unconfirmed=False, age still NOW
+        patch_renewed = events.reduce_overlays(overlays, now=NOW + 400.0)
+        self.assertEqual("needs_input", patch_renewed["state"])
+        self.assertFalse(patch_renewed["wait_unconfirmed"])
+        self.assertEqual(NOW, patch_renewed["blocked_since"])
+
+        # Expires again at 350 + 300 = 650
+        patch_second_expiry = events.reduce_overlays(overlays, now=NOW + 651.0)
+        self.assertEqual("needs_input", patch_second_expiry["state"])
+        self.assertTrue(patch_second_expiry["wait_unconfirmed"])
+        self.assertEqual(NOW, patch_second_expiry["blocked_since"])
+
+    def test_ac3_explicit_resolution_adapters_gain_no_timeout(self) -> None:
+        # A discrete wait (e.g. Claude, OpenCode, Pi) does not expire at 300s
+        discrete_wait = events.Overlay(
+            harness="opencode",
+            sid=PREFIX,
+            arrival_seq=1,
+            kind=events.OVERLAY_NEEDS_INPUT,
+            at=NOW,
+            event="input_requested",
+            source_class=events.SOURCE_CLASS_DISCRETE,
+            blocked_since=NOW,
+        )
+        patch = events.reduce_overlays([discrete_wait], now=NOW + 86_400)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertFalse(patch["wait_unconfirmed"])
+        self.assertEqual(NOW, patch["blocked_since"])
