@@ -71,6 +71,9 @@ __els.app = {innerHTML: ""};
         *,
         annotate: bool = True,
         unasked: bool = False,
+        board: list[dict[str, Any]] | None = None,
+        annotation_state: str = "read",
+        spacedock: bool = True,
     ) -> dict[str, Any]:
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
@@ -98,6 +101,15 @@ console.log(JSON.stringify({
                 # and the record's standing-raise sentence is read out of it
                 # rather than composed here (DRC-4565).
                 f"annotate_discard: {json.dumps(annotation_store.DISCARD_SENTENCES)}",
+            )
+            + (f"__dashboard.sessions = {json.dumps(board)};\n" if board is not None else "")
+            + f"__dashboard.spacedock_enabled = {str(spacedock).lower()};\n"
+            + (
+                "__fetchImpl = async url => String(url) === '/api/annotations' ? "
+                + ("{ok:false}" if annotation_state == "error" else "new Promise(() => {})")
+                + " : {ok:true,json:async () => __dashboard};\n"
+                if annotation_state != "read"
+                else ""
             ),
         )
         assert isinstance(out, dict)
@@ -169,6 +181,117 @@ console.log(JSON.stringify({
         # being a screen only a typed fragment finds.
         self.assertIn('href="#n=intent"', out["html"])
         self.assertIn(">Intent log</a>", out["html"])
+
+    @staticmethod
+    def _board(sid: str = "live-1", **over: Any) -> dict[str, Any]:
+        return {"sid": sid, "harness": "codex", "project": "cargento", **over}
+
+    def test_every_board_session_joins_retained_words_once_even_without_a_project(self) -> None:
+        out = self.render(
+            [self._row(), self._row(sid="departed"), self._record()],
+            board=[self._board(), self._board("untyped"), self._board("unprojected", project="")],
+        )
+        self.assertEqual(5, out["rows"])
+        rows = out["html"].split('<div class="next-intent-row">')[1:]
+        self.assertEqual(1, sum("codex:live-1" in row for row in rows))
+        unprojected = next(row for row in rows if "codex:unprojected" in row)
+        self.assertIn("On the board; project not published", unprojected)
+        self.assertNotIn("Not on the board now", unprojected)
+        self.assertIn("On the board", out["visible"])
+        self.assertIn("Retained after leaving the board", out["visible"])
+        self.assertIn("No goal available from these sources", out["visible"])
+        self.assertIn("3 on the board", out["visible"])
+        self.assertIn("2 retained after leaving", out["visible"])
+
+    def test_all_goal_sources_coexist_with_their_own_labels_and_limits(self) -> None:
+        row = self._board(
+            instruction={"text": "Latest assignment must not substitute"},
+            cached_deterministic_goal={
+                "goal": "Saved derivation",
+                "source": "deterministic",
+                "observed_at": 100,
+            },
+            spacedock={
+                "workflows": [
+                    {"workflow": "Build", "goal": "Ship release"},
+                    {"workflow": "Audit", "goal": "Review changes"},
+                    {"workflow": "Untitled", "goal": "", "body": "Body is not the goal"},
+                ]
+            },
+        )
+        out = self.render([self._row(output="An artifact")], board=[row])
+        self.assertEqual(1, out["rows"])
+        for phrase in (
+            "Typed goal",
+            "Ship the cockpit",
+            "Typed expected output",
+            "An artifact",
+            "Cached deterministic goal",
+            "Saved derivation",
+            "currentness has not been checked",
+            "Workflow Build",
+            "Ship release",
+            "Workflow Audit",
+            "Review changes",
+            "No workflow goal published",
+        ):
+            self.assertIn(phrase, out["visible"])
+        self.assertNotIn("Latest assignment must not substitute", out["visible"])
+        self.assertNotIn("Body is not the goal", out["visible"])
+        self.assertNotIn("Observation time unknown", out["visible"])
+        row["cached_deterministic_goal"]["observed_at"] = None
+        self.assertIn("Observation time unknown", self.render([], board=[row])["visible"])
+
+    def test_annotation_absences_leave_board_membership_and_other_sources_visible(self) -> None:
+        board = [
+            self._board(cached_deterministic_goal={"goal": "Saved derivation"}),
+            self._board("empty"),
+        ]
+        for annotate, state, expected in (
+            (False, "read", "Annotations are off"),
+            (True, "error", "could not be read"),
+            (True, "loading", "Reading the annotation store"),
+        ):
+            with self.subTest(state=state, annotate=annotate):
+                out = self.render(
+                    [self._row(goal="Hidden typed words")],
+                    board=board,
+                    annotate=annotate,
+                    annotation_state=state,
+                )
+                self.assertEqual(2, out["rows"])
+                self.assertIn(expected, out["visible"])
+                self.assertIn("Saved derivation", out["visible"])
+                self.assertIn("No goal available from these sources", out["visible"])
+                self.assertNotIn("Hidden typed words", out["visible"])
+                self.assertNotIn("Nothing has been typed", out["visible"])
+
+    def test_a_disabled_workflow_source_supplies_no_saved_words(self) -> None:
+        board = [
+            self._board(spacedock={"workflows": [{"workflow": "Build", "goal": "Hidden workflow"}]})
+        ]
+        out = self.render([], board=board, spacedock=False)
+        self.assertEqual(1, out["rows"])
+        self.assertIn("Spacedock is off", out["visible"])
+        self.assertNotIn("Hidden workflow", out["visible"])
+        self.assertIn("No cached deterministic goal available", out["visible"])
+
+    def test_reading_counts_and_eviction_rules_name_only_retained_annotations(self) -> None:
+        out = self.render(
+            [
+                self._row(assessment=_assessment(revision_read=1)),
+                self._row(sid="departed"),
+                self._record(departures=[{"id": "raise"}]),
+            ],
+            board=[self._board(), self._board("board-only")],
+        )
+        self.assertEqual(4, out["rows"])
+        self.assertIn("2 sessions you have typed words against", out["visible"])
+        self.assertIn("1 whose words you discarded", out["visible"])
+        self.assertIn("1 of the 2 that still hold words carries a reading", out["visible"])
+        self.assertIn("annotation store", out["visible"])
+        self.assertNotIn("bottom row is the next to go", out["visible"])
+        self.assertIn("One departure raised", out["visible"])
 
     def test_a_session_still_on_the_board_links_into_its_held_to_tab(self) -> None:
         out = self.render([self._row()])
