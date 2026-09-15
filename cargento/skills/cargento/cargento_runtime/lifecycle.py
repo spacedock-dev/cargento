@@ -10,6 +10,7 @@ import json
 import math
 import os
 import select
+import signal
 import socket
 import subprocess
 import sys
@@ -269,6 +270,56 @@ def await_release(config: RuntimeConfig, port: int, timeout: float | None = None
         time.sleep(0.05)
 
 
+def pid_exists(pid: int) -> bool:
+    """Whether `pid` names a currently running process."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError as exc:
+        winerror = getattr(exc, "winerror", None)
+        return exc.errno == errno.EPERM or winerror == 5
+    return True
+
+
+def sweep_stale_states(config: RuntimeConfig) -> list[int]:
+    """Remove state files for dead runs whose port is closed and released.
+
+    Returns the list of ports whose stale state files were removed.
+    """
+    home = cargento_home(config)
+    if not os.path.isdir(home):
+        return []
+    removed: list[int] = []
+    prefix = "cargento-"
+    suffix = ".json"
+    try:
+        entries = os.listdir(home)
+    except OSError:
+        return []
+    for name in entries:
+        if not (name.startswith(prefix) and name.endswith(suffix)):
+            continue
+        port_str = name[len(prefix) : -len(suffix)]
+        if not port_str.isdigit():
+            continue
+        port = int(port_str)
+        if not 1 <= port <= 65535:
+            continue
+        kind, _ = probe_port(port, timeout=0.1)
+        if kind != "closed":
+            continue
+        if not port_released(config, port):
+            continue
+        state = read_state(config, port)
+        pid = (state or {}).get("pid")
+        if isinstance(pid, int) and pid > 0 and pid_exists(pid):
+            continue
+        remove_state(config, port)
+        removed.append(port)
+    return removed
+
+
 def instance_status(config: RuntimeConfig, port: int) -> dict[str, Any]:
     """Whether Cargento is on `port`, and what to say about it if not."""
     kind, health = probe_port(port)
@@ -449,6 +500,11 @@ def daemon_redirect_stdio(log_file: str) -> None:
     with open(log_file, "ab", buffering=0) as handle:
         os.dup2(handle.fileno(), 1)
         os.dup2(handle.fileno(), 2)
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            with contextlib.suppress(Exception):
+                reconfigure(line_buffering=True)
 
 
 def daemon_announce(write_fd: int) -> None:
@@ -781,6 +837,20 @@ def run_producer(
             )
 
 
+def _register_sigterm_exit() -> Any:
+    """Exit cleanly on SIGTERM so finally blocks can run."""
+    if not hasattr(signal, "SIGTERM"):
+        return None
+    with contextlib.suppress(ValueError, AttributeError):
+        return signal.signal(signal.SIGTERM, lambda _sig, _frame: sys.exit(0))
+
+
+def _restore_sigterm(handler: Any) -> None:
+    if handler is not None and hasattr(signal, "SIGTERM"):
+        with contextlib.suppress(ValueError, AttributeError):
+            signal.signal(signal.SIGTERM, handler)
+
+
 def serve(
     config: RuntimeConfig,
     server: http_api.CargentoHTTPServer,
@@ -835,6 +905,7 @@ def serve(
             target=run_producer, args=(server,), kwargs={"stop": producer_stop}, daemon=True
         )
         producer.start()
+    orig_term = _register_sigterm_exit()
     try:
         server.serve_forever()
     finally:
@@ -864,3 +935,4 @@ def serve(
         remove_state(config, port)
         with contextlib.suppress(OSError):
             server.server_close()
+        _restore_sigterm(orig_term)
