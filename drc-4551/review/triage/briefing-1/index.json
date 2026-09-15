@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4551:triage:attempt-1:revision-1",
+  "question": "Approve triage draft for DRC-4551?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4551:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/22caa8f0d7102bdada494aed8f824331c2427f59/drc-4551.md",
+      "rev": "sha256:e68e96ba57d92faf11a516e22cb130b0d079ab47d5b18fc949d72242d0f017da",
+      "mediaType": "text/markdown",
+      "summary": "Triage draft for DRC-4551 SIGTERM state cleanup"
+    }
+  ]
+}
