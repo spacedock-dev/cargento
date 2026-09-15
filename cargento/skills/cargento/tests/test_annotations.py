@@ -758,20 +758,34 @@ class AnnotationWiringTest(unittest.TestCase):
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
         on_config, on_state = make_runtime(state_home=home, state_dir=Path(home))
-        self.assertIs(
-            True,
-            cli.build_application(on_config, on_state, clock=lambda: 0.0)
-            .collect(show_all=True)
-            .get("annotate"),
+        on_collect = cli.build_application(on_config, on_state, clock=lambda: 0.0).collect(
+            show_all=True
         )
+        self.assertIs(True, on_collect.get("annotate"))
+        self.assertEqual("accepted", on_collect.get("reading_check"))
         off_config, off_state = make_runtime(
             state_home=home, state_dir=Path(home), annotations_enabled=False
         )
-        self.assertIsNone(
-            cli.build_application(off_config, off_state, clock=lambda: 0.0)
-            .collect(show_all=True)
-            .get("annotate")
+        off_collect = cli.build_application(off_config, off_state, clock=lambda: 0.0).collect(
+            show_all=True
         )
+        self.assertIs(False, off_collect.get("annotate"))
+        self.assertEqual("not-run", off_collect.get("reading_check"))
+
+    def test_absent_reading_check_and_annotate_published_under_no_annotations(self) -> None:
+        """DRC-4550. An absent capability or check states its absent value rather
+        than omitting the keys, distinguishing a run with annotations off from a
+        build that predates reading fields."""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        config, state = make_runtime(
+            state_home=home, state_dir=Path(home), annotations_enabled=False
+        )
+        data = cli.build_application(config, state, clock=lambda: 0.0).collect(show_all=True)
+        self.assertIn("annotate", data)
+        self.assertIn("reading_check", data)
+        self.assertIs(False, data["annotate"])
+        self.assertEqual("not-run", data["reading_check"])
 
 
 class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):

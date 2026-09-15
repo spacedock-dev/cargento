@@ -898,7 +898,10 @@ class Application:
                         "annotate_discard": annotation_store.DISCARD_SENTENCES,
                     }
                     if config.annotations_enabled
-                    else {}
+                    else {
+                        "annotate": False,
+                        "reading_check": annotation_store.ABSTENTION_CHECK_NOT_RUN,
+                    }
                 ),
                 **self._ask_cards(now),
                 # Called from inside the update rather than beside it because
