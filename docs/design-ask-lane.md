@@ -205,26 +205,21 @@ form their own session subjects. The comparator then ranks those subjects by the
 evidence while stable identity breaks ties, so multiple asks for one session do not produce
 competing session rows.
 
-What it ranks on is an absolute epoch on the payload's own clock: `blocked_since` for a gate, and
-`generated - age_sec` for a question, which `_ask_cards` rounds to the second from the same `now`
-that stamps `generated`. An exact tie breaks toward the gate rather than arbitrarily, because the
-question's figure carries up to half a second of rounding the gate's does not, so a tie is not
-evidence that the two are equally old.
+What it ranks on is primary kind first, then duration within each kind: asks (`primaryKind: "ask"`)
+strictly precede native input gates (`primaryKind: "input"`). Within questions,
+`nextAttentionCompareSubjects` ranks by longest ask age; within native gates, it ranks by duration
+calculated from `blocked_since`. Because kind order separates questions from native gates,
+the two kinds never compete directly on timestamp or swap positions under the reader.
 
-That settles exact ties and nothing wider, which is worth stating because the rounding it leans on is
-also the one thing in this order that moves on its own. `generated` is a float and `age_sec` is a
-whole number, so a question's reconstructed `since` shifts by up to a second between polls as the
-rounding lands either side of the sample. Three consecutive polls over one gate and one question
-whose waits began 0.3s apart put them in the order gate-question-gate: two adjacent rows, and their
-ordinals, trading places every five seconds under a reader. The cursor holds a key rather than a
-position, so nothing is mis-actioned, but the queue does churn where SKILL.md says it does not.
-
-Quantizing the gate's side to match is not the fix: it moves the churn window to wherever the two
-roundings fall out of phase rather than closing it, and a tolerance band moves it to the edge of the
-band. Closing it needs the server to publish an absolute `asked_at` alongside `age_sec` in
-`_ask_cards`, so both kinds rank on a figure that does not move: **a follow-up, filed rather than
-smuggled into this one**, because it changes the payload contract and everything downstream of
-`age_sec` that reads a duration.
+That replaces the earlier interface's chronological interleaving, which is worth recording because
+its rounding failure was real before the kind-first comparator replaced it. The obsolete `waitingQueue()`
+ranked both kinds on a single reconstructed epoch: `blocked_since` for a gate, and `generated - age_sec`
+for a question. Because `generated` is a float and `age_sec` was rounded to the nearest second, the
+question's reconstructed `since` shifted across consecutive polls. Two waits that began within ~0.3s of
+each other traded places every poll as the rounding landed either side of the sample, prompting a
+proposed follow-up to publish an absolute `asked_at` epoch in `_ask_cards`. With #245 and #247 promoting
+kind-first ordering in Attention, exact questions consistently lead native gates, settling the
+churn without expanding the payload contract or adding `asked_at`.
 
 The cursor holds a key rather than an index for the reason it always did, and a question needed a key
 that behaves the way `sessKey` does. It is `ask:<id>`, the registration id: generated once from
