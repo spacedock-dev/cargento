@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4346:triage:attempt-1:revision-1",
+  "question": "Approve triage specification for DRC-4346?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4346:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/29c52b55e11e4930549feee94b6978dbaf0f90d3/drc-4346.md",
+      "rev": "sha256:02e1c14b0a01252b15d756592af24389a2bb0a739ad118376df4c1777a095271",
+      "mediaType": "text/markdown",
+      "summary": "Triage DRC-4346: absorb grandchild worker mtimes into teammate liveness and lead activity sources"
+    }
+  ]
+}
