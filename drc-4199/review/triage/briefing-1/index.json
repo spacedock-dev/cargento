@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4199:triage:attempt-1:revision-1",
+  "question": "Approve documentation-only completion of DRC-4199, crediting merged question-first ordering and preserving runtime behavior?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4199:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ade48cf5f168d93260c2cbd16503c414509031c2/drc-4199.md",
+      "rev": "sha256:c4d86d5ed06ebe83ea09d82f45d1e22b8d5eb4a06117354b171804798926be22",
+      "mediaType": "text/markdown",
+      "summary": "Three triage obligations passed. Browser and assembled-page three-poll exercise confirm existing merges removed jitter. Remaining original criterion is a stale design note: one document, at most45 changed lines, zero runtime/oracle edits, self-verification and canonical checks. Approve issue/milestone drafts and three criteria."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4199:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/3c4abe23fecd5f4b8e7f0e7dff8ad0d318f7f86f/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
