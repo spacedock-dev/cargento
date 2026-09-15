@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4200:review:attempt-1:revision-1",
+  "question": "Merge corpus privacy assertion delivery in PR #341?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4200:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/9b9a4e010e2f1aecac9e83ce882c6126388d015d/drc-4200.md",
+      "rev": "sha256:3bc4f303371ff9ec9fa00db1d6fa69c1480856f5b00d73d22a39888228bfefa8",
+      "mediaType": "text/markdown",
+      "summary": "PR #341 merged with 12 passing checks"
+    }
+  ]
+}
