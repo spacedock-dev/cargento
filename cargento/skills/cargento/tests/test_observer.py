@@ -1257,7 +1257,7 @@ class ObserverRecordShapeTest(unittest.TestCase):
 
 class CachedDeterministicGoalTest(unittest.TestCase):
     def test_only_saved_deterministic_words_reach_the_board(self) -> None:
-        cases = (
+        cases: tuple[tuple[dict[str, Any], str | None], ...] = (
             ({"goal": "Saved", "goal_source": "deterministic"}, "Saved"),
             ({"goal": "Model", "goal_source": "model"}, None),
             ({"goal": "Unknown"}, None),
@@ -1287,6 +1287,7 @@ class CachedDeterministicGoalTest(unittest.TestCase):
     def test_a_saved_time_is_preserved_or_unknown_never_invented(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = dataclasses.replace(make_config(), state_dir=Path(tmp))
+            at: object
             for at in (150.5, None, True, "150", [], -1, 0, float("nan"), float("inf"), 10**400):
                 with self.subTest(at=at):
                     observer.write_sidecar(

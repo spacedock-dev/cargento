@@ -700,7 +700,10 @@ class Application:
 
     def collect(self, *, show_all: bool) -> Collection:
         config, state, window_hours, now = (
-            self.config, self.state, self.config.window_hours, self.clock()
+            self.config,
+            self.state,
+            self.config.window_hours,
+            self.clock(),
         )
         cleared_marks = dismissals.refresh(config, state)
         # Alongside the dismissal refresh and for its reason: two dashboards can

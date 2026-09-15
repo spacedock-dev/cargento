@@ -1,5 +1,4 @@
-/* The Intent log: every session the reader has typed words against, including
-   the ones that have left the board.
+/* The Intent log: board sessions and retained annotation records.
 
    DRC-4512 asks for a surface where a retained result survives the live row,
    and DRC-4533 asks for a read surface over a store whose words are otherwise
@@ -7,7 +6,7 @@
    of its 256 slots. Those are one surface, so this answers both rather than
    answering the same question twice in two places.
 
-   The rows are the annotation store's and only the store's. Session history
+   Retained typed words come from the annotation store alone. Session history
    keeps a copy of the same two fields for fourteen days, and reading the log
    out of that instead would resurrect words a reader withdrew: `clear` removes
    the entry, because clearing the field is withdrawing the request, while an
@@ -79,21 +78,50 @@ async function nextIntentLoad(){
   }
 }
 
-/* Which rows are still on the board, and under which project.
-
-   A map rather than a set, because the annotation store has no project field
-   at all — `Annotation` is `(harness, sid, revisions)` — which is the same
-   fact that makes this a top-level view rather than a project tab. The route
-   into a session's Held to tab needs a project, so it comes from the live row
-   or the row is not reachable. Measured: reading it off the annotation
-   instead rendered every session, live ones included, as departed. */
+/* Membership uses every board identity. A missing project only removes the
+   route: it cannot make a present session a departed one. */
 function nextIntentLiveProjects(){
-  const live = new Map();
-  for(const session of nextRows()){
-    const project = String(session.project == null ? "" : session.project);
-    if(project) live.set(sessKey(session), project);
+  return new Map(nextRows().map(session => [sessKey(session), session]));
+}
+
+function nextIntentSources(row, session, retained){
+  const discarded = nextAnnotationDiscarded(row);
+  const typed = retained && !discarded;
+  const cached = session && session.cached_deterministic_goal;
+  const goal = String(cached && cached.goal || "").trim();
+  const workflows = nextData && nextData.spacedock_enabled === false ? []
+    : nextObservedRecords(session && session.spacedock && session.spacedock.workflows);
+  const line = (label, text) => `<span class="next-intent-words">${esc(label)}: ${esc(text)}</span>`;
+  let html = discarded ? line("Typed words", row.discarded_why || "") : "";
+  if(typed){
+    html += line("Typed goal", row.goal || row.goal_why || "No goal typed for this session.") +
+      line("Typed expected output", row.output || row.output_why || "No expected output typed.");
+  }else if(!discarded){
+    html += line("Typed words", nextData && nextData.annotate === true && nextIntentState === "read"
+      ? "No goal or expected output typed." : "Annotation evidence unavailable.");
   }
-  return live;
+  if(goal){
+    const at = nextNumber(cached.observed_at);
+    const stamp = at && Number.isFinite(new Date(at * 1000).getTime())
+      ? `Observed ${new Date(at * 1000).toISOString()}.` : "Observation time unknown.";
+    html += line("Cached deterministic goal", goal) +
+      `<span class="next-intent-why">${esc(stamp)} Cached; currentness has not been checked.</span>`;
+  }else{
+    html += line("Cached deterministic goal", "No cached deterministic goal available.");
+  }
+  if(nextData && nextData.spacedock_enabled === false){
+    html += line("Workflow goal", "Spacedock is off for this run.");
+  }else if(!workflows.length){
+    html += line("Workflow goal", "No workflow goal published.");
+  }else{
+    html += workflows.map(workflow => line(`Workflow ${workflow.workflow || "unnamed"}`,
+      workflow.goal || "No workflow goal published.")).join("");
+  }
+  if(!(typed && String(row.goal || "").trim()) && !goal &&
+      !workflows.some(workflow => String(workflow.goal || "").trim())){
+    html += '<span class="next-intent-why">No goal available from these sources.</span>';
+  }
+  return html;
 }
 
 function nextIntentReading(row){
@@ -121,7 +149,7 @@ function nextIntentReading(row){
   return "No reading asked for";
 }
 
-function nextIntentClose(ordered){
+function nextIntentClose(ordered, listed = (ordered || []).length){
   /* Derived from the rows this view is already holding, rather than asserted.
      The constant it replaces said no reading existed while one rendered on the
      Held to tab for a session listed directly beneath it.
@@ -155,11 +183,12 @@ function nextIntentClose(ordered){
      zero case needs neither, and that is a property rather than an oversight
      -- a record can never carry a reading, so none over the rows that hold
      words is none over every row on screen. */
-  const counted = records
+  const counted = records || listed !== total
     ? `the ${total} that still ${total === 1 ? "holds" : "hold"} words`
     : `these ${total}`;
   const lead = withReading === 0
-    ? `No reading has been made against any of these${tail}`
+    ? (listed === ordered.length ? `No reading has been made against any of these${tail}`
+      : `No retained annotation carries a reading${tail}`)
     : `${withReading} of ${counted} ${withReading === 1 ? "carries" : "carry"} a reading` +
       tail;
   /* And once for the view, where a raise is on record and nothing is watching
@@ -227,9 +256,10 @@ function nextIntentDepartures(row){
   return String((row && row.departure_why) || "").trim();
 }
 
-function nextIntentRow(row, live){
+function nextIntentRow(row, live, retained = true){
   const key = sessKey(row);
-  const project = live.get(key) || "";
+  const session = live.get(key);
+  const project = String(session && session.project || "");
   /* The third state, and the reason this row branches rather than filling the
      same cells with emptier values (DRC-4565). A discard record has no words,
      no revision and no reading it could ever carry, so the words cell holds
@@ -238,18 +268,14 @@ function nextIntentRow(row, live){
      read "No revision saved yet / No reading asked for" over a session the
      reader had typed against and then deleted. */
   const discarded = nextAnnotationDiscarded(row);
-  const words = String(row.goal || "").trim() || String(row.output || "").trim();
-  const label = discarded
-    ? nextProjectValue(String(row.discarded_why || ""), false)
-    : nextProjectValue(words, Boolean(words));
   /* `nextProjectRevisionLine` already derives this, already handles a revision
      numbered past the count kept, and already carries the typed-ago suffix. A
      second wording of one fact is the divergence the store's own absence
      strings exist to prevent. */
-  const revision = discarded
+  const revision = !retained ? "" : discarded
     ? nextAnnotationDiscardStamp(row)
     : (nextProjectRevisionLine(row) || "No revision saved yet");
-  const departures = nextIntentDepartures(row);
+  const departures = retained ? nextIntentDepartures(row) : "";
   const reachable = Boolean(project);
   const name = reachable
     ? `<a href="${esc(nextFragmentForRoute({view: "project", project,
@@ -259,7 +285,7 @@ function nextIntentRow(row, live){
      it can produce -- "No reading asked for" most of all -- is about a session
      that could still have one, and a record cannot: the reading went with the
      revisions. */
-  const reading = discarded
+  const reading = discarded || !retained
     ? ""
     : `<span class="next-intent-revision">${esc(nextIntentReading(row))}</span>`;
   /* And the standing-raise sentence, where the withdrawal did not land, so the
@@ -271,12 +297,13 @@ function nextIntentRow(row, live){
     : "";
   return '<div class="next-intent-row">' +
     `<span class="next-intent-key">${name}</span>` +
-    `<span class="next-intent-words">${label}</span>` +
-    `<span class="next-intent-revision">${esc(revision)}</span>` +
+    nextIntentSources(row, session, retained) +
+    (revision ? `<span class="next-intent-revision">${esc(revision)}</span>` : "") +
     reading +
     (departures ? `<span class="next-intent-revision">${esc(departures)}</span>` : "") +
     standing +
-    (reachable ? "" : '<span class="next-intent-why">Not on the board now, so there is ' +
+    (session ? (reachable ? "" : '<span class="next-intent-why">On the board; project not published.</span>')
+      : '<span class="next-intent-why">Not on the board now, so there is ' +
       'nowhere to open.' + (discarded ? '' : ' The words are here.') + '</span>') +
     /* The binding caveat, because a list of many sessions is where a shared
        prefix would actually bite and an absent caveat here reads as exact
@@ -289,33 +316,23 @@ function nextIntentRow(row, live){
 function nextIntentView(){
   const head = '<section class="next-intent" data-next-view-body="intent">' +
     "<h1>Intent log</h1>";
-  if(!(nextData && nextData.annotate === true)){
-    return `${head}<p class="next-intent-note">Annotations are off for this run. Start without ` +
-      "--no-annotations to type a goal and an expected output, and they will be listed here." +
-      "</p></section>";
-  }
-  if(nextIntentState === "error"){
-    return `${head}<p class="next-intent-note">The annotation store could not be read, so this ` +
-      "is unread rather than empty.</p></section>";
-  }
-  if(nextIntentState !== "read"){
-    return `${head}<p class="next-intent-note">Reading the annotation store.</p></section>`;
-  }
-  const rows = nextIntentRows || [];
-  if(!rows.length){
-    return `${head}<p class="next-intent-note">Nothing has been typed against any session ` +
-      "yet.</p>" + nextIntentClose([]);
-  }
+  const available = nextData && nextData.annotate === true && nextIntentState === "read";
+  const notice = !(nextData && nextData.annotate === true)
+    ? "Annotations are off for this run. Start without --no-annotations to type a goal and an expected output."
+    : nextIntentState === "error"
+      ? "The annotation store could not be read, so its evidence is unread rather than empty."
+      : !available ? "Reading the annotation store."
+        : !(nextIntentRows || []).length ? "Nothing has been typed against any session yet." : "";
+  const rows = available ? [...new Map((nextIntentRows || []).map(row => [sessKey(row), row])).values()] : [];
   const live = nextIntentLiveProjects();
   /* Newest save first, which is also eviction order read backwards: the store
-     drops the oldest save first, so the last row here is the next to go. That
-     is derivable from the order already on screen and needs no extra field.
+     drops the oldest save first within the retained annotation population.
+     Board membership and its grouping do not change that store order.
 
      Records sort below every row that still holds words, because that is the
      store's own eviction rank (DRC-4565): a discard may never push out words
      a reader still has, so a record goes first however recent it is. Ordering
-     on the moment alone would put a fresh record above an old entry and make
-     the sentence about the bottom row false. */
+     on the moment alone would put a fresh record above an old entry. */
   const ordered = [...rows].sort((a, b) =>
     (nextAnnotationDiscarded(b) ? 0 : 1) - (nextAnnotationDiscarded(a) ? 0 : 1) ||
     ((nextNumber(b.at) || nextNumber(b.discarded_at) || 0) -
@@ -345,13 +362,25 @@ function nextIntentView(){
      the reader is looking at. */
   const evicts = records
     ? "A row whose words you discarded goes before any row that still holds words, and the " +
-      "oldest of what is left goes next, so the bottom row is the next to go."
-    : "The oldest save goes first, so the bottom row is the next to go.";
+      "oldest of what is left goes next."
+    : "The oldest save goes first.";
+  const retained = new Map(ordered.map(row => [sessKey(row), row]));
+  const board = [...live.values()].map(session => retained.get(sessKey(session)) ||
+    {harness: session.harness, sid: session.sid});
+  const departed = ordered.filter(row => !live.has(sessKey(row)));
+  const total = board.length + departed.length;
+  const group = (title, members) => members.length ? `<h2>${esc(title)}</h2>` +
+    members.map(row => nextIntentRow(row, live, retained.has(sessKey(row)))).join("") : "";
   return head +
-    `<p class="next-intent-note">${lead}The store ` +
-    `keeps the newest 256 and sixteen revisions each. ${evicts} ` +
-    "Session history keeps a fourteen-day copy of the same two " +
-    "fields; this list is not that copy, so a row leaving here is an eviction and not an " +
-    "expiry.</p>" +
-    ordered.map(row => nextIntentRow(row, live)).join("") + nextIntentClose(ordered);
+    `<p class="next-intent-note">${total} sessions listed: ${board.length} on the board, ` +
+    `${departed.length} retained after leaving the board.</p>` +
+    (notice ? `<p class="next-intent-note">${esc(notice)}</p>` : "") +
+    (available && rows.length ? `<p class="next-intent-note">${lead}The annotation store ` +
+      `keeps the newest 256 and sixteen revisions each. ${evicts} ` +
+      "These limits apply only to retained annotation records. Session history keeps a " +
+      "fourteen-day copy of the same two fields; this list does not recover typed words from " +
+      "that copy. Removal by the annotation store is an eviction and not an expiry.</p>" : "") +
+    group("On the board", board) + group("Retained after leaving the board", departed) +
+    (available ? nextIntentClose(ordered, total)
+      : `<p class="next-intent-note">${NEXT_READING_NOT_A_VERIFICATION}</p></section>`);
 }

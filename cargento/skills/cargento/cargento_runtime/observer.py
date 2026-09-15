@@ -982,7 +982,11 @@ def cached_deterministic_goal(
             continue
         raw_at = cached.get("observed_at")
         try:
-            at = records.norm_epoch(float(raw_at)) if type(raw_at) in (int, float) else 0
+            at = (
+                records.norm_epoch(float(raw_at))
+                if isinstance(raw_at, (int, float)) and not isinstance(raw_at, bool)
+                else 0
+            )
         except OverflowError:
             at = 0
         return {"goal": goal, "source": "deterministic", "observed_at": at or None}
