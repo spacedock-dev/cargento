@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4380:triage:attempt-1:revision-1",
+  "question": "Approve Pi extension-prompt coverage for persisted sessions on measured version 0.85.1, excluding startup trust and pre-persistence prompts?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4380:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/4aa756270f6fa411492882ceea8319a9bfd27f44/drc-4380.md",
+      "rev": "sha256:7e8f963bca725bd019f06e3e672b565831c633e8c44a67f90d2cc0e64eefea03",
+      "mediaType": "text/markdown",
+      "summary": "All three triage obligations passed. Real TUI emitted 20 start/end events across five extension prompt kinds; persisted UUID matched collector. Stock trust emitted no pair and prompts can precede persistence. Approve the explicit narrowed coverage, eight acceptance criteria, separate surface budgets and implementation after the shared OpenCode foundation."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4380:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/3c4abe23fecd5f4b8e7f0e7dff8ad0d318f7f86f/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
