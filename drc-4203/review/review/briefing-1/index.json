@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4203:review:attempt-1:revision-1",
+  "question": "Merge repeating-source wait lease and visible uncertainty in PR #345?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4203:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/512dfde2f012a8d5cdae1310ccbfd1abcaac13fc/drc-4203.md",
+      "rev": "sha256:36ff698896f1387e5cc04716661b98e34ca446d9b54c0689337632901c019a39",
+      "mediaType": "text/markdown",
+      "summary": "PR #345 merged with passing checks"
+    }
+  ]
+}
