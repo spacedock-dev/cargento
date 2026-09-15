@@ -67,6 +67,7 @@ export const CargentoPlugin = async () => {
   const port = /^\d{1,5}$/.test(configured) ? Number(configured) : 0;
   const sessions = new Map();
   const pending = new Map();
+  const completed = new Set();
   let running = false;
 
   async function drain() {
@@ -94,11 +95,13 @@ export const CargentoPlugin = async () => {
       const sid = props?.sessionID;
       const id = kind === "permission.asked" ? props?.id : props?.requestID;
       if (!validSession(sid) || !validRequest(id)) return;
+      const key = JSON.stringify([sid, id]);
+      if (completed.has(key)) return;
       let state = sessions.get(sid);
       let changed = false;
       if (kind === "permission.asked") {
         if (!state) {
-          if (sessions.size >= MAX_SESSIONS || pending.size >= MAX_SESSIONS) return;
+          if (sessions.size + pending.size >= MAX_SESSIONS) return;
           state = {requests: new Set(), saturated: false};
           sessions.set(sid, state);
         }
@@ -113,6 +116,10 @@ export const CargentoPlugin = async () => {
         state.requests.add(id);
       } else {
         if (!state || !state.requests.delete(id)) return;
+        completed.add(key);
+        if (completed.size > MAX_SESSIONS * MAX_REQUESTS) {
+          completed.delete(completed.values().next().value);
+        }
         if (state.requests.size === 0 && !state.saturated) {
           changed = true;
           sessions.delete(sid);

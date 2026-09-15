@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import threading
@@ -14,9 +16,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from cargento_runtime import events
+from cargento_runtime import events, observation, sessions
 
-from . import support
+from . import fixtures, support
+from .next_harness import NextPageJsHarness
 
 PLUGIN = support.SERVER_PATH.parent / "opencode_plugin.js"
 SID = "ses_" + "a" * 26
@@ -60,8 +63,9 @@ def native(kind: str, request: str = "req-one", sid: str = SID) -> dict[str, Any
 
 
 @unittest.skipUnless(NODE, "node is required to exercise the JavaScript adapter")
-class OpenCodePluginTest(unittest.TestCase):
+class OpenCodePluginTest(support.RuntimeTestCase):
     def setUp(self) -> None:
+        super().setUp()
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.home = Path(temporary.name)
@@ -102,6 +106,7 @@ class OpenCodePluginTest(unittest.TestCase):
         payload = {"plugin": str(plugin), "state": str(self.state), "steps": steps, **options}
         runner = self.home / "runner.mjs"
         runner.write_text(RUNNER)
+        started = time.monotonic()
         result = subprocess.run(
             [str(NODE), str(runner)],
             input=json.dumps(payload),
@@ -114,6 +119,7 @@ class OpenCodePluginTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("", result.stderr)
         observed: dict[str, Any] = json.loads(result.stdout)
+        observed["elapsed"] = time.monotonic() - started
         return observed
 
     def test_a_parent_permission_wait_clears_only_after_its_last_answer(self) -> None:
@@ -165,3 +171,181 @@ class OpenCodePluginTest(unittest.TestCase):
         for sid in ("../" + SID, SID[:-1], SID + "a", "ses_" + "é" * 26, "ses_" + "a" * 25 + "/"):
             with self.subTest(sid=sid):
                 self.assertIsNone(events.normalize_session_id("opencode", sid))
+
+    def test_a_delayed_duplicate_ask_does_not_reopen_an_answered_request(self) -> None:
+        self.run_plugin(
+            [
+                {"event": native("permission.asked")},
+                {"event": native("permission.replied")},
+                {"event": native("permission.asked")},
+            ]
+        )
+        self.assertEqual(
+            ["input_requested", "input_resolved"], [r["body"]["event"] for r in self.records]
+        )
+
+    def test_missing_invalid_or_disabled_state_sends_no_permission_content(self) -> None:
+        states: tuple[Any, ...] = (
+            None,
+            "{broken",
+            [],
+            {},
+            {"capabilities": {}},
+            {"capabilities": {"opencode": "bad\nheader"}},
+            "x" * 65537,
+        )
+        for state in states:
+            with self.subTest(state_type=type(state).__name__):
+                self.records.clear()
+                self.run_plugin([{"state": state, "event": native("permission.asked")}])
+                self.assertEqual([], self.records)
+
+    def test_a_restarted_dashboard_gets_its_new_capability(self) -> None:
+        self.run_plugin(
+            [
+                {"event": native("permission.asked")},
+                {
+                    "state": {"capabilities": {"opencode": "next-token"}},
+                    "event": native("permission.replied"),
+                },
+            ]
+        )
+        self.assertEqual([TOKEN, "next-token"], [r["token"] for r in self.records])
+
+    def test_a_slow_server_cannot_hold_the_permission_callback(self) -> None:
+        self.response_delay = 1.0
+        result = self.run_plugin(
+            [
+                {"event": native("permission.asked"), "delay": 10},
+                {"event": native("permission.replied"), "delay": 10},
+            ],
+            settle=650,
+        )
+        self.assertLess(max(result["times"]), 100)
+        self.assertLess(result["elapsed"], 1.6, "HTTP deadline did not release the host socket")
+        self.assertEqual(
+            ["input_requested", "input_resolved"], [r["body"]["event"] for r in self.records]
+        )
+
+    def test_unrelated_or_malformed_native_events_emit_nothing(self) -> None:
+        self.run_plugin(
+            [
+                {"event": event}
+                for event in (
+                    None,
+                    {},
+                    {"type": "permission.asked"},
+                    native("permission.ask"),
+                    native("session.status"),
+                    native("permission.asked", sid="../../secret"),
+                    native("permission.asked", request=""),
+                )
+            ]
+        )
+        self.assertEqual([], self.records)
+
+    def test_real_http_ingress_joins_only_the_answered_collector_row(self) -> None:
+        store = self.home / "store"
+        store.mkdir()
+        now = time.time()
+        fixtures.build_opencode(store, now, SID, "First parent")
+        with contextlib.closing(sqlite3.connect(store / "opencode.db")) as connection:
+            connection.execute(
+                "INSERT INTO session SELECT ?, parent_id, directory, ?, time_updated, time_archived, model FROM session",
+                (OTHER, "Second parent"),
+            )
+            connection.commit()
+        with support.store_patch(
+            **{
+                **dict.fromkeys(support.STORE_KEYS, str(self.home / "empty")),
+                "OPENCODE_DATA": str(store),
+            }
+        ):
+            app = support.build_app()
+            coordinator = observation.Observation(app, diagnostic_sink=lambda _message: None)
+            app.overlays = coordinator
+            httpd = support.make_server(application=app, observation=coordinator)
+            thread = threading.Thread(target=support.poll_fast(httpd), daemon=True)
+            thread.start()
+            self.addCleanup(httpd.server_close)
+            self.addCleanup(httpd.shutdown)
+            self.port = httpd.server_port
+            self.state = self.home / f"cargento-{self.port}.json"
+            self.state.write_text(json.dumps({"capabilities": coordinator.capabilities()}))
+            self.run_plugin(
+                [
+                    {"event": native("permission.asked")},
+                    {"event": native("permission.asked", sid=OTHER)},
+                    {"event": native("permission.replied")},
+                ]
+            )
+            rows = {row["sid"]: row for row in app.collect(show_all=False)["sessions"]}
+            self.assertEqual("working", rows[SID]["state"])
+            self.assertEqual("needs_input", rows[OTHER]["state"])
+            self.assertEqual("event", rows[OTHER]["acquisition"])
+            self.assertIsNotNone(rows[OTHER]["blocked_since"])
+
+    def test_a_refused_connection_cannot_throw_into_the_host(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        result = self.run_plugin([{"event": native("permission.asked")}])
+        self.assertLess(max(result["times"]), 100)
+        self.assertEqual([], self.records)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO control is POSIX-only")
+    def test_a_state_fifo_cannot_leave_a_host_read_blocked(self) -> None:
+        self.state.unlink()
+        os.mkfifo(self.state)
+        result = self.run_plugin([{"event": native("permission.asked")}])
+        self.assertLess(result["elapsed"], 1.6)
+        self.assertEqual([], self.records)
+
+    def test_request_overflow_never_claims_clearance_for_untracked_waits(self) -> None:
+        steps = [{"event": native("permission.asked", str(i)), "delay": 0} for i in range(65)]
+        steps += [{"event": native("permission.replied", str(i)), "delay": 0} for i in range(65)]
+        self.run_plugin(steps)
+        self.assertEqual(["input_requested"], [r["body"]["event"] for r in self.records])
+
+
+@unittest.skipUnless(NODE, "node is required for rendered coverage")
+class OpenCodeCoverageTest(NextPageJsHarness):
+    def test_a_reader_sees_the_install_condition_with_and_without_observations(self) -> None:
+        spec = next(spec for spec in support.REGISTRY if spec.key == "opencode")
+        harness = {
+            "key": spec.key,
+            "label": spec.label,
+            "discovered": True,
+            "reports_needs_input": spec.reports_needs_input,
+            "reports_needs_input_when": spec.reports_needs_input_when,
+        }
+        for observed, enabled in ((True, True), (False, True), (False, False)):
+            with self.subTest(observed=observed, enabled=enabled):
+                app = support.build_app()
+                coordinator = observation.Observation(app, clock=lambda: 1000)
+                app.overlays = coordinator if enabled else None
+                if observed:
+                    self.assertEqual(
+                        "accepted",
+                        coordinator.submit(
+                            "opencode",
+                            {
+                                "v": 1,
+                                "event": "input_requested",
+                                "session_id": SID,
+                            },
+                        ),
+                    )
+                row = sessions.base_session("opencode", SID, "project")
+                app._apply_overlays([row], now=1000)
+                payload = {"harnesses": [harness], "sessions": [row], "asks": []}
+                result = self._run_page_js(
+                    f"nextData = {json.dumps(payload)}; console.log(JSON.stringify(nextAttentionView(nextAttentionModel(nextData))));"
+                )
+                assert isinstance(result, str)
+                self.assertIn(
+                    "for parent sessions where the project adapter is installed and events are enabled",
+                    result,
+                )
+                if not observed:
+                    self.assertNotIn("Input signal observed", result)
+                    self.assertIn("unknown", result)

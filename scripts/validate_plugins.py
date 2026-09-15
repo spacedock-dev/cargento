@@ -17,8 +17,8 @@ from yaml.constructor import ConstructorError
 
 # Explicit shipped sources; neither a directory glob nor a runtime export can
 # silently certify a newly added adapter. Host-specific probes stay separate.
-JS_ADAPTERS = {"opencode_plugin.js": "opencode"}
-OPENCODE_PROBE = r"""
+JS_ADAPTERS = {"opencode_plugin.js": "opencode", "pi_extension.js": "pi"}
+JS_ADAPTER_PROBE = r"""
 import {createServer} from "node:http";
 import {writeFileSync} from "node:fs";
 import {join} from "node:path";
@@ -37,14 +37,25 @@ try {
   const port = server.address().port;
   process.env.CARGENTO_PORT = String(port);
   writeFileSync(join(process.env.CARGENTO_HOME, `cargento-${port}.json`),
-    JSON.stringify({capabilities: {opencode: "oracle-token"}}));
+    JSON.stringify({capabilities: {opencode: "oracle-token", pi: "oracle-token"}}));
   const module = await import(pathToFileURL(process.argv[2]));
-  const hooks = await module.CargentoPlugin({});
-  for (const type of ["permission.asked", "permission.replied", "session.status"]) {
-    await hooks.event({event: {type, properties: {
-      sessionID: "ses_" + "a".repeat(26), id: "request-one", requestID: "request-one", reply: "once"
-    }}});
-    await new Promise(resolve => setTimeout(resolve, 100));
+  const hooks = {};
+  if (process.argv[3] === "pi") {
+    module.default({on: (name, callback) => { hooks[name] = callback; }});
+    const ctx = {sessionManager: {getSessionId: () => "12345678-1234-1234-1234-123456789abc"}};
+    for (const type of ["ui_prompt_start", "ui_prompt_end"]) {
+      await hooks[type]({type, reason: "ui_prompt", kind: "select"}, ctx);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  } else {
+    Object.assign(hooks, await module.CargentoPlugin({}));
+    for (const type of ["permission.asked", "permission.replied", "session.status"]) {
+      await hooks.event({event: {type, properties: {
+        sessionID: "ses_" + "a".repeat(26), id: "request-one",
+        requestID: "request-one", reply: "once"
+      }}});
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
   }
   await new Promise(resolve => setTimeout(resolve, 300));
   process.stdout.write(JSON.stringify({hooks: Object.keys(hooks), deliveries}));
@@ -55,7 +66,7 @@ try {
 """
 
 
-def exercise_opencode_plugin(path: Path) -> dict[str, Any]:
+def exercise_js_adapter(path: Path) -> dict[str, Any]:
     """Observe the actual passive callback, with no fake event-route declaration."""
     node = shutil.which("node")
     if node is None:
@@ -64,8 +75,8 @@ def exercise_opencode_plugin(path: Path) -> dict[str, Any]:
         module = Path(tmp) / "adapter.mjs"
         module.write_bytes(path.read_bytes())
         proc = subprocess.run(  # noqa: S603 — node and local source under validation
-            [node, "--input-type=module", "-", str(module)],
-            input=OPENCODE_PROBE,
+            [node, "--input-type=module", "-", str(module), JS_ADAPTERS[path.name]],
+            input=JS_ADAPTER_PROBE,
             capture_output=True,
             text=True,
             timeout=10,
@@ -84,16 +95,19 @@ def check_js_adapters(adapter_dir: Path) -> list[str]:
     for filename, harness in JS_ADAPTERS.items():
         path = adapter_dir / filename
         try:
-            observed = exercise_opencode_plugin(path)
-            if observed["hooks"] != ["event"]:
-                problems.append(f"{filename}: expected only the passive event callback")
+            observed = exercise_js_adapter(path)
+            expected_hooks = (
+                ["event"] if harness == "opencode" else ["ui_prompt_start", "ui_prompt_end"]
+            )
+            if observed["hooks"] != expected_hooks:
+                problems.append(f"{filename}: unexpected native callback registration")
             delivered = observed["deliveries"]
             if [r["body"].get("event") for r in delivered] != ["input_requested", "input_resolved"]:
                 problems.append(f"{filename}: native permission pair did not map to a gate pair")
             if any(r["path"] != f"/api/events/{harness}" for r in delivered):
                 problems.append(f"{filename}: wrong harness event route")
             names = set(re.findall(r"[\"\'](permission\.[A-Za-z_.]+)[\"\']", path.read_text()))
-            if names != {"permission.asked", "permission.replied"}:
+            if harness == "opencode" and names != {"permission.asked", "permission.replied"}:
                 problems.append(f"{filename}: unsupported permission vocabulary")
         except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
             problems.append(f"{filename}: JavaScript adapter could not be exercised")
@@ -228,6 +242,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/statusline_hook.py",
     "skills/cargento/agy_hook.py",
     "skills/cargento/opencode_plugin.js",
+    "skills/cargento/pi_extension.js",
     # The stdio MCP server. A top-level `.py` beside the other edge scripts on
     # purpose: the inventory test globs `skills/cargento/*.py` non-recursively, so a
     # subdirectory would be invisible here and ship as a broken install.

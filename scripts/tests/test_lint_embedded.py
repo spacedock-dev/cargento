@@ -266,3 +266,13 @@ class MainAgainstRealPageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node is required for adapter syntax")
+class JavaScriptAdapterSyntaxTest(unittest.TestCase):
+    def test_an_installed_adapter_is_syntax_checked_as_an_es_module(self) -> None:
+        source = (lint_embedded.ADAPTER_DIR / "opencode_plugin.js").read_text()
+        self.assertEqual([], lint_embedded.check_js(source, allow_missing_node=False, module=True))
+        self.assertTrue(
+            lint_embedded.check_js(source + "\nconst = ;", allow_missing_node=False, module=True)
+        )

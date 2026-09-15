@@ -225,7 +225,7 @@ class HarnessSpec:
     value honest and consumers can rank a real zero.
 
     ``reports_needs_input`` is the same shape on the field where getting it
-    wrong costs more. Five of the ten cannot observe a gate at all, and their
+    wrong costs more. Four of the ten cannot observe a gate at all, and their
     silence is byte-identical to the silence of one that can when nothing is
     waiting: no row, no count, no band. So a quiet board cannot say whether
     nothing is waiting or nothing could have told you, and the
@@ -1178,7 +1178,7 @@ class Application:
     def _mark_unreachable_by_events(self, out_sessions: list[Session]) -> None:
         """Disclose the rows no event can ever reach, before any overlay lands.
 
-        Five of the ten harnesses are absent from `events.IDENTITY_NORMALIZERS`,
+        Four of the ten harnesses are absent from `events.IDENTITY_NORMALIZERS`,
         so `events.parse` refuses their envelopes outright and their rows are read
         off disk and nothing else. That table by name and not "the event
         vocabulary", which is `EVENTS_BY_HARNESS` and holds three: six is right
