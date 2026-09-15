@@ -7278,6 +7278,24 @@ console.log(JSON.stringify({
         # The sentence the section used to print over two standing departures.
         self.assertNotIn("No reading has been made, so nothing has been raised.", out["html"])
 
+    def test_a_raised_departure_renders_cutoff_text_when_present(self) -> None:
+        """DRC-4562. The producer's account of how far evidence went is rendered
+        beside the evidence line on departure rows."""
+        departure_with_cutoff = (
+            '{constraint:"TYPED GOAL", clause:"keep tests green",'
+            ' reading:"Test failed.",'
+            ' evidence:"tests/test_foo.py", revision:1, cutoff:100, at:101,'
+            ' cutoff_text:"Read 14 entries, 9 of them the session\'s own account",'
+            ' follow_up:""}'
+        )
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            f"__dashboard.sessions[0].departures = [{departure_with_cutoff}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+        self.assertIn("Read 14 entries", out["visible"])
+        self.assertIn("9 of them the session", out["visible"])
+
     def test_a_raise_whose_baseline_did_not_survive_says_so_here_too(self) -> None:
         out = self.review(
             "__dashboard.unasked = true;\n"
