@@ -9,7 +9,7 @@ verdict:
 score: 0.2
 worktree: .worktrees/spacedock-ensign-drc-4023
 issue:
-pr: spacedock-dev/cargento#337
+pr: pr-merge:337
 mod-block:
 linear-status: Done
 milestone: 'Steer before waste'
