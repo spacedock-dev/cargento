@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4181:triage:attempt-1:revision-1",
+  "question": "Approve triage draft for DRC-4181?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4181:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/067303bcd28ad9c31a706c246612b3789ff5892b/drc-4181.md",
+      "rev": "sha256:87ef4d33d612f5a765a51bc30a311a76b8942e652228099c885bd1a6b821ee86",
+      "mediaType": "text/markdown",
+      "summary": "Triage draft for DRC-4181 stale state file startup sweep"
+    }
+  ]
+}
