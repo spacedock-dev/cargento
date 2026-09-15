@@ -317,7 +317,7 @@ def _claude_sid(session_id: str) -> str | None:
 def _whole_uuid_sid(session_id: str) -> str | None:
     """The collector key for a harness that keys on the whole id, unchanged.
 
-    Codex, Antigravity and Gemini CLI all do, and all three were measured rather
+    Codex, Antigravity, Gemini CLI and Droid all do, and all were measured rather
     than assumed:
 
     - Codex's hook payload carries its own `session_id`, and that value matched
@@ -336,6 +336,10 @@ def _whole_uuid_sid(session_id: str) -> str | None:
       the store *filename* carries only the first eight characters; the id
       inside the file is whole, and the collector reads the file rather than the
       name.
+    - Droid's hook payload carries `session_id`, and in recorded verdicts on
+      0.202.0 that value equalled both the transcript filename stem and the
+      `id` on line 1 `session_start` of the transcript the same session wrote,
+      which is what `collectors/droid.py` keys on.
 
     So no truncation, unlike Claude. The shape is still validated: a value that is
     not UUID-shaped is not one of these ids, and must not reach a lookup. The
@@ -380,6 +384,7 @@ IDENTITY_NORMALIZERS: Final[dict[str, Any]] = {
     "gemini": _whole_uuid_sid,
     "opencode": _opencode_sid,
     "pi": _pi_sid,
+    "droid": _whole_uuid_sid,
 }
 
 

@@ -83,6 +83,23 @@ load extension hooks from `<root>/hooks/hooks.json` and neither lets that path b
 root would hand each harness the other's event names. `cargento-gemini/` carries the Gemini manifest,
 Gemini's hooks, and the two hook scripts they run.
 
+### Droid installation
+
+```bash
+# From a local checkout, install the native Droid plugin
+droid plugin install "$PWD/cargento-droid"
+```
+
+Restart Droid after installation.
+
+Droid installs from its own directory rather than from `cargento/`. Both Claude Code and Droid
+load plugin hooks from `<root>/hooks/hooks.json` and Droid also reads `.claude-plugin/plugin.json`,
+so installing the Claude root into Droid would run hooks with Claude's harness argument and send
+events to `/api/events/claude`. `cargento-droid/` carries the Droid manifest (`.factory-plugin/plugin.json`),
+Droid's hooks mapping measured lifecycle events, and the two hook scripts they run. If you previously
+installed `cargento/` into Droid, remove it with `droid plugin uninstall cargento` before installing
+from `cargento-droid`.
+
 ### Codex installation
 
 ```bash

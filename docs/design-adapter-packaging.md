@@ -119,12 +119,46 @@ These were four separate gaps. Each now has an independent check:
 The probes are explicit for these two host APIs. They are verification code in existing validators,
 not a new adapter framework or a third transport API for the shipped files to implement.
 
-## A-4: `EVENTS_BY_HARNESS` is a two-file edit
+## A-4: `EVENTS_BY_HARNESS` is a multi-file edit
 
-`event_hook.py` ships twice, in the plugin root and in the Gemini extension root, and the two are
-byte-identical by validator rule. Editing one is a red build. Recorded here because the table reads
-like a single constant and the second copy is in a directory nothing else about the event lane
-touches.
+`event_hook.py` ships three times: in the shared plugin root (`cargento/skills/cargento/event_hook.py`),
+in the Gemini extension root (`cargento-gemini/hooks/event_hook.py`), and in the Droid plugin root
+(`cargento-droid/hooks/event_hook.py`). `notify_hook.py` ships twice (in `cargento/skills/cargento/notify_hook.py`
+and `cargento-droid/hooks/notify_hook.py`). All copies are byte-identical by validator rule. Editing one
+without syncing the others is a red build. Recorded here because the table reads like a single constant
+and the other copies are in directories nothing else about the event lane touches.
+
+## A-5: Droid ships in a dedicated root, not an environment discriminator
+
+Decided 2026-09-15 under DRC-4574 (Linear DRC-4208).
+
+Droid loads plugin hooks from `<root>/hooks/hooks.json` and parses `.claude-plugin/plugin.json`
+by default. When Cargento's Claude plugin was installed in a project used by Droid, Droid loaded
+the Claude hooks and executed every hook command with the literal argument `claude`. This sent
+Droid lifecycle events to `/api/events/claude`, where they matched no Claude session row and were
+silently dropped, while `/api/events/droid` refused events because `IDENTITY_NORMALIZERS` had no
+`droid` entry.
+
+**Rejected: deriving harness identity from plugin-root environment variables.**
+An alternative was to check whether a Droid plugin-root environment variable was present in
+`event_hook.py` and override `argv` accordingly. Measured in real Droid 0.202.0 captures: both
+`DROID_PLUGIN_ROOT` and Claude project variables were present simultaneously with unexpanded
+sentinel values in noninteractive executions, meaning presence alone is not a truthful discriminator
+of which harness spawned the process. Environment inheritance and dual registrations make variable
+presence unsafe.
+
+**The chosen shape: dedicated `cargento-droid/` plugin root.**
+Like Gemini CLI (`cargento-gemini/`), Droid ships its own dedicated root with `.factory-plugin/plugin.json`,
+its own `hooks/hooks.json` mapping only the measured `SessionStart` and `SessionEnd` events to
+`event_hook.py` with the literal harness argument `droid`, and byte-identical copies of `event_hook.py`
+and `notify_hook.py`. Droid users install from `cargento-droid` (migrating away from `cargento/` if
+previously installed).
+
+`events.py` registers `"droid": _whole_uuid_sid` in `IDENTITY_NORMALIZERS`, preserving the measured
+full 36-character UUID identity without truncation. `collectors/droid.py` handles both the header
+`session_start` ID and the filename fallback; the whole UUID matches both. Notification and permission
+events are not mapped because Droid has no measured permission capture in this build; gate coverage
+remains false (`reports_needs_input=False`).
 
 ---
 

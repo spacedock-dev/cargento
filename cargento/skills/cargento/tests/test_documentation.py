@@ -317,6 +317,7 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         for relative in (
             "cargento/skills/cargento/event_hook.py",
             "cargento-gemini/hooks/event_hook.py",
+            "cargento-droid/hooks/event_hook.py",
         ):
             with self.subTest(source=relative):
                 self.assertIn(claim, self.unwrapped(relative))

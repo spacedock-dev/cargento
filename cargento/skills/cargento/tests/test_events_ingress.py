@@ -1007,6 +1007,69 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertEqual(SESSION, built["session_id"])
         self.assertNotIn("prompt", built)
 
+    @staticmethod
+    def _droid_hooks() -> dict[str, Any]:
+        path = Path(__file__).resolve().parents[4] / "cargento-droid" / "hooks" / "hooks.json"
+        return json.loads(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+
+    def test_the_bundled_droid_hooks_only_register_events_the_adapter_maps(self) -> None:
+        self.assertEqual(set(event_hook.DROID_EVENTS), set(self._droid_hooks()["hooks"]))
+
+    def test_the_bundled_droid_hooks_use_droid_plugin_root_variable_and_pass_droid(self) -> None:
+        commands = {
+            hook["command"]
+            for groups in self._droid_hooks()["hooks"].values()
+            for group in groups
+            for hook in group["hooks"]
+        }
+        self.assertEqual(1, len(commands), "one command keeps one trust decision")
+        command = next(iter(commands))
+        self.assertIn("${DROID_PLUGIN_ROOT}", command)
+        self.assertNotIn("${CLAUDE_PLUGIN_ROOT}", command)
+        self.assertTrue(command.endswith(" droid"), command)
+
+    def test_droid_maps_only_measured_session_start_and_end(self) -> None:
+        self.assertEqual("session_started", event_hook.DROID_EVENTS["SessionStart"])
+        self.assertEqual("session_ended", event_hook.DROID_EVENTS["SessionEnd"])
+        self.assertEqual(2, len(event_hook.DROID_EVENTS))
+
+    def test_a_droid_notification_or_permission_is_not_mapped(self) -> None:
+        self.assertNotIn("Notification", event_hook.DROID_EVENTS)
+        self.assertNotIn("PermissionRequest", event_hook.DROID_EVENTS)
+        self.assertIsNone(
+            event_hook.envelope({"hook_event_name": "Notification", "session_id": SESSION}, "droid")
+        )
+        self.assertIsNone(
+            event_hook.envelope(
+                {"hook_event_name": "PermissionRequest", "session_id": SESSION}, "droid"
+            )
+        )
+
+    def test_droid_keeps_the_whole_session_id(self) -> None:
+        whole = "11111111-2222-4333-8444-555555555555"
+        self.assertEqual(whole, events.normalize_session_id("droid", whole))
+        self.assertIsNone(events.normalize_session_id("droid", whole[:8]))
+
+    def test_a_droid_envelope_carries_the_whole_id_and_parses_to_droid_route(self) -> None:
+        built = event_hook.envelope(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": SESSION,
+                "cwd": "/tmp/project",
+                "transcript_path": "/tmp/sessions/proj/session-x.jsonl",
+            },
+            "droid",
+        )
+        assert built is not None
+        self.assertEqual("session_started", built["event"])
+        self.assertEqual(SESSION, built["session_id"])
+        parsed = events.parse(
+            "droid", built, arrival_seq=1, config=support.build_app().config, now=NOW
+        )
+        assert isinstance(parsed, events.Event)
+        self.assertEqual("droid", parsed.harness)
+        self.assertEqual(SESSION, parsed.session_id)
+
     def test_the_two_bundled_files_do_not_post_as_each_other(self) -> None:
         # The reason byte parity between them had to go. A mirrored file would
         # make one harness post to the other's route, where Claude's normalizer

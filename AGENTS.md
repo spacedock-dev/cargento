@@ -9,6 +9,9 @@ This repository distributes Cargento — an agnostic agent cartography and visua
 - `cargento-gemini/` — a hooks-only Gemini CLI extension root. It exists because Claude Code and
   Gemini CLI both load extension hooks from `<root>/hooks/hooks.json` and neither lets that path
   be moved, so a shared root hands each harness the other's event vocabulary
+- `cargento-droid/` — a hooks-only Droid plugin root. It exists because Droid reads
+  `.claude-plugin/plugin.json` and `<root>/hooks/hooks.json` by default, colliding with Claude Code's
+  hook commands and sending events to `/api/events/claude` instead of `/api/events/droid`
 
 Repository development skills are canonical under `.claude/skills/`. Claude Code discovers them
 there; Codex discovers the same directories through relative symlinks under `.agents/skills/`.
@@ -80,6 +83,17 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
+cargento-gemini/                    # extension root: Gemini CLI (hooks only)
+└── hooks/
+    ├── hooks.json                  # Gemini CLI lifecycle hooks
+    ├── event_hook.py               # posts Gemini command-hook lifecycle events
+    └── notify_hook.py              # loopback POST forwarder
+cargento-droid/                     # plugin root: Droid (hooks only)
+├── .factory-plugin/plugin.json     # Droid plugin manifest
+└── hooks/
+    ├── hooks.json                  # Droid lifecycle hooks
+    ├── event_hook.py               # posts Droid command-hook lifecycle events
+    └── notify_hook.py              # loopback POST forwarder
 ```
 
 The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
@@ -463,7 +477,8 @@ obligation, like the prose voice standard in `sync-docs`.
 The plugin version must be identical in three places: `cargento/.claude-plugin/plugin.json` (the
 source of truth `bump_version.py` reads and writes from), `cargento/.codex-plugin/plugin.json`,
 and `cargento-gemini/gemini-extension.json`. The plugin description must be identical in four:
-those three manifests plus the Antigravity `cargento/plugin.json`. `scripts/validate_plugins.py`
+those three manifests plus the Antigravity `cargento/plugin.json` (`cargento-droid/.factory-plugin/plugin.json`
+carries only name and description without a version field). `scripts/validate_plugins.py`
 enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does).

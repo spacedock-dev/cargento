@@ -308,12 +308,12 @@ class AdapterGateDerivationReachTest(unittest.TestCase):
         # `events.py` refuses never reaches a row, so declaring the flag would be
         # a promise the board cannot keep -- the same error as the lying chip,
         # arriving from the other table.
-        self.assertNotIn("droid", runtime_events.IDENTITY_NORMALIZERS)
+        self.assertNotIn("cursor", runtime_events.IDENTITY_NORMALIZERS)
         adapters = self._adapters(
-            "droid_hook.py",
-            'HARNESS = "droid"\n\nEVENTS = {"Ask": "input_requested"}\n',
+            "cursor_hook.py",
+            'HARNESS = "cursor"\n\nEVENTS = {"Ask": "input_requested"}\n',
         )
-        self.assertNotIn("droid", _adapter_gate_harnesses(adapters))
+        self.assertNotIn("cursor", _adapter_gate_harnesses(adapters))
 
     def test_the_shipped_adapters_map_a_gate_for_exactly_four_harnesses(self) -> None:
         # The false-positive direction against the real files, and why the read is
@@ -325,6 +325,8 @@ class AdapterGateDerivationReachTest(unittest.TestCase):
         # `input_requested` in a comment while `AGENT_STATES` maps only `working`
         # and `idle`, and a text search would take the decline for the mapping
         # and demand a flag Antigravity cannot honour.
+        # Droid ships lifecycle hooks only and does not map an input gate.
+        self.assertNotIn("droid", _adapter_gate_harnesses(ADAPTER_DIR))
         self.assertEqual(
             {"claude", "codex", "opencode", "pi"}, _adapter_gate_harnesses(ADAPTER_DIR)
         )

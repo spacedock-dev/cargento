@@ -146,10 +146,20 @@ GEMINI_EXTENSION_FILES = (
     "hooks/notify_hook.py",
 )
 
+DROID_EXTENSION_ROOT = "cargento-droid"
+DROID_EXTENSION_FILES = (
+    ".factory-plugin/plugin.json",
+    "hooks/hooks.json",
+    "hooks/event_hook.py",
+    "hooks/notify_hook.py",
+)
+
 # Which shipped file is a byte-identical copy of which source of truth.
 DUPLICATED_SCRIPTS = (
     (f"{GEMINI_EXTENSION_ROOT}/hooks/event_hook.py", "cargento/skills/cargento/event_hook.py"),
     (f"{GEMINI_EXTENSION_ROOT}/hooks/notify_hook.py", "cargento/skills/cargento/notify_hook.py"),
+    (f"{DROID_EXTENSION_ROOT}/hooks/event_hook.py", "cargento/skills/cargento/event_hook.py"),
+    (f"{DROID_EXTENSION_ROOT}/hooks/notify_hook.py", "cargento/skills/cargento/notify_hook.py"),
 )
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PORTABILITY_MARKERS = {
@@ -768,6 +778,29 @@ def validate_gemini_extension(
     return manifest
 
 
+def validate_droid_extension(
+    extension_root: Path, expected_name: str, validation: Validation
+) -> dict[str, Any] | None:
+    """The Droid plugin manifest, which lives in its own root.
+
+    Lives in `cargento-droid` so its hooks file cannot collide with Claude's.
+    """
+    path = extension_root / ".factory-plugin" / "plugin.json"
+    manifest = load_json(path, validation)
+    if manifest is None:
+        return None
+
+    for field in ("name", "description"):
+        if not isinstance(manifest.get(field), str) or not manifest[field].strip():
+            validation.error(path, f"{field} must be a non-empty string")
+    if manifest.get("name") != expected_name:
+        validation.error(path, f"name must be {expected_name!r}, matching the plugin")
+    for relative in DROID_EXTENSION_FILES:
+        if not (extension_root / relative).is_file():
+            validation.error(extension_root / relative, "missing from the Droid extension")
+    return manifest
+
+
 def validate_antigravity_mcp_config(
     plugin_root: Path, validation: Validation
 ) -> dict[str, Any] | None:
@@ -937,6 +970,13 @@ HOOK_FILE_VOCABULARY = {
             }
         ),
     ),
+    f"{DROID_EXTENSION_ROOT}/hooks/hooks.json": (
+        "droid",
+        # Only SessionStart and SessionEnd were measured in Droid 0.202.0 exec.
+        # Notification was never captured, and interactive launches did not pass
+        # login, so no permission/gate events are mapped.
+        frozenset({"SessionStart", "SessionEnd"}),
+    ),
 }
 
 
@@ -950,6 +990,13 @@ def validate_hook_vocabulary(validation: Validation) -> None:
     2. A foreign harness argument. `event_hook.py claude` in Gemini's file would
        post Gemini sessions to `/api/events/claude`, where Claude's normalizer
        truncates the id to eight characters and it matches no row.
+
+    This validator is keyed by file path to exactly one intended harness vocabulary.
+    It states in its own contract that it cannot cover a file two harnesses read: if
+    a second harness also loads a file written for the first, this check cannot
+    attest that the file is safe or appropriate for that second harness. That
+    collision was measured when Droid loaded Claude's hooks.json and ran its hooks
+    with `claude` argv (DRC-4208); dedicated extension roots prevent that collision.
     """
     for relative, (harness, vocabulary) in HOOK_FILE_VOCABULARY.items():
         path = ROOT / relative
@@ -1135,7 +1182,12 @@ def _referenced_plugin_paths(command: str) -> list[str]:
     time the plugin updated.
     """
     paths: list[str] = []
-    for marker in ("${CLAUDE_PLUGIN_ROOT}/", "${PLUGIN_ROOT}/", "${extensionPath}/"):
+    for marker in (
+        "${CLAUDE_PLUGIN_ROOT}/",
+        "${PLUGIN_ROOT}/",
+        "${extensionPath}/",
+        "${DROID_PLUGIN_ROOT}/",
+    ):
         start = 0
         while (found := command.find(marker, start)) != -1:
             rest = command[found + len(marker) :]
@@ -1557,12 +1609,15 @@ def main() -> int:
         gemini_manifests[plugin_name] = validate_gemini_extension(
             gemini_root, plugin_name, validation
         )
+        droid_root = ROOT / DROID_EXTENSION_ROOT
+        validate_droid_extension(droid_root, plugin_name, validation)
         mcp_config = validate_antigravity_mcp_config(plugin_root, validation)
         validate_mcp_endpoint_parity(
             gemini_root, gemini_manifests[plugin_name], mcp_config, validation
         )
         validate_hooks_adapter(plugin_root, validation)
         validate_hooks_adapter(gemini_root, validation)
+        validate_hooks_adapter(droid_root, validation)
         validate_runtime_files(plugin_root, validation)
         skill_names[plugin_name], plugin_catalog_lines = validate_skills(plugin_root, validation)
         catalog_lines.extend(plugin_catalog_lines)

@@ -9,9 +9,11 @@ Gemini's event names differ but its payload does not. Antigravity is not: its
 status line pushes a state snapshot rather than an event, so it has its own
 adapter in `statusline_hook.py`.
 
-This file ships twice. Gemini CLI loads extension hooks only from
+This file ships three times. Gemini CLI loads extension hooks only from
 `<extension>/hooks/hooks.json` and Claude Code claims that same path in a plugin
-root, so Gemini gets its own extension root at `cargento-gemini/`, which carries
+root, so Gemini gets its own extension root at `cargento-gemini/`. Droid searches
+`hooks/hooks.json` first and would run Claude's file if pointed at the shared root,
+so Droid gets its own extension root at `cargento-droid/`. Each carries
 a byte-identical copy of this script and of `notify_hook.py` beside its hooks
 file. `scripts/validate_plugins.py` fails the build if the copies drift.
 
@@ -220,10 +222,22 @@ GEMINI_EVENTS = {
     "AfterTool": "store_changed",
 }
 
+# Droid. Measured from two non-interactive exec sessions on Droid 0.202.0: see
+# `docs/captures/droid/notification-0.202.0-macos.jsonl`. Droid accepts
+# `.factory-plugin` or `.claude-plugin` manifest directories and executes hooks
+# configured under its hooks file. Only SessionStart and SessionEnd were measured;
+# Notification was never captured and interactive launches did not pass login, so
+# no permission/gate events are mapped.
+DROID_EVENTS = {
+    "SessionStart": "session_started",
+    "SessionEnd": "session_ended",
+}
+
 EVENTS_BY_HARNESS = {
     "claude": CLAUDE_EVENTS,
     "codex": CODEX_EVENTS,
     "gemini": GEMINI_EVENTS,
+    "droid": DROID_EVENTS,
 }
 
 # The two terminal-identity fields, and the grammars that decide whether either

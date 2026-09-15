@@ -178,20 +178,18 @@ class NormalizeSessionIdTest(unittest.TestCase):
         # before it was added. A fifth goes in the same way, not by analogy.
         # Gemini's evidence is docs/captures/gemini/identity-0.53.1-macos.jsonl.
         self.assertEqual(
-            {"claude", "codex", "antigravity", "gemini", "opencode", "pi"},
+            {"claude", "codex", "antigravity", "gemini", "opencode", "pi", "droid"},
             set(events.IDENTITY_NORMALIZERS),
         )
 
-    def test_codex_antigravity_and_gemini_key_on_the_whole_id(self) -> None:
+    def test_codex_antigravity_gemini_and_droid_key_on_the_whole_id(self) -> None:
         # Measured, not assumed. Codex's hook session_id matched the session_meta
         # id of the rollout the same session wrote; Antigravity's conversation_id
         # matched the stem of a real conversations/<id>.db; Gemini's matched the
-        # sessionId on line 1 of the chats/session-*.jsonl the same session wrote,
-        # five times out of five. Truncating any of them the way Claude's is
-        # truncated would key on a row that does not exist. For Gemini the trap is
-        # sharper: its store filename really does carry only eight characters, so
-        # truncating looks right until the lookup misses.
-        for harness in ("codex", "antigravity", "gemini"):
+        # sessionId on line 1 of the chats/session-*.jsonl the same session wrote;
+        # Droid's matched the stem and session_start id. Truncating any of them
+        # the way Claude's is truncated would key on a row that does not exist.
+        for harness in ("codex", "antigravity", "gemini", "droid"):
             with self.subTest(harness):
                 self.assertEqual(SESSION, events.normalize_session_id(harness, SESSION))
 
@@ -202,19 +200,25 @@ class NormalizeSessionIdTest(unittest.TestCase):
             events.normalize_session_id("claude", SESSION),
             events.normalize_session_id("codex", SESSION),
         )
+        self.assertNotEqual(
+            events.normalize_session_id("claude", SESSION),
+            events.normalize_session_id("droid", SESSION),
+        )
 
     def test_a_whole_id_harness_refuses_a_wrong_length(self) -> None:
-        # Checked exactly rather than as a floor: both harnesses write
+        # Checked exactly rather than as a floor: these harnesses write
         # 36-character ids, and a longer string that merely starts like one is not
         # a near miss to tolerate.
-        for candidate in (SESSION[:-1], SESSION + "0", PREFIX):
-            with self.subTest(candidate=candidate):
-                self.assertIsNone(events.normalize_session_id("codex", candidate))
+        for harness in ("codex", "droid"):
+            for candidate in (SESSION[:-1], SESSION + "0", PREFIX):
+                with self.subTest(harness=harness, candidate=candidate):
+                    self.assertIsNone(events.normalize_session_id(harness, candidate))
 
     def test_a_whole_id_harness_refuses_a_non_uuid_shape(self) -> None:
         forged = "../../../etc/passwd" + "-" * (36 - len("../../../etc/passwd"))
         self.assertEqual(36, len(forged), "the guard under test is the charset, not the length")
         self.assertIsNone(events.normalize_session_id("codex", forged))
+        self.assertIsNone(events.normalize_session_id("droid", forged))
 
 
 class TimestampTest(unittest.TestCase):
