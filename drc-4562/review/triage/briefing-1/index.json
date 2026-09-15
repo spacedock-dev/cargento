@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4562:triage:attempt-1:revision-1",
+  "question": "Approve DRC-4562 triage specification for implementation?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4562:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/996a4b7b2cdb6114566eb0c2063c9c940c2909a0/drc-4562.md",
+      "rev": "sha256:21c990ac632fc9e705235edd0146d924bfe061da6b7531202099c76c0ea0d440",
+      "mediaType": "text/markdown",
+      "summary": "Triage spec renders cutoff_text in departure rows beside evidence"
+    }
+  ]
+}
