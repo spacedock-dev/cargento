@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4199:review:attempt-1:revision-1",
+  "question": "Merge design note drift correction in PR #343?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4199:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/8902b914b4840e666fd06aaa8975f66098dd7cc9/drc-4199.md",
+      "rev": "sha256:aa07ea321a399c26b06f1f3bf4d07af9eac70605c0d963e5f2ce1a11eb712330",
+      "mediaType": "text/markdown",
+      "summary": "PR #343 merged with passing checks"
+    }
+  ]
+}
