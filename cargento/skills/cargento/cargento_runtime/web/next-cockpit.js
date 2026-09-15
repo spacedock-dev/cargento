@@ -166,22 +166,65 @@ function nextCockpitScopeCue(scope){
     `<strong>${label}</strong>${detail}</span>`;
 }
 
+function nextCockpitSessionIsWorking(session, group){
+  if(session && session.state === "working" && nextSessionEndedAt(session) == null){
+    return true;
+  }
+  if(group){
+    const observed = nextCockpitObservedProject(group);
+    if(observed && Array.isArray(observed.working)){
+      const keys = new Set(observed.working.map(nextSessionKey));
+      if(keys.has(nextSessionKey(session))) return true;
+    }
+  }
+  return false;
+}
+
+function nextCockpitSessionTone(session, group){
+  if(group){
+    const observed = nextCockpitObservedProject(group);
+    if(observed && Array.isArray(observed.sessions)){
+      const found = observed.sessions.find(s => nextSessionKey(s) === nextSessionKey(session));
+      if(found && found.tone) return found.tone;
+    }
+  }
+  if(session && session.tone) return session.tone;
+  if(session && session.turn && session.turn.long) return "want";
+  return "ok";
+}
+
+function nextCockpitScopeSessionRank(session, group){
+  if(nextCockpitSessionIsWorking(session, group)) return 0;
+  if(session && session.state === "needs_input") return 1;
+  if(session && session.state === "idle") return 2;
+  return 3;
+}
+
 function nextCockpitScopeLinks(group, focus, surface = "tree"){
   const selected = focus ? sessKey(focus) : "project";
-  const link = (key, label, state, subtitle, scope) => {
+  const link = (key, label, state, subtitle, scope, isWorking = false, tone = "ok") => {
     const route = {view:"project",project:group.label,focus:key === "project" ? null : key,
       tab:nextRoute && nextRoute.tab || "now"};
+    const liveDot = isWorking
+      ? `<span class="next-project-dot next-project-tone--${esc(tone)} next-project-dot--working" role="img" aria-label="${esc(state)}"></span>`
+      : "";
+    const stateClass = isWorking ? "next-cockpit-scope-state next-cockpit-scope-state--working" : "next-cockpit-scope-state";
+    const stateHtml = state
+      ? `<span class="${stateClass}">${liveDot}${esc(state)}</span>`
+      : "";
     return `<a href="${esc(nextFragmentForRoute(route))}" data-next-cockpit-scope="${esc(key)}"` +
       (selected === key ? ` aria-current="page"` : "") +
+      (isWorking ? ' data-next-working="true"' : "") +
       ` data-scope-kind="${esc(scope.kind)}" data-next-focus="cockpit-scope:${surface}:${esc(key)}">` +
       nextCockpitScopeCue(Object.assign({}, scope, {detail:""})) +
       `<strong class="next-cockpit-scope-name">${esc(label)}</strong>` +
-      (state ? `<span class="next-cockpit-scope-state">${esc(state)}</span>` : "") +
+      stateHtml +
       (subtitle ? `<small${subtitle === "Session title not published" ? ' data-next-withheld' : ""}>` +
         `${esc(String(subtitle).replace(/\s+/g, " ").slice(0, 90))}</small>` : "") +
       `</a>`;
   };
   const rows = [...group.sessions].sort((left, right) =>
+    nextCockpitScopeSessionRank(left, group) - nextCockpitScopeSessionRank(right, group) ||
     String(left.harness || "").localeCompare(String(right.harness || "")) ||
     sessKey(left).localeCompare(sessKey(right)));
   /* Everything a reader can see about a row. Two sessions of one harness in
@@ -201,9 +244,12 @@ function nextCockpitScopeLinks(group, focus, surface = "tree"){
         String(session.harness || "Session");
       const twin = faces.some((other, at) => at !== index && other === faces[index]);
       const title = String(session.title || "").trim() || "Session title not published";
+      const isWorking = nextCockpitSessionIsWorking(session, group);
+      const tone = nextCockpitSessionTone(session, group);
       return link(sessKey(session), harness, String(session.state || "unknown"),
         twin ? `${title} · ${String(session.sid || "")}` : title,
-        nextCockpitSessionScopeKind(session));
+        nextCockpitSessionScopeKind(session),
+        isWorking, tone);
     }).join("");
 }
 
