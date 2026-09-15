@@ -22,18 +22,15 @@ defines in its own header as a fresh process per event, one JSON payload on stdi
 `hook_event_name` naming what happened. Claude Code, Codex and Gemini CLI all are. Antigravity is
 not, and it already has its own adapter for that reason.
 
-The next two harnesses in the queue are neither. Both would run inside the harness process and
-subscribe to a callback, which is a JavaScript or TypeScript surface rather than a subprocess one.
-Nothing in the repository said whether such an adapter may ship, and four separate checks assume it
-cannot.
+OpenCode and Pi use callbacks inside the host process. Their shipped JavaScript adapters implement
+the decision below; the historical validator gaps are now covered by executed native callbacks.
 
 ## A-1: first-class JavaScript ships outside `cargento_runtime/web/`
 
 Decided 2026-09-07 by the owner, under DEC-11's sibling decision (Linear DRC-4428).
 
-An adapter may be written in JavaScript and bundled outside `cargento_runtime/web/`, which until
-now was the only directory holding any non-Python code. The four checks in A-3 widen to accommodate
-it.
+An adapter may be written in JavaScript and bundled outside `cargento_runtime/web/`, which held all
+non-Python runtime code when this decision was made. The four checks in A-3 now cover the shipped adapters.
 
 **Rejected: a thin shim that spawns the Python entry point.** The alternative was a small
 JavaScript file under the harness's own plugin directory that filters the harness bus and runs
@@ -70,13 +67,11 @@ adapter route read `EVENTS_BY_HARNESS` and nothing else.
 But the **server** admits on neither. `events.py` refuses any harness absent from
 `IDENTITY_NORMALIZERS`, and states the policy in place: one normalizer per harness whose adapter has
 shipped, because the design requires the identity mapping to be established per harness before its
-adapter ships. The two tables differ by exactly one key today, and that key is `antigravity`:
-`EVENTS_BY_HARNESS` holds Claude, Codex and Gemini, `IDENTITY_NORMALIZERS` holds those three plus
-Antigravity. One key is the whole of the divergence, and it is the harness whose adapters are not
-hook-shaped.
+adapter ships. `EVENTS_BY_HARNESS` holds Claude, Codex and Gemini. `IDENTITY_NORMALIZERS` also admits
+Antigravity, OpenCode and Pi; their adapters do not invoke the shared command hook.
 
-So an adapter POSTing to `/api/events/<harness>` is refused today whatever language it is written
-in, and however the test oracle is widened. **Every new adapter therefore requires a Python edit to
+An adapter for an unregistered harness is refused regardless of its language or oracle coverage. **Every new adapter
+therefore requires a Python edit to
 `events.py`**, which the original "non-Python adapter" framing obscured entirely. Measured: adding
 `reports_needs_input=True` for a harness with no route fails three tests, not one, and the third is
 a prose count in a docstring.
@@ -102,32 +97,27 @@ Antigravity gate build moves both by hand, and that is what they are for.
 The oracle now reads adapter source across both shapes (`EVENTS_BY_HARNESS` for the hook-shaped
 adapters, a module-level `HARNESS` plus its own map for the one-harness adapters) and intersects
 the result with `IDENTITY_NORMALIZERS`, which is authoritative for admission. So it now covers the
-unreachable direction as well, and neither table stands alone. It still reads Python, which is where
-A-1 leaves it: a gate mapped in a JavaScript adapter is invisible to it, recorded as a limit in the
-derivation's own docstring.
+unreachable direction as well, and neither table stands alone. For JavaScript, the existing
+validator executes each native callback against a recording loopback
+server. The registry oracle intersects those observed gate routes with server admission. Local
+runs without Node skip explicitly; the required JavaScript lint job requires and exercises Node.
 
 ## A-3: four checks are blind to a non-Python adapter, and each is blind differently
 
-Naming them together, because the first attempt at this listed three and the fourth is the one that
-fails silently rather than loudly.
+These were four separate gaps. Each now has an independent check:
 
-1. **The runtime-file inventory.** `CARGENTO_RUNTIME_FILES` is asserted equal to a discovery walk,
-   and the walk globs `*.py` at the skill's top level. A bundled `.js` sibling is not discovered, so
-   adding it to the inventory fails parity and omitting it means an install missing the adapter
-   fails silently. Every non-`.py` entry the inventory carries today is under
-   `cargento_runtime/web/` or is a hooks JSON, which is why the gap has never been hit.
-2. **Syntax checking.** `scripts/lint_embedded.py` pins its web directory and runs `node --check`
-   only over the bundle assembled from it. An adapter outside that directory ships with nothing
-   verifying it parses.
-3. **Hook vocabulary.** `HOOK_FILE_VOCABULARY` is keyed on JSON hook-file paths and read through a
-   JSON loader. There is no seam a JavaScript file can enter, so a new validator that reads adapter
-   source as text is required rather than an entry in the existing table.
-4. **The harness-argument check.** One guard skips any hook command not containing the literal
-   `event_hook.py`. An adapter under a different name silently skips the check that catches a hook
-   command passing the wrong harness argument in another harness's hooks file. This is the blind
-   spot that costs nothing to introduce and reports nothing when it matters.
+1. **Runtime inventory:** `CARGENTO_RUNTIME_FILES` names both JavaScript files explicitly; discovery
+   parity includes top-level `.js` alongside `.py`, and installed-copy checks reject a missing file.
+2. **Syntax:** `lint_embedded.py` syntax-checks each adapter as an ES module outside the web bundle.
+3. **Vocabulary:** `validate_plugins.py` invokes the actual OpenCode passive event callback and Pi's
+   native `ui_prompt_start` / `ui_prompt_end` handlers. It checks their registrations and emitted
+   gate pair; wrong native names and a removed gate mapping fail.
+4. **Harness route:** the recording loopback server captures the actual request path and compares it
+   against an independent filename-to-harness contract. A correct mapping sent to the wrong harness
+   fails. The coverage oracle separately intersects that emitted route with server admission.
 
-A widening that satisfies only the first three leaves the fourth accepting anything.
+The probes are explicit for these two host APIs. They are verification code in existing validators,
+not a new adapter framework or a third transport API for the shipped files to implement.
 
 ## A-4: `EVENTS_BY_HARNESS` is a two-file edit
 
@@ -141,5 +131,5 @@ touches.
 ## What this file does not decide
 
 Whether any particular harness gets an adapter, and what its events are called. That is per-harness
-build work with its own capture evidence, and it belongs to the issue for that harness. A-1 says
-such an adapter *may* be JavaScript; it does not say any of them is.
+build work with its own capture evidence, and it belongs to the issue for that harness. A-1 permits
+JavaScript; each shipped mapping still needs its own measured native identity and wait.

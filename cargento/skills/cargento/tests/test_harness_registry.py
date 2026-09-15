@@ -15,14 +15,18 @@ from __future__ import annotations
 import ast
 import importlib.util
 import inspect
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest import mock
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "scripts"))
 import event_hook
 from cargento_runtime import events as runtime_events
+from validate_plugins import JS_ADAPTERS, exercise_js_adapter
 
 from .support import REGISTRY, SERVER_PATH, STORE_KEYS, RuntimeTestCase, collect, store_patch
 
@@ -95,9 +99,9 @@ def _adapter_gate_harnesses(adapter_dir: Path) -> set[str]:
     text read of `statusline_hook.py` finds `input_requested` in the paragraph
     explaining why it is NOT mapped, and would take the decline for the mapping.
 
-    Where it stops: this reads Python source. A-1 permits an adapter written in
-    JavaScript, and a gate mapped in one would be invisible here. Recorded as a
-    limit rather than papered over, on the same rule as `_writes_a_wait`'s.
+    JavaScript uses its real native callback against a recording loopback server.
+    The observed route is intersected with server admission, just like Python.
+    Node-less local runs skip explicitly; the required syntax job exercises it.
     """
     sends = {
         harness
@@ -111,6 +115,17 @@ def _adapter_gate_harnesses(adapter_dir: Path) -> set[str]:
         harness = _module_string(tree, "HARNESS")
         if harness is not None and "input_requested" in _non_docstring_constants(tree):
             sends.add(harness)
+    for filename in JS_ADAPTERS:
+        path = adapter_dir / filename
+        if not path.exists():
+            continue
+        if shutil.which("node") is None:
+            raise unittest.SkipTest("node is required for JavaScript gate derivation")
+        for delivery in exercise_js_adapter(path)["deliveries"]:
+            if delivery["body"].get("event") == "input_requested":
+                route = delivery["path"]
+                if route.startswith("/api/events/"):
+                    sends.add(route.removeprefix("/api/events/"))
     return {harness for harness in sends if harness in runtime_events.IDENTITY_NORMALIZERS}
 
 
@@ -300,7 +315,7 @@ class AdapterGateDerivationReachTest(unittest.TestCase):
         )
         self.assertNotIn("droid", _adapter_gate_harnesses(adapters))
 
-    def test_the_shipped_adapters_map_a_gate_for_exactly_two_harnesses(self) -> None:
+    def test_the_shipped_adapters_map_a_gate_for_exactly_four_harnesses(self) -> None:
         # The false-positive direction against the real files, and why the read is
         # parsed rather than grepped. `statusline_hook.py` spends a paragraph on
         # why `tool_use` is NOT mapped -- the status line is a repeating render,
@@ -310,13 +325,15 @@ class AdapterGateDerivationReachTest(unittest.TestCase):
         # `input_requested` in a comment while `AGENT_STATES` maps only `working`
         # and `idle`, and a text search would take the decline for the mapping
         # and demand a flag Antigravity cannot honour.
-        self.assertEqual({"claude", "codex"}, _adapter_gate_harnesses(ADAPTER_DIR))
+        self.assertEqual(
+            {"claude", "codex", "opencode", "pi"}, _adapter_gate_harnesses(ADAPTER_DIR)
+        )
 
 
 class HarnessGateCoverageTest(RuntimeTestCase):
     """`reports_needs_input`: the declaration, its derivation, its prose, its wire."""
 
-    def test_only_the_four_harnesses_with_a_gate_path_declare_one(self) -> None:
+    def test_only_the_six_harnesses_with_a_gate_path_declare_one(self) -> None:
         # The same shape as `reports_rate` and for the same reason, on the
         # field where getting it wrong is worse. A harness with no gate detection
         # publishes no needs-input row, which is the identical payload a harness
@@ -330,7 +347,7 @@ class HarnessGateCoverageTest(RuntimeTestCase):
         # without teaching its collector to emit `needs_input` would publish a
         # promise the board cannot keep, which is strictly worse than the gap.
         self.assertEqual(
-            {"claude", "codex", "copilot", "cursor"},
+            {"claude", "codex", "copilot", "cursor", "opencode", "pi"},
             {spec.key for spec in REGISTRY if spec.reports_needs_input},
         )
 
@@ -359,10 +376,8 @@ class HarnessGateCoverageTest(RuntimeTestCase):
         # two things rather than one. A collector that reaches the state through a
         # helper in another module names it nowhere a read of one module can find,
         # and following a call across modules is not something a heuristic here
-        # should pretend to do; every collector today uses the bare literal. And
-        # both halves read Python, while A-1 in `docs/design-adapter-packaging.md`
-        # permits a JavaScript adapter. Both are left uncovered on the same rule
-        # the deleted frontend pin below was deleted under.
+        # should pretend to do; every collector today uses the bare literal.
+        # JavaScript adapters are now exercised by their native callback.
         #
         # The collector half used to be the literal `{"claude"}`, because Claude's
         # was the only collector that produced a wait. Copilot's now does too, from
@@ -461,7 +476,11 @@ class HarnessGateCoverageTest(RuntimeTestCase):
         # A literal, for the same reason the capability set above is a literal:
         # re-reading the field would agree with whatever it was set to.
         self.assertEqual(
-            {"codex": "where approvals are enabled"},
+            {
+                "codex": "where approvals are enabled",
+                "pi": "extension UI prompts in persisted sessions; installed adapter on Pi 0.85.1 required; excludes startup trust; restart loses standing waits",
+                "opencode": "for parent sessions where the project adapter is installed and events are enabled",
+            },
             {
                 spec.key: spec.reports_needs_input_when
                 for spec in REGISTRY
@@ -493,3 +512,13 @@ class HarnessGateCoverageTest(RuntimeTestCase):
             {spec.key: spec.reports_needs_input_when for spec in REGISTRY},
             {h["key"]: h["reports_needs_input_when"] for h in data["harnesses"]},
         )
+
+
+class JavaScriptGateReachTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "node is required for JS route evidence")
+    def test_a_real_js_gate_route_still_needs_server_admission(self) -> None:
+        self.assertIn("opencode", _adapter_gate_harnesses(ADAPTER_DIR))
+        admitted = dict(runtime_events.IDENTITY_NORMALIZERS)
+        admitted.pop("opencode")
+        with mock.patch.dict(runtime_events.IDENTITY_NORMALIZERS, admitted, clear=True):
+            self.assertNotIn("opencode", _adapter_gate_harnesses(ADAPTER_DIR))

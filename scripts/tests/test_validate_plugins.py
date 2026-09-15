@@ -50,6 +50,7 @@ class ValidatorTests(unittest.TestCase):
             "package initializer": "skills/cargento/cargento_runtime/__init__.py",
             "runtime module": "skills/cargento/cargento_runtime/cli.py",
             "collector": "skills/cargento/cargento_runtime/collectors/goose.py",
+            "JavaScript adapter": "skills/cargento/opencode_plugin.js",
             "frontend asset": "skills/cargento/cargento_runtime/web/next-boot.js",
         }
         for category, relative in categories.items():
@@ -92,7 +93,10 @@ class ValidatorTests(unittest.TestCase):
         # be deliberate, not this test's idea of what exists. `glob`, not `rglob`,
         # so `tests/` and `agents/` stay out.
         plugin_root = validator.ROOT / "cargento"
-        shipped = {path.relative_to(plugin_root).as_posix() for path in skill.glob("*.py")}
+        shipped = {
+            path.relative_to(plugin_root).as_posix()
+            for path in (*skill.glob("*.py"), *skill.glob("*.js"))
+        }
         # Hook definitions count too. They are not read by the dashboard, but they
         # fail the same way: absent from an install, the harness registers no hooks
         # and reports no events, silently. Both locations, because the harnesses
@@ -1426,3 +1430,42 @@ class PromiseParityTests(unittest.TestCase):
         validation = validator.Validation()
         validator.validate_promise_parity(validation)
         self.assertEqual([], validation.errors)
+
+
+@unittest.skipUnless(shutil.which("node"), "node is required for JavaScript adapter evidence")
+class JavaScriptAdapterContractTest(unittest.TestCase):
+    def test_a_missing_javascript_adapter_is_an_installed_runtime_failure(self) -> None:
+        self.assertIn("skills/cargento/opencode_plugin.js", validator.CARGENTO_RUNTIME_FILES)
+
+    def test_the_native_callback_proves_its_route_and_gate_pair(self) -> None:
+        self.assertTrue(
+            hasattr(validator, "exercise_js_adapter"), "JS callback derivation is absent"
+        )
+        path = validator.ROOT / "cargento/skills/cargento/opencode_plugin.js"
+        observed = validator.exercise_js_adapter(path)
+        self.assertEqual(["event"], observed["hooks"])
+        self.assertEqual(
+            ["input_requested", "input_resolved"],
+            [r["body"]["event"] for r in observed["deliveries"]],
+        )
+        self.assertEqual({"/api/events/opencode"}, {r["path"] for r in observed["deliveries"]})
+
+    def test_mutated_native_name_route_and_gate_mapping_are_rejected(self) -> None:
+        directory = validator.ROOT / "cargento/skills/cargento"
+        cases = (
+            ("opencode_plugin.js", "permission.asked", "permission.ask"),
+            ("opencode_plugin.js", "/api/events/opencode", "/api/events/pi"),
+            ("opencode_plugin.js", "input_requested", "store_changed"),
+            ("pi_extension.js", "ui_prompt_start", "ui_prompt_changed"),
+            ("pi_extension.js", 'const HARNESS = "pi"', 'const HARNESS = "opencode"'),
+            ("pi_extension.js", "input_requested", "store_changed"),
+        )
+        self.assertEqual([], validator.check_js_adapters(directory))
+        for filename, before, after in cases:
+            with self.subTest(mutation=after), tempfile.TemporaryDirectory() as tmp:
+                for shipped in validator.JS_ADAPTERS:
+                    shutil.copyfile(directory / shipped, Path(tmp) / shipped)
+                mutated = Path(tmp) / filename
+                mutated.write_text(mutated.read_text().replace(before, after))
+                problems = validator.check_js_adapters(Path(tmp))
+                self.assertTrue(any(filename in problem for problem in problems), problems)

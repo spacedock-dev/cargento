@@ -32,6 +32,8 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── server.py               # the stable launcher: calls cargento_runtime.cli.main
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── event_hook.py           # posts Claude and Codex command-hook lifecycle events
+        ├── opencode_plugin.js      # passive per-project OpenCode parent permission events
+        ├── pi_extension.js         # Pi extension UI prompt events in persisted sessions
         ├── agy_hook.py             # posts Antigravity's hook events
         ├── statusline_hook.py      # posts Antigravity's status-line state
         ├── mcp_server.py           # stdio MCP server: the one tool a session calls to ask the reader

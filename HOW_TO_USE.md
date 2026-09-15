@@ -261,6 +261,64 @@ from the first section, then paste the resolved path into the snippet.
 Claude Code's hooks go in `~/.claude/settings.json`. Antigravity's status line goes in its own
 settings file. Both are yours to edit; the plugin does not write either.
 
+## Report Pi extension prompts
+
+This procedure was exercised with `@earendil-works/pi-coding-agent@0.85.1` on macOS.
+Use the dashboard copy selected above and start Pi with its bundled extension:
+
+```bash
+pi -e "$SKILL/pi_extension.js"
+```
+
+For automatic loading, copy that file to `extensions/cargento.js` under the Pi agent
+configuration directory, then restart Pi or run `/reload`. Repeat the copy when updating
+Cargento. The default configuration directory is `~/.pi/agent`; a relocated
+`PI_CODING_AGENT_DIR` changes it.
+
+Pi and the dashboard must use the same Cargento state directory and port. The extension
+reads `CARGENTO_HOME` (default `~/.cargento`) and `CARGENTO_PORT` (default 4553).
+It reads the run's capability from the state file and sends only to 127.0.0.1.
+
+After a normal model turn has persisted the session, an extension's select, confirm, input,
+editor or custom prompt appears in Attention. Answering or canceling it clears the wait.
+The adapter never answers a prompt. Stock project trust and prompts before persistence are
+outside this coverage; other Pi versions need their own evidence. Without an effective event
+reading, the session reports block state as unavailable. A dashboard restart loses a standing
+wait; it is not restored until another prompt event arrives. `--no-events` disables reporting.
+
+Measured shapes and the contained replay procedure are in
+[the Pi capture](docs/captures/pi/README.md).
+
+## Report OpenCode permission waits
+
+OpenCode needs a copy in each project. From that project, with `SKILL` set to the
+installed skill directory [found above](#find-the-copy-your-commands-will-run):
+
+```bash
+mkdir -p .opencode/plugin
+cp "$SKILL/opencode_plugin.js" .opencode/plugin/cargento.js
+```
+
+Start Cargento, then start a fresh OpenCode session. The adapter observes the passive
+`permission.asked` / `permission.replied` pair; answer in OpenCode. A standing parent-session
+permission appears in Attention and clears after its last outstanding request is answered.
+The default dashboard port is 4553. For a different local port, start OpenCode with
+`CARGENTO_PORT=48679 opencode`; set `CARGENTO_HOME` in both processes if using a different state
+home. No URL or remote destination can be configured.
+
+To uninstall, remove `.opencode/plugin/cargento.js` and start a fresh OpenCode session.
+An already running session keeps its loaded plugin. Repeat the copy after a Cargento update.
+No global configuration is changed by this procedure.
+
+Measured on the official OpenCode 1.18.30 macOS binary. Parent permissions only: child routing,
+question events and terminal control are not covered. Missing state, disabled events, delivery
+failure or a dashboard restart can lose an observation; a standing wait is not reconstructed.
+Without a current event observation, the row says block state is unknown. The capability condition
+names the installation requirement; it does not verify that a project has installed the file.
+The adapter keeps at most 128 active/queued sessions and 64 outstanding requests per session;
+request overflow retains that session's wait until the plugin restarts. It remembers the most recent
+8,192 answered request identities to suppress duplicate delivery.
+
 ## See why a harness is missing
 
 A collector skips a store it cannot read rather than taking the dashboard down, so a wrong path and an

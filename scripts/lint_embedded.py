@@ -42,6 +42,8 @@ WEB_DIR = (
     / "web"
 )
 
+ADAPTER_DIR = WEB_DIR.parent.parent
+
 
 def load_part_inventory(web_dir: Path, inventory_name: str) -> tuple[str, ...]:
     """One ordered script-part list, read from the root page.py itself.
@@ -117,7 +119,7 @@ def check_stray_scripts(
     ]
 
 
-def check_js(js: str, *, allow_missing_node: bool) -> list[str]:
+def check_js(js: str, *, allow_missing_node: bool, module: bool = False) -> list[str]:
     node = shutil.which("node")
     if node is None:
         message = "node not found — JS syntax check skipped"
@@ -128,7 +130,9 @@ def check_js(js: str, *, allow_missing_node: bool) -> list[str]:
     # Explicit UTF-8: without it Windows writes through the locale codec (cp1252),
     # and any non-Latin-1 character in the page — an arrow, a box-drawing glyph —
     # raises UnicodeEncodeError instead of being linted. node reads UTF-8.
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".mjs" if module else ".js", delete=False, encoding="utf-8"
+    ) as handle:
         handle.write(js)
         temp_path = Path(handle.name)
     try:
@@ -200,6 +204,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from validate_plugins import JS_ADAPTERS, check_js_adapters  # noqa: PLC0415
+
     app_parts = load_app_parts(WEB_DIR)
     problems = check_frontend(
         WEB_DIR,
@@ -207,6 +214,17 @@ def main() -> int:
         inventory_name="APP_PARTS",
         allow_missing_node=args.allow_missing_node,
     )
+    adapter_dir = ADAPTER_DIR
+    for filename in JS_ADAPTERS:
+        problems.extend(
+            check_js(
+                (adapter_dir / filename).read_text(),
+                allow_missing_node=args.allow_missing_node,
+                module=True,
+            )
+        )
+    if shutil.which("node"):
+        problems.extend(check_js_adapters(adapter_dir))
     if problems:
         for problem in problems:
             print(f"error: {problem}")

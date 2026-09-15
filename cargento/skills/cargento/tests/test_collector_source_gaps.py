@@ -177,7 +177,7 @@ class CollectorSourceGapsTest(NextPageJsHarness):
                     self.assertEqual("identity survives", row["title"])
                     self.assertEqual("old prompt" if older else "", row["last_prompt"])
                     self.assertEqual(older, row["turn"] is not None)
-                    self.assertEqual(["message history"], row["source_gaps"])
+                    self.assertEqual(["message history", "block state"], row["source_gaps"])
                     self._notice(payload, "message history")
 
     def test_opencode_recognized_messages_remain_gap_free(self) -> None:
@@ -197,8 +197,8 @@ class CollectorSourceGapsTest(NextPageJsHarness):
             row = self._row(payload, "opencode")
             self.assertEqual("new prompt", row["last_prompt"])
             self.assertEqual("gpt-5.6", row["model"])
-            self.assertEqual([], row["source_gaps"])
-            self._notice(payload, None)
+            self.assertEqual(["block state"], row["source_gaps"])
+            self._notice(payload, "block state")
 
     def test_an_unknown_role_does_not_extend_a_measured_opencode_turn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -220,7 +220,7 @@ class CollectorSourceGapsTest(NextPageJsHarness):
             row = self._row(self._collect("opencode", root), "opencode")
             self.assertEqual("current prompt", row["last_prompt"])
             self.assertIsNone(row["turn"]["eta_h"])
-            self.assertEqual(["message history"], row["source_gaps"])
+            self.assertEqual(["message history", "block state"], row["source_gaps"])
 
     def test_runtime_without_sqlite_discloses_only_attempted_activity_reads(self) -> None:
         script = """

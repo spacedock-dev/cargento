@@ -1,0 +1,31 @@
+{"record":"provenance","package":"@earendil-works/pi-coding-agent","version":"0.85.1","platform":"macOS","driver":"real CLI in PTY","adapter":"shipped pi_extension.js","raw_sha256":"dc92e0c18dbd931e0dcc2ac2a4acda674edb5a32ceb44eb99654a7bb5b1971a4","scope":"First consecutive sequence plus independent persisted prompts and controls; native events alone do not imply delivery."}
+{"record":"native_shape","session":1,"at_ms":1789446080552,"event":"session_start","keys":["reason","type"],"kind":null,"reason":"startup"}
+{"record":"native_shape","session":1,"at_ms":1789446097689,"event":"ui_prompt_start","keys":["kind","reason","title","type"],"kind":"select","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446164602,"event":"ui_prompt_end","keys":["kind","reason","title","type"],"kind":"select","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446164602,"event":"ui_prompt_start","keys":["kind","reason","title","type"],"kind":"confirm","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446164839,"event":"ui_prompt_end","keys":["kind","reason","title","type"],"kind":"confirm","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446164840,"event":"ui_prompt_start","keys":["kind","reason","title","type"],"kind":"input","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446165181,"event":"ui_prompt_end","keys":["kind","reason","title","type"],"kind":"input","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446165181,"event":"ui_prompt_start","keys":["kind","reason","title","type"],"kind":"editor","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446165462,"event":"ui_prompt_end","keys":["kind","reason","title","type"],"kind":"editor","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446165462,"event":"ui_prompt_start","keys":["kind","reason","type"],"kind":"custom","reason":"ui_prompt"}
+{"record":"native_shape","session":1,"at_ms":1789446165687,"event":"ui_prompt_end","keys":["kind","reason","type"],"kind":"custom","reason":"ui_prompt"}
+{"record":"standalone","kind":"select","phase":"during","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"needs_input","blocked_since":1789446317.968,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"select","phase":"after","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"working","blocked_since":null,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"confirm","phase":"during","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"needs_input","blocked_since":1789446432.24,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"confirm","phase":"after","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"working","blocked_since":null,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"input","phase":"during","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"needs_input","blocked_since":1789446509.531,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"input","phase":"after","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"working","blocked_since":null,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"editor","phase":"during","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"needs_input","blocked_since":1789446629.59,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"editor","phase":"after","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"working","blocked_since":null,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"custom","phase":"during","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"needs_input","blocked_since":1789447034.198,"acquisition":"event","source_gaps":[]}
+{"record":"standalone","kind":"custom","phase":"after","session":1,"id_length":36,"context_equals_header_equals_collector":true,"state":"working","blocked_since":null,"acquisition":"event","source_gaps":[]}
+{"record":"control","case":"expired-receipt","session":1,"state":"idle","state_detail":"awaiting your message","blocked_since":null,"acquisition":null,"source_gaps":["block state"]}
+{"record":"control","case":"restart-held","session":1,"state":"idle","state_detail":"awaiting your message","blocked_since":null,"acquisition":null,"source_gaps":["block state"]}
+{"record":"control","case":"disabled-held","session":1,"state":"working","state_detail":"generating\u2026","blocked_since":null,"acquisition":null,"source_gaps":["block state"]}
+{"record":"control","case":"missing-held","session":1,"state":"working","state_detail":"generating\u2026","blocked_since":null,"acquisition":null,"source_gaps":["block state"]}
+{"record":"control","case":"elapsed-custom-during","session":1,"state":"needs_input","state_detail":"Waiting for input \u00b7 9s","blocked_since":1789447274.657,"acquisition":"event","source_gaps":[]}
+{"record":"control","case":"auto-discovered-held","session":1,"state":"needs_input","state_detail":"Waiting for input \u00b7 14s","blocked_since":1789447671.608,"acquisition":"event","source_gaps":[]}
+{"record":"control","case":"pre-persistence-select","file_exists":false,"pi_rows":0}
+{"record":"control","case":"stock-project-trust","trust_screen":true,"trust_events":1,"new_ui_events":0,"new_session_start":0,"pi_rows":1}
+{"record":"control","case":"hanging-loopback","http_request_received":true,"native_prompt_closed":true,"close_ms":22,"endpoint_response_delay_ms":2000}
