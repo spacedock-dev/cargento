@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4023:triage:attempt-1:revision-1
                 digest: sha256:aaff5fdde76caabee8fb748744e17ac8fa702983d9851fbe47ec3e1e949438e6
-                room-ref: ./drc-4023/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
               resolution:
                 type: Resolution
                 id: resolution:spacedock:drc-4023:triage:1
