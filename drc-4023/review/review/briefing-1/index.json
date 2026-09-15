@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4023:review:attempt-1:revision-1",
+  "question": "Merge the complete Intent log with separately labeled goal sources?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4023:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/c6152161d4ecf77dd36f3bf947ec390845b6979d/drc-4023/index.md",
+      "rev": "sha256:4a52b0fec85f05fb3033fd7f7062cdba6798a897d8fab948a1345f9d1d16c218",
+      "mediaType": "text/markdown",
+      "summary": "Fresh independent GO accounts for seven unchanged ACs, three DONE and no skipped or failed checklist items. Actual board identities, retained records, source qualification and withdrawal are demonstrated. Owned malformed-cache collection failure was corrected and independently falsified after the recorded implementation/1 round. Exact candidate 09cd65d has twelve successful checks and CLEAN mergeability, within all scope budgets."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4023:review:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/d5b52abad006972a14df778573cd3abfe9d4f78d/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
