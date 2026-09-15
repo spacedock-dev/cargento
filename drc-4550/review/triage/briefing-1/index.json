@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4550:triage:attempt-1:revision-1",
+  "question": "Approve DRC-4550 triage specification for implementation?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4550:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/fa7f0192da40f2c7af9643dfb9897ba391b06f56/drc-4550.md",
+      "rev": "sha256:31fc433743caa7a091e263516b99d345c0208e96fb5f1dd8156e63d732329c55",
+      "mediaType": "text/markdown",
+      "summary": "Triage spec defines publishing annotate: False and reading_check: not-run under --no-annotations"
+    }
+  ]
+}
