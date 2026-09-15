@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4020:review:attempt-1:revision-1",
+  "question": "Merge C1 one-shot workflow stage conditions with the accepted AC-10 evidence substitution?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4020:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/86392d54af553b6679dc903615cd00997b0e3af6/drc-4020.md",
+      "rev": "sha256:447362644fb276e8033ad5a30be07d8ebad6b507ddc8ede38b07a970762e3361",
+      "mediaType": "text/markdown",
+      "summary": "Fresh independent review GO: all ten acceptance criteria accounted, three done and none skipped or failed. Exact candidate 743bdb2 has twelve successful checks and CLEAN mergeability. Captain accepted controlled allowed/denied evidence with live native, no-tab, default-permission and persistence proof; actual live permission transitions remain unverified. No unresolved material finding."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4020:review:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/b441c13dda23b23d215cb0481a76222f00d4ffaa/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
