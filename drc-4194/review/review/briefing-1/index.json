@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4194:review:attempt-1:revision-1",
+  "question": "Merge Pi scoring attribution correction in PR #342?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4194:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/127000e24b9b6885b15bd46b953cb35be587405b/drc-4194.md",
+      "rev": "sha256:07bc19cd875162af429717c76cbd5d0c9975e3411736683090fab98d15bb27e7",
+      "mediaType": "text/markdown",
+      "summary": "PR #342 merged with passing checks"
+    }
+  ]
+}
