@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4194:triage:attempt-1:revision-1",
+  "question": "Approve the two-field historical audit attribution correction without changing panel scores or snapshots?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4194:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/7268e075fa5d119accb158932ba0f72a8dc4c057/drc-4194.md",
+      "rev": "sha256:8eb9a4c2ff7b45283c3d1b2e55d3932a655e928d62cbc0e3c0f9dbdcbcaafd10",
+      "mediaType": "text/markdown",
+      "summary": "Three triage obligations passed. Pi attribution is unsupported; demotion is a historical self-citation proposal, not a demonstrated applied override. Correct only two existing B2 prose fields, preserve all scores/other records and panel snapshots, self-verify against sources and existing scorer. Approve exact issue/milestone drafts and five offline criteria."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4194:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/3c4abe23fecd5f4b8e7f0e7dff8ad0d318f7f86f/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
