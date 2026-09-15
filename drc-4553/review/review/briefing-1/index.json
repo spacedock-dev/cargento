@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4553:review:attempt-1:revision-1",
+  "question": "Merge --diagnose write isolation in PR #347?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4553:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/fe8bb62a356e65e2eb433cb1f41b72f9f4be541b/drc-4553.md",
+      "rev": "sha256:3be8d48fd953aae9998f45a4c4f27df8911c6eb27d0bf1ec0f036098a6c97978",
+      "mediaType": "text/markdown",
+      "summary": "PR #347 with passing checks"
+    }
+  ]
+}
