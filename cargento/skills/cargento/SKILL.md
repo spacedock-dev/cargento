@@ -442,6 +442,18 @@ Eight events are registered: `SessionStart`, `UserPromptSubmit`, `PermissionRequ
 
 Two honest limits on that. The argument covers what the adapter *writes*, and a failure before it starts — no interpreter, an unreadable file — exits non-zero instead, which is a channel nothing here has measured. And the hook runs *before* the prompt is drawn, so its cost lands while the person is still waiting to be asked rather than after; it is one short-lived process, and the same one seven other Codex hooks already run.
 
+### Pi
+
+Pi reports extension UI prompts in persisted sessions through the bundled
+`pi_extension.js` adapter. Validated on Pi 0.85.1: select, confirm, input, editor
+and custom prompts enter the waiting queue; answering or canceling clears the wait.
+Sessions shows the elapsed wait without publishing the prompt's title or answer.
+Stock project trust and prompts before persistence are outside coverage. A missing
+adapter, disabled event lane, or expired reading leaves block state unavailable;
+restarting the dashboard does not recover a standing prompt.
+Follow [Pi setup](https://github.com/spacedock-dev/cargento/blob/main/HOW_TO_USE.md#report-pi-extension-prompts)
+to install the adapter.
+
 ### Copilot
 
 Copilot needs nothing installed at all: its own store records the permission prompt, so the collector reads the gate straight off `events.jsonl` with no hook, no adapter and no settings file in the way. Cursor is the other harness that works this way — see below.

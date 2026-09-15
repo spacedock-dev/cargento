@@ -122,6 +122,12 @@ Other notes:
 - Gemini CLI stopped serving consumer accounts (Google AI Pro, Google AI Ultra and the free individual tier) on 2026-06-18, and Antigravity CLI is the successor for those users. Enterprise Gemini Code Assist licences and API-key authentication were explicitly unaffected, so on a machine using either of those the CLI still runs and still writes `~/.gemini/tmp`. This file owns that distinction; it is restated in `README.md`, `cargento/skills/cargento/SKILL.md` and `docs/design-harness-registry.md` (H-2), which must move together. Gemini and Antigravity are two harness rows. Antigravity is the current consumer one, and the Gemini row reads `~/.gemini/tmp`: historical on a consumer machine, where its sessions read as idle and need `?all=1` to appear, and live on an enterprise or API-key one, where they appear like any other harness. `GEMINI_CLI_HOME` relocates both, since Antigravity's store sits inside the Gemini home.
 - Cursor's quota tile is macOS-only. The Cursor CLI keeps its session token in the macOS Keychain, and where it persists that token on Linux and Windows has not been verified, so those platforms read no credential rather than a guessed path: Cursor's sessions still appear, only its usage entry is absent. Verifying the location on either platform is what lifts this, and it needs the CLI installed there. Every other harness's usage figure is platform-independent.
 
+Pi extension gate reporting was measured on `@earendil-works/pi-coding-agent@0.85.1`
+on macOS. This is an exact tested version, not a minimum-version claim. The deprecated
+0.73.1 package has no prompt-event surface. Coverage requires the adapter, enabled events,
+and a persisted session; stock startup trust is excluded. See
+[setup](HOW_TO_USE.md#report-pi-extension-prompts) and [measured evidence](docs/captures/pi/README.md).
+
 ## Validation
 
 The canonical pre-PR suite is in [AGENTS.md](AGENTS.md#pre-pr-checks). This file owns only the

@@ -54,6 +54,14 @@ No prompt text, no tool input, no tool output, no file path. `PreToolUse` record
 
 ## Files
 
+Pi's measured `ui_prompt` reason and five UI `kind` values are closed native vocabulary;
+the new prompt capture retains those values, never titles or answers. Its
+[contained replay](pi/README.md) separates persisted prompts from startup trust.
+
+| New measurement | Evidence |
+|---|---|
+| Pi 0.85.1 persisted extension prompts, macOS | [Shapes, identity verdicts and controls](pi/ui-prompts-0.85.1-macos.jsonl) |
+
 | File | Provenance |
 |---|---|
 | `codex/hooks-0.146.0-macos.jsonl` | One `codex exec` turn containing one shell tool call. codex-cli 0.146.0, macOS, run against an isolated `CODEX_HOME` so no user configuration was touched, with `--dangerously-bypass-hook-trust` because Codex skips untrusted hooks silently. |
