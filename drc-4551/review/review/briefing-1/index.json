@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4551:review:attempt-1:revision-1",
+  "question": "Merge SIGTERM state removal fix in PR #348?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4551:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/f66c0f7a5943c903c19438d8565f62da58a9fabc/drc-4551.md",
+      "rev": "sha256:94bf1032f144a71406c4f57c1e87f387945dec3bbc70a27712bc453bd53feba1",
+      "mediaType": "text/markdown",
+      "summary": "PR #348 with passing quality gate across all platforms"
+    }
+  ]
+}
