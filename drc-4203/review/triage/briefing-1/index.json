@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4203:triage:attempt-1:revision-1",
+  "question": "Approve triage draft and scope for repeating-source wait lease and visible uncertainty (DRC-4573 ruling)?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4203:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/c2140dd147f0e0a2b8ab2da9a56ee5bf67a188dd/drc-4203.md",
+      "rev": "sha256:137d48530a06bb3299ce489cbd0fcebbbee0ab77ab85af7680982f12e7aa300f",
+      "mediaType": "text/markdown",
+      "summary": "Triage cycle 2 applies approved DRC-4573 300s lease and visible uncertainty scope"
+    }
+  ]
+}
