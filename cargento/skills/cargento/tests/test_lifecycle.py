@@ -11,6 +11,7 @@ import json
 import os
 import select
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -1507,6 +1508,99 @@ class DaemonLifecycleTest(unittest.TestCase):
             thread.join(timeout=5)
             with contextlib.suppress(OSError):
                 httpd.server_close()
+
+    def test_daemon_redirect_stdio_line_buffering(self) -> None:
+        """DRC-4556: Detached daemon stdout/stderr is line-buffered while alive."""
+        code = (
+            "import sys, time\n"
+            "from cargento_runtime import lifecycle\n"
+            "lifecycle.daemon_redirect_stdio(sys.argv[1])\n"
+            "print('DIAGNOSTIC_LINE_WRITTEN', flush=False)\n"
+            "time.sleep(10)\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            log_file = os.path.join(tmp, "daemon.log")
+            env = {
+                **os.environ,
+                "PYTHONPATH": os.pathsep.join(
+                    [str(SERVER_PATH.parent), os.environ.get("PYTHONPATH", "")]
+                ).strip(os.pathsep),
+            }
+            proc = subprocess.Popen([sys.executable, "-c", code, log_file], env=env)
+            try:
+                # Wait briefly for process to redirect and print
+                deadline = time.monotonic() + 5.0
+                content = ""
+                while time.monotonic() < deadline:
+                    if os.path.exists(log_file):
+                        content = Path(log_file).read_text(encoding="utf-8")
+                        if "DIAGNOSTIC_LINE_WRITTEN" in content:
+                            break
+                    time.sleep(0.05)
+                # Verify the diagnostic was written while the process was still alive
+                self.assertIsNone(proc.poll(), "process exited prematurely")
+                self.assertIn("DIAGNOSTIC_LINE_WRITTEN", content)
+            finally:
+                proc.kill()
+                proc.wait()
+
+    def test_sigterm_removes_state_file(self) -> None:
+        """DRC-4551: SIGTERM causes server to remove its state file before exit."""
+        if not hasattr(signal, "SIGTERM") or sys.platform == "win32":
+            self.skipTest("SIGTERM not available or catchable on this platform")
+        port = self._free_port()
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "CARGENTO_HOME": tmp}
+            flags = [sys.executable, self.SERVER, "--port", str(port)]
+            proc = subprocess.Popen(flags, env=env)
+            try:
+                deadline = time.monotonic() + 10.0
+                while time.monotonic() < deadline:
+                    kind, _ = lifecycle.probe_port(port, timeout=0.5)
+                    if kind == "cargento":
+                        break
+                    time.sleep(0.1)
+                self.assertEqual("cargento", lifecycle.probe_port(port, timeout=1)[0])
+                state_file = Path(tmp, f"cargento-{port}.json")
+                self.assertTrue(state_file.exists(), "state file was not written")
+
+                # Send SIGTERM
+                proc.send_signal(signal.SIGTERM)
+                proc.wait(timeout=10)
+                self.assertFalse(
+                    state_file.exists(),
+                    "state file was not removed after SIGTERM",
+                )
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+
+    def test_startup_sweeps_stale_state_files(self) -> None:
+        """DRC-4181: Startup sweeps state files for dead runs whose port is closed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}):
+                config = cfg()
+            dead_port = self._free_port()
+            dead_file = Path(tmp, f"cargento-{dead_port}.json")
+            dead_file.write_text(
+                json.dumps({"pid": 99999999, "port": dead_port, "started": 1.0}),
+                encoding="utf-8",
+            )
+            live_port = self._free_port()
+            live_file = Path(tmp, f"cargento-{live_port}.json")
+            live_file.write_text(
+                json.dumps({"pid": os.getpid(), "port": live_port, "started": 1.0}),
+                encoding="utf-8",
+            )
+            other_file = Path(tmp, "cargento-deliveries.json")
+            other_file.write_text("{}", encoding="utf-8")
+
+            removed = lifecycle.sweep_stale_states(config)
+            self.assertIn(dead_port, removed)
+            self.assertFalse(dead_file.exists(), "dead state file was not swept")
+            self.assertTrue(live_file.exists(), "live state file was swept unexpectedly")
+            self.assertTrue(other_file.exists(), "deliveries store was touched")
 
 
 class SpawnArgvOptOutTest(unittest.TestCase):

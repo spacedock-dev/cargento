@@ -697,6 +697,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     page_bytes = load_frontend_page()
     if page_bytes is None:
         return 1
+    lifecycle.sweep_stale_states(config)
     log_file = lifecycle.log_path(config, args.port)
     if args.daemon and not lifecycle.prepare_daemon_home(config, log_file):
         # Reported already; the message has to reach the terminal that asked,

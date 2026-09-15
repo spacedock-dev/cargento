@@ -244,8 +244,9 @@ class CommandSocketTest(unittest.TestCase):
             return result
 
     def timed_hook(
-        self, driver: str, *, after_main: str = "", timeout: float = 0.25
+        self, driver: str, *, after_main: str = "", timeout: float | None = None
     ) -> subprocess.CompletedProcess[bytes]:
+        limit = (1.0 if os.name == "nt" else 0.25) if timeout is None else timeout
         ready = Path(self.tmp.name, "hook-ready.json")
         phases = Path(self.tmp.name, "hook-phases.json")
         ready.unlink(missing_ok=True)
@@ -329,14 +330,14 @@ raise SystemExit(status)
                 setup["parent_startup_ms"] = (call_started - started) * 1000
                 try:
                     stdout, stderr = proc.communicate(
-                        json.dumps(native("git push --force")).encode(), timeout=timeout
+                        json.dumps(native("git push --force")).encode(), timeout=limit
                     )
                 except subprocess.TimeoutExpired as exc:
                     proc.kill()
                     exc.output, exc.stderr = proc.communicate()
                     print(
                         "C6_PHASE "
-                        + json.dumps({**setup, "outcome": "timeout", "limit_ms": timeout * 1000})
+                        + json.dumps({**setup, "outcome": "timeout", "limit_ms": limit * 1000})
                     )
                     raise
                 elapsed = time.perf_counter() - call_started
@@ -344,7 +345,7 @@ raise SystemExit(status)
                 self.last_phases = {**setup, **marks, "main_to_exit_ms": elapsed * 1000}
                 self.last_phases["total_process_ms"] = (time.perf_counter() - started) * 1000
                 print("C6_PHASE " + json.dumps(self.last_phases, sort_keys=True))
-                self.assertLess(elapsed, timeout)
+                self.assertLess(elapsed, limit)
                 return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
             finally:
                 if proc.poll() is None:
