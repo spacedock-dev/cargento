@@ -139,11 +139,10 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: f217b82 (2026-09-15) -->
-<!-- Reconciled 6f32a19..f217b82: the previous sync, departure presentation, annotation discard
-     records and invalidation, historical abstention replay and accepted reading enablement,
-     command-shape reports, workflow stage conditions, and the complete Intent log.
+<!-- docs-synced-through: be8cc12 (2026-09-15) -->
+<!-- Reconciled f217b82..be8cc12: the previous sync, OpenCode and Pi needs-input adapters,
+     Droid dedicated root and UUID normalizer, repeating-source wait lease and visible
+     uncertainty display, captures corpus privacy boundary, Attention kind-first ordering,
+     and the Visibility 2x2 audit trail attribution.
      Feature-scoped passes left this shared marker alone. This pass checked their combined
-     retention, source, delivery and route claims against merged main, and corrected the
-     security overview's mutation count for the stage-condition store. Browser permission transitions and
-     banner visibility remain unverified where recorded; hook deadlines remain best effort. -->
+     adapter, hook root, uncertainty rendering and queue precedence claims against merged main. -->
