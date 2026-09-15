@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4208:triage:attempt-1:revision-1",
+  "question": "Approve triage draft and boundary for Droid dedicated plugin root (DRC-4574 ruling)?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4208:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ba8c62ed079bc679548386f0e49b22fefc683cce/drc-4208.md",
+      "rev": "sha256:635463f3d4893dce526a9cb39323399d330b7ae6b38f54273d844945f1ed248c",
+      "mediaType": "text/markdown",
+      "summary": "Triage cycle 2 applies approved DRC-4574 dedicated cargento-droid root and SessionStart/End boundary"
+    }
+  ]
+}
