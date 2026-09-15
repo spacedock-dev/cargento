@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4556:triage:attempt-1:revision-1",
+  "question": "Approve triage draft for DRC-4556?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4556:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/0c5b3dad2bc4558ed793d1a664dc14cca550687d/drc-4556.md",
+      "rev": "sha256:220258034eef6c94e92ce27d55023d81c252d58282682219d18b6d6871411024",
+      "mediaType": "text/markdown",
+      "summary": "Triage draft for DRC-4556 line-buffering stdio"
+    }
+  ]
+}
