@@ -6,14 +6,14 @@ source: https://linear.app/recce/issue/DRC-4271
 started: 2026-08-28T03:48:15Z
 completed:
 verdict:
-score: 0.9
+score: 0.6
 worktree:
 issue:
 pr:
 mod-block:
 linear-status: Done
 milestone: 'Spend attention well'
-release: 'r1'
+release:
 estimate: ''
 reconciled:
 gates:
