@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4379:review:attempt-1:revision-1",
+  "question": "Merge OpenCode adapter delivery in PR #340?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4379:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/2cf4081022b37f638c258cb94972c7a5bc625827/drc-4379.md",
+      "rev": "sha256:c5880ce6248968d190447d83d00e986aaf3809683ca64037ea9c937d100e8b38",
+      "mediaType": "text/markdown",
+      "summary": "PR #340 merged with 12 passing checks and clean mergeability"
+    }
+  ]
+}
