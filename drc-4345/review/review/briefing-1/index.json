@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4345:review:attempt-1:revision-1",
+  "question": "Approve DRC-4345 review for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4345:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/df3c36b19bd04351b2de21844e8fc09e28005a0b/drc-4345.md",
+      "rev": "sha256:3cb41e6a73f76eaa437e4928b7368e4cf8cac191d800eb38bc98f906b729533f",
+      "mediaType": "text/markdown",
+      "summary": "PR #349 verified with 100% CI pass across all platforms"
+    }
+  ]
+}
