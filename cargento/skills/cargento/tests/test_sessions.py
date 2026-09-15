@@ -95,6 +95,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         # `events.PATCHABLE`, so an event envelope can write either onto any row.
         "acquisition",
         "blocked_since",
+        "wait_unconfirmed",
         # Same provenance as the two above: written onto every row by
         # `Application._attach_annotations` after `base_session` returns. Every
         # row and not only the annotated ones, because a missing key renders as

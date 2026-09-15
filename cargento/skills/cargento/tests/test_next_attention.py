@@ -2546,3 +2546,54 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("No sessions in this 6h payload", html)
         self.assertNotIn("OBSERVED NOW", html)
         self.assertNotIn("queues checked", html)
+
+    def test_ac4_visible_uncertainty_in_attention_rendering(self) -> None:
+        out = self._run_page_js(
+            """
+__els.app = {innerHTML: ""};
+nextData = {generated: 10000, window_hours: 6, asks: [], harnesses: [
+  {key: "antigravity", label: "Antigravity", reports_needs_input: false}
+], sessions: [
+  {harness: "antigravity", sid: "s1", project: "repo", state: "needs_input",
+   state_detail: "Input signal observed", blocked_since: 9900, wait_unconfirmed: false}
+]};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "attention", project: null, session: null};
+renderNext();
+const confirmedHtml = __els.app.innerHTML;
+
+nextData.sessions[0].wait_unconfirmed = true;
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+const unconfirmedHtml = __els.app.innerHTML;
+
+nextData.sessions[0].state = "working";
+nextData.sessions[0].wait_unconfirmed = false;
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+const resolvedHtml = __els.app.innerHTML;
+
+console.log(JSON.stringify({confirmedHtml, unconfirmedHtml, resolvedHtml}));
+"""
+        )
+        assert isinstance(out, dict)
+        confirmed = out["confirmedHtml"]
+        unconfirmed = out["unconfirmedHtml"]
+        resolved = out["resolvedHtml"]
+
+        # Confirmed repeating wait: rendered in NEEDS YOU NOW without uncertainty note
+        self.assertIn("NEEDS YOU NOW", confirmed)
+        self.assertIn("Input signal observed", confirmed)
+        self.assertNotIn("Unconfirmed: no positive observation in 5m", confirmed)
+
+        # Unconfirmed repeating wait: STILL in NEEDS YOU NOW with uncertainty note
+        self.assertIn("NEEDS YOU NOW", unconfirmed)
+        self.assertIn("Input signal observed", unconfirmed)
+        self.assertIn(
+            "Unconfirmed: no positive observation in 5m; prompt may still be standing",
+            unconfirmed,
+        )
+
+        # Resolved: removed from NEEDS YOU NOW
+        self.assertNotIn("NEEDS YOU NOW", resolved)
+        self.assertNotIn("Unconfirmed: no positive observation in 5m", resolved)

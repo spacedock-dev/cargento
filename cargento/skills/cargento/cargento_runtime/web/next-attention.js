@@ -759,8 +759,15 @@ function nextAttentionSignalNow(signal, subject){
     return {text: question, note: options ? `${options} published options` : ""};
   }
   if(signal.kind === "input"){
-    const text = String(subject.session && subject.session.state_detail || "").trim();
-    return {text: text || "Needs-input state reported", note: ""};
+    const session = subject.session;
+    const text = String(session && session.state_detail || "").trim() || "Needs-input state reported";
+    if(session && session.wait_unconfirmed){
+      return {
+        text,
+        note: "Unconfirmed: no positive observation in 5m; prompt may still be standing",
+      };
+    }
+    return {text, note: ""};
   }
   if(signal.kind === "attribution"){
     return {text: nextAttentionAttributionNow(detail), note: ""};
