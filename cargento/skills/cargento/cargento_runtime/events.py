@@ -350,6 +350,18 @@ def _whole_uuid_sid(session_id: str) -> str | None:
     return session_id
 
 
+def _opencode_sid(session_id: str) -> str | None:
+    """Keep the measured ses_ plus 26 ASCII alphanumeric characters whole.
+
+    Current parent permission IDs share an eight-character prefix; truncation
+    would join unrelated sessions. Child identity remains outside the promise.
+    """
+    suffix = session_id[4:]
+    if not session_id.startswith("ses_") or len(suffix) != 26:
+        return None
+    return session_id if suffix.isascii() and suffix.isalnum() else None
+
+
 # One normalizer per harness whose adapter has shipped. A harness absent here is
 # refused: the design requires the identity mapping to be established per harness
 # before its adapter ships, and a default passthrough would quietly skip that.
@@ -358,6 +370,7 @@ IDENTITY_NORMALIZERS: Final[dict[str, Any]] = {
     "codex": _whole_uuid_sid,
     "antigravity": _whole_uuid_sid,
     "gemini": _whole_uuid_sid,
+    "opencode": _opencode_sid,
 }
 
 
