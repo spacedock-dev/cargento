@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+review-round:
+    id: round:drc-4023:implementation:1
+    stage: implementation
+    cycle: 1
+    briefing:
+        id: briefing:drc-4023:implementation:round-1
+        digest: sha256:c0b8a4a2ae73ff05e5c83eed7dc75fce6089ce928cfc6d1d0e7ad27613116358
+        room-ref: ./review/implementation/round-1
 ---
 
 [DRC-4023](https://linear.app/recce/issue/DRC-4023) — Linear priority Medium, estimate L.
@@ -136,6 +144,8 @@ See the corresponding subsection in the dated triage below.
 Two bounded lenses plus a reproducing arbiter at review; the rationale and boundaries are below.
 
 ### Feedback Cycles
+
+- Cycle 1: REJECTED — implementation pre-PR source review / reproducing arbiter; surface 19/612 vs estimate runtime 6/420, behavioral 420, compelled 60 across at most 9 oracle files, docs 6/90 (48.8% runtime, 77.6% behavioral, 43.3% compelled, 61.1% docs); AC unchanged. Owned Material cache-decoding failure fixed on 09cd65d under distinct FO authorization; retained arbiter re-review follows the canonical implementation/1 record.
 
 ## Out of scope
 
