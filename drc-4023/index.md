@@ -11,7 +11,7 @@ worktree: .worktrees/spacedock-ensign-drc-4023
 issue:
 pr: spacedock-dev/cargento#337
 mod-block:
-linear-status: In Progress
+linear-status: In Review
 milestone: 'Steer before waste'
 release: 'later'
 estimate: 'L'
