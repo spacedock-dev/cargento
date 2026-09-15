@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4550:review:attempt-1:revision-1",
+  "question": "Approve DRC-4550 review for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4550:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/c63a2221d94bbad52adc7ecc299279d211dc65b9/drc-4550.md",
+      "rev": "sha256:1b3bf918578905809b396c59d0e80265a570b9f21284dbb442433dabbf5d7088",
+      "mediaType": "text/markdown",
+      "summary": "PR #350 verified with 100% CI pass across all platforms"
+    }
+  ]
+}
