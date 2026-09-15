@@ -3296,3 +3296,65 @@ class DispatchedTeammateTest(RuntimeTestCase):
         self.assertEqual(["ensign-pending"], [a["name"] for a in session["subagents"]])
         self.assertIs(False, session["subagents"][0]["active"])
         self.assertIsNone(session["subagents"][0]["parent"])
+
+    def test_a_teammate_blocked_on_live_workers_reads_as_running_and_keeps_lead_working(
+        self,
+    ) -> None:
+        # DRC-4346. A teammate quiet for 300 seconds whose grandchild worker
+        # is actively writing reads as running, attributes the worker, and keeps
+        # the lead session working with its last activity absorbed.
+        now = time.time()
+        teammate_stamp = datetime.fromtimestamp(now - 300, UTC).isoformat()
+        lens_stamp = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        child_sid = "bbbb2222-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(
+                proj, sid=child_sid, name="ensign-review", stamp=teammate_stamp, age=300, now=now
+            )
+            lenses = proj / child_sid / "subagents"
+            lenses.mkdir(parents=True)
+            lens_fp = lenses / "agent-lens.jsonl"
+            lens_fp.write_text(
+                json.dumps({"type": "user", "timestamp": lens_stamp, "message": {}}) + "\n"
+            )
+            (lenses / "agent-lens.meta.json").write_text(json.dumps({"name": "lens-worker"}))
+            os.utime(lens_fp, (now - 5, now - 5))
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"ensign-review", "lens-worker"}, set(published))
+        self.assertIs(True, published["ensign-review"]["active"])
+        self.assertIs(True, published["lens-worker"]["active"])
+        self.assertEqual("ensign-review", published["lens-worker"]["parent"])
+        self.assertEqual("working", session["state"])
+        self.assertEqual("running 1 subagent", session["state_detail"])
+        self.assertEqual(now - 5, session["last_activity"])
+
+    def test_a_teammate_with_only_stale_workers_reads_as_not_running(self) -> None:
+        # DRC-4346. When both teammate and its workers are quiet, the teammate
+        # still reads as not running, and does not make the lead read as working.
+        now = time.time()
+        stale_stamp = datetime.fromtimestamp(now - 300, UTC).isoformat()
+        child_sid = "bbbb2222-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(
+                proj, sid=child_sid, name="ensign-review", stamp=stale_stamp, age=300, now=now
+            )
+            lenses = proj / child_sid / "subagents"
+            lenses.mkdir(parents=True)
+            lens_fp = lenses / "agent-lens.jsonl"
+            lens_fp.write_text(
+                json.dumps({"type": "user", "timestamp": stale_stamp, "message": {}}) + "\n"
+            )
+            (lenses / "agent-lens.meta.json").write_text(json.dumps({"name": "lens-worker"}))
+            os.utime(lens_fp, (now - 300, now - 300))
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"ensign-review", "lens-worker"}, set(published))
+        self.assertIs(False, published["ensign-review"]["active"])
+        self.assertIs(False, published["lens-worker"]["active"])
+        self.assertEqual("idle", session["state"])
+        self.assertEqual("awaiting your message", session["state_detail"])

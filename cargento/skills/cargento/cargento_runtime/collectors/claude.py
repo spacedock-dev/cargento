@@ -559,6 +559,34 @@ def collect(
         # state derivation takes the running ones straight back out, so the two
         # lists retain the measured distinction. See
         # [unchanged-state capture](docs/captures/README.md#files).
+        member_flags = {
+            key: m["active"]
+            for m in team_members.get(prefix, [])
+            for key in (m["label"], m["agent_id"], m["local"])
+        }
+        child_agent_files = {
+            c["path"]: agent_transcripts(c["path"], config=config, state=state) for c in children
+        }
+        child_is_live: dict[str, bool] = {}
+        for c in children:
+            name = c.get("agent_name") or ""
+            g_files = child_agent_files.get(c["path"], [])
+            has_live_grandchild = any(
+                runtime_sessions.is_fresh(config, now, gm, config.working_threshold_sec)
+                for _, gm in g_files
+            )
+            live = (
+                runtime_sessions.is_fresh(config, now, c["mtime"], config.working_threshold_sec)
+                or has_live_grandchild
+            )
+            # Demote only. A retained-but-finished member is marked inactive and
+            # that is worth believing; the reverse is not, because the flag on a
+            # hard-killed pane is unmeasured and DRC-4229 keeps transcript
+            # freshness authoritative for "running now".
+            if live and member_flags.get(name) is False:
+                live = False
+            child_is_live[c["path"]] = live
+
         own_agents = load_subagents(
             config,
             transcript,
@@ -573,14 +601,15 @@ def collect(
             *(
                 {
                     "label": c["label"],
-                    "mtime": c["mtime"],
+                    "mtime": max(
+                        [c["mtime"], *(gm for _, gm in child_agent_files.get(c["path"], []))],
+                        default=c["mtime"],
+                    ),
                     "model": models.get(c["path"]),
                     "started_at": child_started[c["path"]],
                 }
                 for c in children
-                if runtime_sessions.is_fresh(
-                    config, now, c["mtime"], config.working_threshold_sec
-                )  # fresh = running
+                if child_is_live[c["path"]]  # fresh = running
             ),
         ]
         latest_agent_mtime = max(
@@ -592,12 +621,17 @@ def collect(
         # running: a workflow that has been going for hours parks its parent
         # transcript, and without this the session ages out of the window.
         latest_agent_file_mtime = max((m for _, m in agent_files), default=0)
+        latest_grandchild_file_mtime = max(
+            (gm for files in child_agent_files.values() for _, gm in files),
+            default=0,
+        )
         activity_sources = (
             latest_task_mtime,
             transcript_mtime,
             latest_agent_mtime,
             latest_agent_file_mtime,
             latest_child_mtime,
+            latest_grandchild_file_mtime,
         )
         last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
         active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
@@ -632,18 +666,11 @@ def collect(
         # strip, `last_activity` -- keeps reading `subagents`, which is gated on
         # `working_threshold_sec` because DRC-4118 settled that a child parked
         # hours ago must not make its parent read "running 1 subagent", and
-        # DRC-4263 requires it. What a person reads on the row is a
-        # different question: a teammate blocked on its own subagents writes
-        # nothing for minutes and used to flicker off the row entirely. It now
-        # stays, and reads as stopped -- as does an agent the lead dispatched
-        # itself, which review round 1 found still fresh-gated while the
-        # children and grandchildren beside it were not. That is not
-        # the whole of what a reader wants. A teammate whose own worker is
-        # writing is alive, and nothing here says so: the honest fix absorbs a
-        # grandchild's mtime into this session's activity the way DRC-4118 does
-        # for Cursor and `latest_agent_file_mtime` already does for the lead's
-        # own agents, and that moves `state`, which this issue's gate froze.
-        # Filed rather than taken.
+        # DRC-4263 requires it. A teammate blocked on its own subagents writes
+        # nothing for minutes; DRC-4346 absorbs its live grandchild workers'
+        # activity into the teammate's liveness and this session's activity,
+        # so the teammate reads as active and the lead reads as working while
+        # its workers are running.
         roster: list[dict[str, Any]] = [
             published_agent(
                 a["label"],
@@ -654,32 +681,14 @@ def collect(
             )
             for a in own_agents
         ]
-        # Keyed on `label`, which prefers the registry's own `name` -- the same
-        # string a child transcript writes as `agentName` and the same one
-        # `started_agent_ids` joins on three calls up. Keying on the `agentId`
-        # halves instead only agreed while `agentId` was `<name>@session-<prefix>`,
-        # and a member whose id is a hex handle would have silently escaped the
-        # demotion.
-        member_flags = {
-            key: m["active"]
-            for m in team_members.get(prefix, [])
-            for key in (m["label"], m["agent_id"], m["local"])
-        }
         for c in children:
             name = c.get("agent_name") or ""
-            live = runtime_sessions.is_fresh(config, now, c["mtime"], config.working_threshold_sec)
-            # Demote only. A retained-but-finished member is marked inactive and
-            # that is worth believing; the reverse is not, because the flag on a
-            # hard-killed pane is unmeasured and DRC-4229 keeps transcript
-            # freshness authoritative for "running now".
-            if live and member_flags.get(name) is False:
-                live = False
             roster.append(
                 published_agent(
                     c["label"],
                     model=models.get(c["path"]),
                     started_at=child_started[c["path"]],
-                    active=live,
+                    active=child_is_live[c["path"]],
                     parent=None,
                 )
             )
@@ -690,7 +699,7 @@ def collect(
             # orphan a grandchild into a peer row. They reach the roster only:
             # counting them into `subagents` would make a lead running one
             # teammate read as running eight.
-            for gp, gm in agent_transcripts(c["path"], config=config, state=state):
+            for gp, gm in child_agent_files.get(c["path"], []):
                 if not runtime_sessions.is_fresh(config, now, gm, window_hours * 3600):
                     continue
                 roster.append(
