@@ -1,7 +1,7 @@
 ---
 id: drc-4009
 title: 'A6 · Overrun likelihood before you start'
-status: triage
+status: recorded
 source: https://linear.app/recce/issue/DRC-4009
 started: 2026-09-04T02:34:11Z
 completed:
@@ -11,7 +11,7 @@ worktree:
 issue:
 pr:
 mod-block:
-linear-status: Todo
+linear-status: Done
 milestone: 'Don''t burn capacity'
 release: 'later'
 estimate: 'XL'
