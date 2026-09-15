@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4200:triage:attempt-1:revision-1",
+  "question": "Approve the capture privacy assertion using field roles and content exclusions rather than an unsupported length cap?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4200:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/0cce09a15d214182530ac4678f722fafe73f75b1/drc-4200.md",
+      "rev": "sha256:ee55dd20b4febbf8043ed6fa61e7fac79debde16f4f13d4db697a6bb6d49d834",
+      "mediaType": "text/markdown",
+      "summary": "Three triage obligations passed. Original13/1 allegations do not reproduce; no actual excluded value was demonstrated in the two named captures. Add the commissioned corpus assertion and safe negative-path fixtures in existing documentation tests, preserving measured provenance and documented closed vocabulary. No arbitrary length cap, invented scrub receipt, new CI lane or runtime change. Approve role/content boundary, four offline criteria, bounded2-4-file plan and focused security review."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4200:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/3c4abe23fecd5f4b8e7f0e7dff8ad0d318f7f86f/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
