@@ -836,8 +836,9 @@ class DiagnoseTest(unittest.TestCase):
             {"harness": "codex", "state": "idle"},
         ]
 
-        def collect(_self: Any, *, show_all: bool) -> dict[str, Any]:
+        def collect(_self: Any, *, show_all: bool, notify: bool = True) -> dict[str, Any]:
             assert show_all, "diagnose must ask for every session, not just active ones"
+            assert not notify, "diagnose must ask for notify=False to prevent writes and popups"
             return {
                 "sessions": counted,
                 "tripwires": {"error": ""},
@@ -906,6 +907,81 @@ class DiagnoseTest(unittest.TestCase):
         self.assertEqual("/opt/pi", report["env"]["PI_CODING_AGENT_DIR"])
         self.assertEqual("/sessions", report["env"]["PI_CODING_AGENT_SESSION_DIR"])
         self.assertEqual("/sessions", report["stores"]["pi.sessions"]["candidates"][0]["path"])
+
+    def test_cargento_home_and_xdg_overrides_are_surfaced(self) -> None:
+        """DRC-4180: CARGENTO_HOME and XDG_DATA_HOME are reported in env and cargento_home."""
+        with mock.patch.dict(
+            os.environ, {"CARGENTO_HOME": "/opt/cargento", "XDG_DATA_HOME": "/opt/xdg"}
+        ):
+            report = diagnose(24)
+        self.assertEqual("/opt/cargento", report.get("cargento_home"))
+        self.assertEqual("/opt/cargento", report["env"].get("CARGENTO_HOME"))
+        self.assertEqual("/opt/xdg", report["env"].get("XDG_DATA_HOME"))
+        text = diagnostics.render_diagnosis(report)
+        self.assertIn("  cargento   /opt/cargento", text)
+        self.assertIn("CARGENTO_HOME=/opt/cargento", text)
+        self.assertIn("XDG_DATA_HOME=/opt/xdg", text)
+
+    def test_diagnose_over_needs_input_session_writes_nothing(self) -> None:
+        """DRC-4553: --diagnose reads local paths only and writes nothing."""
+        import time  # noqa: PLC0415
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from cargento_runtime.cli import main as cli_main  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as td:
+            cargento_home = Path(td) / "cargento"
+            cargento_home.mkdir(mode=0o700)
+            home = Path(td) / "home"
+            claude_dir = home / ".claude" / "projects" / "-test-project"
+            claude_dir.mkdir(parents=True)
+            stamp = datetime.fromtimestamp(time.time(), tz=UTC).isoformat()
+            transcript = claude_dir / "a1b2c3d4-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "uuid": "u1",
+                                "timestamp": stamp,
+                                "message": {"content": "hello"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "timestamp": stamp,
+                                "message": {
+                                    "content": [
+                                        {
+                                            "type": "tool_use",
+                                            "id": "t1",
+                                            "name": "AskUserQuestion",
+                                            "input": {"questions": [{"question": "Which?"}]},
+                                        }
+                                    ],
+                                    "usage": {"output_tokens": 10},
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            env = {
+                **os.environ,
+                "CARGENTO_HOME": str(cargento_home),
+                "HOME": str(home),
+                "CLAUDE_CONFIG_DIR": str(home / ".claude"),
+            }
+            with mock.patch.dict(os.environ, env, clear=True):
+                code = cli_main(["--diagnose"])
+            self.assertEqual(0, code)
+            self.assertEqual(
+                [], os.listdir(cargento_home), "--diagnose wrote files into cargento_home"
+            )
 
 
 class OperatingSystemExpectationTest(unittest.TestCase):

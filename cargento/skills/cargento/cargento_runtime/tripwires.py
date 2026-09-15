@@ -260,6 +260,8 @@ def _collect(
     now: float,
     native: str,
     notifier: Callable[[str, str], str | None],
+    *,
+    notify: bool = True,
 ) -> dict[str, Any]:
     memory = state.tripwire_memory
     by_id = {source["id"]: source for source in sources}
@@ -286,10 +288,10 @@ def _collect(
         if candidate and (candidate["revision"] != rule["revision"] or rule["state"] == "tripped"):
             pending.pop(key)
             candidate = None
-        if trip and candidate is None:
+        if trip and candidate is None and notify:
             candidate = {**rule, "state": "tripped", "trip": trip}
             pending[key] = candidate
-        if candidate:
+        if candidate and notify:
             updated = {**rules, key: candidate}
             if save(config, updated):
                 rules = updated
@@ -369,11 +371,13 @@ def collect(
     now: float,
     native: str,
     notifier: Callable[[str, str], str | None],
+    *,
+    notify: bool = True,
 ) -> dict[str, Any]:
     if not config.tripwires_enabled:
         return {"enabled": False, "error": "", "sources": [], "rules": []}
     with state.tripwire_lock:
-        return _collect(config, state, sources, now, native, notifier)
+        return _collect(config, state, sources, now, native, notifier, notify=notify)
 
 
 def _edit_refusal(
