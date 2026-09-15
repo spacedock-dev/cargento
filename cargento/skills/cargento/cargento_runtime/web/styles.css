@@ -789,7 +789,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-scope-tree a[aria-current="page"],.next-cockpit-scope-options a[aria-current="page"]{box-shadow:inset 2px 0 var(--ink2);background:var(--panel);color:var(--ink)}
 .next-cockpit-scope-tree .next-scope-cue,.next-cockpit-scope-options .next-scope-cue{grid-column:1/-1;margin-bottom:4px}
 .next-cockpit-scope-tree strong,.next-cockpit-scope-tree span,.next-cockpit-scope-tree small,.next-cockpit-scope-options strong,.next-cockpit-scope-options span,.next-cockpit-scope-options small{min-width:0;overflow-wrap:anywhere;white-space:normal}
-.next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-tree small,.next-cockpit-scope-options .next-cockpit-scope-state,.next-cockpit-scope-options small{font:var(--fs-xs) var(--mono);color:var(--ink3)}
+.next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-options .next-cockpit-scope-state{display:flex;align-items:center;gap:6px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
+.next-cockpit-scope-tree .next-cockpit-scope-state--working,.next-cockpit-scope-options .next-cockpit-scope-state--working{color:var(--ink2)}
+.next-cockpit-scope-tree small,.next-cockpit-scope-options small{font:var(--fs-xs) var(--mono);color:var(--ink3)}
 .next-cockpit-scope-tree small,.next-cockpit-scope-options small{grid-column:1/-1;margin-top:3px;color:var(--ink2);line-height:1.5}
 .next-scope-cue{position:relative;display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%;color:var(--ink3);font:var(--fs-2xs) var(--mono);letter-spacing:.07em;line-height:1.2}
 .next-scope-cue>strong{color:var(--ink);font:inherit;font-weight:600}

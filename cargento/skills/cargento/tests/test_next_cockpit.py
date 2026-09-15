@@ -1945,7 +1945,9 @@ console.log(JSON.stringify({
         self.assertLess(out["nav"], out["html"].index('class="next-cockpit-tabs"'))
         self.assertIn(
             '<strong class="next-cockpit-scope-name">Codex</strong>'
-            '<span class="next-cockpit-scope-state">working</span>',
+            '<span class="next-cockpit-scope-state next-cockpit-scope-state--working">'
+            '<span class="next-project-dot next-project-tone--unknown next-project-dot--working" role="img" aria-label="working"></span>'
+            "working</span>",
             out["sessionNav"],
         )
         self.assertIn("<small>Shape project cockpit</small>", out["sessionNav"])
@@ -6977,6 +6979,49 @@ console.log(JSON.stringify({visible, rows: html.split("</a>").length - 1}));
         self.assertIn("twin-b", visible)
         # The session nothing can be confused with is not made noisier for it.
         self.assertNotIn("alone", visible)
+
+    def test_scope_links_order_working_sessions_above_idle_with_live_indicators(self) -> None:
+        """Working sessions show below the project line but above idle sessions with a pulsing dot."""
+        out = self.run_fixture(
+            r"""
+const group = {label:"cargento", sessions:[
+  {harness:"claude", sid:"c1", state:"idle", title:"Idle Claude session 1"},
+  {harness:"claude", sid:"c2", state:"idle", title:"Idle Claude session 2"},
+  {harness:"codex", sid:"w1", state:"working", title:"Working Codex session", tone:"want"},
+  {harness:"codex", sid:"i1", state:"idle", title:"Idle Codex session"}
+]};
+const html = nextCockpitScopeLinks(group, null);
+const links = Array.from(html.matchAll(/<a\s+([^>]+)>([\s\S]*?)<\/a>/g)).map(m => {
+  const attrs = m[1];
+  const body = m[2];
+  const scope = (attrs.match(/data-next-cockpit-scope="([^"]+)"/) || [])[1];
+  const kind = (attrs.match(/data-scope-kind="([^"]+)"/) || [])[1];
+  const working = (attrs.match(/data-next-working="([^"]+)"/) || [])[1] || null;
+  const hasDot = body.includes("next-project-dot--working");
+  const dotTone = (body.match(/next-project-tone--(\w+)/) || [])[1] || null;
+  const stateMatch = body.match(/class="next-cockpit-scope-state[^"]*">([\s\S]*?)<\/span><small/);
+  const state = stateMatch ? stateMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+  return {scope, kind, working, hasDot, dotTone, state};
+});
+console.log(JSON.stringify({scopes: links}));
+"""
+        )
+        assert isinstance(out, dict)
+        scopes = out["scopes"]
+        self.assertEqual(5, len(scopes))
+        self.assertEqual("project", scopes[0]["scope"])
+        self.assertEqual("project", scopes[0]["kind"])
+        self.assertEqual("codex:w1", scopes[1]["scope"])
+        self.assertEqual("session", scopes[1]["kind"])
+        self.assertEqual("true", scopes[1]["working"])
+        self.assertTrue(scopes[1]["hasDot"])
+        self.assertEqual("want", scopes[1]["dotTone"])
+        self.assertEqual("working", scopes[1]["state"])
+        for idle in scopes[2:]:
+            self.assertEqual("session", idle["kind"])
+            self.assertIsNone(idle["working"])
+            self.assertFalse(idle["hasDot"])
+            self.assertEqual("idle", idle["state"])
 
     def test_the_absence_sentence_goes_as_soon_as_the_box_stops_being_empty(self) -> None:
         """Finding L's remainder, in the one lane that does not redraw.

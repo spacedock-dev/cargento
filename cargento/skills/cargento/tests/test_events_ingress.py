@@ -1400,6 +1400,12 @@ class StatuslinePushTest(unittest.TestCase):
 class AntigravityHookTest(unittest.TestCase):
     """`agy_hook.py`: a third input contract, with a gate hazard attached."""
 
+    def setUp(self) -> None:
+        patcher = unittest.mock.patch.dict(os.environ, {})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("ANTIGRAVITY_CONVERSATION_ID", None)
+
     def payload(self, **overrides: Any) -> dict[str, Any]:
         # camelCase, as Antigravity's protojson encoding produces.
         payload: dict[str, Any] = {
