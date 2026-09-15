@@ -54,6 +54,7 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+promise: P2
 ---
 
 [DRC-4029](https://linear.app/recce/issue/DRC-4029) — Linear priority Medium, estimate XS.
