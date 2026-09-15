@@ -29,6 +29,10 @@ gates:
                 id: briefing:drc-4009:triage:attempt-1:revision-1
                 digest: sha256:938670134a8248158cee0c690dd982811e78a4c9327d723eadfe40ff58f5c811
                 room-ref: ./review/triage/briefing-1
+              withdrawal:
+                by: agent:first-officer
+                at: "2026-09-15T03:14:42.298584Z"
+                reason: Linear status is Done (completed) in the full 319-issue read on 2026-09-15. Captain requested local-state reconciliation; this stale triage request is withdrawn without approval or a delivery verdict.
 ---
 
 [DRC-4009](https://linear.app/recce/issue/DRC-4009) — Linear priority Low, estimate XL.
