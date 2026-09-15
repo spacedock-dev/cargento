@@ -70,6 +70,10 @@ disabled rather than silently missing.
 **We promise:** for each live session, what it is doing now, what it plans next, how far into the
 current turn it is, and an estimate of when that turn ends. It tells you when that changes instead
 of making you poll.
+Claude Code and Codex hooks also report matched destructive command shapes; a match does not
+prove success. Cargento saves a stage you choose for a Spacedock workflow and alerts once when
+it observes an entity enter that stage; gaps and unavailable sources are stated, and a
+notification request does not prove a banner appeared.
 
 Backed by the current-turn elapsed and ETA estimate with its progress bar, the warning that fires
 when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its

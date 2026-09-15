@@ -1181,6 +1181,7 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
     ) -> None:
         out = self._run_page_js(
             """
+const interactionBefore = nextStageInteraction;
 __fire("keydown", {key: "s", target: {tagName: "BODY"}, preventDefault(){}});
 const sessions = {route: {...nextRoute}, hash: location.hash, html: __els.app.innerHTML};
 navigateNext({view: "session", project: "recce", session: "one"});
@@ -1195,7 +1196,8 @@ console.log(JSON.stringify({
   attention,
   assigned: __assignedLocations,
   search: location.search,
-  keydownListeners: (__listeners.keydown || []).length
+  keydownListeners: (__listeners.keydown || []).length,
+  focusMovements: nextStageInteraction - interactionBefore
 }));
 """,
             'location.search = "?all=1";\nlocation.hash = "#n=project:recce";\n'
@@ -1220,7 +1222,8 @@ console.log(JSON.stringify({
         self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
         self.assertEqual([], out["assigned"])
         self.assertEqual("?all=1", out["search"])
-        self.assertEqual(1, out["keydownListeners"])
+        self.assertEqual(2, out["keydownListeners"])
+        self.assertEqual(4, out["focusMovements"])
 
     def test_projects_shortcut_keeps_modifier_and_form_field_guards(self) -> None:
         out = self._run_page_js(
@@ -1907,7 +1910,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         )
 
         self.assertEqual(["/api/data?all=1"], out["calls"])
-        self.assertEqual([5000], out["periods"])
+        self.assertEqual([2000, 5000], out["periods"])
 
     def test_poll_omits_all_when_the_query_does(self) -> None:
         out = self._run_page_js(
