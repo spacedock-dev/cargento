@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4379:triage:attempt-1:revision-1",
+  "question": "Approve the OpenCode parent-session permission adapter, per-project installation, seven acceptance criteria and security review scope?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4379:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/84d1faa9afbda79b8c8560e7c6f5f873fd01e269/drc-4379.md",
+      "rev": "sha256:4a84d284c986a9ecee7b6f2ddf636a662786b72cdc4d03ac50c05dbdd5fe9b5c",
+      "mediaType": "text/markdown",
+      "summary": "All three triage obligations passed. Official 1.18.30 real allow/reject prompts produced matching passive asked/replied events and whole collector identity; no-permission control passed. Homebrew-build failures remain recorded. Approve parent-only per-project coverage, seven split criteria and separately costed runtime, validator, test and documentation caps, with implementation preceding the shared Pi adapter work."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:drc-4379:triage:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/3c4abe23fecd5f4b8e7f0e7dff8ad0d318f7f86f/docs/roadmap-burndown/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ddc506c2c48091bc8aa80f2f177b95ba61c714b983339c202b8f579eb4c9f330"
+    }
+  ]
+}
