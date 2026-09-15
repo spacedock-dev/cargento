@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4181:review:attempt-1:revision-1",
+  "question": "Merge stale state sweeping fix in PR #348?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4181:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/3bae41195ef703da8604bbc0859ef1dbb2fd3807/drc-4181.md",
+      "rev": "sha256:14f93bb93b40bf820568b6388f46bc35b4dd79eea055a6fc295b6c0e487552df",
+      "mediaType": "text/markdown",
+      "summary": "PR #348 with passing quality gate across all platforms"
+    }
+  ]
+}
