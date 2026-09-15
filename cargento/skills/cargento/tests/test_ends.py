@@ -455,6 +455,9 @@ class ColdSource:
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         pass
 
+    def command_reports(self) -> list[dict[str, Any]]:
+        return []
+
     def drop_counters(self) -> dict[str, int]:
         return {}
 

@@ -1187,3 +1187,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
   .pc-trail-top span{text-align:left}
   .pc-terminal-viewport{height:220px}
 }
+
+.next-stage-conditions { margin: 1rem 0; }
+.next-stage-rule { border: 1px solid currentColor; border-radius: .4rem; padding: 1rem; margin: .75rem 0; }
+.next-stage-rule p { margin: .4rem 0; }
+.next-stage-editor { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.next-stage-editor select, .next-stage-editor button { font: inherit; padding: .4rem; }

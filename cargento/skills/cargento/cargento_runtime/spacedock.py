@@ -8,6 +8,7 @@ boundary described in SECURITY.md.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -171,6 +172,34 @@ def stage_entries(config: RuntimeConfig, lines: list[str]) -> list[dict[str, Any
         names.add(value)
         entries.append({"name": value, "initial": False, "terminal": False})
     return entries
+
+
+def _codex_boot(config: RuntimeConfig, text: str) -> dict[str, Any] | None:
+    """One complete direct result, measured rendering, or successful wrapper."""
+    text = text.strip().removeprefix("=== BOOT ===\n")
+    try:
+        wrapper = json.loads(text)
+    except (ValueError, RecursionError):
+        return None if text[:1] in ("{", "[", '"') else rendered_envelope(config, text)
+    if not isinstance(wrapper, dict) or (
+        wrapper.get("command") == "boot" and "status" not in wrapper
+    ):
+        return wrapper if isinstance(wrapper, dict) else None
+    value = wrapper.get("value")
+    if wrapper.get("status") != "fulfilled" or not isinstance(value, dict):
+        return None
+    output = value.get("output")
+    if (
+        type(value.get("exit_code")) is not int
+        or value["exit_code"] != 0
+        or not isinstance(output, str)
+    ):
+        return None
+    try:
+        boot = json.loads(output)
+    except (ValueError, RecursionError):
+        return None
+    return boot if isinstance(boot, dict) and boot.get("command") == "boot" else None
 
 
 def _codex_tool_output(record: dict[str, Any]) -> list[str] | None:
@@ -396,6 +425,13 @@ def boot_records(config: RuntimeConfig, data: bytes) -> list[dict[str, Any]]:
         if not isinstance(record, dict):
             continue
         for text in tool_result_text(record):
+            if record.get("type") == "response_item":
+                envelope = _codex_boot(config, text)
+                if envelope is not None:
+                    out.append(envelope)
+                    if len(out) >= config.spacedock_max_boot_records:
+                        return out
+                continue
             found = len(out)
             position = 0
             for _ in range(config.spacedock_max_boot_candidates):
@@ -660,15 +696,17 @@ def read_workflow(
         readme = os.path.join(root, "README.md")
         resolved = os.path.realpath(readme)
         containment_root = os.path.realpath(definition_root) if definition_root else root
-        if definition_root and os.path.dirname(root) != containment_root:
-            return None
-        if os.path.commonpath((containment_root, resolved)) != containment_root:
+        if (definition_root and os.path.dirname(root) != containment_root) or os.path.commonpath(
+            (containment_root, resolved)
+        ) != containment_root:
             return None
         read_path = resolved if definition_root else readme
-        info = os.stat(read_path)
+        info = os.lstat(read_path)
+        if not stat_module.S_ISREG(info.st_mode):
+            return None
     except (OSError, ValueError):
         return None
-    key = (root, info.st_mtime_ns, info.st_size)
+    key = (root, info.st_dev, info.st_ino, info.st_ctime_ns, info.st_mtime_ns, info.st_size)
     with state.cache_lock:
         if key in state.spacedock_workflow_cache:
             return state.spacedock_workflow_cache[key]
@@ -724,7 +762,7 @@ def entity_stage(
     return stage
 
 
-def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str, os.stat_result]]:
+def _entity_candidates(entity_dir: str) -> list[tuple[str, str, os.stat_result]]:
     """``(slug, path, stat)`` for a state directory's entity files, newest first.
 
     Spacedock writes an entity as either ``<slug>.md`` or ``<slug>/index.md``
@@ -775,7 +813,11 @@ def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str,
             continue  # a symlinked entity file is refused, not followed
         out.append((slug, path, info))
     out.sort(key=lambda item: -item[2].st_mtime_ns)
-    return out[: config.spacedock_max_entity_files]
+    return out
+
+
+def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str, os.stat_result]]:
+    return _entity_candidates(entity_dir)[: config.spacedock_max_entity_files]
 
 
 def read_entities(
@@ -842,6 +884,61 @@ def attribute_worker(name: str, slugs: list[str], stages: list[str]) -> tuple[st
     return None
 
 
+def workflow_observation(
+    config: RuntimeConfig,
+    _state: RuntimeState,
+    workflow_dir: str,
+    entity_dir: str,
+    info: dict[str, Any],
+    now: float,
+    window_sec: float,
+) -> dict[str, Any]:
+    """Current entity evidence, independent of the twelve-row display roster."""
+    pair = ["cargento-workflow-v1", os.path.realpath(workflow_dir), os.path.realpath(entity_dir)]
+    identity = hashlib.sha256(json.dumps(pair).encode()).hexdigest()
+    observed: list[dict[str, Any]] = []
+    files = _entity_candidates(entity_dir)
+    counts: dict[str, int] = {}
+    for slug, _path, _stat in files:
+        counts[slug] = counts.get(slug, 0) + 1
+    selected = files[: config.spacedock_max_entity_files]
+    for slug, path, stat in selected:
+        if counts[slug] != 1 or not 0 <= now - stat.st_mtime <= window_sec:
+            continue
+        try:
+            lines = read_frontmatter(config, path, config.spacedock_entity_bytes, stat)
+        except SdMismatchError:
+            continue
+        stage = scalar(lines, "status")
+        if stage in info["stages"]:
+            observed.append(
+                {
+                    "slug": slug,
+                    "stage": stage,
+                    "source": "entity-state",
+                    "source_written_at": stat.st_mtime,
+                    "observed_at": now,
+                }
+            )
+    try:
+        directory = os.stat(entity_dir)
+        generation = hashlib.sha256(
+            json.dumps([directory.st_dev, directory.st_ino, info["stages"]]).encode()
+        ).hexdigest()
+    except (OSError, ValueError):
+        generation = ""
+    return {
+        "id": identity,
+        "workflow": records.safe_text(info["name"], 120),
+        "goal": info.get("goal", ""),
+        "stages": info["stages"],
+        "generation": generation,
+        "entities": observed,
+        "evaluated": len(observed),
+        "partial": len(files) > len(selected) or len(observed) < len(selected),
+    }
+
+
 def session_workflows(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -901,10 +998,16 @@ def session_workflows(
                 continue
             seen.add(slug)
             entities.append({"slug": slug, "stage": stage, "cycle": "", "live": False})
-        if not entities:
+        source = (
+            workflow_observation(config, state, workflow_dir, entity_dir, info, now, window_sec)
+            if entity_dir and config.tripwires_enabled
+            else None
+        )
+        if not entities and (source is None or not source["generation"]):
             continue
         out.append(
             {
+                **({"tripwire_source": source} if source is not None else {}),
                 "workflow": info["name"],
                 "goal": info.get("goal", ""),
                 "stages": stages,

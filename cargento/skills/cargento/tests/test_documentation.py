@@ -1527,11 +1527,13 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
             "## Irreversible actions (hook-side destructive-shape matching)", self.SECURITY
         )
 
-    def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
-        self.assertIn("No shipped adapter matches a command shape", self.FLAT)
-        self.assertIn("That flag does not exist yet", self.SECTION)
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            cli.build_parser().parse_args(["--no-irreversible"])
+    def test_the_shipped_report_and_its_off_switch_agree(self) -> None:
+        args = cli.build_parser().parse_args(["--no-irreversible"])
+        config, _ = cli.build_runtime(args, started=1_700_000_000.0)
+        self.assertFalse(config.irreversible_enabled)
+        self.assertIn("nominal 5 ms", self.FLAT)
+        self.assertIn("newest 1,000 reports globally", self.FLAT)
+        self.assertIn("six fields", self.SECTION)
 
     def test_the_allowlist_names_every_input_read_the_package_makes(self) -> None:
         # Counted rather than listed, because the failure this guards against is
@@ -1615,27 +1617,10 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
         }
         self.assertEqual(set(claude_data.INPUT_TOOLS), named)
 
-    def test_the_envelope_paragraph_is_amended_rather_than_outgrown(self) -> None:
-        # The conflict this resolves. The envelope paragraph says the prompt, the
-        # tool name, the tool input and the tool output are all dropped in the hook
-        # and never put on a socket. DEC-5's shape posts the tool name, so one of
-        # those four has to come back, and the amendment says which and why rather
-        # than letting a future commit discover it. The sentence itself stays
-        # intact because it is true until that commit lands, and the width is
-        # already fenced by `EventEnvelopeEnumerationTest`.
-        self.assertIn(
-            "the prompt, the tool name, the tool input and the tool output are dropped in the hook",
-            self.FLAT,
-        )
-        self.assertIn("Irreversible actions above is where that is settled", self.FLAT)
-        self.assertIn("it would stop the tool name being dropped", self.FLAT)
-        # The three that stay dropped, said in both places, so neither can widen alone.
-        for place in (
-            "The prompt, the tool input and the tool output would stay dropped",
-            "are the three that stay dropped",
-        ):
-            with self.subTest(clause=place):
-                self.assertIn(place, self.FLAT)
+    def test_the_report_exception_keeps_lifecycle_privacy_explicit(self) -> None:
+        self.assertIn("Ordinary lifecycle envelopes still drop the tool name", self.FLAT)
+        self.assertIn("The prompt, the tool input and the tool output stay dropped", self.FLAT)
+        self.assertIn("exactly six fields", self.FLAT)
 
     def test_the_posted_fields_are_the_shape_dec_5_allowed(self) -> None:
         # DEC-5 allowed an identifier, the tool name and a timestamp. An earlier
@@ -1706,7 +1691,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--no-handoff"])
 
-    def test_the_three_unshipped_switches_are_the_only_no_flags_missing(self) -> None:
+    def test_the_two_unshipped_switches_are_the_only_no_flags_missing(self) -> None:
         # One oracle for all three sections. The parser's `--no-*` set is read off
         # its source the way `EventEnvelopeEnumerationTest` reads `config.py`, so
         # a fourth documented-but-unshipped flag cannot hide behind a passing
@@ -1731,10 +1716,12 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
                 "--no-annotations",
                 "--no-ask",
                 "--no-events",
+                "--no-irreversible",
+                "--no-tripwires",
             },
             shipped,
         )
-        for documented in ("--no-handoff", "--no-reach", "--no-irreversible"):
+        for documented in ("--no-handoff", "--no-reach"):
             with self.subTest(flag=documented):
                 self.assertNotIn(documented, shipped)
                 self.assertIn(f"`{documented}`", self.FLAT)
@@ -2031,10 +2018,10 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
             'path.startswith("/api/events/")' in do_post
         )
         gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
-        self.assertEqual(12, routes)
+        self.assertEqual(13, routes)
         self.assertEqual(2, gated)
-        self.assertIn("Writing is the twelve POST routes", self.FLAT)
-        self.assertIn("There is nothing to authenticate with on ten of them", self.FLAT)
+        self.assertIn("Writing is the thirteen POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on eleven of them", self.FLAT)
         self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
 
     def test_the_documented_framing_header_is_the_one_the_server_sends(self) -> None:

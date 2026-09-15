@@ -64,9 +64,9 @@ class DefaultPageRoutingTest(unittest.TestCase):
     def test_the_canonical_loader_is_the_released_ui_bundle(self) -> None:
         page = frontend_page.load_page()
 
-        self.assertEqual(896_141, len(page))
+        self.assertEqual(905_655, len(page))
         self.assertEqual(
-            "dd54087e3f5bc298b84f107dbaa6273715ce0b6b45c19cfefb06c4c1ec9f205d",
+            "ed302024e899ccc9927df92f7ff364d741c449e7725301b4ac7dd4078039d8db",
             hashlib.sha256(page).hexdigest(),
         )
 

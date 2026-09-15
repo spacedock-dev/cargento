@@ -256,3 +256,115 @@ document.addEventListener("click", event => {
   nextControlsStoreRules(project, state);
   renderNext();
 });
+
+
+const nextStageDrafts = new Map();
+const nextStageCues = new Map();
+const nextStageBusy = new Set();
+let nextStageInteraction = 0;
+for(const kind of ["pointerdown", "keydown"]){
+  document.addEventListener(kind, () => { nextStageInteraction += 1; });
+}
+
+function nextStageData(){
+  return nextData && nextData.tripwires || {enabled:false, sources:[], rules:[]};
+}
+
+function nextStageButton(id, action, label, disabled){
+  return `<button type="button" data-stage-id="${esc(id)}" data-stage-action="${action}" ` +
+    `data-next-focus="stage:${esc(id)}:${action}"${disabled ? " disabled" : ""}>${label}</button>`;
+}
+
+function nextStageCard(source, rule){
+  const id = (source || rule).id;
+  const busy = nextStageBusy.has(id);
+  const draft = nextStageDrafts.get(id) || rule && rule.stage || source && source.stages[0] || "";
+  const unavailable = !source || !source.generation || source.ambiguous;
+  const valid = source && source.stages.includes(draft);
+  const options = (source && !valid ? `<option value="${esc(draft)}" selected disabled>${esc(draft)} (unavailable)</option>` : "") +
+    (source ? source.stages.map(stage =>
+      `<option value="${esc(stage)}"${stage === draft ? " selected" : ""}>${esc(stage)}</option>`).join("") : "");
+  const editor = source ? '<label>Alert once when an observed entity enters ' +
+    `<select data-stage-choice="${esc(id)}" data-next-focus="stage:${esc(id)}:choice"` +
+    `${busy || unavailable ? " disabled" : ""}>${options}</select></label>` +
+    nextStageButton(id, "save", "Save", busy || unavailable || !valid) : "";
+  const controls = rule ? nextStageButton(id, "rearm", "Rearm", busy || unavailable || !source.stages.includes(rule.stage)) +
+    nextStageButton(id, "remove", "Remove", busy) : "";
+  const scope = source ? source.sessions.map(s => `${s.label} (${s.harness})`).join(" · ") : nextStageData().source_enabled === false ? "Project reads are off (--no-spacedock)" : "Source session absent";
+  const trip = rule && rule.trip;
+  const stamp = seconds => new Date(seconds * 1000).toLocaleString();
+  const times = trip ? `Observed ${stamp(trip.before_observed_at)} → ${stamp(trip.observed_at)}; ` +
+    `source file written ${stamp(trip.source_written_at)}.` : "";
+  const coverage = source ? `${source.entities.length} current entity records evaluated` +
+    (source.partial ? " · partial coverage; missing or capped records are unavailable" : "") :
+    "Current entity state unavailable";
+  const why = source && source.ambiguous ?
+    "Workflow choice is ambiguous; open one source session or give the workflows distinct names." :
+    rule && rule.why || "Save a stage condition to start a fresh baseline.";
+  const lane = trip && nextBrowserNotifyOwns(nextData) ?
+    `Browser notification lane: ${nextNotifyPermission()}. No banner is confirmed.` : "";
+  return `<article class="next-stage-rule" data-stage-rule="${esc(id)}"><h3>${esc((source || rule).workflow)}</h3>` +
+    `<p>${esc(source && source.goal || "")} · ${esc(scope)}</p>` +
+    (rule ? `<p>Saved stage: ${esc(rule.stage)} · ${esc(rule.state)}${rule.available ? "" : " · suspended"}</p>` : "") +
+    `<p>${esc(why)}</p><p>${esc(coverage)}</p><p>${esc(times)}</p>` +
+    `<p>${esc(rule && rule.delivery_why || "")} ${esc(lane)}</p><div class="next-stage-editor">${editor}${controls}</div>` +
+    `<p role="status">${esc(nextStageCues.get(id) || "")}</p></article>`;
+}
+
+function nextStageConditions(sessions = null){
+  const data = nextStageData();
+  if(!data.enabled) return "";
+  const sources = data.sources || [];
+  const keys = sessions && new Set(sessions.map(s => `${s.harness}:${s.sid}`));
+  const selected = sources.filter(source => !keys || source.sessions.some(s => keys.has(`${s.harness}:${s.sid}`)));
+  const rules = data.rules || [];
+  const ids = new Set(selected.map(source => source.id));
+  const cards = selected.map(source => nextStageCard(source, rules.find(rule => rule.id === source.id)));
+  if(!keys) cards.push(...rules.filter(rule => !ids.has(rule.id)).map(rule => nextStageCard(null, rule)));
+  return '<section class="next-stage-conditions" aria-label="Workflow stage conditions"><h2>Workflow stage conditions</h2>' +
+    `<p>${esc(data.error || (data.source_enabled === false ? "Project reads are off (--no-spacedock); saved conditions are suspended." : "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred."))}</p>` +
+    (cards.join("") || '<p>Workflow stage source unavailable. Saved conditions remain in Projects.</p>') + '</section>';
+}
+
+document.addEventListener("change", event => {
+  const input = nextControlsClosest(event, "[data-stage-choice]");
+  if(input) nextStageDrafts.set(String(input.dataset.stageChoice), String(input.value));
+});
+
+document.addEventListener("click", async event => {
+  const button = nextControlsClosest(event, "[data-stage-action]");
+  if(!button) return;
+  event.preventDefault();
+  const id = String(button.dataset.stageId);
+  if(nextStageBusy.has(id)) return;
+  const action = String(button.dataset.stageAction);
+  const data = nextStageData();
+  const rule = data.rules.find(row => row.id === id);
+  const source = data.sources.find(row => row.id === id);
+  const stage = action === "save" ? nextStageDrafts.get(id) || rule && rule.stage || source && source.stages[0] : rule && rule.stage;
+  if(action === "save" && (!source || !source.stages.includes(stage))){
+    nextStageCues.set(id, "Choose an available stage before saving.");
+    renderNext();
+    return;
+  }
+  const focus = nextCaptureFocus();
+  const interaction = nextStageInteraction;
+  nextStageBusy.add(id);
+  nextStageCues.set(id, "Saving…");
+  renderNext();
+  try{
+    const response = await fetch("/api/tripwire", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action,id,stage,expected_revision:rule && rule.revision || ""})});
+    const answer = await response.json();
+    if(!response.ok || !answer.ok) throw new Error(answer.error || "Could not save the stage condition.");
+    nextStageDrafts.delete(id);
+    nextStageCues.set(id, action === "remove" ? "Removed." : action === "rearm" ? "Rearmed; baseline reset." : "Saved.");
+    await refreshNext();
+  }catch(error){
+    nextStageCues.set(id, String(error.message || "Could not save the stage condition."));
+  }finally{
+    nextStageBusy.delete(id);
+    const current = nextCaptureFocus();
+    renderNext(interaction === nextStageInteraction && !current ? focus : current);
+  }
+});

@@ -20,6 +20,7 @@ from . import (
     reading,
     records,
     sessions,
+    tripwires,
     unasked,
 )
 from . import ends as runtime_ends
@@ -183,6 +184,8 @@ class OverlaySource(Protocol):
     def note_rows(self, keys: set[tuple[str, str]]) -> None: ...
 
     def drop_counters(self) -> dict[str, int]: ...
+
+    def command_reports(self) -> list[dict[str, Any]]: ...
 
 
 Collection: TypeAlias = dict[str, Any]
@@ -696,8 +699,9 @@ class Application:
             return []
 
     def collect(self, *, show_all: bool) -> Collection:
-        config, state = self.config, self.state
-        window_hours, now = config.window_hours, self.clock()
+        config, state, window_hours, now = (
+            self.config, self.state, self.config.window_hours, self.clock()
+        )
         cleared_marks = dismissals.refresh(config, state)
         # Alongside the dismissal refresh and for its reason: two dashboards can
         # bind on one machine and the file is the record, so a save made in the
@@ -783,6 +787,14 @@ class Application:
         # happened — subtracting first would punch gaps in the history of any
         # session the reader ever cleared.
         self._notify_waits(out_sessions, generations)
+        stage_conditions = tripwires.collect(
+            config,
+            state,
+            tripwires.sources_from_sessions(out_sessions),
+            now,
+            self.native_notifier(config.platform_name),
+            self.popup_notifier,
+        )
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         _attach_cached_goals(config, out_sessions)
         sessions.assign_display_ids(config, out_sessions)
@@ -791,6 +803,7 @@ class Application:
         total_tasks = sum(x["total"] for x in out_sessions)
         total_done = sum(x["done"] for x in out_sessions)
         collection: Collection = {
+            "tripwires": stage_conditions,
             "generated": now,
             "window_hours": window_hours,
             # The trailing window every `rate_per_min` below is averaged over.
@@ -822,6 +835,7 @@ class Application:
                 "total_done": total_done,
             },
             "sessions": out_sessions,
+            **self._attach_command_reports(out_sessions),
         }
         if config.dismissals_enabled:
             # The capability flag, keyed the way `usage_fetch` is: present exactly
@@ -1171,6 +1185,21 @@ class Application:
         for session in out_sessions:
             if str(session["harness"]) not in runtime_events.IDENTITY_NORMALIZERS:
                 session["acquisition"] = runtime_events.ACQUISITION_SCAN
+
+    def _attach_command_reports(self, out_sessions: list[Session]) -> dict[str, Any]:
+        enabled = self.config.irreversible_enabled and self.overlays is not None
+        reports = self.overlays.command_reports() if enabled and self.overlays is not None else []
+        for session in out_sessions:
+            if enabled and session["harness"] in {"claude", "codex"}:
+                session["command_reports"] = [
+                    report
+                    for report in reports
+                    if (report["harness"], report["sid"]) == (session["harness"], session["sid"])
+                ]
+        return {
+            "irreversible_enabled": enabled,
+            **({"command_reports": reports} if enabled else {}),
+        }
 
     def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Patch collected rows from the live overlay ledger, if one is attached.

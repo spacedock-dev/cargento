@@ -57,6 +57,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── interaction_prototype.py # optional registered-session terminal output
         │   ├── project_context.py  # prototype project evidence and semantic projections
         │   ├── semantic_history.py # prototype semantic event history
+        │   ├── irreversible.py     # current-run command reports, bounded separately from hints
         │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown
@@ -71,6 +72,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── state.py            # mutable process state, locks, and bounded caches
         │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
         │   ├── transcripts.py      # shared metadata, prompt titles, the Codex plan, non-Claude analyzers
+        │   ├── tripwires.py        # saved workflow stage conditions, baselines and durable one-shot latches
         │   ├── turns.py            # generic incremental turn scanning and turn display
         │   ├── unasked.py          # the unasked reading lane: the gate, the caps, the raise
         │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader

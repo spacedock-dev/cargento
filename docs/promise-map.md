@@ -70,6 +70,10 @@ disabled rather than silently missing.
 **We promise:** for each live session, what it is doing now, what it plans next, how far into the
 current turn it is, and an estimate of when that turn ends. It tells you when that changes instead
 of making you poll.
+Claude Code and Codex hooks also report matched destructive command shapes; a match does not
+prove success. Cargento saves a stage you choose for a Spacedock workflow and alerts once when
+it observes an entity enter that stage; gaps and unavailable sources are stated, and a
+notification request does not prove a banner appeared.
 
 Backed by the current-turn elapsed and ETA estimate with its progress bar, the warning that fires
 when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its
@@ -77,7 +81,17 @@ measured elapsed, its own model and its own liveness, with a teammate that has f
 quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
 session is running on, desktop notifications on a state change, and a goal and an expected output
 you can type against one session and read back beside the goal its harness published, each on its
-own row with its own source, alongside every observed entry naming that session.
+own row with its own source, alongside every observed entry naming that session. Course also saves
+one stage-entry condition per observed Spacedock workflow, with rule management in Projects after
+the source disappears. The first qualifying entity trips it once until Rearm; first sight and gaps
+establish a baseline, skipped stages imply nothing, and notification service acceptance does not
+prove a banner appeared. See [workflow stage conditions](design-tripwires.md).
+
+Claude Code and Codex after-tool hooks add fixed command-shape reports to session detail and
+Attention. They show what a hook matched while you were away; they do not establish success.
+Reports are incomplete, may repeat, and last only for the current dashboard run. Missing hooks
+and unmatched commands can look the same. The exact forms and limits belong to the security
+section linked below.
 
 Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
 contained only at the few places

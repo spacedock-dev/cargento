@@ -1347,6 +1347,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # collectors and whichever one is added next. `records` is a leaf, so
         # this stays inward.
         "cargento_runtime.aggregate": {
+            "cargento_runtime.tripwires",
             "cargento_runtime.annotations",
             "cargento_runtime.collectors",
             "cargento_runtime.config",
@@ -1438,12 +1439,15 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # collectors apply, and it stopped being that when two of the four
         # readers grew their own copy. `records` is a leaf, so this stays inward
         # and the module stays pure.
+        "cargento_runtime.irreversible": set(),
         "cargento_runtime.events": {
+            "cargento_runtime.irreversible",
             "cargento_runtime.config",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
         },
         "cargento_runtime.diagnostics": {
+            "cargento_runtime.tripwires",
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -1646,6 +1650,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # surface, and it goes through the same bounding and control-character
         # stripping every other untrusted string does. `records` is a leaf, so
         # this is not a layering break.
+        "cargento_runtime.tripwires": {
+            "cargento_runtime.config",
+            "cargento_runtime.state",
+            "cargento_runtime.deliveries",
+        },
         "cargento_runtime.spacedock": {
             "cargento_runtime.config",
             "cargento_runtime.records",
@@ -1664,6 +1673,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
         },
         "cargento_runtime.collectors.codex": {
+            "cargento_runtime.spacedock",
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.records",
@@ -1683,6 +1693,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
+            "cargento_runtime.tripwires",
             "cargento_runtime.annotations",
             "cargento_runtime.aggregate",
             "cargento_runtime.asks",
@@ -1708,6 +1719,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # starts a thread. Nothing imports it except the assembly point and the
         # server that carries it.
         "cargento_runtime.observation": {
+            "cargento_runtime.irreversible",
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.ends",

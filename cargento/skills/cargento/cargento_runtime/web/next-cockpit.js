@@ -3231,13 +3231,14 @@ function nextCockpitTimeline(group, focus, mode = "active"){
 }
 
 function nextCockpitCoursePanel(group, focus){
+  const conditions = nextStageConditions(focus ? [focus] : group.sessions);
   const key = nextCockpitContextKey(group, focus);
   const entry = nextCockpitContexts.get(key);
   const projectEntry = nextCockpitContexts.get(nextCockpitContextKey(group, null));
   nextCockpitLoadContext(group, focus);
   if(!entry || !entry.data || focus && (!projectEntry || !projectEntry.data)){
     const failed = entry && entry.error || focus && projectEntry && projectEntry.error;
-    return `<p class="next-cockpit-empty">${failed ? "Course evidence unavailable." :
+    return conditions + `<p class="next-cockpit-empty">${failed ? "Course evidence unavailable." :
       "Loading course evidence…"}</p>`;
   }
   const delegationGroup = {label:nextCockpitStableKey(group)};
@@ -3247,7 +3248,7 @@ function nextCockpitCoursePanel(group, focus){
     group,
     entry.data.semantic || {facts:[],work_items:[],projections:{}},
   );
-  return nextCockpitCourse(group, semantic, lanes);
+  return conditions + nextCockpitCourse(group, semantic, lanes);
 }
 
 function nextCockpitTerminal(group, focus){

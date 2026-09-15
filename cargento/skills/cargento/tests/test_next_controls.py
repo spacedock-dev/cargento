@@ -436,7 +436,11 @@ console.log(JSON.stringify({
         self.assertEqual(2, out["html"].count("Not delivered."))
         self.assertEqual(2, out["html"].count("Cargento has no write path into a session."))
         self.assertIn('aria-checked="false"', out["html"])
-        self.assertEqual([self.STORAGE_KEY], out["writes"])
+        self.assertEqual(["cargento.next.leader", self.STORAGE_KEY], out["writes"])
+        leader = json.loads(out["stored"]["cargento.next.leader"])
+        self.assertEqual({"id", "ts"}, set(leader))
+        self.assertTrue(leader["id"])
+        self.assertEqual(1_000_000, leader["ts"])
         self.assertIn(self.STORAGE_KEY, out["stored"])
         self.assertEqual(
             [{"text": "Keep tests green", "enabled": False}],
@@ -499,9 +503,10 @@ console.log(JSON.stringify({
         self.assertIn("&lt;img src=x onerror=&quot;globalThis.compromised=1&quot;&gt;", html)
         self.assertNotIn("<img", html)
 
-    def test_escape_cancels_and_enter_adds_through_the_one_keyboard_listener(self) -> None:
+    def test_escape_and_enter_keep_actions_and_focus_movement_listeners(self) -> None:
         out = self.run_fixture(
             """
+const interactionBefore = nextStageInteraction;
 const add = {
   dataset: {nextControlsProject: "alpha/repo"},
   closest(selector){ return selector === "[data-next-guardrail-add]" ? this : null; }
@@ -524,6 +529,7 @@ __fire("keydown", {target: addInput, key: "Enter", preventDefault(){}});
 console.log(JSON.stringify({
   afterEscape, html: __els.app.innerHTML,
   keydownListeners: (__listeners.keydown || []).length,
+  focusMovements: nextStageInteraction - interactionBefore,
   stored: JSON.parse(__store["cargento.next.guardrails.alpha%2Frepo"])
 }));
 """
@@ -534,7 +540,8 @@ console.log(JSON.stringify({
         self.assertNotIn("data-next-guardrail-input", out["afterEscape"])
         self.assertIn("Never render &lt;script&gt;", out["html"])
         self.assertNotIn("Never render <script>", out["html"])
-        self.assertEqual(1, out["keydownListeners"])
+        self.assertEqual(2, out["keydownListeners"])
+        self.assertEqual(2, out["focusMovements"])
         self.assertEqual([{"text": "Never render <script>", "enabled": True}], out["stored"])
 
     def test_localstorage_failure_leaves_guardrails_usable_in_memory(self) -> None:

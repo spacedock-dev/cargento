@@ -168,7 +168,7 @@ notifier's `osascript`, `--daemon`'s respawn of the server, and the quota fetche
 ## Project reads (Spacedock stage strips)
 
 One feature reads paths that are not under a store root. When a session declares itself a Spacedock
-first officer, or in Pi's case is taken to be one because its transcript carries a boot envelope,
+first officer, or in Pi and Codex has a supported boot result in its transcript,
 Cargento reads YAML frontmatter, and only frontmatter, from two kinds of file, so it can show where
 each entity sits on its workflow's stage spine:
 
@@ -206,9 +206,11 @@ state) and its `status` names a stage the README declared.
 
 Hard caps: at most 64 KiB read from a README and 8 KiB from an entity file, 400 frontmatter lines
 scanned, 32 stage names taken, 120 characters of the README's `title`, 96 entity files read per
-workflow (newest first), 12 entities rendered per workflow, and 8 workflows per session. Both reads are cached on
-`(realpath, st_mtime_ns, st_size)`, so an unchanged file costs one `stat` per refresh. Entity files
-older than the dashboard's freshness window are not opened at all.
+workflow (newest first), 12 entities rendered per workflow, and 8 workflows per session. Display
+entity reads are cached on `(realpath, st_mtime_ns, st_size)`; the README cache also checks device,
+inode and change time. Stage conditions read current entity frontmatter within the same caps on
+each collection, independently of the display cache. Entity files older than the freshness window
+are not opened; future file stamps cannot become stage-condition evidence.
 
 Only derived scalars reach `/api/data`: stage names (each validated against Spacedock's
 `^[a-z0-9][a-z0-9-]*[a-z0-9]$` grammar), entity slugs, cycle markers, and the README frontmatter's
@@ -219,6 +221,23 @@ control-character and bidi stripping every untrusted string does. No other file 
 body and no filesystem path is ever published, and the page HTML-escapes every value.
 Pass `--no-spacedock` to switch the feature off. The read surface is then exactly the documented
 store paths.
+
+## Saved workflow stage conditions
+
+`cargento-tripwires.json` under Cargento's state directory holds at most 64 stage conditions. A versioned
+SHA-256 digest of the canonical definition and state directory pair identifies a workflow; new
+condition fields expose no paths or copied file bodies. The bounded store uses atomic replacement
+and owner-only temporary files. Corruption refuses mutation and evaluation rather than discarding
+intent. `POST /api/tripwire` accepts only a known action, opaque workflow id, declared stage and
+expected revision, under the loopback origin gate and a 1 KiB body cap.
+
+A latch reaches disk before a notification attempt. Failed latch writes retain pending evidence
+in memory and make no attempt; restarting loses that pending evidence. A saved latch is never
+replayed after restart, including when the process stopped before attempting the notification.
+Simultaneous dashboard processes retain the existing last-writer-wins limitation; the latch is not
+a cross-process exactly-once guarantee. `--no-tripwires` disables all condition-store reads and
+writes. `--no-spacedock` leaves saved intent readable but suspended. See the
+[stage-condition contract](docs/design-tripwires.md) for baselines and delivery wording.
 
 ## Repository git reads (the end-of-session probe)
 
@@ -1487,17 +1506,11 @@ machine.
 
 ## Irreversible actions (hook-side destructive-shape matching)
 
-The board can say a tool call failed. It cannot say the call deleted a branch. C6 (DRC-4025) would
-report the handful of shapes a person wants told about after the fact, and the design that makes it
-safe puts the matching in the hook rather than in the server. The hook already holds the payload its
-own harness handed it; it decides whether that payload matches one of a named set of shapes and
-posts an identifier for the shape it matched, with the tool's name. The command does not travel.
-
-This is the section to read before building that, and it grants nothing on its own. No shipped
-adapter matches a command shape, and the event envelope has no field that could carry the answer.
-Coverage is Claude Code and Codex with the hooks installed, which is the scope DEC-5 set. That is a
-limit rather than a phase, and it has to be read the way the session-end marks are read: an absent
-report means no match was observed, never that a session ran nothing irreversible.
+Claude Code and Codex after-tool hooks report a fixed set of destructive command shapes.
+A report says a hook observed that shape after a tool call. It does not prove the action succeeded.
+The command stays in the hook process; session detail and Attention show fixed labels only.
+Coverage requires installed hooks. No matching reports received; missing hooks and unmatched
+commands can look the same. Unsupported harnesses and disabled runs say so on the page.
 
 ### What Cargento reads of a tool call today, exactly
 
@@ -1537,54 +1550,68 @@ These are evidence reads, not command execution. In total, seven expressions in 
 reach an input payload. The counts and module names are checked by `test_documentation`.
 The prototype has no additional switch that disables just these dispatch reads.
 
-A shape match would be a different kind of read from either of those. It happens in the hook, inside
+A shape match is a different kind of read from those. It happens in the hook, inside
 the operator's own harness process, against a payload that process already has, and what it keeps is
 a verdict rather than a summary. It changes nothing about what the server or the collectors read from
-a transcript, and it adds no store, no path and no subprocess.
+a transcript, and it adds no disk store, no path and no subprocess.
 
 ### The bounds a shape match has to hold to
 
-- The hook decides and the server never sees the command. What is posted is an identifier for a
-  shape from the named set, the tool name, and a timestamp, which is the shape DEC-5 allowed. The
-  command, its arguments and its output stay in the harness's process and are not put on a socket,
-  and neither is any substring of them, any path or any file's content.
-- The set of shapes is written into this document before it ships, one line each, the way the quota
-  endpoints are. A shape is a decision rather than something an operator configures: a
-  user-supplied pattern would be a small language running against their own commands, and the
-  result of running it would go on the wire.
-- The match cannot delay or block the call. It is time-bounded and fails open, so a shape the
-  matcher cannot decide in its budget is no report rather than a held tool call.
-- Report after, never before. This reports what happened, so it hangs off the after-the-fact event
-  rather than the gate in front of it, and a matcher may never be registered at a hook position
-  whose output gates a tool call. Antigravity is why that is a rule and not a preference. Its
-  `PreToolUse` output decides the call, and an empty object there is a deny rather than an
-  abstention, measured on 1.1.19: `{"decision": "allow"}` permits and exactly `{}` refuses. So
-  there is no harmless output at that position, `agy_hook.py` prints `{}` on every path including
-  every failure path, and the safety property is that the hook is never registered there rather than
-  that its output is safe. A matcher inherits that rule unchanged.
-- Off switch. The feature ships `--no-irreversible` with it, mirroring `--no-events` at every one of
-  that flag's sites, including the branch that forwards flags to a respawned daemon. That flag does
-  not exist yet, and this document does not claim it does. Nothing matches a shape, so there is
-  nothing to switch off, and a test asserts both halves: this section still says no adapter matches,
-  and the parser still has no such flag.
+The initial literal forms are fixed below. Only Claude Code and Codex `PostToolUse`,
+tool `Bash`, `tool_input.command` are admitted by the measured captures. Claude's
+nonzero call emitted `PostToolUseFailure`; Codex's emitted `PostToolUse`, so neither
+a match nor its absence establishes success.
+
+| Identifier / display label | Supported literal form | Exclusions |
+| -- | -- | -- |
+| `git_force_push` / force push | `git push` with `--force`, `-f`, or `--force-with-lease`, optionally followed by plain remote/ref arguments | Other options, combined short options, and `--force-with-lease=...` abstain. |
+| `git_hard_reset` / hard reset | `git reset --hard` with at most one plain revision | Other flags and option ordering abstain. |
+| `sql_drop_table` / DROP TABLE | `psql -c 'DROP TABLE name;'`, `mysql -e 'DROP TABLE name;'`, or `sqlite3 database 'DROP TABLE name;'`; optional `IF EXISTS`, case-insensitive SQL words, optional final semicolon | One unquoted SQL identifier only, optionally dotted; no client flags, multiple statements, comments or quoted identifiers. Double quotes may delimit the whole SQL argument too. |
+| `recursive_delete` / recursive delete | `rm` followed by `-r`, `-R`, `-rf`, `-fr`, `-Rf`, or `-fR`, optionally `-f` and `--`, then plain paths | A path beginning `/tmp/`, `/private/tmp/`, or `/var/tmp/` is excluded. No report if every path is excluded. `..` path components abstain everywhere; prefixes say nothing about symlinks or filesystem resolution. |
+
+Each whole command may have one `rtk` or `rtk proxy` prefix. No other wrappers,
+executable paths, environment assignments, shell composition, expansion, redirects,
+escapes or multiline commands are accepted. Plain tokens contain only ASCII letters,
+digits and `_./:@%+=,-`; quotes are reserved for the SQL argument. Commands over
+4,096 characters or 64 whitespace-separated tokens abstain. The matcher performs no
+shell evaluation, filesystem resolution, regex, worker I/O or subprocess call.
+
+The hook posts an identifier for a shape from the named set, the tool name, and a timestamp,
+which is the shape DEC-5 allowed, plus the three routing fields below. No command, argument,
+output, copied substring, path, file content or free-text explanation enters this report.
+Fixed labels can share characters with an input; nothing is copied from it.
+
+Matching has a nominal 5 ms wait in a daemon thread, bounded input and no worker I/O. Late
+results are discarded. This is best effort: startup, scheduling and transport take separate time,
+so neither 5 ms nor the tests' 250 ms process containment is a universal real-time guarantee.
+Forced sleep and pure-Python spin are tested through the actual hook process. A GIL-held regex
+fails that containment and remains a rejected negative control, never a production matcher.
+An executor was rejected because it joins its workers at interpreter exit.
+
+Report after, never before. The matcher is reached only at `PostToolUse`, never a permission
+or pre-tool gate. Antigravity's `PreToolUse` is why this distinction matters: an empty object there
+is a deny rather than an abstention, so the hook is never registered there rather than claiming
+its empty output is harmless. The reporting hook writes no stdout and exits zero on handled failures.
+
+`--no-irreversible` disables matching, ingress and publication, and survives daemon respawn.
+`--no-events` also disables the feature. Fresh hooks read the explicit `irreversible_enabled`
+state-file bit before entering the matcher; an absent bit, missing file or old server means off.
+Ordinary lifecycle hints remain available with only `--no-irreversible`. A hook already in flight
+can race a restart and attempt a post. An off replacement refuses it; an enabled replacement may
+accept it because the six-field report has no run identity. Ingress still requires the current
+harness capability and the existing event rate budget.
 
 ### The envelope has to widen, and one dropped thing has to come back
 
-Known and accepted describes the event envelope as an allowlist at both ends, and its sentence says
-the prompt, the tool name, the tool input and the tool output are dropped in the hook and never put
-on a socket. Every word of that is true today and stays true until this feature lands. Then two
-things change, and this is where they are settled rather than discovered: the envelope gains a
-shape identifier, and the tool name stops being dropped. DEC-14 amended invariant 1 the same way
-during its own groundwork pass, which is why amending is the established answer here rather than a
-novel one.
+Every new report carries exactly six fields: `v`, `event`, `session_id`, `timestamp`,
+`pattern_id`, `tool_name`. Its event is `command_shape_reported`, its tool is the fixed `Bash`,
+and its pattern must be in the table above. Ingress validates that vocabulary independently and
+rejects any missing or extra field. The report cannot become a lifecycle patch or carry a cwd,
+transcript path, source sequence or terminal identity. Ordinary lifecycle envelopes still drop
+the tool name and retain their existing compatibility and routing-hint rules.
 
-The tool name is the one of those four that can come back, and the reason is not that it is the
-shortest. The board already publishes it: a failing tool's name reaches the page through the loop
-signal and is rendered on both the session and the attention surfaces. So the envelope was dropping
-a value the snapshot serves anyway, for want of a use rather than for secrecy, and a hook that posts
-it tells the server nothing the server could not already say. The prompt, the tool input and the
-tool output are the three that stay dropped, and they are the three where that reasoning does not
-hold.
+The tool-name exception was deliberate: a failing tool's name reaches the page through the loop
+signal already. The prompt, the tool input and the tool output stay dropped.
 
 Three places carry the envelope's width and they move together in one commit. This document's own
 sentence spells it as a word, `config.py`'s stated reason for `event_body_cap_bytes` spells it as a
@@ -1595,15 +1622,14 @@ document that has quietly drifted.
 
 ### Whether a shape identifier may enter the history store
 
-This turns on one thing, and the thing is already written down. Local history bans tool input "under
-any circumstances and with no exception available", and it bans any substring of a command with it.
-A shape identifier is neither: it is a fixed label from the set this document names, and it carries
-no part of what was typed. So the ban does not reach it, and the second of that section's rules
-decides the question instead. A field the live board does not publish is not a field history may
-keep. If C6 publishes the identifier on the row, the identifier becomes admissible and needs its own
-line in that section's kept-list in the same change. If C6 renders it only in a panel the board does
-not publish, history may not keep it, and C6's cross-session list cannot be built out of the store.
-Either way the answer is settled here rather than discovered during the build.
+A field the live board does not publish is not a field history may keep. Publication makes a
+fixed label eligible for a future history decision; it does not authorize storage by itself.
+This feature keeps no command reports in durable history. A separate in-memory ledger retains
+the newest 1,000 reports globally, newest 20 per session, for at most 24 hours. Oldest reports
+are evicted first. The ledger survives collection coalescing and session end, but not a restart.
+It retains duplicates and orders by report time, then arrival order: these are reports, never
+an exact action count. Attention shows the newest 20 independently of its session-risk denominator.
+The list count comes from the reports displayed. No notifications or dismissal controls are added.
 
 A violation of any boundary in this section is a security bug: a command, an argument or a tool
 output reaching a socket, an input read the allowlist above does not name, an operator-configurable
@@ -1919,9 +1945,9 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the twelve POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the thirteen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. There is nothing to authenticate with on ten of them, for the reason the
+somebody other than you. There is nothing to authenticate with on eleven of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client
@@ -2022,21 +2048,16 @@ it can never create or delete one, and it can only write these nine fields: `sta
 observed stop), `ended_at` (the stamp of the session id's own end), and `dirty` with `changed` (the
 end-of-session git reading). `--no-events` turns the whole path off for a run.
 
-The event envelope is allowlisted at both ends. Each adapter builds the twelve permitted fields one at
-a time from the native payload, so the prompt, the tool name, the tool input and the tool output are
-dropped in the hook and never put on a socket; the server then validates independently, because a
-hook's output is untrusted regardless of who wrote it. Codex's payloads carry `prompt`, `tool_input`,
-`tool_response` and `last_assistant_message`, and Antigravity's carry the account email and the
-transcript path; none of those reach a socket. `statusline_hook.py` also shapes `/api/usage` down to
-the `quota` block alone, which is what this document asks for a paragraph below rather than sending
-the whole status-line document and relying on the server to discard it. `cwd` and `transcript_path` are
-matching hints and are never echoed to `/api/data`. Every clause above holds today. One
-written-down feature would change two of them, and Irreversible actions above is where that is
-settled rather than left to break this sentence: it would add a shape identifier, and it would stop
-the tool name being dropped, on the reasoning that section gives. The prompt, the tool input and the
-tool output would stay dropped. The count in this paragraph, the same count in `config.py`'s stated
-reason for `event_body_cap_bytes`, and `events.ALLOWED_FIELDS` itself move in one commit or
-`test_documentation.EventEnvelopeEnumerationTest` goes red.
+The event envelope is allowlisted at both ends. Each adapter builds the fourteen permitted fields
+one at a time across the ordinary and command-report variants; no variant carries all fourteen.
+The prompt, the tool input and the tool output stay dropped in the hook and never reach a socket.
+Ordinary lifecycle envelopes still drop the tool name. Command reports carry only the six fields
+listed in Irreversible actions above, with an allowlisted tool name and pattern identifier.
+The server validates independently because a hook's output is untrusted. Ordinary `cwd` and
+`transcript_path` matching hints are never echoed to `/api/data`; command reports carry neither.
+`statusline_hook.py` shapes `/api/usage` down to the `quota` block alone.
+The count here, `config.py`'s reason for `event_body_cap_bytes`, and `events.ALLOWED_FIELDS`
+move together; `test_documentation.EventEnvelopeEnumerationTest` binds both prose counts.
 
 One published field is derived from a transcript filename, and the sentence above is the one it has
 to be read against. `resume_id` carries the session id a harness's own CLI takes to re-enter that

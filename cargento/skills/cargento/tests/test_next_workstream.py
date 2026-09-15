@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import unittest
@@ -307,12 +308,18 @@ const localStorage = {
         self.assertNotIn("data-next-workstream-collapsed", out["afterKeyboard"])
         self.assertIn("0 of 0 unattended", out["afterKeyboard"])
         self.assertIn("since this tab opened", out["afterKeyboard"])
+        self.assertEqual(3, len(out["writes"]))
+        self.assertEqual("cargento.next.leader", out["writes"][0][0])
+        leader = json.loads(out["writes"][0][1])
+        self.assertEqual({"id", "ts"}, set(leader))
+        self.assertTrue(leader["id"])
+        self.assertEqual(1_000_000, leader["ts"])
         self.assertEqual(
             [
                 ["cargento.next.workstream.collapsed", "1"],
                 ["cargento.next.workstream.collapsed", "0"],
             ],
-            out["writes"],
+            out["writes"][1:],
         )
 
     def test_localstorage_failure_leaves_an_honest_expanded_empty_state(self) -> None:

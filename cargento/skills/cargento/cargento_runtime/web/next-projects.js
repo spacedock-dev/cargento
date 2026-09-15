@@ -54,7 +54,7 @@ function nextProjectGroup(kind, title, description, items, renderer, empty){
 
 function nextProjectsView(model){
   const observed = model.activeProjects ? model : nextCurrentObserved();
-  return '<p class="next-projects-note">sessions grouped by the label their harness publishes</p>' +
+  return nextStageConditions() + '<p class="next-projects-note">sessions grouped by the label their harness publishes</p>' +
     nextProjectGroup(
       "active", "Active", "blocked on you ranks first · only source-backed sessions contribute claims",
       observed.activeProjects, project => nextProjectRow(project),

@@ -10,7 +10,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import records
+from cargento_runtime import records, spacedock
 from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
@@ -20,12 +20,123 @@ from .support import (
     RuntimeTestCase,
     config_patch,
     make_runtime,
+    reset_runtime,
     runtime,
     store_patch,
 )
 
 
 class CodexCollectorTest(RuntimeTestCase):
+    def test_captured_boot_wrapper_attaches_only_successful_source(self) -> None:
+        """Sanitized 2026-09-14 Codex line-66 shape, through the real collector."""
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workflow = root / "workflow"
+            workflow.mkdir()
+            (workflow / "README.md").write_text(
+                "---\ncommissioned-by: spacedock@0.27.2\nstages:\n  states:\n"
+                "    - name: build\n    - name: review\n---\n"
+            )
+            (workflow / "task.md").write_text("---\nstatus: build\n---\n")
+            boot = json.dumps(
+                {
+                    "command": "boot",
+                    "definition_dir": str(workflow),
+                    "entity_dir": str(workflow),
+                    "dispatchable": [],
+                }
+            )
+            fulfilled = {"status": "fulfilled", "value": {"exit_code": 0, "output": boot}}
+            cases = [
+                ("successful", json.dumps(fulfilled), True),
+                ("direct", boot, True),
+                ("prefixed direct", "=== BOOT ===\n" + boot, True),
+                (
+                    "missing status",
+                    json.dumps({"value": {"exit_code": 0, "output": json.loads(boot)}}),
+                    False,
+                ),
+                (
+                    "truncated rejected object",
+                    json.dumps(
+                        {
+                            "status": "rejected",
+                            "value": {"exit_code": 1, "output": json.loads(boot)},
+                        }
+                    )[:-1],
+                    False,
+                ),
+                ("deep array", "[" * 1100 + boot + "]" * 1100, False),
+                ("prose object", "an example: " + boot, False),
+                ("failed", json.dumps({**fulfilled, "status": "rejected"}), False),
+                (
+                    "nonzero",
+                    json.dumps({"status": "fulfilled", "value": {"exit_code": 1, "output": boot}}),
+                    False,
+                ),
+                (
+                    "boolean exit",
+                    json.dumps(
+                        {"status": "fulfilled", "value": {"exit_code": False, "output": boot}}
+                    ),
+                    False,
+                ),
+                (
+                    "nested",
+                    json.dumps(
+                        {
+                            "status": "fulfilled",
+                            "value": {"exit_code": 0, "output": json.dumps(fulfilled)},
+                        }
+                    ),
+                    False,
+                ),
+                ("quoted", json.dumps(json.dumps(fulfilled)), False),
+                ("truncated", json.dumps(fulfilled)[:-3], False),
+                ("prose", "an example: " + json.dumps(fulfilled), False),
+            ]
+            path = root / "sessions" / "2026" / "09" / "14" / "rollout-source.jsonl"
+            path.parent.mkdir(parents=True)
+            for name, output, expected in cases:
+                with self.subTest(name=name):
+                    rows = [
+                        {"type": "session_meta", "payload": {"id": "source", "cwd": tmp}},
+                        {
+                            "type": "response_item",
+                            "payload": {
+                                "type": "custom_tool_call_output",
+                                "output": [{"type": "input_text", "text": output}],
+                            },
+                        },
+                    ]
+                    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+                    os.utime(path, (now, now))
+                    with store_patch(CODEX_SESSIONS_DIR=str(root / "sessions")):
+                        reset_runtime()
+                        config, state = runtime()
+                        with mock.patch.object(
+                            spacedock, "read_workflow", wraps=spacedock.read_workflow
+                        ) as read:
+                            (session,) = codex_collector.collect(config, state, now, 24, False)
+                        if expected:
+                            self.assertEqual(
+                                "build",
+                                session["spacedock"]["workflows"][0]["entities"][0]["stage"],
+                            )
+                            self.assertEqual(1, read.call_count)
+                        else:
+                            self.assertIsNone(session["spacedock"])
+                            read.assert_not_called()
+            with (
+                store_patch(CODEX_SESSIONS_DIR=str(root / "sessions")),
+                config_patch(spacedock_enabled=False),
+            ):
+                config, state = runtime()
+                with mock.patch.object(spacedock, "transcript_boot") as scan:
+                    codex_collector.collect(config, state, now, 24, False)
+                scan.assert_not_called()
+
     def test_codex_meta_extracts_parent_thread_id(self) -> None:
         record = {
             "type": "session_meta",

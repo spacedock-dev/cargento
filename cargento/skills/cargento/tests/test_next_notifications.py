@@ -9,6 +9,31 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextNotificationBehaviorTest(NextPageJsHarness):
+    def test_stage_events_are_primed_leader_owned_and_revision_deduped(self) -> None:
+        out = self._run_page_js("""
+__notifyPermission = "granted";
+nextStageNotifyPrimed = false;
+nextIsLeader = true;
+const row = revision => ({id:"a".repeat(64),event_id:`stage:${revision}`,workflow:"flow",why:"Observed task change from build to review."});
+const send = (rules,native="") => nextSyncNotifications({native_notify:native,sessions:[],tripwires:{enabled:true,rules}});
+const counts = [];
+send([row("old")]); counts.push(__notifications.length);
+send([row("new")]); counts.push(__notifications.length);
+send([row("new")]); counts.push(__notifications.length);
+nextIsLeader = false;
+send([row("follower")]); counts.push(__notifications.length);
+nextIsLeader = true;
+send([row("follower")]); counts.push(__notifications.length);
+send([row("native")],"osascript"); counts.push(__notifications.length);
+send([row("rearmed")]); counts.push(__notifications.length);
+nextStageNotifyPrimed = false;
+nextStageNotified.clear();
+send([row("rearmed")]); counts.push(__notifications.length);
+console.log(JSON.stringify({counts,tags:__notifications.map(row=>row.tag)}));
+""")
+        self.assertEqual([0, 1, 1, 1, 1, 1, 2, 2], out["counts"])
+        self.assertEqual(["stage:new", "stage:rearmed"], out["tags"])
+
     def test_repeated_quiet_crossings_wait_ten_minutes_without_delaying_questions(self) -> None:
         out = self._run_page_js(
             """

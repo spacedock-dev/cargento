@@ -109,8 +109,8 @@ class RuntimeState:
     # worth remembering. Path-keying forced the null to be recomputed forever.
     agent_start_cache: dict[str, tuple[tuple[int, int], float | None]] = field(default_factory=dict)
     spacedock_boot_cache: dict[str, tuple[list[dict[str, Any]], int]] = field(default_factory=dict)
-    spacedock_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = field(
-        default_factory=dict
+    spacedock_workflow_cache: dict[tuple[str, int, int, int, int, int], dict[str, Any] | None] = (
+        field(default_factory=dict)
     )
     # Canonical project root -> (observation time, detached discovery result).
     # The command is bounded, but it is still a subprocess; one project-context
@@ -154,6 +154,8 @@ class RuntimeState:
     # request handler and read inside a collection, and neither should wait on the
     # other's cache work. The file, not this tuple, is the record — a second
     # dashboard's write is picked up by the next `dismissals.refresh`.
+    tripwire_lock: LockType = field(default_factory=threading.Lock)
+    tripwire_memory: dict[str, Any] = field(default_factory=dict)
     dismissal_lock: LockType = field(default_factory=threading.Lock)
     dismissals: tuple[dict[str, Any], ...] | None = None
     # The reader's typed goal and expected output per session. Its own lock for
