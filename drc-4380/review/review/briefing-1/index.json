@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4380:review:attempt-1:revision-1",
+  "question": "Merge Pi extension adapter delivery in PR #340?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4380:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/e248b65a76063a2590e98aeaa14148b739ed664f/drc-4380.md",
+      "rev": "sha256:5b109732b6807982735378c6e6b66e9bd8cd4c97a6879af80393bcca8afb34f0",
+      "mediaType": "text/markdown",
+      "summary": "PR #340 merged with 12 passing checks and clean mergeability"
+    }
+  ]
+}
