@@ -719,7 +719,7 @@ class Application:
             )
             return []
 
-    def collect(self, *, show_all: bool) -> Collection:
+    def collect(self, *, show_all: bool, notify: bool = True) -> Collection:
         config, state, window_hours, now = (
             self.config,
             self.state,
@@ -810,7 +810,7 @@ class Application:
         # dismissal hides an alert, and an observation that happened still
         # happened — subtracting first would punch gaps in the history of any
         # session the reader ever cleared.
-        self._notify_waits(out_sessions, generations)
+        self._notify_waits(out_sessions, generations, notify=notify)
         stage_conditions = tripwires.collect(
             config,
             state,
@@ -818,6 +818,7 @@ class Application:
             now,
             self.native_notifier(config.platform_name),
             self.popup_notifier,
+            notify=notify,
         )
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         _attach_cached_goals(config, out_sessions)
@@ -1128,7 +1129,13 @@ class Application:
             ],
         }
 
-    def _notify_waits(self, out_sessions: list[Session], generations: dict[str, int]) -> None:
+    def _notify_waits(
+        self,
+        out_sessions: list[Session],
+        generations: dict[str, int],
+        *,
+        notify: bool = True,
+    ) -> None:
         """Raise the native popup for every row that has just started waiting.
 
         Here rather than in a collector, and that is the amendment DRC-4192
@@ -1152,6 +1159,8 @@ class Application:
         Inactive rows are skipped, which is what `show_all` collections rest on:
         `--all` widens what is drawn, never what alerts.
         """
+        if not notify:
+            return
         for session in out_sessions:
             if not session.get("active"):
                 continue

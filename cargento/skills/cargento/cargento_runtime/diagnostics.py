@@ -101,13 +101,18 @@ def diagnose(application: Application) -> dict[str, Any]:
     config, state = application.config, application.state
     with state.cache_lock:
         state.store_errors.clear()  # this run's failures only
-    data = application.collect(show_all=True)
+    data = application.collect(show_all=True, notify=False)
     with state.cache_lock:
         store_errors = dict(state.store_errors)
     sessions_by_harness: dict[str, int] = {}
     for session in data["sessions"]:
         key = str(session["harness"])
         sessions_by_harness[key] = sessions_by_harness.get(key, 0) + 1
+    overrides_vars = (
+        *runtime_config.STORE_ENV_VARS,
+        runtime_config.CARGENTO_HOME_ENV,
+        "XDG_DATA_HOME",
+    )
     return {
         "tripwires": {
             "enabled": config.tripwires_enabled,
@@ -118,6 +123,7 @@ def diagnose(application: Application) -> dict[str, Any]:
         "python": sys.version.split()[0],
         "executable": sys.executable,
         "home": config.home,
+        "cargento_home": config.state_home,
         "sqlite": {
             "available": runtime_io.sqlite_available(),
             "error": runtime_io.SQLITE_IMPORT_ERROR,
@@ -125,9 +131,7 @@ def diagnose(application: Application) -> dict[str, Any]:
                 runtime_io.sqlite_module.sqlite_version if runtime_io.sqlite_available() else None
             ),
         },
-        "env": {
-            name: os.environ[name] for name in runtime_config.STORE_ENV_VARS if os.environ.get(name)
-        },
+        "env": {name: os.environ[name] for name in overrides_vars if os.environ.get(name)},
         # Failures the collectors swallowed. Without these a corrupt database
         # reads as a healthy store with no sessions.
         "store_errors": store_errors,
@@ -156,6 +160,7 @@ def render_diagnosis(report: dict[str, Any]) -> str:
         f"  platform   {report['platform']} (python {report['python']})",
         f"  python at  {report['executable']}",
         f"  home       {report['home']}",
+        f"  cargento   {report.get('cargento_home') or report['home']}",
         f"  sqlite3    {sqlite_info['version'] or 'UNAVAILABLE: ' + str(sqlite_info['error'])}",
     ]
     stage = report["tripwires"]

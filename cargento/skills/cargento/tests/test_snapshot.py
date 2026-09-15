@@ -98,9 +98,9 @@ class ApplicationSnapshotTest(support.RuntimeTestCase):
         calls: list[int] = []
         real = app.collect
 
-        def counting(*, show_all: bool) -> dict[str, object]:
+        def counting(*, show_all: bool, notify: bool = True) -> dict[str, object]:
             calls.append(1)
-            return real(show_all=show_all)
+            return real(show_all=show_all, notify=notify)
 
         app.collect = counting  # type: ignore[method-assign]
         first_rev, first_body = app.collect_json(show_all=False)
