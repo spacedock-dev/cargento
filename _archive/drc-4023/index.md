@@ -1,11 +1,11 @@
 ---
 id: drc-4023
 title: 'C4 · My goals across sessions'
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4023
 started: 2026-09-14T12:49:38Z
-completed:
-verdict:
+completed: 2026-09-15T02:06:09Z
+verdict: PASSED
 score: 0.2
 worktree: .worktrees/spacedock-ensign-drc-4023
 issue:
@@ -64,7 +64,7 @@ gates:
                     source: Captain message in this session approving the recommended milestone ticket scopes on 2026-09-14, followed by repeated continue directives
               application:
                 target-stage: done
-                state: pending
+                state: consumed
 review-round:
     id: round:drc-4023:implementation:1
     stage: implementation
@@ -73,6 +73,7 @@ review-round:
         id: briefing:drc-4023:implementation:round-1
         digest: sha256:c0b8a4a2ae73ff05e5c83eed7dc75fce6089ce928cfc6d1d0e7ad27613116358
         room-ref: ./review/implementation/round-1
+archived: 2026-09-15T02:06:09Z
 ---
 
 [DRC-4023](https://linear.app/recce/issue/DRC-4023) — Linear priority Medium, estimate L.
