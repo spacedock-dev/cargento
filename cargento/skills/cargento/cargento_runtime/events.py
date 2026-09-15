@@ -362,6 +362,14 @@ def _opencode_sid(session_id: str) -> str | None:
     return session_id if suffix.isascii() and suffix.isalnum() else None
 
 
+def _pi_sid(session_id: str) -> str | None:
+    # Pi 0.85.1: context id, persisted header id and collector sid matched whole.
+    # Unlike a prefix, each of the five measured UUID groups must be present.
+    if _whole_uuid_sid(session_id) is None:
+        return None
+    return session_id if [len(part) for part in session_id.split("-")] == [8, 4, 4, 4, 12] else None
+
+
 # One normalizer per harness whose adapter has shipped. A harness absent here is
 # refused: the design requires the identity mapping to be established per harness
 # before its adapter ships, and a default passthrough would quietly skip that.
@@ -371,6 +379,7 @@ IDENTITY_NORMALIZERS: Final[dict[str, Any]] = {
     "antigravity": _whole_uuid_sid,
     "gemini": _whole_uuid_sid,
     "opencode": _opencode_sid,
+    "pi": _pi_sid,
 }
 
 

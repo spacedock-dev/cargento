@@ -340,7 +340,19 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             reports_needs_input_when="where approvals are enabled",
             usage=codex.usage,
         ),
-        HarnessSpec("pi", "Pi", pi.discover, pi.collect, reports_rate=True),
+        HarnessSpec(
+            "pi",
+            "Pi",
+            pi.discover,
+            pi.collect,
+            reports_rate=True,
+            reports_needs_input=True,
+            reports_needs_input_when=(
+                "extension UI prompts in persisted sessions; "
+                "installed adapter on Pi 0.85.1 required; "
+                "excludes startup trust; restart loses standing waits"
+            ),
+        ),
         # Gemini CLI was retired on 2026-06-18 and Antigravity replaced it.
         # They shared this row while both were Google's current surface; the
         # legacy row stays so a machine that ran Gemini CLI keeps its history.
@@ -1228,6 +1240,11 @@ class Application:
         than storing them on the instance, so `collect` gains no statement (it
         sits on ruff's statement cap) and no state to get stale.
         """
+        # An optional in-process adapter is a capability, not evidence that this
+        # session installed it. Only this run's reduced event patch earns a read.
+        for session in out_sessions:
+            if session["harness"] in {"pi", "opencode"}:
+                session["source_gaps"] = [*session["source_gaps"], "block state"]
         source = self.overlays
         if source is None:
             # No ledger to patch from, but the history still records: `overlays`
@@ -1288,6 +1305,13 @@ class Application:
                 )
                 self._note_dispute(session, patch, overlays, now=now)
                 runtime_events.apply_patch(session, _keep_wait_detail(session, patch))
+                if (
+                    harness in {"pi", "opencode"}
+                    and patch.get("acquisition") == runtime_events.ACQUISITION_EVENT
+                ):
+                    session["source_gaps"] = [
+                        gap for gap in session["source_gaps"] if gap != "block state"
+                    ]
             else:
                 # No ledger for this row means nothing can be disagreeing with it.
                 self._clear_dispute(harness, sid)
