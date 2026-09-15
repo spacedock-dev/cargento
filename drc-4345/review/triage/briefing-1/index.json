@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4345:triage:attempt-1:revision-1",
+  "question": "Approve atomic owner-only file writer hardening specification?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4345:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/41b44081dad4ffc8cb6c3aea2fb723f52d5d2188/drc-4345.md",
+      "rev": "sha256:76074461a25698a31405a114f8f4bbcf33bda684b156511b88da311f3947e630",
+      "mediaType": "text/markdown",
+      "summary": "Triage specification for DRC-4345"
+    }
+  ]
+}
