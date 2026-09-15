@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -80,11 +81,15 @@ def exercise_js_adapter(path: Path) -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=10,
-            env={"CARGENTO_HOME": tmp, "PATH": str(Path(node).parent)},
+            env={
+                **os.environ,
+                "CARGENTO_HOME": tmp,
+                **({} if sys.platform == "win32" else {"PATH": str(Path(node).parent)}),
+            },
             check=False,
         )
     if proc.returncode or proc.stderr:
-        raise ValueError(f"{path.name}: JavaScript callback probe failed")
+        raise ValueError(f"{path.name}: JavaScript callback probe failed: {proc.stderr}")
     result: dict[str, Any] = json.loads(proc.stdout)
     return result
 

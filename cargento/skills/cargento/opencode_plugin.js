@@ -17,7 +17,10 @@ async function capability(port) {
   let file;
   try {
     // A FIFO at this local path must not leave a read queued forever in the host.
-    file = await open(join(home, `cargento-${port}.json`), constants.O_RDONLY | constants.O_NONBLOCK);
+    file = await open(
+      join(home, `cargento-${port}.json`),
+      constants.O_RDONLY | (constants.O_NONBLOCK || 0),
+    );
     if (!(await file.stat()).isFile()) return null;
     const buffer = Buffer.alloc(65537);
     const {bytesRead} = await file.read(buffer, 0, buffer.length, 0);
