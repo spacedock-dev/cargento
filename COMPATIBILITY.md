@@ -139,5 +139,5 @@ agy plugin validate ./cargento
      command-shape reports, workflow stage conditions, and the complete Intent log.
      Feature-scoped passes left this shared marker alone. This pass checked their combined
      retention, source, delivery and route claims against merged main, and corrected the
-     security overview's mutation count for the stage-condition store. Native permission and
+     security overview's mutation count for the stage-condition store. Browser permission transitions and
      banner visibility remain unverified where recorded; hook deadlines remain best effort. -->
