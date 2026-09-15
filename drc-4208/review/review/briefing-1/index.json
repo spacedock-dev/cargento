@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4208:review:attempt-1:revision-1",
+  "question": "Merge Droid dedicated root in PR #344?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4208:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/214691fb5f2bffeabfb316a078b5847baf62f0ee/drc-4208.md",
+      "rev": "sha256:c8607c819af33e9f6b67be67d811aa527def4a430f404b27bc0bf5a78523853e",
+      "mediaType": "text/markdown",
+      "summary": "PR #344 merged with passing checks"
+    }
+  ]
+}
