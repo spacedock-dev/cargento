@@ -467,6 +467,7 @@ function nextSessionDepartureRow(row, current){
       "</span>" : "") +
     `<p class="next-session-departure-reading">${esc(text("reading"))}</p>` +
     `<p class="next-session-departure-base">${esc(baseline + window)}` +
+    (text("cutoff_text") ? ` · ${esc(text("cutoff_text"))}` : "") +
     (text("evidence") ? ` · ${esc(text("evidence"))}` : "") + "</p>" +
     /* Its own element after the base line and never a clause appended to it.
        The base line is mono in the dimmest ink, the register for a string a
