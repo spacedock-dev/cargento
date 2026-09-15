@@ -250,9 +250,11 @@ class CommandSocketTest(unittest.TestCase):
         phases = Path(self.tmp.name, "hook-phases.json")
         ready.unlink(missing_ok=True)
         phases.unlink(missing_ok=True)
-        # Only interpreter/import setup precedes readiness. Real main, both socket
+        # Interpreter/import and diagnostic setup precede readiness. Real main, both socket
         # paths, the daemon worker and interpreter exit remain in the timed window.
         # Containment uses 250 ms; normal matching is a separate bounded measurement.
+        # Prepare diagnostic storage before readiness: post-main file I/O releases
+        # the GIL to the injected spin and measures work the shipped hook never does.
         code = (
             (
                 "import time; child_started = time.perf_counter()\n"
@@ -286,6 +288,11 @@ def observed_report(*args):
 event_hook.command_shape = observed_shape
 event_hook.irreversible_report = observed_report
 event_hook.time.monotonic = observed_clock
+import mmap
+phase_file = open(sys.argv[3], 'w+b')
+phase_file.write(b'\\0' * 4096)
+phase_file.flush()
+phase_map = mmap.mmap(phase_file.fileno(), 4096)
 ready = Path(sys.argv[4])
 pending = ready.with_suffix('.tmp')
 pending.write_text(json.dumps({'child_setup_ms': (time.perf_counter()-child_started)*1000}))
@@ -299,7 +306,8 @@ marks['main_end'] = time.perf_counter()
             + "\n"
             + """
 marks['clock_reads'] = clock_reads
-Path(sys.argv[3]).write_text(json.dumps(marks))
+phase_bytes = json.dumps(marks).encode()
+phase_map[:len(phase_bytes)] = phase_bytes
 raise SystemExit(status)
 """
         )
@@ -332,7 +340,7 @@ raise SystemExit(status)
                     )
                     raise
                 elapsed = time.perf_counter() - call_started
-                marks = json.loads(phases.read_text())
+                marks = json.loads(phases.read_bytes().rstrip(b"\0"))
                 self.last_phases = {**setup, **marks, "main_to_exit_ms": elapsed * 1000}
                 self.last_phases["total_process_ms"] = (time.perf_counter() - started) * 1000
                 print("C6_PHASE " + json.dumps(self.last_phases, sort_keys=True))
