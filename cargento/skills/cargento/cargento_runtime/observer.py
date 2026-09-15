@@ -956,7 +956,7 @@ def read_sidecar(config: RuntimeConfig, harness: str, sid: str) -> dict[str, Any
     try:
         with open(path, encoding="utf-8") as handle:
             value = json.loads(handle.read(config.state_read_cap_bytes))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError, RecursionError):
         return None
     return value if isinstance(value, dict) else None
 

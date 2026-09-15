@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import aggregate, observer, records
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events as runtime_events
-from cargento_runtime import observer, records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
@@ -1481,3 +1481,36 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
             self.assertIsNone(rows[0]["cached_deterministic_goal"])
             with config_patch(spacedock_enabled=False):
                 self.assertFalse(self.collect(build, when=self.NOW)["spacedock_enabled"])
+
+    def test_malformed_cached_goal_cannot_remove_any_board_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config, state = make_runtime(
+                state_dir=Path(tmp), annotations_enabled=False, dismissals_enabled=False
+            )
+            spec = aggregate.HarnessSpec(
+                key="pi",
+                label="Pi",
+                discover=lambda *_: True,
+                collect=lambda *_: [
+                    runtime_sessions.base_session("pi", sid, "example")
+                    for sid in ("bad", "healthy")
+                ],
+            )
+            app = aggregate.Application(
+                config,
+                state,
+                (spec,),
+                native_notifier=lambda *_: "",
+                popup_notifier=lambda *_: None,
+                diagnostic_sink=lambda *_: None,
+            )
+            path = observer.sidecar_path(config, "pi", "bad")
+            assert path is not None
+            corrupt = '{"unused":' + "[" * 30000 + "0" + "]" * 30000 + "}"
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(corrupt, encoding="utf-8")
+            self.assertLess(Path(path).stat().st_size, config.state_read_cap_bytes)
+            rows = app.collect(show_all=True)["sessions"]
+            self.assertEqual({"bad", "healthy"}, {row["sid"] for row in rows})
+            self.assertTrue(all(row["cached_deterministic_goal"] is None for row in rows))
+            self.assertEqual(corrupt, Path(path).read_text(encoding="utf-8"))
