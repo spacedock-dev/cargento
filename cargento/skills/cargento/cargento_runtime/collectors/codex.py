@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 # Absolute on the canonical top-level package: a sub-package cannot use
 # parent-relative imports without tripping the repository's own TID252 rule.
 from cargento_runtime import io as runtime_io
-from cargento_runtime import records, sessions, transcripts, turns
+from cargento_runtime import records, sessions, spacedock, transcripts, turns
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
@@ -387,6 +387,25 @@ def _session_state(
     return "working", detail
 
 
+def session_spacedock(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    path: str,
+    subagents: list[dict[str, Any]],
+    now: float,
+    window: float,
+) -> dict[str, Any] | None:
+    boot = spacedock.transcript_boot(config, state, path) if config.spacedock_enabled else []
+    if not boot:
+        return None
+    return {
+        "role": "first-officer",
+        "workflows": spacedock.session_workflows(
+            config, state, boot, [str(a["name"]) for a in subagents], now, window
+        ),
+    }
+
+
 def collect(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -602,6 +621,11 @@ def collect(
                 # page's rule is "no token, no control", and a harness whose `sid`
                 # happens to be resumable is a fact this collector knows and the
                 # page does not.
+                "spacedock": session_spacedock(
+                    config, state, fp, subagents, now, window_hours * 3600
+                )
+                if active
+                else None,
                 "resume_id": sessions.resume_token(s["sid"]),
                 "title": asked["title"],
                 "last_prompt": asked["last_prompt"],

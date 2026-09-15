@@ -110,6 +110,123 @@ __els.app = {
 renderNext();
 """
 
+    def test_stage_conditions_are_reachable_in_course_and_empty_projects(self) -> None:
+        out = self.run_fixture("""
+const id = "a".repeat(64);
+__dashboard.tripwires = {enabled:true, error:"", sources:[{id, workflow:"review-flow",
+  goal:"Review work", stages:["build","review"], evaluated:1, partial:false,
+  entities:[{slug:"task",stage:"build",source:"entity-state",source_written_at:100,observed_at:105}],
+  sessions:[{harness:"codex",sid:"focus-1",label:"Shape project cockpit"}]}], rules:[]};
+nextData = __dashboard;
+nextRoute = {view:"project",project:"cargento",tab:"course"};
+renderNext();
+const course = __els.app.innerHTML;
+__dashboard.sessions = [];
+__dashboard.tripwires.sources = [];
+__dashboard.tripwires.rules = [{id,workflow:"review-flow",stage:"review",revision:"b".repeat(32),
+  state:"armed",why:"Workflow stage source unavailable; saved condition is suspended.",available:false}];
+nextRoute = {view:"projects"};
+renderNext();
+console.log(JSON.stringify({course,projects:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("Alert once when an observed entity enters", out["course"])
+        self.assertIn('data-stage-action="save"', out["course"])
+        self.assertIn("review-flow", out["projects"])
+        self.assertIn('data-stage-action="remove"', out["projects"])
+
+    def test_removed_stage_remains_visibly_unavailable_and_off_switch_is_explicit(self) -> None:
+        out = self.run_fixture("""
+const id = "a".repeat(64);
+const source = {id,workflow:"flow",goal:"",generation:"current",stages:["build","done"],
+  entities:[],sessions:[{harness:"codex",sid:"focus-1",label:"source"}]};
+const rule = {id,workflow:"flow",stage:"review",revision:"b".repeat(32),state:"armed",available:false};
+__dashboard.tripwires = {enabled:true,source_enabled:true,rules:[rule],sources:[source]};
+nextData = __dashboard;
+const saved = nextStageConditions();
+nextStageDrafts.set(id,"removed-draft");
+const draft = nextStageConditions();
+nextStageDrafts.set(id,"build");
+const valid = nextStageConditions();
+__dashboard.tripwires = {enabled:true,source_enabled:false,rules:[rule],sources:[]};
+const off = nextStageConditions();
+__dashboard.tripwires.rules = [];
+const empty = nextStageConditions();
+nextRoute = {view:"attention"}; renderNext();
+console.log(JSON.stringify({saved,draft,valid,off,empty,attention:__els.app.innerHTML}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn(
+            '<option value="review" selected disabled>review (unavailable)</option>', out["saved"]
+        )
+        self.assertIn('<option value="removed-draft" selected disabled>', out["draft"])
+        for key in ("saved", "draft"):
+            self.assertRegex(out[key], r'data-stage-action="save"[^>]+ disabled')
+        self.assertNotRegex(out["valid"], r'data-stage-action="save"[^>]+ disabled')
+        for key in ("off", "empty"):
+            self.assertIn("Project reads are off (--no-spacedock)", out[key])
+        self.assertNotIn('data-next-open="C1"', out["attention"])
+        self.assertIn('data-next-open="C4"', out["attention"])
+
+    def test_stage_save_restores_focus_after_success_and_error_without_stealing(self) -> None:
+        dom = (
+            self.FOCUS_DOM.replace("(button|a|textarea)", "(button|a|textarea|select)")
+            .replace(
+                'return {dataset, tagName:match[1].toUpperCase(), value:"", attrs,',
+                'return {dataset, tagName:match[1].toUpperCase(), value:"", attrs, disabled:/ disabled/.test(match[2]),',
+            )
+            .replace(
+                "focus(){ document.activeElement = this; },",
+                "focus(){ if(!this.disabled) document.activeElement = this; },",
+            )
+            .replace(
+                'closest(selector){ return selector === "[data-next-cockpit-action]" && dataset.nextCockpitAction ? this : null; }',
+                'closest(selector){ return selector === "[data-stage-action]" && dataset.stageAction ? this : null; }',
+            )
+        )
+        out = self.run_fixture(
+            """
+const id = "a".repeat(64);
+__dashboard.tripwires = {enabled:true,error:"",rules:[],sources:[{id,workflow:"flow",goal:"",generation:"current",
+  stages:["build","review"],entities:[],sessions:[{harness:"codex",sid:"focus-1",label:"source"}]}]};
+nextData = __dashboard;
+nextRoute = {view:"project",project:"cargento",tab:"course"};
+"""
+            + dom
+            + """
+const seen = [];
+for(const kind of ["success","error","moved"]){
+  renderNext();
+  const button = controls.find(c => c.dataset.stageAction === "save");
+  button.focus();
+  let resolve;
+  __fetchImpl = url => String(url) === "/api/tripwire" ? new Promise(r => {resolve=r;}) :
+    Promise.resolve({ok:true,json:async()=>__dashboard});
+  __fire("click",{target:button,preventDefault(){}});
+  let requested = "";
+  if(kind === "moved"){
+    __fire("pointerdown",{target:document.body});
+    const other = controls.find(c => c.dataset.nextFocus && !c.dataset.nextFocus.startsWith("stage:"));
+    requested = other.dataset.nextFocus;
+    other.focus();
+  }
+  resolve({ok:kind !== "error",json:async()=>({ok:kind !== "error",error:"Could not save test condition."})});
+  await __settle(); await __settle();
+  seen.push({kind,requested,focus:document.activeElement && document.activeElement.dataset.nextFocus,
+    cue:nextStageCues.get(id)});
+}
+console.log(JSON.stringify(seen));
+"""
+        )
+        assert isinstance(out, list)
+        self.assertEqual(
+            ["stage:" + "a" * 64 + ":save"] * 2 + [out[2]["requested"]],
+            [row["focus"] for row in out],
+        )
+        self.assertEqual(
+            ["Saved.", "Could not save test condition.", "Saved."], [row["cue"] for row in out]
+        )
+
     def test_tab_arrow_navigation_keeps_focus_for_consecutive_keys(self) -> None:
         out = self.run_fixture(
             self.FOCUS_DOM

@@ -840,6 +840,7 @@ class DiagnoseTest(unittest.TestCase):
             assert show_all, "diagnose must ask for every session, not just active ones"
             return {
                 "sessions": counted,
+                "tripwires": {"error": ""},
                 "harnesses": [
                     {"key": "claude", "label": "Claude", "discovered": True, "error": None},
                     {"key": "codex", "label": "Codex", "discovered": True, "error": None},

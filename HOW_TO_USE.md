@@ -358,6 +358,18 @@ discard records are still there afterwards too, and the message names all three 
 instance with the same probe `--status` and `--stop` use, so `--stop` and then `--forget` is the
 whole procedure.
 
+## Alert once on a workflow stage
+
+Open a project's Course tab, find Workflow stage conditions, choose a declared stage and press
+Save. The first observation establishes a baseline. A later observed entry into the selected stage
+trips the condition once. Already being at that stage does not trigger it, and an observation gap
+does not imply a crossing.
+
+Rearm permits another entry alert. Saving the same stage preserves its latch; changing the stage
+starts a fresh baseline. Projects keeps saved conditions visible and removable after their source
+session disappears. The card distinguishes a suspended source, a failed save and the notification
+service's response. A service accepting an attempt does not prove a banner appeared.
+
 ## Turn a feature off
 
 Each flag belongs to the dashboard process, so changing one means restarting.
@@ -368,7 +380,8 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-usage` | The one outbound request Cargento makes. No quota is fetched and no section renders |
 | `--no-dismiss` | Marking a session handled, and the store that remembers it |
 | `--no-events` | The event coordinator. State comes from scanning stores rather than from pushed events, and the session-end store is neither read nor written |
-| `--no-spacedock` | Reading Spacedock workflow state out of a project |
+| `--no-spacedock` | Reading Spacedock workflow state out of a project; saved stage conditions remain readable but suspended |
+| `--no-tripwires` | Workflow stage conditions and every read or write of their saved store |
 | `--no-git` | The end-of-session git probe. No git command runs inside any repository |
 | `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
 | `--no-annotations` | The goal and expected output you typed against a session. Nothing is shown or saved, and the page offers no field |

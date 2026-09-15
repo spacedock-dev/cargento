@@ -223,3 +223,14 @@ belongs on what is read, not on where it sits.
 Parse the entity file for more than `status`. Titles, verdicts, scores and PR numbers are all
 sitting right there in the frontmatter, and each one is project content that would then flow to
 `/api/data`. Only the stage is needed to place an entity on a spine, so only the stage is taken.
+
+## S-8. Current stage conditions use a separate observation
+
+The display strip can fill from a boot snapshot and show only twelve entities. Neither property
+makes it evidence of a new stage entry. Stage conditions instead read bounded current entity
+frontmatter, including initial and terminal stages, with separate write and observation stamps.
+The [stage-condition contract](design-tripwires.md) owns identity, gaps and the durable latch.
+
+Codex collection now attaches the existing stage projection from a supported tool result. The
+captured fulfilled wrapper is admitted only with integer exit code zero and one complete boot JSON
+object as output. Failed, nested, quoted and prose-wrapped results do not authorize project reads.

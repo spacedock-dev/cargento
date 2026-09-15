@@ -30,6 +30,7 @@ For where these files sit and which way their dependencies run, see
 | A typed and unsent draft | Restored | `nextControlsCaptureDrafts` in `next-controls.js`, called by `renderNext` before the assignment |
 | That draft's caret offset | Restored | `nextCaptureFocus` / `nextFocusNamed`, with `nextControlsApplyCaret` as the control-state fallback |
 | The `+ set a tripwire` box, once opened | Kept open | `nextControlsProjectState(project).adding` in `next-controls.js`, held per project for the life of the tab |
+| A workflow stage-condition choice, save cue and action focus | Kept across redraw in `nextStageDrafts` and `nextStageCues`; the pre-action focus target is restored after the final enabled render only if no later keyboard or pointer interaction displaced it | `next-controls.js`; saving the same stage preserves the server revision and latch |
 | The workstream panel's collapse | Kept collapsed | `nextWorkstreamCollapsed` in `next-workstream.js`, persisted to `localStorage` |
 | The prototype terminal viewport scroll offset | Restored, or follows live output | `projectTerminalScrollTop` and `projectTerminalFollowLive`, restored by `projectTerminalBindViewport` in `project.js` |
 | Cockpit scope and selected tab | Preserved through redraw, reload and browser navigation | `nextRoute` and the fragment helpers in `next-boot.js`; changing scope retains the current tab, except that leaving a session for project scope drops `Held to` and lands on `Now`, because `nextCockpitTabs` offers that tab only while a session is in focus |
