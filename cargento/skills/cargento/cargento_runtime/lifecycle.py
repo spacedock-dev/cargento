@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import ctypes
 import errno
 import http.client
 import json
@@ -274,6 +275,25 @@ def pid_exists(pid: int) -> bool:
     """Whether `pid` names a currently running process."""
     if pid <= 0:
         return False
+    if sys.platform == "win32":
+        try:
+            windll = getattr(ctypes, "windll", None)
+            if windll is not None:
+                synchronize = 0x00100000
+                process_query_limited_information = 0x1000
+                handle = windll.kernel32.OpenProcess(
+                    synchronize | process_query_limited_information, False, pid
+                )
+                if not handle:
+                    # ERROR_ACCESS_DENIED (5) means the process exists but is not accessible
+                    return bool(ctypes.GetLastError() == 5)
+                try:
+                    # 0x00000102 is WAIT_TIMEOUT, meaning process is not yet signaled (still alive)
+                    return bool(windll.kernel32.WaitForSingleObject(handle, 0) == 0x00000102)
+                finally:
+                    windll.kernel32.CloseHandle(handle)
+        except (OSError, AttributeError):
+            return True
     try:
         os.kill(pid, 0)
     except OSError as exc:
@@ -839,7 +859,7 @@ def run_producer(
 
 def _register_sigterm_exit() -> Any:
     """Exit cleanly on SIGTERM so finally blocks can run."""
-    if not hasattr(signal, "SIGTERM"):
+    if not hasattr(signal, "SIGTERM") or sys.platform == "win32":
         return None
     with contextlib.suppress(ValueError, AttributeError):
         return signal.signal(signal.SIGTERM, lambda _sig, _frame: sys.exit(0))

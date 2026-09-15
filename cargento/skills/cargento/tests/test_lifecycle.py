@@ -1546,8 +1546,8 @@ class DaemonLifecycleTest(unittest.TestCase):
 
     def test_sigterm_removes_state_file(self) -> None:
         """DRC-4551: SIGTERM causes server to remove its state file before exit."""
-        if not hasattr(signal, "SIGTERM"):
-            self.skipTest("SIGTERM not available on this platform")
+        if not hasattr(signal, "SIGTERM") or sys.platform == "win32":
+            self.skipTest("SIGTERM not available or catchable on this platform")
         port = self._free_port()
         with tempfile.TemporaryDirectory() as tmp:
             env = {**os.environ, "CARGENTO_HOME": tmp}
