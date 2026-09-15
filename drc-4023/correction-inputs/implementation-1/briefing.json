@@ -6,7 +6,7 @@
   "artifacts": [
     {
       "id": "artifact:drc-4023:rejected-head-6cbcbb1",
-      "uri": "../../implementation-rejected-6cbcbb1.md",
+      "uri": "../../../implementation-rejected-6cbcbb1.md",
       "mediaType": "text/markdown",
       "rev": "sha256:6ff21ecd647dac3ce16c7f0c006fed547858a2d3835356d09582eb0478db4807"
     }
