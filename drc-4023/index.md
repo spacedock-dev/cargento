@@ -11,11 +11,11 @@ worktree: .worktrees/spacedock-ensign-drc-4023
 issue:
 pr: spacedock-dev/cargento#337
 mod-block:
-linear-status: In Review
+linear-status: Done
 milestone: 'Steer before waste'
 release: 'later'
 estimate: 'L'
-reconciled:
+reconciled: 2026-09-15T02:05:36Z
 promise: P2
 move: extend
 gates:
