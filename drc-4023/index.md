@@ -1,7 +1,7 @@
 ---
 id: drc-4023
 title: 'C4 · My goals across sessions'
-status: implementation
+status: review
 source: https://linear.app/recce/issue/DRC-4023
 started: 2026-09-14T12:49:38Z
 completed:
@@ -9,7 +9,7 @@ verdict:
 score: 0.2
 worktree: .worktrees/spacedock-ensign-drc-4023
 issue:
-pr:
+pr: spacedock-dev/cargento#337
 mod-block:
 linear-status: In Progress
 milestone: 'Steer before waste'
