@@ -330,6 +330,23 @@ class ValidatorTests(unittest.TestCase):
                 "the directory name must not be required to match",
             )
 
+    def test_the_droid_manifest_name_is_the_plugin_name_not_the_directory(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+            extension_root = Path(directory) / "cargento-droid"
+            (extension_root / ".factory-plugin").mkdir(parents=True)
+            (extension_root / ".factory-plugin/plugin.json").write_text(
+                '{"name":"cargento","description":"Fixture"}\n'
+            )
+            validation = validator.Validation()
+
+            validator.validate_droid_extension(extension_root, "cargento", validation)
+
+            self.assertEqual(
+                [],
+                [error for error in validation.errors if "name must be" in error],
+                "the directory name must not be required to match",
+            )
+
     def test_mcp_endpoint_parity_rejects_drift_and_missing_antigravity_config(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
@@ -1008,6 +1025,60 @@ class HookVocabularyTests(unittest.TestCase):
             errors = self._errors(
                 "cargento-gemini/hooks/hooks.json",
                 self._gemini_document(harness="claude"),
+                tmp,
+            )
+            self.assertTrue(
+                any("wrong route" in message for message in errors),
+                f"a foreign harness argument went unreported: {errors}",
+            )
+
+    @staticmethod
+    def _droid_document(event: str = "SessionStart", harness: str = "droid") -> dict[str, Any]:
+        return {
+            "hooks": {
+                event: [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": (
+                                    'python3 "${DROID_PLUGIN_ROOT}/hooks/event_hook.py" ' + harness
+                                ),
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+
+    def test_a_name_the_droid_harness_knows_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            self.assertEqual(
+                [],
+                self._errors("cargento-droid/hooks/hooks.json", self._droid_document(), tmp),
+            )
+
+    def test_a_foreign_droid_event_name_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            errors = self._errors(
+                "cargento-droid/hooks/hooks.json",
+                self._droid_document(event="UserPromptSubmit"),
+                tmp,
+            )
+            self.assertTrue(
+                any("UserPromptSubmit" in message for message in errors),
+                f"a foreign event name went unreported: {errors}",
+            )
+
+    def test_a_foreign_droid_harness_argument_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            errors = self._errors(
+                "cargento-droid/hooks/hooks.json",
+                self._droid_document(harness="claude"),
                 tmp,
             )
             self.assertTrue(

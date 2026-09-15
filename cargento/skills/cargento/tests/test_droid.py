@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
+import event_hook
+from cargento_runtime import observation as runtime_observation
 from cargento_runtime import records as runtime_records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
@@ -20,6 +22,7 @@ from .support import (
     STORE_OVERRIDES,
     USER_HOME,
     RuntimeTestCase,
+    build_app,
     config_patch,
     make_runtime,
     runtime,
@@ -291,3 +294,95 @@ class CodexPathTest(unittest.TestCase):
                 "reviewer.md",
                 runtime_transcripts.codex_meta(config, state, str(rollout))["agent_label"],
             )
+
+
+class DroidIdentityAndOverlayJoinTest(RuntimeTestCase):
+    """AC-2: A valid measured Droid session ID joins exactly the existing Droid row."""
+
+    NOW = 1_700_000_000.0
+    UUID = "12345678-abcd-ef01-2345-6789abcdef01"
+
+    def test_droid_event_joins_row_with_header_id_and_does_not_affect_claude_control(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "proj-a" / f"{self.UUID}.jsonl"
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(
+                json.dumps({"type": "session_start", "id": self.UUID, "cwd": "/w/test"}) + "\n"
+            )
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+                self.assertEqual(1, len(rows))
+                self.assertEqual(self.UUID, rows[0]["sid"])
+
+                app = build_app()
+                coordinator = runtime_observation.Observation(
+                    app, clock=lambda: self.NOW, diagnostic_sink=lambda _msg: None
+                )
+
+                # Send SessionEnd event for Droid
+                envelope = event_hook.envelope(
+                    {
+                        "hook_event_name": "SessionEnd",
+                        "session_id": self.UUID,
+                        "cwd": "/w/test",
+                        "transcript_path": str(fp),
+                    },
+                    "droid",
+                )
+                self.assertIsNotNone(envelope)
+                assert envelope is not None
+                status = coordinator.submit("droid", envelope)
+                self.assertEqual("accepted", status)
+
+                # Coordinator records ended_at for the whole UUID on Droid
+                self.assertEqual(self.NOW, coordinator.ended_at("droid", self.UUID))
+
+                # Control: same prefix under Claude is unaffected
+                claude_prefix = self.UUID[:8]
+                self.assertEqual(0.0, coordinator.ended_at("claude", claude_prefix))
+
+                # Mutation check: truncated 8-character ID is refused as unmappable
+                bad_envelope = event_hook.envelope(
+                    {
+                        "hook_event_name": "SessionEnd",
+                        "session_id": claude_prefix,
+                        "cwd": "/w/test",
+                        "transcript_path": str(fp),
+                    },
+                    "droid",
+                )
+                assert bad_envelope is not None
+                self.assertEqual("unmappable-id", coordinator.submit("droid", bad_envelope))
+
+    def test_droid_event_joins_row_when_header_is_missing_using_filename_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "proj-b" / f"{self.UUID}.jsonl"
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            # Line 1 is not session_start, so collector falls back to filename stem
+            fp.write_text(json.dumps({"type": "message", "content": "hello"}) + "\n")
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+                self.assertEqual(1, len(rows))
+                self.assertEqual(self.UUID, rows[0]["sid"])
+
+                app = build_app()
+                coordinator = runtime_observation.Observation(
+                    app, clock=lambda: self.NOW, diagnostic_sink=lambda _msg: None
+                )
+
+                envelope = event_hook.envelope(
+                    {
+                        "hook_event_name": "SessionEnd",
+                        "session_id": self.UUID,
+                        "cwd": "/w/test",
+                        "transcript_path": str(fp),
+                    },
+                    "droid",
+                )
+                self.assertIsNotNone(envelope)
+                assert envelope is not None
+                status = coordinator.submit("droid", envelope)
+                self.assertEqual("accepted", status)
+                self.assertEqual(self.NOW, coordinator.ended_at("droid", self.UUID))

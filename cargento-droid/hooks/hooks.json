@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${DROID_PLUGIN_ROOT}/hooks/event_hook.py\" droid"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${DROID_PLUGIN_ROOT}/hooks/event_hook.py\" droid"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -537,11 +537,15 @@ class HookIdentityTest(unittest.TestCase):
             with self.subTest(marker=banned):
                 self.assertNotIn(banned, source)
 
-    def test_the_two_shipped_copies_of_the_hook_stay_byte_identical(self) -> None:
+    def test_the_shipped_copies_of_the_hook_stay_byte_identical(self) -> None:
         root = Path(__file__).resolve().parents[4]
         plugin = root / "cargento" / "skills" / "cargento" / "event_hook.py"
-        gemini = root / "cargento-gemini" / "hooks" / "event_hook.py"
-        self.assertEqual(plugin.read_bytes(), gemini.read_bytes())
+        for rel in (
+            "cargento-gemini/hooks/event_hook.py",
+            "cargento-droid/hooks/event_hook.py",
+        ):
+            with self.subTest(source=rel):
+                self.assertEqual(plugin.read_bytes(), (root / rel).read_bytes())
 
 
 class EnvelopeAdmissionTest(unittest.TestCase):

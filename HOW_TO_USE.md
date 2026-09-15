@@ -261,6 +261,26 @@ from the first section, then paste the resolved path into the snippet.
 Claude Code's hooks go in `~/.claude/settings.json`. Antigravity's status line goes in its own
 settings file. Both are yours to edit; the plugin does not write either.
 
+## Install or migrate Droid hooks
+
+Droid loads plugin hooks from `<root>/hooks/hooks.json` and supports Factory plugins via `.factory-plugin/plugin.json`.
+Install Droid hooks from `cargento-droid/`:
+
+```bash
+droid plugin install /path/to/cargento-droid
+```
+
+Restart Droid after installation.
+
+If you previously installed the Claude root (`cargento/`) into Droid, migrate by uninstalling that copy first:
+
+```bash
+droid plugin uninstall cargento
+droid plugin install /path/to/cargento-droid
+```
+
+This ensures Droid's `SessionStart` and `SessionEnd` hooks run with the `droid` harness argument and route to `/api/events/droid` rather than `/api/events/claude`, so Droid session lifecycle events join the existing Droid collector row. Droid Notification and permission events are not mapped.
+
 ## Report Pi extension prompts
 
 This procedure was exercised with `@earendil-works/pi-coding-agent@0.85.1` on macOS.
