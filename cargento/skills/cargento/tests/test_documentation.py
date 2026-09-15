@@ -679,6 +679,110 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         )
         self.assertNotEqual(top["verdict"], legacy["verdict"])
 
+    _PERSONAL_PATH_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"(?:/Users/|/home/|[A-Za-z]:[/\\]Users[/\\])", re.IGNORECASE
+    )
+    _EMAIL_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+    )
+
+    @classmethod
+    def find_privacy_violations(
+        cls, records: list[dict[str, Any]]
+    ) -> list[tuple[int, tuple[str, ...], str]]:
+        """Scan parsed JSONL records for personal path or email violations.
+
+        Returns a list of (row_1_indexed, safe_trail, violation_kind).
+        The actual offending string is NEVER included in the returned tuple
+        to prevent diagnostic leakage.
+        """
+        violations: list[tuple[int, tuple[str, ...], str]] = []
+        for row_idx, record in enumerate(records, start=1):
+            for trail, text in cls.strings(record):
+                kind: str | None = None
+                if cls._PERSONAL_PATH_RE.search(text):
+                    kind = "personal path detected"
+                elif cls._EMAIL_RE.search(text):
+                    kind = "email address detected"
+                if kind is not None:
+                    safe_trail = tuple(
+                        "<sensitive-key>"
+                        if (cls._PERSONAL_PATH_RE.search(elem) or cls._EMAIL_RE.search(elem))
+                        else elem
+                        for elem in trail
+                    )
+                    violations.append((row_idx, safe_trail, kind))
+        return violations
+
+    def test_every_capture_file_satisfies_corpus_privacy_contract(self) -> None:
+        # Every committed docs/captures/**/*.jsonl record is checked, including
+        # nested strings, string keys and duplicate-key values. Rejects captured
+        # personal paths, email addresses, and prompt/tool text without echoing
+        # the rejected values in diagnostic output.
+        capture_paths = sorted(self.CAPTURES.glob("**/*.jsonl"))
+        self.assertTrue(capture_paths, "must find capture files in docs/captures")
+        all_violations: list[str] = []
+        for path in capture_paths:
+            rel = path.relative_to(self.ROOT)
+            records = self.records(path)
+            for row_idx, trail, kind in self.find_privacy_violations(records):
+                all_violations.append(f"{rel}:{row_idx} at {'.'.join(trail)}: {kind}")
+        self.assertEqual([], all_violations, "corpus capture files contain privacy violations")
+
+    def test_corpus_privacy_assertion_rejects_synthetic_violations_without_echoing_content(
+        self,
+    ) -> None:
+        synthetic_path = "/Users/secretuser/private_project/secret_file.txt"
+        synthetic_email = "confidential_agent@example.com"
+
+        # 1. Nested value carrying an absolute personal path
+        records_nested_val = [json.loads(json.dumps({"outer": {"inner": synthetic_path}}))]
+        v_val = self.find_privacy_violations(records_nested_val)
+        self.assertEqual(1, len(v_val))
+        self.assertEqual((1, ("outer", "inner"), "personal path detected"), v_val[0])
+
+        # 2. Key carrying an absolute personal path
+        records_key = [json.loads(json.dumps({synthetic_path: "clean_value"}))]
+        v_key = self.find_privacy_violations(records_key)
+        self.assertTrue(any("personal path detected" in v[2] for v in v_key))
+
+        # 3. Duplicate key whose displaced value carried an absolute personal path
+        dup_json = f'{{"path": "{synthetic_path}", "path": "safe"}}'
+        records_dup = [json.loads(dup_json, object_pairs_hook=self._every_pair)]
+        v_dup = self.find_privacy_violations(records_dup)
+        self.assertTrue(any("personal path detected" in v[2] for v in v_dup))
+
+        # 4. Email address
+        records_email = [json.loads(json.dumps({"author": synthetic_email}))]
+        v_email = self.find_privacy_violations(records_email)
+        self.assertEqual(1, len(v_email))
+        self.assertEqual((1, ("author",), "email address detected"), v_email[0])
+
+        # 5. Permitted vocabulary control passes
+        permitted = [
+            json.loads(
+                json.dumps(
+                    {
+                        "format": 2,
+                        "harness": "codex",
+                        "event": "Notification",
+                        "notification_type": "permission_prompt",
+                        "tool": "Bash",
+                    }
+                )
+            )
+        ]
+        self.assertEqual([], self.find_privacy_violations(permitted))
+
+        # 6. Verify that formatted reports do not echo sensitive strings
+        formatted_reports = [
+            f"file.jsonl:{row_idx} at {'.'.join(trail)}: {kind}"
+            for row_idx, trail, kind in v_val + v_key + v_dup + v_email
+        ]
+        for report in formatted_reports:
+            self.assertNotIn(synthetic_path, report)
+            self.assertNotIn(synthetic_email, report)
+
     def test_the_capture_files_table_is_one_block(self) -> None:
         # Two rows were left stranded below the prose that follows the table,
         # and every capture PR adds its row by copying the one above it, so a
