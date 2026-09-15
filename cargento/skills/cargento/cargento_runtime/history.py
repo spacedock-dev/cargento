@@ -8,11 +8,11 @@ history store)" section is the contract it implements:
 The bounds are the ruling in Linear DRC-4234 as written into that contract,
 not this module's preferences.
 
-A leaf: `config` for the paths and the bounds, and nothing else. It is the shape
-`git_status.py` took rather than the shape `dismissals.py` took, deliberately —
-`dismissals` reaches `records` and `io`, and a store written continuously by the
-collection lane must not be able to reach a module that could grow an edge back
-toward it. The diagnostic sink is a parameter for the same reason.
+A leaf over `config` and `io` (for the shared owner-only write helper; DRC-4345),
+which is narrower than `dismissals.py` beside it (that one reaches `records` and `state`),
+because the collection lane writes this store continuously and must not be able to reach
+a module that could grow an edge back toward it. The diagnostic sink is a parameter for
+the same reason.
 
 Why a derived record rather than a row copy: the contract's one rule is that the
 store holds nothing the live snapshot does not already serve, and the enforceable
@@ -35,6 +35,8 @@ import os
 import re
 import threading
 from typing import TYPE_CHECKING, Any, Final, TypedDict
+
+from cargento_runtime import io as runtime_io
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -506,21 +508,14 @@ def save(
     if not config.history_enabled:
         return False
     target = store_path(config)
-    tmp = f"{target}.{os.getpid()}.tmp"
     try:
-        os.makedirs(config.state_home, mode=0o700, exist_ok=True)
-        handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(handle_fd, "wb") as handle:
-            handle.write(_payload(entries))
-        os.replace(tmp, target)
+        runtime_io.atomic_write_owner_only(target, _payload(entries))
     except (OSError, ValueError):
         _report(
             f"Cargento: could not write the history store {target}; "
             "the board will open with no memory of this run",
             diagnostic_sink,
         )
-        with contextlib.suppress(OSError, ValueError):
-            os.unlink(tmp)
         return False
     return True
 

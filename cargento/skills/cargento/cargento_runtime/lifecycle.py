@@ -75,11 +75,11 @@ def ensure_cargento_home(config: RuntimeConfig) -> str:
     """Create the state directory, owner-only, and return it.
 
     0o700 because the log carries tracebacks with local paths in them. The mode
-    is advisory: it does not apply to a directory that already exists, and
-    Windows ignores it.
+    is tightened if the directory already exists with looser permissions. The
+    mode is advisory, and Windows ignores it.
     """
     home = cargento_home(config)
-    os.makedirs(home, mode=0o700, exist_ok=True)
+    runtime_io.ensure_owner_dir(home, mode=0o700)
     return home
 
 
@@ -118,23 +118,14 @@ def write_state(
     if capabilities:
         payload["capabilities"] = capabilities
     target = state_path(config, port)
-    tmp = f"{target}.{os.getpid()}.tmp"
     try:
         ensure_cargento_home(config)
-        # Opened through os.open with the mode in the call rather than chmodded
-        # afterwards: a chmod leaves a window in which the file exists
-        # world-readable, and the token is in it from the first byte.
-        handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-        os.replace(tmp, target)
+        runtime_io.atomic_write_owner_only(target, json.dumps(payload))
     except OSError as exc:
         runtime_io.diag(
             f"Cargento: could not write {target} ({exc}); --status will not see this instance",
             diagnostic_sink,
         )
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
 
 
 def read_state(config: RuntimeConfig, port: int) -> dict[str, Any] | None:

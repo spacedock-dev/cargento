@@ -56,7 +56,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── events.py           # the untrusted event envelope and its overlay reducer
         │   ├── focus.py            # the focus command: one socket case, or no raise
         │   ├── git_status.py       # the end-of-session git probe: one command, two scalars
-        │   ├── history.py          # the local history of what was observed, a leaf over config
+        │   ├── history.py          # the local history of what was observed, a leaf over config and io
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── interaction_prototype.py # optional registered-session terminal output
