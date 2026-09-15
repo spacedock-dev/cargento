@@ -133,11 +133,11 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 6f32a19 (2026-09-13) -->
-<!-- The range this covers is 955727a..6f32a19, which is #318 through #325: the previous sync
-     itself, the reading-exists fix, the delivery record, the unasked departure lane, the durable
-     session-end store, the abstention scorer, the stored reading's reason and its save path, and
-     the departure review surface. Each of those feature branches ran its own scoped pass and left
-     this marker alone, per the parallel-work rule in AGENTS.md, so what this pass had left to find
-     was the claims that span two of them rather than the ones inside one. -->
-
+<!-- docs-synced-through: f217b82 (2026-09-15) -->
+<!-- Reconciled 6f32a19..f217b82: the previous sync, departure presentation, annotation discard
+     records and invalidation, historical abstention replay and accepted reading enablement,
+     command-shape reports, workflow stage conditions, and the complete Intent log.
+     Feature-scoped passes left this shared marker alone. This pass checked their combined
+     retention, source, delivery and route claims against merged main, and corrected the
+     security overview's mutation count for the stage-condition store. Native permission and
+     banner visibility remain unverified where recorded; hook deadlines remain best effort. -->
