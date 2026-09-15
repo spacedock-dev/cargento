@@ -23,7 +23,7 @@ For where these files sit and which way their dependencies run, see
 |---|---|---|
 | An open disclosure (`<details>`) | Restored | `nextOpenDisclosures` in `next-chrome.js`, keyed by the closed `NEXT_DISCLOSURE_KEYS` list, re-emitted by `nextDisclosureAttr` |
 | An expanded Attention section | Restored | `nextAttentionExpandedSections` in `next-chrome.js`, read by `nextAttentionSectionHtml` |
-| Intent log rows | Kept until their source changes; invalidated words disappear before replacement rows arrive. A hidden view waits until opened to fetch again | `nextIntentSync` and `nextIntentLoad` in `next-intent.js`; see [Intent log freshness](#intent-log-freshness) |
+| Intent log rows | Board membership and cached/workflow goals follow the dashboard payload. Retained annotation rows invalidate before replacement words arrive; a hidden view waits until opened to fetch them | `nextIntentSync` and `nextIntentLoad` in `next-intent.js`; see [Intent log freshness](#intent-log-freshness) |
 | The selected quota window | Kept by vendor and window key for the life of the tab, including when its rank falls below the initial three rows; defaults to an existing window when that key disappears, and clears when none remain | `nextCapacitySelectedKey` in `next-capacity.js`; the selected row stays visible, and window buttons use `data-next-focus` for the existing keyboard-focus lane |
 | Keyboard focus | Restored, with scrolling conditional on visibility at capture | `nextCaptureFocus` before the assignment, `nextRestoreFocus` after it; see [Document scroll](#document-scroll) |
 | A row control's confirmation cue | Restored for 30 seconds | `nextControlStates` in `next-boot.js`, keyed rather than held by node, and expiring at `NEXT_CONTROL_STATE_TTL_MS`; `NEXT_ROW_CONTROL_LANES` keys the focus lane, not this one |
@@ -81,14 +81,14 @@ code, which cites this file instead:
 
 ## Intent log freshness
 
-The Intent log has its own route because its rows outlive the live board. Fetching that route on
+The retained part of the Intent log has its own route because its rows outlive the live board. Fetching that route on
 every redraw would put up to 256 sessions of retained prose on the refresh loop. Keeping its first
 response forever was the opposite failure: after a discard, an open tab continued to print the
 withdrawn words even though the route already returned a text-free record (DRC-4566).
 
 The dashboard now carries a change token for the complete annotation and departure sources,
 including sessions that have left the board. It carries no retained prose. A changed token removes
-the cached rows immediately; a visible log fetches once, and a hidden log waits until opened. A
+the cached annotation rows immediately; a visible log fetches once, and a hidden log waits until opened. A
 confirmed discard also invalidates the initiating tab before its dashboard refresh finishes.
 Unrelated dashboard revisions do not fetch the log.
 
@@ -98,6 +98,12 @@ catches up to rows already fetched, the page keeps them. A request generation pr
 started before invalidation from restoring old words. Changes arriving during a request coalesce
 until it settles, with a twenty-second request timeout. A failed load shows that the store could not be read, withholds the old rows,
 and allows another attempt on a redraw after twenty seconds rather than retrying on every render.
+
+Board identities are joined to retained records on harness and session id on each render. A
+project label controls the link only. Off/loading/error states withhold annotation evidence but
+leave board rows and their independent sources visible. Cached deterministic evidence changes
+with recollection, without checking a transcript or inventing an observation time. Reading
+counts use retained annotations eligible to hold words, excluding board-only and discard rows.
 
 Other tabs and dashboard instances learn about a discard through their normal data updates. An
 offline or browser-suspended tab cannot learn of a remote change until those updates resume.
