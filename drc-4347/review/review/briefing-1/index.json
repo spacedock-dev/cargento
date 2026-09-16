@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4347:review:attempt-1:revision-1",
+  "question": "Approve PR #355 for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4347:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/3c0670c69ad36ccc9999a00997db3cf0b9f72b03/drc-4347.md",
+      "rev": "sha256:62ebe1dba9ccdf5db6286135ad8f82551f30cbb5643e1a2d3b081baae281e34b",
+      "mediaType": "text/markdown",
+      "summary": "PR #355 resolves nested teammate reachability and documents harness coordinator shape"
+    }
+  ]
+}
