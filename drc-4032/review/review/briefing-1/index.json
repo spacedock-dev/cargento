@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4032:review:attempt-1:revision-1",
+  "question": "Is PR #357 ready to merge for DRC-4032?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4032:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ad5bdfcffc170d750edd26dbeadc399c2c0ea2a6/drc-4032/review/review-artifact.md",
+      "rev": "sha256:d2f655e5cf17227ea96024db706ecde1953a381323812a1705d181bef9b5baa3",
+      "mediaType": "text/markdown",
+      "summary": "PR #357 implements D9 quiet hours notification suppression"
+    }
+  ]
+}
