@@ -189,6 +189,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
        session's directive under DERIVED FROM THE HARNESS. */
     ...nextObservedOwnGoal(source),
     subagents: Array.isArray(source.subagents) ? source.subagents : [],
+    subagentsOmitted: Math.max(0, nextNumber(source.subagents_omitted) || 0),
     tasks: Array.isArray(source.tasks) ? source.tasks : [],
   };
 }

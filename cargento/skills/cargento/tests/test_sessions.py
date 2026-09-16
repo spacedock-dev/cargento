@@ -80,6 +80,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "loop",
         "resume_id",
         "subagents",
+        "subagents_omitted",
         "subagent_hierarchy",
         "subagent_events",
         "tasks",
@@ -970,6 +971,32 @@ class CargentoServerTest(RuntimeTestCase):
             "running 1 subagent", runtime_sessions.working_detail(None, [{"name": "a"}])
         )
         self.assertEqual("generating…", runtime_sessions.working_detail(None, []))
+
+    def test_base_session_declares_subagents_omitted_zero(self) -> None:
+        self.assertEqual(
+            0, runtime_sessions.base_session("claude", "abc", "proj")["subagents_omitted"]
+        )
+
+    def test_cap_subagents_roster_orders_live_first_and_newest_finished_next(self) -> None:
+        roster: list[dict[str, Any]] = [
+            {"name": "old-finished", "active": False, "started_at": 1000.0},
+            {"name": "live-older", "active": True, "started_at": 1500.0},
+            {"name": "newest-finished", "active": False, "started_at": 3000.0},
+            {"name": "live-newer", "active": True, "started_at": 2000.0},
+            {"name": "unmeasured-finished", "active": None, "started_at": 2500.0},
+        ]
+        capped, omitted = runtime_sessions.cap_subagents_roster(roster, cap=3)
+        self.assertEqual(2, omitted)
+        self.assertEqual(
+            ["live-older", "live-newer", "newest-finished"],
+            [r["name"] for r in capped],
+        )
+
+    def test_cap_subagents_roster_returns_zero_omitted_under_cap(self) -> None:
+        roster: list[dict[str, Any]] = [{"name": "worker", "active": True, "started_at": 1000.0}]
+        capped, omitted = runtime_sessions.cap_subagents_roster(roster, cap=60)
+        self.assertEqual(0, omitted)
+        self.assertEqual(roster, capped)
 
     def test_turn_clock_reanchors_after_quiet_gap(self) -> None:
         # Time blocked on a human (permission prompt, AskUserQuestion, sleep)

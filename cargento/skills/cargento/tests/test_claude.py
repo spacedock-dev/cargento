@@ -3358,3 +3358,28 @@ class DispatchedTeammateTest(RuntimeTestCase):
         self.assertIs(False, published["lens-worker"]["active"])
         self.assertEqual("idle", session["state"])
         self.assertEqual("awaiting your message", session["state_detail"])
+
+    def test_published_subagent_roster_is_capped_at_configured_bound(self) -> None:
+        # DRC-4348. When a lead runs many workers (294 seen in practice), the
+        # published roster is capped at SUBAGENTS_ROSTER_CAP (60) with live
+        # workers preserved first, and the excess reported in subagents_omitted.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            # Create 5 live agents (age=10s) and 65 finished agents (age=300s to 1000s)
+            for i in range(5):
+                self.own_agent(proj, label=f"live-{i}", age=10, now=now)
+            for i in range(65):
+                # Older agents have larger ages, so smaller started_at
+                self.own_agent(proj, label=f"finished-{i}", age=200 + i * 10, now=now)
+            session = self.collect_one(tmp, None, now)
+
+        self.assertEqual(runtime_sessions.SUBAGENTS_ROSTER_CAP, len(session["subagents"]))
+        self.assertEqual(10, session["subagents_omitted"])
+        published_names = {a["name"] for a in session["subagents"]}
+        # All 5 live agents must be retained
+        for i in range(5):
+            self.assertIn(f"live-{i}-lens", published_names)
+        # The newest finished agents must be retained over the oldest
+        self.assertIn("finished-0-lens", published_names)
+        self.assertNotIn("finished-64-lens", published_names)

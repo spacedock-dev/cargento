@@ -301,8 +301,12 @@ function nextSessionSubagents(session){
     (beneath === 0
       ? ""
       : ` · ${beneath} WORKER${beneath === 1 ? "" : "S"} RUNNING BENEATH`);
+  const omitted = nextNumber(session.subagentsOmitted ?? session.subagents_omitted) || 0;
+  const omittedNotice = omitted > 0
+    ? `<div class="next-session-subagents-omitted">+${omitted} older finished worker${omitted === 1 ? "" : "s"} omitted</div>`
+    : "";
   return '<div class="next-session-current-subagents" data-next-session-subagents>' +
-    `<span>${label}</span>${rows}</div>`;
+    `<span>${label}</span>${rows}${omittedNotice}</div>`;
 }
 
 function nextCompactTokens(value){

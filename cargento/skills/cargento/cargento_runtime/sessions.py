@@ -341,6 +341,33 @@ TOOL_NAME_CAP_CHARS = 60
 # poll or an expanded project strip.
 LAST_OUTPUT_CAP_CHARS = 4096
 
+# The maximum number of subagents published in a session's roster. Capping
+# prevents long-running swarms with hundreds of finished workers from bloating
+# payload size and degrading browser performance. Live workers are retained
+# first, followed by the most recent finished workers; `subagents_omitted`
+# reports how many were left out.
+SUBAGENTS_ROSTER_CAP: Final = 60
+
+
+def cap_subagents_roster(
+    roster: list[dict[str, Any]],
+    cap: int = SUBAGENTS_ROSTER_CAP,
+) -> tuple[list[dict[str, Any]], int]:
+    """Order and cap a subagents roster, retaining live workers first.
+
+    Live entries (active is True) outrank finished entries. Finished entries
+    are ordered newest-first by started_at. When the roster exceeds the cap,
+    the excess is sliced from the oldest finished workers and reported as the
+    omitted count.
+    """
+    live = [r for r in roster if r.get("active") is True]
+    finished = [r for r in roster if r.get("active") is not True]
+    finished.sort(key=lambda r: float(r.get("started_at") or 0), reverse=True)
+    ordered = live + finished
+    if len(ordered) > cap:
+        return ordered[:cap], len(ordered) - cap
+    return ordered, 0
+
 
 # The readings a collector may disclose it could not take from a store that
 # opened. Named constants and not literals at each site: this text reaches the
@@ -735,6 +762,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # frontend, because both views need it and a re-derivation is how they
         # would come to disagree.
         "subagents": [],
+        "subagents_omitted": 0,
         "subagent_hierarchy": None,
         "subagent_events": None,
         "tasks": [],

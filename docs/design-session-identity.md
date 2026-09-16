@@ -542,3 +542,15 @@ different decision than the one this issue was filed to make.
 Keeping the ninety-second publication gate and encoding "finished" in the label string. Cheaper, and
 refused because the chrome counts published elements into its running total, so the header would
 have had to lie in order to close a gap at the pill.
+
+### Published roster cap and omitted count
+
+Widening the published roster from the ninety-second window to the entire display window
+meant a lead session with dozens or hundreds of finished workers produced unbounded payloads
+(294 elements and 30 KB observed on a single row, DRC-4348).
+
+`sessions.SUBAGENTS_ROSTER_CAP` bounds the published roster to 60 elements per session.
+Under the cap, live workers (`active is True`) are retained first, followed by the newest
+finished workers ordered by `started_at` descending. The honest difference is published in
+`subagents_omitted` on every session row (defaulting to 0), and rendered in the detail panel
+as `+N older finished worker(s) omitted` when positive.
