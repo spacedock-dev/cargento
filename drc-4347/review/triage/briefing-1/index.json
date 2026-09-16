@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4347:triage:attempt-1:revision-1",
+  "question": "Approve triage for DRC-4347?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4347:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/21c80b77a80ae60d039eebaa095ea95aaafc67c1/drc-4347.md",
+      "rev": "sha256:e1ed02d83a7c889d0efda59b50a2d0363bf639a5c60946d9bcd86318bee394fc",
+      "mediaType": "text/markdown",
+      "summary": "Triage DRC-4347: nested teammate reachability and harness team coordinator measurement"
+    }
+  ]
+}
