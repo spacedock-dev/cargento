@@ -274,6 +274,7 @@ class HarnessSpec:
     reports_rate: bool = False
     reports_needs_input: bool = False
     reports_needs_input_when: str | None = None
+    reports_turn_bounds: bool = True
     usage: UsageProvider | None = None
     usage_is_fetch: bool = False
 
@@ -415,6 +416,7 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             # feeds into it, so a wait posted from there would paint every Cursor
             # row on its first command.
             reports_needs_input=True,
+            reports_turn_bounds=False,
             usage=cursor.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
         ),
@@ -493,6 +495,11 @@ def _harness_row(spec: HarnessSpec, *, found: bool) -> dict[str, Any]:
         # every row whose gate mechanism cannot be turned off, which is all but
         # one; the page cannot derive either half.
         "reports_needs_input_when": spec.reports_needs_input_when,
+        # Whether this harness can report turn bounds at all. Stated per
+        # harness because it is a property of the store and its collector;
+        # a non-working row distinguishes "no turn in progress" from a harness
+        # that never reports them (DRC-4548).
+        "reports_turn_bounds": spec.reports_turn_bounds,
         "error": None,
     }
 

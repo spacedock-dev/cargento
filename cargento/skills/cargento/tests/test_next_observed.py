@@ -870,3 +870,48 @@ console.log(JSON.stringify({
             "Unconfirmed: no positive observation in 5m; prompt may still be standing",
             out["unconfirmedNote"],
         )
+
+    def test_non_working_row_distinguishes_no_turn_in_progress_from_unsupported_harness(
+        self,
+    ) -> None:
+        # DRC-4548. A non-working row (idle or needs_input) on a harness that reports
+        # turn bounds renders "No turn in progress", whereas a harness that never
+        # reports turn bounds (e.g. Cursor) renders "Harness does not report turn bounds".
+        out = self._run_page_js(
+            """
+const obs = nextObserved({
+  harnesses: [
+    {key: "claude", reports_turn_bounds: true},
+    {key: "cursor", reports_turn_bounds: false}
+  ],
+  sessions: [
+    {harness: "claude", sid: "c-idle", project: "repo", state: "idle"},
+    {harness: "claude", sid: "c-needs", project: "repo", state: "needs_input"},
+    {harness: "cursor", sid: "cur-idle", project: "repo", state: "idle"},
+    {harness: "cursor", sid: "cur-work", project: "repo", state: "working"}
+  ]
+});
+const bySid = Object.fromEntries(obs.sessions.map(s => [s.sid, {
+  turnText: s.turnText,
+  turnKnown: s.turnKnown
+}]));
+console.log(JSON.stringify(bySid));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            {"turnText": "No turn in progress", "turnKnown": False},
+            out["c-idle"],
+        )
+        self.assertEqual(
+            {"turnText": "No turn in progress", "turnKnown": False},
+            out["c-needs"],
+        )
+        self.assertEqual(
+            {"turnText": "Harness does not report turn bounds", "turnKnown": False},
+            out["cur-idle"],
+        )
+        self.assertEqual(
+            {"turnText": "Harness does not report turn bounds", "turnKnown": False},
+            out["cur-work"],
+        )

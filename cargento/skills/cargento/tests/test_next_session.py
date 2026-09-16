@@ -83,6 +83,41 @@ console.log(JSON.stringify({html: __els.app.innerHTML, unchanged: original === J
         self.assertNotIn("—", html)
         self.assertNotRegex(html, r">\s*0\s*<")
 
+    def test_turn_bounds_absence_distinguishes_no_turn_in_progress_from_unsupported_harness(
+        self,
+    ) -> None:
+        # DRC-4548. On non-working rows, a turn-reporting harness renders "No turn in progress",
+        # whereas a harness that does not report turn bounds renders "Harness does not report turn bounds".
+        out = self._run_page_js("""
+__els.app = {innerHTML: ""};
+nextData = {
+  generated: 10000,
+  harnesses: [
+    {key: "claude", label: "Claude Code", reports_turn_bounds: true},
+    {key: "cursor", label: "Cursor", reports_turn_bounds: false}
+  ],
+  sessions: [
+    {harness: "claude", sid: "claude-idle", project: "repo", state: "idle"},
+    {harness: "claude", sid: "claude-needs", project: "repo", state: "needs_input"},
+    {harness: "cursor", sid: "cursor-idle", project: "repo", state: "idle"}
+  ]
+};
+const results = {};
+for(const sid of ["claude-idle", "claude-needs", "cursor-idle"]){
+  const s = nextData.sessions.find(row => row.sid === sid);
+  nextRoute = {view: "session", project: "repo", harness: s.harness, session: sid};
+  renderNext();
+  results[sid] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(results));
+""")
+        assert isinstance(out, dict)
+        self.assertIn('class="next-session-absent">No turn in progress</', out["claude-idle"])
+        self.assertIn('class="next-session-absent">No turn in progress</', out["claude-needs"])
+        self.assertIn(
+            'class="next-session-absent">Harness does not report turn bounds</', out["cursor-idle"]
+        )
+
     def test_raise_is_only_offered_to_a_waiting_reachable_session_with_capability(self) -> None:
         out = self.render("""
 const query = document.querySelector;
