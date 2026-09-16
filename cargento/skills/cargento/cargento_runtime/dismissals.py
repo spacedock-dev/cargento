@@ -66,6 +66,20 @@ def store_path(config: RuntimeConfig) -> str:
     return os.path.join(config.state_home, "cargento-dismissals.json")
 
 
+def is_matchable(harness: str, sid: str) -> bool:
+    """Whether (harness, sid) can ever match a published session row.
+
+    Claude Code sessions publish the 8-character transcript prefix as their
+    sid, so a 36-character UUID or other non-8-character identifier can never
+    match any published Claude row. Admitting an unmatchable key would write a
+    permanent junk entry that never expires on activity, consuming one of the
+    bounded dismissal slots and eventually evicting a real dismissal (DRC-4179).
+    """
+    if not harness or not sid:
+        return False
+    return not (harness == "claude" and len(sid) > 8)
+
+
 def _entry(value: Any) -> Dismissal | None:
     """One untrusted record as a dismissal, or nothing.
 
@@ -79,7 +93,7 @@ def _entry(value: Any) -> Dismissal | None:
         return None
     harness = records.safe_text(value.get("harness"), KEY_CAP_CHARS).strip()
     sid = records.safe_text(value.get("sid"), KEY_CAP_CHARS).strip()
-    if not harness or not sid:
+    if not is_matchable(harness, sid):
         return None
     return {
         "harness": harness,
@@ -258,7 +272,7 @@ def dismiss(
     if not config.dismissals_enabled:
         return False
     key = _key(harness, sid)
-    if not key[0] or not key[1]:
+    if not is_matchable(key[0], key[1]):
         return False
     stamp = time.time() if now is None else now
     entry: Dismissal = {
@@ -290,6 +304,8 @@ def restore(
     if not config.dismissals_enabled:
         return False
     key = _key(harness, sid)
+    if not is_matchable(key[0], key[1]):
+        return False
     with state.dismissal_lock:
         bounded = tuple(e for e in load(config) if (e["harness"], e["sid"]) != key)
         state.dismissals = _stored(bounded)

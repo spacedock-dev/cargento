@@ -1201,7 +1201,6 @@ class _RequestHandler(BaseHTTPRequestHandler):
         answer = {
             "ok": True,
             "persisted": persisted,
-            "cleared": len(dismissals.active(config, state)),
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 

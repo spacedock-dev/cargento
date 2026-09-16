@@ -1253,6 +1253,7 @@ class Application:
                     if (report["harness"], report["sid"]) == (session["harness"], session["sid"])
                 ]
         return {
+            "ends_observable": self.overlays is not None,
             "irreversible_enabled": enabled,
             **({"command_reports": reports} if enabled else {}),
         }

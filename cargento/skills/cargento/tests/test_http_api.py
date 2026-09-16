@@ -633,7 +633,7 @@ class DismissEndpointTest(RuntimeTestCase):
         self.assertEqual((200, 200, 200), (first, status, listed_status))
         answer = json.loads(body)
         self.assertIs(True, answer["persisted"])
-        self.assertEqual(1, answer["cleared"])
+        self.assertNotIn("cleared", answer)
         self.assertEqual(
             [{"harness": "claude", "sid": "abcd1234"}],
             [{k: v for k, v in row.items() if k != "at"} for row in json.loads(listed)["cleared"]],
@@ -656,7 +656,27 @@ class DismissEndpointTest(RuntimeTestCase):
                 with self.subTest(body=body):
                     status, answer = self._post(port, body)
                     self.assertEqual(200, status)
-                    self.assertEqual(0, json.loads(answer)["cleared"])
+                    self.assertNotIn("cleared", json.loads(answer))
+
+    def test_an_unmatchable_key_returns_persisted_false_and_does_not_persist(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, body = self._post(
+                port,
+                json.dumps(
+                    {
+                        "harness": "claude",
+                        "sid": "12345678-1234-1234-1234-123456789abc",
+                    }
+                ).encode(),
+            )
+            listed_status, listed = self._get(port, "/api/cleared")
+        self.assertEqual(200, status)
+        self.assertEqual(200, listed_status)
+        answer = json.loads(body)
+        self.assertIs(False, answer["persisted"])
+        self.assertNotIn("cleared", answer)
+        self.assertEqual([], json.loads(listed)["cleared"])
 
     def test_the_rollback_switch_answers_503_on_both_routes(self) -> None:
         # 503, not 404: under `--no-dismiss` the route exists and the store does

@@ -1343,3 +1343,18 @@ class NextSessionDetailEndTest(NextPageJsHarness):
 
         self.assertNotIn("session ended", html)
         self.assertIn("idle", html)
+
+    def test_an_ended_session_does_not_describe_itself_as_awaiting_your_message(self) -> None:
+        # DRC-4554: header yields present-tense state phrase to an observed end.
+        html = self.detail(
+            'state_detail: "awaiting your message", finished_at: 9350, ended_at: 9400,'
+        )
+
+        self.assertIn("ended 10m ago", html)
+        self.assertNotIn("awaiting your message", html)
+
+    def test_a_non_ended_session_describes_itself_as_awaiting_your_message(self) -> None:
+        html = self.detail('state_detail: "awaiting your message", finished_at: 9350,')
+
+        self.assertIn("awaiting your message", html)
+        self.assertNotIn("ended 10m ago", html)
