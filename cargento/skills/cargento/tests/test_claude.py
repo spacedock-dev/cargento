@@ -2938,6 +2938,7 @@ class DispatchedTeammateTest(RuntimeTestCase):
         age: float,
         now: float,
         preamble: bool = False,
+        parent_prefix: str | None = None,
     ) -> Path:
         """One classified top-level teammate transcript.
 
@@ -2953,13 +2954,14 @@ class DispatchedTeammateTest(RuntimeTestCase):
                 json.dumps({"type": "mode", "mode": "default"}),
                 json.dumps({"type": "permission-mode", "permissionMode": "acceptEdits"}),
             ]
+        pref = parent_prefix if parent_prefix is not None else self.PARENT[:8]
         lines.append(
             json.dumps(
                 {
                     "type": "user",
                     "sessionId": sid,
                     "agentName": name,
-                    "teamName": f"session-{self.PARENT[:8]}",
+                    "teamName": f"session-{pref}",
                     "timestamp": stamp,
                     "message": {"role": "user", "content": "do the work"},
                 }
@@ -3144,6 +3146,71 @@ class DispatchedTeammateTest(RuntimeTestCase):
         # A grandchild is published, never counted into the parent's state: the
         # lead is running one teammate, whatever that teammate is running.
         self.assertEqual("running 1 subagent", session["state_detail"])
+
+    def test_nested_teammate_with_child_parent_prefix_is_published_under_lead(self) -> None:
+        # DRC-4347 AC-1, AC-2, AC-3. A teammate whose transcript specifies a
+        # teamName pointing to an intermediate child rather than the lead
+        # session is resolved to the lead session and published under it,
+        # with parent set to the intermediate teammate, and its own subagents
+        # flattened beneath it.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 60, UTC).isoformat()
+        nested_stamp = datetime.fromtimestamp(now - 50, UTC).isoformat()
+        worker_stamp = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        child_sid = "bbbb2222-0000-0000-0000-000000000000"
+        nested_sid = "cccc3333-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            # Direct teammate of lead (parent = aaaa1111)
+            self.teammate(proj, sid=child_sid, name="ensign-review", stamp=stamp, age=5, now=now)
+            # Nested teammate dispatched by ensign-review (parent = bbbb2222)
+            self.teammate(
+                proj,
+                sid=nested_sid,
+                name="ensign-nested",
+                stamp=nested_stamp,
+                age=4,
+                now=now,
+                parent_prefix=child_sid[:8],
+            )
+            # Nested teammate's own workers
+            workers = proj / nested_sid / "subagents"
+            workers.mkdir(parents=True)
+            wfp = workers / "agent-worker.jsonl"
+            wfp.write_text(
+                json.dumps({"type": "user", "timestamp": worker_stamp, "message": {}}) + "\n"
+            )
+            (workers / "agent-worker.meta.json").write_text(json.dumps({"name": "worker-lens"}))
+            os.utime(wfp, (now - 10, now - 10))
+
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"ensign-review", "ensign-nested", "worker-lens"}, set(published))
+        self.assertIsNone(published["ensign-review"]["parent"])
+        self.assertEqual("ensign-review", published["ensign-nested"]["parent"])
+        self.assertEqual("ensign-nested", published["worker-lens"]["parent"])
+        self.assertEqual(records.parse_ts(nested_stamp), published["ensign-nested"]["started_at"])
+        self.assertIs(True, published["ensign-nested"]["active"])
+
+    def test_teammates_sharing_harness_lead_team_name_are_published_under_lead(self) -> None:
+        # DRC-4347 AC-4. Claude Code coordinates agent teams under the team
+        # coordinator's identifier `teamName: session-<lead-prefix>`. Multiple
+        # teammates sharing this teamName all bucket under the lead session.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 60, UTC).isoformat()
+        t1_sid = "bbbb2222-0000-0000-0000-000000000000"
+        t2_sid = "cccc3333-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(proj, sid=t1_sid, name="ensign-review", stamp=stamp, age=5, now=now)
+            self.teammate(proj, sid=t2_sid, name="ensign-build", stamp=stamp, age=4, now=now)
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"ensign-review", "ensign-build"}, set(published))
+        self.assertIsNone(published["ensign-review"]["parent"])
+        self.assertIsNone(published["ensign-build"]["parent"])
 
     def test_a_quiet_agent_the_lead_dispatched_itself_stays_published(self) -> None:
         # captain-ruling[2026-09-03]. The window gate reached children and

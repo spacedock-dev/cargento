@@ -471,7 +471,7 @@ def collect(
     tasks_by_session = load_tasks(config)
     team_members = load_team_members(config)
     transcripts: dict[str, tuple[str, float]] = {}  # prefix -> (newest path, its mtime)
-    agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
+    raw_children: list[dict[str, Any]] = []
     for fp in runtime_io.glob_stores(config, "claude.projects", "*", "*.jsonl"):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
@@ -488,15 +488,17 @@ def collect(
                 if parent_prefix and runtime_sessions.is_fresh(
                     config, now, mtime, window_hours * 3600
                 ):
-                    agent_children.setdefault(parent_prefix, []).append(
+                    raw_children.append(
                         {
                             "path": fp,
+                            "prefix": base[:8],
                             "mtime": mtime,
                             # Both unbounded: `published_agent` redacts and
                             # then bounds for display, and the roster join
                             # needs the name as written or a long one misses.
                             "label": agent_name or "subagent",
                             "agent_name": agent_name,
+                            "parent_prefix": parent_prefix,
                         }
                     )
                 continue
@@ -507,6 +509,35 @@ def collect(
         # winner a third time. Carrying the pair costs nothing and removes both.
         if prefix not in transcripts or mtime > transcripts[prefix][1]:
             transcripts[prefix] = (fp, mtime)
+
+    # DRC-4347. Resolve nested teammate parentage.
+    # In Claude Code, the harness coordinates agent teams under the team
+    # coordinator's identifier `teamName: session-<lead-prefix>`, which is
+    # passed to every spawned teammate via `--team-name`. Real harness
+    # teammate transcripts therefore naturally bucket under the lead session.
+    # If a transcript points to an intermediate child prefix rather than a
+    # top-level session prefix (e.g. nested team dispatches or synthetic test
+    # structures), trace the parent chain to the root session so the nested
+    # child is not silently discarded, and attribute `parent` to the
+    # intermediate teammate's label.
+    agent_children: dict[str, list[dict[str, Any]]] = {}
+    children_by_prefix: dict[str, dict[str, Any]] = {c["prefix"]: c for c in raw_children}
+    for c in raw_children:
+        parent_pref = c["parent_prefix"]
+        immediate_parent_label: str | None = None
+        seen = {c["prefix"]}
+        curr = parent_pref
+        while curr in children_by_prefix and curr not in transcripts:
+            if immediate_parent_label is None:
+                immediate_parent_label = children_by_prefix[curr]["label"]
+            seen.add(curr)
+            next_pref = children_by_prefix[curr]["parent_prefix"]
+            if not next_pref or next_pref in seen:
+                break
+            curr = next_pref
+        root_prefix = curr
+        c["parent"] = immediate_parent_label
+        agent_children.setdefault(root_prefix, []).append(c)
 
     out: list[Session] = []
     for prefix in set(transcripts) | set(tasks_by_session):
@@ -689,7 +720,7 @@ def collect(
                     model=models.get(c["path"]),
                     started_at=child_started[c["path"]],
                     active=child_is_live[c["path"]],
-                    parent=None,
+                    parent=c.get("parent"),
                 )
             )
             # A teammate's own subagents, flattened onto the roster rather than
