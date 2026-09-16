@@ -595,25 +595,13 @@ def build_runtime(
     vendor quota request, and a fetch would pollute the timing besides.
     """
     if store_root_overrides is None:
+        # Parse standard CLI defaults so newly added runtime flags populate
+        # automatically without manual Namespace syncing.
+        ns = cli.build_parser().parse_args([])
+        ns.window_hours = args.window_hours
+        ns.no_usage = True
         built: tuple[Any, Any] = cli.build_runtime(
-            argparse.Namespace(
-                host="127.0.0.1",
-                port=4553,
-                window_hours=args.window_hours,
-                no_spacedock=False,
-                no_usage=True,
-                # Production defaults, not benchmark-friendly ones: these three
-                # arrived on `cli.build_runtime` after this Namespace was written
-                # and the script crashed on the first of them for anyone who ran
-                # it. Left enabled so the number still describes what a real
-                # collect pays. `no_usage` stays the one deliberate difference,
-                # for the reason given above.
-                no_git=False,
-                no_focus=False,
-                no_history=False,
-                no_dismiss=False,
-                no_ask=False,
-            ),
+            ns,
             started=time.time(),
         )
         return built
