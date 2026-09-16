@@ -353,6 +353,14 @@ class HarnessGateCoverageTest(RuntimeTestCase):
             {spec.key for spec in REGISTRY if spec.reports_needs_input},
         )
 
+    def test_only_cursor_declares_no_turn_bounds_reporting(self) -> None:
+        # DRC-4548. Every harness collector except Cursor calls `turns.turn_progress`
+        # and reports turn bounds. Cursor records no turn bounds in its store.
+        self.assertEqual(
+            {"cursor"},
+            {spec.key for spec in REGISTRY if not spec.reports_turn_bounds},
+        )
+
     def test_the_gate_flag_matches_the_harnesses_that_actually_have_a_path(self) -> None:
         # The check that would have caught the defect this test was written for.
         # `reports_needs_input` is a hand-set bool, and the first review of the

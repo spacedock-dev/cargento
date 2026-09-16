@@ -133,6 +133,16 @@ function nextObservedSession(source, asks, harness, generated, shared){
   const turnElapsed = nextObservedString(turn.elapsed_h);
   const turnEta = nextObservedString(turn.eta_h);
   const turnText = turnElapsed ? `${turnElapsed} into turn` + (turnEta ? ` · ${turnEta} estimated remaining` : "") : "";
+  const turnReporter = Boolean(
+    harness && !harness.error && (
+      typeof harness.reports_turn_bounds === "boolean"
+        ? harness.reports_turn_bounds
+        : (harness.key !== "cursor" && source.harness !== "cursor")
+    )
+  );
+  const turnReason = turnReporter
+    ? (working ? "Turn bounds not published" : "No turn in progress")
+    : "Harness does not report turn bounds";
   return {
     sid: String(source.sid == null ? "" : source.sid),
     harness: String(source.harness == null ? "" : source.harness),
@@ -146,7 +156,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
     stateKnown ? "Activity not published" : "No state published"),
     ...nextObservedPair("next", pending && pending.subject, "No pending step published"),
     ...nextObservedPair("where", "", "Exact location not published"),
-    ...nextObservedPair("turn", turnText, "Harness does not report turn bounds"),
+    ...nextObservedPair("turn", turnText, turnReason),
     blockText: blocked ? "Waiting on you" : (reporter ? "No reported block" :
       (gaps.includes("block state") ? "Block state could not be read" : "Harness does not report blocks")),
     blockKnown,
