@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4548:review:attempt-1:revision-1",
+  "question": "Approve PR #353 for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4548:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/d259074746fc3327406eac38a9fba1619705f4d7/drc-4548.md",
+      "rev": "sha256:93a2161178b2d2faae3f49ab4e108a36c51e36ca252d04f0e5e4aba8c2d8998a",
+      "mediaType": "text/markdown",
+      "summary": "PR #353 passes all 12 CI checks; 'No turn in progress' rendered on non-working rows of turn-reporting harnesses."
+    }
+  ]
+}
