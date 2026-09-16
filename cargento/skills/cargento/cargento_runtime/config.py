@@ -109,6 +109,10 @@ class RuntimeConfig:
     reach_enabled: bool
     reach_url: str | None
     reach_cooldown_sec: float
+    # Quiet hours notification suppression (DRC-4032).
+    # `--no-quiet-hours` is the off switch for this run.
+    quiet_hours_enabled: bool
+    quiet_hours: str | None
     # The trailing window every published token rate is averaged over. What a
     # row carries is therefore a MEAN and not an instantaneous reading, and at
     # ten minutes it lags a burst by minutes. `sessions.rate_from` divides by it,
@@ -596,6 +600,8 @@ def build_runtime_config(
     reach_enabled: bool = True,
     reach_url: str | None = None,
     reach_cooldown_sec: float = 60.0,
+    quiet_hours_enabled: bool = True,
+    quiet_hours: str | None = None,
     history_enabled: bool = True,
     history_retention_sec: float = HISTORY_RETENTION_DEFAULT_DAYS * SECONDS_PER_DAY,
     history_max_bytes: int = HISTORY_MAX_BYTES_DEFAULT,
@@ -649,6 +655,8 @@ def build_runtime_config(
         reach_enabled=reach_enabled,
         reach_url=reach_url,
         reach_cooldown_sec=reach_cooldown_sec,
+        quiet_hours_enabled=quiet_hours_enabled,
+        quiet_hours=quiet_hours,
         history_enabled=history_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
         # session "right now", and this window is the reason it cannot have it:

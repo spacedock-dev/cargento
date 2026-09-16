@@ -515,6 +515,20 @@ nudges are disabled by default and can be suppressed for any run with `--no-reac
 [SECURITY.md](SECURITY.md#off-machine-nudges-reaching-the-operator-away-from-the-desk) for the
 full security contract.
 
+## Quiet hours
+
+When configured, Cargento suppresses non-urgent notifications (native popups, unasked checks,
+tripwire alerts, and reach nudges) during a specified local time window:
+
+```bash
+python3 "<skill-dir>/server.py" --quiet-hours "22:00-08:00"
+```
+
+The window can also be set via the `CARGENTO_QUIET_HOURS` environment variable or saved in
+`~/.cargento/quiet_hours`. The window format is `HH:MM-HH:MM` in 24-hour local time and can cross
+midnight (e.g. `22:00-08:00`). Direct operator questions asking for input are not suppressed.
+Quiet hours can be disabled for any run with `--no-quiet-hours`.
+
 ## Stop a dashboard, and unstick a port
 
 ```bash

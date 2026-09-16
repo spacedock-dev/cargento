@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from cargento_runtime import claude_data, deliveries, dismissals, records
 from cargento_runtime import io as runtime_io
@@ -73,6 +73,68 @@ CLEARING_NOTIFICATION_TYPES = IDLE_NOTIFICATION_TYPES | {
     "elicitation_complete",
     "elicitation_response",
 }
+
+
+QUIET_HOURS_FILENAME: Final[str] = "quiet_hours"
+QUIET_HOURS_ENV: Final[str] = "CARGENTO_QUIET_HOURS"
+QUIET_HOURS_MAX_BYTES: Final[int] = 128
+
+
+def parse_quiet_hours(spec: Any) -> tuple[int, int, int, int] | None:
+    """Parse a quiet hours window string (e.g. '22:00-08:00') into (start_h, start_m, end_h, end_m).
+
+    Returns None if spec is invalid, empty, or has identical start and end times.
+    """
+    if not isinstance(spec, str) or "-" not in spec:
+        return None
+    try:
+        start_str, end_str = spec.strip().split("-", 1)
+        start_h, start_m = (int(x) for x in start_str.split(":", 1))
+        end_h, end_m = (int(x) for x in end_str.split(":", 1))
+        valid_time = (
+            0 <= start_h <= 23 and 0 <= start_m <= 59 and 0 <= end_h <= 23 and 0 <= end_m <= 59
+        )
+        if not valid_time or (start_h, start_m) == (end_h, end_m):
+            return None
+    except (ValueError, AttributeError):
+        return None
+    else:
+        return (start_h, start_m, end_h, end_m)
+
+
+def resolve_quiet_hours(config: RuntimeConfig) -> tuple[int, int, int, int] | None:
+    """Resolve the effective quiet hours window, or None if disabled or unconfigured."""
+    if not config.quiet_hours_enabled:
+        return None
+    candidate = config.quiet_hours
+    if not candidate:
+        candidate = os.environ.get(QUIET_HOURS_ENV)
+    if not candidate:
+        quiet_file = os.path.join(config.state_home, QUIET_HOURS_FILENAME)
+        if os.path.isfile(quiet_file):
+            try:
+                with open(quiet_file, encoding="utf-8") as f:
+                    candidate = f.read(QUIET_HOURS_MAX_BYTES)
+            except OSError:
+                candidate = None
+    return parse_quiet_hours(candidate)
+
+
+def is_quiet_hours(config: RuntimeConfig, *, now: float | None = None) -> bool:
+    """Return True if the current local time falls within the configured quiet hours window."""
+    window = resolve_quiet_hours(config)
+    if window is None:
+        return False
+    start_h, start_m, end_h, end_m = window
+    current_ts = now if now is not None else time.time()
+    local_tm = time.localtime(current_ts)
+    cur_m = local_tm.tm_hour * 60 + local_tm.tm_min
+    start_minutes = start_h * 60 + start_m
+    end_minutes = end_h * 60 + end_m
+
+    if start_minutes < end_minutes:
+        return start_minutes <= cur_m < end_minutes
+    return cur_m >= start_minutes or cur_m < end_minutes
 
 
 def normalized_notification_type(value: Any) -> str:
@@ -421,13 +483,15 @@ def maybe_popup(
     the comment on that branch has the reason.
     """
     prefix, harness_label = subject.prefix, subject.label
+    now = time.time()
+    if is_quiet_hours(config, now=now):
+        return
     if dismissals.suppresses(config, state, subject.harness, prefix, subject.activity):
         # Returned before the last-session-state write below, deliberately. This
         # call is not evidence about the session, so recording a transition from
         # it would let a dismissal rewrite the history the popup decision after a
         # restore is made against.
         return
-    now = time.time()
     with state.hook_lock:
         if (
             expect_generation is not None
@@ -675,6 +739,14 @@ def clear_session(state: RuntimeState, config: RuntimeConfig, prefix: str) -> No
         )
 
 
+def _payload_response(cleared: bool, in_quiet: bool) -> dict[str, Any]:
+    if cleared:
+        return {"ok": True, "suppressed": "cleared"}
+    if in_quiet:
+        return {"ok": True, "suppressed": "quiet_hours"}
+    return {"ok": True}
+
+
 def handle_payload(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -763,10 +835,12 @@ def handle_payload(
         global_ready = now - state.last_popup.get("_global", 0) >= config.global_popup_cooldown_sec
         # Claude re-emits the same idle/permission notification for as long as
         # the session stays blocked; repeating the popup adds no information.
-        # One popup per distinct message per session within the repeat window.
         prev_msg, prev_ts = state.last_popup_message.get(popup_key, ("", 0.0))
         repeat = message == prev_msg and now - prev_ts < config.popup_repeat_suppress_sec
-        fire = popup and session_ready and global_ready and not repeat and not cleared
+        in_quiet = is_quiet_hours(config, now=now)
+        fire = (
+            popup and session_ready and global_ready and not repeat and not cleared and not in_quiet
+        )
         if fire:
             spent_before = (
                 state.last_popup.get(popup_key),
@@ -788,6 +862,4 @@ def handle_payload(
         # Claude's own hook forwarder and nothing else posts there, so the
         # harness is a property of the route rather than a field to trust.
         record_outcome(config, "claude", prefix, "hook", outcome, now)
-    if cleared:
-        return {"ok": True, "suppressed": "cleared"}
-    return {"ok": True}
+    return _payload_response(cleared, in_quiet)

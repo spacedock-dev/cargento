@@ -535,6 +535,8 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
 | `--no-reach` | For this run, disable outbound reach nudges: no webhook URL is resolved and no off-machine nudge is posted. |
 | `--reach-url URL` | Webhook URL for off-machine reach nudges when sessions need input or finish unread while away from the desk. Overrides `CARGENTO_REACH_URL` and `~/.cargento/reach_url`. |
+| `--no-quiet-hours` | For this run, disable quiet hours notification suppression: notifications fire regardless of local time or configured window. |
+| `--quiet-hours WINDOW` | Local time window (`HH:MM-HH:MM`) during which non-urgent notifications (popups, unasked checks, tripwires, reach nudges) are suppressed, except direct questions. Overrides `CARGENTO_QUIET_HOURS` and `~/.cargento/quiet_hours`. |
 | `--history-days N` | How long the local history keeps an observation, in days (default 14). Eviction is age first, so narrowing this drops what falls outside the window and widening it again brings nothing back. Zero or negative is refused. |
 | `--history-max-bytes N` | The size cap on the local history store, in bytes (default 1048576). It is the read cap too: a file larger than it is discarded unread rather than parsed. Zero or negative is refused. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |

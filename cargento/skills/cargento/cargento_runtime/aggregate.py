@@ -827,6 +827,7 @@ class Application:
         # happened — subtracting first would punch gaps in the history of any
         # session the reader ever cleared.
         self._notify_waits(out_sessions, generations, notify=notify)
+        in_quiet = notifications.is_quiet_hours(config, now=now)
         stage_conditions = tripwires.collect(
             config,
             state,
@@ -834,10 +835,10 @@ class Application:
             now,
             self.native_notifier(config.platform_name),
             self.popup_notifier,
-            notify=notify,
+            notify=notify and not in_quiet,
         )
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
-        if notify:
+        if notify and not in_quiet:
             reach.maybe_reach_nudge(config, state, out_sessions, now=now)
         _attach_cached_goals(config, out_sessions)
         sessions.assign_display_ids(config, out_sessions)
@@ -864,6 +865,7 @@ class Application:
             # Which layer owns needs-input popups. Empty means the page should
             # raise its own; a backend name means the server already did.
             "native_notify": self.native_notifier(config.platform_name),
+            "in_quiet_hours": in_quiet,
             "harnesses": harnesses,
             "summary": {
                 "needs_input": sum(1 for x in active_sessions if x["state"] == "needs_input"),

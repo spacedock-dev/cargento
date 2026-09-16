@@ -635,6 +635,8 @@ def _opt_out_argv(args: argparse.Namespace) -> list[str]:
     if getattr(args, "no_reach", False):
         # SECURITY.md's off switch for off-machine reach nudges.
         argv.append("--no-reach")
+    if getattr(args, "no_quiet_hours", False):
+        argv.append("--no-quiet-hours")
     return argv
 
 
@@ -666,6 +668,9 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     reach_url = getattr(args, "reach_url", None)
     if reach_url:
         argv.extend(["--reach-url", reach_url])
+    quiet_hours = getattr(args, "quiet_hours", None)
+    if quiet_hours:
+        argv.extend(["--quiet-hours", quiet_hours])
     argv.extend(_history_bound_argv(args))
     # Forward the bind host only when the operator chose a non-default address,
     # so a Windows --daemon re-spawn keeps a --host 0.0.0.0 bind instead of
