@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4034:triage:attempt-1:revision-1",
+  "question": "Approve triage specification for DRC-4034?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4034:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/9962b7a892c656cb95638a68513bcbf58bd1c84f/drc-4034.md",
+      "rev": "sha256:0554c31d92673eb77555ac44f17560af56188e84affe93d200787fc08948716f",
+      "mediaType": "text/markdown",
+      "summary": "DRC-4034 triage specification defining reach off-machine nudge implementation, security boundaries, and ACs"
+    }
+  ]
+}
