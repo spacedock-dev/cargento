@@ -1540,3 +1540,42 @@ class JavaScriptAdapterContractTest(unittest.TestCase):
                 mutated.write_text(mutated.read_text().replace(before, after))
                 problems = validator.check_js_adapters(Path(tmp))
                 self.assertTrue(any(filename in problem for problem in problems), problems)
+
+
+class ScriptTestsDiscoveryContractTest(unittest.TestCase):
+    def test_all_script_tests_are_discoverable(self) -> None:
+        scripts_tests_dir = validator.ROOT / "scripts" / "tests"
+        test_files = sorted(f.stem for f in scripts_tests_dir.glob("test_*.py"))
+        self.assertTrue(
+            len(test_files) >= 13, f"Expected at least 13 test modules, found {len(test_files)}"
+        )
+
+        loader = unittest.defaultTestLoader
+        suite = loader.discover(str(scripts_tests_dir), top_level_dir=str(scripts_tests_dir))
+
+        loaded_modules: set[str] = set()
+
+        def _walk_suite(s: Any) -> None:
+            for item in s:
+                if isinstance(item, unittest.TestSuite):
+                    _walk_suite(item)
+                elif isinstance(item, unittest.TestCase):
+                    loaded_modules.add(item.__class__.__module__)
+
+        _walk_suite(suite)
+        for mod in test_files:
+            self.assertIn(mod, loaded_modules, f"Module {mod} was not discovered by unittest")
+
+    def test_workflows_and_agents_use_discovery_not_hand_kept_lists(self) -> None:
+        quality_gate_path = validator.ROOT / ".github" / "workflows" / "quality-gate.yml"
+        quality_gate_text = quality_gate_path.read_text(encoding="utf-8")
+        agents_path = validator.ROOT / "AGENTS.md"
+        agents_text = agents_path.read_text(encoding="utf-8")
+
+        # Must not contain hand-enumerated scripts.tests module lists
+        self.assertNotIn("scripts.tests.test_bump_version", quality_gate_text)
+        self.assertNotIn("scripts.tests.test_bump_version", agents_text)
+
+        # Must use discover pattern for scripts/tests
+        self.assertIn("unittest discover -s scripts/tests -t scripts/tests", quality_gate_text)
+        self.assertIn("unittest discover -s scripts/tests -t scripts/tests", agents_text)

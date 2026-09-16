@@ -231,7 +231,8 @@ class WritingIsAtomicTest(unittest.TestCase):
             mark_abstention._write(path, {"v": 2, "marks": {}})
             self.assertTrue(os.path.exists(path))
             self.assertFalse(os.path.exists(f"{path}.tmp"))
-            self.assertEqual(0o600, os.stat(path).st_mode & 0o777)
+            if os.name != "nt":
+                self.assertEqual(0o600, os.stat(path).st_mode & 0o777)
 
     def test_a_rewrite_replaces_rather_than_appends(self) -> None:
         with tempfile.TemporaryDirectory() as root:

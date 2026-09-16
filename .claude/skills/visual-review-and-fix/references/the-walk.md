@@ -13,10 +13,10 @@ wording is wrong, do not edit one copy. See "If a promise is wrong" at the botto
 
 Three top-level views, and the fragment is the address:
 
-- `#n=sessions` is the default. Session operations leads because the exception-first Attention route
-  was built first and buried the reader's opening questions in live review (NUI-16 in
+- `#n=projects` is the default route. The v2 design moves the entry point up to Projects so the reader
+  first finds the project and then its sessions (NUI-16 in
   [`docs/design-next-ui.md`](../../../../docs/design-next-ui.md)).
-- `#n=projects` is the complete map.
+- `#n=sessions` is fleet operations.
 - `#n=attention` is the gate queue and the coverage disclosure. It has a nav entry as of #287, last
   of the three, and the `a` key and the reported-blocks chip in the header still reach it. That chip
   appears only while a block is reported, which is why it was never a nav entry's substitute.

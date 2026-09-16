@@ -218,15 +218,7 @@ git diff "$(git merge-base origin/main HEAD)"..HEAD \
   -- '*plugin.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 coverage erase
 coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
-coverage run -a -m unittest \
-  scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
-  scripts.tests.test_lint_embedded scripts.tests.test_bench_collect \
-  scripts.tests.test_capture_hook scripts.tests.test_bench_event_latency \
-  scripts.tests.test_derive_prompt_shapes scripts.tests.test_capture_team_registry \
-  scripts.tests.test_capture_terminal_identity \
-  scripts.tests.test_capture_focus_raise \
-  scripts.tests.test_serve_operator_cockpit \
-  scripts.tests.test_mark_abstention scripts.tests.test_score_abstention
+coverage run -a -m unittest discover -s scripts/tests -t scripts/tests
 coverage report   # enforces the fail_under threshold from pyproject.toml
 # `test_capture_terminal_identity` and `test_capture_focus_raise` exercise AppleScript
 # against Terminal.app, and this suite now sends nothing. It used to: measured on a macOS desk with Terminal
