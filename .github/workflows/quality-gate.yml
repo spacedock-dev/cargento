@@ -202,20 +202,7 @@ jobs:
       - name: Run the full suite on the floor
         run: |
           python -m unittest discover -s cargento/skills/cargento/tests -t .
-          python -m unittest \
-            scripts.tests.test_validate_plugins \
-            scripts.tests.test_bump_version \
-            scripts.tests.test_lint_embedded \
-            scripts.tests.test_bench_collect \
-            scripts.tests.test_capture_hook \
-            scripts.tests.test_bench_event_latency \
-            scripts.tests.test_derive_prompt_shapes \
-            scripts.tests.test_capture_team_registry \
-            scripts.tests.test_capture_terminal_identity \
-            scripts.tests.test_capture_focus_raise \
-            scripts.tests.test_serve_operator_cockpit \
-            scripts.tests.test_mark_abstention \
-            scripts.tests.test_score_abstention
+          python -m unittest discover -s scripts/tests -t scripts/tests
 
   test:
     name: Tests + coverage threshold
@@ -242,20 +229,7 @@ jobs:
         run: |
           coverage erase
           coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
-          coverage run -a -m unittest \
-            scripts.tests.test_validate_plugins \
-            scripts.tests.test_bump_version \
-            scripts.tests.test_lint_embedded \
-            scripts.tests.test_bench_collect \
-            scripts.tests.test_capture_hook \
-            scripts.tests.test_bench_event_latency \
-            scripts.tests.test_derive_prompt_shapes \
-            scripts.tests.test_capture_team_registry \
-            scripts.tests.test_capture_terminal_identity \
-            scripts.tests.test_capture_focus_raise \
-            scripts.tests.test_serve_operator_cockpit \
-            scripts.tests.test_mark_abstention \
-            scripts.tests.test_score_abstention
+          coverage run -a -m unittest discover -s scripts/tests -t scripts/tests
 
       # No `coverage report` here. It reads `fail_under` from pyproject and
       # exits non-zero, and it ran BEFORE the label check below, so a PR
@@ -388,12 +362,7 @@ jobs:
       - name: Run dashboard test discovery
         run: python -m unittest discover -s cargento/skills/cargento/tests -t .
       - name: Run script unit tests
-        run: >-
-          python -m unittest scripts.tests.test_validate_plugins
-          scripts.tests.test_bump_version scripts.tests.test_lint_embedded
-          scripts.tests.test_bench_collect scripts.tests.test_capture_hook
-          scripts.tests.test_capture_terminal_identity
-          scripts.tests.test_capture_focus_raise
+        run: python -m unittest discover -s scripts/tests -t scripts/tests
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).
