@@ -1361,6 +1361,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.notifications",
             "cargento_runtime.observer",
             "cargento_runtime.quota",
+            "cargento_runtime.reach",
             "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
@@ -1622,6 +1623,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # hands it, and calls one sandboxed subprocess through `observer` --
         # deliberately through it rather than beside it, so a second model lane
         # cannot drift from the first one's flags.
+        # Off-machine nudge delivery: reaches the operator away from the desk.
+        "cargento_runtime.reach": {
+            "cargento_runtime.config",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
+        },
         "cargento_runtime.reading": {
             "cargento_runtime.config",
             "cargento_runtime.observer",

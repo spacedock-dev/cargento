@@ -300,6 +300,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-reach",
+        action="store_true",
+        help=(
+            "do not send off-machine nudges for this run, regardless of the "
+            "configured webhook URL. The off switch for the one pathway that "
+            "reaches outside this machine"
+        ),
+    )
+    parser.add_argument(
+        "--reach-url",
+        help="webhook endpoint for off-machine nudges when a session needs human attention",
+    )
+    parser.add_argument(
         "--no-irreversible",
         action="store_true",
         help="disable hook command-shape matching, report ingress and publication for this run",
@@ -407,6 +420,8 @@ def build_runtime(
         annotations_enabled=not args.no_annotations,
         unasked_enabled=bool(args.unasked_readings),
         ask_enabled=not args.no_ask,
+        reach_enabled=not args.no_reach,
+        reach_url=args.reach_url,
         history_enabled=not args.no_history,
         history_retention_sec=args.history_days * runtime_config.SECONDS_PER_DAY,
         history_max_bytes=args.history_max_bytes,

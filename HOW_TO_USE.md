@@ -465,6 +465,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-annotations` | The goal and expected output you typed against a session. Nothing is shown or saved, and the page offers no field |
 | `--no-focus` | Raising a session's terminal. No focus command runs, no terminal identity is recorded, and the page is offered no raise control. `--no-events` turns it off as well |
 | `--no-observer-model` | Model goal summaries, and the readings that use the same lane. It overrides `--observer-model`, so nothing reaches the Codex CLI for this run |
+| `--no-reach` | Off-machine reach nudges. Outbound webhook nudges are disabled for this run |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 
@@ -486,17 +487,33 @@ afterwards brings nothing with it.
 
 ## Usage and quota
 
-This is the only thing Cargento sends anywhere, and it does not send it until you say so. The
-first time the dashboard opens on a machine where a harness could be asked, a banner beneath the
-fleet counts explains that answering yes lets Cargento read the credential that harness already
-stored and send it to that vendor for your usage numbers. Until you answer, nothing is read and
-nothing is sent. The request carries the vendor's own token and nothing else, behind a five minute
-floor.
+Usage quota reads and operator-configured reach nudges are the outbound requests Cargento can make,
+and neither sends anything until you configure it. The first time the dashboard opens on a machine
+where a harness could be asked, a banner beneath the fleet counts explains that answering yes lets
+Cargento read the credential that harness already stored and send it to that vendor for your usage
+numbers. Until you answer, nothing is read and nothing is sent. The request carries the vendor's own
+token and nothing else, behind a five minute floor.
 
 Changing your mind takes one click: the capacity strip carries a switch that turns the fetch on or
 off without a restart. `--no-usage` refuses it for a whole run whatever is stored in the page.
 [SECURITY.md](SECURITY.md#usage-quota-reads-the-quota-fetcher) owns the contract, including what is
 sent, what comes back, and what is never touched.
+
+## Reach nudges away from the desk
+
+When configured, Cargento can post a scalar count to a webhook URL you provide when sessions
+need input or finish unread while you are away:
+
+```bash
+python3 "<skill-dir>/server.py" --reach-url "https://ntfy.sh/my-topic"
+```
+
+The URL can also be set via the `CARGENTO_REACH_URL` environment variable or saved in
+`~/.cargento/reach_url`. The payload contains only two count integers (`needs_input` and
+`finished_unread`) and never includes session IDs, paths, titles, or prompt text. Outbound
+nudges are disabled by default and can be suppressed for any run with `--no-reach`. See
+[SECURITY.md](SECURITY.md#off-machine-nudges-reaching-the-operator-away-from-the-desk) for the
+full security contract.
 
 ## Stop a dashboard, and unstick a port
 

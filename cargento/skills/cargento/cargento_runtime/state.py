@@ -41,6 +41,9 @@ class RuntimeState:
     # second lock at this level would only invite a caller to hold the wrong one.
     asks: runtime_asks.AskRegistry = field(init=False)
     hook_lock: LockType = field(default_factory=threading.Lock)
+    reach_lock: LockType = field(default_factory=threading.Lock)
+    last_reach_time: float = 0.0
+    last_reach_counts: tuple[int, int] | None = None
     cache_lock: LockType = field(default_factory=threading.Lock)
     scanner_lock: LockType = field(default_factory=threading.Lock)
     semantic_history_lock: LockType = field(default_factory=threading.Lock)

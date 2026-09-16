@@ -1623,6 +1623,8 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_git": False,
             "no_focus": False,
             "no_history": False,
+            "no_reach": False,
+            "reach_url": None,
             "history_days": 14.0,
             "history_max_bytes": 1_048_576,
         }
@@ -1720,6 +1722,22 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_ask=False))
         self.assertNotIn("--no-ask", argv)
+
+    def test_no_reach_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_reach=True))
+        self.assertIn("--no-reach", argv)
+
+    def test_no_reach_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_reach=False))
+        self.assertNotIn("--no-reach", argv)
+
+    def test_reach_url_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(reach_url="https://example.com/webhook"))
+        self.assertIn("--reach-url", argv)
+        self.assertIn("https://example.com/webhook", argv)
 
     def test_daemon_is_never_forwarded(self) -> None:
         """Forwarding --daemon would respawn forever."""
