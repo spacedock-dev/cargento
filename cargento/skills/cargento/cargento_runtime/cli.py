@@ -313,6 +313,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="webhook endpoint for off-machine nudges when a session needs human attention",
     )
     parser.add_argument(
+        "--quiet-hours",
+        help=(
+            "time window (HH:MM-HH:MM in 24-hour local time) during which non-ask "
+            "notifications and nudges are suppressed (e.g. 22:00-08:00 or 13:00-14:00)"
+        ),
+    )
+    parser.add_argument(
+        "--no-quiet-hours",
+        action="store_true",
+        help=(
+            "do not suppress notifications for quiet hours for this run, "
+            "regardless of the stored setting or environment variable"
+        ),
+    )
+    parser.add_argument(
         "--no-irreversible",
         action="store_true",
         help="disable hook command-shape matching, report ingress and publication for this run",
@@ -422,6 +437,8 @@ def build_runtime(
         ask_enabled=not args.no_ask,
         reach_enabled=not args.no_reach,
         reach_url=args.reach_url,
+        quiet_hours_enabled=not getattr(args, "no_quiet_hours", False),
+        quiet_hours=getattr(args, "quiet_hours", None),
         history_enabled=not args.no_history,
         history_retention_sec=args.history_days * runtime_config.SECONDS_PER_DAY,
         history_max_bytes=args.history_max_bytes,

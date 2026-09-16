@@ -149,6 +149,17 @@ class CargentoServerTest(RuntimeTestCase):
         config, _state = cli.build_runtime(args, started=1.0, launcher_path=SERVER_PATH)
         self.assertEqual("0.0.0.0", config.host)
 
+    def test_build_runtime_threads_quiet_hours_into_config(self) -> None:
+        args = cli.build_parser().parse_args(["--quiet-hours", "22:00-08:00"])
+        config, _state = cli.build_runtime(args, started=1.0, launcher_path=SERVER_PATH)
+        self.assertEqual("22:00-08:00", config.quiet_hours)
+        self.assertTrue(config.quiet_hours_enabled)
+
+    def test_build_runtime_threads_no_quiet_hours_into_config(self) -> None:
+        args = cli.build_parser().parse_args(["--no-quiet-hours"])
+        config, _state = cli.build_runtime(args, started=1.0, launcher_path=SERVER_PATH)
+        self.assertFalse(config.quiet_hours_enabled)
+
     def test_host_flag_defaults_to_loopback(self) -> None:
         args = cli.build_parser().parse_args([])
         self.assertEqual("127.0.0.1", args.host)

@@ -395,6 +395,8 @@ class Lane:
         A reading that departed on both Goal and Expected Output is one thing
         that happened, and two banners about it would read as two events.
         """
+        if notifications.is_quiet_hours(self.config, now=now):
+            return
         label = self.harness_label(str(row.get("harness") or ""))
         first = raised[0]
         # The constraint first and the model's sentence after. `notify_mac`

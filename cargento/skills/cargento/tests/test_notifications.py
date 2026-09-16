@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import http.client
 import http.server
 import json
@@ -15,7 +16,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, claude_data, dismissals, notifications, records
+from cargento_runtime import (
+    aggregate,
+    claude_data,
+    departures,
+    dismissals,
+    notifications,
+    records,
+    unasked,
+)
 from cargento_runtime import events as runtime_events
 from cargento_runtime import sessions as runtime_sessions
 
@@ -2042,3 +2051,210 @@ class ApplicationPopupTest(unittest.TestCase):
                     [(f"{spec.label} is waiting on you", "[proj] permission requested")],
                     self.popups,
                 )
+
+
+class QuietHoursTest(RuntimeTestCase):
+    def test_parse_quiet_hours(self) -> None:
+        self.assertEqual((22, 0, 8, 0), notifications.parse_quiet_hours("22:00-08:00"))
+        self.assertEqual((13, 30, 15, 45), notifications.parse_quiet_hours("13:30-15:45"))
+        self.assertEqual((9, 5, 17, 30), notifications.parse_quiet_hours("9:05-17:30"))
+        self.assertIsNone(notifications.parse_quiet_hours("invalid"))
+        self.assertIsNone(notifications.parse_quiet_hours("25:00-08:00"))
+        self.assertIsNone(notifications.parse_quiet_hours("12:60-14:00"))
+        self.assertIsNone(notifications.parse_quiet_hours("12:00-12:00"))
+        self.assertIsNone(notifications.parse_quiet_hours(""))
+        self.assertIsNone(notifications.parse_quiet_hours(None))
+
+    def test_is_quiet_hours_daytime_window(self) -> None:
+        base_config, _ = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="13:00-15:00"
+        )
+
+        # Construct timestamps with known local hours and minutes
+        # 12:59
+        t_1259 = time.mktime(datetime(2026, 9, 16, 12, 59, 0).timetuple())
+        # 13:00
+        t_1300 = time.mktime(datetime(2026, 9, 16, 13, 0, 0).timetuple())
+        # 14:30
+        t_1430 = time.mktime(datetime(2026, 9, 16, 14, 30, 0).timetuple())
+        # 15:00
+        t_1500 = time.mktime(datetime(2026, 9, 16, 15, 0, 0).timetuple())
+
+        self.assertFalse(notifications.is_quiet_hours(config, now=t_1259))
+        self.assertTrue(notifications.is_quiet_hours(config, now=t_1300))
+        self.assertTrue(notifications.is_quiet_hours(config, now=t_1430))
+        self.assertFalse(notifications.is_quiet_hours(config, now=t_1500))
+
+    def test_is_quiet_hours_overnight_window(self) -> None:
+        base_config, _ = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="22:00-08:00"
+        )
+
+        t_2159 = time.mktime(datetime(2026, 9, 16, 21, 59, 0).timetuple())
+        t_2200 = time.mktime(datetime(2026, 9, 16, 22, 0, 0).timetuple())
+        t_2330 = time.mktime(datetime(2026, 9, 16, 23, 30, 0).timetuple())
+        t_0200 = time.mktime(datetime(2026, 9, 16, 2, 0, 0).timetuple())
+        t_0759 = time.mktime(datetime(2026, 9, 16, 7, 59, 0).timetuple())
+        t_0800 = time.mktime(datetime(2026, 9, 16, 8, 0, 0).timetuple())
+        t_1200 = time.mktime(datetime(2026, 9, 16, 12, 0, 0).timetuple())
+
+        self.assertFalse(notifications.is_quiet_hours(config, now=t_2159))
+        self.assertTrue(notifications.is_quiet_hours(config, now=t_2200))
+        self.assertTrue(notifications.is_quiet_hours(config, now=t_2330))
+        self.assertTrue(notifications.is_quiet_hours(config, now=t_0200))
+        self.assertTrue(notifications.is_quiet_hours(config, now=t_0759))
+        self.assertFalse(notifications.is_quiet_hours(config, now=t_0800))
+        self.assertFalse(notifications.is_quiet_hours(config, now=t_1200))
+
+    def test_quiet_hours_disabled_flag_overrides(self) -> None:
+        base_config, _ = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=False, quiet_hours="22:00-08:00"
+        )
+
+        t_2330 = time.mktime(datetime(2026, 9, 16, 23, 30, 0).timetuple())
+        self.assertFalse(notifications.is_quiet_hours(config, now=t_2330))
+
+    def test_maybe_popup_suppressed_during_quiet_hours(self) -> None:
+        base_config, state = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="22:00-08:00"
+        )
+
+        t_quiet = time.mktime(datetime(2026, 9, 16, 23, 0, 0).timetuple())
+        fired: list[tuple[str, str]] = []
+
+        with mock.patch.object(time, "time", return_value=t_quiet):
+            notifications.maybe_popup(
+                config,
+                state,
+                notifications.PopupSubject(
+                    harness="claude", label="Claude", prefix="sess1", activity=0.0
+                ),
+                "needs_input",
+                "Needs input",
+                popup_notifier=lambda t, m: fired.append((t, m)),
+            )
+        self.assertEqual([], fired)
+
+        # Outside quiet hours, it fires
+        t_active = time.mktime(datetime(2026, 9, 16, 10, 0, 0).timetuple())
+        with mock.patch.object(time, "time", return_value=t_active):
+            notifications.maybe_popup(
+                config,
+                state,
+                notifications.PopupSubject(
+                    harness="claude", label="Claude", prefix="sess2", activity=0.0
+                ),
+                "needs_input",
+                "Needs input",
+                popup_notifier=lambda t, m: fired.append((t, m)),
+            )
+        self.assertEqual([("Claude is waiting on you", "Needs input")], fired)
+
+    def test_handle_payload_suppressed_during_quiet_hours(self) -> None:
+        base_config, state = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="22:00-08:00"
+        )
+
+        t_quiet = time.mktime(datetime(2026, 9, 16, 23, 0, 0).timetuple())
+        fired: list[tuple[str, str]] = []
+
+        payload = {
+            "session_id": "sess12345678",
+            "message": "Claude needs input",
+            "notification_type": "permission_prompt",
+        }
+        res = notifications.handle_payload(
+            config,
+            state,
+            payload,
+            now=t_quiet,
+            popup_notifier=lambda t, m: fired.append((t, m)),
+        )
+        self.assertTrue(res.get("ok"))
+        self.assertEqual([], fired)
+        # Hook is still saved for the dashboard UI
+        self.assertIn("sess1234", state.hook_notifications)
+
+    def test_maybe_ask_popup_not_suppressed_during_quiet_hours(self) -> None:
+        base_config, state = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="22:00-08:00"
+        )
+
+        t_quiet = time.mktime(datetime(2026, 9, 16, 23, 0, 0).timetuple())
+        fired: list[tuple[str, str]] = []
+
+        subject = notifications.AskSubject(
+            harness="claude",
+            sid="session-1",
+            label="Claude",
+            question="May I run command?",
+            project="test-project",
+        )
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            subject,
+            now=t_quiet,
+            popup_notifier=lambda t, m: fired.append((t, m)),
+        )
+        # Direct questions are NOT suppressed
+        self.assertEqual(
+            [("Claude is asking you", "May I run command? \u00b7 test-project")], fired
+        )
+
+    def test_unasked_departure_suppressed_during_quiet_hours(self) -> None:
+        base_config, _ = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="22:00-08:00"
+        )
+        t_quiet = time.mktime(datetime(2026, 9, 16, 23, 0, 0).timetuple())
+        fired: list[tuple[str, str]] = []
+        lane = unasked.Lane(
+            config,
+            popup_notifier=lambda t, m: fired.append((t, m)),
+            harness_label=lambda _h: "Claude",
+        )
+        row = {"harness": "claude", "sid": "s1"}
+        raised: list[departures.Check] = [
+            {
+                "harness": "claude",
+                "sid": "s1",
+                "at": t_quiet,
+                "constraint": "Goal",
+                "clause": "Stay on topic",
+                "reading": "drifted",
+                "evidence": "irrelevant code",
+                "revision": 1,
+                "cutoff": t_quiet,
+                "cutoff_text": "1 message",
+                "withdrawn": False,
+            }
+        ]
+        lane._raise(row, raised, now=t_quiet)
+        self.assertEqual([], fired)
+
+    def test_aggregate_collect_suppresses_reach_during_quiet_hours(self) -> None:
+        base_config, state = runtime()
+        config = dataclasses.replace(
+            base_config, quiet_hours_enabled=True, quiet_hours="22:00-08:00"
+        )
+        t_quiet = time.mktime(datetime(2026, 9, 16, 23, 0, 0).timetuple())
+        app = aggregate.Application(
+            config,
+            state,
+            (),
+            native_notifier=lambda _p: "",
+            popup_notifier=lambda _t, _m: None,
+            diagnostic_sink=lambda _line: None,
+            clock=lambda: t_quiet,
+        )
+        with mock.patch("cargento_runtime.reach.maybe_reach_nudge") as reach_mock:
+            collection = app.collect(show_all=False)
+            reach_mock.assert_not_called()
+            self.assertTrue(collection["in_quiet_hours"])

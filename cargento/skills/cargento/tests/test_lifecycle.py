@@ -1739,6 +1739,27 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         self.assertIn("--reach-url", argv)
         self.assertIn("https://example.com/webhook", argv)
 
+    def test_no_quiet_hours_is_forwarded_when_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_quiet_hours=True))
+        self.assertIn("--no-quiet-hours", argv)
+
+    def test_no_quiet_hours_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_quiet_hours=False))
+        self.assertNotIn("--no-quiet-hours", argv)
+
+    def test_quiet_hours_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(quiet_hours="22:00-08:00"))
+        self.assertIn("--quiet-hours", argv)
+        self.assertIn("22:00-08:00", argv)
+
+    def test_quiet_hours_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args())
+        self.assertNotIn("--quiet-hours", argv)
+
     def test_daemon_is_never_forwarded(self) -> None:
         """Forwarding --daemon would respawn forever."""
         config = cfg()

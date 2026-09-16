@@ -1822,6 +1822,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
                 "--no-irreversible",
                 "--no-tripwires",
                 "--no-reach",
+                "--no-quiet-hours",
             },
             shipped,
         )
