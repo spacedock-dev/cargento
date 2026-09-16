@@ -112,24 +112,26 @@ function nextSessionMeta(session){
   const parts = [];
   const harness = nextSessionRegistryLabel(session);
   if(harness) parts.push(harness);
-  if(session.state_detail) parts.push(String(session.state_detail));
-  /* Outside the state chain below, on purpose. An end is a fact about the
-     session id; `state` is a reading of file recency that a session which ended
-     seconds ago can still make say "working". */
+  /* An observed end supersedes the present-tense activity and duration phrases;
+     an ended session must not describe itself as awaiting input (DRC-4554). */
   const ended = nextDurationSince(nextSessionEndedAt(session));
-  if(ended != null) parts.push(`ended ${ended} ago`);
-  if(session.state === "needs_input"){
-    const blocked = nextDurationSince(session.blocked_since);
-    if(blocked != null) parts.push(`blocked ${blocked}`);
-    if(session.wait_unconfirmed) parts.push("unconfirmed: no positive observation in 5m");
-  }else if(session.state === "working"){
-    const turn = session.turn;
-    const elapsed = turn && typeof turn === "object" && !Array.isArray(turn) &&
-      typeof turn.elapsed_h === "string" ? turn.elapsed_h.trim() : "";
-    if(elapsed) parts.push(`turn started ${elapsed} ago`);
-  }else if(session.state === "idle"){
-    const started = nextDurationSince(session.started_at);
-    if(started != null) parts.push(`session started ${started} ago`);
+  if(ended != null){
+    parts.push(`ended ${ended} ago`);
+  }else{
+    if(session.state_detail) parts.push(String(session.state_detail));
+    if(session.state === "needs_input"){
+      const blocked = nextDurationSince(session.blocked_since);
+      if(blocked != null) parts.push(`blocked ${blocked}`);
+      if(session.wait_unconfirmed) parts.push("unconfirmed: no positive observation in 5m");
+    }else if(session.state === "working"){
+      const turn = session.turn;
+      const elapsed = turn && typeof turn === "object" && !Array.isArray(turn) &&
+        typeof turn.elapsed_h === "string" ? turn.elapsed_h.trim() : "";
+      if(elapsed) parts.push(`turn started ${elapsed} ago`);
+    }else if(session.state === "idle"){
+      const started = nextDurationSince(session.started_at);
+      if(started != null) parts.push(`session started ${started} ago`);
+    }
   }
   /* These last two are unconditional, and both for the reason the first one
      gives: every clause above is a reading, and these say what the readings

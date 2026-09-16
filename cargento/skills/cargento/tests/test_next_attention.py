@@ -2261,8 +2261,8 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
             )
         )
 
-    def render(self, sessions: list[dict[str, Any]]) -> str:
-        payload = {"generated": 10_000, "sessions": sessions}
+    def render(self, sessions: list[dict[str, Any]], **extra: Any) -> str:
+        payload = {"generated": 10_000, "sessions": sessions, **extra}
         rendered = self._run_page_js(
             "\n".join(
                 (
@@ -2409,6 +2409,14 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
 
         self.assertIn("ends observed on 0 sessions", visible)
         self.assertNotIn("undefined", visible)
+
+    def test_the_visible_coverage_line_says_unobservable_under_no_events(self) -> None:
+        # DRC-4555: under --no-events ends are unobservable, not zero observed.
+        html = self.render([self.row(sid="quiet-1")], ends_observable=False)
+        visible = html.split('<details class="next-attention-coverage-details"')[0]
+
+        self.assertIn("ends unobservable", visible)
+        self.assertNotIn("ends observed on 0 sessions", visible)
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

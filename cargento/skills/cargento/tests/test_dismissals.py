@@ -362,5 +362,39 @@ class ConfigTest(DismissalStoreTestCase):
         self.assertIs(True, dataclasses.replace(config, dismissals_enabled=True).dismissals_enabled)
 
 
+class MatchableKeyTest(DismissalStoreTestCase):
+    """DRC-4179: an unmatchable key cannot consume a slot or evict a real dismissal."""
+
+    def test_an_unmatchable_claude_uuid_is_refused(self) -> None:
+        config, state = self.runtime()
+        # Full 36-char UUID for Claude: can never match an 8-character prefix row.
+        uuid_sid = "12345678-1234-1234-1234-123456789abc"
+        persisted = dismissals.dismiss(config, state, "claude", uuid_sid, now=1000.0)
+        self.assertFalse(persisted)
+        self.assertEqual((), dismissals.load(config))
+
+    def test_an_unmatchable_entry_in_store_is_dropped_on_load(self) -> None:
+        config, _state = self.runtime()
+        self.write_store(
+            {
+                "v": 1,
+                "entries": [
+                    # Real 8-char Claude sid
+                    {"harness": "claude", "sid": "abcd1234", "at": 100.0, "seen_activity": 100.0},
+                    # Junk 36-char UUID sid that can never match
+                    {
+                        "harness": "claude",
+                        "sid": "12345678-1234-1234-1234-123456789abc",
+                        "at": 200.0,
+                        "seen_activity": 200.0,
+                    },
+                ],
+            }
+        )
+        loaded = dismissals.load(config)
+        self.assertEqual(1, len(loaded))
+        self.assertEqual("abcd1234", loaded[0]["sid"])
+
+
 if __name__ == "__main__":
     unittest.main()

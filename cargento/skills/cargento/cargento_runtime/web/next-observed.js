@@ -472,7 +472,7 @@ function nextObserved(payload, evidence){
     quiet: `The other ${other.length}: ${otherWords.filter(word => word[1]).map(word => `${word[1]} ${word[0]}`).join(" · ") || "none"}; ` +
       `of these, ${partial} partially read.`,
     gates: `${totals.reportsBlock} of ${totals.sessions} ${totals.sessions === 1 ? "session reports" : "sessions report"} block state · ` +
-      `${totals.sessions - totals.reportsBlock} unknown · ends observed on ${totals.ended} ${totals.ended === 1 ? "session" : "sessions"}`,
+      `${totals.sessions - totals.reportsBlock} unknown · ${payload.ends_observable === false ? "ends unobservable" : `ends observed on ${totals.ended} ${totals.ended === 1 ? "session" : "sessions"}`}`,
     rows: harnesses.map(row => ({key: String(row.key || ""), label: nextObservedString(row.label) || String(row.key || "Harness not published"),
       sessions: sessions.filter(session => session.harness === row.key).length,
       ...nextObservedPair("block", !row.error && row.reports_needs_input === true ?

@@ -152,6 +152,20 @@ console.log(JSON.stringify({totals: m.totals, counters: m.counters.map(c =>
         self.assertEqual(["alpha", "epsilon", "beta"], out["activeProjects"])
         self.assertEqual(["zeta", "delta", "gamma", "theta"], out["rest"])
 
+    def test_gates_coverage_distinguishes_unobservable_ends_from_none_observed(self) -> None:
+        # DRC-4555: under --no-events ends are unobservable, not zero observed.
+        out = self._run_page_js(
+            self.FIXTURE
+            + """
+payload.ends_observable = false;
+console.log(JSON.stringify(nextObserved(payload).coverage.gates));
+"""
+        )
+        self.assertEqual(
+            "9 of 13 sessions report block state · 4 unknown · ends unobservable",
+            out,
+        )
+
     def test_every_text_has_a_nonempty_value_and_known_boolean(self) -> None:
         out = self._run_page_js(
             self.FIXTURE
