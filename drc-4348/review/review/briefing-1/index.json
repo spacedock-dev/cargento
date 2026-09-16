@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4348:review:attempt-1:revision-1",
+  "question": "Approve PR #354 for merge?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4348:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/d2674a59f45ed11eb61dcec1bed0946e17ed31d1/drc-4348.md",
+      "rev": "sha256:80efe2227f4e654a0adac8874a68057d3c949ef27148d3a5d588b83b9289e7be",
+      "mediaType": "text/markdown",
+      "summary": "PR #354 passes all CI checks; caps published subagent roster at SUBAGENTS_ROSTER_CAP (60) with honest omission reporting in next-session detail panel."
+    }
+  ]
+}
