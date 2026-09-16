@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4272:triage:attempt-1:revision-1",
+  "question": "Approve triage spec for DRC-4272?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4272:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/2acfc24d83b664bc5fd763f9b80bf7dca6ffec4c/drc-4272.md",
+      "rev": "sha256:7f69131517be1b1c6aa5b7aecc44d4df628e6d3f0a864c8627dd48f271a1b77b",
+      "mediaType": "text/markdown",
+      "summary": "Triage spec for DRC-4272 D5 reopening condition note"
+    }
+  ]
+}
