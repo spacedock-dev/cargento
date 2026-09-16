@@ -1111,9 +1111,9 @@ browser notification in a tab that is open, the board itself. DEC-4 ruled on 202
 Cargento may reach further, in one shape and no other. The operator supplies one endpoint, and
 Cargento posts a count to it.
 
-This is the section to read before building that, and it grants nothing on its own. No shipped
-feature posts to an endpoint the operator supplies; H2 (DRC-4034) is the first one that would.
-Until it lands, the outbound surface is the quota poll and the explicitly enabled observer model.
+This is the section to read before building that, and it grants nothing on its own. H2 (DRC-4034)
+ships this capability. The outbound surface is the quota poll, the explicitly enabled observer
+model, and the operator-configured reach endpoint.
 
 Why this needs its own section rather than an entry under Usage quota reads: that section's
 endpoint list is closed, and every entry on it is a vendor Cargento chose and verified. Here the
@@ -1157,10 +1157,7 @@ The bounds, all of which hold together:
 - Off switch. The feature ships `--no-reach` with it: a flag that disables the pathway for a run
   regardless of the stored setting, mirroring `--no-usage` and `--no-history` at every one of their
   sites, including the branch that forwards flags to a respawned daemon, so a restart cannot
-  re-enable what the operator disabled. That flag does not exist yet, and this document does not
-  claim it does. Nothing posts, so there is nothing to switch off. A test holds those two statements
-  together: it asserts this section still says nothing posts and that the parser still has no such
-  flag, so whoever adds the flag is failed here until they amend this section too.
+  re-enable what the operator disabled.
 
 A violation of any of those is a security bug: a post with no URL configured, a post to any
 destination but the configured one, a redirect followed, a payload carrying any field beyond the

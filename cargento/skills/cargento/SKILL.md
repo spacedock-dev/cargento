@@ -533,6 +533,8 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
+| `--no-reach` | For this run, disable outbound reach nudges: no webhook URL is resolved and no off-machine nudge is posted. |
+| `--reach-url URL` | Webhook URL for off-machine reach nudges when sessions need input or finish unread while away from the desk. Overrides `CARGENTO_REACH_URL` and `~/.cargento/reach_url`. |
 | `--history-days N` | How long the local history keeps an observation, in days (default 14). Eviction is age first, so narrowing this drops what falls outside the window and widening it again brings nothing back. Zero or negative is refused. |
 | `--history-max-bytes N` | The size cap on the local history store, in bytes (default 1048576). It is the read cap too: a file larger than it is discarded unread rather than parsed. Zero or negative is refused. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |

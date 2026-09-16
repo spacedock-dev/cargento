@@ -17,6 +17,7 @@ from . import (
     notifications,
     observer,
     quota,
+    reach,
     reading,
     records,
     sessions,
@@ -726,23 +727,10 @@ class Application:
             )
             return []
 
-    def collect(self, *, show_all: bool, notify: bool = True) -> Collection:
-        config, state, window_hours, now = (
-            self.config,
-            self.state,
-            self.config.window_hours,
-            self.clock(),
-        )
-        cleared_marks = dismissals.refresh(config, state)
-        # Alongside the dismissal refresh and for its reason: two dashboards can
-        # bind on one machine and the file is the record, so a save made in the
-        # other is picked up here rather than at the next restart.
-        annotation_entries = annotation_store.refresh(config, state)
-        # Sampled before the harness loop for the reason Claude's collector used
-        # to sample it before its transcript scan: a SessionEnd that commits
-        # while this collection is in flight must invalidate the popup, and a
-        # generation read at decision time would only be compared against itself.
-        generations = notifications.hook_generations(state)
+    def _collect_harnesses(
+        self, now: float, window_hours: float, show_all: bool
+    ) -> tuple[list[Session], list[dict[str, Any]], list[dict[str, Any]], bool, bool]:
+        config, state = self.config, self.state
         out_sessions: list[Session] = []
         harnesses: list[dict[str, Any]] = []
         usage: list[dict[str, Any]] = []
@@ -767,14 +755,35 @@ class Application:
                 )
             if spec.usage is None:
                 continue
-            # The `usage` key exists exactly when a discovered harness can
-            # publish quota; the page keeps its band hidden otherwise. A
-            # failed quota read is a diagnostic, never a harness error — the
-            # session rows above already collected, and a broken tile must
-            # not repaint the whole strip red.
             usage_supported = True
             usage_fetch_active = usage_fetch_active or spec.usage_is_fetch
             usage.extend(self._usage_for(spec, now, window_hours))
+        return out_sessions, harnesses, usage, usage_supported, usage_fetch_active
+
+    def collect(self, *, show_all: bool, notify: bool = True) -> Collection:
+        config, state, window_hours, now = (
+            self.config,
+            self.state,
+            self.config.window_hours,
+            self.clock(),
+        )
+        cleared_marks = dismissals.refresh(config, state)
+        # Alongside the dismissal refresh and for its reason: two dashboards can
+        # bind on one machine and the file is the record, so a save made in the
+        # other is picked up here rather than at the next restart.
+        annotation_entries = annotation_store.refresh(config, state)
+        # Sampled before the harness loop for the reason Claude's collector used
+        # to sample it before its transcript scan: a SessionEnd that commits
+        # while this collection is in flight must invalidate the popup, and a
+        # generation read at decision time would only be compared against itself.
+        generations = notifications.hook_generations(state)
+        (
+            out_sessions,
+            harnesses,
+            usage,
+            usage_supported,
+            usage_fetch_active,
+        ) = self._collect_harnesses(now, window_hours, show_all)
 
         # After every producer has reported and before anything is published, so
         # one collection records at most one reading per window and the page sees
@@ -828,6 +837,8 @@ class Application:
             notify=notify,
         )
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
+        if notify:
+            reach.maybe_reach_nudge(config, state, out_sessions, now=now)
         _attach_cached_goals(config, out_sessions)
         sessions.assign_display_ids(config, out_sessions)
         out_sessions.sort(key=row_order)

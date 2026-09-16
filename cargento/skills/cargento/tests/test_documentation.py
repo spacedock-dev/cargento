@@ -1563,13 +1563,11 @@ class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
             "## Off-machine nudges (reaching the operator away from the desk)", self.SECURITY
         )
 
-    def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
-        self.assertIn("No shipped feature posts to an endpoint the operator supplies", self.FLAT)
-        self.assertIn("That flag does not exist yet", self.SECTION)
-        # argparse prints usage to stderr before exiting, and that banner in a
-        # passing run reads like a failure to anyone watching the suite.
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            cli.build_parser().parse_args(["--no-reach"])
+    def test_the_pathway_is_documented_and_the_parser_agrees(self) -> None:
+        self.assertIn("H2 (DRC-4034) ships this capability", self.SECTION)
+        self.assertIn("The feature ships `--no-reach` with it", self.SECTION)
+        args = cli.build_parser().parse_args(["--no-reach"])
+        self.assertTrue(args.no_reach)
 
     def test_the_payload_omits_the_count_no_threshold_backs(self) -> None:
         # The payload carries two counts and not DEC-4's three because no
@@ -1823,10 +1821,11 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
                 "--no-events",
                 "--no-irreversible",
                 "--no-tripwires",
+                "--no-reach",
             },
             shipped,
         )
-        for documented in ("--no-handoff", "--no-reach"):
+        for documented in ("--no-handoff",):
             with self.subTest(flag=documented):
                 self.assertNotIn(documented, shipped)
                 self.assertIn(f"`{documented}`", self.FLAT)

@@ -103,6 +103,12 @@ class RuntimeConfig:
     # the routes refuse, and the payload carries no `ask` flag, so the page
     # offers no control rather than one that answers 503.
     ask_enabled: bool
+    # Off-machine reach nudges (H2, DRC-4034,
+    # [DEC-4](SECURITY.md#off-machine-nudges-reaching-the-operator-away-from-the-desk)).
+    # `--no-reach` is the off switch that disables all outbound off-machine nudges for this run.
+    reach_enabled: bool
+    reach_url: str | None
+    reach_cooldown_sec: float
     # The trailing window every published token rate is averaged over. What a
     # row carries is therefore a MEAN and not an instantaneous reading, and at
     # ten minutes it lags a burst by minutes. `sessions.rate_from` divides by it,
@@ -587,6 +593,9 @@ def build_runtime_config(
     annotations_enabled: bool = True,
     unasked_enabled: bool = False,
     ask_enabled: bool = True,
+    reach_enabled: bool = True,
+    reach_url: str | None = None,
+    reach_cooldown_sec: float = 60.0,
     history_enabled: bool = True,
     history_retention_sec: float = HISTORY_RETENTION_DEFAULT_DAYS * SECONDS_PER_DAY,
     history_max_bytes: int = HISTORY_MAX_BYTES_DEFAULT,
@@ -637,6 +646,9 @@ def build_runtime_config(
         annotations_enabled=annotations_enabled,
         unasked_enabled=unasked_enabled,
         ask_enabled=ask_enabled,
+        reach_enabled=reach_enabled,
+        reach_url=reach_url,
+        reach_cooldown_sec=reach_cooldown_sec,
         history_enabled=history_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
         # session "right now", and this window is the reason it cannot have it:

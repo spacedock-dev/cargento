@@ -619,6 +619,25 @@ def _history_bound_argv(args: argparse.Namespace) -> list[str]:
     return argv
 
 
+def _opt_out_argv(args: argparse.Namespace) -> list[str]:
+    flags = [
+        ("--no-spacedock", args.no_spacedock),
+        ("--no-usage", args.no_usage),
+        ("--no-git", args.no_git),
+        ("--no-focus", args.no_focus),
+        ("--no-events", args.no_events),
+        ("--no-irreversible", args.no_irreversible),
+        ("--no-dismiss", args.no_dismiss),
+        ("--no-ask", args.no_ask),
+        ("--no-history", args.no_history),
+    ]
+    argv = [flag for flag, enabled in flags if enabled]
+    if getattr(args, "no_reach", False):
+        # SECURITY.md's off switch for off-machine reach nudges.
+        argv.append("--no-reach")
+    return argv
+
+
 def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     """The complete argv for a re-spawned child, built from parsed values.
 
@@ -643,35 +662,10 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         "--window-hours",
         str(args.window_hours),
     ]
-    if args.no_spacedock:
-        argv.append("--no-spacedock")
-    if args.no_usage:
-        argv.append("--no-usage")
-    if args.no_git:
-        argv.append("--no-git")
-    if args.no_focus:
-        # SECURITY.md's focus off switch. Read off the namespace directly, like
-        # every branch around it, so a flag added to the parser and forgotten
-        # here raises rather than silently re-enabling a command the operator
-        # disabled: a respawned daemon that re-enables it is a security bug by
-        # the contract's own terms, and the two exact-set assertions in
-        # `test_lifecycle` are blind to an omitted branch.
-        argv.append("--no-focus")
-    if args.no_events:
-        argv.append("--no-events")
-    argv.extend(["--no-irreversible"] if args.no_irreversible else [])
-    if args.no_dismiss:
-        argv.append("--no-dismiss")
-    if args.no_ask:
-        argv.append("--no-ask")
-    if args.no_history:
-        # [DEC-6](SECURITY.md#local-history-the-session-history-store)'s off switch. Read off
-        # the namespace directly, like every branch
-        # above, so a flag added to the parser and forgotten here raises rather
-        # than silently re-enabling a store the user disabled: the two exact-set
-        # assertions in `test_lifecycle` are blind to an omitted branch, and the
-        # hand-written namespaces are what actually force this edit.
-        argv.append("--no-history")
+    argv.extend(_opt_out_argv(args))
+    reach_url = getattr(args, "reach_url", None)
+    if reach_url:
+        argv.extend(["--reach-url", reach_url])
     argv.extend(_history_bound_argv(args))
     # Forward the bind host only when the operator chose a non-default address,
     # so a Windows --daemon re-spawn keeps a --host 0.0.0.0 bind instead of
