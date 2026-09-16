@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4348:triage:attempt-1:revision-1",
+  "question": "Approve triage for DRC-4348?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4348:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/3c28a03070014310bb8a64581b4c1ff227482e37/drc-4348.md",
+      "rev": "sha256:46acb2b66bdbdbdfc1a732da902d5992bbedbec45500c061ef6fa1e72c23c748",
+      "mediaType": "text/markdown",
+      "summary": "Triage DRC-4348: Cap published subagent roster at SUBAGENTS_ROSTER_CAP (60) with honest omission reporting"
+    }
+  ]
+}
