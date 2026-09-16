@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4032:triage:attempt-1:revision-1",
+  "question": "Approve triage spec for DRC-4032?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4032:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/f7a83895cc24e551e2db7280f51181291b78e754/drc-4032.md",
+      "rev": "sha256:60122a83752203c265046df7908a7640facf3a9d795a00f339acbe4cd1edd4b2",
+      "mediaType": "text/markdown",
+      "summary": "Triage spec for D9 Quiet hours notification suppression"
+    }
+  ]
+}
