@@ -881,6 +881,7 @@ def collect(
             if (info and transcript)
             else None
         )
+        published_roster, subagents_omitted = runtime_sessions.cap_subagents_roster(roster)
         s = runtime_sessions.base_session("claude", prefix, project)
         runtime_sessions.apply_project_identity(config, s, cwd)
         s.update(
@@ -966,7 +967,10 @@ def collect(
                 # Working test would let a roster entry stand in for work that
                 # has demonstrably not begun. `started_at` is when the member
                 # joined the team, which is the instant the wait began.
-                "subagents": roster,
+                # Capped at SUBAGENTS_ROSTER_CAP with live entries prioritized
+                # ahead of finished entries (DRC-4348).
+                "subagents": published_roster,
+                "subagents_omitted": subagents_omitted,
                 "tasks": tasks,
                 "spacedock": session_spacedock(
                     config, state, transcript, subagents, now, window_hours * 3600

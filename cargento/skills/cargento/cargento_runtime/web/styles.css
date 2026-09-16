@@ -633,7 +633,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-command-surface h2,.next-session-current-label{display:block;margin:0 0 10px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400}
 .next-session-current>strong,.next-session-command-facts strong,.next-session-command-context{display:block;margin:0;font-size:var(--fs-sm);font-weight:500;line-height:1.5;overflow-wrap:anywhere}
 .next-session-current-subagents{margin-top:16px;border-top:1px solid var(--line)}
-.next-session-current-subagents>span{display:block;padding:10px 8px 5px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-session-current-subagents>span,.next-session-subagents-omitted{display:block;padding:10px 8px 5px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
 .next-session-command-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));border:1px solid var(--line2);border-top:0}
 .next-session-command-facts>section{min-width:0;padding:18px 20px}
 .next-session-command-facts>section+section{border-left:1px solid var(--line)}

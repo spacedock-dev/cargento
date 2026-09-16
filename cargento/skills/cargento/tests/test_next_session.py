@@ -911,6 +911,34 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("0m", unmeasured)
         self.assertNotIn("opus", unmeasured)
 
+    def test_subagents_omitted_count_renders_in_detail_panel(self) -> None:
+        # DRC-4348. When subagents_omitted > 0, an honest count is rendered.
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "worker-1", model: null, started_at: 9700, active: true, parent: null}
+];
+nextData.sessions[0].subagents_omitted = 14;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        self.assertIn("+14 older finished workers omitted", html)
+
+        html_single = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "worker-1", model: null, started_at: 9700, active: true, parent: null}
+];
+nextData.sessions[0].subagents_omitted = 1;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html_single, str)
+        self.assertIn("+1 older finished worker omitted", html_single)
+
     def test_token_footer_uses_state_scoped_totals_fallbacks_and_real_zero(self) -> None:
         out = self.render(
             """
