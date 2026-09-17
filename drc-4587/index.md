@@ -1492,3 +1492,115 @@ a retracted count through four sweeps — the list would have to be closed by so
 close it. The useful form of the observation is the one the list cannot hold: **a platform job that
 fails a test the diff cannot reach is re-run before it is believed, whether or not the module is
 named anywhere.** That rule needs no maintenance and would have covered both.
+
+## Stage Report: implementation (cycle 5)
+
+Correction round 4, scope-back. **F8 is right and the test was mine.**
+`test_a_prose_absence_keeps_the_sentence_floor` checked an absence at 15.0 without its value, so it
+asserted the inverted state as correct. That is the third guard on this branch to pass over the
+defect it was named for, and the three failures are one family: a comparison that could not see
+both sides move, a fixture that built a DOM the application never renders, and one that read a
+single side. The replacement reads an absence only ever beside its value.
+
+- DONE: Write the gate-approved drafts to Linear as the FIRST action before any code.
+  No Linear write this round and none was authorized; the first officer is making the DRC-4602
+  edits. The list it must carry is recorded below so the two agree rather than drift.
+- DONE: Write the failing test first, regenerate the pins, re-run the three oracle modules ALONE.
+  The stale guard failed **15 assertions** against the reverted tree before the rewrite, which is
+  the scope-back showing up as red in the place it should. The replacement was mutation-checked
+  both ways: lowering `.next-cockpit-landed-value` kills the comparison, and renaming the third
+  branch of the revision chain kills the polymorphic-slot assertion. Pins: 7 of 8 written sites
+  moved, `next-cockpit.js` size and digest both verified unchanged, no JS this round. Isolated:
+  `test_next_page` 25/25, `test_next_flag` 7/7, `test_focus` 96/96, guard 2/2.
+- DONE: Run the canonical pre-PR suite from AGENTS.md, invoke sync-docs, measure the surface.
+  All clean. Dashboard **3529 OK** (2 skipped), scripts **515 OK** (1 skipped), coverage 86.8%,
+  `ruff`, `mypy`, `lint_embedded`, `validate_plugins`, `bump_version --current` 0.26.0, no version
+  field moved. I did not chase the `test_irreversible` failure on the head, per the round's note.
+- DONE: Commit DCO signed off, do not push, report the SHA and the rules returned to base.
+  Branch `spacedock-ensign/drc-4587`, candidate SHA **`39c81df12f2d4d841574d5f0944838826eea0155`**,
+  on the branch, history linear, nothing rewritten, not pushed.
+
+### The keep list, measured rather than inherited
+
+You asked me to say if either AC-2 string turns out figure-paired. **Neither is, and neither is an
+absence in a value/absence pair at all**, which is a better reason than the one the keep list was
+derived from:
+
+- **"No revision saved yet"** is a *polymorphic slot*. `nextCockpitHeldTo` fills one span from
+  `discardStamp || revisionLine || "No revision saved yet"`, so the value and the absence are the
+  same element with the same class and resolve identically whatever the tier is. It cannot invert by
+  construction. The guard asserts the chain stays in one assignment, which is the condition that
+  holds it.
+- **"two axes, read separately"** is emitted *unconditionally* at `next-cockpit.js:2154`. It has no
+  absence branch, so it cannot be half of a pair. Its companions are the landed cards' values, which
+  resolve at the sentence tier, and the guard compares against them.
+
+So the keep list is correct, and both entries are safe under the round's rule without needing any
+pair to be found.
+
+### Returned to their value on `main` (20 restored, 4 removed, 2 splits recombined)
+
+Absence rules: `.next-project-goal-gap`; `.next-project-detail-rail .next-rail-reason`;
+`.next-delegation-withheld small`; `.next-guardrail-copy small,.next-guardrail-empty`;
+`.next-cockpit-recovery .next-project-value--absent`; `.next-cockpit-held-absent`;
+`.next-cockpit-reading-clause-absent`; `.next-cockpit-reading-stale,.next-session-departure-stale`;
+`.next-cockpit-content .next-cockpit-evidence-missing`;
+`.pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p`;
+`.pc-trail-quiet,.pc-trail-history,.pc-event-evidence`; `.next-cockpit-empty` and
+`.next-cockpit-evidence-missing` (split out of a group that stays raised);
+`.next-cockpit-recovery .next-project-goal-text.next-project-value--absent` with
+`.next-cockpit-recovery .next-project-goal-gap`.
+
+Value raises that existed only to answer an inversion those absences created:
+`.next-rail-wait-duration`; `.next-delegation-metrics`; `.next-rail-capacity-caption`;
+`.pc-entry-details time,.pc-event-evidence time`; `.next-cockpit-now-state strong`;
+`.next-cockpit-memos [data-next-cockpit-memo-field]>strong`; `.next-attention-open strong`;
+`.next-cockpit-recovery .next-project-goal-text`; `.pc-terminal-identity code`.
+
+Removed outright, because this branch invented them for that purpose: `.pc-graph-time`;
+`.pc-terminal-identity strong`; `.pc-semantic-timeline .pc-source`;
+`.next-cockpit-recovery .next-project-value`. Recombined as they were on `main`:
+`.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped` and
+`.next-cockpit-recovery strong,.next-cockpit-recovery small`.
+
+Verified mechanically rather than by eye: every selector on `main` is present on the head and vice
+versa, and no absence rule differs from its base body except the two keeps and
+`.next-cockpit-stale-session>span`, whose only change is the `.09em` tracking that belongs to the
+label-tier work.
+
+### For DRC-4602, so the entity and Linear agree
+
+1. The fourth inversion at `next-cockpit.js:2755`.
+2. `.next-cockpit-evidence-missing` serves seven sites, six of them genuine prose, so it cannot be
+   re-tiered as a unit; that shared-class constraint is why it could not be fixed here.
+3. Two **pre-existing** inversions in `next-capacity.js`, which this branch never created and which
+   are the evidence that the class predates the pull request.
+4. The 31 helper call sites (`nextProjectValue` 17, `projectPublishedValue` 11, `projectEventTime`
+   3) that no absence-class grep reaches.
+5. **The bound published in cycle 4 needs re-deriving before it can carry any of this.** F9 is
+   right: its headline said eight files of twenty and its table listed nine rows plus "the other
+   eleven", off by one against itself, and it filed `next-capacity.js` as unable to contain a
+   pairing when it holds two. I recorded that bound and it does not re-derive.
+
+### Surface
+
+This round, and it is negative where it had to be: `styles.css` **26 added / 40 deleted**,
+`test_next_cockpit.py` 62 / 262, `docs/design-next-ui.md` 13 / 32, oracles 7. Cumulative against the
+merge base: runtime **121 changed** (`styles.css` 117, `next-cockpit.js` 4) against a declared ~105
+and a 131.25 ceiling, **115.2%** and **inside the declared tolerance for the first time since round
+one**. Docs 100 added / 7 deleted. Tests 362 over two files, uncosted. Oracles 8 written lines
+carrying 9 checked pins. `3cc7ef49` in this history is still not mine.
+
+### Summary
+
+The scope-back is right and I did not argue with it, because the decisive evidence is not that a
+fourth inversion survived but that the class contains instances this branch never created. What the
+PR now claims is small enough to enumerate: a sentence tier, a collapsed label tier, three dead
+tokens, a measure cap, two structural header moves, and exactly two absences, each safe for a reason
+that does not depend on finding every pair.
+
+The lesson I would carry out of five cycles is not about type scales. Three guards in a row passed
+over the defect they were named for, and each failure was in the fixture or the framing rather than
+in the assertion: what was compared, in what DOM, against which side. A test can be green, mutation
+-checked, and still be measuring the wrong thing, and the only defence that worked here was reading
+the emitter to find out what the product actually builds.
