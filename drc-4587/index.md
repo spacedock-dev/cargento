@@ -1416,3 +1416,60 @@ two live inversions in the bucket that cannot hold any.
 Neither needs a fourth instance round. F8 is one disposition decision on one slot: demote the class
 and split the six prose uses, or promote that one value. F9 is a re-derivation of a table that is
 already nearly right, and the command that does it is the one I ran.
+
+### Addendum: the sweep, and the prose claims nothing binds
+
+`0f8a3a75` was inside my cycle-4 review, so the **verdict is unchanged: NO-GO** on F8, F9, F10 and
+F11. This addendum answers the two questions put with it.
+
+**The provenance clause is correct.** I had already verified the numbers it now states — thirteen
+changed lines at `4fb5ee6d`, zero matching `operation-fact` — and the narrowed claim is the true one.
+
+**The sweep: one survivor, and the reason it survived is the method.** Searching the remainder
+paragraphs for a size in any form, one remains: *"on the `--fs-sm`, `--fs-body` and `--fs-summary`
+steps and on **a handful** of literals"*. That is a magnitude, it is about the set whose size the
+paragraph two below says is "not stated here in any form", and it is the retracted figure — this
+document has carried "two literals", then "four literals" — in its fourth costume. The sweep looked
+for a digit, a number-word and a comparison, and a vague quantifier is none of the three. **Three
+attempts have now enumerated the forms a count can take and a fourth form has appeared each time.**
+The enumeration is the defect: the question that catches all four is not "which spellings are
+present" but "does this sentence tell a reader how many", which no grep answers.
+
+One claim in the same paragraph I expected to fail and **verified instead**: "both render at 12.5px,
+below anything the first shape reaches". Resolving every rule that declares its own size, its own
+sans family and its own prose line-height, the minimum of that shape is **13.0px**
+(`.next-cockpit-work-derived`, `.pc-semantic-timeline,.pc-terminal`, `.pc-trail-result`), so 12.5px
+is genuinely below all of it. Supported, and worth saying because it is a bound asserted over a set
+the document declines to size — it happens to hold.
+
+**The observation is right, and here is the named residual you asked for.** I checked which claims in
+this document have something mechanical behind them rather than assuming:
+
+*Bound.* The six promotions (`test_every_promoted_machine_slot_is_on_the_sentence_tier`, absolute
+assertion — this is the model), ten slots, one prose absence, one caption, every CSS variable used
+being declared, and the >4.5:1 contrast assertion.
+
+*Unbound — a stated rule with nothing checking it:*
+
+1. **The membership test itself.** Nothing enumerates elements and applies "resolved style is sans
+   with a prose line-height". Every test binds named selectors. This is the rule the rest rests on
+   and the one that has produced three waves of findings.
+2. **The tracking census** — `.09em` on twenty-four declarations, three exceptions, six further at
+   `.06em`/`.07em`/`.04em`. **Zero tests mention letter-spacing at all** (the two grep hits are git
+   tracking and turn tracking). This is the highest-risk item on the list: Copilot found it wrong
+   once, it was corrected in prose, then *expanded* in prose, and nothing has ever checked it.
+3. **The `--measure` census** — forty-nine capped, eighteen not, eight carrying `overflow-wrap`,
+   eight layout boxes. Verified by hand in cycle 1, unpinned since.
+4. **"all sixty-seven resolve to `var(--fs-sentence)`"** — same: verified once by hand, nothing holds it.
+5. **"Labels and compact controls sit on one tier, `--fs-label` at 11px"** — zero tests mention
+   `--fs-label`.
+6. **AC-1's "no `--fs-*` token in `:root` below 11px"** — unbound; DRC-4596 owns it.
+7. **The bound table** — unbound, and F9 shows it does not re-derive.
+
+Items 2 to 5 are each a census of the current tree, which is exactly the shape the promotion test
+already showed can be bound cheaply: resolve a set, assert a property, let it fail loudly. **2 is the
+one I would carry first**, because it has the worst record and the least coverage. 1 is the largest
+and belongs with DRC-4602's audit, since a membership test that enumerates elements is that audit.
+6 is already DRC-4596's.
+
+That is the residual named rather than discovered as a fourth wave, which is what was asked.
