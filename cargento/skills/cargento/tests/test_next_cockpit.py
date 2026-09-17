@@ -6306,6 +6306,58 @@ console.log(JSON.stringify({counts, steer, tripwire}));
         self.assertNotIn("next-action--primary", out["tripwire"])
 
 
+class AnAbsenceNeverRendersLargerThanItsValueTest(unittest.TestCase):
+    """Three pairs DRC-4592 and DRC-4597 added, carried across from a table that
+    no longer exists.
+
+    Both branches appended these to `AnAbsenceNeverOutranksTheValueItReplacesTest`
+    when it was a flat table of CSS selector pairs. It was rewritten on the way
+    in to resolve DOM paths through the cascade, and narrowed to the absences
+    raised to the sentence tier -- which these are not, so they no longer fit
+    it. The property they asserted is still true and still worth holding, so it
+    is held here instead of being dropped on a technicality.
+
+    Declared size rather than resolved, because that is what the pairs were
+    written to state: each absence restates its value's size in its own rule so
+    the two cannot drift apart. A pair that stops declaring a size belongs in
+    the cascade test above, not here, and the `NO RULE` failure says so.
+    """
+
+    PAIRS = (
+        # The tab cue's figure against the two marks that stand in for it.
+        (".next-cockpit-tab-cue", ".next-cockpit-tab-cue--pending"),
+        (".next-cockpit-tab-cue", ".next-cockpit-tab-cue--unobserved"),
+        # DRC-4597's rail card: the session title against the caption beneath it.
+        (".next-cockpit-scope-title", ".next-cockpit-scope-meta"),
+    )
+
+    tokens: dict[str, float]
+    bodies: dict[str, str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, rules = css_cascade.load(web / "styles.css")
+        cls.bodies = {}
+        for selector, body, _order in rules:
+            if selector.strip() in {s for pair in cls.PAIRS for s in pair}:
+                cls.bodies[selector.strip()] = body
+
+    def size(self, selector: str) -> float:
+        body = self.bodies.get(selector)
+        self.assertIsNotNone(body, f"{selector} declares no rule of its own")
+        assert body is not None
+        declared = css_cascade.declared_size(body, self.tokens)
+        self.assertIsNotNone(declared, f"{selector} declares no size of its own")
+        assert declared is not None
+        return declared
+
+    def test_no_absence_declares_a_larger_size_than_the_value_it_replaces(self) -> None:
+        for value, absence in self.PAIRS:
+            with self.subTest(value=value, absence=absence):
+                self.assertLessEqual(self.size(absence), self.size(value))
+
+
 class WithheldTitleKeepsTheAbsenceInkTest(unittest.TestCase):
     """A withheld session title must not resolve to the ink a published one gets.
 
