@@ -233,15 +233,23 @@ the only stage whose product is a change to the roadmap records rather than to t
     from the Linear issue's own `## Acceptance` section and each cost a repair round. The captured
     original under `## Linear edits made` keeps whatever heading Linear holds: it is a verbatim
     record, so it is exempt, and renaming it would falsify the restore point.
-    **And the criteria inside it are a bullet list with a bold `AC-N` label**, because the heading
-    alone is not enough: a correct heading over numbered `1. **(offline)**` items scans as
-    `{"acs":[]}`, which reads as "no criteria" rather than as an error and is the quieter half of
-    the same failure. The shape the scanner resolves, confirmed against archived `drc-4020`:
+    **And each criterion's id must be hyphenated — `AC-1`, never `AC1`** — because the heading
+    alone is not enough: a correct heading over criteria the scanner cannot see returns
+    `{"acs":[]}`, which reads as "this entity has no acceptance criteria" rather than as an error,
+    and is the quieter and more dangerous half of the same failure. Nothing else about the shape
+    matters. Measured 2026-09-17 in an isolated throwaway workflow carrying four criterion shapes
+    in one file:
 
     ```text
-    - **AC-1 — offline:** {end-state property}. **Verified by:** {command, test or on-disk state}.
-      **Falsified by:** {the concrete change that flips it}.
+    - **AC-1 — offline:** …bullet, hyphenated…     -> parsed
+    **AC-3 — paragraph, no bullet.** (offline)     -> parsed
+    **AC4 — paragraph, unhyphenated.**             -> NOT parsed
     ```
+
+    So bullet-versus-paragraph is free, `Verified by:` styling is free, and the hyphen is not. Two
+    earlier guesses at this — first the heading, then a required bullet list — were both wrong and
+    each cost a repair round; the isolated probe settled it in one. **Probe it there, never in the
+    state checkout**, which has concurrent writers.
 
     Citations resolve from later stage reports that name `AC-N`, so criteria authored here are
     expected to scan as unevidenced at this gate. That is correct, not a defect — `implementation`
