@@ -233,6 +233,19 @@ the only stage whose product is a change to the roadmap records rather than to t
     from the Linear issue's own `## Acceptance` section and each cost a repair round. The captured
     original under `## Linear edits made` keeps whatever heading Linear holds: it is a verbatim
     record, so it is exempt, and renaming it would falsify the restore point.
+    **And the criteria inside it are a bullet list with a bold `AC-N` label**, because the heading
+    alone is not enough: a correct heading over numbered `1. **(offline)**` items scans as
+    `{"acs":[]}`, which reads as "no criteria" rather than as an error and is the quieter half of
+    the same failure. The shape the scanner resolves, confirmed against archived `drc-4020`:
+
+    ```text
+    - **AC-1 — offline:** {end-state property}. **Verified by:** {command, test or on-disk state}.
+      **Falsified by:** {the concrete change that flips it}.
+    ```
+
+    Citations resolve from later stage reports that name `AC-N`, so criteria authored here are
+    expected to scan as unevidenced at this gate. That is correct, not a defect — `implementation`
+    and `review` supply the evidence, and the cross-check earns its keep at the review gate.
   - At least one acceptance criterion that is a property a user can see, with its own `Verified
     by:` clause. When the move is `none`, one sentence in the brief on why no user sees this
     change instead, and the gate is told so up front.
