@@ -32,6 +32,16 @@ _BLOCK = re.compile(r"([^{}]+)\{([^{}]*)\}")
 
 
 def _strip_media(css: str) -> str:
+    """Drop `@media` blocks, and refuse the case where that would hide a rule.
+
+    Every media font rule in this stylesheet is `max-width`, so dropping them
+    leaves the default viewport intact. A `min-width` block could raise or lower
+    a size at a width people actually use, and silently ignoring it would let an
+    always-true `@media(min-width:1px)` escape the guard, so it raises instead.
+    """
+    for block in re.finditer(r"@media\s*\(([^)]*)\)", css):
+        if "min-width" in block.group(1) and "font" in css[block.end() : block.end() + 400]:
+            raise UnsupportedSelectorError(f"@media ({block.group(1)}) sets a font size")
     out: list[str] = []
     index = 0
     while index < len(css):
@@ -99,11 +109,21 @@ def _compound(text: str) -> Compound:
     }
 
 
-def _steps(selector: str) -> list[tuple[str, Compound]] | None:
+class UnsupportedSelectorError(Exception):
+    """A selector form this resolver cannot express.
+
+    Raised rather than returned, because a `None` here reads to the caller as
+    "did not match" and the rule then leaves the cascade in silence. A resolver
+    that quietly forgets rules produces plausible numbers, which is the failure
+    this whole guard exists to stop.
+    """
+
+
+def _steps(selector: str) -> list[tuple[str, Compound]]:
     """Selector as [(combinator, compound)], the first combinator ignored."""
     parts = [p for p in re.split(r"\s*(>|\+|~)\s*|\s+", selector.strip()) if p]
     if any(part in ("+", "~") for part in parts):
-        return None
+        raise UnsupportedSelectorError(selector)
     steps: list[tuple[str, Compound]] = []
     combinator = " "
     for part in parts:

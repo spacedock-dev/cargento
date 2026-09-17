@@ -109,8 +109,23 @@ Assign one owner to each region during parallel work. Keep media queries at the 
 region; a shared responsive block would make every view edit the same tail. Moving a rule between
 regions is an ownership change, not incidental cleanup.
 
-Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels,
-identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px. Four
+Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels
+and compact controls sit on one tier, `--fs-label` at 11px. **Six machine slots are promoted off
+that tier** because the absence that replaces each one is a sentence, and an absence must never
+read larger than the fact it stands in for: `.next-rail-wait-duration`, the token rate in
+`.next-delegation-metrics`, the pace and resets in `.next-rail-capacity-caption`, the timestamps in
+`.pc-entry-details time` and `.pc-event-evidence time`, `.pc-semantic-timeline .pc-source`, and the
+published values in `.next-cockpit-recovery .next-project-value`. So a timestamp or a rate is on
+the label tier only where nothing replaces it with a sentence.
+
+**Where the machine string has a machine-shaped absence, the absence moves instead.**
+`.next-cockpit-work-absent`, `.next-cockpit-reading-clause-absent` and `.pc-graph-time` sit with
+the values they replace rather than at the sentence floor, because a rate, a timestamp and a
+duration are compact on purpose and raising them removes the inversion by breaking the register.
+That is the cheaper half of the same rule and it needs no emitter change, because each of those
+slots already emits a class that separates its machine-paired use from its prose-paired one.
+Prose absences in the same panels, `.next-cockpit-work-limit` and `.next-cockpit-work-dropped`
+among them, keep the floor. Four
 `:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
 and 9px was the smallest step in the file. **Counts here read "at or below 12px" inclusively**, so
 the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 10px,

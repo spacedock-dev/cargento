@@ -5581,7 +5581,12 @@ def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, obj
     return {"tag": tag, "classes": set(classes), "attrs": set(attrs)}
 
 
-_REC = [_node("section", "next-cockpit-recovery")]
+# `next-project.js:396` wraps the whole cockpit in `.next-cockpit-content`, and
+# leaving it out is not cosmetic: without that ancestor
+# `.next-cockpit-content .next-cockpit-evidence-missing` (0,2,0) loses to
+# `.next-cockpit-recovery small` (0,1,1) and an inverted row reads clean.
+_CONTENT = [_node("div", "next-cockpit-content")]
+_REC = [*_CONTENT, _node("section", "next-cockpit-recovery")]
 _RAIL = [_node("div", "next-project-detail-rail")]
 _TL = [_node("div", "pc-semantic-timeline")]
 
@@ -5712,9 +5717,63 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
         ),
         (
             "recovery goal",
-            "next-cockpit.js nextProjectGoal",
-            [*_REC, _node("p", "next-project-goal-text")],
-            [*_REC, _node("p", "next-project-goal-gap")],
+            "next-project.js nextProjectGoal",
+            [
+                *_REC,
+                _node("section", "next-project-goal"),
+                _node(
+                    "span",
+                    "next-project-value",
+                    "next-project-value--known",
+                    "next-project-goal-text",
+                ),
+            ],
+            [
+                *_REC,
+                _node("section", "next-project-goal"),
+                _node(
+                    "span",
+                    "next-project-value",
+                    "next-project-value--absent",
+                    "next-project-goal-text",
+                ),
+            ],
+        ),
+        (
+            "reading clause",
+            "next-cockpit.js nextCockpitReading",
+            [*_CONTENT, _node("span", "next-cockpit-reading-clause")],
+            [*_CONTENT, _node("span", "next-cockpit-reading-clause-absent")],
+        ),
+        (
+            "work summary",
+            "next-cockpit.js nextCockpitWork",
+            [*_CONTENT, _node("span", "next-cockpit-work-summary")],
+            [*_CONTENT, _node("p", "next-cockpit-work-absent")],
+        ),
+        (
+            # Both classes, because the emitter sets both and the second is
+            # what distinguishes this machine-paired use of the reason class
+            # from its prose-paired one.
+            "graph row time",
+            "project.js projectGraphRow",
+            [_node("article", "pc-graph-row"), _node("time")],
+            [
+                _node("article", "pc-graph-row"),
+                _node("span", "pc-substrate-reason", "pc-graph-time"),
+            ],
+        ),
+    )
+
+    # Prose absences are the other half of the same rule: they keep the floor.
+    # `.next-cockpit-recovery small` sizes the strip's storage cue at 12.5px and
+    # must not drag an absence sentence down with it, which is only decidable
+    # with the `.next-cockpit-content` wrapper in the path.
+    PROSE_ABSENCES = (
+        (
+            "assignment evidence absent",
+            "next-cockpit.js nextCockpitRecovery",
+            [*_REC, _node("div"), _node("small", "next-cockpit-evidence-missing")],
         ),
     )
 
@@ -5753,6 +5812,57 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
                     absence,
                     f"{name} ({emitter}): value {value}px against absence {absence}px, "
                     "so the absence outranks the fact it replaces",
+                )
+
+    # The six machine slots `design-next-ui.md` records as promoted. Comparing a
+    # value against its absence does not bind these: reverting the promotion
+    # drops both sides together and the comparison stays equal while the value
+    # leaves the tier the document says it is on. Measured, not assumed: that
+    # mutation survived until this list existed.
+    PROMOTED = (
+        (
+            "recovery published value",
+            [
+                *_REC,
+                _node("div", "next-cockpit-waiting"),
+                _node("span", "next-project-value", "next-project-value--known"),
+            ],
+        ),
+        ("rail wait duration", [*_RAIL, _node("span", "next-rail-wait-duration")]),
+        (
+            "rail token rate",
+            [
+                *_RAIL,
+                _node("div", "next-delegation-metrics"),
+                _node("span", attrs=("data-next-delegation-rate",)),
+            ],
+        ),
+        (
+            "rail pace and resets",
+            [*_RAIL, _node("div", "next-rail-capacity-caption"), _node("span")],
+        ),
+        ("entry-details timestamp", [*_TL, _node("div", "pc-entry-details"), _node("time")]),
+        ("published value", [*_TL, _node("div", "pc-entry-details"), _node("span", "pc-source")]),
+    )
+
+    def test_every_promoted_machine_slot_is_on_the_sentence_tier(self) -> None:
+        sentence = self.tokens["fs-sentence"]
+        for name, path in self.PROMOTED:
+            with self.subTest(slot=name):
+                self.assertEqual(
+                    sentence,
+                    self.size(path),
+                    f"{name} left the sentence tier, which design-next-ui.md records it on",
+                )
+
+    def test_a_prose_absence_keeps_the_sentence_floor(self) -> None:
+        sentence = self.tokens["fs-sentence"]
+        for name, emitter, path in self.PROSE_ABSENCES:
+            with self.subTest(absence=name):
+                self.assertEqual(
+                    sentence,
+                    self.size(path),
+                    f"{name} ({emitter}) does not resolve to the sentence tier",
                 )
 
     def test_a_caption_stays_below_the_values_it_labels(self) -> None:

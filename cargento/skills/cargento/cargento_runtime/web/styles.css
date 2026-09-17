@@ -897,7 +897,12 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-work-mix{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-work-at{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-work-source{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
+/* An absence replacing a machine string takes that string's tier, not the
+   sentence one: raising a rate or a timestamp to 15px removes the inversion
+   by breaking the register. Prose absences keep the floor -- limit and
+   dropped below are the board's own sentences and stay there. */
+.next-cockpit-work-absent{margin:0;color:var(--ink3);font:var(--fs-xs)/1.55 var(--mono);max-width:var(--measure)}
+.next-cockpit-work-limit,.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 /* The third treatment, for a model reading: italic Space Grotesk on the
    secondary ink over a dotted rule, so it reads as neither a published string
    nor the board stating a fact. No colour under any result, ever, because
@@ -944,7 +949,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 /* The board saying the revision's words are not retained, which is the board
    talking and not a quotation, so sans for the reason the limit line below
    gives. */
-.next-cockpit-reading-clause-absent{font:500 var(--fs-sentence)/1.55 var(--sans);color:var(--ink3);overflow-wrap:anywhere}
+.next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink3);overflow-wrap:anywhere}
 .next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading{font:italic 13.5px/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
 .next-cockpit-reading-evidence,.next-session-departure-base{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
 /* The board talking, not a string a source published, so sans. The
@@ -1162,6 +1167,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .pc-graph-row{display:grid;grid-template-columns:74px calc(var(--lane-count) * 24px) minmax(0,1fr);align-items:start;min-height:48px}
 .pc-graph-row>time,.pc-graph-time{padding:8px 6px 0 0;color:var(--ink3);text-align:right;overflow-wrap:anywhere}
 .pc-graph-row>time{font:var(--fs-label)/1.5 var(--mono)}
+.pc-graph-time{font:var(--fs-label)/1.5 var(--mono)}
 .pc-graph-filter{display:flex;justify-content:flex-end;gap:4px;margin-bottom:8px;flex-wrap:wrap}
 .pc-graph-filter button{padding:4px 8px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink3);font:var(--fs-machine) var(--mono);cursor:pointer}
 .pc-graph-filter button.selected{border-bottom-color:var(--accent);color:var(--ink)}
