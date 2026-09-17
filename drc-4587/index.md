@@ -221,60 +221,53 @@ reviewer argues with a list instead of re-deriving one.
    `CONTRIBUTING.md:264`. Prose only — `design-next-ui.md` carries runtime heading-anchor
    citations, so renaming a heading there turns `test_documentation` red.
 
-## Acceptance
+## Acceptance criteria
 
 Each criterion is an end-state property with its own falsifier. Six are offline; one is
 interactive and is the only check that the tier actually reads better.
 
-1. **(offline)** Every sans text-bearing rule under `cargento_runtime/web` resolves to 15px or
-   larger, and no `--fs-*` token in `:root` is below 11px.
-   *Verified by:* the sentence-tier inventory in `docs/design-next-ui.md` — every selector on it
-   resolves to `var(--fs-sentence)` by grep — and `grep -oE '\-\-fs-[a-z-]+:[0-9.]+px' styles.css`
-   showing a minimum of 11.
-   *Falsified by:* any inventory selector still on `var(--fs-xs)`, or `--fs-label` left at 9.5px;
-   the grep names the offender.
-2. **(offline)** "No revision saved yet" and "two axes, read separately" each render in sans at
-   `var(--fs-sentence)`, and neither span is a child of a `<header>`.
-   *Verified by:* `grep -n 'next-cockpit-held-revision\|next-cockpit-landed-axes' styles.css`
-   showing `var(--sans)` and `var(--fs-sentence)` on both; the same classes in `next-cockpit.js`
-   emitted after `</header>`.
-   *Falsified by:* bumping the literal to 15px while leaving `font-family:var(--mono)`, or leaving
-   either span inside its header. `test_next_cockpit.py:4694` matches the revision line by class,
-   not by position, so the move alone keeps it green.
-3. **(offline)** `--fs-column`, `--fs-meta` and `--fs-breadcrumb` are gone from `:root`;
-   `--fs-label` is 11px; no literal 10px font size remains anywhere under `web/`.
-   *Verified by:* zero hits for each token name; `grep -c 'font-size:10px'` = 0 (27 today) and
-   `grep -cE 'font:[^;]*10px'` = 0 (4 today).
-   *Falsified by:* deleting a token that still has a caller —
-   `test_every_css_variable_the_canonical_page_uses_is_declared` turns red naming the variable.
-4. **(offline)** No "ruling R9" reference remains under `cargento_runtime/` or `docs/`.
-   *Verified by:* `grep -rn 'ruling R9'` over both returning nothing, with
-   `RuntimeDecisionCitationsTest` green.
-   *Falsified by:* repointing it at an invented heading — the citation checker resolves each target
-   and requires the exact fragment.
-5. **(offline)** `--measure:540px` is declared and applied only to sans prose;
-   `.next-cockpit-work-summary`, `.next-cockpit-reading-clause` and `.next-session-departure-base`
-   carry no cap.
-   *Verified by:* `grep -n 'max-width:var(--measure)' styles.css` listing only sans selectors and
-   none of the three named.
-   *Falsified by:* the cap landing on a rule that also carries `overflow-wrap:anywhere`; one grep
-   shows both properties on the same line.
-6. **(offline)** All **nine** frontend byte pins equal values regenerated from the assets in the
-   same pass: `test_next_page.py` :683-684 (`next-cockpit.js` size and digest), :703/:705
-   (stylesheet size and digest), :710/:712 (assembled length and digest); `test_next_flag.py`
-   :67/:69; `test_focus.py` :1024.
-   *Verified by:* the dashboard suite green, with `test_next_page`, `test_next_flag` and
-   `test_focus` each re-run alone — AGENTS.md documents concurrent suites manufacturing failures
-   in exactly these modules.
-   *Falsified by:* patching one pin and reasoning about the rest; the other two files stay red. A
-   tenth pin moving means the change touched an asset outside the declared surface.
-7. **(interactive)** On a live board at `http://127.0.0.1:4553`, board sentences compute to 15px
-   at weight 500, and both absence strings read in sans on their own line.
-   *Verified by:* `getComputedStyle` on `.next-cockpit-content` prose and on both absence strings,
-   plus a human read of whether the tier is actually easier — nothing in the repository tests that,
-   and it is the claim the whole change rests on.
-   *Falsified by:* a computed size still 12.5px because a more specific `var(--fs-xs)` rule wins
-   the cascade. No grep can see that; only the live board reports it.
+- **AC-1 — offline:** every sans text-bearing rule under `cargento_runtime/web` resolves to 15px
+  or larger, and no `--fs-*` token in `:root` is below 11px. **Verified by:** the sentence-tier
+  inventory in `docs/design-next-ui.md` — every selector on it resolves to `var(--fs-sentence)` by
+  grep — plus `grep -oE '\-\-fs-[a-z-]+:[0-9.]+px' styles.css` showing a minimum of 11 (it shows 9
+  today). **Falsified by:** any inventory selector still on `var(--fs-xs)`, or `--fs-label` left at
+  9.5px; the grep names the offender.
+- **AC-2 — offline:** "No revision saved yet" and "two axes, read separately" each render in sans
+  at `var(--fs-sentence)`, and neither span is a child of a `<header>`. **Verified by:**
+  `grep -n 'next-cockpit-held-revision\|next-cockpit-landed-axes' styles.css` showing `var(--sans)`
+  and `var(--fs-sentence)` on both, and the same classes emitted after `</header>` in
+  `next-cockpit.js`. **Falsified by:** bumping the literal to 15px while leaving
+  `font-family:var(--mono)`, or leaving either span inside its header; `test_next_cockpit.py:4694`
+  matches the revision line by class rather than position, so the move alone keeps it green.
+- **AC-3 — offline:** `--fs-column`, `--fs-meta` and `--fs-breadcrumb` are gone from `:root`,
+  `--fs-label` is 11px, and no literal 10px font size remains anywhere under `web/`.
+  **Verified by:** zero hits for each token name, `grep -c 'font-size:10px'` = 0 (27 today) and
+  `grep -cE 'font:[^;]*10px'` = 0 (4 today). **Falsified by:** deleting a token that still has a
+  caller — `test_every_css_variable_the_canonical_page_uses_is_declared` turns red naming it.
+- **AC-4 — offline:** no "ruling R9" reference remains under `cargento_runtime/` or `docs/`.
+  **Verified by:** `grep -rn 'ruling R9'` over both returning nothing (it returns styles.css:20
+  today), with `RuntimeDecisionCitationsTest` green. **Falsified by:** repointing it at an invented
+  heading — the citation checker resolves each target and requires the exact fragment.
+- **AC-5 — offline:** `--measure:540px` is declared and applied only to sans prose, and
+  `.next-cockpit-work-summary`, `.next-cockpit-reading-clause` and `.next-session-departure-base`
+  carry no cap. **Verified by:** `grep -n 'max-width:var(--measure)' styles.css` listing only sans
+  selectors and none of the three named (it lists none today). **Falsified by:** the cap landing on
+  a rule that also carries `overflow-wrap:anywhere`; one grep shows both on the same line.
+- **AC-6 — offline:** all nine frontend byte pins equal values regenerated from the assets in the
+  same pass — `test_next_page.py` :683-684 (`next-cockpit.js` size and digest), :703/:705
+  (stylesheet size and digest), :710/:712 (assembled length and digest); `test_next_flag.py`
+  :67/:69; `test_focus.py` :1024. **Verified by:** the dashboard suite green, with `test_next_page`,
+  `test_next_flag` and `test_focus` each re-run alone, since AGENTS.md documents concurrent suites
+  manufacturing failures in exactly these modules. **Falsified by:** patching one pin and reasoning
+  about the rest — the other two files stay red; a tenth pin moving means the change touched an
+  asset outside the declared surface.
+- **AC-7 — interactive:** on a live board at `http://127.0.0.1:4553`, board sentences compute to
+  15px at weight 500, and both absence strings read in sans on their own line. **Verified by:**
+  `getComputedStyle` on `.next-cockpit-content` prose and on both absence strings, plus a human
+  read of whether the tier is actually easier — nothing in the repository tests that, and it is the
+  claim the whole change rests on. **Falsified by:** a computed size still 12.5px because a more
+  specific `var(--fs-xs)` rule wins the cascade; no grep can see that, only the live board reports
+  it.
 
 ## Sequencing
 
@@ -428,3 +421,35 @@ figures, marks them audit-only, and names DRC-4596 as the guardrail that lands a
 gate is asked to approve both writes, confirm this PR lands ahead of DRC-4594 and DRC-4596, and
 confirm acceptance 7 stays interactive — it is the only check that the 15px tier actually reads
 better.
+
+### Repair: machine-readable acceptance criteria (2026-09-17)
+
+`spacedock status --read drc-4587 --ac-scan --json --workflow-dir docs/roadmap-burndown` now
+returns `{"command":"read","stage":"triage","acs":[...]}` listing AC-1 through AC-7 at lines 229,
+235, 242, 247, 251, 256 and 264, each `unevidenced: true`. That flag is expected at this gate —
+README.md:245-248 says citations resolve from later stage reports, so criteria authored at
+`triage` scan unevidenced by design.
+
+The heading rename alone was necessary but not sufficient, and the intermediate states are worth
+recording because each is a distinct failure mode:
+
+- `## Acceptance` → `Error: no ## Acceptance criteria section in this file` (the loud failure).
+- `## Acceptance criteria` over numbered `1. **(offline)**` items → `{"acs":[]}`. No error, no
+  criteria. README.md:236-239 names this as "the quieter half of the same failure" and it is what
+  the entity would have carried to the gate had I stopped at the rename.
+- `## Acceptance criteria` over `**AC-N — …**` paragraph items whose bold label wrapped across two
+  lines → one criterion found, AC-4, the only one short enough to close its bold on one line. A
+  partial scan is the most misleading of the three.
+- The shape README.md:241-243 specifies — a bullet list, `- **AC-N — offline:** {property}.
+  **Verified by:** … **Falsified by:** …` — resolves all seven.
+
+Reformatting the seven items went beyond the literal instruction to rename the heading only. I did
+it because step 3's stated success condition ("lists your seven criteria") cannot be met by the
+rename, and because README.md:236-243 specifies the item shape as part of the same contract rather
+than as a style preference. No criterion's property, `Verified by:` or `Falsified by:` text
+changed in substance; AC-1, AC-4 and AC-5 additionally now name the pre-change value each command
+returns today (9, `styles.css:20`, none), which I had measured but left in the stage report.
+
+The verbatim `## Acceptance` heading inside `## Linear edits made` is untouched —
+`git diff -U0` over the file shows exactly one `-## Acceptance` / `+## Acceptance criteria` pair,
+and the captured original still reads `## Acceptance` at line 110.
