@@ -698,3 +698,13 @@ Contract run as pinned; both string anchors still resolved to one occurrence eac
 **The per-branch non-vacuity guards do not catch this, and could not.** They assert the anchor and both rows rendered, and all three render on every branch. The guard that would have caught it is one asserting the cases *differ* — that the disclosure is drawn in the arms whose `whyLabel` is set, or simply that the six produce more than one distinct raise sentence. Recommend adding that alongside the fixture fix, since a matrix whose rows silently collapse is the failure this criterion has now had twice.
 
 Re-measure the A/B offsets on the next fix commit rather than against the `2fa5a2f4` figures; anchors drifted again this commit (the ordering test 11149 → 11349), which the string-anchored contract absorbed.
+
+### Re-check at `ddd422bf` — AC-5 FAIL (unchanged)
+
+Head derived rather than taken on trust: both tips of `spacedock-ensign/ui-integration` are `ddd422bf`. Suite **3654**; byte pins discounted. The contract's string anchors both resolved to one occurrence, so the re-point cost nothing.
+
+**AC-5 — FAIL.** The anchor-last mutation still leaves **3654 behavioural tests green** against the full suite. This commit edits `test_next_cockpit.py` heavily (+218) but does not touch the AC-5 matrix: the stub is unchanged, and re-measuring rather than carrying the previous result forward gives the same table — six cases, `nextFocusCapability()` `''` in all six, **zero** drawing the disclosure, **one** distinct raise sentence of the three.
+
+**The fix is copying a line that already exists three times in this same file.** The capability is read as `typeof meta.getAttribute === "function" ? meta.getAttribute("content") : null`, and three other stubs in `test_next_cockpit.py` get that right — two spelled `document.querySelector = () => ({getAttribute: () => "test-capability"})` and `CockpitHeldReEntryTest.FOCUS_ON` spelled `selector === 'meta[name="cargento-focus"]' ? {getAttribute: …} : null`. The matrix's own stub returns `{content:"tmux"}`, an object with no `getAttribute`, so the probe yields `null` and the capability resolves to `""`.
+
+**Still recommended alongside the stub fix:** an assertion that the six cases *differ* — that the disclosure is drawn wherever `whyLabel` is set, or simply that the six produce more than one distinct raise sentence. The per-branch guards assert the anchor and both rows rendered, and all three render on every branch, so they cannot see a matrix whose rows have collapsed. That is the failure this criterion has now had twice, in two different forms.
