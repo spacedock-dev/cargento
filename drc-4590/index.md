@@ -535,3 +535,82 @@ does not name were found by reading the tests — `test_next_chrome.py:1104` ass
 `background:transparent` inside the `.next-session-copy` rule body, which the collapse moves, and
 `test_next_sessions.py:453` binds that rule's declaration *order* by prefix. Both are declared in
 the estimate rather than left to surface as an overrun.
+
+## Stage Report: implementation
+
+Built with DRC-4588 on one branch, per the captain's tier-grouping ruling. Candidate **1d847b0f**
+on `spacedock-ensign/drc-4588`, rebased onto `main` @ `84d27a53`, PR #362.
+
+- DONE: Write BOTH gate-approved drafts to Linear as the FIRST action before any code, sending each body unwrapped as one line per paragraph, then read back each issue's relation set and report every edge the write created.
+  DRC-4590's body written verbatim and unwrapped, with the eight criteria substituted into `## Acceptance` from this entity's own `## Acceptance criteria` in the `* **AC-N — offline:**` shape the comment specified. Milestone correction applied (the primary-action clause plus the split-out sentence), sharing one description with DRC-4588's correction. Labels `journey:mid-flight` and `move:sharpen` already correct, confirmed rather than changed. Follow-ups DRC-4603 and DRC-4604 filed. Edges below.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason.
+  Seven tests, all watched failing first, then re-verified at final shape by reverting the seven assets to the pre-change base: 7/7 fail there, 7/7 pass on the change. What each proves, and the change that breaks it: `.next-action` is one rule owning the box (adding the class to a selector group instead of removing the duplicated declarations fails it); none of the seven enumerated rules keeps `border-radius` or `border:1px`; the disabled rule is `border-style:dashed` and `.next-stalled button:disabled` still resolves `cursor:wait` (expressing disabled as `border-color` alone fails it, and so does collapsing the stalled control onto `not-allowed`); `.next-guardrail-add` declares neither `border:0` nor `padding:0`; the armed discard carries `border-width` and the discard block names no hue (distinguishing the armed state by colour fails it); `.next-tabs` is absent while its five former co-selectors still resolve their shared declarations (deleting the five sites as a line range fails it); and per-tab primary counts are `{held-to:1, now:0, course:0, decisions:0, console:0}` with the steer submit and tripwire add asserted clean (a page total instead of per-tab passes with a stray primary on Console, which is why it is counted per tab).
+- DONE: Regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting the pass ratio of each isolated run.
+  Regenerated from the assets three times (twice pre-rebase, once after), never patched textually. Isolated after the rebase: test_next_page 31/31, test_next_flag 7/7, test_focus 106/106. Final: styles.css `111_658` / `19c58ec2…`, assembled `918_899` / `c64dcd86…`, across 2 length and 3 digest assertions. Six JS parts moved; `APP_PARTS` moved 0 across the rebase itself.
+- DONE: Run the canonical pre-PR suite from AGENTS.md read from that file, invoke sync-docs and commit its updates, then measure the actual surface against the declared estimate.
+  All green post-rebase at load average 20: ruff, ruff format, mypy, lint_embedded, validate_plugins, bump_version --current (0.26.0, no version field moved), 3541 + 515 tests, coverage 86.8%. sync-docs added NUI-18 to `docs/design-next-ui.md`, carrying this issue's 24-rule sweep, the enumerated seven, the named exemptions and the rejected selector-group alternative. Surface below.
+- DONE: Commit DCO signed off and STOP without pushing and without opening a pull request.
+  Done at `2a073801`, rebased to **1d847b0f**. The FO pushed and opened #362; I neither pushed nor opened it.
+
+### Linear relation edges created
+
+**DRC-4590** gained `relatedTo` **DRC-4381**, **DRC-4602** and **DRC-4561**, all from bare tracker
+keys in the approved body, and `blocks` **DRC-4603** and **DRC-4604** from the follow-up filings.
+`blocks DRC-4595` and `blockedBy DRC-4587` were already there and are unchanged. Its six **DRC-4587**
+mentions created no edge, because `blockedBy DRC-4587` already existed: a mention creates a
+`relatedTo` only where no relation stands. DRC-4603 carries `blockedBy DRC-4590` and no `relatedTo`;
+DRC-4604 carries `blockedBy DRC-4590` and `relatedTo DRC-4602`.
+
+**One serializer loss to report rather than repair**, on this issue's body specifically: the bullet
+authored `* **` + a code span + `**, the only way to create a tripwire…` stored with the bold mark
+**dropped entirely**. The measured rule covers an emphasis run ending immediately before a code
+span; this is the adjacent case, a run that *contains* one, and the serializer either splits it
+(`**Delete the dead** `.next-tabs`**.**`) or loses it. Authored correctly and reported, per the
+standing instruction that repair provably cannot succeed.
+
+### Surface: what splits, and what does not
+
+The figures in DRC-4588's report are **combined across both issues** and should not be read as
+either one's. The branch is 16 files, +720 / −91, net 629, against a combined declared ~324 net.
+
+Wholly attributable, by file:
+
+| Belongs to | Files | Lines |
+|---|---|---|
+| DRC-4590 alone | `next-boot.js`, `next-capacity.js`, `next-chrome.js`, `next-controls.js`, `next-notify.js`, `test_next_chrome.py`, `test_next_controls.py` | +35 / −13 |
+| DRC-4588 alone | `SKILL.md`, `design-reader-state.md` | +2 / −2 |
+| Shared | `styles.css`, `next-cockpit.js`, `test_next_cockpit.py`, `test_next_page.py`, `test_next_flag.py`, `test_focus.py`, `design-next-ui.md` | the rest |
+
+So DRC-4590 reaches **14 of the 16 files** against 13 declared. Inside the shared files, a
+keyword scan puts roughly 134 of `test_next_page.py`'s 151 additions in this issue's new test class,
+42 of `test_next_cockpit.py`'s 344 in its AC-2 test, about 21 of `styles.css`'s 42 additions, and
+about 3 of `next-cockpit.js`'s 83. **That scan is a heuristic, not a measurement**, and it is
+reported as one: it attributes by matching selector and identifier names, which cannot see a line
+that serves both. Three things are jointly caused and not splittable even in principle: the byte
+pins (both issues moved the same assets, and the assembled figure is fed by every part), NUI-18
+(one heading covering both rulings, because the second is only safe given the first), and the
+suite runs. **The honest summary is that DRC-4590's own share is not separable below file
+granularity**, and the overrun finding belongs to the pair rather than to either issue.
+
+### What this issue did not build, deliberately
+
+Both universal-sounding criteria are accepted on enumerated verifiers, as triage ruled: AC-1 against
+the seven named rules rather than all 24, AC-2 against the one tab that has an action to mark rather
+than five. The remainders are **DRC-4604** (five further control recipes) and **DRC-4603** (four
+tabs with no action to mark). The `clear` → `drop draft` rename stays dropped. Nothing was promoted.
+
+One finding recorded against DRC-4604 rather than fixed here: resolved through `tests/css_cascade.py`,
+`.next-session-copy` renders 11.5px while the prose beside it is 12.5px, because the collapse kept
+its `font-size:var(--fs-2xs)`. It reads 11.5px on `main` too, so this branch did not cause it, and
+AC-1's verifier cannot see it because it checks `border-radius` and `border:1px` only.
+
+### Summary
+
+The stylesheet now has one way to say "this one". `.next-action` owns the resting box behind a class
+a control opts into, seven rules collapse onto it, and the primary treatment marks the single tab
+that has an action to mark. Disabled is dashed rather than dimmer, because `--ink3` is the resting
+colour of the prose these controls sit in and an ink step alone disappears in greyscale; the stalled
+control keeps `cursor:wait` as an explicit override, since it is waiting rather than refusing. The
+dead `.next-tabs` class is removed from two shared selector groups rather than by line range, which
+is what the criterion as filed would have deleted. The work was built with DRC-4588 on one branch,
+so its surface is separable only down to whole files, and that is stated rather than estimated away.
