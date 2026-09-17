@@ -476,6 +476,7 @@ scan does not depend on the stage being inferred from frontmatter.
 ### Feedback Cycles
 
 - Cycle 1: NO-GO — review (two lenses plus an arbiter); surface 9 files/132 runtime + 45 docs vs estimate 105 runtime (125.7%) / 28 docs (161%); AC narrowed: AC-7 scoped to the rules this change moved, composed-rule residual routed to DRC-4602 on the precedent AC-1 set.
+- Cycle 2: NO-GO — review (two lenses plus an arbiter, cycle 2); surface re-baselined per the correction-round rule; AC unchanged: AC-7's own new clause falsified six times by slot-shaped pairs a selector sweep cannot see. Cycle 3 escalates to the captain rather than running a fourth round.
 
 ## Stage Report: implementation
 
