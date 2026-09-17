@@ -665,3 +665,23 @@ Held here so the re-check does not depend on anyone's recollection. Run each aga
 - **AC-7.** Put `<a href="docs/design-reading-a-session.md#dec-16">Why</a>` inside the rendered Console recipe (`project.js:853`, the `Output is read-only.` paragraph). Must red behaviourally. Today it survives all 3639 and renders once on the Console tab.
 
 **On the AC-7 fix specifically: widening the fixture by one surface is the weaker repair, and this tree already has the stronger one.** A second fixture still cannot fail on the surface nobody thought to add — which is the argument `tests/js_literals.py`'s own docstring makes, and the reason AC-4's `test_the_retired_axes_span_stays_retired` walks every `.py`/`.js`/`.css`/`.html` under `cargento_runtime` instead of naming files. The derived form of AC-7's `docs/` half is about ten lines and I ran it during this review: sweep `emitted_strings` over every `web/*.js`, reject any literal containing `docs/` or matching `(?<![A-Za-z0-9_-])DEC-\d+(?![A-Za-z0-9_-])`, and assert the file count to keep a walk that reaches nothing from passing. **On 2fa5a2f4 it returns zero hits across all 20 files**, so it lands green on the current tree and reds on the mutation above — and it would have caught this without anyone naming the Console surface. Its one blind spot, worth stating in its docstring rather than leaving implicit: `emitted_strings` splits template literals at `${...}`, so a href composed through a hole is out of its reach.
+
+### Correction — re-measured at `9959f623`, and the contract re-anchored off line numbers
+
+Everything above was measured at `2fa5a2f4`. The head has since moved to `9959f623` ("let the Decisions cue and its panel resolve one read"). **Re-measured at the new head rather than assumed:**
+
+- **The no-data half is closed.** Driving the reject writer with no prior data: `nextCockpitContextRead` → `"unavailable"`, cue `{state:"unavailable"}`, panel "Semantic context unavailable.", no rows. Cue and panel now agree, and the new `nextCockpitContextRead` is a single classifier both call, which also closes the focused-scope divergence reported above (the cue keying off `entry.data` while the panel also required the project entry). Confirmed fixed; the report above stands as a record of the tree it was measured on.
+- **The stale-data-plus-error half is still open at `9959f623`.** Same drive with a prior settled entry: fields `["data","error","revision"]`, `error === true`, `data` still present, and `nextCockpitContextRead` returns **`"ready"`** — its `if(entry && entry.data && …)` returns before the `failed` line is reached, so `error` is only consulted when data is absent. Cue `{state:"count", value:1}`, panel renders the rows, saying neither "unavailable" nor "loading".
+- **One thing the fix changed about this half, worth stating precisely.** Cue and panel were independently blind to it before; they are now *jointly* blind through one classifier. That is a net improvement, not a regression — the remaining repair is one condition in `nextCockpitContextRead` rather than two readers kept in step — but "the cue and the panel agree" must not be read as "the state is handled".
+- **Per the first officer this is fix-not-file**, because the cue is code this PR introduced; `:3677`'s pre-existing half is DRC-4613. The split follows what this PR introduced, not what the defect touches.
+
+**Contract anchors re-derived, and the contract re-stated without line numbers.** One commit moved the guard 35 → 36, the re-entry return 2561 → 2562, `test_the_reentry_block_leads_with_the_action` 11119 → 11149 and `FOCUS_ON` 7681 → 7682; `project.js`'s recipe paragraph did not move. A contract meant to survive a fix round cannot be anchored on numbers that drift under it, so locate each site by its string instead:
+
+| site | locate with |
+|---|---|
+| AC-3 guard | `grep -n 'if(!text) return "";' next-cockpit.js` (1 occurrence) |
+| AC-7 recipe | `grep -n 'Output is read-only.' project.js` (1 occurrence) |
+| AC-5 re-entry return | `grep -n 'next-cockpit-held-reentry-action' next-cockpit.js` (1 occurrence) |
+| AC-5 fixture | `grep -n 'FOCUS_ON = ' tests/test_next_cockpit.py` |
+
+**AC-3 re-confirmed still open at `9959f623`** by execution: deleting the guard leaves **3640** behavioural tests green with only the three excluded byte pins firing. The suite grew by one test with the cue fix; the blocker did not move.
