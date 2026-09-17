@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4594:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4594 rewrite and milestone correction for writing to Linear, and the ten acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4594:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ed0883b7340cbb9fcfb6e8a064bb89a6a80b6bba/drc-4594.md",
+      "rev": "sha256:b445acfbbfe8c77622fde75bab51ceeb74a1634805f2dde1b8e1c74afa133282",
+      "mediaType": "text/markdown",
+      "summary": "The ordering contradiction the dispatch named is settled in four rulings rather than assumed away. The issue's section list omitted the conflict block because its capture was of an unannotated session where that block does not render. The in-code constraint is two-sided: the above-the-reading half is kept, the below-the-record half is overturned deliberately, and the one positionally-anchored sentence is reworded in the same change. OBSERVED RECORD is ruled the last section rather than the last line, preserving a slot an existing test already pins. Four of the tab's six section slots are pinned by nothing today, so the reorder could regress silently; two criteria close that."
+    }
+  ]
+}
