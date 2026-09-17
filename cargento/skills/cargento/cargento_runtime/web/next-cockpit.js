@@ -2033,7 +2033,18 @@ const NEXT_READING_REFUSED_ID = "next-cockpit-reading-refused";
 
 function nextCockpitReadingControl(session, annotation, model){
   const reason = nextCockpitReadingRefusal(annotation, model);
-  const request = nextCockpitReadingRequests.get(sessKey(session));
+  const key = sessKey(session);
+  let request = nextCockpitReadingRequests.get(key);
+  /* A refusal is a state, not an event, and it stops being true the moment the
+     reader does what it asks. Dropped as soon as that state has gone: one that
+     nothing clears leaves "Nothing has been typed for this session" standing
+     under a button that is no longer refused, which is the board asserting an
+     absence after it stopped being true. A response is an event and is kept --
+     "Reading received." describes a press that happened, not a state. */
+  if(request && request.refusal && request.message !== reason){
+    nextCockpitReadingRequests.delete(key);
+    request = undefined;
+  }
   const pending = request && request.pending;
   /* `authorized` is no longer a second term here: an unauthorized check is
      one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
@@ -2060,10 +2071,17 @@ function nextCockpitReadingControl(session, annotation, model){
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
     `${pending ? "Reading in progress…" : "Ask for a reading"}</button>` +
-    (request ? `<p class="next-cockpit-reading-why" role="status">${esc(request.message)}</p>` : "") +
+    (request && !request.refusal
+      ? `<p class="next-cockpit-reading-why" role="status">${esc(request.message)}</p>` : "") +
     `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
+    /* The announcement and the description are one node while a refusal
+       stands. Printing the stored message and the reason separately rendered
+       the same sentence twice, adjacent and identical, where the contract is
+       that it renders exactly once. The press is still announced, because this
+       node carries `role="status"` when it is the refusal. */
     (reason
-      ? `<p class="next-cockpit-reading-why" id="${NEXT_READING_REFUSED_ID}">${esc(reason)}</p>`
+      ? `<p class="next-cockpit-reading-why"${request && request.refusal ? ' role="status"' : ""}` +
+        ` id="${NEXT_READING_REFUSED_ID}">${esc(reason)}</p>`
       : "");
 }
 
@@ -2488,7 +2506,7 @@ async function nextCockpitAskForReading(session, model){
      that goes silent is indistinguishable from a dead one. */
   const refusal = nextCockpitReadingRefusal(nextCockpitAnnotation(session), model);
   if(refusal){
-    nextCockpitReadingRequests.set(key, {pending: false, message: refusal});
+    nextCockpitReadingRequests.set(key, {pending: false, message: refusal, refusal: true});
     renderNext();
     return;
   }

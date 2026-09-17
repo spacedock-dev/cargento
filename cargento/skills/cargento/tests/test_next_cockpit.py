@@ -5846,6 +5846,74 @@ console.log(JSON.stringify({
         self.assertIsNone(out["typedAria"])
         self.assertFalse(out["typedHidden"])
 
+    def test_a_refusal_never_outlives_the_state_it_describes(self) -> None:
+        """DRC-4588 AC-2 and AC-4 at the point they interact.
+
+        The press must leave a `role="status"` message giving the reason, and
+        the sentence must render exactly once. Storing the refusal as a message
+        satisfies the first and breaks the second, because the control already
+        prints that same sentence as the paragraph the button is described by.
+        And a stored refusal nothing clears outlives the state it describes: the
+        reader does what the sentence asks, the button enables, and the sentence
+        underneath still says nothing has been typed. That is the board stating
+        an absence that is no longer true, beside a control contradicting it,
+        which is the defect this milestone exists to remove.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.UNTOUCHED
+            + r"""
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+// The observer model read, so the only reason left is the one being tested.
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const ctx = nextCockpitContexts.get(
+  nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
+ctx.data = Object.assign({}, ctx.data, {observer_model:{enabled:true, disclosure:"x"}});
+renderNext();
+const block = () => (__els.app.innerHTML.match(
+  /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+const sentence = "Nothing has been typed for this session, so there is nothing to read it against.";
+const count = () => block().split(sentence).length - 1;
+const before = count();
+// The press `aria-disabled` now permits.
+__fire("click", {target:controls.find(c =>
+  c.dataset.nextCockpitAction === "reading-ask"), preventDefault(){}});
+await __settle();
+const afterPress = count();
+const statuses = (block().match(/role="status"/g) || []).length;
+// And then the reader does exactly what the sentence told them to do.
+__dashboard.sessions[0].annotation_goal = "Ship the cockpit";
+__dashboard.sessions[0].annotation_goal_why = "";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+renderNext();
+const afterSave = count();
+const stillRefused = /data-next-cockpit-action="reading-ask"[^>]*aria-disabled/.test(block());
+// The lane itself, not only what it renders. With the dedupe in place a stale
+// refusal is invisible, so a render-only assertion passes while the entry
+// lives forever -- measured: removing the clear left every rendered assertion
+// here green. The next render path added for stored messages would bring the
+// defect straight back.
+const lingering = nextCockpitReadingRequests.has(sessKey(__dashboard.sessions[0]));
+console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefused, lingering}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["before"])
+        # AC-2 holds across the press: announced, not printed twice.
+        self.assertEqual(1, out["afterPress"])
+        # AC-4 still holds: the press leaves a live-region message.
+        self.assertGreaterEqual(out["statuses"], 1)
+        # And the sentence goes when the state it describes goes. Without a
+        # clear this is 1, sitting under a button that is no longer refused.
+        self.assertEqual(0, out["afterSave"])
+        self.assertFalse(out["stillRefused"])
+        # And the entry is gone from the lane, not merely unrendered.
+        self.assertFalse(out["lingering"])
+
     # ---- DRC-4590 --------------------------------------------------------
     def test_one_tab_of_five_carries_a_primary_and_the_rest_carry_none(self) -> None:
         """DRC-4590 AC-2, narrowed at triage to the one target that exists.
