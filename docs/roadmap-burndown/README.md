@@ -17,7 +17,7 @@ stages:
     - name: triage
       gate: true
       model: opus
-      concurrency: 6
+      concurrency: 8
     - name: implementation
       worktree: true
       model: opus
@@ -1348,6 +1348,83 @@ uncommitted work. They were recovered by moving them onto the in-flight PR's bra
 Branching from `origin/main` is the half that prevents recurrence on its own: a worktree cut from a
 local `main` that has drifted carries that drift into its pull request, where it reads as scope
 nobody asked for.
+
+## Two branches can each be wrong alone and correct only together
+
+DRC-4589 removed `color:var(--ink3)` from the withheld override, leaving exactly one rule colouring
+`[data-next-withheld]` — which is what DRC-4597's AC-4 asks for, and which its own handover notes
+reported as a virtue. Resolving the element path through `tests/css_cascade.py` says otherwise: on
+that branch a withheld `<small>` in the scope tree renders `--ink2`, the ink reserved for values,
+because the bare `[data-next-withheld]` rule at (0,1,0) is outranked by
+`.next-cockpit-scope-tree small{…color:var(--ink2)…}` at (0,1,1). An absence rendering as a value,
+on the branch whose whole job is holding those inks apart.
+
+DRC-4592 reaches the same one-rule state and renders correctly, because rebuilding the rail card
+deletes the competing `--ink2` rules outright. So the two branches are jointly correct and 4589 is
+not correct alone. A resolution that takes 4589's override and keeps main's scope-tree block ships
+the defect, and the suite stays green: `InkRoleRegistersAreDeclaredOnceAndSpelledNowhereElseTest`
+enforces the rule count, which is the thing that was right.
+
+Three consequences, each measured here rather than reasoned:
+
+- **Verify a cascade property at the end of the integration, not after the pick that raises it.**
+  The tree is legitimately wrong in between, and checking early reports a defect that the next pick
+  removes.
+- **A cross-branch dependency that lives only in an agent's head is not recorded anywhere.** Neither
+  entity file said 4589's removal assumed 4592's deletion. Ask the author which it was — a deliberate
+  dependency to write down, or a misread of which rule wins — because the two call for different
+  fixes and only one of them is a defect.
+- **Count-shaped criteria invite this.** "Exactly one rule colours it" is satisfied by the broken
+  tree and by the correct one. Write the criterion as the property a reader sees — the absence
+  resolves the absence ink — and verify it by resolving, never by counting.
+
+## One pull request per conflict surface, not one per branch
+
+Four branches were queued to land one at a time, each rebased onto the previous merge. All four
+rewrite `cargento_runtime/web/styles.css` and all four move the same three byte-pin oracles, so that
+plan resolves the same conflict four times against a file moving underneath each resolution — the
+"each side is correct for a tree that no longer exists" failure `AGENTS.md` already names. They were
+consolidated into one integration instead: one resolution with all four intents visible, one pin
+regeneration, one CI cycle, one review.
+
+`AGENTS.md`'s **Calibrating Effort** already says the only constraint that genuinely forces a split
+is that exactly one pull request may touch `cargento_runtime/web/`. Read that as an instruction to
+**combine**, not merely as a limit to respect. Branches that share the forcing surface belong in one
+pull request; the split was costing four merge serializations to avoid one conflict resolution.
+
+Deriving the integration is where the work is, and it is not the same as merging the branches.
+Verify, do not assume:
+
+- **Which commits are actually unique.** Three of the four branches carried a dozen commits already
+  on main under different SHAs, from a squash merge. Merging them would have re-resolved all of it;
+  cherry-picking the six unique commits did not.
+- **That the shared base is the base that merged.** Three branches sat on `2a07380` and one on
+  `1d847b0`. The two carry the same commit message and are not the same tree — they differ by
+  roughly 333 insertions across four test files, and `1d847b0` is the one that merged. Every byte pin
+  on those three branches was therefore correct for a tree that never landed. Regenerate from the
+  assets; never resolve a pin textually.
+- **That a squash leaves no ancestry.** After a squash merge the branch tip is not an ancestor of
+  main, so an ancestry check reads as "not merged" on work that is fully landed. Verify by content.
+
+Order the picks largest-delta-first on the shared file, so the later ones resolve against the fuller
+sheet once instead of twice. Keep the implementers alive through the integration and ask them what a
+hunk was for: three sent unprompted dossiers of load-bearing constraints that no diff shows, and the
+one contradiction between them was the finding above.
+
+## A dead worker still holds its pane
+
+Five workers killed by a usage limit stayed on the roster and kept their tmux panes. The next
+dispatch failed with `fork failed: Device not configured` — read as a spawn problem, when the cause
+was five processes that had already stopped doing anything. `ListAgents` shows them as ordinary
+teammates; nothing distinguishes a dead one from a busy one.
+
+Reap before dispatching replacements. `TaskStop` takes the qualified `name@session` form, not the
+` [ref]` suffix a listing prints — passing the ref fails with "No task found" and lists the running
+teammates, which is the form to copy from.
+
+And check for durable output before re-dispatching: of four triages killed mid-flight, one had
+committed 25KB of work to its entity and another had committed nothing. A replacement told to start
+over discards the first; a replacement told to read the tree first does not.
 
 ## Workflow State
 
