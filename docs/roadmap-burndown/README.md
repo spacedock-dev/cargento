@@ -1408,6 +1408,32 @@ Four things this earned:
   entity said so. Ask the author which it was — a dependency to write down, or a misread of which
   rule wins — because only one of those is a defect.
 
+## A second fixture cannot fail on the surface nobody thought to add
+
+A criterion's verifier was found not to reach a surface the same change had introduced. The obvious
+repair is to add that surface to the fixture. It is the weaker one, and the reason generalises:
+**the next surface is also not in the fixture.** Adding one closes the instance and leaves the class,
+which is how the gap was created in the first place.
+
+The stronger repair was already the house style and had simply not been applied here — one
+neighbouring test walks every `.py`, `.js`, `.css` and `.html` under the runtime rather than naming
+files, and the helper's own docstring makes the argument. The derived version of the failing check
+came to about ten lines: sweep the emitted literals across every file, reject the ones that match,
+**and assert the file count**, so a walk that reaches nothing cannot pass green.
+
+That last clause is the part people leave out. A sweep with no subjects and a sweep with no
+violations report the same thing, which is the vacuity failure recorded above in another costume.
+
+**Adding one arm moves the gap rather than closing it.** The same round had a criterion promising a
+cross-product of six branch combinations and exercising one. Adding a second arm would leave it
+claiming six and exercising two — better, and still a criterion implying coverage it does not have.
+The two honest answers are to assert across the whole cross-product, or to narrow the wording and say
+what it covers. Silently covering more than before and less than promised is not one of them.
+
+**Say the sweep's blind spot in its docstring.** The derived check above cannot see an href composed
+through a template hole, because the helper splits literals at `${...}`. A derived instrument with an
+unstated limit is how the next reader concludes it proves more than it does.
+
 ## Pre-register the re-check conditions before the fix exists
 
 Two reviewers, waiting on a fix round, wrote down what they would accept **before** the fix was
