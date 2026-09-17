@@ -1538,6 +1538,55 @@ The general form: **holding a push to finish one small confirmation costs more t
 is worth** once anyone else is reading the branch. Push, let the gate run, and land the answer as a
 follow-up commit.
 
+## A criterion's wording and its verifier are written at different moments
+
+An implementer audited its own fourteen criteria after a reviewer found one that was green over a
+defect, and reported the structural reason rather than an apology:
+
+> I wrote each criterion's wording and its verifier at different moments and never diffed one
+> against the other. The wording reaches for the property a user cares about, which is naturally
+> universal. The verifier reaches for what is cheap to assert, which is naturally a list. Nothing
+> forced me to reconcile them, and the gate reads the bullet rather than the test.
+
+The audit found **four** universal-worded criteria on enumerated verifiers, not the one the reviewer
+had found, and the widest was the criterion its whole issue turns on: "every caveat sentence that
+exists on the pre-change tree still exists verbatim", quantifying over roughly twenty-three emission
+sites with five strings in the test. "Nothing is deleted" verified over a fifth of the set.
+
+So: **ask of every criterion whether its wording is universal while its verifier is an enumeration**,
+and sort the answers into three, not two.
+
+1. Universal wording, universal verifier.
+2. **Enumerated wording, enumerated verifier** — fine, and the honest form. One criterion in that
+   set is the pattern: it states it is interactive, says it is deliberately not automated, and names
+   the condition under which it should become offline.
+3. Universal wording, enumerated verifier — the defect.
+
+Category 3 is not automatically a blocker. This milestone has knowingly accepted universal-sounding
+criteria on enumerated verifiers and filed the remainder as its own issue; two issues exist only
+because of that. What is not acceptable is the criterion implying coverage silently, so the fix is
+sometimes to widen the verifier and sometimes to narrow the wording, and which one is a judgement
+about cost.
+
+**A frozen list can be a derivation rather than an enumeration, and the difference is reproducibility.**
+Widening the worst of the four meant listing every string on a fixed pre-change tree, which looks
+like a longer enumeration. It is not, provided the test records the base revision and the exact
+command that extracted the set, and says the list is a derivation from that revision rather than a
+selection from it. A reader who re-runs the command gets the same set; that is what an enumeration
+cannot offer.
+
+**Two smaller shapes from the same audit.** A criterion can be half-covered — one whose two halves
+had different verifiers, genuinely universal on one and resting on a single fixture on the other,
+read as though both were covered; the fix was to say which half is which, not to build a second
+checker. And a list-shaped verifier can fail *twice* over the same gap: an omitted item was both
+absent from the list and invisible to the filter the list was passed through, which is why that form
+cannot be patched by adding an item.
+
+**Check which verifier a criterion declares, not which test you remember writing.** One criterion in
+the audit was expected to be a gap and was not: its declared verifier was a different class from the
+one its author had in mind, and that class covered the whole set. The author checked before claiming
+it.
+
 ## Workflow State
 
 View the workflow overview:
