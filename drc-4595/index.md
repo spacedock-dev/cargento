@@ -462,3 +462,40 @@ the two readings produce different tests. Recommended: follow the issue. **(2)**
 not exist and DRC-4590 has not started, so AC-7 is written as not-yet-assessable with a named
 fallback instead of assuming the primitive. **(3)** Deleting the dead `nextProjectControls` is in
 scope, because AC-4's "renders once" is unprovable while a second construction path stands.
+
+## Stage Report: implementation
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  Read back from Linear: the DRC-4595 body is the gate-approved rewrite (`updatedAt` 2026-09-17T13:53:44Z), the milestone's data-dependent control-counts sentence is present in "Clean and Cogent UI/UX", labels are `move:sharpen`, `journey:mid-flight`, `Design`, `discovered-by-agent`. Relations read back: blockedBy DRC-4590 and DRC-4591, relatedTo DRC-4587. **Attribution caveat:** written by the predecessor ensign this dispatch replaced, so this stage verified the edges rather than created them; it cannot distinguish an edge that pre-existed triage.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  Falsification proved against the tree rather than asserted: with `cargento_runtime/web/` checked out at HEAD~1 (2a07380), `NextCockpitCompositionTest` reds 9 of the 10 tests this change owns — 3 `ValueError: substring not found` on the `next-cockpit-console-setup` index (AC-1, AC-2, AC-6) and 6 assertion failures on the composer's placement and copy (AC-3, AC-4 both halves, AC-5, plus the two re-pointed sites). **The tenth passes on both trees** and is reported under FAILED below. Pins regenerated from the assets, all 13 figures: `next-cockpit.js` 204_801/`ab2d6bfc…`, `next-controls.js` 18_840/`f580b09c…`, `next-delegation.js` 14_502/`b23712ad…`, `styles.css` 113_556/`b2475ca3…`, assembled 924_411/`b0cdd70a…` in `test_next_page` and `test_next_flag`, digest only in `test_focus`. Each ALONE: test_next_page 41/41, test_next_flag 7/7, test_focus 96/96.
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  Every branch resolved through the cascade on real element paths, not by selector sweep. What this change raises: `.next-steer-caveat` 15.0 against `.next-steer input` 15.0 — equal, and bound by a new paired test (`test_the_steer_caveat_never_outranks_the_field_it_warns_about`) that asserts the comparison, not a literal; watched failing at 12.5 != 15.0 with the field mutated back to `var(--fs-xs)`. `.next-steer-label` stays 11.0 on the label tier deliberately. The terminal and observer sections resolve identically inside and outside the new disclosure (the disclosure declares no size and its `>summary`/`>ul` rules reach no descendant of either). **One finding, not raised by this change — see the Summary.**
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  ruff check clean, `ruff format --check` 222 files formatted, `mypy` no issues, `lint_embedded.py` clean, `validate_plugins.py` clean, `bump_version.py --current` 0.26.0, no version field moved since the merge base. Dashboard suite 3558 OK (skipped=2) in 110s at load average 2.13, scripts suite 515 OK (skipped=1), coverage TOTAL 86.8% against `fail_under = 73`. sync-docs run as a pre-PR-gate pass: `docs/design-next-ui.md` NUI-10 gains the promoted placement and the pre-submit caveat, NUI-16 gains the Console-ordering ruling and its two derivation rules, and the tone check is clean after two em dashes of my own were removed. `docs/design-reader-state.md` needed no edit — its cockpit-disclosure row is written against the `nextCockpitAfterRender` lane, which is the lane this disclosure uses. **Surface, this issue's share: runtime 4 files, +88/-21, net +67 against 70 ±25 declared (-4.3%). Test files touched 6 against 6 (+1) declared. Byte pins 13 across 3 files, exactly as declared.** All within tolerance.
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4595`, candidate SHA **c7eb2f8**, signed off. Not pushed, no PR opened. Base not rebased: the first officer owns the restack.
+- FAILED: AC-7 assessed but not falsified by this change.
+  `test_the_promoted_submit_uses_the_plain_control_primitive` passes on the pre-change tree too, because `.next-action` already sat on the submit at 2a07380 and the composer is reused rather than retyped. It is not vacuous — dropping `class="next-action"` reds it with `'class="next-action"' not found in '<button type="submit">'` — but it guards a future retype rather than binding anything this change did. Recorded rather than deleted, and not claimed as watched failing.
+
+### Summary
+
+The predecessor's tree was largely written and entirely unverified; this stage read it, finished it
+and proved it. Nine of the ten behavioural tests were falsified against the pre-change runtime, the
+13 byte pins were regenerated from the assets (the committed ones were 13 bytes stale on
+`next-cockpit.js`, so `test_next_page` and `test_focus` were red on arrival), five ruff violations
+and one format drift were fixed, and the docs were reconciled.
+
+**One finding, investigated read-only and not fixed here.** `nextObserverModelControls` is a
+value-and-absence ternary: enabled it returns `.next-usage-consent`, disabled it returns
+`p.next-cockpit-empty`. Resolved through the cascade, the absence renders at **15.0px and the value
+at 14.0px** — the absence outranks the value it replaces. Neither size was touched by this change
+(`.next-cockpit-empty` was raised by DRC-4587; `.next-usage-consent` is one of the 19 rules in
+DRC-4596's recorded sub-floor inventory), and this change reduces the absence's prominence by
+putting it inside a collapsed disclosure. Proposed: **Deferred risk**, owned by **DRC-4602**, which
+already carries `.next-usage-consent` in its inventory. No new issue needed, no promotion into this
+PR.
+
+Gate decision 1 was built the way triage recommended: the composer renders in the chrome, on all
+five tabs. Gate decision 2 is closed — `.next-action` exists on this base, so AC-7 was re-measured
+against the real primitive rather than carried on the fallback.
