@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4606:triage:attempt-1:revision-1",
+  "question": "Approve DRC-4606's triage: accept move:none with no user-visible criterion, and accept the two withdrawn figures?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4606:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/9f7700f0c4a71df38f219d1cac8f1bb0fe39808d/drc-4606.md",
+      "rev": "sha256:d880b8abaa49a0e7a5a28ad5714d103b5e84565041bfe146e1f509468eec2e2f",
+      "mediaType": "text/markdown",
+      "summary": "The issue's own thesis was demonstrated on itself during triage: PR #362 merged after the dispatched SHA and moved the sentence-tier census from 54 blocks to 55, because .next-action arrived declaring the tier without a --measure cap, with nothing noticing. The first derivation was also wrong in the way the doc warns about - reading font-size alone returned 20 blocks against the true 55, since 34 of the 54 var(--fs-sentence) uses live in the font shorthand - caught by re-deriving rather than trusting the prior read, and folded into the criterion as a requirement that the parser raise on a shorthand it cannot read rather than score it as no size. Two figures were withdrawn rather than replaced: DRC-4596's 87/54/33 baseline, against which an independent classification returns 317/73/244, and a 15-file pairing count whose archived bound contradicts itself. Both fail for the same unstated-population reason this issue exists to fix, so inventing replacements would have repeated the defect. What did reproduce exactly: the 45-declaration tracking census partitioning cleanly, both token values, all three 11px literals, the eight uncalled tokens, and the helper call-site column. Seven criteria scan cleanly and all read unevidenced, which is correct at this gate."
+    }
+  ]
+}
