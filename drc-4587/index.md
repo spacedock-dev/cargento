@@ -473,6 +473,10 @@ Re-confirmed with the `--stage triage` form of the command as well:
 returns seven entries with ids AC-1 through AC-7, all `unevidenced: true`. Both forms agree, so the
 scan does not depend on the stage being inferred from frontmatter.
 
+### Feedback Cycles
+
+- Cycle 1: NO-GO — review (two lenses plus an arbiter); surface 9 files/132 runtime + 45 docs vs estimate 105 runtime (125.7%) / 28 docs (161%); AC narrowed: AC-7 scoped to the rules this change moved, composed-rule residual routed to DRC-4602 on the precedent AC-1 set.
+
 ## Stage Report: implementation
 
 - DONE: Write the gate-approved drafts to Linear as the FIRST action before any code — the issue body, the owning milestone description, and the journey and move labels — sending each body unwrapped as one line per paragraph, then read back the issue's relation set and report every edge the write created.
