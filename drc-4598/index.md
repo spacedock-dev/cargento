@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4598:triage:attempt-1:revision-1
                 digest: sha256:e047a15d19b8b88c56ca09d82410ce1dba85e9513b101bf35e69d203c169e50a
-                room-ref: ./drc-4598/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4598](https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its) — Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab
