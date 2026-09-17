@@ -17,6 +17,7 @@ stages:
     - name: triage
       gate: true
       model: opus
+      concurrency: 6
     - name: implementation
       worktree: true
       model: opus
