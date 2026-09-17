@@ -526,11 +526,22 @@ the scanner is not safe with concurrent writers.
 ### Evidence (continuation 2) — criteria re-shaped to the parsed form, 2026-09-17
 
 The criteria were prose paragraphs headed `**AC1 — …**` with `*Verified by (offline):*` and
-`*Fails if:*`. Re-shaped to one bullet each in the form the scanner parses, confirmed by reading a
-cleanly-parsing archived entity rather than from the description alone: `_archive/drc-4020.md`
-lines 219-228 are `- **AC-N — offline:** {property} **Verified by:** {…} **Falsified by:** {…}`,
-one bullet per line. Markup only — every property, verifier and falsifier keeps the words it had;
-`Fails if` became `Falsified by` and the offline/interactive mark moved into the label.
+`*Fails if:*`. They now read `- **AC-N — offline:** {property} **Verified by:** {…}
+**Falsified by:** {…}`, one bullet per line, copied from a cleanly-parsing archived entity —
+`_archive/drc-4020.md` lines 219-228 — rather than from a description of it.
+
+**The cause was the unhyphenated id, not the bullet shape.** Corrected here 2026-09-17 after the
+first officer settled it in an isolated throwaway workflow with four criterion shapes in one file:
+`**AC-1 —` parses as a bullet, `**AC-3 —` parses as a bare paragraph, and `**AC4 —` does not parse
+at all. Bullet versus paragraph and the styling of the `Verified by:` clause are both irrelevant;
+the hyphen in `AC-N` is the whole rule. The re-shaping above therefore went further than it needed
+to, which is recorded rather than reverted: the bullets parse, the words are unchanged in
+substance, and churning a gated entity to restore the old markup would buy nothing.
+
+The one earlier inference that did not hold: comparing this entity against drc-4587 and finding the
+same empty result suggested a scanner-side cause. Both files carried unhyphenated ids, so two
+samples of the same wrong shape could not discriminate between "my formatting" and "the scanner".
+The conclusion that the heading rename had not caused it was sound; the rest was under-supported.
 
     spacedock status --read drc-4588 --ac-scan --stage triage --json --workflow-dir docs/roadmap-burndown
     acs: AC-1 (line 382), AC-2 (383), AC-3 (384), AC-5 (386), AC-4 (385), AC-6 (387)
