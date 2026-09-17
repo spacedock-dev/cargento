@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4587:triage:attempt-1:revision-1
                 digest: sha256:362f9c821d8668a774b54631467fcd63ed739fddb1b71595d411e77a591c5784
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4587:triage:1
+                briefing: briefing:drc-4587:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T07:13:24.114614Z"
+                decision: approve
+                reason: 'Checklist 3 done / 0 skipped / 0 failed; AC-1..AC-7 resolve and each names the value its command returns today, so each can fail in both directions. Triage narrowed scope rather than widening it: a second structural move AC-2 always required, a refuted recon collision at styles.css:940, and a third dead token. Surface declared at runtime ~105 lines over 2 files plus 9 pinned oracle figures at zero tolerance. Nothing written to Linear yet; this authorizes that write.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, in answer to the gate-authority question on 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4587](https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens) — Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier
