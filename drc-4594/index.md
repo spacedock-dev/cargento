@@ -589,3 +589,40 @@ Surface against the new base `1d847b0f`: 11 files, net **+787** — runtime **+1
 docs **+57**. The runtime half is unchanged by the rebase and still inside the combined ±35; the
 test half is 40 lines smaller than before, because deleting this branch's resolver gave back more
 than the census repointing cost.
+
+## Stage Report: review
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort".
+  **Two lenses plus an arbiter**, chosen and dispatched before any review read, because the diff owns `cargento_runtime/web/` and its three byte-pin oracle modules at once. I am the arbiter and reproduced each finding by execution rather than ranking it.
+- DONE: Reproduce every acceptance criterion of every issue in your group from its own Verified by clause, against 2fa5a2f4.
+  AC-1..AC-9 each have a live verifier and all pass; AC-10 I settled on a live board (below). Full suite at the frozen head **3639 OK / 2 skipped**, load 7.5 — no red in `test_http_api`, `test_lifecycle` or `test_quota` at any point, so no contention re-run was owed. `scripts/tests` 515 OK / 1 skipped.
+- FAILED: RUN THE FALSIFIER, NOT JUST THE VERIFIER. For each criterion, execute its Falsified by condition and show it reds.
+  AC-1 (lede after the fields grid), AC-2 (a lede claiming an automatic check), AC-3 (two section hoists), AC-4 (the "record read above" phrase restored — killed twice, including the derived sweep's bijection), AC-5 (rows before the action paragraph), AC-6 (a wrapper taking the focus attribute), AC-7 (a relabel, and collapsing the null→"not published" branch: 12 failures), AC-8 (rule re-added, comment re-added), AC-9 (one appended newline reds all three pin modules) all red. **AC-5's Verified-by promise does not hold.** See NO-GO.
+- DONE: For every criterion, report which of three it is.
+  (a) AC-3, AC-4, AC-9. (b) AC-2, AC-8, and AC-7's labels/values half. **(c) ×4:** AC-1 ("the first child of `.next-cockpit-held`" vs a verifier checking only that the lede precedes three named successors — and the literal first child is `<header>`, so the wording is already false); **AC-5** ("across the six branch combinations" vs one arm); AC-6 (its second named verifier, a `nextRestoreFocus`/`activeElement` case, does not exist anywhere in `tests/` — exhaustive grep); AC-7's "**mono** DEPARTURES and RAISES sub-labels", which no test asserts.
+- DONE: Resolve rendered properties through tests/css_cascade.py down real element paths.
+  Lede resolved down `body > #app > section > article.next-project-detail > … > section.next-cockpit-held > p.next-cockpit-held-lede` → **15.0px** with `color: var(--ink)` the sole winning candidate; `.next-cockpit-count-group` → 11.0px with `var(--mono)` winning. `matches()` was not used for either.
+- DONE: Exclude the byte-pin oracles from every mutation check you run.
+  Every kill judgement is from behavioural modules. The three pin modules fired on all mutations and are discounted throughout; on the two surviving mutants they were the ONLY failures, which is what makes those survivals real.
+- DONE: Re-derive every byte pin from the assets rather than from any list.
+  All nine recomputed independently with `hashlib`: next-cockpit.js 228_956/`66b4f462…`, styles.css 120_893/`59f31388…`, assembled 958_263/`38818e11…` at all three sites. **All agree with the pins and with the integrator's figures.** Modules alone: `test_next_page` 48/48, `test_next_flag` 7/7, `test_focus` 96/96.
+- DONE: Scrutinise the integrator's own self-caught regression and its fix; look for a second instance of the same shape.
+  Covered in full in drc-4591's report: the fix is correct, all three claimed mutants killed, no second instance of the loading-vs-state shape, one weaker adjacent instance (the tab-cue reader) measured and found transient.
+- DONE: Check the two refutations the integrator made rather than accepting them.
+  Both hold, by execution; detail in drc-4591's report.
+- DONE: Write a `## Stage Report: review` into EVERY entity file in your group, and give a GO or NO-GO without editing the branch.
+  Written to drc-4594 and drc-4591. Branch untouched: `git status --porcelain` empty, HEAD 2fa5a2f4 after every mutation.
+
+### Verdict: NO-GO — AC-5's ordering assertion never runs in the branches that have a disclosure
+
+AC-5's Verified-by promises "the anchor's index is below every limitation sentence **across the six branch combinations**". The test runs one, and it is the arm with no disclosure: its own assertion `raise: html.includes(NEXT_FOCUS_OFF_LINE)` pins the focus-capability-off branch, where `raise.whyLabel` is `""` and `nextCockpitWhy` emits nothing. Emitting the action paragraph LAST whenever `raise.whyLabel` is set survives **all 3639 behavioural tests** — only the three excluded byte pins fire.
+
+That untested arm is not exotic. On a live board at `127.0.0.1:4571` I read the rendered re-entry block and `nextFocusCapability()` was truthy: the `<details class="next-cockpit-why" data-next-cockpit-disclosure="…reentry-raise-why">` was present. So the branch no test exercises is the one a focus-capable board actually draws, and the regression AC-5 and AC-10 both exist to prevent would ship green. One extra arm on that test clears it, at no CI cost while the PR is unopened.
+
+**AC-10, which the criterion declares deliberately not automated, I settled by live drive rather than leaving unattempted.** On that board the focusable sequence inside `.next-cockpit-held-reentry` is exactly `[a[data-next-focus="cockpit-held-reentry"], summary[data-next-focus="cockpit-disclosure:…reentry-raise-why"]]` — anchor before disclosure — and the disclosure, opened by a real `summary.click()`, was still open after a redraw. The live `<h2>` order was WHAT YOU ASKED FOR, READING, DEPARTURES RAISED TO YOU, HOW IT LANDED, OBSERVED RECORD with `next-cockpit-departures-kept` last (A LATER DIRECTION absent because that session had no pending direction), which is AC-3's order.
+
+Non-blocking, reported per instruction: AC-1's hoist mutation (revision stamp and revision definition above the lede) survives all 3639 tests; AC-6's second named verifier does not exist, though its mechanism is the generic `[data-next-focus]` sweep in `nextFocusNamed` and the criterion's own falsifier is caught; `.next-cockpit-count-group`'s `var(--mono)` → `var(--sans)` survives every behavioural test.
+
+### Summary
+
+Nine of ten criteria reproduce with their falsifiers reding, and AC-4's derived positional sweep — bijection with declared referents, direction read per sentence, non-vacuity asserted both ways — is the strongest instrument on either issue: it found three sentences a by-hand pass had missed. What blocks is one arm. AC-5 promises six branch combinations and exercises the one without a disclosure, and I confirmed on a live board that the unexercised branch is the one a real reader gets. Four criteria carry universal wording over narrower verifiers and all four are listed above whether or not they block.
