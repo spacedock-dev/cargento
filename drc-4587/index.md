@@ -1,7 +1,7 @@
 ---
 id:
 title: "Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier"
-status: review
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens"
 started: 2026-09-17T06:57:18Z
 completed: ""
