@@ -671,3 +671,43 @@ than dimmer; both of its universal-sounding criteria are accepted on enumerated 
 remainders filed as DRC-4603 and DRC-4604. The suite is green (3540 + 515, coverage 86.8%) and the
 three byte-pin oracles pass alone. The one thing needing a decision before the PR opens is the
 surface at 194% of declared.
+
+### Rebase onto main, 2026-09-17
+
+PR 1 merged as `84d27a53`. `git rebase --onto origin/main 4fb5ee6d` — clean, candidate **1d847b0f**,
+`origin/main` now an ancestor. Four conflicts, resolved by line rather than by side.
+
+- **`styles.css`, two hunks, both adjacency rather than semantic.** Each mixed one line that had to
+  come from `main` with one that had to come from mine. Took `main`'s reverted bodies for
+  `.next-cockpit-held-absent` and `.next-cockpit-reading-stale` (PR 1's final round put both back to
+  `--fs-xs`; I never edited either, so my side was only the stale base), and kept my
+  `.next-cockpit-held-field button[aria-disabled="true"]` rule and my collapsed
+  `.next-cockpit-reading button`. `.next-cockpit-reading button[disabled]` stays deleted: the
+  primitive's disabled rule covers `:disabled` and `[aria-disabled="true"]` alike, and this control
+  is the aria form now.
+- **Three byte-pin files.** Markers resolved in place rather than by `checkout --ours/--theirs`,
+  which would have dropped the cleanly auto-merged regions of those files, then every figure
+  regenerated from the assets. `APP_PARTS` moved 0 (the rebase changed no JS); `styles.css` and the
+  assembled page both moved. New: styles.css `111_658` / `19c58ec2…`, assembled `918_899` /
+  `c64dcd86…` across 2 length and 3 digest assertions.
+
+**The value-and-absence check, run on both branches through `tests/css_cascade.py`.** Seven control
+pairs resolved through the real cascade in the DOM shape the page emits, including
+`.next-cockpit-content`, which qualifies rules and changes what wins. Six pass. One reads OUTRANKED
+and is **not a regression and not a ternary**: `.next-session-copy` resolves 11.5px against the rail
+reason line at 12.5px, and it resolves 11.5px on `main` too, unchanged by this branch, because the
+collapse kept its `font-size:var(--fs-2xs)`. The two are also different regions rather than the two
+branches of one slot, so the comparison was a sweep rather than a pair. Recorded because it is a
+real gap in the primitive's reach: `.next-action` promises the sentence tier and one of the seven
+overrides it back down, which AC-1's verifier cannot see since it checks `border-radius` and
+`border:1px` only. It belongs to **DRC-4604**, which already owns the control recipes the enumerated
+set does not reach. Not promoted into this branch.
+
+`AnAbsenceNeverOutranksTheValueItReplacesTest`, the guard PR 1 earned, passes.
+
+**Green after the rebase**, at load average 20 with siblings running, which is the condition
+AGENTS.md says manufactures failures: none appeared, and no module needed a confirming solo run
+beyond the three oracles. Isolated: test_next_page 31/31, test_next_flag 7/7, test_focus 106/106.
+Full 3541/3541 and scripts 515/515, coverage 86.8%. ruff, ruff format, mypy, lint_embedded,
+validate_plugins, bump_version --current (0.26.0) all clean; no version field moved. My 12 tests and
+the captain's replaced comment both survive the rebase. Surface unchanged at 16 files / +720 / -91.
