@@ -1661,6 +1661,17 @@ It also explains cleanly why survivors and reds divide the way they do. **A red 
 ambiguous between "nothing differs" and "nothing was measured" — which is why a survivor owes a
 proof and a red does not.
 
+**The same failure appears at two scales, and a reviewer named the pair after committing one of
+them.** A six-case matrix collapsed because six cases silently became one. A reported measurement
+collapsed because one reading silently spanned three heads. Both are a claim covering more than was
+measured, and both read as evidence — the matrix because every case passed its own guard, the
+measurement because it was true when taken.
+
+What distinguished the things that survived the churn from the things that did not, in that
+reviewer's own words: the contracts held because they were **string-anchored and re-run on every
+head**; the claim did not, because it was **neither**. That is the test. Not how carefully something
+was written, but whether it is re-derived when the ground moves.
+
 ## A mutation that does not match the file's text is a no-op, and reads as SURVIVED
 
 A falsifier survived a set-equality assertion it should have killed. The oracle was fine: the `perl`
