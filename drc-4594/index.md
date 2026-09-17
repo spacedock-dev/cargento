@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4594:triage:attempt-1:revision-1
                 digest: sha256:6aaaf381bea6b6871b95e31f6f6bca13d022a8f34d6daee336b942a1fac70e79
-                room-ref: ./drc-4594/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4594](https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats) — Reorder Held to so its purpose and its inputs come before the caveats

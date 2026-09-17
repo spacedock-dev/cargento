@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4590:triage:attempt-1:revision-1
                 digest: sha256:4127aed007a76074a97a696eee95dfe9e01ca24b9d4dec3e1b62f100ce5f0012
-                room-ref: ./drc-4590/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4590](https://linear.app/recce/issue/DRC-4590/add-a-control-primitive-with-one-primary-action-per-tab-and-a-disabled) — Add a control primitive with one primary action per tab and a disabled state that survives greyscale

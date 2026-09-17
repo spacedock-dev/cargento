@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4595:triage:attempt-1:revision-1
                 digest: sha256:720c6d3f6d8db629e83203955eb1d5345f96ce307917bb0a66260053d948a171
-                room-ref: ./drc-4595/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4595](https://linear.app/recce/issue/DRC-4595/put-consoles-operations-first-and-lift-the-steer-box-out-of-tripwires) — Put Console's operations first and lift the steer box out of TRIPWIRES

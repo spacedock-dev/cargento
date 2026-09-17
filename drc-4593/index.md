@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4593:triage:attempt-1:revision-1
                 digest: sha256:e88c57f07f3f52af5ff00ebf209e64b7df6fab30f1a98bb62718f2c8e9f0006c
-                room-ref: ./drc-4593/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4593](https://linear.app/recce/issue/DRC-4593/invert-the-briefings-emphasis-and-let-its-all-absent-grid-collapse) — Invert the briefing's emphasis and let its all-absent grid collapse
