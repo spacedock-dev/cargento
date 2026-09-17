@@ -673,3 +673,28 @@ Everything above was measured at `2fa5a2f4`; the head is now `9959f623`. That co
 - the fixture to reuse: `grep -n 'FOCUS_ON = ' tests/test_next_cockpit.py`
 
 The mutation, the required behavioural red, the byte-pin exclusion, the no-op guard and the six-combination caution in the contract above are all unchanged. The A/B offsets quoted there were measured at `2fa5a2f4`; re-measure them on the fix commit rather than comparing against those figures, since any edit inside the block moves them.
+
+### Re-check at `26223372` — AC-5 FAIL
+
+Contract run as pinned; both string anchors still resolved to one occurrence each. Suite is **3652**; byte pins discounted.
+
+**AC-5 — FAIL.** The anchor-last mutation still leaves **3652 behavioural tests green**, only the three byte pins firing.
+
+**The integrator took the right branch of the two honest answers — assert across all six rather than narrow the criterion — and the new `test_the_action_leads_on_every_branch_this_block_can_draw` names the six correctly** (three raise branches × two resume branches) and guards each subTest against a block that did not render. **But all six cases exercise the same branch**, measured rather than read:
+
+| case | `nextFocusCapability()` | disclosure drawn | raise sentence |
+|---|---|---|---|
+| capability-off/no-resume | `''` | no | Terminal raise: off for this run. |
+| capability-off/resume | `''` | no | Terminal raise: off for this run. |
+| focusable/no-resume | `''` | no | Terminal raise: off for this run. |
+| focusable/resume | `''` | no | Terminal raise: off for this run. |
+| no-terminal/no-resume | `''` | no | Terminal raise: off for this run. |
+| no-terminal/resume | `''` | no | Terminal raise: off for this run. |
+
+**One distinct raise branch of the three, and zero cases drawing the disclosure.** The mutation only moves the anchor when `raise.whyLabel` is set, and no case sets it, so the falsifier cannot fire.
+
+**Cause, and it is a one-line fix.** The new arm stubs the capability with `document.querySelector = () => ({content:"tmux"})`. `nextFocusCapability` reads it as `meta && typeof meta.getAttribute === "function" ? meta.getAttribute("content") : null`, so an object carrying a plain `content` property yields `null` and the capability resolves to `""` — off. The suite's own `CockpitHeldReEntryTest.FOCUS_ON` returns `{getAttribute: name => (name === "content" ? "0a1b2c3d" : null)}`, which satisfies it; its comment already warns that the capability "is read through `document.querySelector`, not off a payload field, so a test that sets a field measures nothing". The same sentence covers setting the wrong shape on the right lookup.
+
+**The per-branch non-vacuity guards do not catch this, and could not.** They assert the anchor and both rows rendered, and all three render on every branch. The guard that would have caught it is one asserting the cases *differ* — that the disclosure is drawn in the arms whose `whyLabel` is set, or simply that the six produce more than one distinct raise sentence. Recommend adding that alongside the fixture fix, since a matrix whose rows silently collapse is the failure this criterion has now had twice.
+
+Re-measure the A/B offsets on the next fix commit rather than against the `2fa5a2f4` figures; anchors drifted again this commit (the ordering test 11149 → 11349), which the string-anchored contract absorbed.
