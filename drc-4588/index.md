@@ -711,3 +711,65 @@ beyond the three oracles. Isolated: test_next_page 31/31, test_next_flag 7/7, te
 Full 3541/3541 and scripts 515/515, coverage 86.8%. ruff, ruff format, mypy, lint_embedded,
 validate_plugins, bump_version --current (0.26.0) all clean; no version field moved. My 12 tests and
 the captain's replaced comment both survive the rebase. Surface unchanged at 16 files / +720 / -91.
+
+## Stage Report: review
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort".
+  **Two lenses plus an arbiter**, stated before the first file was read: the diff touches `cargento_runtime/web/` (7 assets, so all three byte-pin oracles) and `SKILL.md` — two of the three named conflict-prone surfaces. Not security/credential/data-loss, so not full adversarial.
+- DONE: Reproduce every acceptance criterion of BOTH issues from its own Verified by clause rather than trusting the implementation self-report, and settle any interactive criterion by a live drive or report it explicitly as not attempted.
+  All six reproduced against a page I assembled myself, never the branch's assertions. AC-1/2/3 (one untouched-session render): `ask=1`, offer + disclosure present, counter `0`, and `3` from a `reading_count:3` fixture; the sentence occurs **once** and at index 830 against the button at 495. AC-4 driven through the real `document` click listener rather than the direct handler call the branch's own test makes — `calls=0`, `role="status"` carries the reason. AC-5: `<button … held-save … aria-disabled="true">` with no `hidden`, `posts=0`, and a keystroke clears the attribute with `redrew=false`. AC-6 settled by a **live drive** (board on `127.0.0.1:4571`, untouched session, Held to): `tabIndex=0`, `disabled=false`, `aria-describedby` → the extended reason, dashed 1px border, `cursor:not-allowed` — capture at `docs/screenshots/2026-09-17-review-pr362-drc4588-ac6-held-to-untouched-control-present-and-inert.jpg`. I also ran the inverse of AC-4/AC-5, because a gate that refuses everything passes every no-network assertion on the branch: a permitted save reaches `/api/annotate` exactly once.
+- DONE: For every value-and-absence ternary this diff touches, resolve BOTH branches with tests/css_cascade.py and confirm no absence renders larger than the value it replaces; a test asserting an absence alone is not evidence.
+  Seven pairs resolved on the branch **and** on `84d27a53`. Branch: 0 pairs where the absence outranks the value. Main: 1 — the reading button at 12.5px against its own reason paragraph at 15px, which this change removes by raising the button to the sentence tier. Reading button enabled vs `aria-disabled` is 15.0/15.0, held-save shown vs inert 12.5/12.5, held-absent 12.5 against a 14px textarea. Confirmed live with `getComputedStyle` too: solid `--accent` → dashed `--line2`, same 15px.
+- FAILED: Read the Copilot inline review comments as well as any top-level review, confirm CI is green on the CURRENT head SHA with mergeStateStatus, and give a GO or NO-GO verdict without editing the branch.
+  CI and the verdict are done; the Copilot half could not be: **no review of any kind exists on #362 and none was requested** (`reviews` empty, `pulls/362/comments` empty, `requested_reviewers: []`; the only comment is the coverage bot). Recorded as FAILED rather than SKIPPED because the check was not available to run, and requesting one is the FO's call — it blocked the merge on #361. CI: 12/12 checks `success` on `1d847b0f8a3b4c300ac293ac17d37b4ee19ed922`, read from that SHA's own `check-runs`, `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`. **Verdict: NO-GO**, one blocking finding. The branch was not edited.
+- DONE: Write a `## Stage Report: review` into BOTH entity files, drc-4588 and drc-4590, each covering that issue's share — the advance guard is per entity and one report will block the group.
+  This report and the one in `drc-4590/index.md`, each carrying its own issue's criteria and findings.
+
+### The blocking finding — DRC-4588's own
+
+**BLOCKER. The refusal sentence is printed twice, and then goes false under an enabled button.**
+`next-cockpit.js:2491` writes the refusal into `nextCockpitReadingRequests`; `:2063` renders it in a
+`role="status"` paragraph; `:2064-2066` renders the identical string again in the `aria-describedby`
+target. Nothing ever deletes from that map — the only references are the declaration at `:5`, the
+read at `:2036` and the two `set`s.
+
+1. Press the inert control: the sentence goes from 1 occurrence to **2**, adjacent, both 15px/500.
+2. Do what it says — save a goal. The button renders **enabled** and the live region beneath it still
+   reads *"Nothing has been typed for this session…"*. Clearing it costs a reload or a paid reading.
+
+Reproduced four independent ways: my offline harness, my live browser drive (screenshot
+`docs/screenshots/2026-09-17-review-pr362-refusal-sentence-rendered-twice-after-a-refused-press.jpg`,
+zero `/api/reading` calls), and both lenses separately. **Created by this branch** — on `84d27a53` the
+early return deleted the control, so the press was impossible. Evidence fields: released user on the
+newcomer path this issue exists for; observable harm is a false statement in an announced live
+region; `value-ac[AC-2]` ("renders verbatim and exactly once") plus
+`contract[docs/design-reader-state.md]`, whose rule for this lane is "a fresh press replaces the
+response" — and there is no free fresh press from the enabled state. The fix is a condition in the
+function the diff already rewrites; the byte pins then recompute, which this branch has done three
+times.
+
+### Filed, not promoted — DRC-4588's share
+
+- **The inert `save` says nothing.** `nextCockpitHeldControl` emits `aria-disabled` with no
+  `aria-describedby` and no sentence, and `nextCockpitHeldSave` returns at `:2639` silently. The
+  comment at `:818-821` says it "says why it cannot fire" and NUI-18 says a refusal is "answered
+  rather than dropped" — both are true of the reading control and false of this one. Not a
+  regression: it replaces an absent control, and AC-5 asks only for present, inert and no POST.
+  Separated from the live control by a 1.73:1 ink step, which is the failure NUI-18 condemns in its
+  own words.
+- **A new comment claims a verbatim match that does not hold.** `next-cockpit.js:1705-1712` says the
+  sentence is the server's, "because `/api/reading` refuses with these same words". `reading.py:241`
+  reads *"Nothing **is typed against** this session…"* against the page's *"Nothing **has been typed
+  for** this session…"*. The string predates the branch; the claim is new, nothing binds the two, and
+  it records a constraint a future editor does not actually have.
+
+### Summary
+
+The dangerous half of this issue shipped correctly. `aria-disabled` restores the click, and both
+handlers refuse on the same expression their control renders — traced through argument provenance,
+not asserted: renderer and handler both call `nextCockpitAnnotation(session)` and
+`nextCockpitObserverModel(group)`, and dropping the `authorized &&` term is safe because every
+unauthorized state returns a non-empty refusal. A press from a refused state reached no endpoint on a
+live board. What leaked is the message the new gate leaves behind: printed twice, never cleared, and
+false as soon as the reader does what it told them to. That is one fix in one function, and it is the
+only thing between this PR and a GO.
