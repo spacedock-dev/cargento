@@ -137,10 +137,20 @@ two literals. They were left alone: raising them is another seventeen rules of r
 two of the seventeen are not sentences at all (a textarea and the prototype terminal), so the set
 needs reading one selector at a time rather than a sweep.
 
-The uppercase label tier carries one tracking value, `.09em`, on twenty-four declarations. Three
-kept their own because their content is not uppercase: `.next-cockpit-work-type` prints a fact
-type such as `gate_decision`, `.next-intent-key` a session key, `.next-cockpit-scope strong` a
-scope name. Reading each tracking group one selector at a time is what caught them.
+Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
+eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
+because their content is not uppercase. `.next-cockpit-work-type` prints a fact type such as
+`gate_decision`, `.next-intent-key` a session key, and `.next-cockpit-scope strong` a scope name.
+
+**The uppercase label tier is not uniform, and this change did not make it so.** Six further rules
+print capitals on some other value: `.next-capacity-head span` (`WINDOW`, `USED`),
+`.next-capacity-models small` (`WITHIN THIS WEEKLY BUDGET`) and `.next-capacity-row small` (`USED`,
+`PACE`, `BUDGET ENDS`, `RESETS`) at `.06em`; the course and direction header badges
+(`EXACT DIRECTION`, `EXACT DECISION`) and `.next-scope-cue` (`PROJECT`, `SESSION`, `SCOPE UNKNOWN`)
+at `.07em`; and the recovery memo field labels (`OUTCOME`, `FOCUS`) at `.04em`. They survived
+because the issue inventoried four tracking values and the stylesheet had seven, so sweeping the
+four named groups never reached the other six declarations. Count the values in the tree, not in
+the issue.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
