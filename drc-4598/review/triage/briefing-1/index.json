@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4598:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4598 rewrite and its recorded no-edit milestone decision for writing to Linear, and the eight acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4598:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/64bfbf0f6ec28c6c74e5d295831eee26fa8d807e/drc-4598.md",
+      "rev": "sha256:0f47086a43900d143bf13ba983974d8507d8024b9a49aec91c2cf5d0b0c7151b",
+      "mediaType": "text/markdown",
+      "summary": "Both criteria the recon found unverifiable in this repository are dropped with reasons recorded rather than carried: one had no offline path because the test shim is a node DOM with no layout engine and its other half was a process act rather than a property, and the other was a process obligation on a future issue, replaced by a criterion that writes the route-change constraint where a merge proposer will meet it. The stage read all seven of DRC-4592's approved criteria before writing its own, since both edit the same panel branch chain, and records the one adjacency plus the third independent reason the relabel is rejected."
+    }
+  ]
+}
