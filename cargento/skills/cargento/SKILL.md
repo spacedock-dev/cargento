@@ -253,7 +253,9 @@ counts until anything in it writes again; a subagent write counts. Marks live in
 You can record a goal and an expected output against one session, in your own words. Both are
 optional and set independently, bounded at 240 characters each, and saving one leaves the other
 alone. Select a session in the project view and open its `Held to` tab, which appears only when a
-session is selected because there is nobody whose words these would be otherwise. Each field shows
+session is selected because there is nobody whose words these would be otherwise. A line above
+the fields says what typing buys: a reading happens when you ask for one, and Cargento never writes
+into the session. Each field shows
 how many of its 240 characters you have used as you type, offers `clear` only when there is text and `save`
 only when the box differs from what is stored, and Escape puts the stored value back.
 
@@ -278,13 +280,19 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields, `Held to` shows what the record lets you inspect. Work evidence lists every
-observed entry naming that session with its own type and the source that published it, and states
-the limit under it: demonstrated work results are read on Pi alone, so on every other harness those
-entries are instructions, dispatches and gate decisions and never an inspected file, test or
-deliverable. Your words also appear beside the goal the harness published, in the project view's
-stated goal block, each on its own row so the two claims are never merged, and the derived row says
-when the directive was observed.
+Below the two fields the tab runs in reading order: a later direction, the reading, the departures
+it raised, how it landed, and last the observed record. The record is last because it is the longest
+block here and its absence sentence is one of four that used to arrive before you reached the
+reading. It lists every observed entry naming that session with its own type and the source that
+published it, and states the limit under it: demonstrated work results are read on Pi alone, so on
+every other harness those entries are instructions, dispatches and gate decisions and never an
+inspected file, test or deliverable. Your words also appear beside the goal the harness published,
+in the project view's stated goal block, each on its own row so the two claims are never merged, and
+the derived row says when the directive was observed.
+
+Long caveats keep their claim on the page and put the rest behind a summary you can open, on both
+`Held to` and Console. Nothing is removed by that: an opened one stays open when the board redraws,
+and a closed one still holds every word it was written with.
 
 A later direction gets its own block. Every instruction you gave after your newest save is listed
 there with its age, and nothing there decides whether it changes what you asked for: that is yours,

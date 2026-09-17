@@ -943,19 +943,20 @@ instruction in them was the third sentence. DRC-4587 made this worse rather than
 board sentences to `--fs-sentence` gave `.next-cockpit-count-label` and `.next-cockpit-reading-why`
 the identical font shorthand, so size stopped separating a caveat from the finding it qualifies.
 
-A caveat now goes in one of three tiers, and the rule is about placement, not length:
+A caveat now goes in one of three tiers, and the rule is about placement rather than length:
 
-1. **Always visible** — one clause carrying the claim itself, twelve words or fewer, plus every
-   absence value. If a reader acts on it, it is tier 1. "Five figures, and no arithmetic between
-   them." is tier 1; so is every `not published`.
-2. **Behind a disclosure** — everything past that clause, under a two-to-four word summary naming
-   what is inside. `nextCockpitWhy` on the `next-` surface, `projectDisclosure` on the `pc-` one.
-3. **In the design records** — a sentence too long for tier 2 leaves the panel, and its full form
+1. Tier 1 is always visible. It is one clause carrying the claim itself, twelve words or fewer,
+   plus every absence value. If a reader acts on it, it is tier 1. "Five figures, and no arithmetic
+   between them." is tier 1, and so is every `not published`.
+2. Tier 2 sits behind a disclosure. It holds everything past that clause, under a summary of two to
+   four words naming what is inside. `nextCockpitWhy` provides it on the `next-` surface and
+   `projectDisclosure` on the `pc-` one.
+3. Tier 3 is the design records. A sentence too long for tier 2 leaves the panel, and its full form
    is written here or in [design-reading-a-session.md](design-reading-a-session.md), cited from a
    source comment in the citation grammar `AGENTS.md` describes.
 
-**Nothing is deleted by tiering.** Every sentence that existed before the rule still exists after
-it, inline or one click away. The sole exception this rule sanctions is a claim stated twice: the
+Tiering deletes nothing. Every sentence that existed before the rule still exists after it, inline
+or one click away. The rule sanctions one exception, for a claim stated twice: the
 `two axes, read separately` aside said what the footer under the same cards already said, and a
 duplicate is not a tier.
 
