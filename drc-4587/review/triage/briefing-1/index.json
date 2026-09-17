@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4587:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4587 issue rewrite and the milestone correction for writing to Linear, and approve the seven acceptance criteria and the declared surface as the contract implementation will be held to.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4587:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/e90deec3401ed90c5cf30479ad2bb6a76a933896/drc-4587.md",
+      "rev": "sha256:956c34ed1c0a0b8a646f9a92a6835f15039e8c2d9f049f3a51dc59634288a396",
+      "mediaType": "text/markdown",
+      "summary": "Triage re-checked every figure in the issue against main and ran each oracle it wrote into an acceptance criterion, so the pre-change values are measured rather than asserted. Three findings changed the issue: a second structural move acceptance 2 always required, a recon-reported selector collision that does not exist, and a third dead token the issue missed. The milestone needs one correction, because it states the APCA figures as measured fact and nothing in the repository can reproduce them."
+    }
+  ]
+}
