@@ -773,3 +773,43 @@ unauthorized state returns a non-empty refusal. A press from a refused state rea
 live board. What leaked is the message the new gate leaves behind: printed twice, never cleared, and
 false as soon as the reader does what it told them to. That is one fix in one function, and it is the
 only thing between this PR and a GO.
+
+### Correction round 1, 2026-09-17
+
+One blocking finding, fixed. Candidate **bb56beb** on `spacedock-ensign/drc-4588`, not pushed.
+
+**The regression, and why my own tests missed it.** The gate stored the refusal in
+`nextCockpitReadingRequests` and nothing ever deleted from that map — `set` at three sites, `delete`
+at none. This change made it reachable: the early return used to remove the control, so there was no
+press to store. Reproduced here before fixing, both halves witnessed in one probe rather than one
+assertion at a time: `afterPress: 2` (the sentence rendered as the stored message AND as the reason
+paragraph, adjacent and identical) and `afterSave: 1` with `stillRefused: false` — the stale sentence
+standing under a button the same render had enabled.
+
+My AC-4 test asserted `role="status"` carrying the reason after a press, which is the duplicate, so
+it encoded the defect as the expected result. AC-2 checked the untouched render, where the count is
+correctly 1, and never pressed. Neither was wrong about its own clause; together they left the
+interaction between them unasserted.
+
+**The fix.** A refusal is a state rather than an event: marked `refusal: true`, dropped as soon as
+the reason it names stops holding, and rendered through a single node — while a refusal stands it IS
+the reason, so the announcement and the description are one paragraph carrying `role="status"` and
+the id the button points at. A response stays an event and is kept, because "Reading received."
+describes a press that happened rather than a state that holds.
+
+**The mutation check found a defect in the test, not just in the code.** With the single-node render
+in place, removing the clear left every rendered assertion green — a stale refusal can no longer
+reach any render path, so the symptom is invisible while the entry lives forever. The test now
+asserts the lane itself, and both halves are bound: removing the clear fails on `lingering`,
+restoring the duplicate render fails on `afterPress`. Recorded because the first version of this
+test would have passed over the second half of the finding it was written for.
+
+**Also fixed:** `RuntimeDecisionCitationsTest` failed on a bare `AC-2` in a new comment, which the
+grammar requires to be a full link with a heading anchor. The label is removed and the rule stated
+instead, per AGENTS.md's "remove unnecessary labels rather than inventing archival headings".
+
+**Green.** Oracles alone: test_next_page 31/31, test_next_flag 7/7, test_focus 106/106. Full 3542
+and scripts 515, coverage 86.8%. ruff, ruff format, mypy, lint_embedded, validate_plugins,
+bump_version --current all clean. Byte pins regenerated from the assets twice during this round
+(the fix and then the comment edit both moved next-cockpit.js): assembled `920_003` / `5b00d698…`.
+Surface now 16 files / +808 / −93. The four findings you filed were not touched.
