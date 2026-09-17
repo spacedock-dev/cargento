@@ -580,3 +580,35 @@ and the AC-1 finding rests on measured rendered indices (status 549 vs rail 831)
 substitution I assumed landed.
 
 **NO-GO stands**, on the two unmet criteria recorded above and unaffected by this addendum.
+
+### Re-check at 26223372 — PASS on every pre-registered condition
+
+Harness baseline on the new head: **ran=577 failures=0 errors=0**, no `LOADFAIL`.
+`ConsoleSetupNeverCallsAnUnreadCapabilityOffTest` baseline 6/6 OK. Both mutations grep-counted
+before and after; `project.js` confirmed byte-identical to the head afterwards.
+
+| Condition | Result | Evidence |
+|---|---|---|
+| Settled `off` survives one revision bump | **PASS** | `{terminal:false}` / "terminal bridge off" → after `generated=106`, still `{terminal:false}` / "terminal bridge off", with `entryState:'unavailable'` and `loading:true` — the re-check really is in flight, so the measurement is not vacuous |
+| First-time unread still reports the third state | **PASS** | no entry → `{terminal:null}` / "terminal bridge not read yet"; the genuinely in-flight first lookup → `midState:'loading'`, `{terminal:null}`, same summary. The third state was not traded away to pin the second |
+| The pinning test reds on the broken code | **PASS** | reverting the repair to registered-only (anchor 1→0) reds `test_an_unavailable_bridge_stays_off_across_every_poll` on all three polls: `'unavailable' != 'loading'` at revisions 106, 107 and 108 |
+| Byte pins re-derived from the assets | **PASS** | next-cockpit.js **233_309** / `b0e24842…`, styles.css **121_011** / `f1d8a9bc…`, assembled **964_336** / `387e71e0…`; 22 asset digests matched in `test_next_page`, the assembled pair matched in `test_next_flag` and `test_focus`, every unmatched literal belonging to the fonts/vendor inventories. No disagreement |
+
+**The path claim is the part worth proving, and I proved it by execution rather than reading the
+docstring.** I ran the same three-poll probe at two sample points against both trees:
+
+| Sample point | Repaired tree | Defect restored |
+|---|---|---|
+| **After** four settles (the original, blind path) | `unavailable` / `false` ×3 | `unavailable` / `false` ×3 — **identical, so it passes on broken code** |
+| **Before** settling (the shipped path) | `unavailable` / `false` ×3 | `loading` / `null` ×3 — **sees the defect** |
+
+So the sample point, not the assertion, is what makes this test able to fail. That is the same
+family as the repository's recorded case of a green test that never ran, and it is now closed in the
+one place it mattered: the test reaches the code by the path production takes.
+
+The runtime repair itself is the right shape — `current.state === "registered" || current.state ===
+"unavailable"` preserves **both** settled answers, and the comment records the measurement rather
+than the intent, so `loading` now means what it says.
+
+**Both findings on this entity are cleared.** AC-1's guard and the AC-9 filing were routed
+elsewhere by the captain; on the two items I owned, this entity is **GO**.

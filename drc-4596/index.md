@@ -547,3 +547,47 @@ the half a future reader deletes as redundant. Worth one sentence in that commen
 and it does not change this issue's verdict.
 
 **NO-GO stands**, on the blocker recorded above and unaffected by this addendum.
+
+### Re-check at 26223372 — PASS on every pre-registered condition
+
+Harness baseline on the new head first: **ran=577 failures=0 errors=0**, no `LOADFAIL`. One
+invalidated round is recorded rather than hidden: my first run of these conditions named the wrong
+class and every result came back `errors=1`, including the baseline. A baseline that errors voids
+the verdicts under it, so I discarded that round and re-ran against
+`TheCompliantSetIsResolvedOnElementsNotOnRulesTest` (baseline 4/4 OK). Every mutation below was
+grep-counted before and after, and `styles.css` and `project.js` were confirmed byte-identical to
+the head afterwards.
+
+| Condition | Result | Evidence |
+|---|---|---|
+| Both-sides set empty of the defect | **PASS** | `A & B` returns EMPTY; the repair split the grouped rule so `small` no longer declares a size it immediately overrides |
+| Element still 12.5 via `css_cascade` | **PASS** | small **12.5**, strong 15.0 down the real emitter path |
+| Element still 12.5 via `getComputedStyle` | **PASS** | live board at `127.0.0.1:4793`, headless Chrome: **12.5px / 18.75px / Space Grotesk**, strong 15px |
+| Recorded in the inventory, not counted compliant | **PASS** | `(12.5, '.next-guardrail-copy small,.next-guardrail-empty')` present in `SUB_SENTENCE_FLOOR_INVENTORY`; absent from the compliant set |
+| A ninth straddler reds | **PASS** | added `.next-rv2-straddle` at both tiers (marker 0→2), straddle set 8→9, `test_the_set_of_selectors_declared_on_both_sides_is_pinned` reds naming it |
+| Structural falsifier reds | **PASS** | appended `.next-delegation-caption{font-size:var(--fs-xs)}` (marker 0→1), `test_every_sentence_tier_element_resolves_at_or_above_the_floor` reds `{} != {'.next-delegation-caption': 12.5}` |
+| Doc states the limit honestly | **PASS** | see below |
+
+**The doc correction is better than the one I asked for.** I asked for the mechanism named. It names
+the mechanism *and* distinguishes it from the pre-existing one — "a different mechanism rather than
+the same one inverted: one element matched by two rules at equal specificity, where the later one
+wins … Neither selector string appears twice, so no comparison of selector text can find it" — then
+states the residual limit with the measurement that bounds it (8,873 false positives, and why
+widening was abandoned). It does not claim the guard closes more than it does.
+
+**I verified the correction of the captain's ruling rather than accepting it.** The claim was that
+the structural repair does *not* close DRC-4595's AC-5 hole. Confirmed by execution: appending
+`.next-steer>header p{font-size:var(--fs-xs)}` (marker 0→1) takes the caveat to **12.5px** down the
+real path while the new element guard sees **nothing**, the straddle census sees nothing, and AC-5's
+own test passes. The limit the doc states is real and load-bearing, and filing AC-5 separately is
+the right disposition. Two guards now exist where one did: the straddle census as a review tripwire
+on the declaration shape, and the element resolution as the floor — and neither can see a rule that
+reaches an element through ancestors the tier selector never names.
+
+One note, not a condition and not blocking: `_below_floor` `continue`s silently on
+`UnsupportedSelectorError`, so a future selector the resolver cannot express would leave the sweep
+with no red. Measured today: **77 tier selectors swept, 77 resolvable, 0 skipped**, so nothing hides
+behind it now, and the `assertGreater(..., 40)` vacuity guard covers the collapse case. Worth a
+counter-assertion if the sweep ever grows a skip.
+
+**The blocker is cleared. This entity is GO.**
