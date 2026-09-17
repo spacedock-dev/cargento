@@ -1,7 +1,7 @@
 ---
 id:
 title: "Split the three inks onto label, value and absence roles so a label stops sharing its ink with its own answer"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4589/split-the-three-inks-onto-label-value-and-absence-roles-so-a-label"
 started: 2026-09-17T10:42:56Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17, answering the gate-authority question
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4589](https://linear.app/recce/issue/DRC-4589/split-the-three-inks-onto-label-value-and-absence-roles-so-a-label) — Split the three inks onto label, value and absence roles so a label stops sharing its ink with its own answer
