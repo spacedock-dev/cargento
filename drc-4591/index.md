@@ -484,3 +484,77 @@ a dead link in an installed plugin and a `RuntimeDecisionCitationsTest` hit. Two
 the recon: its headline test risk (`:5784`/`:5800`) is scoped to a single reading-criteria row and
 cannot fire, while the real coupling it missed is `:5183`, whose slice runs to end of document —
 recorded as AC-8.
+
+## Stage Report: implementation
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  Written before the first code read: DRC-4591 body, DRC-4594 body, and DRC-4591's two-change milestone correction (DRC-4594's triage declared none owed). No label writes — both issues already carry `journey:mid-flight` and `move:sharpen`. Relations read back after the writes and **unchanged on both**: DRC-4591 blocks [4595, 4594], blockedBy [4589, 4587]; DRC-4594 blockedBy [4589, 4591, 4587, 4588]. **Zero new edges** — every DRC-#### the bodies mention was already a relation. Four emphasis-run boundary moves reported below, not repaired.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  Red baseline before any runtime edit: 17 tests, **12 failed / 5 passed**. The two errors were `ValueError: substring not found` on `next-cockpit-held-lede` and on the COUNTS `<summary>` — the thing under test did not exist. The five that passed are AC-1, AC-6, AC-7, AC-8 (4591) and AC-6 (4594), which are **preservation** criteria that must hold before and after; each was mutation-checked instead. Pins recomputed from the assets, not textually: `project.js` 107_368/`30a7281c…`, `next-cockpit.js` 206_375/`acd0170d…`, `styles.css` 114_262/`b293e085…`, assembled 926_407/`6a90a8c7…`. **9 distinct figures across 11 assertion sites** (4591 declared 11, counting the assembled pair's three re-pins). Alone, after: `test_next_page` **31/31 OK**, `test_next_flag` **7/7 OK**, `test_focus` **96/96 OK**.
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  `cargento/skills/cargento/tests/css_cascade.py` **does not exist on this base** — the dispatch said it would. Built the equivalent instead: `PairedBranchRegisterTest` resolves both branches through the cascade and compares them, and pins the token table so a rename cannot make two branches compare equal by both resolving to nothing. `.next-cockpit-landed-value` 15px vs `--absent` 15px (ink only) — no raise. COUNTS has no absence class at all: one `next-cockpit-count-value` rule serves the figure and its `not published`, asserted against the emitter because a second class added there is what a CSS-only check could not see. The tier-2 summary resolves at 15px, at or above the 15px body it hides. The oracle found **one open instance this change did not create**: `.next-cockpit-reading-clause-absent` is 15px against its paired `.next-cockpit-reading-clause` at 12.5px (`next-cockpit.js:1752`, `:2128-2129`). **Filed as DRC-4607, not fixed here**, and pinned in `KNOWN_OPEN` so a new violation fails and so does fixing that one without moving it off the list.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  Read from `AGENTS.md` itself, not a copy. `ruff check` clean, `ruff format --check` 222 files clean, `mypy` 163 files clean, `lint_embedded.py` clean, `validate_plugins.py` clean, `bump_version.py --current` 0.26.0, **no version line moved** since the merge base. Dashboard suite **3562 OK / 2 skipped** (136s, load 9.08 — no contention-module failures to re-confirm). `scripts/tests` **515 OK / 1 skipped**. `coverage report` **86.8%** against `fail_under = 73`. Both native validators pass. `sync-docs` run and committed as `6c5f4c94`. Surface below.
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4591`, candidate SHA **`6c5f4c94`** (implementation `86a9ec14`, docs `6c5f4c94`), both `Signed-off-by`. Not pushed, no PR opened.
+
+### Surface against estimate
+
+Measured against the stack base `2a073801`, not `main`: this branch is stacked and a `main` merge base
+would report three siblings' work as this change's.
+
+| Half | Declared (4591 + 4594) | Actual | Verdict |
+|---|---|---|---|
+| Runtime | +90, tolerance ±35 | **net +105** (`next-cockpit.js` +75, `styles.css` +23, `project.js` +7) | **inside**, 117% of declared |
+| Behavioural tests | +140, tolerance ±25 | **net +658** | **4x beyond tolerance** |
+| Byte-pin oracles | 9 figures, ~0 LOC, exact | 9 figures, 11 sites, ±0 net | inside |
+| Docs | +1 row (4594); no figure (4591) | net +57 | over, no tolerance was declared |
+
+**The test overrun is a design reset the captain owns, and it is an estimating-method failure rather
+than a scope failure.** Both triages priced the behavioural half at ~70 lines while declaring eight
+acceptance criteria each. In this suite a criterion costs about 35 lines: a fixture, an embedded JS
+render probe and its assertions. Sixteen criteria at that rate is ~560 lines before the two
+additions neither estimate contained — the ~90-line cascade oracle the dispatch's own defect-class
+rule requires, and the ~53-line Console disclosure test. The runtime, which is what carries merge
+risk, came in inside tolerance. This is the `AGENTS.md` shape: the estimating method gets fixed
+rather than the tolerance stretched.
+
+### Linear write hazards observed
+
+- **Four emphasis-run boundary moves**, all on runs containing a code span or a mention, all
+  reported rather than repaired: `**Verified against the post-DRC-4587 tree (`f6ced2f8`)**` split
+  into four marks; `**No `docs/` href and no `DEC-N` token may reach rendered HTML**` into three;
+  `**nowhere inside `next-cockpit-reading`**` into two; `**Superseded by DRC-4587 — see the history
+  section**` into two. On DRC-4594: `**Measured on `spacedock-ensign/drc-4587` @ …**` and
+  `**Delete the `your words` sub-label**` moved the same way.
+- **Every DRC-#### became a mention**, and **no mention created a new relation** — each one already
+  had one. Read back on both issues after the write.
+- No `save_issue` error to check against read-back state; all three writes returned the landed body.
+
+### One deviation from the approved draft, and why
+
+The draft's COUNTS tier-1 wording was "Do not add these up — each counts a different thing.", a new
+sentence replacing "Five figures, and no arithmetic between them." **AC-1 binds harder**: every
+caveat sentence on the pre-change tree must survive verbatim, and replacing one falsifies it. The
+existing sentence is seven words, carries the same operational instruction, and satisfies the
+twelve-word tier-1 rule, so it is kept verbatim and the remainder goes behind the summary the draft
+names. Same reasoning at HOW IT LANDED: the footer reads `Neither card implies the other.` verbatim
+plus the deleted aside's reason as a second sentence, rather than the draft's colon form, which
+would have dropped the pinned period. The Console recipe is the one place AC-1 could not be met
+literally — a numbered two-step list cannot be the same string as a single sentence — so the test
+asserts the load-bearing fragments instead: both flags, "inside the tmux pane for this exact session
+with that file", and "Output is read-only."
+
+### Summary
+
+Both issues built on one branch, because exactly one in-flight PR may touch `cargento_runtime/web/`.
+DRC-4591 adds `nextCockpitWhy`, which reuses `nextCockpitDisclosureAttr` so the existing restore
+lane reopens a tier-2 body after a redraw with no registration, and Console reuses
+`projectDisclosure` for the same reason; the only deletion is the duplicated `two axes, read
+separately` aside, whose reason joins the footer that already made its claim. DRC-4594 adds the
+lede, moves the observed record from first to last, and rewords the one sentence that was anchored
+to the record's old position rather than leaving it claiming a place it no longer has. Six
+mutations were run against the tests that were green at the red baseline and all six were killed;
+a seventh initially **SURVIVED** because it landed in a reading-section branch the fixture never
+renders, which is the "an arm that never ran" shape — AC-8's test now renders a stored reading so
+that branch executes, and the mutation is killed.
