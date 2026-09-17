@@ -727,3 +727,64 @@ The round fixed what it was asked to fix and proved it: F1 reproduces as resolve
 The verdict is **NO-GO** on claim 1. "Swept the class" is the one claim that does not survive: the sweep followed selectors that resembled the reported ones, and the defect lives in the ternaries that decide which class a slot receives. Six slots still draw a stated absence 2.5px to 4.5px larger than the value it replaces, this PR widened all six by raising only the absence side, and two of them sit behind exemptions the round wrote reasons for. AC-7 fails on the clause added this cycle. I missed these in cycle 1 by the same blindness, which is why the fix should key on the emitters rather than on another pass over the stylesheet.
 
 F1's fix should stand. The six slots and the promoted caption route back to `implementation`; the caption question and the two prose corrections are cheap and can ride the same round.
+
+### Addendum: ruling on the membership test (DRC-4602 evidence, folded in)
+
+**The finding is real, and I verified it rather than the framing.** Neither composed case satisfies
+the letter of the sentence this PR adds. `.next-operation-fact--unknown strong` takes its size and
+mono from `:482`, a flip to sans from `:483` and its line-height from `:397` — no one rule carries
+sans *and* a prose line-height. `.next-cockpit-recovery small` (`:1089`) declares **neither**: it
+sets a size and inherits both family and line-height from the cell. So a census applying that one
+bolded sentence mechanically returns clean over both.
+
+**Two corrections to the framing, both in the round's favour.**
+
+The claim that #361 "states a membership rule that certifies a floor it does not hold" was exactly
+right at `3cc7ef49` and is **too strong at `4fb5ee6d`**. Eight lines below the definition the
+corrected document now says, in bold, "two that no single-rule census can see", names both
+selectors, explains how each composes, and states that a one-rule census "reports seventeen and
+misses both". The round fixed the certification defect in cycle 2. What survives is narrower: the
+**definition itself was not amended**, so it and its own disclosed exception sit eight lines apart
+with the definition still reading as self-contained — and it is explicitly offered as the thing "a
+reviewer argues with", which is how the next four PRs in this milestone will use it.
+
+And the auditor's **38-across-31 / 33-across-27 are very likely not a fourth and fifth figure for
+the same set** as the document's nineteen. The document counts sans-prose *rules* in a 13px-14.5px
+band; the auditor counts selectors resolving below the floor by composition, which is a wider
+population and a different unit. Recorded as a caution: if those numbers are set beside the
+nineteen without stating both definitions, one will later read as refuting the other when they
+never measured the same thing.
+
+**The decisive evidence is that the defect has already propagated into the correction.** The
+disclosure paragraph enumerates **two** composed cases. There is at least a **third**:
+`.next-project-value--absent` (`:159`) declares sans and a size but no line-height, so it fails the
+letter the same way, and I measured three of them rendering at 12.5px sans with an inherited prose
+line-height on the project view. The count "two" was itself derived with the defective test. I
+cannot give the true number using the document's own rule, and neither could the round — which is
+the whole argument for fixing the rule before anyone trusts a count produced by it.
+
+**Ruling: the definition is corrected in THIS PR; the auditor, the remediation and the true count
+stay in DRC-4602.** The captain's rule bars promoting a finding that buys another implement-and-CI
+round. It does not bite here, for two independent reasons. First, **this is not promoted work** —
+the sentence does not exist on `main`; #361 authors it, so correcting it is the same category as
+D1-D4, which were already authorized. Second, **the round is happening anyway**: this review is
+NO-GO on the six inversions, so the marginal cost of a prose qualification is one paragraph, no
+code, no pin recompute, and no extra CI cycle. Deferring it would ship a canonical rule known to be
+wrong and then ask DRC-4602 to correct a document it does not own.
+
+**What the sentence must do** (the property, not the wording — I do not write the branch): state
+membership over the **element's resolved style**, not over one rule's declarations. It has to say
+that sans and the prose line-height are resolved through the cascade and may be inherited or
+arrive from different rules, and that a census reading one rule at a time understates the set. The
+existing disclosure paragraph then stops being an exception bolted onto a rule that contradicts it
+and becomes an illustration of it. The nineteen, the thirty-three and the true composed count all
+belong to DRC-4602 and should not be restated here.
+
+**On the counts not holding still:** the 181 figure is a snapshot of live board data, not a
+constant — I measured 163 of the `--unknown strong` shape at cycle 1 and 183 at cycle 2, forty
+minutes apart, on the same stylesheet, because the board renders whatever sessions exist. The
+stable unit is the rule set, not the element tally. Any element count that reaches the document
+should carry the date and commit it was taken at, or it will be read as a fact about the
+stylesheet when it is a fact about a moment.
+
+The `--ac-scan` code-fence failure is recorded and is not this PR's.
