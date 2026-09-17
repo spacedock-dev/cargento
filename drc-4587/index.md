@@ -472,3 +472,74 @@ Re-confirmed with the `--stage triage` form of the command as well:
 `spacedock status --read drc-4587 --ac-scan --stage triage --json --workflow-dir docs/roadmap-burndown`
 returns seven entries with ids AC-1 through AC-7, all `unevidenced: true`. Both forms agree, so the
 scan does not depend on the stage being inferred from frontmatter.
+
+## Stage Report: implementation
+
+- DONE: Write the gate-approved drafts to Linear as the FIRST action before any code — the issue body, the owning milestone description, and the journey and move labels — sending each body unwrapped as one line per paragraph, then read back the issue's relation set and report every edge the write created.
+  Both written before any file was touched, each paragraph joined to one line. **No relation edge appeared**: `blocks` is the same seven, `blockedBy`, `relatedTo` and `duplicateOf` all still empty — both mentioned issues (DRC-4594, DRC-4596) were already in `blocks`. Labels were already `move:sharpen` + `journey:mid-flight`, confirmed on read-back; no label write was needed. **Two serializer moves to report, neither repaired:** the AC `-` bullets came back as `*`, and the bold run around both issue references was dropped when Linear turned the plain text into `<issue>` mentions (`**Land this before DRC-4594**` → `**Land this before** <mention>`; `**DRC-4596**` → bare mention). The milestone's DRC-4596 became a plain Markdown link with its surrounding bold intact.
+- DONE: Write the failing test first and watch it fail for the right reason, then regenerate all nine byte pins from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting the pass ratio of each isolated run.
+  `test_both_absence_explanations_read_as_sentences_not_header_labels` landed in `CockpitHeldToTabTest` (verified by walking back to the enclosing `class` line, not assumed) and failed on `assertFalse(out["revisionInHeader"])` — the right reason: both spans rendered, and the header check caught them. It fails again if either span goes back inside its `<header>`, or if either rule is bumped to 15px while keeping `var(--mono)`. Pins regenerated from `frontend_page.asset_path`/`load_page`, not patched: 8 of the 9 figures moved, and `next-cockpit.js`'s size came back identical at `198_105` (the two moves are byte-neutral swaps) so it was verified rather than rewritten. No tenth pin moved. Isolated runs: `test_next_page` 25/25, `test_next_flag` 7/7, `test_focus` 96/96, all OK; the new test 1/1 alone.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file rather than from any copy, invoke the sync-docs skill and commit its doc updates onto this same branch, then measure the actual surface with git diff --numstat against the merge base and report files and LOC versus the declared estimate with the percentage.
+  Read from `AGENTS.md` in the worktree, not from a copy. `ruff check` clean, `ruff format --check` clean, `mypy` no issues, `lint_embedded.py` clean, `validate_plugins.py` clean, `bump_version.py --current` 0.26.0, no version field moved since the merge base (that half checked by hand, as AGENTS.md says nothing local does it). Dashboard suite **3527 tests OK** (2 skipped), scripts suite **515 OK** (1 skipped), `coverage report` 86.8% total with `fail_under` satisfied. Load average 2.9 throughout, so no module needed the contention re-run. `claude plugin validate --strict` passed; `agy` is not on this PATH. `sync-docs` invoked; it found no drift beyond the two documents already edited, left `COMPATIBILITY.md`'s marker alone per the parallel-work rule, and its tone check reports clean. **Surface: 8 files, over the declared 7 — see the overage note below.**
+- DONE: Commit the work DCO signed off on the branch and STOP without pushing and without opening a pull request, reporting the branch name and the candidate SHA.
+  Branch `spacedock-ensign/drc-4587`, candidate SHA **`f6ced2f86449a757f8093bfc49666e7c8052007e`**, one commit, working tree clean. Not pushed, no PR opened. A duplicate `Signed-off-by` (the manual one plus `-s`) was amended away; one sign-off remains.
+
+### Surface versus the declared estimate — two overages, neither silent
+
+| Surface | Declared | Actual | Percentage |
+|---|---|---|---|
+| Runtime | 2 files, ~105 changed, ±25% (78.75–131.25) | 2 files, **132** (`styles.css` 128, `next-cockpit.js` 4) | **125.7%** — 0.75 lines past the ceiling |
+| Oracles | exactly 9 pinned numbers, 3 files, zero tolerance | 9 verified, 8 rewritten, 3 files | **100%** — met |
+| Docs | 2 files, ~18 lines, ±10 (8–28) | 2 files, **35** (`design-next-ui.md` 33, `CONTRIBUTING.md` 2) | **194%** — 7 lines past the ceiling |
+| Tests | not costed | `test_next_cockpit.py` +43 (the required failing test) | a fourth test file the estimate did not budget |
+
+Runtime net is **+8**, just under the declared +10 to +16. Six of the 132 runtime lines are a
+**discretionary inclusion no acceptance criterion required**: AC-3 bans literal `10px` only, and I
+also remapped the six sub-10px literals (9px at `:375`/`:415`, 9.5px at `:289`/`:359`/`:366`/`:457`)
+onto `var(--fs-label)`, because deleting `--fs-column` while leaving the 9px it defended is half a
+job. Dropping them would put runtime at 126 (120%), comfortably inside. **This is the FO's call,
+not mine**, and I did not shave the number to fit. The docs overage is the gap record in the next
+paragraph, which is worth more than the seven lines.
+
+### One finding, filed rather than fixed — AC-1's first clause is not fully met
+
+AC-1 reads "every sans text-bearing rule under `cargento_runtime/web` resolves to 15px or larger".
+Its own `Verified by` is the recorded inventory, which is satisfied: 67 rules, all on
+`var(--fs-sentence)`. But the classifier I recorded (**sans + its own prose line-height**) also
+catches **17 further rules at 13px to 14.5px** on the `--fs-body`, `--fs-summary` and `--fs-sm`
+steps plus two literals (`.next-project-goal-text` 14.5px, `.next-operations-header p` 13.5px).
+Those were left. Raising them is ~17 more runtime lines, which takes the change to 142% of the
+declared surface and past the stop clause; and **two of the 17 are not sentences at all** (a
+textarea at `:871`, the prototype terminal at `:1139`), so the set needs reading one selector at a
+time rather than a sweep. `docs/design-next-ui.md` records this openly as the gap to close next
+rather than letting the inventory imply a floor the stylesheet does not have. Evidence: the audit
+script is reproducible from the committed tree. **Proposed: Deferred risk, owned by a new issue,
+not promoted into this PR.**
+
+### AC status at hand-back
+
+AC-1 **partial** (inventory clause met, universal clause not — see above). AC-2 **met** (new test,
+red then green). AC-3 **met** (`font-size:10px` 27→0, `font:`-shorthand 10px 4→0, three tokens
+gone, `--fs-label` 11px). AC-4 **met** (`grep -rn 'ruling R9'` over `cargento_runtime/` and `docs/`
+returns nothing; `RuntimeDecisionCitationsTest` green). AC-5 **met** (`--measure:540px` declared,
+49 capped rules, none of the three named carries a cap, no capped line carries
+`overflow-wrap:anywhere`). AC-6 **met** (9 pins, isolated runs green, no tenth moved).
+AC-7 **not attempted** — interactive by the gate's own ruling, settled by a live drive or the
+captain, never by automation built here.
+
+### Summary
+
+The change does what the issue asked in the register the issue named: a 15px sentence tier at
+weight 500/1.55 on 67 sans prose rules, a single 11px label tier absorbing 37 literal sizes and 4
+dead-or-redundant tokens, one `.09em` tracking value on 24 declarations, a 540px measure on 49
+rules, and both absence explanations out of their `<header>`s and into sans. All nine byte pins
+were regenerated from the assets in one pass and each oracle module was re-run alone.
+
+Two things the first officer should rule on before this becomes a PR. The runtime surface is
+**0.75 lines past its ±25% ceiling**, and six of those lines are a remap no acceptance criterion
+demanded — I would rather be told to keep or drop them than decide it myself. And **AC-1's
+universal clause is not met**: 17 sans rules still sit below the new floor, which I recorded in
+`docs/design-next-ui.md` and propose as its own issue rather than promoting a ~17-line addition
+into this branch.
+
+Nothing was pushed and no pull request exists. The `pr-merge` ceremony is the FO's.
