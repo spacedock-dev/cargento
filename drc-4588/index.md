@@ -813,3 +813,35 @@ and scripts 515, coverage 86.8%. ruff, ruff format, mypy, lint_embedded, validat
 bump_version --current all clean. Byte pins regenerated from the assets twice during this round
 (the fix and then the comment edit both moved next-cockpit.js): assembled `920_003` / `5b00d698…`.
 Surface now 16 files / +808 / −93. The four findings you filed were not touched.
+
+### Correction round 1, the four small findings, 2026-09-17
+
+The FO withdrew "do not fix these here" and cited the captain's standing directive: a small finding
+is fixed in the PR in flight, and a fix is not a promotion. Candidate **9cc6f64**, not pushed.
+
+- **The inert `save` comment claimed it "says why it cannot fire".** It does not; the gate returns
+  silently. Corrected the comment rather than inventing the behaviour, because the box beside the
+  control already shows the draft matches what is stored. The FO's framing decided it: the comment
+  is the defect, not the silence.
+- **A verbatim-match claim that does not hold.** The comment said the nothing-typed sentence is what
+  `/api/reading` refuses with. `reading.REFUSALS` says "Nothing **is typed against** this session"
+  where the page says "**has been typed for**". Checked in the tree rather than assumed. The discard
+  arm directly above it *does* carry the server's string, which is what made the claim look right;
+  the comment now says which is true of which.
+- **`.next-stalled button:disabled` inherited the primitive's dashed border**, which NUI-18 defines
+  as the register for refusing, on a control that is waiting for a retry it makes itself. Its
+  `cursor:wait` already drew that distinction and the border contradicted it. Now states
+  `border-style:solid`, and the AC-3 test that owns the criterion asserts it — mutation-checked:
+  removing the override fails on `border-style:solid` not found.
+- **A stale comment about this change's own effect.** The note above `.next-session-raise` said
+  `.next-session-copy` never got a `:focus-visible` ring. It has one now, through `.next-action`,
+  which closes the DRC-4381 gap that comment was describing. The raise keeps its own brighter ring,
+  which is the distinction the comment exists for.
+
+**Green.** Oracles alone: test_next_page 31/31, test_next_flag 7/7, test_focus 106/106. Full 3542 and
+scripts 515. ruff, ruff format, mypy, lint_embedded, validate_plugins clean; docs tone clean. Pins
+regenerated from the assets again, since both the comment edits and the CSS moved the bundle:
+assembled `920_676` / `1127c596…`, styles.css `112_008` / `af33306f…`.
+
+Branch now carries three commits: `1d847b0` (the feature), `bb56beb` (the regression), `9cc6f64`
+(these four).
