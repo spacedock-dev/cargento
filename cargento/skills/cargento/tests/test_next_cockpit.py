@@ -6,7 +6,7 @@ import pathlib
 import re
 import shutil
 import unittest
-from typing import Any
+from typing import Any, ClassVar
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
@@ -6304,7 +6304,6 @@ console.log(JSON.stringify({counts, steer, tripwire}));
         )
         self.assertNotIn("next-action--primary", out["steer"])
         self.assertNotIn("next-action--primary", out["tripwire"])
-
 
 
 class WithheldTitleKeepsTheAbsenceInkTest(unittest.TestCase):

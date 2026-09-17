@@ -588,12 +588,12 @@ class NextPageAssetContractTest(unittest.TestCase):
     # --- DRC-4596: the size guard, and the three mutants that falsify it ------
 
     SUB_LABEL_FLOOR_REGISTRY: ClassVar[set[tuple[float, str]]] = {
-        (10.0, '.next-rail-capacity-caption'),
-        (10.5, '.next-capacity-scope'),
-        (10.5, '.next-capacity-window i'),
-        (10.5, '.next-delegation-metrics'),
-        (10.5, '.next-operation-harness'),
-        (10.5, '.next-project-change time,.next-project-change-harness'),
+        (10.0, ".next-rail-capacity-caption"),
+        (10.5, ".next-capacity-scope"),
+        (10.5, ".next-capacity-window i"),
+        (10.5, ".next-delegation-metrics"),
+        (10.5, ".next-operation-harness"),
+        (10.5, ".next-project-change time,.next-project-change-harness"),
     }
     """The px literals below the 11px label floor, recorded rather than raised.
 
@@ -603,39 +603,48 @@ class NextPageAssetContractTest(unittest.TestCase):
     """
 
     SUB_SENTENCE_FLOOR_INVENTORY: ClassVar[set[tuple[float, str]]] = {
-        (12.5, '.next-cockpit-content .next-cockpit-evidence-missing'),
-        (12.5, '.next-cockpit-empty,.next-cockpit-evidence-missing'),
-        (12.5, '.next-cockpit-held-absent'),
-        (12.5, '.next-cockpit-reading-clause-absent'),
-        (12.5, '.next-cockpit-reading-stale,.next-session-departure-stale'),
-        (12.5, '.next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap'),
-        (12.5, '.next-cockpit-recovery .next-project-value--absent'),
-        (12.5, '.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped'),
-        (12.5, '.next-delegation-withheld small'),
-        (12.5, '.next-guardrail-copy small,.next-guardrail-empty'),
-        (12.5, '.next-project-detail-rail .next-rail-reason'),
-        (12.5, '.next-project-goal-gap'),
-        (12.5, '.pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p'),
-        (12.5, '.pc-trail-quiet,.pc-trail-history,.pc-event-evidence'),
-        (13.0, '.next-attention-part'),
-        (13.0, '.next-attention-risk-observation p'),
-        (13.0, '.next-cockpit-work-derived'),
-        (13.0, '.pc-semantic-timeline,.pc-terminal'),
-        (13.0, '.pc-trail-result'),
-        (13.5, '.next-attention-brief p'),
-        (13.5, '.next-attention-risk-identity h3'),
-        (13.5, '.next-capacity-prospect'),
-        (13.5, '.next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading'),
-        (13.5, '.next-operations-header p'),
-        (14.0, '.next-cockpit-held-field textarea'),
-        (14.0, '.next-course-episode p,.next-course-episode ul,.next-course-direction p'),
-        (14.0, '.next-operation-identity strong,.next-operation-fact strong'),
-        (14.0, '.next-session-ask-question'),
-        (14.0, '.next-session-current>strong,.next-session-command-facts strong,.next-session-command-context'),
-        (14.0, '.next-session-detail-instruction'),
-        (14.0, '.next-session-health'),
-        (14.0, '.next-usage-consent'),
-        (14.5, '.next-project-goal-text'),
+        (12.5, ".next-cockpit-content .next-cockpit-evidence-missing"),
+        (12.5, ".next-cockpit-empty,.next-cockpit-evidence-missing"),
+        (12.5, ".next-cockpit-held-absent"),
+        (12.5, ".next-cockpit-reading-clause-absent"),
+        (12.5, ".next-cockpit-reading-stale,.next-session-departure-stale"),
+        (
+            12.5,
+            ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
+        ),
+        (12.5, ".next-cockpit-recovery .next-project-value--absent"),
+        (12.5, ".next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped"),
+        (12.5, ".next-delegation-withheld small"),
+        (12.5, ".next-guardrail-copy small,.next-guardrail-empty"),
+        (12.5, ".next-project-detail-rail .next-rail-reason"),
+        (12.5, ".next-project-goal-gap"),
+        (12.5, ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
+        (12.5, ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
+        (13.0, ".next-attention-part"),
+        (13.0, ".next-attention-risk-observation p"),
+        (13.0, ".next-cockpit-work-derived"),
+        (13.0, ".pc-semantic-timeline,.pc-terminal"),
+        (13.0, ".pc-trail-result"),
+        (13.5, ".next-attention-brief p"),
+        (13.5, ".next-attention-risk-identity h3"),
+        (13.5, ".next-capacity-prospect"),
+        (
+            13.5,
+            ".next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading",
+        ),
+        (13.5, ".next-operations-header p"),
+        (14.0, ".next-cockpit-held-field textarea"),
+        (14.0, ".next-course-episode p,.next-course-episode ul,.next-course-direction p"),
+        (14.0, ".next-operation-identity strong,.next-operation-fact strong"),
+        (14.0, ".next-session-ask-question"),
+        (
+            14.0,
+            ".next-session-current>strong,.next-session-command-facts strong,.next-session-command-context",
+        ),
+        (14.0, ".next-session-detail-instruction"),
+        (14.0, ".next-session-health"),
+        (14.0, ".next-usage-consent"),
+        (14.5, ".next-project-goal-text"),
     }
     """The sentence-tier rules still below the floor, which DRC-4602 sizes.
 
@@ -854,9 +863,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             with self.subTest(selector=selector):
                 # The register rather than the literal, since DRC-4589 made it
                 # the single place the ruling can be re-read from.
-                self.assertEqual(
-                    ["var(--ink-absence)"], re.findall(r"color:\s*([^;]+)", decls)
-                )
+                self.assertEqual(["var(--ink-absence)"], re.findall(r"color:\s*([^;]+)", decls))
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")

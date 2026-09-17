@@ -163,17 +163,22 @@ the set**, because it cannot see an element whose family, size and line-height a
 three rules, and it will report clean while such an element still renders below the floor on
 screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
 
-Sixty-five rules on the old `--fs-xs` step qualified when the tier was drawn, plus the two absence
-explanations above; **seventy rules resolve to `var(--fs-sentence)` today**, the three added since
-being DRC-4590's control primitive and the two DRC-4595 raised with the steer caveat. Forty-seven of
-them also cap at `--measure` (540px, about 72 characters at this tier). The twenty-three that do not
-are the ones a cap would clamp wrongly: eight carry `overflow-wrap:anywhere`, thirteen are layout
-boxes, fields or grid children rather than single lines, and `.next-cockpit-content` and
-`.next-cockpit-recovery>div` are the prose containers, where 540px would clamp the cards inside them
-instead of the sentences. These counts are asserted by `NextPageAssetContractTest`, so they move with
-the sheet rather than with whoever last read it.
+**Sixty-two rules resolve to `var(--fs-sentence)`**, of which forty-four also cap at `--measure`
+(540px, about 72 characters at this tier). The eighteen that do not are the ones a cap would clamp
+wrongly: rules carrying `overflow-wrap:anywhere`, layout boxes, fields and grid children rather than
+single lines, and `.next-cockpit-content` and `.next-cockpit-recovery>div`, the prose containers
+where 540px would clamp the cards inside them instead of the sentences.
 
-One member of the sixty-seven was exchanged for another on 2026-09-17, and all three counts above
+Those three figures are asserted by `NextPageAssetContractTest`, and that is the only reason they
+are written here at all. **Every hand-counted version of them has been wrong.** This paragraph said
+sixty-seven, forty-nine and eighteen until the count was run: that was a reading of a pre-squash
+DRC-4587 tree which raised thirteen rules the narrower change that merged did not, and it had been
+stale on `main` since the day it was written. The branch that added the assertion carried seventy,
+forty-seven and twenty-three, taken against that same superseded tree. Two independent counts, both
+confidently specific, both wrong, neither caught by review. A number in prose is a claim about an
+afternoon; the assertion is what makes it a claim about the sheet.
+
+One member of the sixty-two was exchanged for another on 2026-09-17, and all three counts above
 are unchanged because of that exchange rather than in spite of it: `.next-cockpit-authority>span`
 left the tier and `.next-cockpit-authority>small` joined it, both of them capped. The span prints
 `FO INSPECTING` and `FO CONTINUES`, which are state names a source published, so the rule above
@@ -183,11 +188,14 @@ now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `
 its place is the line saying whether the captain is needed: prose the board wrote, and the string
 a reader opening a project is actually looking for.
 
-**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Nineteen further sans
-rules pass the same test at 13px to 14.5px: seven on `--fs-sm`, three on `--fs-body`, two on
-`--fs-summary`, and seven literals (one 14.5px, three 13.5px, one 14px, two 13px). DRC-4596 records
-them as an exact inventory, so a rule leaving the sentence tier for a lower one reds the same way a
-new sub-floor rule does. Beyond them sit **two that no single-rule census can see**, because their
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-three further sans
+rules pass the same test between 12.5px and 14.5px: fourteen on `--fs-xs`, seven on `--fs-sm`,
+three on `--fs-body`, two on `--fs-summary`, and seven literals (one 14.5px, three 13.5px, one
+14px, two 13px). DRC-4596 records them as an exact inventory, so a rule leaving the sentence tier
+for a lower one reds the same way a new sub-floor rule does. The `--fs-xs` group is the largest and
+was the one missing from every earlier reading of this paragraph: the branch that wrote the
+inventory was working on a tree that had already raised those fourteen, and its other four figures
+were right. Beyond them sit **two that no single-rule census can see**, because their
 size, family and line-height are composed across three rules each. Those two are
 `.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a flip back to
 sans from a second and its line-height from a third, and `.next-cockpit-recovery small`, which takes
@@ -195,9 +203,9 @@ sans from a second and its line-height from a third, and `.next-cockpit-recovery
 this repository sees either**, and DRC-4596's must not be read as establishing a universal floor;
 only a computed style reaches them.
 
-They were left alone: raising them is another nineteen rules of review surface, and some of the
-nineteen are not sentences at all (a textarea and two prototype rules), so the set needs reading
-one selector at a time rather than a sweep.
+They were left alone: raising them is another thirty-three rules of review surface, and some of
+them are not sentences at all (a textarea and two prototype rules), so the set needs reading one
+selector at a time rather than a sweep.
 
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
