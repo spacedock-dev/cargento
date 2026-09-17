@@ -1408,6 +1408,27 @@ Four things this earned:
   entity said so. Ask the author which it was — a dependency to write down, or a misread of which
   rule wins — because only one of those is a defect.
 
+## A mutation that does not match the file's text is a no-op, and reads as SURVIVED
+
+A falsifier survived a set-equality assertion it should have killed. The oracle was fine: the `perl`
+substitution had not matched the file's actual line wrapping, so nothing was mutated and the test
+passed because nothing had changed.
+
+It was caught only because the survival was **too convenient to believe**. That is the part worth
+recording, because it does not generalise: a mutant whose survival looked *reasonable* would have
+been written down as "not detected by this oracle", and a working oracle would have been rewritten
+or reported as toothless.
+
+So the check is mechanical rather than a matter of judgement. **Before trusting a SURVIVED result,
+grep for the mutated string and assert the count changed.** Confirm the substitution applied, then
+read the verdict.
+
+This is the same family as a test that landed in a class without its fixtures and read green twice:
+in both, the thing under test was never reached, and the result says nothing about the oracle. A
+SURVIVED reported as a finding is a claim about an oracle, and if the mutation silently failed it is
+a defect report about code that has no defect — which will read convincingly, because a clean run
+with a plausible explanation always does.
+
 ## A mutation check that includes the byte-pin oracles measures nothing
 
 DRC-4592 mutation-checked four assertions and reported all four killed. Re-running with the byte-pin
