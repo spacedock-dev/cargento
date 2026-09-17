@@ -52,7 +52,7 @@ would defeat its purpose as a way to choose a session. The Scope rail now has a 
 1280px and above, with separate readable space for harness names and session titles; below 1280px
 it becomes a scope switcher. Missing terminal registration, evidence, history
 or delegation renders the reason for the missing reading. Source strings use mono; sentences the
-board says use sans at 12.5px or larger. Evidence and More remain named disclosures.
+board says use sans at 15px or larger. Evidence and More remain named disclosures.
 
 The terminal bridge, semantic history and model-assisted goal analysis remain prototypes.
 Human context and tripwires stay browser-local and deliver no instruction to an agent. Semantic
@@ -109,12 +109,105 @@ Assign one owner to each region during parallel work. Keep media queries at the 
 region; a shared responsive block would make every view edit the same tail. Moving a rule between
 regions is an ownership change, not incidental cleanup.
 
-Board sentences have a 12.5px floor (`--fs-xs`). Labels, identifiers, timestamps, rates and
-compact controls retain their smaller design sizes, down to 9px column headers. The prototype
-placed some absence explanations at 10px; those are sentences the board asks a person to read, so
-the sentence floor wins. The stylesheet retains scale tokens and literal sizes. The asset test
-pins the dark palette and checks text inks above 4.5:1 on the ground, panel and inset surfaces; it
-does not enforce all font sizes or spacing between contrast steps.
+Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels
+identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px. Four
+`:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
+and 9px was the smallest step in the file. **Counts here read "at or below 12px" inclusively**, so
+the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 10px,
+`--fs-meta-detail` 10.5px, `--fs-machine` 11px, `--fs-2xs` 11.5px and `--fs-breadcrumb` 12px. Three
+of the seven had no callers anywhere and were deleted: `--fs-column`, `--fs-meta` and
+`--fs-breadcrumb`. `--fs-meta-detail` had four callers and was folded into `--fs-label`; `--fs-2xs`
+has forty-one and stays. The issue said six because it omitted `--fs-2xs`.
+
+The floor left 12.5px on the strength of an APCA reading that put `--ink`, the brightest colour in
+the palette, below the body-text requirement there. **Those figures are audit-only: no APCA
+implementation, table or fixture exists in this repository, so they cannot be reproduced from the
+tree**, which is the same caveat the milestone carries. What the tree does say is that this was
+never a contrast defect: `--ink` on `--bg` recomputes to 16.36:1 and the asset test asserting more
+than 4.5:1 is green. DRC-4596 adds the guardrail that would close the gap, and lands after the
+change the figures justify. The absence explanations the prototype placed at 10px are sentences, so
+they take the sentence tier, and two of them had to leave an `<h2>`'s `<header>` to get there.
+**Raising an absence is not safe on its own.** An absence and the value it replaces are chosen by a
+ternary, so they never co-exist in one render: no sweep of co-existing selectors sees the pair, and
+neither does reading a populated board, because only one branch is ever on screen. Raise the
+absence without its value and the gap reads larger than the fact it stands in for. So only two
+absences are on the sentence tier here, the two named above, and each is safe for a reason that
+does not depend on finding every pair: "two axes, read separately" is drawn beside values already
+on that tier, and "No revision saved yet" shares one class with the revision line it alternates
+with, so both branches resolve identically whatever the tier is.
+`AnAbsenceNeverOutranksTheValueItReplacesTest` asserts exactly those two and nothing wider.
+**Every other absence keeps the size it had**, and DRC-4602 owns the audit that can raise them
+safely, because doing so needs a census of the emitters that this stylesheet cannot supply. The
+stylesheet
+retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
+above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
+between contrast steps.
+
+What counts as a sentence is a test, not a judgement call, so a reviewer argues with a list:
+**an element is on the sentence tier when its resolved style is sans with a prose line-height.**
+Resolved, not declared. Both properties come through the cascade, either may be inherited from an
+ancestor, and the two may arrive from different rules, so the element is the unit and a single rule
+is not. Mono is a string a source published, and a label resolves to no prose line-height at all.
+
+That distinction is the whole difficulty. **A census that reads one rule at a time will understate
+the set**, because it cannot see an element whose family, size and line-height are assembled from
+three rules, and it will report clean while such an element still renders below the floor on
+screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
+
+Sixty-five rules on the old `--fs-xs` step carry the whole declaration themselves, plus the two
+absence explanations above, and all sixty-seven resolve to `var(--fs-sentence)`. Forty-nine of them
+also cap at `--measure` (540px, about 72 characters at this tier). The eighteen that do not are
+the ones a cap would clamp wrongly: eight carry `overflow-wrap:anywhere`, eight are layout boxes
+rather than single lines, and
+`.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
+would clamp the cards inside them instead of the sentences.
+
+**The floor is not yet universal, and DRC-4602 owns both the audit and the remainder.** Sans text
+still resolves below 15px in two shapes. The first is a rule that declares a smaller size outright,
+on the `--fs-sm`, `--fs-body` and `--fs-summary` steps and on a handful of literals. The second is
+the composed kind the definition above warns about: `.next-operation-fact--unknown strong` takes
+its size and mono family from one rule, a flip back to sans from a second and its line-height from
+a third, and `.next-cockpit-recovery small` takes its size from its own rule and inherits sans and
+the line-height from the cell around it. Neither appears in a census that reads one rule at a time,
+and both render at 12.5px, below anything the first shape reaches.
+
+**The size of that set is not stated here**, because every figure this branch produced for it was
+produced by a per-rule census and is therefore a floor rather than a count. One of them was wrong
+for a second reason worth keeping: a `font:` shorthand pattern that matched the weight instead of
+the size read `font:13px/1.5` as no size at all and dropped two rules silently. A census that
+cannot fail loudly on a shorthand it does not understand will keep producing plausible totals.
+
+**Element counts carry the date and the commit they were taken at, or they do not belong here.**
+The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
+minutes later, at `3cc7ef49` and `4fb5ee6d` on 2026-09-17, both reported by the reviewer rather
+than measured here. The stylesheet was not identical across that pair, `4fb5ee6d` changed it by
+thirteen lines, but none of those lines matches `operation-fact`, so the rules resolving the shape
+that was counted were the same for both readings. The narrower claim is the true one. A bare number reads as a
+property of the code when it is a property of an afternoon. The stable unit is the rule, or the
+element shape, never its population.
+
+They were left alone rather than swept, and **how many there are is not stated here in any form**,
+including by comparison with the tier this branch did move. Every figure this branch produced was a
+per-rule floor, and a floor cannot be reported as a count in either direction: asserting a
+magnitude above the highest of them would be the same error pointing the confident way. What can be
+said is the shape. Some of the set is not sentences at all, a textarea and the prototype terminal
+among them, so it needs reading one element at a time. That is the work DRC-4602 carries, and the
+size is its to measure.
+
+Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
+eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
+because their content is not uppercase. `.next-cockpit-work-type` prints a fact type such as
+`gate_decision`, `.next-intent-key` a session key, and `.next-cockpit-scope strong` a scope name.
+
+**The uppercase label tier is not uniform, and this change did not make it so.** Six further rules
+print capitals on some other value: `.next-capacity-head span` (`WINDOW`, `USED`),
+`.next-capacity-models small` (`WITHIN THIS WEEKLY BUDGET`) and `.next-capacity-row small` (`USED`,
+`PACE`, `BUDGET ENDS`, `RESETS`) at `.06em`; the course and direction header badges
+(`EXACT DIRECTION`, `EXACT DECISION`) and `.next-scope-cue` (`PROJECT`, `SESSION`, `SCOPE UNKNOWN`)
+at `.07em`; and the recovery memo field labels (`OUTCOME`, `FOCUS`) at `.04em`. They survived
+because the issue inventoried four tracking values and the stylesheet had seven, so sweeping the
+four named groups never reached the other six declarations. Count the values in the tree, not in
+the issue.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is

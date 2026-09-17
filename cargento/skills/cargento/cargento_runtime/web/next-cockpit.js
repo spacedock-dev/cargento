@@ -2150,8 +2150,8 @@ function nextCockpitLanded(observed){
     `<span class="next-cockpit-landed-value${known ? "" : " next-cockpit-landed-value--absent"}">` +
     `${esc(text)}</span>` +
     (note ? `<span class="next-cockpit-landed-note">${esc(note)}</span>` : "") + '</div>';
-  return '<section class="next-cockpit-landed"><header><h2>HOW IT LANDED</h2>' +
-    '<span class="next-cockpit-landed-axes">two axes, read separately</span></header>' +
+  return '<section class="next-cockpit-landed"><header><h2>HOW IT LANDED</h2></header>' +
+    '<span class="next-cockpit-landed-axes">two axes, read separately</span>' +
     '<div class="next-cockpit-landed-cards">' +
     card("END EVIDENCE", landing.endText, landing.endKnown, "") +
     card("WHO CLAIMS IT FINISHED", landing.claimText, landing.claimKnown,
@@ -2408,8 +2408,8 @@ function nextCockpitHeldTo(group, observation){
      harness and the session id are what the store keys on, so they are what
      is shown. */
   return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
-    `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span>` +
-    `<span class="next-cockpit-held-revision">${esc(revision)}</span></header>` +
+    `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
+    `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +

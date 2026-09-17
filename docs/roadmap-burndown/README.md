@@ -17,6 +17,7 @@ stages:
     - name: triage
       gate: true
       model: opus
+      concurrency: 6
     - name: implementation
       worktree: true
       model: opus
@@ -223,6 +224,45 @@ the only stage whose product is a change to the roadmap records rather than to t
     clauses, each split as **offline** (a test, command, or on-disk state a fresh agent reproduces)
     or **interactive** (needs a human or a live drive). The split is declared here, at the gate, so
     a plan to build a harness that automates an interactive AC is visible before the harness exists.
+    **The heading is exactly `## Acceptance criteria`, and that is machine-read rather than
+    stylistic.** `status --read {slug} --ac-scan` matches that string literally: `## Acceptance`
+    and `## Acceptance criteria, with verification` both return `Error: no ## Acceptance criteria
+    section in this file`, which leaves the triage gate and every later review gate without their
+    structured acceptance read — and the error appears only when the FO runs the read, not when
+    the criteria are written. Measured 2026-09-17 on DRC-4587 and DRC-4588, which drew the heading
+    from the Linear issue's own `## Acceptance` section and each cost a repair round. The captured
+    original under `## Linear edits made` keeps whatever heading Linear holds: it is a verbatim
+    record, so it is exempt, and renaming it would falsify the restore point.
+    **Two further things must hold, and both fail silently.** The heading alone is not enough: a
+    correct heading over criteria the scanner cannot see returns `{"acs":[]}`, which reads as "this
+    entity has no acceptance criteria" rather than as an error. Worse, a criterion list where only
+    some items parse returns a partial scan that looks like a complete one.
+
+    1. **The id is hyphenated** — `AC-1`, never `AC1`.
+    2. **The bold label opens and closes on the same line.** A label whose bold run wraps before
+       its closing marker is skipped, so in a hard-wrapped file a long property silently drops its
+       own criterion.
+
+    Write the bullet form, which satisfies both by construction — the bold closes right after the
+    mark, so the property may wrap freely:
+
+    ```text
+    - **AC-1 — offline:** {end-state property, wraps freely}. **Verified by:** {command, test or
+      on-disk state, and what it returns today}. **Falsified by:** {the change that flips it}.
+    ```
+
+    Measured 2026-09-17 in an isolated throwaway workflow, one file per run: unhyphenated `AC4` is
+    skipped; a bold label wrapped across a newline is skipped; a bullet whose bold closes after the
+    mark parses however far the property wraps. The live cost was three repair rounds across
+    DRC-4587 and DRC-4588, two of them spent on first officer guesses — the heading, then a
+    supposedly-required bullet list — made before anything was measured. The partial-scan state was
+    found by the DRC-4587 ensign, whose paragraph rewrite resolved exactly one of seven criteria:
+    the only one short enough to close its bold on a single line. **Probe shapes in a throwaway
+    workflow, never in the state checkout**, which has concurrent writers.
+
+    Citations resolve from later stage reports that name `AC-N`, so criteria authored here are
+    expected to scan as unevidenced at this gate. That is correct, not a defect — `implementation`
+    and `review` supply the evidence, and the cross-check earns its keep at the review gate.
   - At least one acceptance criterion that is a property a user can see, with its own `Verified
     by:` clause. When the move is `none`, one sentence in the brief on why no user sees this
     change instead, and the gate is told so up front.
@@ -782,6 +822,44 @@ this workflow and override the defaults above wherever the two differ.
   produced, folding small fixes into a PR, dispatching the next stage the captain already directed —
   happens without a confirmation round. Ask only for choices that are hard to reverse or genuinely
   the captain's to make. "I want to get things done."
+
+### Given 2026-09-17, for the Clean and Cogent UI/UX milestone
+
+Two rulings, in the captain's own words, scoped to this milestone's burndown.
+
+- **Group the PRs by dependency tier, not one per issue.** All twelve issues in the milestone touch
+  `cargento_runtime/web/`, and exactly one in-flight PR may. The `burndown` skill already provides
+  for it — "the second issue rides that PR or waits for it" — so a tier lands as one branch carrying
+  several issues. **One-issue-per-branch above is suspended for this milestone only**, and the cost
+  it was buying is paid another way: the post-merge Linear reconcile still runs **once per issue**,
+  and the PR body carries one `Implements [DRC-####](url)` line per issue it closes. A tier is the
+  merge-risk unit; an issue remains the reconcile unit.
+- **Standing conn for this milestone: "I pre-approve all the triage and merge gates, just automate
+  this entire process and do it."** The first officer renders triage and review gate decisions
+  itself, recorded `agent:first-officer` with the grant quoted, and drives to terminal without
+  stopping. It still stops for anything only the captain may change: approved scope, accepted value,
+  thresholds, tolerance, or acceptance criteria — item 5 of `## Review-finding disposition` is not
+  delegated by this grant. The `pr-merge` merge hook's push approval is covered, because the grant
+  names the merge gates and says to do it; the draft is still presented before the push.
+
+### Given 2026-09-17, in the captain's own words, and they override the defaults above
+
+- **Take the recommended route; do not wait for a decision you have already made.** "If you have a
+  strong recommendation, I want you to take that recommended route. Do not wait for me unless you
+  absolutely need my input." A first officer that recommends one direction and then waits has not
+  saved the captain a decision, it has added one. Act, and report what was done and why. This
+  extends the "do not wait for yes, that's fine" directive from anything reversible to anything the
+  FO holds a clear view on — including acceptance-criterion judgments the FO would otherwise route
+  up under `## Review-finding disposition` item 5, **unless** the call genuinely turns on product
+  intent only the captain holds.
+- **When input IS genuinely needed, pull it out where it cannot be missed.** "It is EXTREMELY
+  difficult for me to see that you need me because you are burying the need for my attention within
+  a lot of prose and content that is not applicable to me." The ask goes at the TOP of the message
+  under its own heading, before any status, with the question, the recommendation, and what saying
+  yes does. Everything not waiting on the captain goes after it, or is left out.
+- **A filed follow-up is not a disposal route.** "Don't just let it dangle." A gap deferred out of
+  one PR is worked inside the same milestone, and the milestone is not complete while it is open.
+  Filing it records the gap; scheduling it is what closes it.
 
 ## Workflow State
 

@@ -10,6 +10,7 @@ from typing import Any
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
 
+from . import css_cascade
 from .next_harness import NextPageJsHarness, storage_prelude
 
 
@@ -5531,6 +5532,149 @@ console.log(JSON.stringify({
         self.assertTrue(out["tab"])
         self.assertEqual(0, out["inputs"])
         self.assertTrue(out["reason"])
+
+    def test_both_absence_explanations_read_as_sentences_not_header_labels(self) -> None:
+        """DRC-4587 AC-2. `docs/design-next-ui.md` already rules that an absence
+        explanation is a sentence and loses to the sentence floor; both of these
+        were drawn at 10px mono inside an `<h2>`'s own `<header>`, where no size
+        change alone can reach them.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + r"""
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const headers = [...html.matchAll(/<header>([\s\S]*?)<\/header>/g)].map(m => m[1]).join("|");
+console.log(JSON.stringify({
+  revisionInHeader: headers.includes("next-cockpit-held-revision"),
+  axesInHeader: headers.includes("next-cockpit-landed-axes"),
+  revisionPresent: html.includes('class="next-cockpit-held-revision"'),
+  axesPresent: html.includes('class="next-cockpit-landed-axes"'),
+}));
+"""
+        )
+
+        # Then: both still render, and neither is a child of a `<header>` any
+        # more, so each can carry the sentence tier without dragging its `<h2>`
+        # label with it.
+        assert isinstance(out, dict)
+        self.assertTrue(out["revisionPresent"])
+        self.assertTrue(out["axesPresent"])
+        self.assertFalse(out["revisionInHeader"])
+        self.assertFalse(out["axesInHeader"])
+
+        # And the register they are drawn in is the sentence one, not a label
+        # bumped to 15px while keeping mono -- the falsifier AC-2 names.
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        for cls in ("next-cockpit-held-revision", "next-cockpit-landed-axes"):
+            with self.subTest(rule=cls):
+                rule = next(line for line in styles.split("\n") if line.startswith("." + cls + "{"))
+                self.assertIn("var(--sans)", rule)
+                self.assertIn("var(--fs-sentence)", rule)
+                self.assertNotIn("var(--mono)", rule)
+
+
+def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, object]:
+    return {"tag": tag, "classes": set(classes), "attrs": set(attrs)}
+
+
+# `next-project.js:396` wraps the cockpit in `.next-cockpit-content`. Leaving it
+# out is not cosmetic: a rule qualified by it outranks one that is not, so a
+# fixture without it resolves a DOM the application never builds.
+_CONTENT = [_node("div", "next-cockpit-content")]
+
+
+class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
+    """DRC-4587. A stated absence must never render larger than the fact it
+    stands in for: "you can tell a label from its answer, a figure from a gap".
+
+    **This asserts only what the pull request claims.** It raises two absence
+    rules, both named by string in the issue's own criterion, and each is listed
+    below with the value it is drawn against. Enumerating them exhaustively is
+    the whole claim; the wider class of sub-floor absences is DRC-4602's, and
+    nothing here asserts anything about it.
+
+    Three earlier versions of this guard passed over the defect they were named
+    for, and the shape of each failure is why this one is written as it is. One
+    compared a value against its absence and could not see both move together.
+    One built a DOM the application never renders. One checked an absence's size
+    without its value, and so asserted an inversion as correct. **An absence is
+    only ever read beside the value it replaces.**
+    """
+
+    # (name, emitter, absence path, the value it is drawn against).
+    RAISED_ABSENCES = (
+        (
+            "two axes, read separately",
+            "next-cockpit.js nextCockpitLanded",
+            [
+                *_CONTENT,
+                _node("section", "next-cockpit-landed"),
+                _node("span", "next-cockpit-landed-axes"),
+            ],
+            [
+                *_CONTENT,
+                _node("section", "next-cockpit-landed"),
+                _node("div", "next-cockpit-landed-cards"),
+                _node("div", "next-cockpit-landed-card"),
+                _node("span", "next-cockpit-landed-value"),
+            ],
+        ),
+    )
+
+    css: str
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+        cls.cockpit_js = (web / "next-cockpit.js").read_text(encoding="utf-8")
+
+    cockpit_js: str
+
+    def size(self, path: list[dict[str, object]]) -> float:
+        resolved = css_cascade.resolve(path, self.tokens, self.rules)
+        self.assertIsNotNone(resolved, f"no size resolves for {path}")
+        assert resolved is not None
+        return resolved
+
+    def test_every_absence_this_change_raises_is_read_beside_its_value(self) -> None:
+        for name, emitter, absence_path, value_path in self.RAISED_ABSENCES:
+            with self.subTest(absence=name):
+                absence, value = self.size(absence_path), self.size(value_path)
+                self.assertGreaterEqual(
+                    value,
+                    absence,
+                    f'"{name}" ({emitter}): absence {absence}px against value {value}px, '
+                    "so the absence outranks the fact it replaces",
+                )
+
+    def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
+        """The other raised absence has no value to be read beside.
+
+        `nextCockpitHeldTo` fills one span from a chain: a discard stamp, then a
+        revision line, then "No revision saved yet". Value and absence are the
+        same element with the same class, so they resolve identically whatever
+        the tier is. That is a stronger guarantee than a comparison, and it
+        holds only while the chain stays in one assignment, which is what this
+        asserts.
+        """
+        chain = (
+            "nextAnnotationDiscardStamp(annotation) ||\n"
+            '    nextProjectRevisionLine(annotation) || "No revision saved yet"'
+        )
+        self.assertIn(chain, self.cockpit_js)
+        emitted = re.findall(r'class="next-cockpit-held-revision"', self.cockpit_js)
+        self.assertEqual(
+            1,
+            len(emitted),
+            "the revision slot is emitted more than once, so the chain may have split",
+        )
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
