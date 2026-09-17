@@ -1476,6 +1476,29 @@ And check for durable output before re-dispatching: of four triages killed mid-f
 committed 25KB of work to its entity and another had committed nothing. A replacement told to start
 over discards the first; a replacement told to read the tree first does not.
 
+## The launcher's help cannot tell you whether a subcommand exists
+
+`spacedock state commit <slug> --workflow-dir <dir>` works, and has been run dozens of times here.
+`spacedock state --help` lists only `init`. An ensign checked the help, correctly concluded the
+command was not there, and hand-rolled the path-scoped `git add`/`git commit` substitute instead.
+
+Probing further makes it worse rather than better. `state commit --help` does not error: it falls
+through and prints the **top-level** help at exit 0. So does `state --help`. So does
+`state notarealsubcommand --help`. A real-but-undocumented subcommand and an invented one produce
+byte-identical output and the same exit code, so the help cannot distinguish them **in either
+direction** — an agent that does the right thing and reads it gets a confident, well-formed answer
+that is wrong.
+
+Two consequences for a dispatch:
+
+- **Name the launcher commands a stage needs, and say they are verified.** A worker that meets an
+  undocumented one will otherwise either hand-roll a substitute, which is fine, or skip the step,
+  which is not.
+- **Do not ask a worker to probe an unknown state subcommand to find out.** The state checkout is one
+  shared index with sibling writers mid-flight, and a command whose staging behaviour is unknown is
+  how somebody else's staged entity gets swept into your commit. The ensign here declined to probe
+  for exactly that reason and was right to.
+
 ## Workflow State
 
 View the workflow overview:
