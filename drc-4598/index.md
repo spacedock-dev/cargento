@@ -1,7 +1,7 @@
 ---
 id:
 title: "Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its"
 started: 2026-09-17T11:07:58Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4598](https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its) — Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab
