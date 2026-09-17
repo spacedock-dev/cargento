@@ -163,24 +163,27 @@ the set**, because it cannot see an element whose family, size and line-height a
 three rules, and it will report clean while such an element still renders below the floor on
 screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
 
-**Sixty-two rules resolve to `var(--fs-sentence)`**, of which forty-four also cap at `--measure`
-(540px, about 72 characters at this tier). The eighteen that do not are the ones a cap would clamp
-wrongly: rules carrying `overflow-wrap:anywhere`, layout boxes, fields and grid children rather than
-single lines, and `.next-cockpit-content` and `.next-cockpit-recovery>div`, the prose containers
-where 540px would clamp the cards inside them instead of the sentences.
+**Sixty-one rules resolve to `var(--fs-sentence)`**, across sixty distinct selectors, and
+`NextPageAssetContractTest` holds that as a set and not only as a count. The set is what matters:
+a count passes a swap where one rule leaves the tier and another joins it at 15px, and this
+milestone shipped exactly that swap when the authority chip left the tier and the captain line
+joined it. Some of those rules also cap at `--measure` (540px, about 72 characters at this tier).
+The ones that do not are those a cap would clamp wrongly: rules carrying `overflow-wrap:anywhere`,
+layout boxes, fields and grid children rather than single lines, and `.next-cockpit-content` and
+`.next-cockpit-recovery>div`, the prose containers where 540px would clamp the cards inside them
+instead of the sentences. How many fall each side of that line is **not** stated here, because
+nothing asserts it.
 
-Those three figures are asserted by `NextPageAssetContractTest`, and that is the only reason they
-are written here at all. **Every hand-counted version of them has been wrong.** This paragraph said
-sixty-seven, forty-nine and eighteen until the count was run: that was a reading of a pre-squash
-DRC-4587 tree which raised thirteen rules the narrower change that merged did not, and it had been
-stale on `main` since the day it was written. The branch that added the assertion carried seventy,
-forty-seven and twenty-three, taken against that same superseded tree. Two independent counts, both
-confidently specific, both wrong, neither caught by review. A number in prose is a claim about an
-afternoon; the assertion is what makes it a claim about the sheet.
+That figure is written down only because a test holds it, and the rule is worth stating plainly:
+**every hand-counted version of it has been wrong.** This paragraph said sixty-seven until the
+count was run, a reading of a pre-squash DRC-4587 tree that raised thirteen rules the narrower
+change that merged did not, stale on `main` from the day it was written. The branch that added the
+assertion carried seventy, from the same superseded tree, plus a capped/uncapped split that no test
+held at all. Two independent counts, both confidently specific, both wrong, neither caught by
+review. A number in prose is a claim about an afternoon.
 
-One member of the sixty-two was exchanged for another on 2026-09-17, and all three counts above
-are unchanged because of that exchange rather than in spite of it: `.next-cockpit-authority>span`
-left the tier and `.next-cockpit-authority>small` joined it, both of them capped. The span prints
+That exchange was `.next-cockpit-authority>span` leaving the tier and
+`.next-cockpit-authority>small` joining it. The span prints
 `FO INSPECTING` and `FO CONTINUES`, which are state names a source published, so the rule above
 always excluded it. The sweep that raised the tier admitted it anyway, and full ink on top of
 15px made the loudest string on the page the one piece of vocabulary the page never defines. It is
@@ -188,14 +191,11 @@ now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `
 its place is the line saying whether the captain is needed: prose the board wrote, and the string
 a reader opening a project is actually looking for.
 
-**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-three further sans
-rules pass the same test between 12.5px and 14.5px: fourteen on `--fs-xs`, seven on `--fs-sm`,
-three on `--fs-body`, two on `--fs-summary`, and seven literals (one 14.5px, three 13.5px, one
-14px, two 13px). DRC-4596 records them as an exact inventory, so a rule leaving the sentence tier
-for a lower one reds the same way a new sub-floor rule does. The `--fs-xs` group is the largest and
-was the one missing from every earlier reading of this paragraph: the branch that wrote the
-inventory was working on a tree that had already raised those fourteen, and its other four figures
-were right. Beyond them sit **two that no single-rule census can see**, because their
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-four rules *that
+this census can see* resolve between 12.5px and 14.5px, and DRC-4596 records them as an exact set,
+so a rule leaving the sentence tier for a lower one reds the same way a new sub-floor rule does.
+That scope matters: it is a count of what a per-rule reading reaches, not a count of the sub-floor
+sentences on the page. Beyond them sit **two that no single-rule census can see**, because their
 size, family and line-height are composed across three rules each. Those two are
 `.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a flip back to
 sans from a second and its line-height from a third, and `.next-cockpit-recovery small`, which takes
@@ -203,9 +203,16 @@ sans from a second and its line-height from a third, and `.next-cockpit-recovery
 this repository sees either**, and DRC-4596's must not be read as establishing a universal floor;
 only a computed style reaches them.
 
-They were left alone: raising them is another thirty-three rules of review surface, and some of
+They were left alone: raising them is another thirty-four rules of review surface, and some of
 them are not sentences at all (a textarea and two prototype rules), so the set needs reading one
 selector at a time rather than a sweep.
+
+**How many sub-floor sentences the page actually has is not stated here, in any form**, including
+by comparison with the tier this milestone did move. The set above is bounded by the instrument,
+not by the page: a sentence whose family, size and line-height are assembled across three rules is
+invisible to it, two such sentences are named above, and nothing offline reaches either. A figure
+that counts what the tool can see, reported as though it counted what exists, is the same error as
+a stale number and reads more convincingly.
 
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
@@ -237,6 +244,20 @@ label and its own answer were drawn in the same colour, and because twenty-one c
 label rules each spelled `var(--ink3)` in their own declaration block, so moving the label tier
 meant editing twenty-one rules by hand and hoping none of them was a value.
 
+A register makes a repoint safe and a removal dangerous, and the two look alike in a diff. Swapping
+`var(--ink3)` for `var(--ink-label)` inside a rule changes nothing about which rule wins, because
+the selector and its specificity are untouched. Deleting a colour declaration does change it:
+whatever was second in line now paints. That happened twice here, on two different trees, from one
+criterion drafted as a count. On the branch that introduced the registers, dropping
+`color:var(--ink3)` from `.next-cockpit-scope-tree small[data-next-withheld]` at (0,2,1) left the
+bare `[data-next-withheld]` rule at (0,1,0) outranked by `.next-cockpit-scope-tree small` at
+(0,1,1). On the merged tree that competitor is gone, and a different one took its place: the rail
+card's own `.next-cockpit-scope-title` declares `color:var(--ink)` at (0,1,0) and sits later in the
+sheet, so it beats the bare rule on source order alone. Both times the rule count was correct and
+the rendered colour was not, and both times the absence rendered in an ink reserved for values.
+Before removing a colour anywhere in this sheet, resolve the element through the cascade with real
+specificity and read the hex, rather than counting the rules that mention it.
+
 The palette has three inks and the roles need four, so `--ink-label` and `--ink-absence` both
 resolve to `--ink3`. That is a ruling, not an accident. `--ink3` on panel is 5.67:1, just above the
 floor the asset test asserts, so labels cannot go dimmer, and brightening them makes them compete
@@ -253,10 +274,16 @@ apart by a left rule: dim and solid, bright and solid, dotted. All three survive
 colour alone would not.
 
 The pair to watch when editing any of this is a value and the absence that replaces it. They are
-chosen by a ternary, so they never co-exist in one render and no single rule holds both sides; a
-selector sweep and a live board both miss it. Resolve both branches through the cascade and compare
-them, which is what `AnAbsenceNeverOutranksTheValueItReplacesTest` and
-`AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` do.
+chosen by a ternary, so they never co-exist in one render and no single rule holds both sides,
+which is why a selector sweep and a live board both miss it. Where the two are separate selectors,
+resolve both through the cascade and compare them:
+`AnAbsenceNeverOutranksTheValueItReplacesTest` does that for the absences raised to the sentence
+tier, and `AnAbsenceNeverRendersLargerThanItsValueTest` compares the declared sizes of the pairs
+that are not raised. Where the two are one selector and an attribute, as in COUNTS, that comparison
+is not available at all, and the test instead requires the absent variant to declare no size of its
+own so it inherits the value's. `AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` holds
+that form, and the delegation pair besides, because a stamp that adds no size still says nothing
+about the base rule it sits on.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is

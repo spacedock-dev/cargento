@@ -6358,6 +6358,55 @@ class AnAbsenceNeverRendersLargerThanItsValueTest(unittest.TestCase):
                 self.assertLessEqual(self.size(absence), self.size(value))
 
 
+class TheCaptainNeededInkStepSurvivesTest(unittest.TestCase):
+    """DRC-4589 trap 1, which nothing else in this suite catches.
+
+    `.next-cockpit-authority>span` takes its colour from the per-state rules,
+    which are the same (0,1,1) specificity and sit earlier in the sheet, so the
+    state that needs the captain reads brighter than the two that do not. The
+    override block further down sets that selector's font and letter-spacing
+    and deliberately sets NO colour: a colour tidied into it would win on source
+    order and silently retire the whole step, leaving every state one ink.
+
+    Resolved through the cascade rather than read off the block, because the
+    defect is precisely that the block a reader would check looks fine.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+
+    def ink(self, state: str) -> str:
+        path = [_node("div", "next-cockpit-authority", state), _node("span")]
+        winning = []
+        for selector, body, order in self.rules:
+            try:
+                specificity = css_cascade.matches(path, selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            if specificity is None:
+                continue
+            declared = re.search(r"(?:^|;)\s*color:\s*([^;]+)", body)
+            if declared:
+                winning.append((specificity, order, declared.group(1).strip()))
+        self.assertNotEqual([], winning, f"no rule colours the {state} chip")
+        winning.sort()
+        return winning[-1][2]
+
+    def test_the_state_that_needs_the_captain_does_not_share_its_ink(self) -> None:
+        needed = self.ink("next-cockpit-authority--captain-needed")
+        for quiet in (
+            "next-cockpit-authority--fo-inspecting",
+            "next-cockpit-authority--fo-continues",
+        ):
+            with self.subTest(state=quiet):
+                self.assertNotEqual(needed, self.ink(quiet))
+
+
 class WithheldTitleKeepsTheAbsenceInkTest(unittest.TestCase):
     """A withheld session title must not resolve to the ink a published one gets.
 
@@ -9747,6 +9796,37 @@ class AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest(unittest.TestCase)
                 )
                 # And it does change something, or the stamp is decorative.
                 self.assertIn("font-family", body)
+
+    def test_the_withheld_figure_is_smaller_than_the_figure_it_replaces(self) -> None:
+        """The other half of AC-2, and the half the stamp assertions cannot see.
+
+        Everything above proves the STAMP adds no size. None of it constrains
+        the base rule the stamp sits on, so a `.next-delegation-withheld strong`
+        raised above `.next-delegation-figure>strong` passes every assertion in
+        this class while rendering an absence larger than the figure it stands
+        in for. Measured: at 40px against the figure's 32px the class above is
+        still green.
+
+        It lives here rather than with the raised absences, which are scoped to
+        the two DRC-4587 lifted to the sentence tier. This pair is not one of
+        them -- the withheld caption is still `--fs-xs` -- so widening that
+        class to reach it would contradict its own stated bound.
+        """
+
+        def literal_px(head: str) -> float:
+            found = re.findall(r"font:(?:\d+ )?([0-9.]+)px", self.block_for(head))
+            self.assertTrue(found, f"{head} declares no literal size")
+            return float(found[-1])
+
+        figure = literal_px(".next-delegation-figure>strong")
+        withheld = literal_px(".next-delegation-withheld strong")
+
+        self.assertLessEqual(
+            withheld,
+            figure,
+            f"withheld {withheld}px against figure {figure}px: "
+            "the absence outranks the fact it replaces",
+        )
 
     def test_the_dash_is_a_mark_and_never_a_size_or_a_tone_step(self) -> None:
         """The shared `::before`. A dash drawn brighter than the string it

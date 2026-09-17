@@ -602,6 +602,72 @@ class NextPageAssetContractTest(unittest.TestCase):
     tree; `.next-guardrail-add` left the set when DRC-4590 gave it `.next-action`.
     """
 
+    SENTENCE_TIER_RULES: ClassVar[set[str]] = {
+        # Every rule this census resolves at or above the floor. A set rather
+        # than a count, so one rule leaving the tier while another joins cannot
+        # pass unnoticed.
+        ".next-action",
+        ".next-activity-question",
+        ".next-attention-caveats p",
+        ".next-attention-heading p,.next-attention-section-heading p",
+        ".next-attention-open p",
+        ".next-attention-risk-assignment",
+        ".next-attention-risk-detail",
+        ".next-capacity-prospect small",
+        ".next-cockpit-authority>small",
+        ".next-cockpit-conflict-cue",
+        ".next-cockpit-conflict-open",
+        ".next-cockpit-conflict-why,.next-cockpit-conflict-settled",
+        ".next-cockpit-content",
+        ".next-cockpit-content .next-course-evidence",
+        ".next-cockpit-count-label",
+        ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
+        ".next-cockpit-define",
+        ".next-cockpit-departures-kept",
+        ".next-cockpit-held-lede",
+        ".next-cockpit-held-reentry",
+        ".next-cockpit-held-reentry-text",
+        ".next-cockpit-held-revision",
+        ".next-cockpit-landed-note",
+        ".next-cockpit-landed-value",
+        ".next-cockpit-lede",
+        ".next-cockpit-reading-limit",
+        ".next-cockpit-reading-why",
+        ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
+        ".next-cockpit-recovery>div",
+        ".next-cockpit-scope-switcher>summary",
+        ".next-cockpit-why>summary",
+        ".next-cockpit-work-mix",
+        ".next-delegation-caption",
+        ".next-guardrail-copy strong,.next-guardrail-copy small",
+        ".next-intent-note",
+        ".next-intent-revision,.next-intent-why",
+        ".next-operation-assignment",
+        ".next-operation-collision",
+        ".next-operation-group>header p",
+        ".next-operation-outcome",
+        ".next-operations-fleet small",
+        ".next-project-collision,.next-project-detail-collision",
+        ".next-project-ending-outcome",
+        ".next-rail-question",
+        ".next-rail-wait-heading a",
+        ".next-session-delivery-count",
+        ".next-session-delivery-lane",
+        ".next-session-delivery-note",
+        ".next-session-delivery-why",
+        ".next-session-departure-next",
+        ".next-session-departures-count",
+        ".next-session-departures-why",
+        ".next-session-held-link",
+        ".next-session-source-coverage p",
+        ".next-stalled",
+        ".next-steer input,.next-guardrail-add-input input",
+        ".next-steer-caveat",
+        ".pc-entry-details",
+        ".pc-history-band>summary,.pc-trail-history>summary,.pc-entry-suppressed>summary,.pc-event-evidence>summary",
+        ".pc-terminal-screen",
+    }
+
     SUB_SENTENCE_FLOOR_INVENTORY: ClassVar[set[tuple[float, str]]] = {
         (12.5, ".next-cockpit-content .next-cockpit-evidence-missing"),
         (12.5, ".next-cockpit-empty,.next-cockpit-evidence-missing"),
@@ -619,6 +685,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         (12.5, ".next-project-detail-rail .next-rail-reason"),
         (12.5, ".next-project-goal-gap"),
         (12.5, ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
+        (12.5, ".pc-substrate-steps"),
         (12.5, ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
         (13.0, ".next-attention-part"),
         (13.0, ".next-attention-risk-observation p"),
@@ -691,7 +758,15 @@ class NextPageAssetContractTest(unittest.TestCase):
         # Recomputed on the merged tree. The branch this came from read 70 against
         # a pre-squash DRC-4587 tree that raised thirteen rules the narrower #361
         # did not; main resolves 55 and the four branches here add seven.
-        self.assertEqual(62, len(above))
+        # A SET, not a length. Measured by DRC-4595 with three mutants: a rule
+        # leaving the tier for a lower one reds both this and the inventory, and
+        # a rule leaving the tier entirely reds this one. But one rule leaving
+        # while another joins at 15px passes a length check, and this
+        # integration is exactly that swap -- DRC-4589 moved
+        # `.next-cockpit-authority>span` off the tier and `>small` on to it, so
+        # the oracle would have been green on the change that defeats it.
+        self.assertEqual(61, len(above))
+        self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
         )
@@ -1029,6 +1104,23 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("white-space:nowrap", title_body)
         self.assertIn("font:var(--fs-2xs) var(--mono)", meta_body)
         self.assertIn("color:var(--ink3)", meta_body)
+        # Resolved, not just named. The two assertions above pin which TOKEN
+        # each half uses; they cannot see a `:root` that redefines one of those
+        # tokens so the caption outgrows the value it sits under. Measured by
+        # DRC-4592: a `--fs-2xs` raised above `--fs-sm` passes every other check
+        # in this file. This is the numeric half of the pair that
+        # `AnAbsenceNeverOutranksTheValueItReplacesTest` used to carry before
+        # that class narrowed to sentence-tier absences, which the rail card is
+        # not.
+        tokens = {
+            name: float(value)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", styles)
+        }
+        self.assertGreaterEqual(
+            tokens["fs-sm"],
+            tokens["fs-2xs"],
+            "the rail card's meta outgrew the title it captions",
+        )
         self.assertNotIn(
             ".next-cockpit-scope-tree span,", styles, "a bare span reset would unclip the title"
         )
@@ -1183,16 +1275,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(120_747, len(styles))
+        self.assertEqual(120_737, len(styles))
         self.assertEqual(
-            "787c0a30fe5859a450e2e6ebb6825acc0f7fe61c7774d21c0a6281f07c38d2dc",
+            "bb77b6a1c9a3f17c7edd6a91efe2c06c12dcf00d9a1d8793fb350f12d2f70f4c",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(953_271, len(assembled))
+        self.assertEqual(953_261, len(assembled))
         self.assertEqual(
-            "d8ff9423ff1c258fa60b5bb7b1badd1a638a846aa6f19b9a4b6593d1ba9cd4e6",
+            "74d2c75defa925a383b9b82920f60bacb6d032eeb95a7ffa8a715e05cebd1086",
             hashlib.sha256(assembled).hexdigest(),
         )
 
