@@ -6321,6 +6321,18 @@ class AnAbsenceNeverRendersLargerThanItsValueTest(unittest.TestCase):
     written to state: each absence restates its value's size in its own rule so
     the two cannot drift apart. A pair that stops declaring a size belongs in
     the cascade test above, not here, and the `NO RULE` failure says so.
+
+    One pair that belongs here by type is deliberately NOT here. DELEGATION's
+    figure against the withheld string that replaces it -- 32px against 16px,
+    both literal, both separate selectors, neither raised -- lives in
+    `AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` instead. It is
+    kept beside that class's stamp assertions because it exists precisely to
+    show they are not sufficient: the stamp constrains only the absent VARIANT
+    and says nothing about the base rule it sits on, so the absence can be
+    raised to any size at all and every stamp assertion stays green. Measured
+    at 40px against the 32px figure. Filing it here by type would put it where
+    a reader looking for it would find it, and take it away from the reader
+    about to make the mistake.
     """
 
     PAIRS = (
