@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4590:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4590 rewrite and milestone correction for writing to Linear, and the eight acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4590:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ed0883b7340cbb9fcfb6e8a064bb89a6a80b6bba/drc-4590.md",
+      "rev": "sha256:05b36705f07eee44fe8606bfc7d6b09fb9694f365c0563da7576902c9289794a",
+      "mediaType": "text/markdown",
+      "summary": "Four scope changes, each measured on the post-4587 tree. The primary-per-tab criterion is a feature request rather than a restyle: a primary action reaches one tab of five, and Course and Decisions emit no button at all, so it is ruled out of scope and filed separately. The no-own-radius criterion is unsatisfiable as written against 24 resting control rules over six corner treatments, so it is enumerated and accepted on its verifier on the precedent DRC-4602 set. The clear-to-drop-draft rename is dropped rather than reversing DRC-4561's shipped ruling. Two compelled test dependencies were found by reading the tests rather than the diff and are declared up front."
+    }
+  ]
+}
