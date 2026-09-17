@@ -783,6 +783,25 @@ this workflow and override the defaults above wherever the two differ.
   happens without a confirmation round. Ask only for choices that are hard to reverse or genuinely
   the captain's to make. "I want to get things done."
 
+### Given 2026-09-17, for the Clean and Cogent UI/UX milestone
+
+Two rulings, in the captain's own words, scoped to this milestone's burndown.
+
+- **Group the PRs by dependency tier, not one per issue.** All twelve issues in the milestone touch
+  `cargento_runtime/web/`, and exactly one in-flight PR may. The `burndown` skill already provides
+  for it — "the second issue rides that PR or waits for it" — so a tier lands as one branch carrying
+  several issues. **One-issue-per-branch above is suspended for this milestone only**, and the cost
+  it was buying is paid another way: the post-merge Linear reconcile still runs **once per issue**,
+  and the PR body carries one `Implements [DRC-####](url)` line per issue it closes. A tier is the
+  merge-risk unit; an issue remains the reconcile unit.
+- **Standing conn for this milestone: "I pre-approve all the triage and merge gates, just automate
+  this entire process and do it."** The first officer renders triage and review gate decisions
+  itself, recorded `agent:first-officer` with the grant quoted, and drives to terminal without
+  stopping. It still stops for anything only the captain may change: approved scope, accepted value,
+  thresholds, tolerance, or acceptance criteria — item 5 of `## Review-finding disposition` is not
+  delegated by this grant. The `pr-merge` merge hook's push approval is covered, because the grant
+  names the merge gates and says to do it; the draft is still presented before the push.
+
 ## Workflow State
 
 View the workflow overview:
