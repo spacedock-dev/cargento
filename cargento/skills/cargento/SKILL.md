@@ -54,7 +54,11 @@ made in another tab. The annotation store keeps at most 256 records and sixteen 
 discard records are evicted before retained words, then oldest first. These limits do not apply
 to board-only rows. A present session without a project says so and offers no project link.
 Each project opens its cockpit:
-a left **Scope** rail selects the project or one exact session, while a persistent briefing shows
+a left **Scope** rail selects the project or one exact session. Each row leads with the session
+title, with its harness, state and age as a caption beneath; a row whose title was never published says
+so in place of the title rather than falling back to an id. Where two sessions of one harness would
+otherwise render identically, the row carries the session key so you are not picking blind. A
+persistent briefing shows
 **ASSIGNMENT / EXECUTION / COMMAND**, latest evidence, and direction. Assignment retains the
 stated goal, its source, and the reason when no goal is available. Command keeps a project session
 waiting on you visible above the tabs, with raise and copy-resume controls where supported.
@@ -62,13 +66,25 @@ waiting on you visible above the tabs, with raise and copy-resume controls where
 **Now** pairs current activity with observed session endings, their outcome glyphs and git readings,
 plus workflow evidence. **Course** holds observed state changes, semantic history, and completed
 tasks. **Decisions** shows recorded decisions and their application state; it does not approve
-them. **Console** holds Delegation, Waiting on you, Capacity, and Tripwires, followed by the
-selected session's optional read-only terminal in the same panel. **Held to** appears only with a
+them. **Console** leads with the operations rail, Delegation, Waiting on you, Capacity and
+Tripwires, and keeps how the server was started in one disclosure beneath it, holding the selected
+session's optional read-only terminal, the observer-model controls and the status line. The summary
+names the state of both capabilities. A capability that is on renders expanded and outside the
+disclosure, so nothing you can act on is behind a click. **Held to** appears only with a
 session selected and holds the goal and expected output you typed for it, the observed entries
 naming it, any direction you gave after you saved those words, the reading block, and how the
 session landed as two cards that do not imply each other. The control that asks for a reading is always on the tab; when it cannot fire it stays put, refuses the press and names the reason beside itself.
 Browser-local
 human context and old tripwire notes do not instruct an agent and remain inert.
+
+Each tab names its own panel in a line beneath the strip, because three of the five open onto a
+heading that does not repeat the label. Course, Decisions and Held to also carry a cue on the tab
+itself: the number of observed state changes, decisions, or departures raised. A cue reads `…` while
+the record is still loading and `·` where nothing published the figure, and those two are never the
+same claim as a zero. Every cue is spelled out for a screen reader beside its mark.
+
+The composer for a note to yourself sits in the project header, above the tabs, rather than inside
+Tripwires. It is the same control wherever you reach it, and it still writes nothing into a session.
 
 Workflow stage conditions are separate typed controls in Course and Projects. Save one declared
 stage per exact workflow; the first current entity observed entering it trips the condition once.
@@ -80,7 +96,9 @@ writes into an agent. Notification outcomes report service acceptance or failure
 person saw a banner.
 
 The state-change timeline and delegation figure use the server's local session history, survive a
-restart or fresh tab, and caption the window actually observed. The cockpit's semantic history is
+restart or fresh tab, and caption the window actually observed. The timeline carries its own filter
+again: active, all, or decisions. The choice is remembered per session in this browser, so picking
+one on a session does not pick it for the next. The cockpit's semantic history is
 a separate prototype store; `--forget` does not delete it. The terminal is also a prototype: it
 requires both interaction flags and registration from inside the selected session's tmux pane,
 and accepts no input. Its xterm assets are vendored and served from loopback.
