@@ -1,7 +1,7 @@
 ---
 id:
 title: "Reorder Held to so its purpose and its inputs come before the caveats"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats"
 started: 2026-09-17T10:47:44Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4594](https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats) — Reorder Held to so its purpose and its inputs come before the caveats
