@@ -841,3 +841,38 @@ that ink — a label carries uppercase, tracking and mono; an absence is a sans 
 case separate them — and a caption is also a sans sentence at that ink, so the argument that covers
 absence does not obviously extend to it. One sentence in `design-next-ui.md` closes it. The register
 indirection exists precisely so a doubling-up can be re-read from the doc, and this one cannot be.
+
+### Re-confirmed at `ddd422bf`, 2026-09-18 — GO on the conditions; CI not yet green
+
+Rerun, not re-derived. Head taken immediately before writing this.
+
+**Pins re-derived rather than carried, and they had moved:** assembled **965_309** / `e79d000c…`
+(was 964_336 / `387e71e0…` at `26223372`), agreeing in `test_next_page`, `test_next_flag` and
+`test_focus`. `project.js` 111_842. `test_next_cockpit` green at **330** tests, load 6.05.
+
+**All six conditions still hold.** The classifier mutant
+(`entry.data ? "ready" : "pending"`) is **killed** by the same four tests, proved at all three
+layers — source 0→1, part file 0→1, `load_page()` 0→1, assembled digest `e79d000c` → `0f9a538d`.
+My independent state table reproduces the classifications and both surfaces unchanged from
+`26223372`.
+
+**The class survived the +218-line edit intact.** All five absolute tuples are present, the
+`assertEqual(5, len({row["classified"] ...}))` guard is at its place, and the `assertNotEqual`
+separability check that DRC-4613 will need is still there. The one `assertEqual(5, len(out))` the
+diff removes is **not** from this class.
+
+**That removal is a strengthening, and I checked it rather than assuming.** It belonged to the
+citation criterion, which rendered five named tabs and swept their HTML. It is replaced by a walk
+over every `*.js` in the bundle, and the vacuity guard is carried across in the right form —
+`assertGreater(len(scripts), 15, "the bundle walk found almost no scripts")`, because a walk that
+reaches nothing passes an empty loop in silence. Falsified both ways: a planted `docs/` href and a
+planted `DEC-17` token in `next-render.js` each red it. `next-render.js` is a file the five-tab
+sweep had no reason to reach, which is the point — the docstring records that the criterion's own
+falsifier had already failed to fire on the Console surface this PR introduced. Enumerated verifier
+replaced by a derived one, which is the right direction.
+
+**CI is NOT green on this head.** Ten checks pass, `Tests (windows-latest)` is IN_PROGRESS and
+`quality-gate` has not reported; `mergeStateStatus` is **BLOCKED**. The conditions verdict is GO;
+the merge gate needs those two to land. Stated separately on purpose — the stage definition asks for
+CI green on the *current* head, and a verdict written against an incomplete run is the stale-green
+failure one step early.
