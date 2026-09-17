@@ -626,3 +626,19 @@ Non-blocking, reported per instruction: AC-1's hoist mutation (revision stamp an
 ### Summary
 
 Nine of ten criteria reproduce with their falsifiers reding, and AC-4's derived positional sweep — bijection with declared referents, direction read per sentence, non-vacuity asserted both ways — is the strongest instrument on either issue: it found three sentences a by-hand pass had missed. What blocks is one arm. AC-5 promises six branch combinations and exercises the one without a disclosure, and I confirmed on a live board that the unexercised branch is the one a real reader gets. Four criteria carry universal wording over narrower verifiers and all four are listed above whether or not they block.
+
+### Addendum — no-op check on the AC-5 mutant
+
+**The AC-5 survival was re-checked for the no-op failure the integrator hit, and it survives it.** Asserting the replacement anchor was present proves the edit ran, not that it reached the render, so the mutant was re-verified on disk *and* A/B'd against the baseline on a rendered board.
+
+- On disk: the replacement anchor occurred exactly once before the edit, and `grep -c 'raise.whyLabel ? action : ""'` is 1 after it.
+- Rendered, on a **focus-capable** board — using `CockpitHeldReEntryTest.FOCUS_ON`, the suite's own prelude, with `focusable = true` — offsets inside `.next-cockpit-held-reentry`:
+
+| tree | disclosure at | anchor at | anchor before disclosure |
+|---|---|---|---|
+| 2fa5a2f4 | 710 | **122** | yes |
+| mutant | **542** | 913 | **no** |
+
+So the mutation is not a no-op, the render it produces is the inverted one AC-5 exists to forbid, and all 3639 behavioural tests still pass. The survival is caused by the verifier's fixture rendering only the capability-off arm, which is the finding — not by the mutation failing to land.
+
+One thing that makes the fix cheaper than the report above implies: **the focus-capable fixture already exists in the same file.** `CockpitHeldReEntryTest.FOCUS_ON` (`tests/test_next_cockpit.py:7681-7685`) sets the `meta[name="cargento-focus"]` stub the capability is read through, with its own comment noting that a test setting a payload field "measures nothing". Reusing it in `HeldToOrderingTest` is the whole of the change. The verdict above is unchanged.
