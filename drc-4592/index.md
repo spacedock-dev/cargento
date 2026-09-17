@@ -521,3 +521,113 @@ and renders at the browser's default size, which the new lede directly above it 
 **DRC-4609**: the legacy project view's `projectAction` collapses any graph-mode argument that is
 not `"all"` to `"active"`, so that view's own `Decisions` button is unreachable. Both pre-existing;
 neither is a regression this change created.
+
+## Stage Report: review
+
+Reviewed `spacedock-ensign/ui-integration` @ **2fa5a2f4** (PR #364), frozen. 12 checks pass on that
+exact head, `mergeStateStatus` CLEAN. This report covers the whole group; the per-issue verdicts sit
+on each entity.
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort".
+  **Two lenses plus an arbiter**, stated before the first read. Justifying property: the diff touches
+  `cargento_runtime/web/` byte pins **and** `SKILL.md` — two of the three conflict-prone surfaces —
+  across 554 changed lines of `next-cockpit.js`. Not full adversarial: no credential handling, no
+  data loss, one `localStorage` key. Lenses ran in their own throwaway worktrees; I arbitrated by
+  re-running every finding rather than ranking it, and refuted none of the eight put to me.
+- DONE: Reproduce every acceptance criterion of every issue in your group from its own Verified by clause, against 2fa5a2f4.
+  All 21 (7 + 6 + 8) driven from their own clauses; 18 offline cases green in 0.365 s across
+  `CockpitTabsNameTheirPanelTest`, `CockpitScopeRailCardTest`, `CockpitTimelineFilterTest`, plus the
+  two unmodified AC-2 oracles in `NextCockpitCompositionTest`. This issue's seven all reproduce.
+- DONE: RUN THE FALSIFIER, NOT JUST THE VERIFIER. For each criterion, execute its Falsified by condition and show it reds.
+  **43 mutations run.** This issue's 18 falsifiers all RED — no lede / two ledes / a lede without its
+  tab word; a duplicated departure and revision definition; the heading renamed at either emitter;
+  a cue held steady, defaulted to `0`, or read off `nextCockpitSemantic`'s `{facts:[]}`; pending and
+  unobserved sharing a mark or a gloss; an empty cue span; a held-to cue with `annotate` off; the
+  tab set taken from the `focus` argument. **One of this issue's falsifiers SURVIVES** — see below.
+- DONE: For every criterion, report which of three it is: universal/universal, enumerated/enumerated, or UNIVERSAL WORDING WITH AN ENUMERATED VERIFIER.
+  **Seven category-(c) instances across the group; four are this issue's.** AC-1 "each of the five
+  tabs" — enumerated, but the five-set is closed by `test_no_route_slug_and_no_fragment_behaviour_changes`
+  pinning `NEXT_PROJECT_TABS`/`NEXT_SESSION_TABS`, so mitigated. AC-2 "once per rendered panel" —
+  verified on one panel. AC-3 — see FAILED below. AC-4 — the Course arm's absent case is reachable in
+  the test only by handing `changes:null`, which the application never produces: `next-observed.js:205`
+  builds it with `.map`, so it is always an array. Everything else is (b) or (a); AC-4's three-tab
+  sweep over 3 lengths plus the unobserved arm is the strongest verifier in the set.
+- DONE: Resolve rendered properties through tests/css_cascade.py down real element paths.
+  Used for the withheld-title pair only, through `WithheldTitleKeepsTheAbsenceInkTest`
+  (`test_next_cockpit.py:6425`), which walks `div.next-cockpit-scope-tree > a >
+  span.next-cockpit-scope-line > span.next-cockpit-scope-title` — no `#app` id on that path, so the
+  `matches()` trap does not apply. No property concluded by counting rules or reading specificity.
+- DONE: Exclude the byte-pin oracles from every mutation check you run.
+  Every mutation selected a single method or class, never a module that carries a pin. Where I
+  widened, I widened to `test_next_cockpit` **only** (319 tests, 6.1 s, no pins in it) and verified
+  the collection count first, so a `SURVIVED` could not be a silent zero-collection.
+- DONE: Re-derive every byte pin from the assets rather than from any list.
+  Derived with `hashlib` off `frontend_page.asset_path` / `load_page()`: `next-cockpit.js`
+  **228_956 / 66b4f462…**, `styles.css` **120_893 / 59f31388…**, `project.js` **109_267 / d1f78af9…**,
+  assembled **958_263 / 38818e11…**. The integrator's three reported values agree exactly. Two
+  assertions pin the assembled length (`test_next_page:1352`, `test_next_flag:67`) and three the
+  digest (`test_next_page:1354`, `test_next_flag:69`, `test_focus:1024`); all five match the tree.
+- DONE: Scrutinise the integrator's own self-caught regression and its fix, and look for a second instance of the same shape.
+  Fix confirmed: `next-cockpit.js:3788` reads `terminal.state === "loading"`, not a `loading` flag.
+  Mutating it back to `terminal.loading === true` → RED; collapsing unread→`false` on either
+  capability → RED; degrading the observer's `undefined` sentinel to `null` → RED, all against
+  `ConsoleSetupNeverCallsAnUnreadCapabilityOffTest`. One no-op noted: `capabilities.terminal === true`
+  is behaviourally identical to a truthy gate (`null` is falsy) — defensive, not load-bearing.
+  **A second instance exists and is this issue's cue — finding M3 below.**
+- DONE: Check the two refutations the integrator made rather than accepting them.
+  **Both upheld, by execution.** (1) `projectAction` occurs exactly once in the whole runtime — its
+  own definition — and no `data-calm` / `dataset.calm` dispatcher exists anywhere; `next-cockpit.js:3705`
+  and `:3742` rewrite the attribute before render. Dead. (2) Ran `nextObservedLanding` under node
+  across all five `endKind` arms: `endText` and `claimText` nonempty in every one (`BLANK SLOTS: 0`),
+  because `endWhy` ends in a `|| "No stop or end observed while the session is running"`.
+- DONE: Write a `## Stage Report: review` into EVERY entity file in your group, and give a GO or NO-GO without editing the branch.
+  Written to all three. The branch was never edited: all mutation work ran in `/tmp/rv2-drc4592rv`,
+  a throwaway worktree at 2fa5a2f4, reverted after every case and confirmed clean.
+- FAILED: AC-3's stated falsifier does not falsify it.
+  "Collapsing the 37m and 24h windows into one figure" leaves the test GREEN. An early
+  `return "all time"` in `nextWorkstreamWindowLabel` collapses every window — the tab default, 37m,
+  24h, days — onto one label and neither the method nor the whole class notices, because the verifier
+  is four `assertIn` greps over JS source text that render nothing and call nothing. The heading half
+  is sound (renaming at either emitter reds it). Found by Lens B, reproduced by me.
+
+### Findings — this issue's share
+
+**M3 (Material candidate, task-owned).** The Decisions cue reports a **failed** context read as
+"decisions not loaded yet". `nextCockpitContexts` has three writers; `next-cockpit.js:3187` writes
+`{data:null, revision, error:true}` on failure. `nextCockpitTabCue`'s decisions arm reads only
+`.data`, so a finished-and-failed request renders `…` with the gloss *"decisions not loaded yet"* —
+a claim that a request is in flight about one that is not. The panel beside it reads `.error`
+(`:3677`) and says *"Semantic context unavailable."* The cue's own comment at `:3320-3324` asserts
+they cannot disagree. Executed independently by me (a probe seeding the exact failure write: cue
+`{state:"pending"}`, panel `Semantic context unavailable.`) and by Lens A on a failing fetch stub.
+The correct pattern is one screen away at `nextCockpitAttentionCoverage` (`:433-437`), which reads
+`entry.error`. Evidence fields — released user/normal workflow: any `/api/project-context` failure;
+observable harm: a `…` that never resolves; field 3: `value-ac[AC-5]`, which enumerates two states
+and leaves failure in the pending arm; trigger: the probe above.
+
+**M2 (Material candidate, shared with DRC-4598).** Measured on a live board: with the timeline in
+`all` mode the tab reads **"Decisions · 22 · 22 decisions"** and the lede *"Decisions: rulings found
+in the record…"* over a panel headed **SEMANTIC TIMELINE** with **35** all-event rows. On a second
+project the cue read "0 / No decisions observed" over an all-events list. A count beside rows it was
+not derived from is the frontend shared contract's own rule. Neither issue's criteria contemplate it,
+because the two were triaged apart.
+
+**Invariant note (not blocking).** The Course cue's `{state:"unobserved"}` arm is unreachable from
+the application, so a board one payload old reads `0` exactly as a board that watched all day and saw
+nothing does — AGENTS.md's first Measured Invariant test question answering "the same". The panel
+beside it carries the window qualifier ("since this tab opened"); the cue drops it. Contrast the
+Held-to cue, which gets this right via `nextCockpitDepartureLaneCount`'s `null`.
+
+### Summary
+
+This issue's seven criteria all reproduce and 18 of its 19 falsifiers red, which is the strongest
+falsifier record in the group. Two things are owed. AC-3's second half has no verifier at all: every
+window label can be collapsed to one string with the test green, and the docstring names exactly that
+as its falsifier. And the cue this issue ships reads the wrong field of a three-writer map (M3) — the
+same shape the integrator self-caught at `8b9b57a8`, a second instance, found where the checklist
+said to look.
+
+**Verdict: NO-GO**, on the PR rather than on this issue's substance. The blocker belongs to DRC-4598
+(a persisted graph-mode key with no project in it, falsifying that issue's own AC-2 on a live board);
+the group lands as one PR, so it blocks this one too. This issue's own owed work is the AC-3 verifier
+and M3. Findings route to `implementation` unchanged; I fixed nothing and edited no branch.

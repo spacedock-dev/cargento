@@ -576,3 +576,128 @@ and delete the dead `nextCockpitProjectScope`. `styles.css` needed nothing for t
 `project.js` came in at +30 executable lines against a declared ~+22 (±40% → 13–31), at the top of
 its band. `docs/design-reader-state.md` gained the lane row and `docs/design-next-ui.md`'s NUI-3
 gained the route-change constraint AC-6 asks for.
+
+## Stage Report: review
+
+Reviewed `spacedock-ensign/ui-integration` @ **2fa5a2f4** (PR #364), frozen. 12 checks pass on that
+head, `mergeStateStatus` CLEAN. The group's shared evidence — byte pins, the capability-read fix, the
+two refutations, the mutation method — is written out once on `drc-4592/index.md`.
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing.
+  **Two lenses plus an arbiter**, stated up front; justifying property, the `web/` byte pins and
+  `SKILL.md`. I arbitrated by re-running every finding. The blocker below came from a lens and was
+  confirmed by me on a live board, which is why it is stated as measured rather than reasoned.
+- DONE: Reproduce every acceptance criterion from its own Verified by clause, against 2fa5a2f4.
+  AC-1, AC-3 to AC-7 reproduce offline through `CockpitTimelineFilterTest` (6 cases, green). AC-2 has
+  no method of its own by design: its oracles are `test_decisions_view_preserves_canonical_metadata_and_compacts_scan_line`
+  and `test_decisions_use_fact_scope_not_selected_session`, both unmodified in `NextCockpitCompositionTest`,
+  and I ran both. **AC-2 nonetheless fails on a live board — see FAILED.** AC-8 is interactive and is
+  **settled PASS by live drive**.
+- DONE: RUN THE FALSIFIER, NOT JUST THE VERIFIER.
+  All this issue's falsifiers RED. `controls:false` restored → AC-1 red. A press that sets nothing →
+  AC-1 red. `defaultMode:"active"` → **both** AC-2 oracles red, independently, which is exactly what
+  that criterion claims. The heading hard-coded to `RECORDED DECISIONS` → AC-3 red. `projectStoreGraphModes()`
+  dropped → AC-4 red. `projectLoadGraphModes()` dropped → AC-4 red. The prefix-collision delete
+  (`nextCockpitProjectScopeKind(` → `nextCockpitProjectScope(`, all 15 sites) → AC-5 red. `alias table`
+  removed from NUI-3 → AC-6 red. `NEXT_PROJECT_TABS` edited → AC-7 red.
+- DONE: For every criterion, report which of three it is.
+  **AC-2 is the group's worst category-(c): "a Decisions panel nobody has pressed a filter button on"
+  is universal over panels and projects, and both oracles are single-project fixtures.** That is what
+  let the blocker through green CI. AC-5's wording says "16 call sites" while the verifier asserts
+  `assertGreaterEqual(…, 15)` — an honest documented amendment, not a gap: one of triage's sixteen was
+  the call inside the helper this change deletes, and the live count is exactly 15. AC-1, AC-5, AC-7
+  are (a); AC-3, AC-4, AC-6 are (b).
+- DONE: Resolve rendered properties through tests/css_cascade.py down real element paths.
+  No rendered-size property is at issue for this change — `.pc-graph-filter` was already styled
+  unscoped and `styles.css` is untouched by this issue. Cascade work done for the group is on
+  `drc-4597/index.md`. Nothing here was concluded by counting rules.
+- DONE: Exclude the byte-pin oracles from every mutation check you run.
+  Single-method or single-class selection throughout; one widening to `test_next_cockpit` only, whose
+  collection count (319) I verified before trusting a SURVIVED.
+- DONE: Re-derive every byte pin from the assets rather than from any list.
+  `project.js` **109_267 / d1f78af9…**, `next-cockpit.js` **228_956 / 66b4f462…**, assembled
+  **958_263 / 38818e11…**. All derived with `hashlib` off the assets and all matching the tree; full
+  list on `drc-4592/index.md`.
+- DONE: Scrutinise the integrator's self-caught regression and look for a second instance.
+  Fix confirmed by four mutations against `ConsoleSetupNeverCallsAnUnreadCapabilityOffTest`. The
+  second instance is DRC-4592's Decisions cue reading `.data` where the writer distinguishes failure
+  with `.error`; recorded on that entity.
+- DONE: Check the two refutations the integrator made rather than accepting them.
+  **Both upheld, by execution**, and the first is this issue's line. `projectAction` occurs exactly
+  once in the whole runtime — its own definition — and no `data-calm` / `dataset.calm` dispatcher
+  exists anywhere; `next-cockpit.js:3705` rewrites the attribute to the cockpit's own action before
+  render. The `arg === "all" ? "all" : "active"` collapse at `project.js:402` is genuinely
+  unreachable. Both lenses reached the same conclusion independently. Worth deleting so a future
+  `data-calm` dispatcher cannot resurrect it, but it breaks nothing today.
+- DONE: Write a `## Stage Report: review` into EVERY entity file in your group, and give a GO or NO-GO without editing the branch.
+  Written to all three. All mutation work in `/tmp/rv2-drc4592rv`, reverted and clean; the branch was
+  never edited. The dashboard I drove ran from that throwaway worktree on port 4599 and was killed.
+- FAILED: AC-2 is falsified on a live board. **This is the blocker.**
+  See M1 below.
+
+### Findings — this issue's share
+
+**M1 (Material, task-owned, BLOCKING).** *The persisted graph-mode key carries no project, so one
+press changes every project's Decisions tab and now survives a reload.*
+`projectSetGraphMode` and `projectResolveGraphMode` key on `String(projectQuerySession || "")`. At
+**project scope** `next-cockpit.js:3682` / `:3866` set `projectQuerySession = ""` — for every project.
+The key is therefore the literal empty string, globally. Before this PR `projectGraphModeBySession`
+was in-memory only, so the collision died with the tab; this change mirrors it to
+`cargento.next.graph.mode`, so it persists and there is no UI that clears it.
+
+Measured on a live board at 127.0.0.1:4599 serving the reviewed tree (assembled 958_263 / 38818e11,
+verified before driving), in a real browser:
+
+1. `#n=project:recce%2Fcargento:decisions` opened `RECORDED DECISIONS`, `data-graph-mode="decisions"`,
+   22 rows, store empty. Pressed **All events** → `SEMANTIC TIMELINE`, mode `all`, 35 rows, store
+   `{"":"all"}`.
+2. `location.reload()` → mode still `all`, 35 rows. **AC-8 passes.**
+3. `#n=project:recce%2Frecce-cloud-infra:decisions` — a different project, **never pressed** —
+   opened `SEMANTIC TIMELINE`, `data-graph-mode="all"`, `all` `aria-pressed="true"`, `decisions`
+   unpressed, store still the one global `{"":"all"}`.
+
+Step 3 is AC-2 verbatim — *"A Decisions panel nobody has pressed a filter button on renders exactly
+what it renders today"* — and it is false. Both of AC-2's named oracles pass because both are
+single-project fixtures, and `test_the_chosen_mode_is_written_to_storage_and_read_back_on_load`
+**seeds the collided key as correct** (`storage={KEY: json.dumps({"": "all"})}`), so the suite is
+green over the defect. Two records also say the opposite of the behaviour: the key's own comment
+(*"a reader who picked a mode on one session has not chosen one for every other"*) and the new
+`docs/design-reader-state.md` row (*"kept per session key"* — there is no session key at project
+scope). Evidence fields — released user and normal workflow: press a filter on one project, open
+another; observable harm: the second project's Decisions tab opens in all-events mode with its
+Decisions button unpressed, and a reload does not clear it; field 3: `value-ac[AC-2]` and
+`value-ac[AC-4]`; trigger: the three steps above. Fix shape: put the project in the key
+(`nextCockpitStableKey(group)` is in scope at both write sites), or resolve the project-scope
+fallback separately from the session map. Found by Lens A on a two-project fixture; I confirmed it on
+a live board rather than accepting the fixture.
+
+**M2 (Material candidate, shared with DRC-4592).** With the timeline in `all` mode the tab reads
+**"Decisions · 22 · 22 decisions"** and DRC-4592's lede says *"Decisions: rulings found in the
+record…"* over a panel headed **SEMANTIC TIMELINE** showing **35** all-event rows; on the second
+project, "0 / No decisions observed" over an all-events list. A count beside rows it was not derived
+from is the frontend shared contract's own rule. Reachable without M1 the moment a reader presses
+All events themselves, so fixing M1 does not close it. Lower severity, same round.
+
+**Minor.** `nextCockpitTimeline`'s early return (`:3677-3681`) hard-codes `<h2>SEMANTIC TIMELINE</h2>`,
+so an untouched Decisions tab reads SEMANTIC TIMELINE while loading and flips to RECORDED DECISIONS
+when the context lands. AC-3 asserts the heading only after the context is present.
+
+**Verifier note (V5).** `assertIn("all", written["store"][KEY])` cannot tell the value from the key:
+writing the right mode to the wrong scope survives the method, and is caught only by siblings in the
+same class. Given M1 that assertion is the one that should have been the oracle.
+
+### Summary
+
+Three quarters of this change was already shipped and inert, as triage read it, and the filter itself
+works: three buttons, both other modes reachable, the heading following the resolved mode, the
+untouched tab still resolving to decisions, and — proved on a real browser — the chosen mode
+surviving a reload. AC-8 is settled PASS, not asserted.
+
+The fourth quarter is the defect. Making the mode persistent without putting the project in the key
+turned a per-tab quirk into a stored preference that silently rewrites every other project's
+Decisions tab, and AC-2 — the criterion written precisely to catch a dropped default — could not see
+it because both its oracles hold one project. The suite is green over it and one of its own tests
+seeds the collided key as correct.
+
+**Verdict: NO-GO.** M1 blocks the merge; M2 rides the same round. Findings route to `implementation`
+with their evidence unchanged, never re-triaged. I fixed nothing and edited no branch.

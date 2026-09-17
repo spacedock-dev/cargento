@@ -608,3 +608,126 @@ caught that, which is the reason the anchor carries it now instead.
 The two tests triage said would break both broke loudly and were rewritten rather than patched: the
 exact DOM byte sequence, and the regex that required the state span to abut a `<small>` and would
 otherwise have yielded `""` into an `assertEqual`.
+
+## Stage Report: review
+
+Reviewed `spacedock-ensign/ui-integration` @ **2fa5a2f4** (PR #364), frozen. 12 checks pass on that
+head, `mergeStateStatus` CLEAN. The group's shared evidence — byte pins, the capability-read fix, the
+two refutations, the mutation method — is written out once on `drc-4592/index.md`; this report gives
+this issue's share and does not restate it.
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing.
+  **Two lenses plus an arbiter**, stated up front. Justifying property: the diff owns
+  `cargento_runtime/web/` byte pins and `SKILL.md`. This issue is the one that moves `styles.css`.
+- DONE: Reproduce every acceptance criterion from its own Verified by clause, against 2fa5a2f4.
+  AC-1 to AC-5 reproduce offline through `CockpitScopeRailCardTest` (5 cases, green). AC-6 is
+  interactive and is **not settled** — see FAILED. Live confirmation of the card shape on a real
+  board at 127.0.0.1:4599 serving the reviewed tree (assembled 958_263 / 38818e11, checked before
+  driving): a session row read title *"This session is being continued from a previous conversation
+  that ran out of…"* on line 1 and *"idle · 21h 21m · 317f461c"* on line 2, with the twin sid last on
+  the meta — AC-1, AC-2 and AC-4's shape as specified, on real data.
+- DONE: RUN THE FALSIFIER, NOT JUST THE VERIFIER.
+  Nine falsifiers for this issue. RED: the `<small>` title restored after the state span; the hidden
+  `SESSION` span deleted; the visible per-row cue reinstated; hoisting on a mixed-harness group;
+  keeping the per-row harness on a single-harness group; the sid re-appended to the title; a
+  `min-block-size` override inside `.next-cockpit-scope-title`; a card shape rendering only in the
+  tree. **Two SURVIVE** — see FAILED.
+- DONE: For every criterion, report which of three it is.
+  Two category-(c) instances here. **AC-2** "derived from the same array the session rows map over" —
+  universal, verified against one 2-session fixture (V2 below). **AC-5** "every scope link keeps
+  `min-block-size:44px`" — universal, verified by a whole-sheet substring (V1 below). AC-1 is (a) for
+  ordering and (c)-minor for content (the title/meta strings are asserted on `cards[0]` only, the
+  ordering on every card). AC-3 and AC-4 are (a): both arms of the hoist are driven, and the withheld
+  check iterates every matching CSS block rather than a named one.
+- DONE: Resolve rendered properties through tests/css_cascade.py down real element paths.
+  This issue's absence-ink pair is the one place it matters and it is done right:
+  `WithheldTitleKeepsTheAbsenceInkTest` (`test_next_cockpit.py:6425`) walks
+  `div.next-cockpit-scope-tree > a > span.next-cockpit-scope-line > span.next-cockpit-scope-title`
+  with and without `data-next-withheld` and asserts the two resolve to different inks. Stripping the
+  declaration reds it, 2 failures — the integrator's claim at `2ead9711`, reproduced rather than read.
+  Lens A separately resolved four paths through `css_cascade.resolve`: 14.0/14.0 for the moved
+  withheld title on both surfaces, 11.0/11.0/11.0 for the cue's three states. No inversion.
+- DONE: Exclude the byte-pin oracles from every mutation check you run.
+  Single-method or single-class selection throughout. One `styles.css` mutation was widened only to
+  `test_next_cockpit` (no pins in it, 319 tests collected and verified before trusting a SURVIVED).
+- DONE: Re-derive every byte pin from the assets rather than from any list.
+  `styles.css` **120_893 / 59f31388…** — the integrator's figure, confirmed from the asset. Full
+  derivation on `drc-4592/index.md`. Copilot's inline comment pinning 120_737 / `bb77b6a1…` was
+  measured at `3027d87`; two later commits moved it, and the integrator's reply is correct.
+- DONE: Scrutinise the integrator's self-caught regression and look for a second instance.
+  Fix confirmed by four mutations; the second instance found is DRC-4592's cue. Details on that
+  entity. Nothing of that shape in this issue's `nextCockpitScopeLinks`, which reads no map.
+- DONE: Check the two refutations the integrator made rather than accepting them.
+  Both upheld by execution; evidence on `drc-4592/index.md`. Neither touches this issue.
+- DONE: Write a `## Stage Report: review` into EVERY entity file in your group, and give a GO or NO-GO without editing the branch.
+  Written to all three. All mutation work ran in `/tmp/rv2-drc4592rv`, reverted and confirmed clean;
+  the branch was never edited.
+- FAILED: AC-5's stated falsifier does not falsify it (V1).
+  `assertIn("min-block-size:44px", styles)` is a substring test over the whole 120 KB sheet.
+  `min-block-size:44px` occurs **7 times** and none of them is scope-rail-specific — the rule that
+  actually gives the card its target is the generic `#app a,#app button,…` at `styles.css:59`.
+  Mutating that one rule to `20px` destroys the card's 44px target and the test stays **GREEN**;
+  mutating all seven reds it, which proves the assertion binds only to global existence. The sibling
+  assertion in the same method already does it right, anchoring `box-shadow:inset 2px 0` inside
+  `.next-cockpit-scope-tree a[aria-current="page"]`. Found by Lens B, reproduced by me.
+- FAILED: AC-2's stated falsifier does not falsify it (V2).
+  "Hard-coding the count" is named as a falsifier. Replacing
+  `esc(\`${rows.length} ${rows.length === 1 ? "session" : "sessions"}\`)` with `esc("2 sessions")`
+  leaves the method green **and the whole 319-test `test_next_cockpit` module green**, because the
+  only fixture has exactly two sessions and the expectation is computed from that same fixture. The
+  code is correct today; the guard the criterion bought does not exist. A second fixture at a
+  different length closes it.
+- FAILED: AC-6 is interactive and is NOT settled. Reported not attempted at the specified width, never as passed.
+  Measured what I could on the live board and stopped short of the criterion. On the sub-1280
+  disclosure surface (the rail itself is hidden below 1280, so 980px renders the switcher) the session
+  card box read **55 px** and the card pitch **57 px**, off `getBoundingClientRect()` on real rows —
+  but at a **700 × 713** viewport, because the extension's resize did not move `innerWidth` to 980.
+  No capture at 980px, and the figures are not written into the Linear issue: that half of the
+  criterion is an implementation act a reviewer must not perform. A capture of the rail cards at
+  2fa5a2f4 is saved at `docs/screenshots/review-drc4592-group-scope-rail-cards-2fa5a2f4.jpg` as
+  evidence of the shape, not as the AC-6 measurement.
+
+### Findings — this issue's share
+
+**A1 (Needs decision, captain's).** AC-4's colour half — *"exactly one rule in `styles.css` assigns a
+colour to `[data-next-withheld]`"*, with *"a second colour rule reappearing"* as its falsifier — was
+**amended after this issue's own candidate** and now reads the other way: two rules colour it
+(`styles.css:85` and `:1220`) and the test asserts that *every* such rule resolves through the
+absence register. Commit `2ead9711` discloses the amendment and reasons it: this issue moved
+`data-next-withheld` onto `span.next-cockpit-scope-title`, which declares `color:var(--ink)` at the
+same (0,1,0) specificity and later in the sheet, so with the override stripped a withheld title
+rendered in **full ink**, byte-identical to a published one. I reproduced that by execution. The
+captain's ruling itself is intact — `--ink-absence` is defined as `var(--ink3)` at `styles.css:47`,
+so no colour moved. Flagging rather than disputing: only the captain changes an acceptance criterion,
+and this one was changed by a worker with a good reason.
+
+**S1 (Polish, one line).** `styles.css:1216-1219` now contradicts the line it introduces. It reads
+*"Family only. The colour is the board-wide `[data-next-withheld]` rule, and a second one here would
+be a second place to get it wrong"* — directly above
+`.next-cockpit-scope-tree [data-next-withheld],…{font-family:var(--sans);color:var(--ink-absence)}`.
+A reader acting on that comment would delete the declaration and re-introduce the full-ink inversion
+`2ead9711` had just removed. The test would catch them, but the comment is the thing that would send
+them.
+
+**S2 (record, not code).** This issue's implementation report states *"the rail rule is now
+`font-family:var(--sans)` alone"* and *"a test asserts that count is exactly one"*. Both were true at
+`43a8e9ba` and are **false against 2fa5a2f4**. A gate reading the report rather than the tree would
+be told the opposite of what shipped.
+
+**V4 (Polish).** `test_next_page.py:1192`'s guard `assertNotIn(".next-cockpit-scope-tree span,", …)`
+pins one *spelling* of the regression, not the regression. The identical-effect no-comma rule
+`.next-cockpit-scope-tree span{white-space:normal;…}` — same specificity, later in the sheet, the
+unclipped title the assertion names — survives; the comma spelling is killed. A matched pair, both run.
+
+### Summary
+
+The card itself is right, and the live board shows it: two lines, title first and largest, harness
+hoisted into the heading, the twin sid last on the meta, the withheld title held on the absence
+register through a cascade resolution rather than a rule count. What this issue owes is the guards.
+Two of its five offline criteria name a falsifier that does not falsify — AC-5's target size and
+AC-2's derived count — and both are cheap to close. AC-6 is unsettled and stays unsettled; I measured
+55/57 px on the sub-1280 surface and will not call that a pass at 980.
+
+**Verdict: NO-GO**, on the PR rather than on this issue's runtime. The blocker belongs to DRC-4598.
+This issue's own owed work is V1, V2, S1, S2 and AC-6, plus the captain's call on A1. Findings route
+to `implementation` unchanged; I fixed nothing and edited no branch.
