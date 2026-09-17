@@ -1,7 +1,7 @@
 ---
 id:
 title: "Make each tab name its own panel and carry a derived state cue"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4592/make-each-tab-name-its-own-panel-and-carry-a-derived-state-cue"
 started: 2026-09-17T10:42:56Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4592](https://linear.app/recce/issue/DRC-4592/make-each-tab-name-its-own-panel-and-carry-a-derived-state-cue) — Make each tab name its own panel and carry a derived state cue
