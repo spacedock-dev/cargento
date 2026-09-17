@@ -642,3 +642,25 @@ Nine of ten criteria reproduce with their falsifiers reding, and AC-4's derived 
 So the mutation is not a no-op, the render it produces is the inverted one AC-5 exists to forbid, and all 3639 behavioural tests still pass. The survival is caused by the verifier's fixture rendering only the capability-off arm, which is the finding — not by the mutation failing to land.
 
 One thing that makes the fix cheaper than the report above implies: **the focus-capable fixture already exists in the same file.** `CockpitHeldReEntryTest.FOCUS_ON` (`tests/test_next_cockpit.py:7681-7685`) sets the `meta[name="cargento-focus"]` stub the capability is read through, with its own comment noting that a test setting a payload field "measures nothing". Reusing it in `HeldToOrderingTest` is the whole of the change. The verdict above is unchanged.
+
+### Re-check contract — what the fix round must make red (AC-5)
+
+Held here so the re-check does not depend on anyone's recollection. Run from the repo root with `python3 -m unittest discover -s cargento/skills/cargento/tests -t .`. **`test_next_page`, `test_next_flag` and `test_focus` fire on any asset edit and are discounted** — only a behavioural red proves the fix.
+
+**Before trusting any SURVIVED verdict, prove the mutation was not a no-op**: count the mutated token in the source, in `frontend_page.load_page()`, and in rendered HTML, then A/B the rendered offsets against the unmutated tree.
+
+**The mutation.** In `nextCockpitHeldReEntry` (`next-cockpit.js:2561-2566`), hoist the action paragraph out and emit it conditionally last:
+
+```js
+const action = link ? `<p class="next-cockpit-held-reentry-action">${link}</p>` : "";
+return '<div class="next-cockpit-held-reentry">' +
+  (raise.whyLabel ? "" : action) + row("Re-entry", resume) + row("Raise", raise.claim) +
+  nextCockpitWhy("reentry-raise-why", raise.whyLabel, raise.why) +
+  (raise.whyLabel ? action : "") + '</div>';
+```
+
+**Must red behaviourally.** Today it survives all 3639. Measured A/B inside `.next-cockpit-held-reentry` on a focus-capable board: baseline disclosure 710 / anchor **122**; mutant disclosure **542** / anchor 913.
+
+**What makes it red is an arm, not an assertion.** `test_the_reentry_block_leads_with_the_action` pins `raise: html.includes(NEXT_FOCUS_OFF_LINE)`, so it renders the capability-**off** branch, where `raise.whyLabel` is `""` and `nextCockpitWhy` emits nothing — there is no disclosure for the anchor to be ordered against. The fixture that fixes this is already in the same file: `CockpitHeldReEntryTest.FOCUS_ON` (`tests/test_next_cockpit.py:7681-7685`) stubs the `meta[name="cargento-focus"]` node the capability is actually read through, and its own comment warns that setting a payload field instead "measures nothing". With that prelude plus `focusable = true`, the `whyLabel` branch renders and the index comparison has something to compare.
+
+**Do not let one added arm stand in for the six.** AC-5's promise is the cross-product of three resume branches (`NEXT_RESUME_COMMANDS` miss / command present / no usable id) and three raise branches (capability off / `focusable === true` / no terminal reported). The resume branch is chosen by `harness` and `nextResumeCommand(session)`; the raise branch by `nextFocusCapability()` and `session.focusable`. Two of the six render today. A re-check that adds the focus-capable arm and stops has moved the gap rather than closed it, so the fix should assert the anchor's index against every limitation sentence across all six, or the criterion should be narrowed to the arms it truly covers and say so.
