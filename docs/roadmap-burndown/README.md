@@ -1408,6 +1408,33 @@ Four things this earned:
   entity said so. Ask the author which it was — a dependency to write down, or a misread of which
   rule wins — because only one of those is a defect.
 
+## Pre-register the re-check conditions before the fix exists
+
+Two reviewers, waiting on a fix round, wrote down what they would accept **before** the fix was
+written, and committed it. One said why in a sentence worth keeping: written afterwards, the
+conditions can be shaped by the fix.
+
+It paid immediately. The conditions named the trap the obvious repair was about to fall into — a
+`.error` test placed inside a `!entry.data` branch, which is the natural place and does nothing,
+because `!data` is *false* in exactly the state that is invisible. That reached the implementer as a
+target rather than as a re-check failure, which is the difference between one CI round and two.
+
+It also produced the more unusual discipline: **one reviewer recorded what would make its own plan
+wrong.** If the fix dropped a storage mirror rather than keying it, two of its three conditions
+dissolved — and it said so explicitly, rather than leaving a plan standing that could be used to
+argue down a legitimate answer. A pre-registered condition that cannot be wrong is a preference
+wearing a measurement's clothes.
+
+Three properties make a pre-registered condition worth having:
+
+- **It is falsifiable by the fix**, not just by the defect.
+- **It names the shape that would pass it wrongly** — a fix that namespaces a write but resolves its
+  fallback from the wrong scope passes "press A, open B" and fails "press B, re-open A", so the
+  condition has to demand both directions.
+- **It says what the fixture must be able to do**, not only what it must contain. A multi-project
+  fixture is necessary and not sufficient while an existing test still seeds the collided value as
+  its expected result.
+
 ## The fixture's shape hides what the assertion's strength cannot reach
 
 The worst defect this milestone shipped was a `localStorage` key that collapsed to the same value for
