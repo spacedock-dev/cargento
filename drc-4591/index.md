@@ -714,3 +714,13 @@ Head derived rather than taken on trust: `git branch -a --contains ddd422bf` giv
 One deliberate non-issue, recorded so nobody narrows it later: the token half uses `\bDEC-\d+\b` where this review's sweep used `(?<![A-Za-z0-9_-])DEC-\d+(?![A-Za-z0-9_-])`. `\b` treats a hyphen as a boundary, so it is *looser* — it would also flag `FOO-DEC-16`. That errs toward flagging, never toward missing, so it is the safe direction and should stay.
 
 **AC-3 — FAIL, unchanged across four heads.** Deleting `if(!text) return "";` from `nextCockpitWhy` leaves **3654 behavioural tests green**, only the three byte pins firing; survivor confirmed against the full suite, not a module. Not a no-op — the guard count goes 1 → 0 and the ACs' own fixture then renders one empty `<p class="next-cockpit-reading-why"></p>` in the re-entry block. This commit did not touch it and was not expected to.
+
+### Correction — my stale-state claim was wrong from `26223372` onward
+
+**I carried a measurement forward instead of re-taking it, which is the error I spent this review flagging in others.** In my reports on `26223372` and `ddd422bf` I wrote that the stale-data-plus-error state "still returns `ready` from `nextCockpitContextRead`". That was measured at `9959f623` and asserted at two later heads without being re-run. It is false at both.
+
+Measured at `ddd422bf`, driving the real reject writer over a settled entry: `entryState` **`"stale"`**, `readState` **`"stale"`**, `shows: true`. `nextCockpitEntryState` — which does not exist at `2fa5a2f4` or `9959f623` and appears at `26223372` — returns `"stale"` for data-with-error and `"ready"` for data-without, so the classifier **does** separate the two states. DRC-4589's reviewer was right about that half and I was wrong.
+
+What I actually observed remains true and is the other half: the cue still reads `{state:"count", value:1}` and the panel still renders the rows, because `stale` and `ready` render identically at both call sites. **That is a ruling, not an oversight**, and the comment at `next-cockpit.js:3224` states it as one — keeping the last known rows is defensible, and a staleness sentence would be new copy nobody specified. The separation exists so DRC-4613 can act on it without a refactor. So "cue and panel agree" is right, "and are both wrong" is not: the agreement is deliberate and documented. Nothing further is owed here.
+
+The general lesson is the one this review has been applying outward and failed to apply inward: **a state claim is only as current as the head it was measured on.** Three heads moved under this re-check; the contracts survived because they are string-anchored and re-run, and this claim did not because it was neither.
