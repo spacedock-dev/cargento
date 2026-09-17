@@ -800,3 +800,44 @@ cue nobody specified gets invented inside a fix commit.
 is in the table at line 723 of this report, named, with its shape and the note that it omits `error`
 — which is exactly why it reads as correctly falsy. The two-reviewer comparison is what found the
 merge semantics; it did not find that writer, because this enumeration already had it.
+
+### Re-check of the fix, 2026-09-18 — head `26223372`: GO
+
+Pins re-derived from the assets at the new head before anything else: assembled **964_336** /
+`387e71e0…`, agreeing in `test_next_page`, `test_next_flag` and `test_focus`. `test_next_cockpit`
+green at 328 tests, load 4.38.
+
+| condition | verdict |
+|---|---|
+| separates all five states | **yes** — `nextCockpitEntryState` returns absent/pending/unavailable/stale/ready, and `error` is consulted in **both** branches, not only when data is absent |
+| cue and panel move together | **yes** in all five, plus both cross-scope cases (focus ready + project stale → `stale`; + project unavailable → `unavailable`) |
+| reads the existing negative field | **yes** — `entry.error === true`; no positive field added, so `next-render.js:81` needs no change |
+| the `:3323` comment describes reality | **yes** — the false invariant claim is gone and it now names the failed case the cue used to report as `pending` |
+| six harmless readers untouched | **yes** — the diff adds two `.get`s (both inside the new classifier) and removes three; nothing else moved |
+| mutant dies | **yes** — reverting to `entry.data ? "ready" : "pending"` kills 4 tests |
+
+**The condition changed, not a reader patched around it.** `nextCockpitContextRead` is one classifier
+both surfaces ask, and the cue's second read of `observation` is gone — that second read was the
+structure that let state and facts drift. The mutation was proved to land at all three layers:
+source 0→1, part file 0→1, `load_page()` 0→1, assembled digest `387e71e0` → `71afa6d8`.
+
+**On the warning that agreement is no longer evidence.** Tested rather than taken.
+`TheCueAndItsPanelAgreeInEveryContextStateTest` asserts **absolute tuples per state**, not agreement:
+`unavailable` must be `("unavailable","unavailable","unavailable")`, `absent` must be
+`("pending","loading","absent")`, and `len({classified}) == 5` pins that the separation is real
+rather than four states wearing five names. Both surfaces could not agree wrongly without failing it.
+
+**`stale` renders as `ready` deliberately**, filed as DRC-4613 rather than invented in a fix commit,
+and the classification stays separable so that issue has something to act on. That is the disposition
+I asked for.
+
+**One finding, documentation only, not blocking.** The refusal to assert three distinct hexes is
+**correct and not laziness** — I ran it: label `#9b9484`, value `#f4f1e8`, caption `#9b9484`, two
+distinct hexes, so the assertion fails on the clean sheet. But the ruling cited for it,
+`design-next-ui.md:278`, covers `--ink-label` and **`--ink-absence`**, not caption.
+`--ink-caption` appears in that document exactly once, in the list of four names at :259, and its
+doubling onto `--ink3` is recorded nowhere. The doc argues carefully why the *second* role may share
+that ink — a label carries uppercase, tracking and mono; an absence is a sans sentence, so family and
+case separate them — and a caption is also a sans sentence at that ink, so the argument that covers
+absence does not obviously extend to it. One sentence in `design-next-ui.md` closes it. The register
+indirection exists precisely so a doubling-up can be re-read from the doc, and this one cannot be.
