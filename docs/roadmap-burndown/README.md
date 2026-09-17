@@ -842,6 +842,25 @@ Two rulings, in the captain's own words, scoped to this milestone's burndown.
   delegated by this grant. The `pr-merge` merge hook's push approval is covered, because the grant
   names the merge gates and says to do it; the draft is still presented before the push.
 
+### Given 2026-09-17, in the captain's own words, and they override the defaults above
+
+- **Take the recommended route; do not wait for a decision you have already made.** "If you have a
+  strong recommendation, I want you to take that recommended route. Do not wait for me unless you
+  absolutely need my input." A first officer that recommends one direction and then waits has not
+  saved the captain a decision, it has added one. Act, and report what was done and why. This
+  extends the "do not wait for yes, that's fine" directive from anything reversible to anything the
+  FO holds a clear view on — including acceptance-criterion judgments the FO would otherwise route
+  up under `## Review-finding disposition` item 5, **unless** the call genuinely turns on product
+  intent only the captain holds.
+- **When input IS genuinely needed, pull it out where it cannot be missed.** "It is EXTREMELY
+  difficult for me to see that you need me because you are burying the need for my attention within
+  a lot of prose and content that is not applicable to me." The ask goes at the TOP of the message
+  under its own heading, before any status, with the question, the recommendation, and what saying
+  yes does. Everything not waiting on the captain goes after it, or is left out.
+- **A filed follow-up is not a disposal route.** "Don't just let it dangle." A gap deferred out of
+  one PR is worked inside the same milestone, and the milestone is not complete while it is open.
+  Filing it records the gap; scheduling it is what closes it.
+
 ## Workflow State
 
 View the workflow overview:
