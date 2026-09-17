@@ -1470,6 +1470,30 @@ The reviewer withdrew all three findings and said plainly that the criticism nar
 hygiene rather than an unguarded property. Withdrawing a finding costs nothing here; a fix round
 spent closing a hole that was never open costs a CI cycle and a merge serialization.
 
+## A map written only on settle cannot carry an in-flight marker; one written at request time can
+
+Two shared maps in the same bundle produced opposite defects, and the difference is when they are
+written, not how carefully.
+
+`nextCockpitContexts` has every `.set` inside a `.then` or `.catch`, so an entry is only ever
+replaced **on settle** and no in-flight marker is written onto a live entry. `projectTerminalBySession`
+writes `{state:"registered", loading:true}` at **request** time, and that is the one that produced a
+re-check flipping a working capability to unknown on every poll.
+
+That is the property to state in the comment on any shared map: **which discipline it keeps.** It
+tells the next writer what they may not do, where a comment describing the current readers goes stale
+the first time a reader is added.
+
+The two defects those maps produced are worth naming as a pair, because they are the same family
+pointing opposite ways. **One called a working capability unknown. The other called a failed read
+fine.** The second is worse, because it is silent — the first at least shows a reader something has
+gone wrong, while the second renders a stale answer identically to a fresh one.
+
+Three reviewers found the second independently, by three different routes: a reader keying off the
+wrong field, a writer's merge semantics, and the writers disagreeing on their field sets. None had
+seen another's work. Where two agreeing can still be one layer short — as happened here on the merge
+semantics — three arriving separately is what makes a finding safe to act on without re-deriving it.
+
 ## Asserting a class is emitted says nothing about whether the class is styled
 
 The obvious test for a new render variant is to assert its class name appears in the output. It is
