@@ -788,3 +788,108 @@ should carry the date and commit it was taken at, or it will be read as a fact a
 stylesheet when it is a fact about a moment.
 
 The `--ac-scan` code-fence failure is recorded and is not this PR's.
+
+## Stage Report: implementation (cycle 3)
+
+Correction round 2. Every disposition below was the one the first officer authorized. Two findings
+I disagreed with are reported as measurements rather than adopted; both are noted as such.
+
+- DONE: Write the gate-approved drafts to Linear as the FIRST action before any code — the issue body, the owning milestone description, and the journey and move labels — sending each body unwrapped as one line per paragraph, then read back the issue's relation set and report every edge the write created.
+  No Linear write this round and none was authorized. Cycle 1 wrote both bodies, cycle 2 rewrote AC-7. **The DRC-4602 sizing figure the first officer said he would carry to Linear has changed: it is twenty-one, not nineteen** (see D1 below), so the Linear correction should carry that number.
+- DONE: Write the failing test first and watch it fail for the right reason, then regenerate all nine byte pins from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting the pass ratio of each isolated run.
+  The test was rewritten slot-shaped before any fix and failed **7 of 7**: the six slots plus the caption regression, each naming its own two figures. It binds in both directions and was mutation-checked twice after the resolver rewrite: reverting `.next-rail-wait-duration` gives `11.0 not >= 15.0`, and reverting the caption scoping gives `15.0 not less than 15.0`. Pins: 7 of 8 written sites moved; **`next-cockpit.js` size and digest both verified unchanged**, since no JS changed this round. Isolated: `test_next_page` 25/25, `test_next_flag` 7/7, `test_focus` 96/96, slot census 2/2.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file rather than from any copy, invoke the sync-docs skill and commit its doc updates onto this same branch, then measure the actual surface with git diff --numstat against the merge base and report files and LOC versus the declared estimate with the percentage.
+  Read from `AGENTS.md` in the worktree. All clean: `ruff check`, `ruff format --check`, `mypy`, `lint_embedded.py`, `validate_plugins.py`, `bump_version.py --current` 0.26.0, no version field moved. Dashboard **3529 OK** (2 skipped), scripts **515 OK** (1 skipped), coverage 86.8% with `fail_under` satisfied. Load average 2.9, and the three pin modules were run alone anyway. `sync-docs` ran at cycle 1; this round's doc edits are the corrections it does not own, and `COMPATIBILITY.md`'s marker is still untouched.
+- DONE: Commit the work DCO signed off on the branch and STOP without pushing and without opening a pull request, reporting the branch name and the candidate SHA.
+  Branch `spacedock-ensign/drc-4587`, candidate SHA **`e32b207d2d3d72087919ee0ab669ff96f31860c0`**, tree clean, not pushed, PR #361 untouched. History is linear and unrewritten, so the stacked `spacedock-ensign/drc-4588` rebases onto one new commit.
+
+### The six slots, measured in a browser before and after
+
+The finding's diagnosis is the part worth keeping: **a value and its absence are chosen by a
+ternary and never co-exist**, so neither a selector sweep nor a populated board can show the pair.
+Both branches were built separately from each emitter's own markup and read with `getComputedStyle`.
+
+| Slot | Emitter | before | after |
+|---|---|---|---|
+| recovery published value | `nextCockpitWaitingCommand` | 11.5 vs 15.0 | 15.0 vs 15.0 |
+| rail wait duration | `nextRailWaiting` | 11.0 vs 15.0 | 15.0 vs 15.0 |
+| rail token rate | `nextRailDelegation` | 10.5 vs 15.0 | 15.0 vs 15.0 |
+| rail pace and resets | `nextRailCapacityWindow` | 11.0 vs 15.0 | 15.0 vs 15.0 |
+| event time | `projectEventTime` | 11.0 vs 15.0 | 15.0 vs 15.0 |
+| published value | `projectPublishedValue` | 12.5 vs 15.0 | 15.0 vs 15.0 |
+| briefing caption (must stay below) | `nextCockpitRecovery` | 15.0, level | 11.5, below 15.0 |
+
+**Worth flagging for the gate, not as an objection:** the rail's compact figures were the value side
+of four of these, so the rail's token rate, pace, resets and wait duration now render at 15px where
+they rendered at 10.5px to 11px. That is what "raise the value to match its absence" costs on this
+surface, and it is a visible change to the rail's density rather than a quiet one.
+
+### Exemptions 2 and 9: reasoning repaired, and what it cost
+
+Exemption 3 and 7 were wrong and are now two of the six fixed slots. For the other two the finding
+said the answer was right and the reasoning was not, which was fair:
+
+- **Exemption 2, `.next-cockpit-recovery>header`.** I had called it "a section label". The emitter
+  shows it holds exactly one fixed string, `PROJECT RECOVERY BRIEFING`, with no branch that could
+  make it an answer. That is now asserted rather than argued: `test_a_caption_stays_below_the_values_it_labels` fails if it ever rises to meet them.
+- **Exemption 9, `.next-project-detail-rail .next-usage-*`.** I had called them "separate
+  components", which the markup does not establish, since `.next-rail-reason` appears throughout
+  the rail. The supportable reason is narrower: `nextUsageConsent` emits its `<section>`
+  unconditionally, so it has **no absence branch** and cannot be half of a pair. The old claim is
+  dropped rather than reworded.
+
+The general rule this yields is in `design-next-ui.md`: a rule is a caption only when nothing
+chooses it as the answer, and only the emitter can say so.
+
+### D1 to D4 corrections, and one figure that moved again
+
+**The deferred gap is twenty-one, not nineteen, and the range is 12.5px to 14.5px.** The range
+correction is the finding's and it is right. The count is not: a single-rule census finds
+**nineteen** on its own, and the two composed rules sit beside it, giving twenty-one. My round-1
+"seventeen" was wrong for a reason worth recording rather than just fixing: the census used a
+`font:` shorthand pattern that matched the weight instead of the size, so `font:13px/1.5` read as
+no size at all and `.next-cockpit-work-derived` and the reading-result group fell out silently. The
+same class of bug then appeared inside this round's new resolver and was caught by checking it
+against a browser. Both are now in the design doc.
+
+**The token band is seven, and the document now states one reading.** Pre-change, at or below 12px:
+`--fs-column` 9, `--fs-label` 9.5, `--fs-meta` 10, `--fs-meta-detail` 10.5, `--fs-machine` 11,
+`--fs-2xs` 11.5, `--fs-breadcrumb` 12. Three had no callers and were deleted; `--fs-meta-detail`
+had four and was folded in; `--fs-2xs` has forty-one and stays. The issue's "six" omitted
+`--fs-2xs`, exactly as the finding says. The paragraph now declares the inclusive reading and every
+count in it obeys, which was the real defect behind the two-versus-three argument.
+
+**The two rulings upheld are recorded as upheld.** "Was 9" is a minimum in px and is unchanged.
+The zero-caller count is three under the reading the document now states.
+
+### The test, and what it would take to do better
+
+`AnAbsenceNeverOutranksTheValueItReplacesTest` now lists ten ternaries plus the caption pair and
+resolves each branch through `tests/css_cascade.py`, a restricted cascade resolver added this
+round. **It is not a browser**, and that is its one real limit: it handles the selector forms this
+stylesheet uses and refuses sibling combinators rather than guessing at them. Every figure in the
+census was checked against `getComputedStyle` before being committed, and the module says so, so
+the honest description is a resolver validated against a browser rather than a substitute for one.
+Making it unnecessary would need a headless browser in CI, which this repository does not have and
+which is not this issue's to add.
+
+### Surface, this round and cumulative
+
+This round: `styles.css` 7 changed, `css_cascade.py` 198 new, `test_next_cockpit.py` 173,
+`design-next-ui.md` 39, oracles 7. Cumulative against the merge base: runtime **150**
+(`styles.css` 146, `next-cockpit.js` 4) against a declared ~105 and a 131.25 ceiling, **142.9%**;
+docs **86**; tests **432** across two files, uncosted; oracles 8 written lines carrying 9 checked
+pins. Not trimmed, per the round's instruction. `3cc7ef49` in this history is still not mine.
+
+### Summary
+
+The finding was right and my round-1 method was wrong-shaped rather than merely incomplete: I swept
+co-existing selectors, and a value and its absence never co-exist. Starting from the emitters found
+all six slots, the two bad exemptions that hid two of them, and the caption regression round 1
+introduced. The invariant test now reads the same way the defect does, and was mutation-checked in
+both directions after its resolver was rewritten.
+
+Two figures I did not simply adopt, both reported as measurements: the deferred gap is twenty-one
+rather than nineteen, which matters because that number sizes DRC-4602 and the first officer is
+carrying it to Linear; and the rail's compact figures growing from about 11px to 15px is a visible
+density change the gate should see stated rather than discover.
