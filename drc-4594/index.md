@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4594:triage:attempt-1:revision-1
                 digest: sha256:6aaaf381bea6b6871b95e31f6f6bca13d022a8f34d6daee336b942a1fac70e79
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4594:triage:1
+                briefing: briefing:drc-4594:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T11:02:40.756802Z"
+                decision: approve
+                reason: 'Checklist 4 done / 0 skipped / 0 failed; AC-1..AC-10 resolve. The ordering contradiction is settled in four rulings with the in-code constraint read as two-sided rather than overturned wholesale: the above-the-reading half is kept, the below-the-record half is overturned deliberately, and the one positionally-anchored sentence is reworded in the same change so no sentence is left claiming a position it no longer has. The issue''s omission of the conflict block is explained rather than inherited - its capture was of an unannotated session where that block does not render. Four of six section slots are pinned by nothing today, which is the silent-regression risk, and two criteria close it.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4594](https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats) — Reorder Held to so its purpose and its inputs come before the caveats
