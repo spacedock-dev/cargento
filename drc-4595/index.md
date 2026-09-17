@@ -1,7 +1,7 @@
 ---
 id:
 title: "Put Console's operations first and lift the steer box out of TRIPWIRES"
-status: implementation
+status: review
 source: "https://linear.app/recce/issue/DRC-4595/put-consoles-operations-first-and-lift-the-steer-box-out-of-tripwires"
 started: 2026-09-17T10:47:50Z
 completed: ""
