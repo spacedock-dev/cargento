@@ -502,3 +502,39 @@ widening the stage definition warns against.
 ### Summary
 
 The issue is still real and post-DRC-4587 it is worse than filed: the type-scale change lifted `FO INSPECTING` to 15px/`--ink` against a 12.5px/`--ink3` captain line, so the brightest string is now also the largest, and it introduced a second inversion where an absent cell's caption (15px) outsizes the value it explains (12.5px). Two of the original six acceptance criteria did not survive contact — the collapse (measured at 171px before and after, so the named mechanism buys nothing) and the "None recorded" convention (absent from the repository), both demoted to a dated history section rather than deleted. Measured against the stage's own "shorter than what it replaced" test: the rewrite's current half is 698 words against the captured original's 794, 12% shorter; counting the required history section it runs to 978, which is the history doing its job rather than the rewrite growing. Three findings were proved by execution rather than by reading: `test_next_cockpit.py:735` runs with `task.known === false` and so must be re-pointed rather than extended; the whole briefing carries exactly one `.next-project-value--absent` node, which is what refutes the collapse detection; and the four heights above were read off a live board, not predicted.
+
+## Stage Report: implementation
+
+Built with DRC-4589 on one branch, `spacedock-ensign/drc-4589`, candidate SHA `b9642e3`. The full
+checklist evidence is in `drc-4589/index.md`; this report covers what is specific to this issue.
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  Body written unwrapped before the first code edit (`updatedAt` 2026-09-17T12:51:44Z), and the milestone's "How this was measured" paragraph replaced with the stale-figures warning. Labels already correct, so nothing was written. Relation read-back: blockedBy DRC-4589 unchanged, blocks still empty, and **one new edge, `relatedTo DRC-4587`**, created by the six DRC-4587 mentions in the problem and history sections.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  Same deviation as the sibling report: implementation first, red proved by reverting the runtime. Against the pre-change tree the gloss was absent from the header, `Assignment evidence not published` rendered with `task.known === false`, `not captured` was present, and `.next-cockpit-authority>small` had no rule at all. Six mutations specific to this issue were killed: chip back on the sentence tier, caption ink collapsed onto the value, AC-6 suppression removed, `captured` wording restored, gloss removed, and one label rule reverted. Pins shared with the sibling; alone: `test_next_page` 35/35, `test_next_flag` 7/7, `test_focus` 96/96.
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  This issue raises nothing. The briefing's absent value and its caption are both 15px already; the change is the caption's ink moving to `--ink-caption` and the caption no longer rendering at all beside an unobserved task. `TheBriefingsThreeRegistersStayApartTest` resolves label, value and caption through the cascade and then through the registers to their hexes, and asserts caption <= value rather than asserting the caption alone. It resolves the LAST declaration per head, not the first: four of these selectors are declared twice and reading the first reports the pre-DRC-4587 sizes, which would call the inversion fixed while it was still on screen.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  Whole suite green, figures in the sibling report. This issue's share of the surface: runtime about 27 net across `next-cockpit.js` and `styles.css` (declared 30-40, ±15 → 15-55: in range). Docs 42 net across two files against ~10 ±6 declared: **over**, and honestly so — 10 of it is the sentence-tier amendment this issue owes, and 32 is sync-docs recording DRC-4589's register ruling in the stylesheet contract, which no estimate costed. Tests are counted once in the sibling report and are 3.3x their combined declared bound.
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4589`, candidate SHA `b9642e3`. Not pushed, no PR opened. One PR will carry `Implements DRC-4589` and `Implements DRC-4593`, and the Linear reconcile runs once per issue.
+
+### Summary
+
+The emphasis is reallocated exactly as drafted and nothing was invented about agent behaviour: the
+state names survive verbatim, the chip is 11px `#9b9484` mono and the captain line 15px `#f4f1e8`
+sans 600, both read off a live board rather than predicted. The gloss sits in the briefing header.
+The FO attention row is untouched, and a fixture drives `discovery.state === "error"` to prove it
+still renders. "captured" is gone from the briefing on a two-verb rule that introduces no phrase the
+tree did not already use, and four pre-existing assertions that pinned the old wording were
+re-pointed, including one `assertNotIn` that would otherwise have passed against any board at all.
+
+The one thing the gate should decide rather than accept. **AC-4 asks for three distinct (size, ink)
+pairs in an absent cell, and the tree moved underneath it.** A commit already on this base raised
+`.next-cockpit-recovery strong` to 15px, so the absent value and its caption are now the same size
+and the same ink, and no size or ink move can separate them without either lowering a caption the
+stylesheet explicitly refuses to lower or brightening an absence the captain ruled must stay
+`--ink3`. What separates them instead is AC-6: with the caption suppressed when the task is unknown,
+the only cell that can still render one has a known value at `--ink-value`, so the three pairs are
+(11.5, ink3), (15, ink), (15, ink3). The criterion is met, but by closing a route rather than by
+re-tiering anything, and that reading is this stage's and should be confirmed.

@@ -465,3 +465,38 @@ AC-1 and AC-3 each got a greppable oracle that returns a wrong number today and 
 21 label rules spelling their own ink must become 0, and 2 colour-assigning `[data-next-withheld]`
 rules must become 1. AC-7 is the only interactive criterion, because distinctness is perceptual and
 the repository has no APCA implementation to stand in for it.
+
+## Stage Report: implementation
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  Both bodies and the milestone description written before the first code edit (`updatedAt` 2026-09-17T12:50:29Z and T12:51:44Z); labels `journey:mid-flight` and `move:sharpen` verified already present on both, so no label write was issued. Relation read-back: DRC-4589 unchanged (blocks 4597/4596/4594/4593/4592/4591, blockedBy 4587); **DRC-4593 gained one edge, `relatedTo DRC-4587`**, from the mention in its problem section. Four emphasis boundaries moved as the hazard predicted and were reported rather than repaired: `**keeps `--ink3`**`, `**"Seven `--absent` rules"**`, `**Absence keeps --ink3. DRC-4597's AC4 stands verbatim.**` and the `[data-next-withheld]` clause.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  **Deviation, stated plainly: the tests were written after the implementation, not before.** The red step was performed instead by reverting the three runtime files to `HEAD` and running the new classes against the pre-change tree: 24 of 26 assertions failed, each on its own subject (no rule for `[data-next-absent]::before`, 21 label rules still spelling `--ink3`, 2 colour-assigning `[data-next-withheld]` rules, `FO INSPECTING` at 15px, `not captured` present, no gloss). The 2 that passed are the negative guards, which is what a guard should do. Sixteen targeted mutations were then run one at a time and **all sixteen were killed**, including "stamp unconditionally" and "tag all 21 sites", which are the two ways the criteria say this change fails silently. Nine pins recomputed from the assets, never textually: `next-cockpit.js` 204_410, `next-delegation.js` 14_542, `styles.css` 116_271, assembled 926_058 / `58407b61…`. Run alone: `test_next_page` 35/35, `test_next_flag` 7/7, `test_focus` 96/96.
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  Two ternaries touched. COUNTS is one selector plus an attribute, so the two sides can never appear in one rule: `AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` asserts the absent variant declares neither `font-size` nor a `font` shorthand, so its size is the value's by construction; mutation "absent variant gains a size" killed it. Confirmed live at 12.5px for `— not published` against 12.5px for `10`. DELEGATION is two selectors, so its pair was added to `AnAbsenceNeverOutranksTheValueItReplacesTest.PAIRS` (16px withheld against the 32px figure); mutation "absence outranks its figure" killed it. No ink and no size was raised anywhere: every repoint resolves to the token the rule already had.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  ruff clean, `ruff format --check` clean, `mypy --strict` no issues, `lint_embedded.py` clean, `validate_plugins.py` exit 0, `bump_version.py --current` 0.26.0 with no version field moved since the merge base. Suite: 3566 passed / 2 skipped, then 515 / 1 skipped; coverage 86.8% against `fail_under = 73`. Load average was 9.08 with three sibling worktrees live and no contention failure appeared. sync-docs ran on this branch and its edits are in the same commit; the `docs-synced-through` marker was deliberately left alone, per its own rule for a feature branch. **Surface: runtime 166/71 = net 95 across 3 files. DRC-4589's share is about 76 net across 3 (declared 95-130 across 4, ±25% → 71-163: in range, and `next-observed.js` did not need to change because `metric.pctKnown` is already the flag the rail branches on). DRC-4593's share is about 27 net across 2 (declared 30-40, ±15 → 15-55: in range). Docs 42 net (declared ~10 ±6 for DRC-4593: over, and 32 of the 42 are sync-docs recording the register ruling in the stylesheet contract rather than the AC's own amendment). Tests 651 new lines across 3 files, against roughly 150-200 declared across both issues and about 250 at the widest tolerance: ~3.3x over, and the one figure this stage cannot square.**
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4589`, candidate SHA `b9642e3`, signed off and co-authored. Not pushed, no PR opened.
+
+### Summary
+
+Both issues landed on one branch, 10 files, net 793. Every ink stayed exactly where it was: the four
+registers are pure indirection, which is what makes the change reviewable at all, and the visible
+moves are the chip coming down off the sentence tier, the captain line going up onto it, the em dash
+in front of two absent figures, and three left rules that tell the kinds of absence apart without
+colour. All four interactive properties were read off a live board rather than predicted: the chip
+resolves 11px `#9b9484` mono against the captain line at 15px `#f4f1e8` sans 600, and the three
+`data-absence` kinds render solid `--accent-dim`, solid `--line2`, and dotted. Captures are in
+`docs/screenshots/` (gitignored, so they do not reach the commit).
+
+Three things the gate should look at. The test column is 3.3x its declared upper bound and nothing
+was trimmed to hide it — the assertions are the ones the four-cycle defect class demands, but the
+estimate was wrong and saying so is cheaper than quietly widening it. DRC-4593's AC-4 as written
+asks for three distinct (size, ink) pairs in an absent cell; a commit already on this base raised
+that value to 15px, so the pairs now separate only because AC-6's suppression means a caption can no
+longer sit beside an absent value — the criterion is met by a route this branch closed rather than
+by a size or an ink moving, and that reading should be confirmed rather than assumed.
+`nextProjectDelegation`, which DRC-4589's AC-2 names as the Console path at next-delegation.js:182,
+**has no caller anywhere in the runtime** and has not since `8d2585c`; it is stamped and unit-tested
+by direct call, said so in the test's own docstring, and filed rather than fixed here.
