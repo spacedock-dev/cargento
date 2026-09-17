@@ -1603,6 +1603,31 @@ present has checked that an emitter ran. Whether anything downstream honours it 
 question, and on a cascading medium the default answer is that it does not — it inherits something,
 and what it inherits is usually the thing the variant exists to differ from.
 
+## A criterion number is not unique, and a grouped pull request makes that dangerous
+
+Every issue numbers its criteria from AC-1, so a pull request delivering nine issues contains nine
+AC-1s and several AC-3s. The first officer searched a test file for "AC-3" and "empty body", found an
+assertion that a disclosure does not open onto emptiness, and told the integrator the criterion was
+closed with nothing to do.
+
+**It was a different issue's AC-3.** One was "only the explanatory paragraph may go behind a
+summary", about count rows; the other was an empty-body guard in a different function. Adjacent
+subject matter, identical number, and a string match that looked conclusive.
+
+The reviewer had executed that falsifier at four heads and reported it surviving every time. The
+first officer read one test once and overruled it. Had the reviewer accepted the correction, the
+defect would have shipped with the first officer having declared it fixed.
+
+Two rules, and the second is the one that would have caught it:
+
+- **Cite a criterion as `DRC-NNNN AC-N`, never as `AC-N`**, in messages, in test docstrings and in
+  commit messages. The bare form is ambiguous the moment a pull request carries more than one issue,
+  which is the shape this workflow prefers.
+- **Reading an oracle is not running its falsifier.** A test whose name and message match a
+  criterion may be asserting something else entirely, and the only way to know it covers the arm the
+  criterion names is to break that arm and watch it red. This is the same failure the milestone
+  recorded against four implementers, committed by the person recording it.
+
 ## Ask what a check would report if it were disconnected from the thing it tests
 
 This is the general form of most of what this milestone found, and the sections below it are
