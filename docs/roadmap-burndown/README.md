@@ -1434,6 +1434,38 @@ what it covers. Silently covering more than before and less than promised is not
 through a template hole, because the helper splits literals at `${...}`. A derived instrument with an
 unstated limit is how the next reader concludes it proves more than it does.
 
+## A verdict carries a head move when nothing it depends on moved — including the code that asserts it
+
+The crude question is *did the head move*. The useful one is **did it move anything my conditions
+depend on**, and the hard half is enumerating the dependency set.
+
+Measured here twice in one round. A guardrail verdict was carried forward on the reason "the
+stylesheet is unchanged" — true, and too narrow: **three of its four conditions were assertions in a
+test file the commit did touch**, not assertions about the stylesheet. The reviewer checked both
+halves rather than accepting the carry, extracted the asserting class from both blobs, and found it
+byte-identical. The verdict carried, now on a dependency set someone had actually enumerated.
+
+> A condition's dependencies include the code that asserts it, not only the code it asserts about.
+
+The other half of the same round: a verdict was correctly *not* carried, because the file its test
+lived in had moved by 218 lines — and the reviewer that wrote it observed that "re-run, don't
+re-derive" was right **only because the commit had not touched the classifier**, and would have been
+wrong if it had.
+
+Compare the thing, do not read the hunk headers. Byte-comparing an extracted class answers the
+question; a diffstat naming the file does not.
+
+## A baseline that errors invalidates every verdict in the round
+
+A reviewer's first pass named the wrong test class and everything came back `errors=1` — including
+the baseline. It discarded the entire round rather than read verdicts under it.
+
+That is the same trap as a mutation that never applied, one layer up: **the baseline is an instrument
+too**, and a broken one reports on nothing while producing output shaped exactly like results. Check
+the baseline is clean before reading any verdict measured against it, and throw away the whole pass
+if it is not — the individual results are not salvageable, because none of them measured what it
+claims.
+
 ## A pre-registered contract cannot rest on line numbers
 
 A reviewer pinned its re-check conditions into the entity files so they would survive its own session
