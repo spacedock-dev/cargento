@@ -666,3 +666,63 @@ Per the round's instruction I did not trim prose to fit. The runtime overrun is 
 The review was right and F1 was mine: raising `.next-cockpit-recovery>div` to the sentence tier without raising the value rules under it made the absence outrank the fact it replaced. I swept the class rather than patching the three reported cells, found four more instances and nine look-alikes that are correctly ordered, and pinned the invariant in a test that fails per pair and survives a mutation check. AC-7 re-drove green on all seven pairs against a board serving this branch's assets.
 
 Two things for the gate rather than for me. The surface now overruns on both runtime and docs, reported above and not trimmed. And a `blocks` edge to DRC-4602 is present that was absent at cycle 1, which I have flagged rather than removed because I cannot prove my write created it.
+
+## Stage Report: review (cycle 2)
+
+Re-review of correction round 1 at `4fb5ee6d`. Reviewing the fix, not re-deriving cycle 1.
+
+- DONE: State the chosen review depth and the property of the diff that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort" — this diff owns the frontend byte pins, so the table's two-lenses-plus-an-arbiter row applies unless you argue otherwise.
+  Same depth, restated before reading: two lenses plus an arbiter. The round moved `styles.css` again and rewrote seven of the nine pins, so the conflict-prone-surface row still governs. Lenses aimed at the two claims I could not settle by reading: the nine exemptions, and whether the new test binds anything.
+- DONE: Reproduce every acceptance criterion from its own Verified by clause rather than trusting the implementation self-report, and report AC-7 as settled by a live drive or explicitly not attempted, never by automation built here.
+  AC-2/3/4/5/6 still PASS; AC-6 recomputed independently again on this head. **AC-7 FAILS again** — on the clause the round itself added this cycle. Settled by a live drive on an isolated export, not by automation.
+- DONE: Read the Copilot inline review comments in addition to any top-level review, and confirm CI is green on the CURRENT head SHA with mergeStateStatus, naming the SHA the checks belong to.
+  Copilot's cycle-1 comment was **correctly fixed** — and more completely than Copilot found it. No new inline comments. CI: 12/12 SUCCESS on `4fb5ee6d`, `mergeStateStatus: CLEAN`, and `headRefOid` confirms the checks belong to this head, not the superseded one.
+- DONE: Give a GO or NO-GO verdict with the findings that produced it, and do NOT edit the branch — a confirmed material finding routes back to implementation with its evidence.
+  **NO-GO.** Branch untouched; only a gitignored screenshot written.
+
+### What the round got right, verified rather than accepted
+
+**F1 is fixed, reproduced live.** On an export of `4fb5ee6d` served on a free port, `.next-cockpit-recovery p` and `.next-cockpit-recovery strong` both compute **15px**, and the value keeps mono and `--ink` against the absence's sans and `--ink3` — the code comment's claim holds. Screenshot: `docs/screenshots/drc-4587-cycle2-inversion-resolved.jpg`.
+
+**The nine byte pins are right, recomputed by me from the assets before any lens touched the tree:** styles.css 111533/`0cdd9483…`, assembled 914827/`9a29a48f…`, next-cockpit.js 198105/`16f67be9…` unchanged as claimed. Exactly nine occurrences, zero stale values from the old head, no tenth. Modules alone at load 5.59: `test_next_page` 25, `test_next_flag` 7, `test_focus` 96, `test_next_cockpit` 234, all OK.
+
+**Claim 3 — the invariant test is real.** It extends plain `TestCase`, needs no fixtures, is not node-gated, and runs with **zero skips** (I ran it myself). Seven pairs, fourteen selectors, all resolving to real numbers. Six of seven mutations KILLED with correct messages, including the round's own and two it never tried; a renamed selector fails rather than passing, so a vanished rule cannot read as satisfied. The comment-stripping fix is **load-bearing, not cosmetic**: against the unstripped source the new rule resolves to `None` and the test would be red today. The tree was restored byte-identical — I verified the sha256 matches my own pre-mutation figure.
+
+### NO-GO: the sweep was selector-shaped, not slot-shaped
+
+**Claim 1 does not hold. Two of the nine exemptions are wrong, and four more slots were never listed.** The defect does not live in look-alike selectors; it lives in the JS ternaries that choose which class a slot gets. Value and absence never co-exist in one render, so neither a selector sweep nor my own cycle-1 live sweep can see them — **I missed these in cycle 1 for the same reason, and say so.** Measured against the served stylesheet, with the emitter confirmed for each:
+
+| Slot | Emitter | base (value vs absence) | **head** | 
+|---|---|---|---|
+| recovery `span.next-project-value` (exemption 3) | `next-cockpit.js:2711-2718` | 11.5 vs 12.5 | **11.5 vs 15.0** |
+| rail wait duration | `next-delegation.js:237` | 11.0 vs 12.5 | **11.0 vs 15.0** |
+| rail token rate | `next-delegation.js:218` | 10.5 vs 12.5 | **10.5 vs 15.0** |
+| rail pace / resets | `next-delegation.js:250,265-268` | 11.0 vs 12.5 | **11.0 vs 15.0** |
+| `pc-entry-details time` (exemption 7) | `project.js:983-990` | 11.0 vs 12.5 | **11.0 vs 15.0** |
+| `pc-source` | `project.js:977-981` | 12.5 vs 12.5 | **12.5 vs 15.0** |
+
+Every one is the F1 shape: one expression, one slot, a known class and an absent class. **This PR raised the absence side of all six** — `.next-project-detail-rail .next-rail-reason` and `.pc-substrate-reason` both went `var(--fs-xs)` → `var(--fs-sentence)` — and left every value untouched, so each gap widened by 2.5px to 4.5px. The sharpest evidence that the sweep was selector-shaped: `.pc-substrate-reason,.pc-terminal-identity p` is **one declaration**, and the round raised the values paired with `.pc-terminal-identity p` while leaving the values paired with `.pc-substrate-reason` on the same line. Exemptions 3 and 7 are the two the round justified as "captions" and "timestamps"; the emitters say both are values an absence replaces. Exemptions 1, 4, 5, 6, 8 are correct; 2 and 9 reach the right answer on reasoning the markup does not support.
+
+This falsifies **AC-7's own new clause** — "any value computing smaller than its own absence" — six times, and the test pins seven pairs none of which is among them.
+
+**One thing the fix introduced.** `.next-cockpit-recovery strong{font-size:var(--fs-sentence)}` is a descendant selector, so it also catches the briefing's `<strong>` caption: **"PROJECT RECOVERY BRIEFING" now renders 15px**, up from 12.5px, level with every value in the strip. Measured live. Whether a caption may sit at the value tier is the milestone's call, not mine — DRC-4589 exists to split those roles.
+
+### Claim 4 — both rulings, one against me
+
+**"Was 9" — the ensign is right and I was wrong.** AC-1 reads "showing a minimum of 11 (**it shows 9 today**)". That is a minimum in px, and the base minimum is `--fs-column:9px`. Declining was correct. The error was mine: my cycle-1 report carried a lens's misreading of a count and misattributed it to AC-3, and the instruction to "fix" it came from me. Nothing to change in Linear.
+
+**Zero-caller tokens — the ensign's three is right; the set size is wrong, and so was my two.** At base, tokens at or below 12px number **seven**, not six: the enumeration omits `--fs-2xs` (11.5px, 41 callers). Among all seven, exactly three have zero callers — `--fs-column`, `--fs-meta`, `--fs-breadcrumb` — so **three is correct**. My cycle-1 "two" came from counting strictly below 12px, which excludes `--fs-breadcrumb`. Both readings are coherent; the doc mixes them, taking "six" from the strict reading and "three" from the inclusive one.
+
+**Two further precision defects in the corrected prose.** The paragraph that sizes DRC-4602 says the nineteen sit "at 13px to 14.5px" and then names two that resolve to **12.5px** (`--fs-xs`) — self-contradictory within one paragraph; the range should read 12.5px. And "the six tokens at or below 12px" should be seven, per above. Both Polish, both in the sentence the gate is being asked to rely on.
+
+### Surface: the re-baseline reading is sound, and I can show it
+
+Not too convenient — but not a blank cheque either, so here is the evidence rather than the principle. The round added **13 lines** to `styles.css` over cycle 1, five of them the explanatory comment, the rest the seven value raises and the one rule split. Docs added 44. Every added line traces to an authorized finding; nothing is unattributable, and nothing was widened beyond F1, F2 and D1-D4. On that basis the runtime 138% and docs 344% do measure what review found. The caveat is that the figure is not final: fixing the six slots above will move runtime again.
+
+### Summary
+
+The round fixed what it was asked to fix and proved it: F1 reproduces as resolved on a live board, the byte pins are right on independent recomputation, and the new invariant test genuinely binds its seven pairs — it kills six of seven mutations, fails on a vanished selector, and its comment-stripping fix is load-bearing rather than cosmetic. Copilot's finding was closed more thoroughly than Copilot stated it.
+
+The verdict is **NO-GO** on claim 1. "Swept the class" is the one claim that does not survive: the sweep followed selectors that resembled the reported ones, and the defect lives in the ternaries that decide which class a slot receives. Six slots still draw a stated absence 2.5px to 4.5px larger than the value it replaces, this PR widened all six by raising only the absence side, and two of them sit behind exemptions the round wrote reasons for. AC-7 fails on the clause added this cycle. I missed these in cycle 1 by the same blindness, which is why the fix should key on the emitters rather than on another pass over the stylesheet.
+
+F1's fix should stand. The six slots and the promoted caption route back to `implementation`; the caption question and the two prose corrections are cheap and can ride the same round.
