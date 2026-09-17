@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4591:triage:attempt-1:revision-1
                 digest: sha256:d199e2ed0f0025c04c59c89d12094e890604d0ccce26149be8348652b1c3087c
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4591:triage:1
+                briefing: briefing:drc-4591:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T10:54:02.434138Z"
+                decision: approve
+                reason: 'Checklist 5 done / 0 skipped / 0 failed; AC-1..AC-8 resolve with AC-2 the interactive one. The stage re-measured against the post-DRC-4587 tree and found its own issue''s argument had moved: the size-and-contrast half is now false because that PR fixed it, recorded in a thirteen-row claim table naming three dead claims, two understated counts and one wrong line number. The disclosure requirement names a concrete mechanism rather than a category, reusing nextCockpitDisclosureAttr and projectDisclosure with no new plumbing, which is what the dispatch asked for. All eleven pinned figures were read from the post-4587 worktree rather than main.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4591](https://linear.app/recce/issue/DRC-4591/adopt-a-three-tier-caveat-rule-and-put-the-long-form-behind-redraw) — Adopt a three-tier caveat rule and put the long form behind redraw-safe disclosures
