@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4597:triage:attempt-1:revision-1
                 digest: sha256:3a2d2f42e557a511b2192e864cc04a2dc2fda662b1747e948127f7fbcbb2755d
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4597:triage:1
+                briefing: briefing:drc-4597:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T11:17:29.344019Z"
+                decision: approve
+                reason: 'Checklist 5 done / 0 skipped / 0 failed; AC-1..AC-6 resolve, five offline and one interactive. Two recon-refuted claims are struck and dated into history rather than built: the scope rail is not present at every scroll position (zero sticky rules, align-items:start, hidden below 1280px, gated on more than one session) and the ordering requirement is already shipped with a test binding it, so a literal implementation would have replaced a tested tiebreak with an untested one. A third correction was found at this stage rather than inherited. The captain''s absence-ink ruling is applied as a regression guard on the end state rather than re-decided, which is the correct treatment of a settled ruling, and the entity tells implementation to verify the Read-before-building bullet rather than author it.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4597](https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title) — Rebuild the scope rail card around the session title
