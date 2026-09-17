@@ -500,3 +500,54 @@ by a size or an ink moving, and that reading should be confirmed rather than ass
 `nextProjectDelegation`, which DRC-4589's AC-2 names as the Console path at next-delegation.js:182,
 **has no caller anywhere in the runtime** and has not since `8d2585c`; it is stamped and unit-tested
 by direct call, said so in the test's own docstring, and filed rather than fixed here.
+
+## Defect — the withheld scope-rail title renders `--ink2` on this branch alone, 2026-09-18
+
+Found by the first officer during integration, on `b9642e3`, with the suite green. Confirmed here by
+hand before being accepted. Recorded because it is an unintended dependency between two branches
+that nothing in either entity file states, and the next integration will not have this stage to ask.
+
+**What renders.** A withheld `<small>` inside `.next-cockpit-scope-tree` resolves to `--ink2` on this
+branch — the ink reserved for values — where every other tree in the milestone resolves it to
+`--ink3`. Three rules can colour that element:
+
+| rule | specificity | on `main` | on `b9642e3` |
+|---|---|---|---|
+| `[data-next-withheld]` (main :74, here :85) | (0,1,0) | loses | loses |
+| `.next-cockpit-scope-tree small,…` `color:var(--ink2)` (main :822, here :837) | (0,1,1) | loses | **wins** |
+| `.next-cockpit-scope-tree small[data-next-withheld],…` (main :1118, here :1156) | (0,2,1) | **wins**, `--ink3` | sets no colour |
+
+AC-3 asked for exactly one rule assigning a colour to `[data-next-withheld]`. Removing the colour
+from the (0,2,1) override reaches that count, and hands the element to the (0,1,1) rule still sitting
+above the bare one. The count is right and the rendered ink is wrong.
+
+**The dependency, and it runs one way.** DRC-4592 at `43a8e9b` deletes the competing `--ink2` rule
+outright when it rebuilds the rail card, and replaces the override with
+`.next-cockpit-scope-tree [data-next-withheld]{font-family:var(--sans)}` under a comment reading
+"Family only. The colour is the board-wide `[data-next-withheld]` rule." So `43a8e9b` already carries
+exactly one colour-assigning withheld rule **and** no competitor, and reaches AC-3's end state on its
+own. Two consequences worth stating plainly: this branch's edit to that rule is **not merely
+insufficient alone, it is redundant once DRC-4592 lands**, because DRC-4592 removes the whole rule;
+and the end state the captain's ruling names is delivered by DRC-4592, not by this branch. The
+integrator was told to take DRC-4592's side on that block.
+
+**How it got past this stage, which is the part worth keeping.** AC-3 already contained the property.
+Its **Verified by** is a `grep -c` returning 2 today and 1 after. Its **Falsified by** is "a second
+colour-assigning rule reappearing, **or the register resolving to anything other than `--ink3`**".
+This stage implemented the verifier, encoded the verifier as the test
+(`test_exactly_one_rule_assigns_a_colour_to_a_withheld_value` counts lines), and never ran the
+falsifier. The criterion was not under-specified; half of it was not executed. The general rule,
+which applies to every criterion in this milestone rather than to this rule: **run the falsifier, not
+just the verifier, and resolve the property on the element that renders it.**
+
+The mechanism was in this stage's own code. The dispatch named
+`cargento/skills/cargento/tests/css_cascade.py` as the tool for exactly this and it was not on the
+base; that was reported and a local resolver was written instead, whose docstring says it does
+last-declaration-wins "because every rule in `PAIRS` is a single class or one descendant step". The
+limitation was written down and then not applied to the one rule where specificity decided the
+outcome. The first officer has accepted the wrong-premise half of that as a dispatch error.
+
+**Blast radius, bounded by measurement rather than assertion.** Across the whole `styles.css` diff of
+`b9642e3` exactly one colour declaration disappears — this one. The other 35 are token swaps inside
+the same rule at the same selector and the same specificity, so none of them can move a cascade
+winner. There is no second instance on this branch.
