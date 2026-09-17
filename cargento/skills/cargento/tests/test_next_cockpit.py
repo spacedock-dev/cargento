@@ -11387,6 +11387,136 @@ console.log(JSON.stringify({html: __els.app.innerHTML}));
         )
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ConsoleSetupNeverCallsAnUnreadCapabilityOffTest(NextPageJsHarness):
+    """The Console setup summary, in the three states it can honestly be in.
+
+    Reported by review: the two booleans collapsed an unread capability into
+    `false`, so a server started with BOTH capabilities on opened its Console
+    saying "terminal bridge off, observer model off" and corrected itself a tick
+    later. That is AGENTS.md's first Measured Invariant -- a structurally
+    present default standing in for a measurement -- in a function whose own
+    comment cites it.
+
+    The fixture serves an enabled observer model and a registered terminal, so
+    every `false` this test sees is wrong about the fixture rather than merely
+    unproven.
+
+    The refresh arm is the one that matters most and it is a defect the FIX
+    introduced, caught by re-reading the diff rather than by a suite.
+    `projectTerminalLookup` marks a registered terminal
+    `{state:"registered", loading:true}` while it re-checks, and it re-checks
+    whenever the payload revision advances -- so a first draft that read the
+    `loading` flag reported `null` on EVERY poll of a working console, flipped
+    the summary to "not read yet" and moved the live terminal into the setup
+    disclosure. Reading `state` is what makes the third value mean "no answer
+    yet" rather than "an answer is being refreshed".
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    CAPABLE_SERVER = """
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {semantic: __semantic, child_assignments: [], observers: [],
+       observer_model: {enabled: true, disclosure: "x"}}
+    : String(url).startsWith("/api/interaction/origin")
+      ? {state: "registered", tty: "/dev/ttys004"}
+      : __dashboard});
+for(let i = 0; i < 10; i++) await __settle();
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"console"});
+for(let i = 0; i < 12; i++) await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const focus = group.sessions.find(session => session.sid === "focus-1");
+const summaryOf = html =>
+  (html.match(/<summary>(How this server was started[^<]*)<\\/summary>/) || [])[1] || null;
+const inDisclosure = html => (html.match(
+  /<details class="next-cockpit-console-setup"[\\s\\S]*?<\\/details>/) || [""])[0]
+  .includes("next-cockpit-terminal");
+"""
+
+    def state(self, checks: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            self.CAPABLE_SERVER + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_an_unread_capability_is_not_reported_as_disabled(self) -> None:
+        """Falsified by `Boolean(...)` over either field: both arms then read
+        `false`, and the summary says `off` about a server that has them on."""
+        out = self.state("""
+const settled = nextCockpitConsoleCapabilities(group, focus);
+const settledHtml = __els.app.innerHTML;
+// Rewind to the state the first render of this tab is in.
+nextCockpitContexts.delete(nextCockpitContextKey(group, focus));
+nextCockpitRequests.delete(nextCockpitContextKey(group, focus));
+delete projectTerminalBySession[sessKey(focus)];
+const unread = nextCockpitConsoleCapabilities(group, focus);
+renderNext();
+const firstHtml = __els.app.innerHTML;
+console.log(JSON.stringify({unread, settled,
+  firstSummary: summaryOf(firstHtml), settledSummary: summaryOf(settledHtml),
+  firstInDisclosure: inDisclosure(firstHtml),
+  settledInDisclosure: inDisclosure(settledHtml)}));
+""")
+        self.assertEqual({"terminal": None, "observer": None}, out["unread"])
+        self.assertEqual({"terminal": True, "observer": True}, out["settled"])
+        self.assertEqual(
+            "How this server was started — terminal bridge not read yet, "
+            "observer model not read yet",
+            out["firstSummary"],
+        )
+        self.assertEqual(
+            "How this server was started — terminal bridge on, observer model on",
+            out["settledSummary"],
+        )
+        # Placement is unchanged by the third state: nothing unread is operable.
+        self.assertTrue(out["firstInDisclosure"])
+        self.assertFalse(out["settledInDisclosure"])
+
+    def test_a_refreshing_terminal_keeps_the_answer_it_already_has(self) -> None:
+        """Falsified by reading `terminal.loading` instead of `terminal.state`.
+
+        One revision bump is all it takes, and the payload's revision advances
+        on every poll.
+        """
+        out = self.state("""
+const settled = nextCockpitConsoleCapabilities(group, focus);
+nextData.generated = 106;
+renderNext();
+const refreshing = nextCockpitConsoleCapabilities(group, focus);
+const entry = projectTerminalBySession[sessKey(focus)];
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({settled, refreshing, loading: entry.loading === true,
+  state: entry.state, summary: summaryOf(html), inDisclosure: inDisclosure(html)}));
+""")
+        # The refresh really is in flight, or this test proves nothing.
+        self.assertTrue(out["loading"], "the lookup did not re-arm, so no refresh was measured")
+        self.assertEqual("registered", out["state"])
+        self.assertEqual(out["settled"], out["refreshing"])
+        self.assertEqual({"terminal": True, "observer": True}, out["refreshing"])
+        self.assertEqual(
+            "How this server was started — terminal bridge on, observer model on",
+            out["summary"],
+        )
+        self.assertFalse(out["inDisclosure"], "a live terminal moved into the setup disclosure")
+
+    def test_an_unavailable_terminal_is_reported_off_and_not_unknown(self) -> None:
+        """The third value must not swallow a real negative: a session with no
+        registered terminal is a measurement, and `off` is what it deserves."""
+        out = self.state("""
+projectTerminalBySession[sessKey(focus)] = {state:"unavailable", revision:105,
+  data:{reason:"lookup-failed"}};
+const capabilities = nextCockpitConsoleCapabilities(group, focus);
+console.log(JSON.stringify({capabilities,
+  summary: summaryOf(nextCockpitConsoleSetup(capabilities, ""))}));
+""")
+        self.assertEqual({"terminal": False, "observer": True}, out["capabilities"])
+        self.assertIn("terminal bridge off", out["summary"])
+
+
 class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):
     """DRC-4591. The summary of a tier-2 disclosure, read beside the body it hides.
 

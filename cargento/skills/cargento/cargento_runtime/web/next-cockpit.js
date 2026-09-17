@@ -3766,7 +3766,18 @@ function nextCockpitTerminal(group, focus){
 
    `null` for an unfocused terminal too. The bridge is a per-session
    registration, so with nothing selected there is no session whose bridge could
-   be reported either way. */
+   be reported either way.
+
+   Read from `state` and NOT from the `loading` flag beside it, which is a
+   distinction the first draft of this function got wrong and a poll would have
+   exposed within seconds. `projectTerminalLookup` marks a REGISTERED terminal
+   `{state:"registered", loading:true}` while it refreshes, and it refreshes
+   whenever the payload's revision advances -- so a flag-based read reported
+   `null` on every poll of a working console. Measured: settled
+   `{terminal:true}`, then `{terminal:null}` one revision later, with the
+   summary flipping to "terminal bridge not read yet" and the live terminal
+   moving INTO the setup disclosure. `state` is the tri-state on its own:
+   `loading` only before any answer, then `registered` or `unavailable`. */
 function nextCockpitConsoleCapabilities(group, focus){
   const terminal = focus ? projectTerminalBySession[sessKey(focus)] : null;
   const entry = nextCockpitContexts.get(nextCockpitContextKey(group, focus));
@@ -3774,7 +3785,8 @@ function nextCockpitConsoleCapabilities(group, focus){
   // arrived publishing no observer model; `null` from the latter is a read.
   const model = entry && entry.data ? entry.data.observer_model || null : undefined;
   return {
-    terminal: !terminal || terminal.loading === true ? null : terminal.state === "registered",
+    terminal: !terminal || terminal.state === "loading" ? null
+      : terminal.state === "registered",
     observer: model === undefined ? null : Boolean(model && model.enabled === true),
   };
 }
