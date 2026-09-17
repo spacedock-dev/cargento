@@ -680,8 +680,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "34646eed0f1890628554fbe9216c937ddca5dd117e69292dfeeb24831a341dbc",
             ),
             "next-cockpit.js": (
-                203_002,
-                "990f4e4993b0f732e4b3e49dffdc10563c65dd0e7a15b9ac614d27940e308013",
+                203_325,
+                "3198b59be319f8fbdde193cef9625b54c8c86d24123bb637c72611d21f82e0af",
             ),
             "next-render.js": (
                 8_960,
@@ -700,16 +700,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(111_658, len(styles))
+        self.assertEqual(112_008, len(styles))
         self.assertEqual(
-            "19c58ec2c16528d13ef0bc27e7b59a7911770afdda6640a905e672df50d2c303",
+            "af33306fe9ecc13445bb6ea0ba2024a7bb33938ddbe5dd175e004f1ed70c9367",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(920_003, len(assembled))
+        self.assertEqual(920_676, len(assembled))
         self.assertEqual(
-            "5b00d698c8963956291041ecf448caadcc72a14f5ecc9589af0ab6862bb5fdbb",
+            "1127c59659bf26aaaf6bd92e813048891bdd612f485c0e89391ec1e3635c7347",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -937,6 +937,12 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
         # own cursor. Collapsing the two loses a distinction a reader acts on.
         stalled = self.rule(".next-stalled button:disabled")
         self.assertIn("cursor:wait", stalled)
+        # And it does not inherit the refusal's border either. Dashed is the
+        # register for a control refusing a press; this one is waiting for a
+        # retry it makes itself, so it states `solid` rather than letting the
+        # primitive say the wrong thing about the state. Without this the
+        # cursor and the border disagree about what the control is doing.
+        self.assertIn("border-style:solid", stalled)
         self.assertGreater(
             self.styles.index(".next-stalled button:disabled"),
             self.styles.index('.next-action[aria-disabled="true"]'),

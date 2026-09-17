@@ -110,7 +110,11 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-stalled strong{color:var(--ink);font-weight:500}
 .next-stalled[data-next-state="history-reset"]{border-left-color:var(--ink3)}
 .next-stalled button{margin-left:auto}
-.next-stalled button:disabled{cursor:wait;color:var(--ink3)}
+/* Solid, against the primitive's dashed. Dashed is the register for a control
+   refusing a press; this one is waiting for a retry it will make itself, and
+   inheriting the refusal look says the wrong thing about the state. The cursor
+   already carried that distinction and the border was contradicting it. */
+.next-stalled button:disabled{cursor:wait;color:var(--ink3);border-style:solid}
 .next-tabs-row{justify-content:space-between;gap:20px}
 .next-population{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
 .next-population span{color:var(--ink3)}
@@ -121,9 +125,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 /* The irreversible control, and it must not read as the copy beside it: a raise
    moves a window on somebody's desk and cannot be taken back, where an unwanted
    copy can simply be ignored. So it rests filled and on the warn line rather than
-   flat and on the quiet one, and it carries the :focus-visible ring
-   .next-session-copy never got — DRC-4381 left that gap and the irreversible
-   control is not going to be the third to inherit it. */
+   flat and on the quiet one. It keeps its own brighter :focus-visible ring
+   rather than the primitive's: both controls have one now, since
+   .next-session-copy carries .next-action, which closed the gap DRC-4381 left. */
 .next-session-raise{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--amber);border-radius:3px;background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:var(--fs-2xs);cursor:pointer}
 .next-session-raise:hover{border-color:var(--ink);color:var(--ink)}
 .next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

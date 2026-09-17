@@ -820,8 +820,10 @@ const NEXT_COCKPIT_HELD_UNSAFE = /[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\
 
 /* `inert` picks how a control that does not apply is drawn, and the two here
    want different answers. `save` is the field's own verb, so it stays on the
-   page and says why it cannot fire; `clear` stays `hidden`, because an empty
-   box has nothing to clear and no explanation to offer. */
+   page and reachable rather than vanishing from under a keyboard reader; it
+   refuses the press silently, because the box beside it already shows that the
+   draft matches what is stored. `clear` stays `hidden`, because an empty box
+   has nothing to clear and no explanation to offer. */
 function nextCockpitHeldControl(action, label, kind, shown, inert){
   const off = inert ? ' aria-disabled="true"' : " hidden";
   return `<button type="button" data-next-cockpit-action="${action}" data-arg="${kind}"` +
@@ -1704,11 +1706,13 @@ function nextCockpitReadingStates(annotation, model){
   }
   if(!String(annotation && annotation.goal || "").trim() &&
       !String(annotation && annotation.output || "").trim()){
-    /* The first sentence verbatim, because `/api/reading` refuses with these
-       same words and the block and the route behind its button cannot word
-       one state two ways. The second is this page's own: the control now
-       renders beside it, so the reader can see the act they are being
-       refused and needs the one step that would permit it (DRC-4588). */
+    /* Both sentences are this page's. The route refuses the same state in its
+       own words -- `reading.REFUSALS` says "Nothing is typed against this
+       session" where this says "has been typed for" -- so unlike the discard
+       arm above, which carries the server's string, these two are not the same
+       characters and this comment does not claim they are. The second sentence
+       exists because the control now renders beside the reason, so a reader
+       who is being refused can see the one step that would permit it. */
     return "Nothing has been typed for this session, so there is nothing to read it against. " +
       "Save a goal above to enable a reading.";
   }
