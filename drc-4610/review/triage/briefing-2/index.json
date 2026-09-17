@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4610:triage:attempt-2:revision-1",
+  "question": "Approve DRC-4610's triage: delete the uncalled path rather than wire it back, and ship it in its own PR after the integration?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4610:triage:attempt-2:revision-1:item-1",
+      "uri": "git-root://state/4991d75725da53abb9415d421261ad928d8f5a8f/drc-4610.md",
+      "rev": "sha256:969367e2458481143c725f18782b745b69562e18dd1ebb2b79c1370d2285be9e",
+      "mediaType": "text/markdown",
+      "summary": "nextProjectDelegation has exactly one reference in the repository: its own definition. The caller was dropped by 6c7bd9c (#314), not by 8d2585c as the title says - proven by walking the occurrence count commit-by-commit across the range rather than sampling the endpoints, which is what produced the wrong attribution. The Console's absent-delegation figure comes from nextRailDelegation via a seven-hop trace where every hop is a runtime call site, so the card is genuinely dead rather than merely unreferenced. Four figures in the prior killed pass were wrong and were corrected in place; the stylesheet claim was measured by deleting lines 158-195 from a copy and recounting, giving six selectors with lowest surviving use 1 and none orphaned. Also found: DRC-4589 publishes its two emission sites with the tab labels inverted. Six ACs resolve under --ac-scan, all unevidenced after a report line naming two of them literally was reworded."
+    }
+  ]
+}
