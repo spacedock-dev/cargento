@@ -5581,221 +5581,61 @@ def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, obj
     return {"tag": tag, "classes": set(classes), "attrs": set(attrs)}
 
 
-# `next-project.js:396` wraps the whole cockpit in `.next-cockpit-content`, and
-# leaving it out is not cosmetic: without that ancestor
-# `.next-cockpit-content .next-cockpit-evidence-missing` (0,2,0) loses to
-# `.next-cockpit-recovery small` (0,1,1) and an inverted row reads clean.
+# `next-project.js:396` wraps the cockpit in `.next-cockpit-content`. Leaving it
+# out is not cosmetic: a rule qualified by it outranks one that is not, so a
+# fixture without it resolves a DOM the application never builds.
 _CONTENT = [_node("div", "next-cockpit-content")]
-_REC = [*_CONTENT, _node("section", "next-cockpit-recovery")]
-_RAIL = [_node("div", "next-project-detail-rail")]
-_TL = [_node("div", "pc-semantic-timeline")]
 
 
 class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
-    """DRC-4587 F1 and its correction round. A stated absence must never render
-    larger than the fact it stands in for: "you can tell a label from its
-    answer, a figure from a gap".
+    """DRC-4587. A stated absence must never render larger than the fact it
+    stands in for: "you can tell a label from its answer, a figure from a gap".
 
-    **The pairs are read from the emitters, not from the stylesheet.** Each row
-    below is one ternary that picks a value class or an absence class, and the
-    two branches never co-exist in a render. A sweep of co-existing selectors
-    cannot see such a pair, and neither can a live board: only one branch is
-    ever on screen. Round 1 swept selectors, passed, and missed six of these.
+    **This asserts only what the pull request claims.** It raises two absence
+    rules, both named by string in the issue's own criterion, and each is listed
+    below with the value it is drawn against. Enumerating them exhaustively is
+    the whole claim; the wider class of sub-floor absences is DRC-4602's, and
+    nothing here asserts anything about it.
+
+    Three earlier versions of this guard passed over the defect they were named
+    for, and the shape of each failure is why this one is written as it is. One
+    compared a value against its absence and could not see both move together.
+    One built a DOM the application never renders. One checked an absence's size
+    without its value, and so asserted an inversion as correct. **An absence is
+    only ever read beside the value it replaces.**
     """
 
-    # (name, emitter, value path, absence path). Paths are the DOM the emitter
-    # actually builds; `css_cascade` resolves each branch on its own.
-    SLOTS = (
+    # (name, emitter, absence path, the value it is drawn against).
+    RAISED_ABSENCES = (
         (
-            "recovery published value",
-            "next-cockpit.js nextCockpitWaitingCommand",
+            "two axes, read separately",
+            "next-cockpit.js nextCockpitLanded",
             [
-                *_REC,
-                _node("div", "next-cockpit-waiting"),
-                _node("span", "next-project-value", "next-project-value--known"),
+                *_CONTENT,
+                _node("section", "next-cockpit-landed"),
+                _node("span", "next-cockpit-landed-axes"),
             ],
             [
-                *_REC,
-                _node("div", "next-cockpit-waiting"),
-                _node("span", "next-project-value", "next-project-value--absent"),
-            ],
-        ),
-        (
-            "rail wait duration",
-            "next-delegation.js nextRailWaiting",
-            [
-                *_RAIL,
-                _node("section", "next-rail-panel"),
-                _node("article", "next-rail-wait"),
-                _node("div", "next-rail-wait-heading"),
-                _node("span", "next-rail-wait-duration"),
-            ],
-            [
-                *_RAIL,
-                _node("section", "next-rail-panel"),
-                _node("article", "next-rail-wait"),
-                _node("div", "next-rail-wait-heading"),
-                _node("span", "next-rail-reason"),
-            ],
-        ),
-        (
-            "rail token rate",
-            "next-delegation.js nextRailDelegation",
-            [
-                *_RAIL,
-                _node("section", "next-delegation"),
-                _node("div", "next-delegation-metrics"),
-                _node("span", attrs=("data-next-delegation-rate",)),
-            ],
-            [
-                *_RAIL,
-                _node("section", "next-delegation"),
-                _node("div", "next-delegation-metrics"),
-                _node("span", "next-rail-reason", attrs=("data-next-delegation-rate-withheld",)),
-            ],
-        ),
-        (
-            "rail pace and resets",
-            "next-delegation.js nextRailCapacityWindow",
-            [
-                *_RAIL,
-                _node("div", "next-rail-capacity-window"),
-                _node("div", "next-rail-capacity-caption"),
-                _node("span"),
-            ],
-            [
-                *_RAIL,
-                _node("div", "next-rail-capacity-window"),
-                _node("div", "next-rail-capacity-caption"),
-                _node("span", "next-rail-reason"),
-            ],
-        ),
-        (
-            "event time",
-            "project.js projectEventTime",
-            [
-                *_TL,
-                _node("div", "pc-entry-details"),
-                _node("div"),
-                _node("time", attrs=("datetime",)),
-            ],
-            [
-                *_TL,
-                _node("div", "pc-entry-details"),
-                _node("div"),
-                _node("span", "pc-substrate-reason"),
-            ],
-        ),
-        (
-            "published value",
-            "project.js projectPublishedValue",
-            [*_TL, _node("div", "pc-entry-details"), _node("div"), _node("span", "pc-source")],
-            [
-                *_TL,
-                _node("div", "pc-entry-details"),
-                _node("div"),
-                _node("span", "pc-substrate-reason"),
-            ],
-        ),
-        (
-            "terminal identity window",
-            "project.js projectTerminalIdentity",
-            [_node("div", "pc-terminal-identity"), _node("code")],
-            [_node("div", "pc-terminal-identity"), _node("p")],
-        ),
-        (
-            "terminal identity session name",
-            "project.js projectTerminalIdentity",
-            [_node("div", "pc-terminal-identity"), _node("strong")],
-            [_node("div", "pc-terminal-identity"), _node("p")],
-        ),
-        (
-            "recovery assignment",
-            "next-cockpit.js nextCockpitRecovery",
-            [*_REC, _node("div"), _node("strong")],
-            [*_REC, _node("div"), _node("span", "next-project-value--absent")],
-        ),
-        (
-            "recovery goal",
-            "next-project.js nextProjectGoal",
-            [
-                *_REC,
-                _node("section", "next-project-goal"),
-                _node(
-                    "span",
-                    "next-project-value",
-                    "next-project-value--known",
-                    "next-project-goal-text",
-                ),
-            ],
-            [
-                *_REC,
-                _node("section", "next-project-goal"),
-                _node(
-                    "span",
-                    "next-project-value",
-                    "next-project-value--absent",
-                    "next-project-goal-text",
-                ),
-            ],
-        ),
-        (
-            "reading clause",
-            "next-cockpit.js nextCockpitReading",
-            [*_CONTENT, _node("span", "next-cockpit-reading-clause")],
-            [*_CONTENT, _node("span", "next-cockpit-reading-clause-absent")],
-        ),
-        (
-            "work summary",
-            "next-cockpit.js nextCockpitWork",
-            [*_CONTENT, _node("span", "next-cockpit-work-summary")],
-            [*_CONTENT, _node("p", "next-cockpit-work-absent")],
-        ),
-        (
-            # Both classes, because the emitter sets both and the second is
-            # what distinguishes this machine-paired use of the reason class
-            # from its prose-paired one.
-            "graph row time",
-            "project.js projectGraphRow",
-            [_node("article", "pc-graph-row"), _node("time")],
-            [
-                _node("article", "pc-graph-row"),
-                _node("span", "pc-substrate-reason", "pc-graph-time"),
+                *_CONTENT,
+                _node("section", "next-cockpit-landed"),
+                _node("div", "next-cockpit-landed-cards"),
+                _node("div", "next-cockpit-landed-card"),
+                _node("span", "next-cockpit-landed-value"),
             ],
         ),
     )
 
-    # Prose absences are the other half of the same rule: they keep the floor.
-    # `.next-cockpit-recovery small` sizes the strip's storage cue at 12.5px and
-    # must not drag an absence sentence down with it, which is only decidable
-    # with the `.next-cockpit-content` wrapper in the path.
-    PROSE_ABSENCES = (
-        (
-            "assignment evidence absent",
-            "next-cockpit.js nextCockpitRecovery",
-            [*_REC, _node("div"), _node("small", "next-cockpit-evidence-missing")],
-        ),
-    )
-
-    # A caption labels the values beside it, so it must stay below them. The
-    # round-1 fix used a descendant selector and pulled this one level with the
-    # strip it labels, which is the same collapse of register the other way up.
-    CAPTION_BELOW_VALUE = (
-        (
-            "briefing caption",
-            [*_REC, _node("header"), _node("strong")],
-            [*_REC, _node("div"), _node("strong")],
-        ),
-    )
+    css: str
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tokens, cls.rules = css_cascade.load(
-            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
-        )
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+        cls.cockpit_js = (web / "next-cockpit.js").read_text(encoding="utf-8")
 
-    tokens: dict[str, float]
-    rules: list[tuple[str, str, int]]
+    cockpit_js: str
 
     def size(self, path: list[dict[str, object]]) -> float:
         resolved = css_cascade.resolve(path, self.tokens, self.rules)
@@ -5803,78 +5643,38 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
         assert resolved is not None
         return resolved
 
-    def test_no_slot_draws_its_value_smaller_than_its_absence(self) -> None:
-        for name, emitter, value_path, absence_path in self.SLOTS:
-            with self.subTest(slot=name):
-                value, absence = self.size(value_path), self.size(absence_path)
+    def test_every_absence_this_change_raises_is_read_beside_its_value(self) -> None:
+        for name, emitter, absence_path, value_path in self.RAISED_ABSENCES:
+            with self.subTest(absence=name):
+                absence, value = self.size(absence_path), self.size(value_path)
                 self.assertGreaterEqual(
                     value,
                     absence,
-                    f"{name} ({emitter}): value {value}px against absence {absence}px, "
+                    f'"{name}" ({emitter}): absence {absence}px against value {value}px, '
                     "so the absence outranks the fact it replaces",
                 )
 
-    # The six machine slots `design-next-ui.md` records as promoted. Comparing a
-    # value against its absence does not bind these: reverting the promotion
-    # drops both sides together and the comparison stays equal while the value
-    # leaves the tier the document says it is on. Measured, not assumed: that
-    # mutation survived until this list existed.
-    PROMOTED = (
-        (
-            "recovery published value",
-            [
-                *_REC,
-                _node("div", "next-cockpit-waiting"),
-                _node("span", "next-project-value", "next-project-value--known"),
-            ],
-        ),
-        ("rail wait duration", [*_RAIL, _node("span", "next-rail-wait-duration")]),
-        (
-            "rail token rate",
-            [
-                *_RAIL,
-                _node("div", "next-delegation-metrics"),
-                _node("span", attrs=("data-next-delegation-rate",)),
-            ],
-        ),
-        (
-            "rail pace and resets",
-            [*_RAIL, _node("div", "next-rail-capacity-caption"), _node("span")],
-        ),
-        ("entry-details timestamp", [*_TL, _node("div", "pc-entry-details"), _node("time")]),
-        ("published value", [*_TL, _node("div", "pc-entry-details"), _node("span", "pc-source")]),
-    )
+    def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
+        """The other raised absence has no value to be read beside.
 
-    def test_every_promoted_machine_slot_is_on_the_sentence_tier(self) -> None:
-        sentence = self.tokens["fs-sentence"]
-        for name, path in self.PROMOTED:
-            with self.subTest(slot=name):
-                self.assertEqual(
-                    sentence,
-                    self.size(path),
-                    f"{name} left the sentence tier, which design-next-ui.md records it on",
-                )
-
-    def test_a_prose_absence_keeps_the_sentence_floor(self) -> None:
-        sentence = self.tokens["fs-sentence"]
-        for name, emitter, path in self.PROSE_ABSENCES:
-            with self.subTest(absence=name):
-                self.assertEqual(
-                    sentence,
-                    self.size(path),
-                    f"{name} ({emitter}) does not resolve to the sentence tier",
-                )
-
-    def test_a_caption_stays_below_the_values_it_labels(self) -> None:
-        for name, caption_path, value_path in self.CAPTION_BELOW_VALUE:
-            with self.subTest(caption=name):
-                caption, value = self.size(caption_path), self.size(value_path)
-                self.assertLess(
-                    caption,
-                    value,
-                    f"{name}: caption {caption}px against value {value}px, "
-                    "so the label reads level with its own answer",
-                )
+        `nextCockpitHeldTo` fills one span from a chain: a discard stamp, then a
+        revision line, then "No revision saved yet". Value and absence are the
+        same element with the same class, so they resolve identically whatever
+        the tier is. That is a stronger guarantee than a comparison, and it
+        holds only while the chain stays in one assignment, which is what this
+        asserts.
+        """
+        chain = (
+            "nextAnnotationDiscardStamp(annotation) ||\n"
+            '    nextProjectRevisionLine(annotation) || "No revision saved yet"'
+        )
+        self.assertIn(chain, self.cockpit_js)
+        emitted = re.findall(r'class="next-cockpit-held-revision"', self.cockpit_js)
+        self.assertEqual(
+            1,
+            len(emitted),
+            "the revision slot is emitted more than once, so the chain may have split",
+        )
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

@@ -110,22 +110,7 @@ region; a shared responsive block would make every view edit the same tail. Movi
 regions is an ownership change, not incidental cleanup.
 
 Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels
-and compact controls sit on one tier, `--fs-label` at 11px. **Six machine slots are promoted off
-that tier** because the absence that replaces each one is a sentence, and an absence must never
-read larger than the fact it stands in for: `.next-rail-wait-duration`, the token rate in
-`.next-delegation-metrics`, the pace and resets in `.next-rail-capacity-caption`, the timestamps in
-`.pc-entry-details time` and `.pc-event-evidence time`, `.pc-semantic-timeline .pc-source`, and the
-published values in `.next-cockpit-recovery .next-project-value`. So a timestamp or a rate is on
-the label tier only where nothing replaces it with a sentence.
-
-**Where the machine string has a machine-shaped absence, the absence moves instead.**
-`.next-cockpit-work-absent`, `.next-cockpit-reading-clause-absent` and `.pc-graph-time` sit with
-the values they replace rather than at the sentence floor, because a rate, a timestamp and a
-duration are compact on purpose and raising them removes the inversion by breaking the register.
-That is the cheaper half of the same rule and it needs no emitter change, because each of those
-slots already emits a class that separates its machine-paired use from its prose-paired one.
-Prose absences in the same panels, `.next-cockpit-work-limit` and `.next-cockpit-work-dropped`
-among them, keep the floor. Four
+identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px. Four
 `:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
 and 9px was the smallest step in the file. **Counts here read "at or below 12px" inclusively**, so
 the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 10px,
@@ -142,22 +127,18 @@ never a contrast defect: `--ink` on `--bg` recomputes to 16.36:1 and the asset t
 than 4.5:1 is green. DRC-4596 adds the guardrail that would close the gap, and lands after the
 change the figures justify. The absence explanations the prototype placed at 10px are sentences, so
 they take the sentence tier, and two of them had to leave an `<h2>`'s `<header>` to get there.
-A value is never drawn smaller than the absence that replaces it, nor than the caption that labels
-it, which is what raising a container without raising its value rules quietly breaks.
-
-**Finding that class needs a census taken from the emitters, not from the stylesheet.** A value and
-its absence are chosen by a ternary, so they never co-exist in one render: no sweep of co-existing
-selectors sees the pair, and neither does reading a populated board, because only one branch is
-ever on screen. Two passes over this stylesheet missed the same six slots for that reason before a
-per-slot reading found them. `AnAbsenceNeverOutranksTheValueItReplacesTest` now lists the ternaries
-and resolves both branches separately through `tests/css_cascade.py`; its numbers were checked
-against `getComputedStyle` in a browser before they were trusted. Two exemptions in the first pass
-were wrong on exactly this point: `.next-cockpit-recovery span` was read as a caption when it also
-sizes every `nextProjectValue` span, and `.pc-entry-details time` as a timestamp when
-`projectEventTime` swaps it for a reason. A rule is a caption only when nothing chooses it as the
-answer, and only the emitter can say so: `.next-cockpit-recovery>header` qualifies because it holds
-one fixed string, and `.next-usage-consent` is not in the census at all because it has no absence
-branch to be paired with. The stylesheet
+**Raising an absence is not safe on its own.** An absence and the value it replaces are chosen by a
+ternary, so they never co-exist in one render: no sweep of co-existing selectors sees the pair, and
+neither does reading a populated board, because only one branch is ever on screen. Raise the
+absence without its value and the gap reads larger than the fact it stands in for. So only two
+absences are on the sentence tier here, the two named above, and each is safe for a reason that
+does not depend on finding every pair: "two axes, read separately" is drawn beside values already
+on that tier, and "No revision saved yet" shares one class with the revision line it alternates
+with, so both branches resolve identically whatever the tier is.
+`AnAbsenceNeverOutranksTheValueItReplacesTest` asserts exactly those two and nothing wider.
+**Every other absence keeps the size it had**, and DRC-4602 owns the audit that can raise them
+safely, because doing so needs a census of the emitters that this stylesheet cannot supply. The
+stylesheet
 retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
 above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
 between contrast steps.
