@@ -1,7 +1,7 @@
 ---
 id:
 title: "Rebuild the scope rail card around the session title"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title"
 started: 2026-09-17T11:07:52Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4597](https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title) — Rebuild the scope rail card around the session title
