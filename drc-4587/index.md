@@ -1123,3 +1123,118 @@ tracking declarations are likewise about the current tree, not the remainder.
 **Consequence for DRC-4602.** You retracted the number from the issue. The document still implies one,
 and implies a bigger one than the issue ever carried, so the two now disagree in the direction that
 would size the work wrongly. That is one sentence, and it rides with whatever fixes F4 and F5.
+
+## Stage Report: implementation (cycle 4)
+
+Correction round 3, structural. **I agree with the route and it worked out cheaper than either of
+us expected.** The reasoning is below, along with the one place I did not extend it and why.
+
+- DONE: Write the gate-approved drafts to Linear as the FIRST action before any code.
+  No Linear write this round and none was authorized. Standing correction from the addendum still
+  applies: **no count of the sub-floor set from this branch should be carried to Linear**, mine
+  included, because every one came from a per-rule census and is a floor rather than a count.
+- DONE: Write the failing test first and watch it fail for the right reason, then regenerate all nine byte pins from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE.
+  The fixture repair came first and turned the guard red on **4 of 4** new rows before any fix. Pins: 7 of 8 written sites moved; `next-cockpit.js` size and digest both verified unchanged, no JS this round. Isolated: `test_next_page` 25/25, `test_next_flag` 7/7, `test_focus` 96/96, guard 4/4.
+- DONE: Run the canonical pre-PR suite from AGENTS.md, invoke sync-docs, measure the surface.
+  All clean. Dashboard **3531 OK** (2 skipped), scripts **515 OK** (1 skipped), coverage 86.8%, `ruff`, `mypy`, `lint_embedded`, `validate_plugins`, `bump_version --current` 0.26.0, no version field moved. Load 3.5; pin modules run alone regardless.
+- DONE: Commit DCO signed off, do not push, report the SHA.
+  Branch `spacedock-ensign/drc-4587`, candidate SHA **`295b19ce775a5ac63eda6195d3cb694aba439ad4`**, committed on the branch this time, history linear, nothing rewritten, not pushed.
+
+### My judgment on the structural fix, since it was asked for
+
+**It is right, and the discriminator is already in the tree.** I measured the four inversions before
+forming a view: three of the four pair a **sans** absence with a **mono** value. So "figure-paired"
+is not a fresh judgment per slot, it is the sans/mono register this document already owns and this
+issue already turns on. That matters because it is the property the last three rounds lacked:
+membership can be checked rather than asserted.
+
+**It cost less than raising the values, and much less than I expected.** I had assumed the new
+absence class would need emitter edits across `next-delegation.js` and `project.js`. It did not:
+**every one of these slots already emits a class that separates its machine-paired use from its
+prose-paired one** (`.next-cockpit-work-absent`, `.next-cockpit-reading-clause-absent`, and
+`pc-graph-time` alongside `pc-substrate-reason`). So the fix is a re-tiering of three existing
+declarations, CSS only, **zero emitter files touched, 8 added and 2 removed in `styles.css`**.
+Against raising four machine values to 15px it is roughly neutral in line count and strictly better
+in register, and against the version that invents classes it is far cheaper. So: **yes, it reduced
+the delta**, and the reason is worth keeping, because it is also the reason the fix is safe.
+
+**Where I did not extend it, deliberately.** The six machine slots round 2 promoted to 15px stay
+promoted. Their absences are `.next-rail-reason` and `.pc-substrate-reason` used *without* a
+distinguishing second class, so re-tiering them would need the emitter changes this round avoided,
+and the rail is settled and not mine to revisit. That leaves the tree with both halves of the rule
+visible at once, which `design-next-ui.md` now states rather than hides: six slots promoted because
+their absence is a sentence, three absences demoted because their value is a machine string.
+
+### The bound, so the next reviewer checks a set rather than re-derives one
+
+All 20 `web/*.js` scanned. **Eight can contain a pairing; twelve cannot**, and that is the half of
+the claim that is checkable by anyone in one command.
+
+| file | absence-class mentions | helper pairings |
+|---|---|---|
+| `next-cockpit.js` | 25 | 2 |
+| `project.js` | 15 | 14 |
+| `next-delegation.js` | 14 | - |
+| `next-render.js` | 4 | - |
+| `next-controls.js` | 2 | - |
+| `next-project.js` | 2 | 3 |
+| `next-projects.js` | 1 | 4 |
+| `next-session.js` | 1 | - |
+| `next-activity.js` | - | 8 |
+| the other eleven | - | - |
+
+Helper pairings matter because three functions hide a slot inside a call: `nextProjectValue`
+(17 call sites over 4 files), `projectPublishedValue` (11) and `projectEventTime` (3). A grep for
+absence class names alone misses all 31 of those, which is why `next-activity.js` appears here with
+no absence class at all.
+
+**What I did not do:** read all 31 helper call sites individually. The guard covers ten slots and
+the six promotions; the remaining call sites are bounded and listed above but not each verified.
+That is stated so the next reviewer knows the shape of what is unchecked rather than inferring it.
+
+### F5, and the survivor it was hiding
+
+The fixture was wrong in three ways and the finding named all three: the missing
+`.next-cockpit-content` wrapper (`next-project.js:396`), a recovery-goal row modelling a `<p>` where
+`nextProjectGoal` emits a `nextProjectValue` span, and a graph-row row carrying one of the two
+classes its emitter sets. All three are fixed against the emitters.
+
+Re-running the mutation checks afterwards was the instruction that paid. Four of five kill; **one
+survived**: reverting the recovery published value dropped value *and* absence together, so the
+comparison stayed equal while the value silently left the tier the document records it on. A
+comparison test cannot see that. `test_every_promoted_machine_slot_is_on_the_sentence_tier` now
+binds the six promotions directly, and the same mutation kills.
+
+### F6, F7
+
+**F6.** `_steps` returned `None` for an unsupported selector and the caller read it as "does not
+match", so a rule left the cascade in silence while the docstring claimed it was refused. It raises
+now. The `@media` policy is decided rather than assumed: `max-width` blocks are dropped, and a
+`min-width` block that sets a font size **raises**, so the escape hatch is closed. Verified by
+appending `@media(min-width:1px){…{font-size:9px}}` and watching it raise instead of pass.
+
+**F7.** Written last, as instructed. The sentence claimed timestamps and rates sit at 11px while six
+machine slots render at 15px. It now names all six, says why they are promoted, and names the three
+that moved the other way. The claim is bound by the promotion test rather than left as prose.
+
+### Surface
+
+This round: `styles.css` 8, `css_cascade.py` 22, `test_next_cockpit.py` 114, `design-next-ui.md` 17,
+oracles 7. Cumulative against the merge base: runtime **156** (`styles.css` 152, `next-cockpit.js` 4)
+against a declared ~105 and a 131.25 ceiling, **148.6%**; docs **113 added / 7 deleted**, which is
+larger than the 100/9 the round quoted and is mine to own; tests **562** over two files, uncosted;
+oracles 8 written lines carrying 9 checked pins. Not trimmed. `3cc7ef49` in this history is still
+not mine.
+
+### Summary
+
+The structural route is the right one and I have said why in terms that can be checked: the
+discriminator is the sans/mono register already in the document, three of the four inversions fit
+it, and the emitters already carry the classes needed to act on it, so the fix is CSS only and
+touches no emitter. The bound is published as a table, with the twelve files that cannot contain a
+pairing named, and with the 31 helper call sites marked as bounded but not individually read.
+
+The finding I would most want carried forward is not one of the four inversions. It is that the
+guard's fixture had been resolving a DOM the application never builds, so on the one row where
+fixture and reality differed, **the fixture was the one that passed**, and a mutation survived
+behind it. A test whose fixture is not taken from the emitter measures the test, not the product.
