@@ -755,7 +755,7 @@ function nextCockpitRecoveryBriefing(group, focus, observation, commandAttention
     ] : latest.resultKind === "session" ? [
       `Latest session result: ${latest.result.summary} · source session ` +
         `${nextCockpitRecoveryFactSource(latest.result)} · uncertainty: ` +
-        "session output; semantic result not captured",
+        "session output; semantic result not published",
     ] : []),
     `Decisions: ${decisions}`,
     `Captain attention: ${captain.length ? captain.map(item => item.label).join("; ") :
@@ -1381,6 +1381,45 @@ const NEXT_READING_CLAUSE_UNRETAINED =
 const NEXT_READING_UNKNOWN_KEY =
   "This board cannot read the reading it was given: it carries a field this build does not " +
   "know. Nothing from it is shown, because a reading half-read is not a reading.";
+/* DRC-4593. FO and Captain are this workflow's words, not the reader's, and
+   they were rendered for months with no definition anywhere on the page. The
+   state names themselves stay verbatim: they are strings a source published,
+   and inventing prose about what the agent is doing is a claim the board never
+   observed. */
+const NEXT_COCKPIT_AUTHORITY_GLOSS =
+  "FO is the first officer, the agent driving this workflow; Captain is you.";
+
+const NEXT_READING_NO_WORDS =
+  "Nothing has been typed for this session, so there is nothing to read it against. " +
+  "Save a goal above to enable a reading.";
+const NEXT_READING_MODEL_UNREAD =
+  "Observer model availability has not been read, so no reading can be offered.";
+const NEXT_READING_MODEL_OFF =
+  "Observer model is disabled for this run, so no reading can be offered. " +
+  "Start with --observer-model to allow one; --no-observer-model refuses it.";
+const NEXT_READING_UNAUTHORIZED =
+  "The abstention check this ruling requires has not been run, so a reading cannot be " +
+  "asked for yet. The evidence above stays readable without one.";
+/* Which kind of absence each refusal is, held beside the sentences rather than
+   recovered from them at render. One paragraph class prints all four and a
+   regex over the prose would re-derive what the producer already knows. The
+   discard sentence is deliberately not in here: it comes from the server, so
+   this page cannot classify it, and an unmapped sentence renders with no
+   attribute rather than with a guessed one. */
+const NEXT_READING_REFUSAL_ABSENCE = new Map([
+  [NEXT_READING_NO_WORDS, "waiting-on-you"],
+  [NEXT_READING_MODEL_UNREAD, "not-observed"],
+  [NEXT_READING_MODEL_OFF, "run-config"],
+  [NEXT_READING_UNAUTHORIZED, "run-config"],
+]);
+/* Never on a paragraph that is not an absence. `.next-cockpit-reading-why`
+   also carries rules, offers and results, and tagging all of its emissions
+   would make the attribute a structurally-present default that measures
+   nothing about the session. */
+function nextAbsenceAttr(kind){
+  return kind ? ` data-absence="${kind}"` : "";
+}
+
 const NEXT_READING_DERIVED_ONLY =
   "Rests only on Cargento's own summary of this session, which is not evidence about it.";
 const NEXT_READING_OWN_WORDS_ONLY =
@@ -1738,14 +1777,10 @@ function nextCockpitReadingStates(annotation, model){
        characters and this comment does not claim they are. The second sentence
        exists because the control now renders beside the reason, so a reader
        who is being refused can see the one step that would permit it. */
-    return "Nothing has been typed for this session, so there is nothing to read it against. " +
-      "Save a goal above to enable a reading.";
+    return NEXT_READING_NO_WORDS;
   }
-  if(!model) return "Observer model availability has not been read, so no reading can be offered.";
-  if(model.enabled !== true){
-    return "Observer model is disabled for this run, so no reading can be offered. " +
-      "Start with --observer-model to allow one; --no-observer-model refuses it.";
-  }
+  if(!model) return NEXT_READING_MODEL_UNREAD;
+  if(model.enabled !== true) return NEXT_READING_MODEL_OFF;
   return "";
 }
 
@@ -1866,11 +1901,13 @@ function nextCockpitUnaskedPart(session){
     const rows = Array.isArray(session && session.departures) ? session.departures : [];
     const standing = rows.length ? nextUnaskedDepartureBody(session) : "";
     return '<div class="next-cockpit-departure-part">' + label +
-      '<p class="next-cockpit-reading-why">Nothing watches for a departure on its own. ' +
+      '<p class="next-cockpit-reading-why" data-absence="run-config">Nothing watches for a ' +
+      'departure on its own. ' +
       'Start with --unasked-readings to have Cargento check a session against what you ' +
       'asked for while you are away.</p>' +
       (standing
-        ? `<p class="next-cockpit-reading-why">${esc(NEXT_UNASKED_LANE_OFF_RECORD)}</p>` +
+        ? '<p class="next-cockpit-reading-why" data-absence="run-config">' +
+          `${esc(NEXT_UNASKED_LANE_OFF_RECORD)}</p>` +
           standing
         : "") + '</div>';
   }
@@ -1938,7 +1975,7 @@ function nextCockpitDepartureCounts(fromReading, fromLane){
   const line = (label, value) =>
     '<div class="next-cockpit-count">' +
     `<span class="next-cockpit-count-label">${esc(label)}</span>` +
-    `<span class="next-cockpit-count-value">` +
+    `<span class="next-cockpit-count-value"${value == null ? " data-next-absent" : ""}>` +
     `${esc(value == null ? "not published" : String(value))}</span></div>`;
   return '<div class="next-cockpit-departure-part">' +
     '<span class="next-cockpit-departure-label">COUNTS</span>' +
@@ -1978,8 +2015,8 @@ function nextCockpitReadingDepartures(shape, source){
      beside them. */
   if(!shape){
     return {count: null,
-      html: part('<p class="next-cockpit-reading-why">No reading has been made at your ' +
-        'request, so nothing has been raised from one.</p>')};
+      html: part('<p class="next-cockpit-reading-why" data-absence="not-observed">No reading ' +
+        'has been made at your request, so nothing has been raised from one.</p>')};
   }
   /* An empty departures list had five causes and one sentence, and the
      sentence was the most reassuring of them. `departures` is
@@ -1994,15 +2031,21 @@ function nextCockpitReadingDepartures(shape, source){
      window did exactly this until the caller was changed to pass `all`. This
      is the residual, and a producer is what finally makes the sentence
      reachable in earnest. */
-  const nothing = (text, count) =>
-    ({count, html: part(`<p class="next-cockpit-reading-why">${esc(text)}</p>`)});
+  /* The kind is a parameter and not a constant on the helper: two of its three
+     callers state that nothing was observed, and the third states that a
+     reading WAS read and raised nothing. Stamping all three alike would put an
+     absence cue on a result. */
+  const nothing = (text, count, absence = "") =>
+    ({count, html: part(`<p class="next-cockpit-reading-why"${nextAbsenceAttr(absence)}>` +
+      `${esc(text)}</p>`)});
   if(shape.malformed){
     return nothing("A reading was made and this board could not read it, so nothing here is " +
-      "raised from it.", null);
+      "raised from it.", null, "not-observed");
   }
   if(source && String(source.state || "") !== "read"){
     return nothing("The observed record is not on this page right now, so the entries this " +
-      "reading cited cannot be resolved and nothing can be raised from it.", null);
+      "reading cited cannot be resolved and nothing can be raised from it.", null,
+      "not-observed");
   }
   if(!shape.departures.length && shape.criteria.length &&
       shape.criteria.every(row => row.result === NEXT_READING_UNVERIFIABLE)){
@@ -2051,8 +2094,7 @@ function nextCockpitReadingRefusal(annotation, model){
   /* A stored reading outlives the model option. Only the new request is
      gated here; retaining the old account never establishes availability. */
   return nextCockpitReadingStates(annotation, model) || (authorized ? "" :
-    "The abstention check this ruling requires has not been run, so a reading cannot be " +
-    "asked for yet. The evidence above stays readable without one.");
+    NEXT_READING_UNAUTHORIZED);
 }
 
 // One block renders per page -- the focused session's -- so the paragraph the
@@ -2101,7 +2143,9 @@ function nextCockpitReadingControl(session, annotation, model){
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
     `${pending ? "Reading in progress…" : "Ask for a reading"}</button>` +
     (request && !request.refusal
-      ? `<p class="next-cockpit-reading-why" role="status">${esc(request.message)}</p>` : "") +
+      ? '<p class="next-cockpit-reading-why" role="status"' +
+        `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
+        `${esc(request.message)}</p>` : "") +
     `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
     /* The announcement and the description are one node while a refusal
        stands. Printing the stored message and the reason separately rendered
@@ -2110,7 +2154,8 @@ function nextCockpitReadingControl(session, annotation, model){
        node carries `role="status"` when it is the refusal. */
     (reason
       ? `<p class="next-cockpit-reading-why"${request && request.refusal ? ' role="status"' : ""}` +
-        ` id="${NEXT_READING_REFUSED_ID}">${esc(reason)}</p>`
+        ` id="${NEXT_READING_REFUSED_ID}"` +
+        `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>${esc(reason)}</p>`
       : "");
 }
 
@@ -2230,8 +2275,8 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
 function nextCockpitLanded(observed){
   if(!observed || !observed.landing){
     return '<section class="next-cockpit-landed"><header><h2>HOW IT LANDED</h2></header>' +
-      '<p class="next-cockpit-reading-why">This session was not in the observed payload, ' +
-      'so nothing here says how it ended.</p></section>';
+      '<p class="next-cockpit-reading-why" data-absence="not-observed">This session was not ' +
+      'in the observed payload, so nothing here says how it ended.</p></section>';
   }
   const landing = observed.landing;
   const card = (title, text, known, note) =>
@@ -2847,11 +2892,11 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
     : "LATEST SESSION RESULT";
   const directionEvidence = briefing.latest.direction
     ? `promoted exact direction · source session ${directionSource}` :
-    "actionable direction not captured";
+    "actionable direction not observed";
   const resultEvidence = briefing.latest.resultKind === "semantic"
     ? `exact semantic result · source session ${resultSource}`
     : briefing.latest.resultKind === "session"
-      ? `session output; semantic result not captured · source session ${resultSource}`
+      ? `session output; semantic result not published · source session ${resultSource}`
       : "";
   const taskText = briefing.task.known ? [briefing.task.label, briefing.task.stage]
     .filter(Boolean).join(" · ") : "Not observed";
@@ -2865,7 +2910,9 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
       `<small class="next-cockpit-source">${esc(briefing.task.provenance +
         (briefing.task.sourceSession ? ` · source session ${briefing.task.sourceSession}` : "") +
         (briefing.task.fact && briefing.task.fact.at ? ` · event ${briefing.task.fact.at}` : ""))}</small>` +
-      '</details>' : '<small class="next-cockpit-evidence-missing">Assignment evidence not published</small>';
+      '</details>' : briefing.task.known
+        ? '<small class="next-cockpit-evidence-missing">Assignment evidence not published</small>'
+        : "";
   const latestCells = [
     briefing.latest.directionInAssignment ? '<p>Direction shown in assignment</p>' :
     briefing.latest.direction ? `<span>${exactLabel}</span>` +
@@ -2877,15 +2924,17 @@ function nextCockpitRecoveryStrip(group, observation, commandAttention, project 
     briefing.latest.result ? resultEvidence : ""].filter(Boolean);
   const latestCell = latestCells ? '<div class="next-cockpit-recovery-evidence">' +
     `<span>LATEST EVIDENCE</span>${latestCells}` +
-    (!briefing.latest.direction ? '<p class="next-cockpit-evidence-missing">Actionable direction not captured</p>' : "") +
-    (!briefing.latest.result ? '<p class="next-cockpit-evidence-missing">Session result not captured</p>' : "") +
+    (!briefing.latest.direction ? '<p class="next-cockpit-evidence-missing">Actionable direction not observed</p>' : "") +
+    (!briefing.latest.result ? '<p class="next-cockpit-evidence-missing">Session result not observed</p>' : "") +
     `<details${nextCockpitDisclosureAttr("latest")}><summary>Evidence · direction and result sources</summary>` + latestEvidence.map(value =>
       `<small class="next-cockpit-source">${esc(value)}</small>`).join("") + '</details></div>' :
     '<div class="next-cockpit-recovery-evidence"><span>LATEST EVIDENCE</span>' +
-    '<p class="next-cockpit-evidence-missing">Actionable direction not captured · ' +
-    'Session result not captured</p></div>';
+    '<p class="next-cockpit-evidence-missing">Actionable direction not observed · ' +
+    'Session result not observed</p></div>';
   return '<section class="next-cockpit-recovery" aria-label="Recovery summary">' +
-    '<header><strong>PROJECT RECOVERY BRIEFING</strong></header>' +
+    '<header><strong>PROJECT RECOVERY BRIEFING</strong>' +
+    `<small class="next-cockpit-recovery-gloss">${NEXT_COCKPIT_AUTHORITY_GLOSS}</small>` +
+    '</header>' +
     `<div data-next-cockpit-task${taskAttrs}><span>ASSIGNMENT</span>` +
     `<strong>${esc(taskText)}</strong>` +
     `${assignmentEffect}${assignmentEvidence}` +

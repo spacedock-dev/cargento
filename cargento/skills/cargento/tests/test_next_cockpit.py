@@ -5,7 +5,7 @@ import pathlib
 import re
 import shutil
 import unittest
-from typing import Any
+from typing import Any, ClassVar
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
@@ -346,7 +346,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         # Then
         assert isinstance(out, str)
         self.assertIn("Exact operator direction", out)
-        self.assertNotIn("Actionable direction not captured", out)
+        self.assertNotIn("Actionable direction not observed", out)
         self.assertIn("Direction shown in assignment", out)
 
     def test_decision_rows_and_counts_include_unknown_authors_without_claiming_captain(
@@ -733,9 +733,10 @@ console.log(JSON.stringify(briefing.replace(/<details[^>]*>[\\s\\S]*?<\\/details
 
         # Then
         assert isinstance(out, str)
-        self.assertIn("Assignment evidence not published", out)
-        self.assertIn("Actionable direction not captured", out)
-        self.assertIn("Session result not captured", out)
+        self.assertNotIn("Assignment evidence not published", out)
+        self.assertIn("Not observed", out)
+        self.assertIn("Actionable direction not observed", out)
+        self.assertIn("Session result not observed", out)
         self.assertIn("Captain attention unavailable", out)
         self.assertIn("project context coverage unavailable", out)
 
@@ -758,7 +759,7 @@ console.log(JSON.stringify(html.slice(html.indexOf('<section class="next-cockpit
         assert isinstance(out, str)
         self.assertIn("LATEST EXACT RESULT", out)
         self.assertIn("Root finished", out)
-        self.assertIn("Actionable direction not captured", out)
+        self.assertIn("Actionable direction not observed", out)
 
     def test_scope_and_evidence_stay_open_through_a_redraw(self) -> None:
         out = self.run_fixture(
@@ -3273,7 +3274,7 @@ console.log(JSON.stringify({text:briefing.text,
             self.assertIn("Candidate verification completed", value)
             self.assertIn("latest session result", value.casefold())
         self.assertIn("codex:focus-1", out["text"])
-        self.assertIn("session output; semantic result not captured", out["text"])
+        self.assertIn("session output; semantic result not published", out["text"])
         self.assertIn("Detailed verification transcript", out["text"])
         start = out["html"].index("LATEST ACTIONABLE DIRECTION")
         disclosure = out["html"].find("<details", start)
@@ -3284,7 +3285,7 @@ console.log(JSON.stringify({text:briefing.text,
         self.assertNotIn("Detailed verification transcript", primary)
         self.assertIn("Evidence", evidence)
         self.assertIn("codex:focus-1", evidence)
-        self.assertIn("session output; semantic result not captured", evidence)
+        self.assertIn("session output; semantic result not published", evidence)
 
     def test_recovery_promotes_first_fo_action_when_captain_is_empty(self) -> None:
         out = self.run_fixture(
@@ -5193,12 +5194,13 @@ const read = () => {
   const html = __els.app.innerHTML;
   const block = html.slice(html.indexOf('class="next-cockpit-reading"'));
   return {
-    text: (block.match(/class="next-cockpit-reading-why">([^<]*)</) || [])[1],
+    text: (block.match(/class="next-cockpit-reading-why"[^>]*>([^<]*)</) || [])[1],
     // The refusal by its id rather than by being first. The offer paragraph
     // now precedes it in every state, because the control renders in all of
     // them, and "the first reason paragraph" stopped naming the reason.
     reason: (block.match(
-      /class="next-cockpit-reading-why" id="next-cockpit-reading-refused">([^<]*)</) || [])[1],
+      /class="next-cockpit-reading-why" id="next-cockpit-reading-refused"[^>]*>([^<]*)</
+      ) || [])[1],
     control: block.includes('data-next-cockpit-action="reading-ask"'),
     disabled: /data-next-cockpit-action="reading-ask"[^>]*aria-disabled="true"/.test(block),
     // The bare attribute the browser acts on, kept apart from the aria one:
@@ -7904,7 +7906,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', drawn["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', drawn["block"])
         self.assertEqual(["not published", "1", "3", "3", "2"], values)
 
     def test_a_check_with_no_words_behind_it_renders_the_never_checked_sentence(self) -> None:
@@ -7931,7 +7933,7 @@ console.log(JSON.stringify({
         self.assertIn(departures.NEVER_CHECKED, out["visible"])
         self.assertNotIn(departures.NOTHING_DEPARTED, out["visible"])
         # And no figure beside a sentence saying nothing was read.
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
 
     def test_a_raise_read_against_a_superseded_revision_says_so_here_too(self) -> None:
@@ -8068,7 +8070,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "2", "2", "2", "1"], values)
         # No ratio, no percentage, and no further figure composed from these.
         self.assertNotIn("%", out["visible"])
@@ -8084,7 +8086,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "1", "3", "not published", "not published"], values)
 
     def test_the_departure_figure_is_absent_rather_than_zero_when_nothing_watches(self) -> None:
@@ -8100,7 +8102,7 @@ console.log(JSON.stringify({
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
         self.assertIn("Nothing watches for a departure on its own", out["visible"])
         self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
@@ -8124,7 +8126,7 @@ console.log(JSON.stringify({
             'anything.";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
         self.assertIn("Cargento has not checked this session", out["visible"])
         self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
@@ -8140,7 +8142,7 @@ console.log(JSON.stringify({
             'against what you asked for and found nothing to raise.";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "0", "3", "3", "2"], values)
 
     def test_each_figure_counts_the_rows_its_own_part_rendered(self) -> None:
@@ -8184,11 +8186,11 @@ console.log(JSON.stringify({
         self.assertIn("It changed the board mid-capture.", reading_only["visible"])
         self.assertEqual(
             ["1", "0", "1", "1", "0"],
-            re.findall(r'class="next-cockpit-count-value">([^<]*)<', reading_only["block"]),
+            re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', reading_only["block"]),
         )
         self.assertEqual(
             ["1", "1", "1", "1", "0"],
-            re.findall(r'class="next-cockpit-count-value">([^<]*)<', both["block"]),
+            re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', both["block"]),
         )
 
     def test_the_review_surface_does_not_open_a_closed_reading_gate(self) -> None:
@@ -8892,6 +8894,504 @@ console.log(JSON.stringify({
             out["polite"],
         )
         self.assertEqual([], out["alert"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CountsAbsenceIsStampedAndAZeroIsNotTest(NextPageJsHarness):
+    """DRC-4589 AC-2. COUNTS wrote "not published" into the same span a real
+    figure gets, so an absence rendered byte-identical to a fact.
+
+    The attribute is what the stylesheet hangs the em dash and the family swap
+    on, and the case that matters is the negative one: a real `0` is a
+    measurement and must carry neither. A rule cannot make that distinction --
+    `0` and `null` reach the same selector -- so it is stamped at emission and
+    asserted here on both arms.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    DEPARTURE = CockpitDepartureReviewTest.DEPARTURE
+
+    def counts(self, setup: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const block = (__els.app.innerHTML.match(
+  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
+// Every count span with its attribute, in document order: an assertion that
+// reads only the absent ones cannot see a stamp landing on a real figure.
+const spans = [...block.matchAll(
+  /<span class="next-cockpit-count-value"([^>]*)>([^<]*)</g)].map(
+  m => [m[2], m[1].includes("data-next-absent")]);
+console.log(JSON.stringify({spans}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_null_count_is_stamped_and_a_real_zero_is_not(self) -> None:
+        out = self.counts(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 0, attempted: 0, handed_over: 0};\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        # The first row is the unmeasured one and the three zeroes behind it are
+        # measurements. A blanket stamp passes an absent-only assertion and
+        # fails this one.
+        self.assertEqual(
+            [["not published", True], ["1", False], ["0", False], ["0", False], ["0", False]],
+            out["spans"],
+        )
+
+    def test_the_stamp_follows_the_value_and_not_the_row(self) -> None:
+        """The same rows with figures behind them carry no stamp at all."""
+        out = self.counts(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertEqual(
+            [["not published", True], ["1", False], ["3", False], ["3", False], ["2", False]],
+            out["spans"],
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnAbsenceParagraphNamesItsKindTest(NextPageJsHarness):
+    """DRC-4589 AC-4. One paragraph class carried a rule, an offer, a result and
+    three different kinds of absence in one treatment.
+
+    The two negative cases below are the point of the criterion: tagging all
+    twenty-one emission sites would turn `data-absence` into a
+    structurally-present default that measures nothing about the session, and
+    would put an absence cue on a reading that ran and raised nothing.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def whys(self, setup: str, after: str = "") -> list[list[Any]]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+"""
+            + after
+            + """
+const rows = [...__els.app.innerHTML.matchAll(
+  /<(?:p|span) class="next-cockpit-reading-why"([^>]*)>([^<]*)</g)].map(m => {
+  const kind = (m[1].match(/data-absence="([a-z-]+)"/) || [null, ""])[1];
+  return [m[2].slice(0, 46), kind];
+});
+console.log(JSON.stringify({rows}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return [list(row) for row in out["rows"]]
+
+    def kind_of(self, rows: list[list[Any]], prefix: str) -> str:
+        found = [row for row in rows if row[0].startswith(prefix)]
+        self.assertEqual(1, len(found), f"{prefix!r} matched {len(found)} paragraphs: {rows}")
+        return str(found[0][1])
+
+    def test_the_run_config_sentence_names_the_flag_and_the_kind(self) -> None:
+        """The `--unasked-readings` paragraph, which AC-5 also holds in place."""
+        rows = self.whys("delete __dashboard.unasked;\n")
+
+        self.assertEqual(
+            "run-config", self.kind_of(rows, "Nothing watches for a departure on its own")
+        )
+
+    def test_a_reading_nobody_asked_for_is_not_observed_rather_than_waited_on(self) -> None:
+        rows = self.whys(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "ship the thing";\n'
+            "delete __dashboard.sessions[0].assessment;\n"
+        )
+
+        self.assertEqual(
+            "not-observed", self.kind_of(rows, "No reading has been made at your request")
+        )
+
+    def test_a_reader_who_has_typed_nothing_is_waiting_on_themselves(self) -> None:
+        """The one kind the reader can act on, and the only one the stylesheet
+        marks with the accent rule."""
+        rows = self.whys(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+        )
+
+        self.assertEqual(
+            "waiting-on-you", self.kind_of(rows, "Nothing has been typed for this session")
+        )
+
+    def test_a_disabled_observer_model_is_a_choice_about_the_run(self) -> None:
+        # The model lands on the context entry the cockpit fetches, so it is set
+        # after navigation and re-rendered rather than seeded on the payload.
+        rows = self.whys(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "ship the thing";\n',
+            """
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const entry = nextCockpitContexts.get(
+  nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
+entry.data = Object.assign({}, entry.data, {observer_model:{enabled:false}});
+renderNext();
+""",
+        )
+
+        self.assertEqual(
+            "run-config", self.kind_of(rows, "Observer model is disabled for this run")
+        )
+
+    def test_a_statement_that_is_not_an_absence_carries_no_attribute(self) -> None:
+        """Two paragraphs the criterion names by hand. Both are the board
+        reasoning about figures it has, not reporting a gap."""
+        rows = self.whys(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+        )
+
+        self.assertEqual("", self.kind_of(rows, "Five figures, and no arithmetic between them"))
+        self.assertEqual("", self.kind_of(rows, "Neither card implies the other"))
+
+    def test_no_emission_carries_a_kind_outside_the_declared_three(self) -> None:
+        rows = self.whys("delete __dashboard.unasked;\n")
+
+        self.assertEqual(
+            set(),
+            {row[1] for row in rows} - {"", "not-observed", "waiting-on-you", "run-config"},
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheBriefingSaysWhoIsWaitingBeforeItNamesItselfTest(NextPageJsHarness):
+    """DRC-4593 AC-1, AC-3, AC-5 and AC-6.
+
+    The briefing is redrawn above every tab, and its loudest string was
+    `FO INSPECTING` -- workflow vocabulary, never glossed, computed from
+    attention coverage rather than from anything an agent is doing -- while the
+    line telling the reader they are off the hook was the dimmest thing in the
+    same cell.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def briefing(self, setup: str = "", after: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"now"});
+await __settle();
+"""
+            + after
+            + """
+const html = __els.app.innerHTML;
+// Balanced rather than lazy: STATED GOAL is a nested <section>, so a lazy match
+// cuts the briefing off three cells before COMMAND and every assertion below
+// would pass against a fragment that never contained what it denies.
+const start = html.indexOf('<section class="next-cockpit-recovery"');
+let block = "";
+if(start >= 0){
+  const scan = /<section\\b|<\\/section>/g;
+  scan.lastIndex = start;
+  let depth = 0, hit;
+  while((hit = scan.exec(html))){
+    depth += hit[0] === "</section>" ? -1 : 1;
+    if(depth === 0){ block = html.slice(start, scan.lastIndex); break; }
+  }
+}
+const header = (block.match(/<header>[\\s\\S]*?<\\/header>/) || [""])[0];
+const authority = (block.match(
+  /<div class="next-cockpit-authority[\\s\\S]*?<details/) || [""])[0];
+console.log(JSON.stringify({block, header, authority,
+  chip: (authority.match(/<span>([^<]*)</) || [null, ""])[1],
+  strongs: [...authority.matchAll(/<strong>([^<]*)</g)].map(m => m[1]),
+  smalls: [...authority.matchAll(/<small>([^<]*)</g)].map(m => m[1])}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_the_state_names_survive_verbatim_and_the_gloss_sits_in_the_header(self) -> None:
+        """AC-1. The states are strings a source published, so substituting
+        prose about what the agent is doing would be a claim nothing observed.
+        """
+        out = self.briefing()
+
+        self.assertIn(out["chip"], {"FO INSPECTING", "FO CONTINUES", "CAPTAIN NEEDED"})
+        self.assertIn(
+            "FO is the first officer, the agent driving this workflow; Captain is you.",
+            out["header"],
+        )
+        self.assertIn("next-cockpit-recovery-gloss", out["header"])
+
+    def test_the_authority_block_states_no_agent_activity(self) -> None:
+        """AC-3. `fo-inspecting` is computed from attention coverage, so a verb
+        about what the agent is doing would be unobserved on every board."""
+        out = self.briefing()
+
+        for invented in ("is looking", "is working", "is thinking", "is editing"):
+            self.assertNotIn(invented, out["authority"])
+
+    def test_the_fo_attention_row_renders_unchanged_when_discovery_errors(self) -> None:
+        """AC-3's second half: the row is emitted only when workflow discovery
+        fails, so demoting it would delete a live signal."""
+        # Discovery lands on the project context entry, so it is set after
+        # navigation and re-rendered rather than seeded on the payload.
+        out = self.briefing(
+            after="""
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const key = nextCockpitContextKey(group, null);
+const entry = nextCockpitContexts.get(key) || {};
+entry.data = Object.assign({}, entry.data, {workflow_discovery:
+  {state:"error", reason:"timed out", source:"project workflow discovery"}});
+nextCockpitContexts.set(key, entry);
+renderNext();
+""",
+        )
+
+        self.assertIn("refresh workflow discovery", out["authority"])
+        self.assertIn("<strong>", out["authority"])
+
+    def test_the_briefing_states_absence_on_two_verbs_and_never_on_captured(self) -> None:
+        """AC-5. A value says what was not observed; a caption says what was not
+        published. "captured" said neither and implied a third distinction."""
+        out = self.briefing()
+
+        self.assertNotIn("captured", out["block"])
+        self.assertIn("not observed", out["block"])
+
+    def test_no_absence_phrase_absent_from_the_tree_is_introduced(self) -> None:
+        """AC-5's other half: "None recorded" was proposed at triage and found
+        nowhere in the repository, so adopting it would have created a
+        convention and its documentation in one change."""
+        out = self.briefing()
+
+        self.assertNotIn("None recorded", out["block"])
+
+    def test_the_evidence_caption_renders_only_when_the_task_is_known(self) -> None:
+        """AC-6. With no task observed the value cell already reads
+        "Not observed", and the caption states a second absence about a first.
+        """
+        # `task.known` is computed from the project observation's trail head, not
+        # from the session rows, so the unknown arm empties the observation after
+        # navigation. Emptying the session rows leaves it known and the test
+        # passes against a board that never entered the arm it names.
+        strip = """
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const key = nextCockpitContextKey(group, null);
+const entry = nextCockpitContexts.get(key) || {};
+entry.data = Object.assign({}, entry.data,
+  {semantic:{facts:[], work_items:[], projections:{}}});
+nextCockpitContexts.set(key, entry);
+for(const session of __dashboard.sessions){
+  delete session.last_output;
+  session.subagent_hierarchy = [];
+}
+renderNext();
+"""
+        known = self.briefing()
+        unknown = self.briefing(after=strip)
+
+        self.assertIn("data-next-cockpit-task-known", known["block"])
+        self.assertNotIn("data-next-cockpit-task-known", unknown["block"])
+        self.assertNotIn("Assignment evidence not published", unknown["block"])
+        self.assertIn("Not observed", unknown["block"])
+
+
+class AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest(unittest.TestCase):
+    """DRC-4589 AC-2, the half a selector sweep cannot reach.
+
+    COUNTS and DELEGATION choose between a real figure and its absence with a
+    ternary, so the two never co-exist in one render and no CSS rule holds both
+    sides. The sibling comparison test above works because those pairs are two
+    selectors; these are one selector and an attribute. What is asserted instead
+    is that the absent variant declares no size of its own -- neither
+    `font-size` nor a `font` shorthand, which would reset it -- so its size is
+    the value's by construction and cannot drift above it.
+
+    Read off the stylesheet: the cascade is what decides this either way, and
+    three tests on the branch that introduced this defect class passed over it
+    by asserting an absence with its value left out.
+    """
+
+    ABSENT_VARIANTS = (
+        ".next-cockpit-count-value[data-next-absent]",
+        ".next-delegation-withheld strong[data-next-absent]",
+    )
+
+    css: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+
+    def block_for(self, selector: str) -> str:
+        for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css):
+            if selector in [head.strip() for head in rule.group(1).split(",")]:
+                return rule.group(2)
+        self.fail(f"{selector} declares no rule at all, so the stamp draws nothing")
+        raise AssertionError
+
+    def test_no_absent_variant_declares_a_size(self) -> None:
+        for selector in self.ABSENT_VARIANTS:
+            with self.subTest(selector=selector):
+                body = self.block_for(selector)
+                self.assertNotIn("font-size", body)
+                self.assertFalse(
+                    re.search(r"(?<![-a-z])font:", body),
+                    f"{selector} sets the font shorthand, which resets the size it "
+                    "must inherit from the value it replaces",
+                )
+                # And it does change something, or the stamp is decorative.
+                self.assertIn("font-family", body)
+
+    def test_the_dash_is_a_mark_and_never_a_size_or_a_tone_step(self) -> None:
+        """The shared `::before`. A dash drawn brighter than the string it
+        prefixes would put the emphasis on the absence rather than the fact."""
+        body = self.block_for("[data-next-absent]::before")
+
+        self.assertIn("content", body)
+        self.assertNotIn("font-size", body)
+        self.assertIn("var(--ink-absence)", body)
+
+
+# The briefing's value rule is declared with its evidence sibling in one head, and
+# the head is what identifies the rule, so it is spelled once here rather than
+# wrapped inside the table below where a line break reads as two selectors.
+VALUE_HEAD = (
+    ".next-cockpit-recovery [data-next-cockpit-task-known]>strong,"
+    ".next-cockpit-recovery .next-cockpit-recovery-evidence>strong"
+)
+
+
+class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
+    """DRC-4593 AC-4. In an absent ASSIGNMENT cell the label, the value and the
+    caption explaining it all resolved to one ink, and DRC-4587 left the caption
+    the biggest of the three.
+
+    The cell this reads is the only one that can still render a caption: AC-6
+    suppresses `Assignment evidence not published` when the task is unknown, so
+    a caption now only ever sits beside a value the board did observe. That is
+    what separates the registers -- the value is at `--ink-value`, the caption
+    at `--ink-caption` -- rather than any size or hex moving.
+
+    Resolved through the cascade and then through the registers, because a test
+    that compared register NAMES would pass with all four pointing at one ink.
+    """
+
+    # role -> (selector whose colour wins, selector whose size wins)
+    CELL: ClassVar[dict[str, tuple[str, str]]] = {
+        "label": (".next-cockpit-recovery span", ".next-cockpit-recovery span"),
+        "value": (VALUE_HEAD, ".next-cockpit-recovery strong"),
+        "caption": (
+            ".next-cockpit-content .next-cockpit-evidence-missing",
+            ".next-cockpit-content .next-cockpit-evidence-missing",
+        ),
+    }
+
+    css: str
+    sizes: dict[str, float]
+    inks: dict[str, str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+        cls.sizes = {
+            name: float(value)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", cls.css)
+        }
+        cls.inks = dict(re.findall(r"--(ink[a-z0-9-]*):(#[0-9a-f]{6}|var\(--ink[0-9]?\))", cls.css))
+
+    def body_of(self, head: str) -> str:
+        """Every block with this exact head, in source order and joined.
+
+        Four of these selectors are declared twice -- once in their own region
+        and once in the override region below it -- and the second declaration
+        is the one that paints. Reading only the first reported the pre-DRC-4587
+        sizes and would have called the inversion fixed while it was still on
+        screen.
+        """
+        bodies = [
+            rule.group(2)
+            for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css)
+            if rule.group(1).strip() == head
+        ]
+        self.assertTrue(bodies, f"no rule with head {head!r}")
+        return ";".join(bodies)
+
+    def resolved_ink(self, head: str) -> str:
+        """The hex the rule's colour lands on, one register hop at a time."""
+        found = re.findall(r"color:var\(--([a-z0-9-]+)\)", self.body_of(head))
+        self.assertTrue(found, f"{head} declares no colour")
+        name = found[-1]
+        for _ in range(4):
+            value = self.inks.get(name, "")
+            hop = re.fullmatch(r"var\(--(ink[0-9]?)\)", value)
+            if not hop:
+                return value
+            name = hop.group(1)
+        self.fail(f"{head} never resolves to a hex")
+        raise AssertionError
+
+    def resolved_size(self, head: str) -> float:
+        found = re.findall(
+            r"(?:font-size:|font:(?:\d+ )?)var\(--(fs-[a-z0-9-]+)\)", self.body_of(head)
+        )
+        self.assertTrue(found, f"{head} declares no size")
+        return self.sizes[found[-1]]
+
+    def test_label_value_and_caption_are_three_distinct_size_and_ink_pairs(self) -> None:
+        pairs = {
+            role: (self.resolved_size(size_head), self.resolved_ink(ink_head))
+            for role, (ink_head, size_head) in self.CELL.items()
+        }
+
+        self.assertEqual(3, len(set(pairs.values())), pairs)
+
+    def test_no_caption_is_drawn_larger_than_the_value_it_explains(self) -> None:
+        """The inversion DRC-4587 left behind: the caption went to 15px while the
+        value stayed at 12.5px, so the least important string in the cell was
+        the biggest."""
+        value = self.resolved_size(self.CELL["value"][1])
+        caption = self.resolved_size(self.CELL["caption"][1])
+
+        self.assertLessEqual(caption, value, f"caption {caption}px against value {value}px")
+
+    def test_the_authority_chip_is_smaller_than_the_captain_line_beside_it(self) -> None:
+        """DRC-4593 AC-2's offline half. The chip carried 15px and full `--ink`
+        against a 12.5px `--ink3` captain line, so the loudest string on the page
+        was the one piece of vocabulary the page never defines. This is a proxy
+        for the criterion and not the criterion: AC-2 is judged on a painted
+        board, because size and contrast are what a reader sees.
+        """
+        chip = self.resolved_size(".next-cockpit-authority>span")
+        captain = self.resolved_size(".next-cockpit-authority>small")
+
+        self.assertLess(chip, captain)
+        self.assertEqual(self.resolved_ink(".next-cockpit-authority>small"), self.inks["ink"])
+        self.assertEqual(self.resolved_ink(".next-cockpit-authority>span"), self.inks["ink3"])
 
 
 if __name__ == "__main__":

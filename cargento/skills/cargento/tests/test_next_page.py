@@ -672,8 +672,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "9680ee01d19296e87cf9b35230a51a7e98ddc764c5bfb80f0e18e7723ece8a04",
             ),
             "next-delegation.js": (
-                14_508,
-                "36ecd098147995ae96b5ca7846c6a4366142da400a27a2dd5dfcef9ace01fdb6",
+                14_542,
+                "464fc88d73d81224ec8cce60227044909e8f189be0bf1d1200624b7d0f73629c",
             ),
             "next-controls.js": (
                 18_123,
@@ -991,6 +991,78 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
         self.assertIn("display:flex", self.rule(".next-header-right"))
         self.assertRegex(self.rule(".next-crumb"), r"(?:^|;)border:0")
         self.assertRegex(self.rule(".next-menu button"), r"(?:^|;)border:0")
+
+
+class InkRoleRegistersAreDeclaredOnceAndSpelledNowhereElseTest(unittest.TestCase):
+    """DRC-4589 AC-1, AC-3 and AC-6.
+
+    One ink carried label, value, absence and caption. Twenty-one cockpit and
+    session label rules each spelled `var(--ink3)` in their own declaration
+    block, so moving the label tier meant editing twenty-one rules by hand and
+    hoping none of them was a value.
+
+    The registers are what make the next move one line. Nothing here asserts a
+    colour changed, because none did: `--ink-label` and `--ink-absence` both
+    resolve to `--ink3` under the captain's ruling of 2026-09-17, and
+    `--ink-value` to `--ink`. What is asserted is that the indirection exists,
+    that no rule bypasses it, and that the four registers live in the one
+    `:root` the asset test admits.
+    """
+
+    REGISTERS = ("--ink-label", "--ink-value", "--ink-absence", "--ink-caption")
+
+    def setUp(self) -> None:
+        raw = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        self.styles = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
+
+    def test_the_four_registers_are_declared_in_the_one_root_block(self) -> None:
+        roots = re.findall(r"(?:\A|\n):root\{([^}]*)\}", self.styles, re.DOTALL)
+        self.assertEqual(1, len(roots), "a second :root fails the asset test's palette assertion")
+        for register in self.REGISTERS:
+            with self.subTest(register=register):
+                self.assertIn(f"{register}:var(--ink", roots[0])
+
+    def test_no_label_rule_spells_an_ink_token_in_its_own_block(self) -> None:
+        """AC-1's oracle, which returned 21 on the tree this branch forked from
+        and must return 0. It reads whole declaration blocks, so a rule that
+        sets the label size and its own `--ink3` in one block is what fails it.
+        """
+        offenders = [
+            line
+            for line in self.styles.splitlines()
+            if re.match(r"\.next-(cockpit|session)[^{]*\{[^}]*var\(--fs-label\)", line)
+            and "var(--ink3)" in line
+        ]
+        self.assertEqual([], offenders)
+
+    def test_exactly_one_rule_assigns_a_colour_to_a_withheld_value(self) -> None:
+        """AC-3's falsifiable end state. Two rules both coloured
+        `[data-next-withheld]` -- the base and a scope-rail override restating
+        it -- which is how DRC-4589 and DRC-4597 came to disagree in writing
+        about the same declaration. The captain ruled the override keeps only
+        its family swap.
+        """
+        colouring = [
+            line
+            for line in self.styles.splitlines()
+            if re.search(r"data-next-withheld[^{]*\{[^}]*color:", line)
+        ]
+        self.assertEqual(1, len(colouring), colouring)
+        self.assertIn("var(--ink-absence)", colouring[0])
+
+    def test_every_absent_variant_resolves_through_the_absence_register(self) -> None:
+        """No `--absent` or `-clause-absent` rule may set an ink token directly:
+        the register is the single place the ruling can be re-read from.
+        """
+        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.styles):
+            head, body = block.group(1).strip(), block.group(2)
+            if "--absent" not in head and "-clause-absent" not in head:
+                continue
+            if "color:" not in body:
+                continue
+            with self.subTest(selector=head):
+                self.assertIn("var(--ink-absence)", body)
+                self.assertNotIn("var(--ink3)", body)
 
 
 if __name__ == "__main__":

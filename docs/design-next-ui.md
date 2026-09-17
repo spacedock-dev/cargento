@@ -162,6 +162,16 @@ rather than single lines, and
 `.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
 would clamp the cards inside them instead of the sentences.
 
+One member of the sixty-seven was exchanged for another on 2026-09-17, and all three counts above
+are unchanged because of that exchange rather than in spite of it: `.next-cockpit-authority>span`
+left the tier and `.next-cockpit-authority>small` joined it, both of them capped. The span prints
+`FO INSPECTING` and `FO CONTINUES`, which are state names a source published, so the rule above
+always excluded it. The sweep that raised the tier admitted it anyway, and full ink on top of
+15px made the loudest string on the page the one piece of vocabulary the page never defines. It is
+now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `<small>` that took
+its place is the line saying whether the captain is needed: prose the board wrote, and the string
+a reader opening a project is actually looking for.
+
 **The floor is not yet universal, and DRC-4602 owns both the audit and the remainder.** Sans text
 still resolves below 15px in two shapes. The first is a rule that declares a smaller size outright,
 on the `--fs-sm`, `--fs-body` and `--fs-summary` steps and on a handful of literals. The second is
@@ -208,6 +218,33 @@ at `.07em`; and the recovery memo field labels (`OUTCOME`, `FOCUS`) at `.04em`. 
 because the issue inventoried four tracking values and the stylesheet had seven, so sweeping the
 four named groups never reached the other six declarations. Count the values in the tree, not in
 the issue.
+
+Four ink registers sit in the one `:root` block and name what an ink is for rather than which ink
+it is: `--ink-label`, `--ink-value`, `--ink-absence` and `--ink-caption`. They exist because a
+label and its own answer were drawn in the same colour, and because twenty-one cockpit and session
+label rules each spelled `var(--ink3)` in their own declaration block, so moving the label tier
+meant editing twenty-one rules by hand and hoping none of them was a value.
+
+The palette has three inks and the roles need four, so `--ink-label` and `--ink-absence` both
+resolve to `--ink3`. That is a ruling, not an accident. `--ink3` on panel is 5.67:1, just above the
+floor the asset test asserts, so labels cannot go dimmer, and brightening them makes them compete
+with values. Labels can afford the double-up because they also carry uppercase, tracking and mono,
+while an absence is a sans sentence, so family and case already separate the two. Brightening an
+absence was refused on a different ground: the failure this board is built against is the confident
+wrong answer, so a missing fact must not read as loudly as a present one.
+
+An absence therefore separates from its value on shape, never on tone. A figure slot keeps its own
+ink and gains a family swap plus a leading em dash from `[data-next-absent]::before`, stamped at
+emission because no selector can tell a null from a real `0`. The three kinds of absence a reading
+paragraph can state carry `data-absence="not-observed|waiting-on-you|run-config"` and are told
+apart by a left rule: dim and solid, bright and solid, dotted. All three survive greyscale, which
+colour alone would not.
+
+The pair to watch when editing any of this is a value and the absence that replaces it. They are
+chosen by a ternary, so they never co-exist in one render and no single rule holds both sides; a
+selector sweep and a live board both miss it. Resolve both branches through the cascade and compare
+them, which is what `AnAbsenceNeverOutranksTheValueItReplacesTest` and
+`AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` do.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
