@@ -551,3 +551,36 @@ outcome. The first officer has accepted the wrong-premise half of that as a disp
 `b9642e3` exactly one colour declaration disappears — this one. The other 35 are token swaps inside
 the same rule at the same selector and the same specificity, so none of them can move a cascade
 winner. There is no second instance on this branch.
+
+### Correction, 2026-09-18 — "redundant once DRC-4592 lands" is false on the merged tree
+
+The paragraph above concluded that this branch's edit to the scope-rail withheld override is
+redundant once DRC-4592 lands, because DRC-4592 deletes the whole rule. That held for the pair of
+branches in isolation and does not survive consolidation. Corrected here rather than edited above,
+so the reasoning that produced the wrong conclusion stays readable.
+
+Found by `spacedock-ui-integration` on the consolidated branch and confirmed here against
+`spacedock-ensign/ui-integration`. DRC-4597 introduces `.next-cockpit-scope-title`, which carries
+`color:var(--ink)` and is **the same specificity as the bare rule**, (0,1,0), sitting later in the
+sheet. So the competitor this branch's removal exposed did not disappear with DRC-4592's
+`.next-cockpit-scope-tree small` rules; a different one took its place at the same specificity, and
+source order alone decides it:
+
+| rule | specificity | order | resolves |
+|---|---|---|---|
+| `[data-next-withheld]` | (0,1,0) | 85 | `--ink-absence`, loses the tie |
+| `.next-cockpit-scope-title` (DRC-4597) | (0,1,0) | 876 | `--ink`, **wins the tie on order** |
+| `.next-cockpit-scope-tree [data-next-withheld]` | (0,2,0) | 1218 | `--ink-absence`, **wins outright** |
+
+The rail override therefore **must** carry `color:var(--ink-absence)`, and on the consolidated tree
+it does. Strip it and a withheld session title renders `--ink`, identical to a published one: the
+same defect this branch shipped, with a different competitor. The guidance relayed earlier, to take
+DRC-4592's family-only version of that hunk outright because nothing of this branch's was worth
+preserving, is wrong on the merged tree and was superseded before it shipped.
+
+What generalises is narrower than "4592 makes 4589 safe" and worth stating in its place: **a bare
+attribute selector is (0,1,0) and loses a tie to any later class rule, so it can only be relied on
+where nothing later claims the same element.** Three branches each added a rule to this element
+without that being true of the tree any of them tested on. The count-versus-property lesson recorded
+above is unchanged; this is a second instance of it, found the same way, on a tree none of the three
+branches could see.
