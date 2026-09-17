@@ -17,6 +17,11 @@ from . import css_cascade
 from .js_literals import emitted_strings, reading_why_sentences
 from .next_harness import NextPageJsHarness, storage_prelude
 
+# The joiner `projectGraphModeScope` builds its storage key with. Written as
+# an escape rather than inline, so a reader sees a separator rather than an
+# invisible byte, and so an editor cannot silently eat it.
+NUL_CHAR = "\u0000"
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextCockpitCompositionTest(NextPageJsHarness):
@@ -10428,9 +10433,22 @@ console.log(JSON.stringify({before, all, back:head(__els.app.innerHTML)}));
 
     def test_the_chosen_mode_is_written_to_storage_and_read_back_on_load(self) -> None:
         """AC-4. Falsified by a press that writes nothing, or a seeded store the
-        first render ignores."""
-        written = self.run_fixture(
-            r"""
+        first render ignores.
+
+        Run on the TWO-project board, not patched. This test seeded the empty
+        key and asserted the first render took it -- the collided key written
+        down as the expected result, and on a one-project fixture that key
+        reads as "project scope" rather than as "every project", so the oracle
+        could not tell the two apart. Changing the seed alone would have left a
+        one-project board asserting a per-project property.
+
+        The seed is now a real key for a real project, and a SECOND project is
+        on the board to prove the seed reaches the one it names and no other.
+        """
+        written = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
 navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
 await __settle(); await __settle();
 const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
@@ -10438,7 +10456,8 @@ const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &
 __fire("click",{target:button,preventDefault(){}});
 await __settle();
 console.log(JSON.stringify({writes:__storageWrites, store:__store}));
-"""
+""",
+            storage_prelude({}) + self.TWO_PROJECT_FIXTURE,
         )
         web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
         self.assertIn(f'"{self.KEY}"', (web / "project.js").read_text(encoding="utf-8"))
@@ -10447,20 +10466,122 @@ console.log(JSON.stringify({writes:__storageWrites, store:__store}));
         self.assertIn(self.KEY, keys)
         self.assertIn("all", written["store"][self.KEY])
 
-        seeded = self.run_fixture(
-            r"""
-navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
-await __settle(); await __settle();
-console.log(JSON.stringify({mode:(__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1]}));
+        seeded = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const read = async project => {
+  navigateNext({view:"project",project,focus:null,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1];
+};
+console.log(JSON.stringify({seeded: await read("cargento"),
+  other: await read("recce-cloud-infra")}));
 """,
-            # Keyed by the scope the press belonged to. This seed used to read
-            # `{"": "all"}`, which is the collided key M1 was about -- an
-            # oracle that asserts the defect stays green whatever the key
-            # becomes, so changing it is part of the fix rather than fallout.
-            storage={self.KEY: json.dumps({"project:cargento": "all"})},
+            storage_prelude({self.KEY: json.dumps({"cargento" + NUL_CHAR: "all"})})
+            + self.TWO_PROJECT_FIXTURE,
         )
         assert isinstance(seeded, dict)
-        self.assertEqual("all", seeded["mode"])
+        self.assertEqual("all", seeded["seeded"], "the seeded project did not take its mode")
+        self.assertEqual(
+            "decisions",
+            seeded["other"],
+            "a seeded mode reached a project the seed does not name",
+        )
+
+    def test_two_sessions_in_one_project_keep_their_own_modes(self) -> None:
+        """The half a project-only key would destroy, and the reason the key
+        carries BOTH halves.
+
+        The resolver reads a per-session distinction at session scope: the
+        filter is drawn on a focused board too, and a mode chosen while looking
+        at one session is that session's. Keying by project alone fixes the
+        cross-project collision and silently collapses this one -- measured,
+        that mutant passes every other test in this class, which is why this
+        one exists.
+
+        Three scopes on one project, each pressed to a different mode, each
+        read back after visiting the others.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const open = async focus => {
+  navigateNext({view:"project",project:"cargento",focus,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1];
+};
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  if(!button) throw new Error("no graph-mode button for " + value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+await open(null); press("all"); await __settle();
+await open("codex:focus-1"); press("active"); await __settle();
+await open("claude:claude-idle"); press("decisions"); await __settle();
+// Read every scope back, after each has been left and returned to.
+const after = {project: await open(null), focus1: await open("codex:focus-1"),
+  idle: await open("claude:claude-idle")};
+console.log(JSON.stringify({after,
+  store: JSON.parse(__store["cargento.next.graph.mode"] || "{}")}));
+""",
+            storage_prelude({}) + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            {"project": "all", "focus1": "active", "idle": "decisions"},
+            out["after"],
+            "one scope's press reached another scope in the same project",
+        )
+        store = out["store"]
+        assert isinstance(store, dict)
+        self.assertEqual(
+            {
+                "cargento" + NUL_CHAR: "all",
+                "cargento" + NUL_CHAR + "codex:focus-1": "active",
+                "cargento" + NUL_CHAR + "claude:claude-idle": "decisions",
+            },
+            store,
+        )
+
+    def test_a_key_shape_this_build_cannot_parse_is_dropped_on_load(self) -> None:
+        """The migration, which is the half a new key scheme quietly skips.
+
+        A browser that already ran this branch holds every project's choice
+        under ONE empty key. `projectLoadGraphModes` validated VALUES and not
+        key shapes, so a scheme where that empty key parses as a real project
+        would hand the old collision straight to the new one. It is dropped at
+        load instead, once, rather than defended against at each read site.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const read = async project => {
+  navigateNext({view:"project",project,focus:null,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1];
+};
+const modes = {cargento: await read("cargento"), infra: await read("recce-cloud-infra")};
+// And the legacy entry does not survive the next write either.
+const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+  c.dataset.arg === "active");
+__fire("click",{target:button,preventDefault(){}});
+await __settle();
+console.log(JSON.stringify({modes,
+  store: JSON.parse(__store["cargento.next.graph.mode"] || "{}")}));
+""",
+            storage_prelude({self.KEY: json.dumps({"": "all"})}) + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # Neither project inherits the legacy entry.
+        self.assertEqual({"cargento": "decisions", "infra": "decisions"}, out["modes"])
+        store = out["store"]
+        assert isinstance(store, dict)
+        self.assertNotIn("", store, "the legacy collided key survived a load and a write")
+        self.assertEqual({"recce-cloud-infra" + NUL_CHAR: "active"}, store)
 
     def test_a_mode_pressed_on_one_project_does_not_follow_the_reader_to_another(
         self,
@@ -10537,7 +10658,10 @@ console.log(JSON.stringify({first, firstAfterPress, secondUntouched,
         # collided empty key.
         store = out["store"]
         assert isinstance(store, dict)
-        self.assertEqual({"project:cargento": "all", "project:recce-cloud-infra": "active"}, store)
+        self.assertEqual(
+            {"cargento" + NUL_CHAR: "all", "recce-cloud-infra" + NUL_CHAR: "active"},
+            store,
+        )
         self.assertNotIn("", store)
 
     def test_the_dead_scope_helper_is_gone_and_its_neighbour_survives(self) -> None:
@@ -11130,42 +11254,34 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         sits beside the page, and a bare `DEC-N` in a product string is a
         `RuntimeDecisionCitationsTest` hit.
 
-        Checked on every tab this issue tiered, not only Held to. The
-        criterion's own falsifier -- a `docs/` href planted in a rendered
-        tier-2 body -- did not fire on the `pc-`/Console surface, which is a
-        surface THIS ISSUE introduced. That is separate from the wording
-        amendment narrowing the `docs/` half to an enumerated claim: a
-        criterion's verifier not reaching a surface the same issue added is a
-        gap in the verifier, whatever the wording says.
+        **Derived over the bundle, not rendered on a list of tabs.** The first
+        repair for this added the Console surface to a fixture, and a second
+        fixture still cannot fail on the surface nobody thought to add -- the
+        argument `js_literals` makes about itself, and the same reason AC-4's
+        retired-span check walks every runtime file instead of naming two. The
+        criterion's own falsifier did not fire on the `pc-`/Console surface,
+        which this issue itself introduced, and naming that surface would have
+        left the next one uncovered.
+
+        The file count is asserted because a walk that reaches nothing passes
+        an empty loop in silence.
+
+        One blind spot, stated rather than left implicit: `emitted_strings`
+        splits a template literal at each `${...}`, so an href composed through
+        a hole is out of this sweep's reach. Nothing in the bundle builds one
+        today; a future one needs a different instrument, not a longer list.
         """
-        out = self._run_page_js(
-            "await __settle();\nawait __settle();\n"
-            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
-            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
-            + HeldToOrderingTest.ANNOTATED
-            + """
-const seen = {};
-for(const tab of ["held-to", "console", "decisions", "course", "now"]){
-  navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab});
-  await __settle(); await __settle();
-  seen[tab] = __els.app.innerHTML;
-}
-console.log(JSON.stringify(seen));
-""",
-            storage_prelude({}) + self.FIXTURE,
-        )
-        assert isinstance(out, dict)
-        # Every tab rendered something, or the loop asserted over empty strings.
-        self.assertEqual(5, len(out))
-        for tab, html in out.items():
-            assert isinstance(html, str)
-            with self.subTest(tab=tab):
-                self.assertGreater(len(html), 2000, "this tab rendered nothing to check")
-                self.assertNotIn("docs/design-", html)
-                self.assertIsNone(re.search(r"\bDEC-\d+\b", html))
-        # The `pc-` surface is one this issue added, and it must be among what
-        # was actually drawn rather than assumed present.
-        self.assertIn("pc-semantic-timeline", out["decisions"])
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        scripts = sorted(web.glob("*.js"))
+        self.assertGreater(len(scripts), 15, "the bundle walk found almost no scripts")
+        decision = re.compile(r"\bDEC-\d+\b")
+        offenders = [
+            f"{script.name}: {text[:70]}"
+            for script in scripts
+            for text in emitted_strings(script.read_text(encoding="utf-8"))
+            if "docs/" in text or decision.search(text)
+        ]
+        self.assertEqual([], offenders)
 
     # A stored reading, so the branch that renders the reading section's own
     # baseline, scope and caveat actually executes. Without it the section

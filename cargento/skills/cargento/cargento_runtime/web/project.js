@@ -36,7 +36,16 @@ function projectLoadGraphModes(){
     const stored = JSON.parse(localStorage.getItem(NEXT_GRAPH_MODE_KEY) || "null");
     if(!stored || typeof stored !== "object") return;
     for(const [key, value] of Object.entries(stored)){
-      if(PROJECT_GRAPH_MODES.includes(value)) projectGraphModeBySession.set(String(key), value);
+      /* Key SHAPE as well as value. A build already shipped that wrote every
+         project's choice under one empty key, so a browser that ran it holds
+         `{"": "all"}` under this name. Dropping anything that is not one
+         `\u0000`-joined pair retires that entry on the next load instead of
+         leaving every read site to defend against it -- and it is why the
+         separator matters: a scheme where the legacy empty key parses as a
+         real project would hand the old collision to a new key. */
+      if(!PROJECT_GRAPH_MODES.includes(value)) continue;
+      if(String(key).split("\u0000").length !== 2) continue;
+      projectGraphModeBySession.set(String(key), value);
     }
   }catch(_error){ /* storage off or unreadable: the tab keeps its own choice */ }
 }
@@ -48,10 +57,15 @@ function projectStoreGraphModes(){
   }catch(_error){ /* the choice still holds for the life of this tab */ }
 }
 
-/* The scope a reader's choice belongs to: the exact session when one is
-   focused, and the PROJECT otherwise. `projectDisclosure` below composes the
-   same pair for the same reason, so this copies that shape rather than
-   inventing one.
+/* The scope a reader's choice belongs to: the project ALWAYS, and the session
+   as well when one is focused. Both halves, because the resolver reads a
+   per-session distinction at session scope that a project-only key would
+   destroy, and a session-only key is what collided.
+
+   Joined on `\u0000`, which the scope rail already uses as a field joiner. A
+   composite with a separator no label can contain makes the key shape
+   decidable, and `projectLoadGraphModes` uses that to drop what it cannot
+   parse -- see the migration note there.
 
    Keying on the session alone was the defect. `projectQuerySession` is "" at
    project scope for EVERY project, so one entry held every project's choice --
@@ -65,9 +79,9 @@ function projectStoreGraphModes(){
    resolves the fallback from the other scope passes only the first half of the
    criterion, and the halves are checked separately. */
 function projectGraphModeScope(){
-  return String(projectQuerySession ||
-    (typeof nextRoute !== "undefined" && nextRoute && nextRoute.view === "project"
-      ? `project:${nextRoute.project}` : ""));
+  const project = typeof nextRoute !== "undefined" && nextRoute && nextRoute.view === "project"
+    ? String(nextRoute.project == null ? "" : nextRoute.project) : "";
+  return `${project}\u0000${String(projectQuerySession || "")}`;
 }
 
 function projectSetGraphMode(mode){
