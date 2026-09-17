@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4588:triage:attempt-1:revision-1
                 digest: sha256:6ff390e1f625ee01e5db6a5931c1aa8327ee1f13aafb795bb58aa6815b920f5c
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4588:triage:1
+                briefing: briefing:drc-4588:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T07:17:30.177173Z"
+                decision: approve
+                reason: 'Checklist 3 done / 0 skipped / 0 failed; AC-1..AC-6 resolve, four offline and two interactive, with AC-6 the user-visible criterion. Triage''s R1 is the finding that matters: aria-disabled restores the click that disabled was suppressing and neither handler gates on the reason, so AC-4 pins the handler gate with calls===0 and a role=status refusal rather than shipping a control that spends model capacity from a state the page calls unavailable. R2 was escalated to the captain on a premise triage itself corrected: DRC-4565 carries two acceptance criteria and neither is this one, so what inverts is two implementation-stage assertions at test_next_cockpit.py:6554-6555 carrying a docstring AC label, not an approved criterion. The captain was shown the corrected framing and approved proceeding. R3 drops the producer half, taking the surface from 11 files to 6.'
+                conn:
+                    quote: okay yes, go ahead
+                    source: Captain, this session, 2026-09-17, answering the corrected R2 framing directly
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4588](https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason) — Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb
