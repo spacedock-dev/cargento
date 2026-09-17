@@ -1423,6 +1423,18 @@ So the check is mechanical rather than a matter of judgement. **Before trusting 
 grep for the mutated string and assert the count changed.** Confirm the substitution applied, then
 read the verdict.
 
+**The check applies to SURVIVED, not to RED.** A red off a green baseline cannot be a no-op — the
+suite changed behaviour, so the mutation reached something. Only a survivor is ambiguous between "the
+oracle does not catch this" and "nothing was actually mutated", so that is the only verdict that owes
+a substitution proof. Bounding it this way matters, because a rule applied to every mutation doubles
+the cost of a pass that is mostly reds.
+
+**And a grep is not always sufficient proof.** The strongest version confirms the mutant reached the
+*thing under test*, not merely the file: one repair here proved old-string 1→0 and new-string 0→1
+**and** that the resolved ink moved `var(--ink-label)` → `var(--ink-caption)` down a real element
+path. The text changed, the rendered property changed, and 319 tests still passed — which is what
+makes the surviving oracle a genuine finding rather than a possible miss.
+
 This is the same family as a test that landed in a class without its fixtures and read green twice:
 in both, the thing under test was never reached, and the result says nothing about the oracle. A
 SURVIVED reported as a finding is a claim about an oracle, and if the mutation silently failed it is
