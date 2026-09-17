@@ -147,36 +147,50 @@ retains scale tokens and literal sizes. The asset test pins the dark palette and
 above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
 between contrast steps.
 
-Which rules are sentences is a test, not a judgement call, so a reviewer argues with a list:
-**a rule is on the sentence tier when it sets its text in sans and declares its own prose
-line-height.** Mono is a string a source published, and a label carries no line-height of its own.
-Sixty-five rules on the old `--fs-xs` step qualify, plus the two absence explanations above, and
-all sixty-seven resolve to `var(--fs-sentence)`. Forty-nine of them also cap at `--measure` (540px,
-about 72 characters at this tier). The eighteen that do not are the ones a cap would clamp wrongly:
-eight carry `overflow-wrap:anywhere`, eight are layout boxes rather than single lines, and
+What counts as a sentence is a test, not a judgement call, so a reviewer argues with a list:
+**an element is on the sentence tier when its resolved style is sans with a prose line-height.**
+Resolved, not declared. Both properties come through the cascade, either may be inherited from an
+ancestor, and the two may arrive from different rules, so the element is the unit and a single rule
+is not. Mono is a string a source published, and a label resolves to no prose line-height at all.
+
+That distinction is the whole difficulty. **A census that reads one rule at a time will understate
+the set**, because it cannot see an element whose family, size and line-height are assembled from
+three rules, and it will report clean while such an element still renders below the floor on
+screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
+
+Sixty-five rules on the old `--fs-xs` step carry the whole declaration themselves, plus the two
+absence explanations above, and all sixty-seven resolve to `var(--fs-sentence)`. Forty-nine of them
+also cap at `--measure` (540px, about 72 characters at this tier). The eighteen that do not are
+the ones a cap would clamp wrongly: eight carry `overflow-wrap:anywhere`, eight are layout boxes
+rather than single lines, and
 `.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
 would clamp the cards inside them instead of the sentences.
 
-**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Twenty-one further sans
-rules pass the same test, at 12.5px to 14.5px: nineteen a single-rule census finds (seven on
-`--fs-sm`, four on `--fs-body`, two on `--fs-summary`, six literals) and **two it cannot see**,
-because their size, family and line-height are composed across three rules each.
-Those two are `.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a
-flip back to sans from a second and its line-height from a third, and `.next-cockpit-recovery
-small`, which takes 12.5px from its own rule and inherits sans and the line-height from the cell.
-They are also the two that set the bottom of the range.
+**The floor is not yet universal, and DRC-4602 owns both the audit and the remainder.** Sans text
+still resolves below 15px in two shapes. The first is a rule that declares a smaller size outright,
+on the `--fs-sm`, `--fs-body` and `--fs-summary` steps and on a handful of literals. The second is
+the composed kind the definition above warns about: `.next-operation-fact--unknown strong` takes
+its size and mono family from one rule, a flip back to sans from a second and its line-height from
+a third, and `.next-cockpit-recovery small` takes its size from its own rule and inherits sans and
+the line-height from the cell around it. Neither appears in a census that reads one rule at a time,
+and both render at 12.5px, below anything the first shape reaches.
 
-The count was reported as nineteen and before that as seventeen, and both were wrong for reasons
-worth keeping. Seventeen came from a census whose `font:` shorthand pattern matched the weight
-instead of the size, so `font:13px/1.5` read as no size at all and two rules
-(`.next-cockpit-work-derived` and the reading-result group) fell out silently. Nineteen then
-counted those two back in but treated the composed pair as part of the nineteen rather than beside
-it. A census that cannot fail loudly on a shorthand it does not understand will keep producing
-plausible totals.
+**The size of that set is not stated here**, because every figure this branch produced for it was
+produced by a per-rule census and is therefore a floor rather than a count. One of them was wrong
+for a second reason worth keeping: a `font:` shorthand pattern that matched the weight instead of
+the size read `font:13px/1.5` as no size at all and dropped two rules silently. A census that
+cannot fail loudly on a shorthand it does not understand will keep producing plausible totals.
 
-They were left alone: raising them is another twenty-one rules of review surface, and two of the
-twenty-one are not sentences at all (a textarea and the prototype terminal), so the set needs
-reading one selector at a time rather than a sweep.
+**Element counts carry the date and the commit they were taken at, or they do not belong here.**
+The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
+minutes later on an unchanged stylesheet, both readings taken during this branch's review on
+2026-09-17 and reported by the reviewer rather than measured here. A bare number reads as a
+property of the code when it is a property of an afternoon. The stable unit is the rule, or the
+element shape, never its population.
+
+They were left alone rather than swept: the set is comparable in size to the one this branch
+already moved, and some of it is not sentences at all, a textarea and the prototype terminal among
+them. It needs reading one element at a time, which is the work DRC-4602 carries.
 
 Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
 eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
