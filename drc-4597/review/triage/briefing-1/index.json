@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4597:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4597 rewrite and milestone finding for writing to Linear, and the six acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4597:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/d249b742ab9a415c6be926c2b5209f3572977433/drc-4597.md",
+      "rev": "sha256:6294dd6c80576d8e237d507fb7ebc1e5c6560b7aad7bb3789678dea28fa1cf64",
+      "mediaType": "text/markdown",
+      "summary": "Two claims the recon refuted are struck and demoted to a dated history section, and a third correction was found here: the SESSIONS heading mislabels a list whose first row is the project. The scope rail is not present at every scroll position - zero sticky rules, align-items start, hidden below 1280px and gated on more than one session - and the ordering requirement the Solution asks for is already shipped with a test binding it, so implementing that sentence literally would have replaced a tested tiebreak with an untested one. The captain's absence-ink ruling is applied as a regression guard rather than re-decided."
+    }
+  ]
+}
