@@ -453,3 +453,8 @@ returns today (9, `styles.css:20`, none), which I had measured but left in the s
 The verbatim `## Acceptance` heading inside `## Linear edits made` is untouched —
 `git diff -U0` over the file shows exactly one `-## Acceptance` / `+## Acceptance criteria` pair,
 and the captured original still reads `## Acceptance` at line 110.
+
+Re-confirmed with the `--stage triage` form of the command as well:
+`spacedock status --read drc-4587 --ac-scan --stage triage --json --workflow-dir docs/roadmap-burndown`
+returns seven entries with ids AC-1 through AC-7, all `unevidenced: true`. Both forms agree, so the
+scan does not depend on the stage being inferred from frontmatter.
