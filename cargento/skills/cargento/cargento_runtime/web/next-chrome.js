@@ -653,7 +653,8 @@ function nextRefreshNotice(){
   return '<div class="next-stalled" data-next-state="stalled" role="status">' +
     `<strong>Live refresh failed ${failures} in a row.</strong>` +
     `<span>${state} Retrying automatically every ${retrySeconds}s.</span>` +
-    `<button type="button" data-next-action="retry-refresh"${disabled}>Retry now</button></div>`;
+    `<button type="button" class="next-action" data-next-action="retry-refresh"${disabled}>` +
+    "Retry now</button></div>";
 }
 
 /* The two reasons `history.RESET_UNREADABLE` and `history.RESET_VERSION` publish,

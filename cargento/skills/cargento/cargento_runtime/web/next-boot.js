@@ -255,7 +255,8 @@ function nextSessionCopyControl(session){
   // other session-keyed structure here is (`nextSessionKey`): a sid is unique
   // within a harness and nowhere else.
   const harness = String(session && session.harness || "");
-  return `<button type="button" class="next-session-copy" data-next-copy-session="${esc(sid)}" ` +
+  return `<button type="button" class="next-action next-session-copy" `+
+    `data-next-copy-session="${esc(sid)}" ` +
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "copy", harness, sid)} ` +
     `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
@@ -312,7 +313,7 @@ function nextSessionResumeControl(session){
   // to type. Same lane as the session-id control beside it, deliberately.
   const sid = String(session && session.sid || "");
   const harness = String(session && session.harness || "");
-  return `<button type="button" class="next-session-copy next-attention-resume" ` +
+  return `<button type="button" class="next-action next-session-copy next-attention-resume" ` +
     `data-next-copy-command="${esc(command)}" data-next-copy-session="${esc(sid)}" ` +
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "command", harness, sid)} ` +

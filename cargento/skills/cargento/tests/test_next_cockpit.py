@@ -3778,6 +3778,12 @@ __els.app = {
         .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]));
       return {dataset, tagName:match[1].toUpperCase(), value:"", attrs, hidden:"hidden" in attrs,
         getAttribute(name){ return attrs[name] || null; },
+        // Attributes the handler writes land in `attrs`, the same place the
+        // parsed ones do, so a test cannot tell a handler's write from the
+        // renderer's -- which is the point: a control the renderer drew inert
+        // and a control the handler made inert are the same control.
+        setAttribute(name, value){ attrs[name] = String(value); },
+        removeAttribute(name){ delete attrs[name]; },
         focus(){ document.activeElement = this; },
         closest(selector){
           // The field container the input handler reaches for, synthesised
@@ -5071,6 +5077,10 @@ console.log(JSON.stringify({posts,
         out = self.run_fixture(r"""
 __dashboard.reading_check = "accepted";
 const session = __dashboard.sessions[0];
+// The gate reads the published annotation, which is where the renderer
+// gets its copy too, so the fixture has to carry the same words as the
+// literal below rather than only the literal.
+session.annotation_goal = "ship it";
 const annotation = {goal:"ship it", reading_count:0};
 const control = () => nextCockpitReadingControl(session, annotation, {enabled:true});
 const releases = [];
@@ -5078,11 +5088,11 @@ let calls = 0;
 const upstream = __fetchImpl;
 __fetchImpl = (url, init) => String(url) === "/api/reading"
   ? (calls++, new Promise(resolve => { releases.push(resolve); })) : upstream(url, init);
-const pending = nextCockpitAskForReading(session);
+const pending = nextCockpitAskForReading(session, {enabled:true});
 await __settle();
 renderNext();
 const during = control();
-const duplicate = nextCockpitAskForReading(session);
+const duplicate = nextCockpitAskForReading(session, {enabled:true});
 const other = nextCockpitReadingControl(__dashboard.sessions[1], annotation, {enabled:true});
 for(const release of releases) release({ok:true, json:async()=>({ok:true, produced:true, reason:""})});
 await Promise.all([pending, duplicate]);
@@ -5101,6 +5111,7 @@ console.log(JSON.stringify({during, other, after:control(), calls}));
         out = self.run_fixture(r"""
 __dashboard.reading_check = "accepted";
 const session = __dashboard.sessions[0];
+session.annotation_goal = "ship it";
 const annotation = {goal:"ship it", reading_count:0, reading_withheld:"No end was observed."};
 const upstream = __fetchImpl;
 const outcomes = [];
@@ -5116,7 +5127,7 @@ for(const reply of [
     if(reply === null) throw new Error("network down");
     return reply;
   };
-  await nextCockpitAskForReading(session);
+  await nextCockpitAskForReading(session, {enabled:true});
   renderNext();
   outcomes.push(nextCockpitReadingControl(session, annotation, {enabled:true}));
 }
@@ -5182,8 +5193,17 @@ const read = () => {
   const block = html.slice(html.indexOf('class="next-cockpit-reading"'));
   return {
     text: (block.match(/class="next-cockpit-reading-why">([^<]*)</) || [])[1],
+    // The refusal by its id rather than by being first. The offer paragraph
+    // now precedes it in every state, because the control renders in all of
+    // them, and "the first reason paragraph" stopped naming the reason.
+    reason: (block.match(
+      /class="next-cockpit-reading-why" id="next-cockpit-reading-refused">([^<]*)</) || [])[1],
     control: block.includes('data-next-cockpit-action="reading-ask"'),
-    disabled: /data-next-cockpit-action="reading-ask"[^>]*disabled/.test(block),
+    disabled: /data-next-cockpit-action="reading-ask"[^>]*aria-disabled="true"/.test(block),
+    // The bare attribute the browser acts on, kept apart from the aria one:
+    // a single check for "disabled" matches both spellings and so cannot
+    // witness which of the two shipped.
+    bare: /data-next-cockpit-action="reading-ask"[^>]*\\sdisabled[=>\\s]/.test(block),
     departures: html.includes("DEPARTURES RAISED TO YOU"),
   };
 };
@@ -5240,12 +5260,19 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         # Then
         assert isinstance(out, dict)
         self.assertEqual(
-            "Nothing has been typed for this session, so there is nothing to read it against.",
-            out["empty"]["text"],
+            "Nothing has been typed for this session, so there is nothing to read it against. "
+            "Save a goal above to enable a reading.",
+            out["empty"]["reason"],
         )
-        self.assertFalse(out["empty"]["control"])
-        self.assertIn("Observer model availability has not been read", out["unread"]["text"])
-        self.assertFalse(out["unread"]["control"])
+        # The control renders in every reason state now, inert and carrying
+        # the sentence that says why (DRC-4588). It used to be deleted here,
+        # which took the tab's only verb off the page in the two states a
+        # newcomer is most likely to arrive in.
+        self.assertTrue(out["empty"]["control"])
+        self.assertTrue(out["empty"]["disabled"])
+        self.assertIn("Observer model availability has not been read", out["unread"]["reason"])
+        self.assertTrue(out["unread"]["control"])
+        self.assertTrue(out["unread"]["disabled"])
         # The offer states what a reading may and may not read, before the
         # control rather than after it.
         self.assertIn("never a verification that the work was done", out["offered"]["text"])
@@ -5263,6 +5290,12 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         # journey step 4 had no surface at all.
         self.assertTrue(out["offered"]["departures"])
         self.assertTrue(out["empty"]["departures"])
+        # And no state uses the bare attribute, in either direction: it would
+        # take the control out of the tab order and silence the description
+        # that carries the reason.
+        for state in ("empty", "unread", "offered", "enabled", "accepted", "unknown"):
+            with self.subTest(state=state):
+                self.assertFalse(out[state]["bare"])
 
     def test_the_block_names_the_session_its_words_are_bound_to(self) -> None:
         # Two sessions publishing one title are indistinguishable in the scope
@@ -5575,6 +5608,286 @@ console.log(JSON.stringify({
                 self.assertIn("var(--sans)", rule)
                 self.assertIn("var(--fs-sentence)", rule)
                 self.assertNotIn("var(--mono)", rule)
+
+    # ---- DRC-4588 --------------------------------------------------------
+    # The tab's three-step chain loses its third control in exactly the state
+    # a newcomer lands in, and the fix that makes the control reachable is the
+    # one that lets a press through: `aria-disabled` restores the click the
+    # browser's `disabled` was suppressing, so the handler gates below ship
+    # with the attribute rather than after it.
+    UNTOUCHED = """
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+__dashboard.reading_check = "accepted";
+__dashboard.reading_disclosure = "This spends your own model capacity.";
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+__dashboard.sessions[0].annotation_binding_why = "";
+"""
+
+    # The reading block as the page actually assembles it, so a test cannot
+    # pass against the control called directly while the caller still returns
+    # before reaching it.
+    READ_BLOCK = r"""
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const block = (__els.app.innerHTML.match(
+  /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+"""
+
+    NOTHING_TYPED = (
+        "Nothing has been typed for this session, so there is nothing to read it against."
+    )
+
+    def test_an_untouched_session_is_still_offered_the_tab_s_only_verb(self) -> None:
+        """DRC-4588 AC-1. One early return deleted four things together --
+        the button, the offer, the sending disclosure and the request counter
+        -- in the one state a reader who has typed nothing is looking at."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.UNTOUCHED
+            + self.READ_BLOCK
+            + r"""
+console.log(JSON.stringify({
+  ask: (block.match(/data-next-cockpit-action="reading-ask"/g) || []).length,
+  offer: block.includes("account of the evidence on this page"),
+  disclosure: block.includes("This spends your own model capacity."),
+  counter: /\d+ model requests? recorded for this session\./.test(block),
+}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["ask"])
+        self.assertTrue(out["offer"])
+        self.assertTrue(out["disclosure"])
+        self.assertTrue(out["counter"])
+
+    def test_the_empty_sentence_moves_after_the_button_instead_of_replacing_it(self) -> None:
+        """DRC-4588 AC-2. The control recomputes the same reason and prints it
+        itself, so deleting the caller's copy moves the sentence rather than
+        losing it -- and printing both would be the duplication this guards."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.UNTOUCHED
+            + self.READ_BLOCK
+            + f"const sentence = {json.dumps(self.NOTHING_TYPED)};\n"
+            + r"""
+const buttonAt = block.indexOf('data-next-cockpit-action="reading-ask"');
+console.log(JSON.stringify({
+  count: block.split(sentence).length - 1,
+  buttonAt,
+  afterButton: block.indexOf(sentence) > buttonAt,
+  extended: block.includes(sentence + " Save a goal above to enable a reading."),
+}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        # Exactly once: the caller's copy is gone and the control's is the only
+        # one left. Two would mean the early return was deleted without noticing
+        # that the control prints the reason too.
+        self.assertEqual(1, out["count"])
+        # Named before the ordering claim, because "after the button" is
+        # satisfied by a missing button too -- which is the state this issue
+        # exists to end, and would make the assertion below a tautology.
+        self.assertGreater(out["buttonAt"], -1)
+        self.assertTrue(out["afterButton"])
+        # Verbatim, with the next step appended rather than the sentence
+        # rewritten -- the server refuses `/api/reading` with these same words.
+        self.assertTrue(out["extended"])
+
+    def test_the_request_counter_reads_the_published_count(self) -> None:
+        """DRC-4588 AC-3. The figure has to come from `reading_count`, and the
+        state that proves it is the untouched one, where the counter was not
+        rendered at all before this change."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.UNTOUCHED
+            + r"""
+const read = () => {
+  const block = (__els.app.innerHTML.match(
+    /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+  const found = (block.match(/(\d+) model requests? recorded for this session\./) || [])[1];
+  return found === undefined ? null : found;
+};
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const none = read();
+__dashboard.sessions[0].annotation_reading_count = 3;
+renderNext();
+const three = read();
+console.log(JSON.stringify({none, three}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        # A fixture carrying 3 renders 3, and an untouched session renders 0.
+        # A hard-coded figure, or one read off a different field, moves one of
+        # these two and not the other.
+        self.assertEqual("0", out["none"])
+        self.assertEqual("3", out["three"])
+
+    def test_a_refused_reading_is_reachable_and_spends_nothing(self) -> None:
+        """DRC-4588 AC-4. `aria-disabled` is what keeps the control in the tab
+        order and lets its reason be announced -- and it is also what restores
+        the click, so the handler gate is half of this change rather than a
+        refinement of it."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + r"""
+__dashboard.reading_check = "accepted";
+const session = __dashboard.sessions[0];
+const annotation = {goal:"", output:"", reading_count:0};
+const model = {enabled:true};
+const refused = nextCockpitReadingControl(session, annotation, model);
+let calls = 0;
+const upstream = __fetchImpl;
+__fetchImpl = (url, init) => {
+  if(String(url) === "/api/reading") calls += 1;
+  return upstream(url, init);
+};
+await nextCockpitAskForReading(session, model);
+const after = nextCockpitReadingControl(session, annotation, model);
+console.log(JSON.stringify({refused, after, calls}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        refused = out["refused"]
+        assert isinstance(refused, str)
+        # The aria spelling, and NOT the bare attribute. `disabled` takes the
+        # control out of the tab order and silences its `aria-describedby`;
+        # the regex the file already carries at the progress test matches both
+        # spellings and so cannot witness either direction.
+        self.assertRegex(refused, r'reading-ask"[^>]*\saria-disabled="true"')
+        self.assertNotRegex(refused, r'reading-ask"[^>]*\sdisabled[=>\s]')
+        # The description is wired to the paragraph that carries the reason,
+        # by id rather than by proximity.
+        described = re.search(r'reading-ask"[^>]*aria-describedby="([^"]+)"', refused)
+        self.assertIsNotNone(described)
+        assert described is not None
+        self.assertIn(f'id="{described.group(1)}"', refused)
+        self.assertIn(self.NOTHING_TYPED, refused)
+        # And the press the attribute now permits reaches no network at all.
+        # Without the gate this is 1, and each one spends the reader's own
+        # model capacity from a state the page calls unavailable.
+        self.assertEqual(0, out["calls"])
+        after = out["after"]
+        assert isinstance(after, str)
+        self.assertRegex(after, r'role="status"[^>]*>[^<]*Nothing has been typed')
+
+    def test_the_save_control_is_present_and_inert_rather_than_absent(self) -> None:
+        """DRC-4588 AC-5. A keyboard reader tabbing the empty form met no save
+        control at all, because it was emitted `hidden`. The keystroke path is
+        the one a renderer-only fix misses: it clears the attribute in place,
+        without a redraw."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.UNTOUCHED
+            + r"""
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const saveTag = () => (__els.app.innerHTML.match(
+  /<button[^>]*data-next-cockpit-action="held-save" data-arg="goal"[^>]*>/) || [""])[0];
+const clearTag = () => (__els.app.innerHTML.match(
+  /<button[^>]*data-next-cockpit-action="held-clear" data-arg="goal"[^>]*>/) || [""])[0];
+const saveControl = () => controls.find(control =>
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal");
+const resting = saveTag();
+const restingClear = clearTag();
+// A press while inert, before anything is typed.
+let posts = 0;
+const upstream = __fetchImpl;
+__fetchImpl = (url, init) => {
+  if(String(url) === "/api/annotate") posts += 1;
+  return upstream(url, init);
+};
+__fire("click", {target:saveControl(), preventDefault(){}});
+await __settle();
+// Then a keystroke, which does not redraw: the handler has to reach the
+// element already on the page.
+const before = __els.renders;
+const box = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
+box.value = "Ship the cockpit";
+__fire("input", {target:box});
+const typed = saveControl();
+console.log(JSON.stringify({
+  resting, restingClear, posts, redrew: __els.renders !== before,
+  typedAria: typed.attrs["aria-disabled"] || null, typedHidden: typed.hidden,
+}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        resting = out["resting"]
+        assert isinstance(resting, str)
+        # Present, and inert by the attribute that keeps it in the tab order.
+        self.assertNotEqual("", resting)
+        self.assertNotRegex(resting, r"\shidden[=>\s]")
+        self.assertIn('aria-disabled="true"', resting)
+        # `clear` keeps `hidden`: there is nothing to clear and nothing to
+        # explain, so an inert control there would be noise rather than an
+        # affordance.
+        resting_clear = out["restingClear"]
+        assert isinstance(resting_clear, str)
+        self.assertRegex(resting_clear, r"\shidden[=>\s]")
+        # The press the attribute permits reaches no endpoint.
+        self.assertEqual(0, out["posts"])
+        # And a keystroke clears the attribute in place rather than the
+        # `hidden` property, which is the path :3430 takes on every keystroke
+        # and the one a renderer-only fix would leave writing the wrong field.
+        self.assertFalse(out["redrew"])
+        self.assertIsNone(out["typedAria"])
+        self.assertFalse(out["typedHidden"])
+
+    # ---- DRC-4590 --------------------------------------------------------
+    def test_one_tab_of_five_carries_a_primary_and_the_rest_carry_none(self) -> None:
+        """DRC-4590 AC-2, narrowed at triage to the one target that exists.
+
+        The issue as filed asked for exactly one primary per tab, naming "Open
+        this session" for three tabs and a registration-copy control for a
+        fourth. Three of those do not exist as controls and the fourth does not
+        exist at all: `Course` and `Decisions` emit no `<button>`, `Now` emits
+        only navigation cards, and `Console`'s two controls are the steer submit
+        and the tripwire add, which this criterion forbids marking. So four tabs
+        have nothing to mark, and what each tab's main action should BE is a
+        product question filed as its own issue rather than answered here.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + r"""
+__dashboard.reading_check = "accepted";
+const counts = {};
+for(const tab of ["now", "course", "decisions", "console", "held-to"]){
+  navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab});
+  await __settle();
+  counts[tab] = (__els.app.innerHTML.match(/next-action--primary/g) || []).length;
+}
+// The two Console controls the criterion names, read from their own emitters
+// rather than from whichever tab happens to render them.
+const steer = nextProjectSteer("cargento", {steers:[]});
+const tripwire = nextProjectGuardrailAdd("cargento", {adding:false});
+console.log(JSON.stringify({counts, steer, tripwire}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        # Counted per tab and not as a page total: a total asserts nothing
+        # about WHERE the primary landed, and would pass with a stray one on
+        # Console and none on Held to.
+        self.assertEqual(
+            {"now": 0, "course": 0, "decisions": 0, "console": 0, "held-to": 1},
+            out["counts"],
+        )
+        self.assertNotIn("next-action--primary", out["steer"])
+        self.assertNotIn("next-action--primary", out["tripwire"])
 
 
 def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, object]:
@@ -6681,8 +6994,9 @@ __dashboard.sessions[0].departures = [{
         self.assertNotIn(annotation_store.DISCARD_RECORD_STANDING, text)
 
     def test_the_reading_block_names_the_discard_rather_than_nothing_typed(self) -> None:
-        """AC7. The two states rendered one sentence, and the offer is withheld
-        on both -- so the sentence is the whole of what a reader gets."""
+        """AC7. The two states rendered one sentence each, and the claim that
+        survives is which sentence: a discarded session says the discard
+        sentence and not "nothing typed"."""
         discarded = self._open(self.DISCARDED)
         never = self._open(self.NEVER)
 
@@ -6693,10 +7007,18 @@ __dashboard.sessions[0].departures = [{
         self.assertIn(annotation_store.DISCARD_SENTENCES["unreadable"].split(", so")[0], said)
         self.assertNotIn("Nothing has been typed for this session", said)
         self.assertIn("Nothing has been typed for this session", absent)
-        # The offer stays withheld on both, which is what makes the sentence
-        # load-bearing rather than decoration.
-        self.assertEqual(0, discarded["ask"])
-        self.assertEqual(0, never["ask"])
+        # These two read 0 until DRC-4588, under a comment saying the withheld
+        # offer was what made the sentence load-bearing rather than decoration.
+        # What superseded it: the control now renders refused, with this very
+        # sentence bound to it through `aria-describedby`. The sentence is what
+        # the control is described BY, so it explains the button rather than
+        # competing with it for the reader's attention -- and withholding the
+        # button was costing the reader the one affordance the tab exists for
+        # in the two states they are most likely to arrive in. The claim above
+        # is untouched and is the one AC7 was really making: the discarded row
+        # says the discard sentence and not "nothing typed".
+        self.assertEqual(1, discarded["ask"])
+        self.assertEqual(1, never["ask"])
 
 
 class CockpitHeldReEntryTest(NextPageJsHarness):
@@ -7813,7 +8135,12 @@ console.log(JSON.stringify({
             control,
         )
         self.assertIn("Ask for a reading</button>", control)
-        self.assertIn(" disabled>", control)
+        # `aria-disabled`, not the bare attribute: the control keeps its place
+        # in the tab order and `nextCockpitAskForReading` refuses the press it
+        # now receives (DRC-4588). Both spellings are named, because a
+        # substring check for "disabled" alone matches either one.
+        self.assertIn('aria-disabled="true"', control)
+        self.assertNotIn(" disabled>", control)
         # And the review section itself invites no press of its own.
         self.assertNotIn("Ask for a reading", out["block"])
 

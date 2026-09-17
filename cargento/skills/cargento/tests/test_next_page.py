@@ -612,8 +612,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                27_352,
-                "b71d627fe8cc06bc4210d23c76c0ee5b2ab644ce15a44c9d617ba66fe398847d",
+                27_384,
+                "fe0b85a5f87537ce7e1a2a7d8aafaefca675810dff894412530ac9419147df8c",
             ),
             "next-observed.js": (
                 31_199,
@@ -624,8 +624,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "cf7eb26d4135f352efe4cd7256e46f26514ba9b8e19422ac32fc840ac9b4e71a",
             ),
             "next-notify.js": (
-                11_092,
-                "1a486fb469b06f8b43d5565440e0cfa30d5bbd848dfcc16f92a7aa492bcd23a3",
+                11_104,
+                "2fdc43bbb9382ce92fe972d628b6bf11e0342f35bfa43e9965133c3315b39ad1",
             ),
             "next-cockpit-compat.js": (
                 599,
@@ -636,12 +636,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "8d404a66a0fe5a8a021854b64fc48c80aeed260628efadde80c64862d07ce63e",
             ),
             "next-chrome.js": (
-                40_112,
-                "f7d3fc543edb9c9a52be47a7a297fca29ed8482e1f4af35be7a7ee5d7156ba26",
+                40_141,
+                "fd944ba159be6655d8e0fa8097a22288f7f1042d74c2146bfe1e617a07c70982",
             ),
             "next-capacity.js": (
-                32_192,
-                "fccfae64553820ba7da58439694808fdae9275bba00f4d85119db58d36d0ef6b",
+                32_221,
+                "152eeff23367e7216a500593f07acee293c1bfa1b38401befd173a12d462d835",
             ),
             "next-sessions.js": (
                 19_745,
@@ -676,12 +676,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "36ecd098147995ae96b5ca7846c6a4366142da400a27a2dd5dfcef9ace01fdb6",
             ),
             "next-controls.js": (
-                18_071,
-                "ed2f27f3e1c9c13fbfecc64389af35744b2148a8f1e008ea9dd8720b31795c96",
+                18_123,
+                "34646eed0f1890628554fbe9216c937ddca5dd117e69292dfeeb24831a341dbc",
             ),
             "next-cockpit.js": (
-                198_105,
-                "16f67be92f133b9e837d137a96847723861a0128d4d91a0164ad63d9ab2190f6",
+                201_898,
+                "ad12de164d708f3bcad29bc99089098f42a8b8054f296b177101d3281cc61f16",
             ),
             "next-render.js": (
                 8_960,
@@ -700,16 +700,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(110_704, len(styles))
+        self.assertEqual(111_658, len(styles))
         self.assertEqual(
-            "02aa394649d128bef1a44d728e061d643a0535a6060650022931738add0dc194",
+            "19c58ec2c16528d13ef0bc27e7b59a7911770afdda6640a905e672df50d2c303",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(913_998, len(assembled))
+        self.assertEqual(918_899, len(assembled))
         self.assertEqual(
-            "fabba3bc613af4f76e9c7d327d3a42f4a4e49acf4da73d2e5aa8b3e0f4d19866",
+            "c64dcd86bb7382050fe197a73b3992f3ec7adfc77457db307d7db5bf5d8b6cd7",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -854,3 +854,138 @@ console.log(JSON.stringify({
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
+    """DRC-4590. The stylesheet had no way to say "this one": no shared control
+    class and no radius token, so every control was its own recipe and the whole
+    range was spent on the secondary tier.
+
+    The sweep that produced this issue found 24 resting control rules over six
+    corner treatments. Seven collapse here; the remaining five are filed as
+    their own issue and the exempt ones are named with reasons in the sheet, so
+    AC-1 and AC-2 are accepted on these enumerated verifiers rather than on a
+    universal reading neither could satisfy.
+    """
+
+    # The seven the primitive absorbs. Enumerated rather than discovered,
+    # because "every control rule" is the claim this issue cannot make.
+    COLLAPSED = (
+        ".next-notify-button",
+        ".next-stalled button",
+        ".next-session-copy",
+        ".next-steer button",
+        ".next-guardrail-add",
+        ".next-usage-switch button",
+        ".next-cockpit-reading button",
+    )
+
+    def setUp(self) -> None:
+        raw = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        # Comments out first. They carry commas and selector-shaped text, and
+        # a selector head read straight out of the source picks up whatever
+        # comment precedes the rule -- which matches nothing and reads as a
+        # missing rule rather than as a broken parser.
+        self.styles = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
+
+    def rule(self, selector: str) -> str:
+        """The body of the rule whose selector list contains `selector` exactly.
+
+        Matched on the whole comma-separated head, so `.next-steer button` does
+        not silently answer with `.next-steer button:hover`.
+        """
+        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.styles):
+            heads = [head.strip() for head in block.group(1).split(",")]
+            if selector in heads:
+                return block.group(2)
+        return ""
+
+    def test_one_token_and_one_class_own_the_resting_box(self) -> None:
+        """AC-1."""
+        root = re.findall(r"(?:\A|\n):root\{([^}]*)\}", self.styles, re.DOTALL)
+        self.assertTrue(any("--radius-control:" in block for block in root))
+        # Exactly one rule owns `.next-action` on its own, so the primitive has
+        # a single definition rather than a definition per caller.
+        owners = [
+            block.group(1).strip()
+            for block in re.finditer(r"([^{}]+)\{[^{}]*\}", self.styles)
+            if block.group(1).strip() == ".next-action"
+        ]
+        self.assertEqual(1, len(owners))
+        body = self.rule(".next-action")
+        self.assertIn("border-radius:var(--radius-control)", body)
+
+    def test_no_collapsed_rule_keeps_its_own_recipe(self) -> None:
+        """AC-1's falsifier: the collapse done by adding the class to a
+        selector group, leaving the duplicated declarations in place. That
+        reads as passing in a grep for the class name and changes nothing."""
+        for selector in self.COLLAPSED:
+            with self.subTest(selector=selector):
+                body = self.rule(selector)
+                self.assertNotEqual("", body, f"{selector} has no rule to check")
+                self.assertNotIn("border-radius:", body)
+                self.assertNotRegex(body, r"(?:^|;)border:1px")
+
+    def test_a_disabled_control_survives_greyscale(self) -> None:
+        """AC-3. Ink alone cannot carry this: `--ink3` is the resting colour of
+        the prose around these controls, so a disabled one was drawn in the
+        body ink and vanished with colour removed."""
+        body = self.rule('.next-action[aria-disabled="true"]')
+        self.assertIn("border-style:dashed", body)
+        self.assertIn("cursor:not-allowed", body)
+        # The stalled control is waiting, not refusing, and says so with its
+        # own cursor. Collapsing the two loses a distinction a reader acts on.
+        stalled = self.rule(".next-stalled button:disabled")
+        self.assertIn("cursor:wait", stalled)
+        self.assertGreater(
+            self.styles.index(".next-stalled button:disabled"),
+            self.styles.index('.next-action[aria-disabled="true"]'),
+            "the stalled override must come after the primitive to win at equal specificity",
+        )
+
+    def test_the_tripwire_control_gets_the_box_its_hit_area_already_had(self) -> None:
+        """AC-4. It was given the shared outlined recipe and stripped of it on
+        the next line, so it read as a line of prose inside a 44px target: what
+        a reader can see and what they can hit did not agree."""
+        body = self.rule(".next-guardrail-add")
+        self.assertNotEqual("", body)
+        self.assertNotRegex(body, r"(?:^|;)border:0")
+        self.assertNotRegex(body, r"(?:^|;)padding:0")
+        # The 44px band is inherited rather than redeclared, from the one rule
+        # that owns it for every control on the board.
+        self.assertIn("min-block-size:44px", self.rule("#app a"))
+
+    def test_the_irreversible_control_is_heavier_than_the_reversible_one(self) -> None:
+        """AC-5. `clear` drops one unsaved box and `discard everything` deletes
+        every revision, and the two carried the same five declarations."""
+        discard = self.rule(".next-cockpit-held-discard button")
+        armed = self.rule(".next-cockpit-held-discard button[aria-describedby]")
+        self.assertNotEqual("", armed)
+        # Width, not hue. The comment above these rules already rules colour
+        # out here: `--clay` reads as an observation about the session, and
+        # this is a control.
+        self.assertRegex(armed, r"border-width:\d")
+        block = self.styles[self.styles.index(".next-cockpit-held-discard") :][:800]
+        for hue in ("--clay", "--amber", "--accent"):
+            with self.subTest(hue=hue):
+                self.assertNotIn(hue, block)
+        # And the per-field `clear` stays bare text, which is what makes the
+        # weight difference read at all. Boxing both removes the contrast this
+        # criterion exists for.
+        self.assertRegex(self.rule(".next-cockpit-held-field button"), r"(?:^|;)border:0")
+        # The discard control takes its box from the primitive, so its own
+        # rule no longer contradicts it with a borderless recipe.
+        self.assertNotRegex(discard, r"(?:^|;)border:0")
+        self.assertNotIn("border-radius:", discard)
+
+    def test_the_dead_tab_strip_class_is_gone_and_its_neighbours_are_not(self) -> None:
+        """AC-6. `.next-tabs` has zero references in every `.js`, `.py` and
+        `.html` in the repository, but it survives in two shared selector
+        groups carrying live classes -- so a line range deletes live rules."""
+        self.assertEqual([], re.findall(r"\.next-tabs[^-\w]", self.styles))
+        # The four live classes still resolve what they shared with it.
+        self.assertIn("display:flex", self.rule(".next-header"))
+        self.assertIn("display:flex", self.rule(".next-tabs-row"))
+        self.assertIn("display:flex", self.rule(".next-header-right"))
+        self.assertRegex(self.rule(".next-crumb"), r"(?:^|;)border:0")
+        self.assertRegex(self.rule(".next-menu button"), r"(?:^|;)border:0")

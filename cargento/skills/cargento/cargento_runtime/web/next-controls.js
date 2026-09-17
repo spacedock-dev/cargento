@@ -124,7 +124,7 @@ function nextProjectSteer(project, state){
     `data-next-draft="steer" data-next-controls-project="${esc(project)}" ` +
     `data-next-focus="steer-draft:${esc(project)}" ` +
     `value="${esc(nextControlsDraft(project, "steer"))}"></label>` +
-    '<button type="submit">send ⏎</button></form>' + history + '</section>';
+    '<button type="submit" class="next-action">send ⏎</button></form>' + history + '</section>';
 }
 
 function nextProjectGuardrailRows(project, state){
@@ -151,9 +151,9 @@ function nextProjectGuardrailAdd(project, state){
       `data-next-draft="guardrail" data-next-focus="guardrail-draft:${esc(project)}" ` +
       `value="${esc(nextControlsDraft(project, "guardrail"))}" ` +
       'name="guardrail" maxlength="500" placeholder="alert me when…"></label>' +
-      '<button type="submit">add ↵</button></form>';
+      '<button type="submit" class="next-action">add ↵</button></form>';
   }
-  return `<button type="button" class="next-guardrail-add" data-next-guardrail-add ` +
+  return `<button type="button" class="next-action next-guardrail-add" data-next-guardrail-add ` +
     `data-next-controls-project="${esc(project)}">+ set a tripwire</button>`;
 }
 
