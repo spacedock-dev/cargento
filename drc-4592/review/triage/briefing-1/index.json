@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4592:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4592 issue rewrite and milestone correction for writing to Linear, and approve the seven acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4592:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/dc295a045b7e5ce62f2bf910661b0d9609c398ea/drc-4592.md",
+      "rev": "sha256:5fc02ef7499e7abd8b896c25841ae4bb7a7f41b5835bb5d6932cd4559119779f",
+      "mediaType": "text/markdown",
+      "summary": "The recon's largest risk is refuted rather than accepted: next-project.js:386 already calls nextCockpitLoadContext on every project-detail render before the strip is built, so a cue on an unselected tab resolves from a round-trip the board already makes and adds no fetch. That keeps this a presentational change. AC-4, which the recon showed was unfalsifiable as filed, now carries a five-row source-collection table and names its three collections explicitly, with Held to's source corrected from an authored constant to session.departures."
+    }
+  ]
+}
