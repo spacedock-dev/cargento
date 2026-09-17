@@ -1,7 +1,7 @@
 ---
 id:
 title: "Add a control primitive with one primary action per tab and a disabled state that survives greyscale"
-status: implementation
+status: review
 source: "https://linear.app/recce/issue/DRC-4590/add-a-control-primitive-with-one-primary-action-per-tab-and-a-disabled"
 started: 2026-09-17T10:42:56Z
 completed: ""
@@ -614,3 +614,65 @@ control keeps `cursor:wait` as an explicit override, since it is waiting rather 
 dead `.next-tabs` class is removed from two shared selector groups rather than by line range, which
 is what the criterion as filed would have deleted. The work was built with DRC-4588 on one branch,
 so its surface is separable only down to whole files, and that is stated rather than estimated away.
+
+## Stage Report: review
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort".
+  **Two lenses plus an arbiter**, stated before the first file was read. The justifying property is this issue's: it moves seven JS assets and `styles.css`, so it owns all three frontend byte-pin oracles, and the branch also touches `SKILL.md`. Two of the three named conflict-prone surfaces, and no security, credential or data-loss path — so not full adversarial.
+- DONE: Reproduce every acceptance criterion of BOTH issues from its own Verified by clause rather than trusting the implementation self-report, and settle any interactive criterion by a live drive or report it explicitly as not attempted.
+  **AC-1:** `:root` carries `--radius-control:3px`, one `.next-action` rule owns the box, and my own sweep of the sheet for rules declaring their own radius or resting `border:1px` returns none of the seven. **AC-2:** reproduced independently across all five panels — `{now:0, course:0, decisions:0, console:0, held-to:1}`; `.next-action` itself reaches 1/1/1/3/3, the extra one on every tab being the shared `.next-notify-button` chrome. **AC-3:** resolved live with `getComputedStyle` rather than by grep — enabled `solid` `rgb(198,224,122)`, disabled `dashed` `rgb(64,63,51)`; `.next-stalled button:disabled` declares only `cursor:wait;color`, and wins on specificity (0,2,1) regardless of order. **AC-4:** live, `+ set a tripwire` resolves `solid 1px rgb(155,148,132)`, `padding 9px 14px`, **`min-block-size:44px`** and a measured box of 177×44. **AC-5:** discard carries `.next-action`, armed `[aria-describedby]` is `border-width:2px` against the resting 1px, `clear` keeps `border:0`, and no rule in the discard block names `--clay`, `--amber` or `--accent`. **AC-6:** `.next-tabs` (not `-row`) appears nowhere in the sheet, and `git grep` on `84d27a53` confirms no JS or HTML ever emitted it — it was dead, so the two rules removed with it were unreachable; the five survivors resolve byte-identically across the sheets. **AC-7:** recomputed from the assets myself — `styles.css` `111_658`/`19c58ec2…`, assembled `918_899`/`c64dcd86…`, found in exactly **2 length and 3 digest** assertions across the three files, matching AGENTS.md's count. **AC-8 settled by a live drive**, not deferred: board on `127.0.0.1:4571` under `grayscale(1)`, captures at `docs/screenshots/2026-09-17-review-pr362-drc4590-ac8-greyscale-disabled-reading-control-dashed.png` and `…-greyscale-console-tripwire-box.jpg` — the dashed refusal and the tripwire box both read with colour removed.
+- DONE: For every value-and-absence ternary this diff touches, resolve BOTH branches with tests/css_cascade.py and confirm no absence renders larger than the value it replaces; a test asserting an absence alone is not evidence.
+  Seven pairs resolved through `tests/css_cascade.py` on the branch **and** on `84d27a53`. Branch: **0** pairs where the absence outranks the value. Main: **1** — the reading button resolved 12.5px against its own reason paragraph at 15px, an inversion that never fired only because the two never co-existed, and which this change removes by raising the button to the sentence tier. Discard resting vs armed is 15.0/15.0 differing only in border width, where on main the two resolved identically.
+- FAILED: Read the Copilot inline review comments as well as any top-level review, confirm CI is green on the CURRENT head SHA with mergeStateStatus, and give a GO or NO-GO verdict without editing the branch.
+  CI and the verdict are done; the Copilot half could not be. **No review of any kind exists on #362 and none was requested** — `reviews` empty, `pulls/362/comments` empty, `requested_reviewers: []`, the only comment being the coverage bot. FAILED rather than SKIPPED because the check was unavailable, and requesting one is the FO's call: it blocked the merge on #361. CI is 12/12 `success` read from `1d847b0f8a3b4c300ac293ac17d37b4ee19ed922`'s own `check-runs`, `mergeStateStatus: CLEAN`. **Verdict: NO-GO**, on a finding that belongs to DRC-4588 rather than to this issue. The branch was not edited.
+- DONE: Write a `## Stage Report: review` into BOTH entity files, drc-4588 and drc-4590, each covering that issue's share — the advance guard is per entity and one report will block the group.
+  This report and the one in `drc-4588/index.md`, each carrying its own issue's criteria and findings.
+
+### Nothing in DRC-4590's share blocks
+
+The blocking finding is DRC-4588's doubled-and-then-false refusal sentence; its report carries it.
+Every collapse here resolves correctly. The emitter coverage was checked by enumerating emitters
+rather than grepping for the class: all seven collapsed selectors have every element that can match
+them carrying `next-action`, including the two `.next-stalled` emitters of which only the retry one
+contains a button.
+
+### Filed, not promoted — DRC-4590's share
+
+- **`.next-stalled button:disabled` now renders dashed.** It declares only `cursor:wait;color`, so
+  `border-style:dashed` reaches it from the primitive. NUI-18 says dashed means *refusing* and that
+  this control is *waiting*, "and collapsing the two loses a distinction a reader acts on" — after
+  this change the only surviving distinction is `cursor`, which is mouse-only and absent from a
+  screenshot. Created here, visual, transient state.
+- **`.next-session-copy` grew while the irreversible `.next-session-raise` did not.** Copy goes
+  `4px 7px` → `9px 14px` and `--line2` → `--ink3`; raise is on the exempt list and kept `4px 7px`.
+  The prominence half is **plausible rather than confirmed**: the mechanism the comment names —
+  filled, on the warn line — still holds, and no criterion binds relative weight. The **stale comment
+  is confirmed**: `styles.css:121-127` still says the copy control "never got" the `:focus-visible`
+  ring, which `.next-action:focus-visible` now gives it. `test_next_chrome.py`'s comment on the same
+  fact was updated on this branch and this one was not.
+- **The armed discard's heavier border keys off `warning`, not `armed`.** `next-cockpit.js:2351`.
+  The `aria-describedby` half predates; the branch attached a visual state signal to the same
+  condition, so a missing armed sentence would leave an armed control unmarked. Low.
+- **Two size jumps worth an eyes-on pass rather than a finding.** `.next-notify-button` and
+  `.next-usage-switch button` go from ~11–12.5px mono to 15px sans, and the reading button loses
+  `background:var(--panel)` so the board's one primary is a 1px accent border plus weight 500 with no
+  fill. All three are the stated intent of NUI-18, and `--ink3` at 5.67:1 against `--line2` at 1.61:1
+  is a real contrast gain — recorded so they are seen rather than discovered.
+
+### The two enumerations, checked
+
+Both hold. **DRC-4604's five** are the complete remainder: my own sweep of the branch finds only
+`.pc-terminal-open,.pc-terminal-bar button` beyond them, and that is `project.js`, which NUI-18 names
+as an exemption ("the legacy project view"). **DRC-4603's four** hold for tab-panel action
+candidates: `Now`, `Course` and `Decisions` emit no panel control, and Console's are the steer submit
+and the tripwire add. The quota-consent pair that also renders on Console is a consent prompt rather
+than a tab action, and it is already DRC-4604's.
+
+### Summary
+
+This half of the branch is clean. The primitive collapses the seven it claims, every emitter that can
+match them was updated, the dead `.next-tabs` surgery removed nothing live, and all twenty-plus byte
+pins recompute to the values the tests carry with the assembled length and digest appearing in
+exactly the 2 and 3 places AGENTS.md records. Both universal-sounding criteria are honestly enumerated
+and both remainders are accurately filed. The four items above are worth issues, and none of them is
+worth a CI round: the NO-GO on #362 is DRC-4588's finding, not this issue's.
