@@ -1,7 +1,7 @@
 ---
 id:
 title: "Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab"
-status: implementation
+status: review
 source: "https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its"
 started: 2026-09-17T11:07:58Z
 completed: ""
