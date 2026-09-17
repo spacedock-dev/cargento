@@ -937,3 +937,135 @@ commit, not on the current tip**, so it will rebase across two commits rather th
 
 Candidate SHA after the addendum: **`3ab52025c86c27e3621423414d6ebc8c09f6c3a3`**. Addendum surface:
 `docs/design-next-ui.md` 41 added, 27 removed, one file, no code. Branch clean, not pushed.
+
+## Stage Report: review (cycle 3)
+
+Re-review of correction round 2. **NO-GO.** The six named slots are genuinely fixed; the method that
+found them was not complete, and the same defect was created in at least four more places.
+
+- DONE: State the chosen review depth and the property of the diff that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort" — this diff owns the frontend byte pins, so the table's two-lenses-plus-an-arbiter row applies unless you argue otherwise.
+  Two lenses plus an arbiter again, stated first. The round rewrote `styles.css` and seven of nine pins, and added a 198-line cascade resolver that the round itself flagged as already-wrong-once, so the conflict-prone row still governs. Lenses took the two claims I could not settle by reading: was the emitter set complete, and does the resolver hold. I arbitrated by reproducing every finding with the branch's own `css_cascade.py` and, where it rendered, in a browser.
+- DONE: Reproduce every acceptance criterion from its own Verified by clause rather than trusting the implementation self-report, and report AC-7 as settled by a live drive or explicitly not attempted, never by automation built here.
+  AC-2/3/4/5/6 PASS, AC-6 recomputed by me a third time. **AC-7 FAILS** on its own falsifier — "any value computing smaller than its own absence" — in four slots this PR created. Settled by a live drive plus resolver, not by automation built here.
+- DONE: Read the Copilot inline review comments in addition to any top-level review, and confirm CI is green on the CURRENT head SHA with mergeStateStatus, naming the SHA the checks belong to.
+  No new Copilot comments; its cycle-1 finding stays correctly closed. **CI is fully green on the current head `3ab52025`** — 12/12 SUCCESS including Windows, `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`. Note the candidate I was given, `e32b207d`, was superseded during the review by `3ab52025` (claim 5 is in the latter, not the former).
+- DONE: Give a GO or NO-GO verdict with the findings that produced it, and do NOT edit the branch — a confirmed material finding routes back to implementation with its evidence.
+  **NO-GO**, on F4. Branch not edited; the only repo write was a gitignored screenshot.
+
+### What is genuinely fixed, verified rather than accepted
+
+All six named slots resolve **15.0 vs 15.0**, measured in a browser against a pristine `git archive`
+export of the tip: the recovery `span.next-project-value` by swapping the class on a real rendered
+element, the other five through the served stylesheet. **The caption regression is fixed and cost
+nothing**: `PROJECT RECOVERY BRIEFING` is 11.5px again and every non-header `strong` in the recovery
+block is still 15px — the scoping to `div strong` dropped no value. Claim 3 holds: the argument was
+replaced by a real `CAPTION_BELOW_VALUE` table. Claim 5 matches the property I specified, and the
+document now **refuses to state a count** for the residual, explains why every figure it produced was
+a floor, and corrects the token set to seven with `--fs-2xs` named as the issue's omission — all three
+of my cycle-2 prose findings closed properly.
+
+**Three mutations of my own, all killed**, each restored to sha `6199c635…`: reverting
+`.next-delegation-metrics` gave "10.5 not >= 15.0 : rail token rate (next-delegation.js
+nextRailDelegation)"; re-broadening `div strong` back to `strong` gave "briefing caption: 15.0 not
+less than 15.0 … the label reads level with its own answer"; and a value one half-step low (14.5)
+was caught. Pins: styles.css 111720/`6199c635…`, cockpit.js 198105/`16f67be9…` unchanged, assembled
+915014/`3749774c…` — exactly nine sites, no stale value, no tenth. Full suite from my export: **3529
+tests, OK, 2 skipped**.
+
+### F4 — Material. The emitter set was not complete, and four more inversions are this PR's
+
+The round opened three JS files. **Twelve other `web/*.js` files were never opened**, and two of the
+three it did open still hold unlisted slots. Every figure below I resolved myself with the branch's
+own `tests/css_cascade.py`, and confirmed each absence rule's base value in `git show 6702fb5c`:
+
+| Slot | value | absence | base | created by |
+|---|---|---|---|---|
+| `.next-cockpit-reading-clause` / `-absent` (`next-cockpit.js:1713`, `:2050`) | 12.5 | **15.0** | 12.5 vs 12.5 | **this PR** |
+| `.next-cockpit-recovery small` / `.next-cockpit-evidence-missing` (`:2755`) | 12.5 | **15.0** | 12.5 vs 12.5 | **this PR** |
+| `.pc-graph-row>time` / `.pc-substrate-reason` (`project.js:1248`) | 11.0 | **15.0** | 11 vs 12.5 | **this PR widened +2.5** |
+| `.next-cockpit-work-summary` / `.next-cockpit-work-absent` (`:1219`) | 12.5 | **15.0** | 12.5 vs 12.5 | **this PR** |
+
+Each is the F1 mechanism exactly: the absence rule was raised from `var(--fs-xs)` to
+`var(--fs-sentence)` by this branch and the value beside it was left. In all four the absence is also
+weight 500 against the value's 400 — bigger *and* heavier. I found the reading-clause pair myself
+before the lens reported it, which is two independent discoveries of the same miss. Two further
+capacity slots (`.next-capacity-window i` 10.5, `.next-capacity-pace` 11.5 against
+`.next-capacity-absent` 12.5) are **pre-existing and not this PR's** — recorded, not charged.
+
+### F5 — Material. The test's own fixture masks one of them
+
+`SLOTS`'s `_REC` path is `[section.next-cockpit-recovery]`, but `next-project.js:396` wraps the strip
+in `<div class="next-cockpit-content">`. Resolved both ways with the branch's own resolver:
+
+```
+real DOM (content > recovery):  value 12.5   absence 15.0   <- inverted
+test _REC (no content):         value 12.5   absence 12.5   <- passes
+```
+
+`.next-cockpit-content .next-cockpit-evidence-missing` (0,2,0) beats `.next-cockpit-recovery small`
+(0,1,1); drop the wrapper and the absence rule loses and the row reads clean. **Every `_REC` row
+resolves in a DOM the emitter never builds.** Separately, the "recovery goal" row attributes
+`nextProjectGoal` to `next-cockpit.js` when it lives at `next-project.js:297`, and models a
+`<p class="next-project-goal-text">` where `nextProjectGoalRow` emits
+`<span class="next-project-value next-project-value--known next-project-goal-text">` — so that row
+does not exercise `.next-cockpit-recovery .next-project-value`, the rule round 2 added for it. The
+class's stated basis is "the pairs are read from the emitters"; for these rows it is not true.
+
+### F6 — Deferred risk. The gate is escapable, silently
+
+I reproduced it: appending `@media(min-width:1px){… .next-rail-capacity-caption{font-size:9px}}`
+leaves the test **OK**. `@media` is dropped by design and the reasoning is sound for today's sheet
+(all four media font rules are `max-width`), but it is a policy with nothing asserting it. Related:
+the module's docstring says it "refuses sibling combinators rather than guessing" — `_steps('.a + .b')`
+returns `None`, which the caller reads as "does not match", so the rule silently leaves the cascade.
+Every unsupported form fails that way. Promote-to-material when any `min-width` media rule or
+unsupported form lands on an asserted path. The cheap close is to make `None` raise.
+
+### F7 — Material, documentation. The tier sentence is now false
+
+`design-next-ui.md:113` still reads "identifiers, **timestamps**, **rates** and compact controls sit
+on one tier, `--fs-label` at 11px" while a timestamp (`.pc-entry-details time`), a rate
+(`.next-delegation-metrics`), a duration (`.next-rail-wait-duration`) and a pace caption now render
+15px. The promotion is recorded nowhere — none of the six raised class names appears in the document.
+
+### The rail question, answered plainly: no, they are not labels
+
+I checked the class rather than the four strings. `.next-rail-reason` also renders **"Nothing in this
+project has asked for you."** (`next-delegation.js:244`) — an unambiguous board sentence — and at base
+it was already sans with `line-height:1.5` at 12.5px, i.e. one of the sub-floor sentences this issue
+exists to raise. **So your rule was the right instrument and applied correctly; the rail looseness
+follows honestly from it.** The measured cost is bounded: at the real 356px width the panel grows
+117px → 130px (+11%) with no wrapping and no overflow. What is *not* right is F7. If the captain wants
+the rail compact, the fix is not to demote `.next-rail-reason` — that re-sinks a real sentence — but to
+give figure-paired slots their own absence class, so prose absences keep the floor and figure
+absences stay with their figures.
+
+### Surface, and one correction
+
+I measure docs at **100 added / 9 deleted** (`design-next-ui.md` 98, `CONTRIBUTING.md` 2), not the 86
+reported; runtime 150 matches. The re-baseline reading still holds for what was authorized, but it
+cannot be closed yet: F4 and F5 are more of the same finding, not new scope.
+
+### My own error, recorded
+
+I ran `git checkout` in the live worktree while the implementation was committing into it, detaching
+HEAD mid-round. It recovered by fast-forward with the commit intact and the tree clean, and I moved
+every later measurement to a `git archive` export, but it was my mistake and it could have cost work.
+
+### Summary
+
+The round did what it was asked and did it well: six slots fixed and confirmed live, a caption
+regression fixed without dropping a value, a caption test that kills the mutation which recreates it,
+the definition corrected to my ruling, and a document that now declines to state a number it cannot
+measure. The resolver is real work — it catches later-and-more-specific overrides that no regex could,
+and two independent implementations agree on all 22 resolutions.
+
+The verdict is **NO-GO** because the claim under test was completeness, and completeness is what
+failed. Reading the emitters was the right method; reading three files was not enough. Four more slots
+carry the identical defect, all four created by this branch raising an absence and leaving the value,
+and the guard built to catch that class resolves its recovery rows in a DOM the emitter never builds —
+so on the one slot where the fixture and reality differ, reality is inverted and the fixture is green.
+
+This is the third cycle, so it escalates. Two of the things the captain must settle are genuinely
+theirs and not another implementation round: whether the rail stays compact (F7), and whether the
+remaining four slots are fixed here or handed to DRC-4602 with the rest of the floor work.
