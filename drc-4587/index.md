@@ -1238,3 +1238,35 @@ The finding I would most want carried forward is not one of the four inversions.
 guard's fixture had been resolving a DOM the application never builds, so on the one row where
 fixture and reality differed, **the fixture was the one that passed**, and a mutation survived
 behind it. A test whose fixture is not taken from the emitter measures the test, not the product.
+
+### Addendum to correction round 3 (2026-09-17)
+
+Two corrections, both the reviewer's, both in one file. Documentation only: no CSS, so no byte pin
+moved and no test figure changed. Candidate SHA **`0f8a3a75524abd12a69fd49139ce9a2bce721ab9`**.
+
+- DONE: Drop the remainder count that survived as a comparison.
+  "The set is comparable in size to the one this branch already moved" is a count, and the set it
+  compared against is stated three paragraphs earlier as sixty-seven. The finding is right that a
+  sweep for digits and number-words could not catch it, and right about something sharper: it was
+  **the least supported number in the document**. Every figure I retracted was a per-rule floor in
+  the teens to low thirties, and this one asserted a magnitude two to three times the highest of
+  them, produced by no census at all. My own retraction argument was that a floor cannot be reported
+  as a count; asserting a magnitude *above* every floor is the same error in the confident
+  direction, and I made it in the same edit that made the argument. The paragraph now refuses the
+  size in **any** form, comparison included, and says the shape instead. The textarea-and-terminal
+  clause stays, because it is an example rather than a tally.
+  **Swept afterwards for the same failure mode:** nothing in the remainder paragraphs now states a
+  size by digit, number-word, or comparison. The surviving figures there are a px value, a count of
+  what the shorthand bug dropped, and the two element counts, which now carry provenance.
+- DONE: Narrow the provenance clause.
+  Verified against the tree before writing it: `4fb5ee6d` changed `styles.css` by **13 insertions
+  and 6 deletions**, and **zero** changed lines match `operation-fact` across either that commit or
+  the whole `3cc7ef49..4fb5ee6d` range, with the three rules that resolve the shape (`:397`, `:482`,
+  `:483`) present and untouched at both ends. So "unchanged stylesheet" was false and "the rules
+  resolving the counted shape were the same for both readings" is true. The document says the
+  narrower thing and names the two commits.
+
+**The correction I would keep from this addendum** is not either fix. It is that both errors were
+introduced *by the paragraphs written to prevent them*: a retraction paragraph that left a count in
+comparative form, and a provenance rule that overstated its own example's provenance. A rule stated
+in prose does not audit the prose around it, including the prose that states it.
