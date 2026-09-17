@@ -1470,6 +1470,28 @@ The reviewer withdrew all three findings and said plainly that the criticism nar
 hygiene rather than an unguarded property. Withdrawing a finding costs nothing here; a fix round
 spent closing a hole that was never open costs a CI cycle and a merge serialization.
 
+## Asserting a class is emitted says nothing about whether the class is styled
+
+The obvious test for a new render variant is to assert its class name appears in the output. It is
+worthless, and worse than worthless here, because of what an unstyled variant inherits.
+
+Measured while fixing a cue that reported a failed read as still pending: **deleting the new
+variant's CSS rule entirely left the whole cockpit module green.** Only the byte pins reddened — and
+those fire on any stylesheet edit, so they are evidence of nothing. An unstyled variant falls back to
+its base rule's ink, which on this board is `--ink2`, the **value** ink. So a stated absence would
+render exactly as loudly as the figure it replaces: the milestone's central defect, reintroduced by
+the guard that was supposed to prevent it.
+
+The repair is the same shape as every other oracle repair here. **Derive the variants from the
+producer and resolve each through the cascade against the unstyled base**, rather than asserting a
+string appears. Doing it that way also caught a second, pre-existing variant that had been equally
+unguarded — which an assertion naming the new class by hand could not have reached.
+
+The general form: **a name is not a property.** A test that checks a class, an attribute or an id is
+present has checked that an emitter ran. Whether anything downstream honours it is a different
+question, and on a cascading medium the default answer is that it does not — it inherits something,
+and what it inherits is usually the thing the variant exists to differ from.
+
 ## A mutation that does not match the file's text is a no-op, and reads as SURVIVED
 
 A falsifier survived a set-equality assertion it should have killed. The oracle was fine: the `perl`
