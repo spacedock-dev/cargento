@@ -840,10 +840,17 @@ function projectTerminalAbsence(entry){
   return `<div class="pc-terminal-absence"><p class="pc-substrate-empty">${esc(message)}</p>` +
     (reason && !explanations[reason] ? `<p class="pc-substrate-empty">Server reason: ` +
       `<code>${esc(reason)}</code></p>` : "") +
-    (registration ? `<p class="pc-substrate-empty">Registration requires starting the dashboard with ` +
-      `<code>--interaction-origin-session harness:sid</code> and ` +
-      `<code>--interaction-origin-registration-file PATH</code>, then running the registration client ` +
-      `inside the tmux pane for this exact session with that file. Output is read-only.</p>` : "") + `</div>`;
+    /* The recipe is two acts, and it rendered as one paragraph of running prose
+       in which both flags wrap. Behind `projectDisclosure` rather than a bare
+       `<details>`: this board redraws on live payload and a bare one snaps shut
+       on every redraw, losing the reader's place mid-command. */
+    (registration ? projectDisclosure("terminal-registration", "How to register a terminal",
+      `<ol class="pc-substrate-steps">` +
+      `<li>Start the dashboard with <code>--interaction-origin-session harness:sid</code> and ` +
+      `<code>--interaction-origin-registration-file PATH</code>.</li>` +
+      `<li>Run the registration client inside the tmux pane for this exact session with ` +
+      `that file.</li></ol>` +
+      `<p class="pc-substrate-empty">Output is read-only.</p>`) : "") + `</div>`;
 }
 
 function projectTerminalSurface(sess){

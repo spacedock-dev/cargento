@@ -934,6 +934,54 @@ opinion can refuse a press the button offered, or take one the button refused. T
 answered rather than dropped, because a clicked control that goes silent is indistinguishable from a
 dead one.
 
+## NUI-19: a caveat has three tiers
+
+Cargento pays for its honesty in vertical space, and before this rule it paid the same price for
+every sentence. Each caveat rendered as one `<p class="next-cockpit-reading-why">` in the reading
+flow, so COUNTS closed with sixty-nine words under five numbers and the one operational
+instruction in them was the third sentence. DRC-4587 made this worse rather than better: raising
+board sentences to `--fs-sentence` gave `.next-cockpit-count-label` and `.next-cockpit-reading-why`
+the identical font shorthand, so size stopped separating a caveat from the finding it qualifies.
+
+A caveat now goes in one of three tiers, and the rule is about placement, not length:
+
+1. **Always visible** — one clause carrying the claim itself, twelve words or fewer, plus every
+   absence value. If a reader acts on it, it is tier 1. "Five figures, and no arithmetic between
+   them." is tier 1; so is every `not published`.
+2. **Behind a disclosure** — everything past that clause, under a two-to-four word summary naming
+   what is inside. `nextCockpitWhy` on the `next-` surface, `projectDisclosure` on the `pc-` one.
+3. **In the design records** — a sentence too long for tier 2 leaves the panel, and its full form
+   is written here or in [design-reading-a-session.md](design-reading-a-session.md), cited from a
+   source comment in the citation grammar `AGENTS.md` describes.
+
+**Nothing is deleted by tiering.** Every sentence that existed before the rule still exists after
+it, inline or one click away. The sole exception this rule sanctions is a claim stated twice: the
+`two axes, read separately` aside said what the footer under the same cards already said, and a
+duplicate is not a tier.
+
+### Tier 3 ships no `docs/` href and no `DEC-N` token
+
+The obvious build of tier 3 is a link from the disclosure body to the design record. It cannot
+ship, for two independent reasons, and both are invisible in a diff:
+
+- An installed plugin has no `docs/` directory beside the page. The link resolves in a checkout
+  and 404s everywhere the product actually runs.
+- `RuntimeDecisionCitationsTest` reads every `.py`, `.js`, `.css` and `.html` under
+  `cargento_runtime` as a whole file, not as comments. A bare `DEC-16` in a product string is a
+  checker hit whether or not a reader ever sees it.
+
+So tier 3 cites from a **source comment**, in the grammar the checker already enforces, and the
+rendered page carries neither the token nor the path.
+
+### The control is never smaller than what it hides
+
+A tier-2 summary is set at `--fs-sentence`, the same tier as the body it reveals, because it
+carries the only words a reader has for deciding whether to open it. A control set below the text
+it conceals is the same defect class as an absence set above the value it replaces, which
+DRC-4587 shipped in ten places across four review rounds: the two halves are chosen by a branch
+and never render together, so no selector sweep and no walk of a populated board can see the pair.
+Resolve both branches through the cascade and compare them.
+
 ## What this does not decide
 
 Promotion itself did not create durable history. DRC-4234 subsequently authorized the bounded

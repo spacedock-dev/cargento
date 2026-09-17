@@ -17,6 +17,29 @@ function nextCockpitDisclosureAttr(control){
   return ` data-next-cockpit-disclosure="${esc(key)}"`;
 }
 
+/* Tier 2 of the caveat rule ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)):
+   the claim stays inline where the reader meets it and the rest goes behind a
+   summary naming what is inside.
+
+   Built on `nextCockpitDisclosureAttr` rather than beside it, so the generic
+   restore lane in `nextCockpitAfterRender` reopens it with no registration. A
+   bare `<details>` is one line shorter and snaps shut on every redraw, and the
+   board redraws on live payload, so the reader would lose the sentence
+   mid-read.
+
+   Two fallbacks, because both silently delete a caveat rather than tiering it:
+   an empty body renders nothing at all instead of a summary promising text
+   that is not there, and a missing summary renders the body inline instead of
+   hiding it behind a control with no label. */
+function nextCockpitWhy(control, summary, body){
+  const text = String(body == null ? "" : body).trim();
+  if(!text) return "";
+  if(!summary) return `<p class="next-cockpit-reading-why">${esc(text)}</p>`;
+  return `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(control)}>` +
+    `<summary>${esc(summary)}</summary>` +
+    `<p class="next-cockpit-reading-why">${esc(text)}</p></details>`;
+}
+
 function nextCockpitSourceText(value){
   return `<span class="next-cockpit-source">${esc(value)}</span>`;
 }
@@ -1122,7 +1145,6 @@ function nextCockpitHeldField(session, annotation, spec, cap){
   const cue = nextCockpitHeldCue(key);
   return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
     `<span class="next-cockpit-held-label">${label}</span>` +
-    '<span class="next-cockpit-held-sub">your words</span>' +
     `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
     `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
@@ -1867,9 +1889,9 @@ function nextCockpitReadingCriterionRow(row){
    and this panel both say steering is manual in different words; this is the
    half that references the other rather than restating the ruling
    ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
-const NEXT_COCKPIT_STEER_BY_HAND = "Raised to you and nowhere else. Cargento does not write " +
-  "into a session, so steering is by hand; the steer box in Console states the same rule " +
-  "about notes you write there.";
+const NEXT_COCKPIT_STEER_BY_HAND = "Raised to you and nowhere else.";
+const NEXT_COCKPIT_STEER_BY_HAND_WHY = "Cargento does not write into a session, so steering " +
+  "is by hand; the steer box in Console states the same rule about notes you write there.";
 
 /* The section where a raise is reviewed, and it holds two collections rather
    than one (DRC-4514).
@@ -1935,6 +1957,7 @@ function nextCockpitDepartures(shape, source, session){
     nextCockpitDeliveryPart(session, Boolean(lane)) +
     nextCockpitDepartureCounts(reading.count, lane) +
     `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p>` +
+    nextCockpitWhy("steer-why", "Why no raise goes further", NEXT_COCKPIT_STEER_BY_HAND_WHY) +
     '</section>';
 }
 
@@ -2046,18 +2069,30 @@ function nextCockpitDepartureCounts(fromReading, fromLane){
     `<span class="next-cockpit-count-label">${esc(label)}</span>` +
     `<span class="next-cockpit-count-value"${value == null ? " data-next-absent" : ""}>` +
     `${esc(value == null ? "not published" : String(value))}</span></div>`;
+  /* The quantity noun moves from every label to the group heading above it.
+     Five labels each opening with the word the group already supplies is five
+     readings of the same word, and the rows are what the reader is scanning.
+     The `line()` value arguments are untouched: only the label text moves, so
+     the null-to-"not published" branch and the positional value reads that
+     assert it are unaffected. */
+  const group = (text) => `<span class="next-cockpit-count-group">${esc(text)}</span>`;
   return '<div class="next-cockpit-departure-part">' +
     '<span class="next-cockpit-departure-label">COUNTS</span>' +
     '<div class="next-cockpit-departure-counts">' +
-    line("Departures in the reading you asked for", fromReading) +
-    line("Departures the checks run while you were away raised", fromLane) +
-    line("Notification raises on record for this board", board) +
-    line("Raises this board attempted", nextNumber(counts.attempted)) +
-    line("Raises a notification service accepted", nextNumber(counts.handed_over)) +
+    group("DEPARTURES") +
+    line("From the reading you asked for", fromReading) +
+    line("From the checks run while you were away", fromLane) +
+    group("RAISES") +
+    line("On record for this board", board) +
+    line("This board attempted", nextNumber(counts.attempted)) +
+    line("A notification service accepted", nextNumber(counts.handed_over)) +
     '</div><p class="next-cockpit-reading-why">Five figures, and no arithmetic between ' +
-    'them. A count identifies a session worth reading; it establishes nothing about whether ' +
-    'the brief, the agent or Cargento\u2019s own judgement was poor, and those three are ' +
-    'not separable from it.</p></div>';
+    'them.</p>' +
+    nextCockpitWhy("counts-why", "What a count does not say",
+      "A count identifies a session worth reading; it establishes nothing about whether " +
+      "the brief, the agent or Cargento\u2019s own judgement was poor, and those three are " +
+      "not separable from it.") +
+    '</div>';
 }
 
 /* Returns the part AND the figure for it, in one derivation over one
@@ -2362,12 +2397,12 @@ function nextCockpitLanded(observed){
     `${esc(text)}</span>` +
     (note ? `<span class="next-cockpit-landed-note">${esc(note)}</span>` : "") + '</div>';
   return '<section class="next-cockpit-landed"><header><h2>HOW IT LANDED</h2></header>' +
-    '<span class="next-cockpit-landed-axes">two axes, read separately</span>' +
     '<div class="next-cockpit-landed-cards">' +
     card("END EVIDENCE", landing.endText, landing.endKnown, "") +
     card("WHO CLAIMS IT FINISHED", landing.claimText, landing.claimKnown,
       landing.independentText) +
-    '</div><p class="next-cockpit-reading-why">Neither card implies the other.</p></section>';
+    '</div><p class="next-cockpit-reading-why">Neither card implies the other. Evidence of ' +
+    'an end and a claim of completion are separate questions.</p></section>';
 }
 
 /* DRC-4509's fourth criterion and DRC-4511's third: where re-entry is
@@ -2425,7 +2460,7 @@ function nextCockpitConflict(session, annotation, source){
   if(!pending.length){
     if(settledAt == null){
       return `${header}<p class="next-cockpit-conflict-why">Nothing you have said since you ` +
-        'saved these words is in the record read above.</p>' + steer;
+        'saved these words is in the observed record read for this session.</p>' + steer;
     }
     const age = nextDurationSince(settledAt);
     const revision = nextNumber(annotation && annotation.settled_revision);
@@ -2465,15 +2500,21 @@ function nextCockpitHeldReEntry(session){
   if(!session) return "";
   const harness = String(session.harness || "");
   const project = String(session.project == null ? "" : session.project);
+  /* Each branch keeps its own claim and its own reason, split at the sentence
+     that stops being about this session and starts being about the platform.
+     The claim is what a reader deciding whether to click needs; the platform
+     explanation is what they need only once they have read the claim and
+     disagreed with it. */
   const raise = !nextFocusCapability()
-    ? NEXT_FOCUS_OFF_LINE
+    ? {claim: NEXT_FOCUS_OFF_LINE, why: ""}
     : session.focusable === true
-      ? "Its terminal can be raised, and that control is offered while the session is waiting " +
-        "on you. A raise switches what the terminal displays; its window may still be behind " +
-        "others."
-      : "No terminal was reported for this session, so it cannot be raised. That is the " +
-        "ordinary answer outside tmux, for a session older than this server run, and on " +
-        "Linux and Windows.";
+      ? {claim: "Its terminal can be raised, and that control is offered while the session " +
+          "is waiting on you.",
+         why: "A raise switches what the terminal displays; its window may still be behind " +
+          "others."}
+      : {claim: "No terminal was reported for this session, so it cannot be raised.",
+         why: "That is the ordinary answer outside tmux, for a session older than this " +
+          "server run, and on Linux and Windows."};
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
   const resume = !NEXT_RESUME_COMMANDS.has(harness)
     ? `${label} publishes no re-entry command, so there is none to copy.`
@@ -2486,9 +2527,24 @@ function nextCockpitHeldReEntry(session){
   const link = project
     ? `<a href="${esc(nextFragmentForRoute({view: "session", project, harness,
         session: String(session.sid == null ? "" : session.sid)}))}" ` +
-      'data-next-focus="cockpit-held-reentry">Open this session</a> to re-enter it. '
+      'data-next-focus="cockpit-held-reentry">Open this session</a> to re-enter it.'
     : "";
-  return `<p class="next-cockpit-held-reentry">${link}${esc(raise)} ${esc(resume)}</p>`;
+  /* The available path first, on its own line, because it is the one act this
+     block offers and it used to arrive inside a paragraph whose middle
+     forty-two words were about what cannot be done. The anchor also leaves the
+     paragraph it shared: `#app a` is `display:inline-flex`, and an inline-flex
+     anchor inflates the leading of every line of prose it sits in. */
+  const row = (label, text) => text
+    ? '<div class="next-cockpit-held-reentry-row">' +
+      `<span class="next-cockpit-held-reentry-label">${esc(label)}</span>` +
+      `<span class="next-cockpit-held-reentry-text">${esc(text)}</span></div>`
+    : "";
+  return '<div class="next-cockpit-held-reentry">' +
+    (link ? `<p class="next-cockpit-held-reentry-action">${link}</p>` : "") +
+    row("Re-entry", resume) +
+    row("Raise", raise.claim) +
+    nextCockpitWhy("reentry-raise-why", "Why a raise is unavailable", raise.why) +
+    '</div>';
 }
 
 /* The act the endpoint has always had and no control reached (DRC-4561).
@@ -2578,17 +2634,25 @@ function nextCockpitHeldTo(group, observation){
   const observed = nextCockpitFocusedObserved(group, nextCockpitObservedProject(group));
   /* The design's order inside this tab, and it is load bearing: what you asked
      for, any unresolved baseline conflict, the reading, the departures it
-     raised, how it landed, and last where it is kept. */
-  /* Above the reading because it constrains one, below the record because it
-     cites rows from it. The same open set gates both, so the block and the
-     demotion cannot disagree about whether a baseline is settled. */
+     raised, how it landed, then the record, and last where it is kept. */
+  /* A LATER DIRECTION is above the reading because it constrains one. It used
+     to be below the observed record as well, because it cites rows from it,
+     and that half is deliberately overturned (DRC-4594): the record is the
+     first of four consecutive sections that each report that nothing is here,
+     and a reader meeting them before the reading never reaches the two boxes
+     this tab is for. The conflict block's rows carry their own text and their
+     own age inline, so they read without the record above them; the one
+     sentence that was positionally anchored to it is reworded in
+     `nextCockpitConflict` rather than left claiming a position it no longer
+     has. The same open set still gates the block and the demotion, so those
+     two cannot disagree about whether a baseline is settled. */
   const unsettled = Boolean(
     nextCockpitConflictCandidates(annotation, workSource.all || entries).length);
-  const evidence = nextCockpitWorkEvidence(session, workSource) +
-    nextCockpitConflict(session, annotation, workSource) +
+  const evidence = nextCockpitConflict(session, annotation, workSource) +
     nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group), observed,
       unsettled, workSource) +
     nextCockpitLanded(observed) +
+    nextCockpitWorkEvidence(session, workSource) +
     nextCockpitDeparturesKept();
   const cap = nextCockpitHeldCap();
   /* The header line, and the discard stamp takes its slot rather than sitting
@@ -2619,8 +2683,20 @@ function nextCockpitHeldTo(group, observation){
      block said nothing at all about which of them it was binding to. The
      harness and the session id are what the store keys on, so they are what
      is shown. */
+  /* What typing buys, before anything that qualifies it. The tab answered it
+     once, four sections down, inside a CLI instruction, and a reader who has
+     not met the idea cannot infer it from a layout.
+
+     Worded to the default board and not to the flag: the unasked lane is off
+     unless the reader started with `--unasked-readings`, so any wording about
+     an automatic check would be false on the board this sentence renders on
+     most. A reading happens because the reader asked for one. */
+  const lede = '<p class="next-cockpit-held-lede">Type what you were after. Ask for a ' +
+    'reading, and Cargento lists where this session departed from it. It never writes into ' +
+    'the session, so steering stays yours.</p>';
   return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
+    lede +
     `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
     `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
     '<div class="next-cockpit-held-fields">' +
@@ -3845,8 +3921,7 @@ document.addEventListener("click", event => {
     if(action === "conflict-retype"){
       /* No write. Cargento cannot author the reader's words, and prefilling
          the field from a fact summary would put a harness-published string in
-         the box the stylesheet labels "your words". Moving the caret there is
-         the whole of it. */
+         the TYPED GOAL box. Moving the caret there is the whole of it. */
       nextRestoreFocus({named: nextCockpitHeldKey(session, "goal")}, nextAttention);
       return;
     }

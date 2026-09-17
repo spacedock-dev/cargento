@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import json
 import pathlib
 import re
@@ -1818,6 +1819,59 @@ console.log(JSON.stringify(views));
         for html in out.values():
             self.assertIn("EXACT SESSION TERMINAL", html)
             self.assertNotIn("Open terminal", html)
+
+    def test_the_registration_recipe_is_two_steps_behind_a_redraw_safe_disclosure(self) -> None:
+        """DRC-4591 AC-1 and AC-2 on the `pc-` surface.
+
+        The recipe rendered as one paragraph of running prose in which both
+        flags wrap. It is now a numbered two-step list behind
+        `projectDisclosure`, whose open state survives a redraw -- a bare
+        `<details>` would snap shut on every live payload, losing the reader's
+        place mid-command.
+        """
+        out = self.run_fixture(
+            """
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+delete projectTerminalBySession["codex:focus-1"];
+__fetchImpl = async () => ({ok:true,status:200,
+  json:async()=>({state:"refused",reason:"unregistered-origin"})});
+renderNext();
+await __settle(); await __settle();
+const closed = __els.app.innerHTML;
+// Open it the way a click does, then redraw.
+projectDisclosureOpenBySession.set("codex:focus-1\\nterminal-registration", true);
+renderNext();
+await __settle();
+console.log(JSON.stringify({closed, reopened: __els.app.innerHTML}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        closed, reopened = out["closed"], out["reopened"]
+        assert isinstance(closed, str) and isinstance(reopened, str)
+        # AC-1: a closed <details> still contributes its body to innerHTML, so
+        # every load-bearing fragment of the recipe is still on the page.
+        self.assertIn("How to register a terminal", closed)
+        self.assertIn('data-pc-disclosure="terminal-registration"', closed)
+        self.assertIn("pc-substrate-steps", closed)
+        for fragment in (
+            "--interaction-origin-session harness:sid",
+            "--interaction-origin-registration-file PATH",
+            "inside the tmux pane for this exact session with that file",
+            "Output is read-only.",
+        ):
+            with self.subTest(fragment=fragment[:40]):
+                self.assertIn(fragment, closed)
+        # Two steps, not one paragraph -- counted inside the list, because the
+        # rest of the Console tab carries list items of its own.
+        steps = re.search(r'<ol class="pc-substrate-steps">([\s\S]*?)</ol>', closed)
+        assert steps is not None, "the recipe did not render as a list"
+        self.assertEqual(2, steps.group(1).count("<li>"))
+        # AC-2: the open state is the board's own persisted one, and it survives
+        # the redraw. Falsified by a bare <details>, which carries no
+        # data-pc-disclosure and so is never restored.
+        self.assertNotIn(' open data-pc-disclosure="terminal-registration"', closed)
+        self.assertIn(' open data-pc-disclosure="terminal-registration"', reopened)
 
     def test_terminal_identity_keeps_zero_indices_and_names_missing_coordinates(self) -> None:
         out = self.run_fixture(
@@ -5596,7 +5650,10 @@ const read = () => {
     cards: [...block.matchAll(/landed-label">([^<]*)<\/span><span class="([^"]*)">([^<]*)</g)]
       .map(m => [m[1], m[3], m[2].includes("--absent")]),
     note: (block.match(/class="next-cockpit-landed-note">([^<]*)</) || [])[1],
-    axes: block.includes("two axes, read separately"),
+    // DRC-4591 deleted the duplicate aside. What survives is the single
+    // footer, which is what the claim was always for.
+    axes: block.includes("Neither card implies the other."),
+    duplicate: block.includes("two axes, read separately"),
     provisional: html.includes("This covers only the work so far"),
   };
 };
@@ -5619,6 +5676,7 @@ console.log(JSON.stringify({running, ended: read()}));
         # evidence while the claim axis does not follow it.
         assert isinstance(out, dict)
         self.assertTrue(out["running"]["axes"])
+        self.assertFalse(out["running"]["duplicate"])
         self.assertEqual(
             [
                 ["END EVIDENCE", "No stop or end observed while the session is running", True],
@@ -5847,9 +5905,13 @@ const html = __els.app.innerHTML;
 const headers = [...html.matchAll(/<header>([\s\S]*?)<\/header>/g)].map(m => m[1]).join("|");
 console.log(JSON.stringify({
   revisionInHeader: headers.includes("next-cockpit-held-revision"),
-  axesInHeader: headers.includes("next-cockpit-landed-axes"),
   revisionPresent: html.includes('class="next-cockpit-held-revision"'),
+  // DRC-4591 deleted the aside this rule was written for. Its surviving half
+  // is the footer under the cards, which is a `reading-why` and is measured
+  // by that selector's own rule below.
   axesPresent: html.includes('class="next-cockpit-landed-axes"'),
+  landedFooter: html.includes(
+    '<p class="next-cockpit-reading-why">Neither card implies the other.'),
 }));
 """
         )
@@ -5859,16 +5921,16 @@ console.log(JSON.stringify({
         # label with it.
         assert isinstance(out, dict)
         self.assertTrue(out["revisionPresent"])
-        self.assertTrue(out["axesPresent"])
         self.assertFalse(out["revisionInHeader"])
-        self.assertFalse(out["axesInHeader"])
+        self.assertFalse(out["axesPresent"])
+        self.assertTrue(out["landedFooter"])
 
         # And the register they are drawn in is the sentence one, not a label
         # bumped to 15px while keeping mono -- the falsifier AC-2 names.
         styles = (
             pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
         ).read_text(encoding="utf-8")
-        for cls in ("next-cockpit-held-revision", "next-cockpit-landed-axes"):
+        for cls in ("next-cockpit-held-revision", "next-cockpit-reading-why"):
             with self.subTest(rule=cls):
                 rule = next(line for line in styles.split("\n") if line.startswith("." + cls + "{"))
                 self.assertIn("var(--sans)", rule)
@@ -7420,7 +7482,12 @@ const held = html.indexOf('class="next-cockpit-held"');
 const closes = html.indexOf("</section>", held);
 const at = html.indexOf('class="next-cockpit-held-reentry"');
 console.log(JSON.stringify({
-  note: (html.match(/class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/p>/) || [])[1] || "",
+  // The whole container, not one paragraph: DRC-4594 split the block into a
+  // primary action over two labelled rows plus a disclosure, so a probe that
+  // reads to the first </p> now reads the action alone and would call every
+  // limitation below it missing.
+  note: (html.match(
+    /class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/div>(?=<\\/section>)/) || [])[1] || "",
   // Inside the WHAT YOU ASKED FOR section, not merely after its header.
   // Asserted against that section's own closing tag, because "after the bound
   // header" is also true of a paragraph that escaped the section entirely.
@@ -10310,6 +10377,597 @@ console.log(JSON.stringify({treeCurrent:current(tree), switcherCurrent:current(s
                 1
             ) or "next-cockpit-scope-meta" in block.group(1):
                 self.assertNotIn("min-block-size", block.group(2))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CaveatTieringTest(NextPageJsHarness):
+    """DRC-4591. Three tiers, and nothing deleted.
+
+    Every caveat on this tab used to render as one paragraph in the reading
+    flow. The claim now stays inline and the rest goes behind a summary whose
+    open state survives a redraw. What is asserted is that no sentence left the
+    page, that no figure moved behind a click, and that the disclosure is the
+    board's own redraw-safe one rather than a bare `<details>`.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    # The four caveat sentences that exist on the pre-change tree. AC-1 is that
+    # each still reaches `innerHTML` -- a closed `<details>` contributes its
+    # body to markup, so no browser is needed to read one.
+    COUNTS_CLAIM = "Five figures, and no arithmetic between them."
+    COUNTS_WHY = (
+        "A count identifies a session worth reading; it establishes nothing about whether "
+        "the brief, the agent or Cargento\u2019s own judgement was poor, and those three are "
+        "not separable from it."
+    )
+    STEER_CLAIM = "Raised to you and nowhere else."
+    STEER_WHY = (
+        "Cargento does not write into a session, so steering is by hand; the steer box in "
+        "Console states the same rule about notes you write there."
+    )
+    LANDED_CLAIM = "Neither card implies the other."
+
+    def held(self, setup: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  html,
+  counts: (html.match(
+    /<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/details><\\/div>|<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/div><\\/div>/) || [""])[0],
+  landed: (html.match(
+    /<section class="next-cockpit-landed">[\\s\\S]*?<\\/section>/) || [""])[0],
+  departures: (html.match(
+    /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0],
+  reading: (html.match(
+    /<section class="next-cockpit-reading">[\\s\\S]*?<\\/section>/) || [""])[0],
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_every_caveat_sentence_survives_the_tiering(self) -> None:
+        """AC-1. Falsified by deleting or paraphrasing any of the four."""
+        out = self.held()
+        html = out["html"]
+        assert isinstance(html, str)
+        for sentence in (
+            self.COUNTS_CLAIM,
+            self.COUNTS_WHY,
+            self.STEER_CLAIM,
+            self.STEER_WHY,
+            self.LANDED_CLAIM,
+        ):
+            with self.subTest(sentence=sentence[:40]):
+                self.assertIn(sentence, html)
+        # And no disclosure standing empty in place of one.
+        self.assertNotIn("</summary></details>", html)
+
+    def test_the_remainder_is_behind_a_summary_and_the_claim_is_not(self) -> None:
+        """AC-1 and the tier rule together: the claim inline, the rest one click away."""
+        counts = self.held()["counts"]
+        assert isinstance(counts, str)
+        self.assertIn(self.COUNTS_CLAIM, counts)
+        self.assertIn("What a count does not say", counts)
+        # The claim is before the summary; the remainder is after it.
+        self.assertLess(counts.index(self.COUNTS_CLAIM), counts.index("<summary>"))
+        self.assertGreater(counts.index(self.COUNTS_WHY), counts.index("</summary>"))
+        self.assertIn("data-next-cockpit-disclosure", counts)
+
+    def test_the_steer_claim_stays_inline_and_its_reason_discloses(self) -> None:
+        """AC-1 on the DEPARTURES site."""
+        block = self.held()["departures"]
+        assert isinstance(block, str)
+        self.assertIn(self.STEER_CLAIM, block)
+        self.assertIn("Why no raise goes further", block)
+        self.assertLess(block.index(self.STEER_CLAIM), block.index(self.STEER_WHY))
+        self.assertGreater(block.index(self.STEER_WHY), block.index("</summary>"))
+
+    def test_an_opened_disclosure_is_still_open_after_a_redraw(self) -> None:
+        """AC-2, the offline half. A bare `<details>` snaps shut on every redraw.
+
+        Falsified by a helper that emits no `data-next-cockpit-disclosure`,
+        which makes the generic restore lane skip it. The node list is stubbed
+        off the rendered markup the way the scope/attention case above does it,
+        because this fixture's `app` is a plain object.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+let markup = __els.app.innerHTML;
+let disclosures = [];
+__els.app.querySelectorAll = selector =>
+  selector === "[data-next-cockpit-disclosure]" ? disclosures : [];
+Object.defineProperty(__els.app, "innerHTML", {
+  get: () => markup,
+  set: value => {
+    markup = value;
+    disclosures = [...value.matchAll(
+      /class="next-cockpit-why" data-next-cockpit-disclosure="([^"]+)"/g)]
+      .map(match => ({key:match[1],open:false,
+        getAttribute: () => match[1],querySelector: () => ({setAttribute(){}})}));
+  }
+});
+__els.app.innerHTML = markup;
+const keys = disclosures.map(row => row.key);
+disclosures.forEach(row => {row.open = true;});
+renderNext();
+const kept = disclosures.map(row => row.open);
+disclosures.forEach(row => {row.open = false;});
+renderNext();
+console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        keys = out["keys"]
+        assert isinstance(keys, list)
+        self.assertTrue(keys, "no tier-2 disclosure carried the restore attribute")
+        self.assertEqual([True] * len(keys), out["kept"], "a disclosure snapped shut")
+        # And the lane restores the closed state too, rather than latching open.
+        self.assertEqual([False] * len(keys), out["closed"])
+
+    def test_the_five_count_rows_and_their_absences_never_collapse(self) -> None:
+        """AC-3. Only the explanatory paragraph may go behind a summary."""
+        counts = self.held()["counts"]
+        assert isinstance(counts, str)
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', counts)
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+        # None of the five rows sits inside the disclosure body.
+        summary_at = counts.index("<summary>")
+        for value in re.finditer(r'class="next-cockpit-count-value"', counts):
+            self.assertLess(value.start(), summary_at)
+
+    def test_the_card_independence_claim_is_stated_exactly_once(self) -> None:
+        """AC-4. Falsified by leaving both statements, or by deleting both."""
+        out = self.held()
+        html, landed = out["html"], out["landed"]
+        assert isinstance(html, str) and isinstance(landed, str)
+        self.assertNotIn("two axes, read separately", html)
+        self.assertEqual(1, landed.count(self.LANDED_CLAIM))
+        # The claim did not merely move -- it is still adjacent to the cards.
+        self.assertIn("next-cockpit-landed-cards", landed)
+
+    def test_the_unasked_instruction_needs_no_click(self) -> None:
+        """AC-6. Falsified by wrapping the unasked part's first paragraph."""
+        out = self.held("delete __dashboard.unasked;\n")
+        html = out["html"]
+        assert isinstance(html, str)
+        part = re.search(
+            r'<div class="next-cockpit-departure-part">'
+            r'<span class="next-cockpit-departure-label">FROM THE CHECKS'
+            r"[\s\S]*?</div>",
+            html,
+        )
+        assert part is not None, "the unasked part did not render"
+        body = part.group(0)
+        self.assertIn("--unasked-readings", body)
+        summary_at = body.find("<summary>")
+        if summary_at != -1:
+            self.assertLess(body.index("--unasked-readings"), summary_at)
+
+    def test_no_rendered_string_carries_a_docs_link_or_a_decision_token(self) -> None:
+        """AC-7. Tier 3 cites a source comment, never rendered HTML.
+
+        A `docs/` href is a dead link in an installed plugin, where no `docs/`
+        sits beside the page, and a bare `DEC-N` in a product string is a
+        `RuntimeDecisionCitationsTest` hit.
+        """
+        out = self.held()
+        html = out["html"]
+        assert isinstance(html, str)
+        self.assertNotIn("docs/design-", html)
+        self.assertIsNone(re.search(r"\bDEC-\d+\b", html))
+
+    # A stored reading, so the branch that renders the reading section's own
+    # baseline, scope and caveat actually executes. Without it the section
+    # returns early and a tier-2 body planted in that branch is never drawn,
+    # which is how the assertion below first passed over its own mutation.
+    READING = (
+        '__dashboard.sessions[0].annotation_goal = "do not change the board";\n'
+        '__dashboard.sessions[0].annotation_goal_why = "";\n'
+        '__dashboard.sessions[0].annotation_output = "";\n'
+        '__dashboard.sessions[0].annotation_output_why = "No expected output typed.";\n'
+        "__dashboard.sessions[0].annotation_revision = 1;\n"
+        "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+        "__dashboard.sessions[0].annotation_at = 100;\n"
+        '__dashboard.sessions[0].annotation_binding_why = "";\n'
+        "__dashboard.sessions[0].annotation_assessment = {revision_read:1,\n"
+        '  scope:"mid-flight",\n'
+        '  scope_text:"This covers only the work so far.",\n'
+        '  criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]}}};\n'
+    )
+
+    def test_the_reading_sections_own_first_caveat_is_untouched(self) -> None:
+        """AC-8. A new `reading-why` emitted earlier hijacks three assertions
+        that read the first one in a slice running to end of document.
+
+        Asserted on a board that has a reading, so the section renders its
+        baseline, scope and caveat rather than returning on its absence branch.
+        """
+        out = self.held(self.READING)
+        html, reading = out["html"], out["reading"]
+        assert isinstance(html, str) and isinstance(reading, str)
+        self.assertIn("This covers only the work so far", reading)
+        # No tier-2 control anywhere inside the reading section -- the four
+        # sites this change touches all sit after it.
+        self.assertNotIn("next-cockpit-why", reading)
+        # And the first `reading-why` in a slice to end of document is still
+        # the reading section's own, not one tiered from below it.
+        block = html[html.index('class="next-cockpit-reading"') :]
+        first = re.search(r'class="next-cockpit-reading-why">([^<]*)<', block)
+        assert first is not None
+        self.assertLess(
+            block.index(first.group(0)),
+            block.index("next-cockpit-departures"),
+            "a caveat from the departures section became the reading's first one",
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class HeldToOrderingTest(NextPageJsHarness):
+    """DRC-4594. Purpose and inputs before the caveats.
+
+    The tab opened on its two textareas, followed them with a paragraph whose
+    middle forty-two words explained why this session cannot be raised, and
+    then ran four sections that each reported that nothing is here. The lede
+    says what typing buys, and the record moves to last.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    ANNOTATED = (
+        '__dashboard.sessions[0].annotation_goal = "Ship the cockpit";\n'
+        '__dashboard.sessions[0].annotation_output = "A green suite";\n'
+        "__dashboard.sessions[0].annotation_revision = 1;\n"
+        "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+        "__dashboard.sessions[0].annotation_at = 100;\n"
+        '__dashboard.sessions[0].annotation_binding_why = "";\n'
+    )
+
+    def tab(self, setup: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + self.ANNOTATED
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  html,
+  lede: (html.match(/class="next-cockpit-held-lede">([\\s\\S]*?)<\\/p>/) || [])[1] || "",
+  counts: (html.match(
+    /<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/details><\\/div>|<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/div><\\/div>/) || [""])[0],
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_the_lede_is_the_first_thing_on_the_tab(self) -> None:
+        """AC-1. Falsified by emitting it after the fields grid, or omitting it."""
+        out = self.tab()
+        html = out["html"]
+        assert isinstance(html, str)
+        at = html.index('class="next-cockpit-held-lede"')
+        self.assertLess(at, html.index('class="next-cockpit-held-fields"'))
+        self.assertLess(at, html.index('class="next-cockpit-held-reentry"'))
+        # The absence sentences this board actually renders, and there must be
+        # some: a tab with nothing to say nothing about proves nothing here.
+        rendered = [
+            absence
+            for absence in (
+                "No entry in the observed record names this session",
+                "No reading has been made at your request",
+                "Nothing watches for a departure on its own",
+                "so there is no re-entry command to copy",
+            )
+            if absence in html
+        ]
+        self.assertTrue(rendered, "no absence sentence rendered to be measured against")
+        for absence in rendered:
+            with self.subTest(absence=absence[:30]):
+                self.assertLess(at, html.index(absence))
+
+    def test_the_lede_claims_no_automatic_reading(self) -> None:
+        """AC-2, on the default board -- the one the `--unasked-readings`
+        instruction four sections down exists for."""
+        out = self.tab("delete __dashboard.unasked;\n")
+        lede = out["lede"]
+        assert isinstance(lede, str)
+        self.assertTrue(lede.strip(), "no lede rendered")
+        for claim in ("watch", "automatic", "checks for you"):
+            with self.subTest(claim=claim):
+                self.assertNotIn(claim, lede.lower())
+        self.assertIn("Ask for a reading", lede)
+
+    def test_the_section_order_puts_the_record_last(self) -> None:
+        """AC-3. Falsified by moving any section, including re-raising OBSERVED
+        RECORD, which no test on the pre-change tree can see."""
+        out = self.tab()
+        html = out["html"]
+        assert isinstance(html, str)
+        order = [
+            "WHAT YOU ASKED FOR",
+            "A LATER DIRECTION",
+            "READING",
+            "DEPARTURES RAISED TO YOU",
+            "HOW IT LANDED",
+            "OBSERVED RECORD",
+        ]
+        found = [html.find(heading) for heading in order]
+        for heading, at in zip(order, found, strict=True):
+            with self.subTest(section=heading):
+                self.assertNotEqual(-1, at, f"{heading} did not render")
+        for before, after in itertools.pairwise(order):
+            with self.subTest(pair=(before, after)):
+                self.assertLess(html.find(before), html.find(after))
+        # The Intent-log pointer is the tab's last line, after the record.
+        self.assertLess(html.find("OBSERVED RECORD"), html.find("next-cockpit-departures-kept"))
+
+    def test_no_sentence_says_the_record_is_above_it(self) -> None:
+        """AC-4. Falsified by moving OBSERVED RECORD last and leaving the phrase,
+        which ships a false sentence through a green suite.
+
+        Rendered on the branch that carries the sentence: the words saved after
+        every entry in the record, so no later direction is pending and nothing
+        has been settled.
+        """
+        out = self.tab("__dashboard.sessions[0].annotation_at = 200;\n")
+        html = out["html"]
+        assert isinstance(html, str)
+        self.assertNotIn("record read above", html)
+        self.assertIn("is in the observed record read for this session", html)
+
+    def test_the_reentry_block_leads_with_the_action(self) -> None:
+        """AC-5. The containment check is kept rather than loosened -- "after the
+        header" is also true of a paragraph that escaped the section entirely.
+
+        Both limits still render, each with its own sentence; what moves is
+        that the one act this block offers is no longer the opening clause of a
+        paragraph whose remainder is about what cannot be done.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const held = html.indexOf('class="next-cockpit-held"');
+const closes = html.indexOf("</section>", held);
+const at = html.indexOf('class="next-cockpit-held-reentry"');
+console.log(JSON.stringify({
+  inside: at > held && at < closes,
+  anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
+  reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
+  raiseLabelAt: html.indexOf('reentry-label">Raise<'),
+  resume: html.includes("there is no re-entry command to copy"),
+  raise: html.includes(NEXT_FOCUS_OFF_LINE),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["inside"], "the block rendered outside the section it describes")
+        anchor_at = out["anchorAt"]
+        reentry_at, raise_at = out["reentryLabelAt"], out["raiseLabelAt"]
+        assert isinstance(anchor_at, int)
+        for name, at in (("anchor", anchor_at), ("Re-entry", reentry_at), ("Raise", raise_at)):
+            with self.subTest(part=name):
+                self.assertNotEqual(-1, at, f"{name} did not render")
+        self.assertLess(anchor_at, reentry_at, "a limitation arrived before the action")
+        self.assertLess(anchor_at, raise_at, "a limitation arrived before the action")
+        # Neither limit was dropped on the way into its own row.
+        self.assertTrue(out["resume"])
+        self.assertTrue(out["raise"])
+
+    def test_the_managed_focus_lane_survives_the_restructure(self) -> None:
+        """AC-6. Falsified by a wrapper that takes the attribute, which keeps a
+        bare string assertion green while focus lands on the wrapper.
+
+        Asserted against the opening tag that carries the attribute, not
+        against the attribute's presence anywhere in the markup.
+        """
+        out = self.tab()
+        html = out["html"]
+        assert isinstance(html, str)
+        tag = re.search(r'<([a-z]+)[^>]*data-next-focus="cockpit-held-reentry"[^>]*>', html)
+        assert tag is not None, "the managed focus lane is not on the tab"
+        self.assertEqual("a", tag.group(1), "the focus lane moved off the anchor")
+        self.assertIn("#n=session:cargento:codex:focus-1", tag.group(0))
+
+    def test_the_count_labels_drop_the_repeated_quantity_noun(self) -> None:
+        """AC-7. Falsified by rewording any `line()` value argument or collapsing
+        the null-to-"not published" branch while relabelling."""
+        out = self.tab("delete __dashboard.unasked;\n__dashboard.sessions[0].departures = [];\n")
+        counts = out["counts"]
+        assert isinstance(counts, str)
+        labels = re.findall(r'class="next-cockpit-count-label">([^<]*)<', counts)
+        self.assertEqual(
+            [
+                "From the reading you asked for",
+                "From the checks run while you were away",
+                "On record for this board",
+                "This board attempted",
+                "A notification service accepted",
+            ],
+            labels,
+        )
+        groups = re.findall(r'class="next-cockpit-count-group">([^<]*)<', counts)
+        self.assertEqual(["DEPARTURES", "RAISES"], groups)
+        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', counts)
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+
+    def test_the_your_words_sub_label_and_everything_citing_it_are_gone(self) -> None:
+        """AC-8. Falsified by deleting the span and leaving the rule, or leaving
+        the handler comment that explains itself by that label."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cockpit = (web / "next-cockpit.js").read_text(encoding="utf-8")
+        styles = (web / "styles.css").read_text(encoding="utf-8")
+        self.assertNotIn("next-cockpit-held-sub", cockpit)
+        self.assertNotIn("next-cockpit-held-sub", styles)
+        # The two surviving occurrences are sentences, not labels.
+        self.assertEqual(2, cockpit.count("your words"))
+        self.assertIn("your words are still in the box", cockpit)
+        self.assertIn("your words are kept", cockpit)
+
+
+class PairedBranchRegisterTest(unittest.TestCase):
+    """DRC-4591. A value and the absence that replaces it never co-exist.
+
+    The pair is chosen by a ternary in the emitter, so it lives in two CSS
+    rules that are never on screen at the same moment. A selector sweep cannot
+    see it and a walk of a populated board cannot see it, which is how DRC-4587
+    raised absence rules to the sentence tier and left ten paired values below
+    them across four review rounds.
+
+    So both branches are resolved here and compared. No browser: every selector
+    in these pairs is a single class at specificity 0-1-0, so source order is
+    the whole cascade, and the resolver below is that order.
+    """
+
+    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+
+    # The declared sizes, so a token rename cannot quietly make two branches
+    # compare equal by both resolving to nothing.
+    TOKENS: ClassVar[dict[str, float]] = {
+        "--fs-label": 11.0,
+        "--fs-machine": 11.0,
+        "--fs-sentence": 15.0,
+        "--fs-xs": 12.5,
+    }
+
+    @classmethod
+    def rules(cls) -> list[tuple[str, str]]:
+        text = (cls.WEB / "styles.css").read_text(encoding="utf-8")
+        text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+        out: list[tuple[str, str]] = []
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", text):
+            body = match.group(2)
+            out.extend((selector.strip(), body) for selector in match.group(1).split(","))
+        return out
+
+    def size_of(self, selector_chain: list[str]) -> float:
+        """The font size the last winning declaration leaves on this element."""
+        size: float | None = None
+        for selector, body in self.rules():
+            if selector not in selector_chain:
+                continue
+            found = re.search(r"(?:^|;)\s*font-size:\s*([^;]+)", body)
+            if not found:
+                shorthand = re.search(r"(?:^|;)\s*font:\s*([^;]+)", body)
+                if not shorthand:
+                    continue
+                found = re.search(r"(var\(--fs-[a-z]+\)|[\d.]+px)", shorthand.group(1))
+                if not found:
+                    continue
+            raw = found.group(1).strip()
+            token = re.fullmatch(r"var\((--fs-[a-z]+)\)", raw)
+            if token:
+                size = self.TOKENS[token.group(1)]
+            elif raw.endswith("px"):
+                size = float(raw[:-2])
+        assert size is not None, f"no font size resolved for {selector_chain}"
+        return size
+
+    def test_the_declared_size_tokens_are_the_ones_the_stylesheet_defines(self) -> None:
+        """The resolver is only as good as its token table."""
+        text = (self.WEB / "styles.css").read_text(encoding="utf-8")
+        for token, expected in self.TOKENS.items():
+            with self.subTest(token=token):
+                found = re.search(re.escape(token) + r":\s*([\d.]+)px", text)
+                assert found is not None, f"{token} is not defined"
+                self.assertEqual(expected, float(found.group(1)))
+
+    # Every value/absence ternary on the cockpit surface, as class lists. The
+    # emitter picks one branch per render, so both are listed here or neither
+    # is ever compared.
+    PAIRS: ClassVar[list[tuple[list[str], list[str]]]] = [
+        # HOW IT LANDED: `known` picks one of these two.
+        # next-cockpit.js, `nextCockpitLanded`'s `card`.
+        (
+            [".next-cockpit-landed-value"],
+            [".next-cockpit-landed-value", ".next-cockpit-landed-value--absent"],
+        ),
+        # The reading clause and the board's sentence where the revision's
+        # words were not retained. next-cockpit.js:1752 and :2128-2129.
+        ([".next-cockpit-reading-clause"], [".next-cockpit-reading-clause-absent"]),
+    ]
+    # `.next-project-value--known` is deliberately absent from this table. Its
+    # branch declares no size at all and inherits one from whichever container
+    # it renders in, while `--absent` pins `--fs-xs`; resolving that pair needs
+    # the containing element, which this resolver does not model. Listing it
+    # would compare a resolved size against nothing and pass for the wrong
+    # reason, which is the failure mode this whole test exists to avoid.
+
+    # Instances that are open on this branch and are NOT this change's to fix.
+    # Listed rather than dropped: a new violation fails the test, and so does
+    # fixing one of these without moving it off the list.
+    KNOWN_OPEN: ClassVar[dict[str, str]] = {".next-cockpit-reading-clause-absent": "DRC-4607"}
+
+    def test_no_absence_outranks_the_value_it_replaces(self) -> None:
+        """Both branches of each ternary, resolved and compared.
+
+        Falsified by raising an absence rule without raising the value rule the
+        same branch would have rendered -- the shape that shipped ten times
+        across four review rounds on DRC-4587, because the two are chosen by a
+        ternary and never render together.
+        """
+        violations = {}
+        for value, absent in self.PAIRS:
+            absent_size = self.size_of(absent)
+            value_size = self.size_of(value)
+            if absent_size > value_size:
+                violations[absent[-1]] = f"{absent_size} > {value_size}"
+        self.assertEqual(
+            sorted(self.KNOWN_OPEN),
+            sorted(violations),
+            "an absence renders larger than the fact it replaces",
+        )
+
+    def test_a_tier_two_control_is_never_smaller_than_the_body_it_hides(self) -> None:
+        """DRC-4591's own instance of the same shape.
+
+        The summary and the body are not a value/absence pair, but they are the
+        same trap one layer out: the summary is the only words a reader has for
+        deciding whether to open the body, so a control below the text it
+        conceals loses the caveat as surely as deleting it.
+        """
+        self.assertGreaterEqual(
+            self.size_of([".next-cockpit-why>summary"]),
+            self.size_of([".next-cockpit-reading-why"]),
+        )
+
+    def test_a_count_and_its_not_published_share_one_class(self) -> None:
+        """The five COUNTS rows have no absence class at all, and that is the
+        point: one rule cannot diverge from itself. Asserted against the
+        emitter, because a second class added there is what would start the
+        divergence a CSS-only check could not see."""
+        source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
+        emitter = re.search(r"const line = \(label, value\) =>([\s\S]*?);\n", source)
+        assert emitter is not None, "the COUNTS row emitter moved"
+        body = emitter.group(1)
+        self.assertIn('value == null ? "not published"', body)
+        self.assertEqual(1, len(set(re.findall(r"next-cockpit-count-value[a-z-]*", body))))
 
 
 if __name__ == "__main__":
