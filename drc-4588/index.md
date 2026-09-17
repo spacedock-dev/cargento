@@ -250,10 +250,22 @@ early return governs four states and the body argues only the nothing-typed one.
 discarded, model-unread, model-disabled — are changed by the same deletion. Rendering the control in
 all four is deliberate: a control that appears and disappears by state is the inconsistency being
 fixed, and the model-disabled reason already tells the reader how to turn the capability on, which
-is worth more beside a visible button than alone. This overturns the second half of DRC-4565's AC7,
-whose test at tests/test_next_cockpit.py:6552-6555 asserts the offer is withheld on both the
-discarded and the never-typed rows. AC7's load-bearing claim — that the discarded row says the
-discard sentence and not "nothing typed" — is untouched.
+is worth more beside a visible button than alone. This overturns the second half of what
+tests/test_next_cockpit.py:6539-6555 labels DRC-4565 AC7, which asserts the offer is withheld on
+both the discarded and the never-typed rows. Exactly two assertions invert — `assertEqual(0,
+discarded["ask"])` at :6554 and `assertEqual(0, never["ask"])` at :6555 — and both become 1. The
+two sentence assertions above them at :6551-6553 are untouched, which is AC7's load-bearing claim:
+the discarded row says the discard sentence and not "nothing typed".
+
+**DRC-4565 is closed and shipped** — Done 2026-09-14 via PR #330 — so this is a change to a shipped
+contract rather than to work in flight, and it is raised at the gate rather than made inside the
+diff. Two things bound how large the claim is, both checked rather than assumed. DRC-4565's Linear
+body carries only two acceptance criteria, and neither is the withheld-offer claim; and no
+drc-4565 entity survives in the state checkout or its archive to say what that numbering was
+against. The "AC7" label exists only in the test's own docstring, and four unrelated docstrings in
+the same file carry an "AC7" belonging to other issues. So what R2 overturns is an
+implementation-stage test assertion carrying an AC label, not a criterion a captain approved on the
+issue.
 
 The "363 words" and "91 words per control" figures came from a screenshot and were not re-checked;
 they are not load-bearing for anything above.
@@ -367,59 +379,18 @@ already has a rule for. The gate is where the captain confirms them; no blocker 
 
 ## Acceptance criteria
 
-**AC1 — On an untouched session the READING block renders the button, the offer paragraph, the
-sending disclosure and the request counter.**
-*Verified by (offline):* a `NextPageJsHarness` case in tests/test_next_cockpit.py asserting all four
-substrings in the returned HTML for an empty annotation. The existing
-`self.assertFalse(out["empty"]["control"])` at :5245 and the `["unread"]` pair at :5247 invert.
-*Fails if:* the early return is left in place, or the control is called only on the nothing-typed arm.
+- **AC-1 — offline:** On an untouched session the READING block renders the "Ask for a reading" button, the NEXT_READING_OFFER paragraph, the sending disclosure and the request counter. **Verified by:** a `NextPageJsHarness` case in tests/test_next_cockpit.py asserting all four substrings in the returned HTML for an empty annotation; the existing `self.assertFalse(out["empty"]["control"])` at :5245 and the `["unread"]` pair at :5247 invert. **Falsified by:** the early return being left in place, or the control being called only on the nothing-typed arm.
+- **AC-2 — offline:** The empty-annotation sentence renders verbatim and exactly once, after the button rather than in place of it. **Verified by:** the same harness — `html.count(sentence) == 1`, and `html.index(sentence) > html.index('data-next-cockpit-action="reading-ask"')`. **Falsified by:** the reason being printed both by the caller and by the control, which is the duplication the early return's deletion could easily reintroduce.
+- **AC-3 — offline:** The request counter's figure is derived from the published `reading_count` and not authored: a fixture carrying 3 renders 3, and an untouched session renders 0. **Verified by:** two harness cases differing only in the fixture's `reading_count` (0 and 3), asserting "0 model requests recorded" and "3 model requests recorded" respectively. **Falsified by:** the number being hard-coded, or read from a different field, or the plural arm being inverted. This replaces the filed AC3 per R3.
+- **AC-4 — offline:** The reading button is focusable while refused, carries `aria-describedby` pointing at the id of its reason paragraph, and a press in that state makes no network call and leaves a `role="status"` message giving the reason. **Verified by:** asserting the button carries `aria-disabled="true"`; asserting the rendered tag does not match `r'reading-ask"[^>]*\sdisabled[=>\s]'` (the bare form — the existing :5092 regex cannot tell the two apart and is not evidence here); asserting the `aria-describedby` value equals the `id` on the reason paragraph; and — dispatching the click through the existing action handler with a stubbed `fetch`, as the :5085 case already does — asserting `calls === 0` and that the `role="status"` text is the reason. One live pass on the board additionally confirms the control is announced in tab order: the attribute choice does not need this, the tab-order claim does, and that half stays interactive. **Falsified by:** `nextCockpitAskForReading` being left gated on `pending` alone.
+- **AC-5 — offline:** Tabbing the untouched goal field reaches a save control that is present and inert rather than absent, and a press while inert makes no `/api/annotate` call. **Verified by:** asserting the `held-save` button renders without `hidden` and with `aria-disabled="true"` while `draft === saved`; asserting a keystroke through `nextCockpitHeldToggle` clears the attribute rather than the `hidden` property; asserting a press while inert makes no `/api/annotate` call; plus the same live tab-order pass as AC-4 for the announcement half, which stays interactive. **Falsified by:** `nextCockpitHeldToggle` still writing `control.hidden`, which is the path :3430 takes on every keystroke and the one a renderer-only fix would miss.
+- **AC-6 — interactive:** A reader who has typed nothing can see on Held to that a reading is something this tab does, and one sentence naming what would have to change for it to fire. **Verified by:** opening a board at `127.0.0.1:4553`, focusing a session with no annotation, capturing the READING block to `docs/screenshots/`, and confirming a labelled control plus the extended reason are both present. **Falsified by:** a READING block that renders the control without the reason, or the reason without the control. This is the criterion a user can see; the other five are its mechanism.
 
-**AC2 — The empty-annotation sentence renders verbatim and exactly once, after the button.**
-*Verified by (offline):* same harness — `html.count(sentence) == 1`, and
-`html.index(sentence) > html.index('data-next-cockpit-action="reading-ask"')`.
-*Fails if:* the reason is printed both by the caller and by the control, which is the duplication the
-early return's deletion could easily reintroduce.
-
-**AC3 — The counter's figure is derived from the published `reading_count`, not authored.**
-*Verified by (offline):* two harness cases differing only in the fixture's `reading_count` (0 and 3),
-asserting "0 model requests recorded" and "3 model requests recorded" respectively.
-*Fails if:* the number is hard-coded, or read from a different field, or the plural arm is inverted.
-This replaces the filed AC3 per R3.
-
-**AC4 — The reading button is focusable while refused, describes itself, and refuses its own press.**
-*Verified by (offline):* assert the button carries `aria-disabled="true"`, assert the rendered tag
-does not match `r'reading-ask"[^>]*\sdisabled[=>\s]'` (the bare form — the existing :5092 regex
-cannot tell the two apart and is not evidence here), assert the `aria-describedby` value equals the
-`id` on the reason paragraph, and — dispatching the click through the existing action handler with a
-stubbed `fetch`, as the :5085 case already does — assert `calls === 0` and that the `role="status"`
-text is the reason.
-*Verified by (interactive):* one live pass on the board confirming the control is announced in tab
-order. The attribute choice does not need this; the tab-order claim does.
-*Fails if:* `nextCockpitAskForReading` is left gated on `pending` alone.
-
-**AC5 — Tabbing the untouched goal field reaches a present, inert save control that refuses its
-press.**
-*Verified by (offline):* assert the `held-save` button renders without `hidden` and with
-`aria-disabled="true"` while `draft === saved`; assert a keystroke through `nextCockpitHeldToggle`
-clears the attribute rather than the `hidden` property; assert a press while inert makes no
-`/api/annotate` call.
-*Verified by (interactive):* the same live tab-order pass as AC4.
-*Fails if:* `nextCockpitHeldToggle` still writes `control.hidden`, which is the path :3430 takes on
-every keystroke and the one a renderer-only fix would miss.
-
-**AC6 — user-visible property. A reader who has typed nothing can see on Held to that a reading is
-something this tab does, and one sentence naming what would have to change for it to fire.**
-*Verified by (interactive):* open a board at `127.0.0.1:4553`, focus a session with no annotation,
-capture the READING block to `docs/screenshots/`, and confirm a labelled control plus the extended
-reason are both present. This is the criterion a user can see; the other five are its mechanism.
-
-**Split:** four offline (AC1, AC2, AC3, AC5-offline-half), two interactive (AC4's tab-order
-confirmation, AC6), one hybrid (AC4/AC5 are offline for the attribute and the gate, interactive for
-the announcement). No harness is proposed to automate the interactive half — a tab-order assertion
-needs a real browser and this repository has none, so the honest declaration is that it stays
-interactive.
-
----
+**Split:** four offline (AC-1, AC-2, AC-3, and AC-5's attribute and gate half), two interactive
+(AC-4's tab-order confirmation, AC-6), with AC-4 and AC-5 labelled by their binding half — the
+attribute and the handler gate are offline and falsifiable, the screen-reader announcement is not.
+No harness is proposed to automate the interactive half: a tab-order assertion needs a real browser
+and this repository has none, so the honest declaration is that it stays interactive.
 
 ## Expected surface
 
@@ -551,3 +522,45 @@ different criterion formatting and the same empty result, so the empty array is 
 file's shape and reformatting the criteria here would be a guess rather than a fix. Raised to the
 first officer rather than chased: writing scratch entities into the shared state checkout to bisect
 the scanner is not safe with concurrent writers.
+
+### Evidence (continuation 2) — criteria re-shaped to the parsed form, 2026-09-17
+
+The criteria were prose paragraphs headed `**AC1 — …**` with `*Verified by (offline):*` and
+`*Fails if:*`. Re-shaped to one bullet each in the form the scanner parses, confirmed by reading a
+cleanly-parsing archived entity rather than from the description alone: `_archive/drc-4020.md`
+lines 219-228 are `- **AC-N — offline:** {property} **Verified by:** {…} **Falsified by:** {…}`,
+one bullet per line. Markup only — every property, verifier and falsifier keeps the words it had;
+`Fails if` became `Falsified by` and the offline/interactive mark moved into the label.
+
+    spacedock status --read drc-4588 --ac-scan --stage triage --json --workflow-dir docs/roadmap-burndown
+    acs: AC-1 (line 382), AC-2 (383), AC-3 (384), AC-5 (386), AC-4 (385), AC-6 (387)
+    all unevidenced: true, citations: []
+
+All six parse. `unevidenced: true` is the correct state at this gate — triage authors the criteria
+and implementation supplies the citations, so nothing was added to make them look satisfied. The
+two `## Acceptance` headings in the verbatim capture are still byte-identical, and there is still
+exactly one `## Stage Report: triage`.
+
+**AC-4 and AC-5 carry both an offline and an interactive half and are labelled `offline`**, because
+the label takes one value and the binding half is the offline one: the attribute and the handler
+gate are falsifiable in the harness, the screen-reader announcement is not. The interactive half is
+stated inside each verifier and in the Split paragraph, so the declared split is unchanged from
+what the gate was first shown.
+
+### R2 — the scope of the DRC-4565 claim, checked
+
+Raised because R2 changes a shipped contract. Confirmed from Linear: **DRC-4565 is Done**,
+completed 2026-09-14, shipped in PR #330. Two findings bound how large the claim is, and both cut
+against overstating it:
+
+- DRC-4565's Linear body carries exactly two acceptance criteria — a durable record surviving the
+  cue's expiry, and no discarded text inside it. **Neither is the withheld-offer claim.**
+- No `drc-4565` entity survives in the state checkout or `_archive/`, so nothing on record says
+  what that AC numbering ran against. The label "AC7" exists only in the test docstring at
+  tests/test_next_cockpit.py:6540, and four unrelated docstrings in the same file (:7826, :7889,
+  :8104, :8272) carry an "AC7" belonging to other issues.
+
+So R2 overturns an implementation-stage test assertion that carries an AC label, not a criterion a
+captain approved on the issue. Exactly two lines invert, :6554 and :6555, both from 0 to 1. It is
+still a change to shipped behaviour in three states and belongs at the gate — but the entity should
+not record it as overturning an approved acceptance criterion, because it is not one.
