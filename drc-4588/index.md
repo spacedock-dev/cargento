@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4588:triage:attempt-1:revision-1
                 digest: sha256:6ff390e1f625ee01e5db6a5931c1aa8327ee1f13aafb795bb58aa6815b920f5c
-                room-ref: ./drc-4588/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4588](https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason) — Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb

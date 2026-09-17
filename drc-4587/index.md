@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4587:triage:attempt-1:revision-1
                 digest: sha256:362f9c821d8668a774b54631467fcd63ed739fddb1b71595d411e77a591c5784
-                room-ref: ./drc-4587/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4587](https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens) — Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier
