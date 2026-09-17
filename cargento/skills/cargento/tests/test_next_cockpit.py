@@ -5532,6 +5532,49 @@ console.log(JSON.stringify({
         self.assertEqual(0, out["inputs"])
         self.assertTrue(out["reason"])
 
+    def test_both_absence_explanations_read_as_sentences_not_header_labels(self) -> None:
+        """DRC-4587 AC-2. `docs/design-next-ui.md` already rules that an absence
+        explanation is a sentence and loses to the sentence floor; both of these
+        were drawn at 10px mono inside an `<h2>`'s own `<header>`, where no size
+        change alone can reach them.
+        """
+        out = self.run_fixture(
+            self.ANNOTATED
+            + r"""
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const headers = [...html.matchAll(/<header>([\s\S]*?)<\/header>/g)].map(m => m[1]).join("|");
+console.log(JSON.stringify({
+  revisionInHeader: headers.includes("next-cockpit-held-revision"),
+  axesInHeader: headers.includes("next-cockpit-landed-axes"),
+  revisionPresent: html.includes('class="next-cockpit-held-revision"'),
+  axesPresent: html.includes('class="next-cockpit-landed-axes"'),
+}));
+"""
+        )
+
+        # Then: both still render, and neither is a child of a `<header>` any
+        # more, so each can carry the sentence tier without dragging its `<h2>`
+        # label with it.
+        assert isinstance(out, dict)
+        self.assertTrue(out["revisionPresent"])
+        self.assertTrue(out["axesPresent"])
+        self.assertFalse(out["revisionInHeader"])
+        self.assertFalse(out["axesInHeader"])
+
+        # And the register they are drawn in is the sentence one, not a label
+        # bumped to 15px while keeping mono -- the falsifier AC-2 names.
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        for cls in ("next-cockpit-held-revision", "next-cockpit-landed-axes"):
+            with self.subTest(rule=cls):
+                rule = next(line for line in styles.split("\n") if line.startswith("." + cls + "{"))
+                self.assertIn("var(--sans)", rule)
+                self.assertIn("var(--fs-sentence)", rule)
+                self.assertNotIn("var(--mono)", rule)
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class CockpitReadingShapeTest(NextPageJsHarness):

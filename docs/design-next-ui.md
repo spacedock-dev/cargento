@@ -52,7 +52,7 @@ would defeat its purpose as a way to choose a session. The Scope rail now has a 
 1280px and above, with separate readable space for harness names and session titles; below 1280px
 it becomes a scope switcher. Missing terminal registration, evidence, history
 or delegation renders the reason for the missing reading. Source strings use mono; sentences the
-board says use sans at 12.5px or larger. Evidence and More remain named disclosures.
+board says use sans at 15px or larger. Evidence and More remain named disclosures.
 
 The terminal bridge, semantic history and model-assisted goal analysis remain prototypes.
 Human context and tripwires stay browser-local and deliver no instruction to an agent. Semantic
@@ -109,12 +109,38 @@ Assign one owner to each region during parallel work. Keep media queries at the 
 region; a shared responsive block would make every view edit the same tail. Moving a rule between
 regions is an ownership change, not incidental cleanup.
 
-Board sentences have a 12.5px floor (`--fs-xs`). Labels, identifiers, timestamps, rates and
-compact controls retain their smaller design sizes, down to 9px column headers. The prototype
-placed some absence explanations at 10px; those are sentences the board asks a person to read, so
-the sentence floor wins. The stylesheet retains scale tokens and literal sizes. The asset test
-pins the dark palette and checks text inks above 4.5:1 on the ground, panel and inset surfaces; it
-does not enforce all font sizes or spacing between contrast steps.
+Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels,
+identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px; the
+four steps that ran 9px, 9.5px, 10px and 10.5px were a 3px band nobody can rank, and three of the
+six sub-12px tokens had no callers at all. The floor left 12.5px because the audit put `--ink`,
+the brightest colour in the palette, below the body-text requirement there: brightening the ink
+was not available, so size was the only lever left. The absence explanations the prototype placed
+at 10px are sentences, so they take the sentence tier, and two of them had to leave an `<h2>`'s
+`<header>` to get there. The stylesheet
+retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
+above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
+between contrast steps.
+
+Which rules are sentences is a test, not a judgement call, so a reviewer argues with a list:
+**a rule is on the sentence tier when it sets its text in sans and declares its own prose
+line-height.** Mono is a string a source published, and a label carries no line-height of its own.
+Sixty-five rules on the old `--fs-xs` step qualify, plus the two absence explanations above, and
+all sixty-seven resolve to `var(--fs-sentence)`. Forty-nine of them also cap at `--measure` (540px,
+about 72 characters at this tier). The eighteen that do not are the ones a cap would clamp wrongly:
+eight carry `overflow-wrap:anywhere`, eight are layout boxes rather than single lines, and
+`.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
+would clamp the cards inside them instead of the sentences.
+
+**The floor is not yet universal, and this is the gap to close next.** Seventeen further sans rules
+pass the same test at 13px to 14.5px, on the `--fs-body`, `--fs-summary` and `--fs-sm` steps plus
+two literals. They were left alone: raising them is another seventeen rules of review surface, and
+two of the seventeen are not sentences at all (a textarea and the prototype terminal), so the set
+needs reading one selector at a time rather than a sweep.
+
+The uppercase label tier carries one tracking value, `.09em`, on twenty-four declarations. Three
+kept their own because their content is not uppercase: `.next-cockpit-work-type` prints a fact
+type such as `gate_decision`, `.next-intent-key` a session key, `.next-cockpit-scope strong` a
+scope name. Reading each tracking group one selector at a time is what caught them.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is

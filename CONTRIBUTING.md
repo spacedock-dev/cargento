@@ -260,8 +260,8 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   the promotion decision and route grammar.
 - Keep stylesheet edits inside the region owned by the surface you are changing, including its
   media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
-  names all nine regions, the dark-only palette and the type floor. Board sentences use at least
-  `--fs-xs` (12.5px); compact labels and source metadata retain their smaller design sizes.
+  names all nine regions, the dark-only palette and the type floor. Board sentences use
+  `--fs-sentence` (15px); compact labels and source metadata sit on one tier, `--fs-label` (11px).
   The stylesheet contains both scale tokens and literal sizes; no test currently bans all raw
   pixel sizes or unused scale steps. The earlier scale-only rule followed twenty ad-hoc values
   between 8px and 15px; new sizes still need a named role.
