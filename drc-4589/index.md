@@ -1,7 +1,7 @@
 ---
 id:
 title: "Split the three inks onto label, value and absence roles so a label stops sharing its ink with its own answer"
-status: implementation
+status: review
 source: "https://linear.app/recce/issue/DRC-4589/split-the-three-inks-onto-label-value-and-absence-roles-so-a-label"
 started: 2026-09-17T10:42:56Z
 completed: ""
