@@ -515,3 +515,35 @@ method is what mispriced it.
 **The AC-4 deviation should be accepted and its reasoning rejected.** The conclusion is correct — Lens B built the approved end state and the withheld title falls to `var(--ink)` — so the approved criterion would have broken DRC-4589's ruling. But the rationale in the stage report is wrong in every particular: `.next-cockpit-scope-tree small` does not exist anywhere in `web/`, the competing ink is `var(--ink)` not `--ink2`, the specificity is (0,2,0) not (0,2,1), and the competitor wins on source order at equal specificity rather than on specificity. It reads as a measurement and is not one. Its likely source is a stale comment at `styles.css:1216-1220` that says "family only … a second one here would be a second place to get it wrong" above a rule that declares the colour — a live trap that has already produced one wrong criterion, and worth filing since this PR's declared surface is zero runtime files.
 
 Minors: `_rules` drops any selector beginning `:root` and nothing reads a non-px unit, so both are scope escapes past AC-1/AC-2/AC-3; the withheld-ink assertion's `color:` match also catches `background-color`, a false red waiting for DRC-4602. I downgrade Lens B's F7 to INFO — `assertEqual(61, len(above))` does count a `@media` duplicate over 60 distinct selectors, but `design-next-ui.md:166` states both numbers, so it is documented rather than hidden.
+
+### Review addendum — the `len(above)` oracle, mutated both ways
+
+Run on the salvaged harness (`MUT_TREE=/tmp/rv2-4595c run.sh`), which excludes the three byte-pin
+oracles by name. Baseline first, because a harness that loads nothing reports zero failures too:
+**ran=564 failures=0 errors=0**, no `LOADFAIL`. Each mutation grep-counted before its verdict was
+read — the no-op substitution is the failure mode that makes a working oracle look toothless.
+
+**Both halves are load-bearing. Each catches exactly what the other cannot.**
+
+- **Compensating swap** — `.next-rail-question` loses its `line-height` (leaving the census) and
+  `.next-rv2-swapin{font-size:var(--fs-sentence);line-height:1.55}` joins at 15px. Applied:
+  anchor `1 → 0`, marker `0 → 1`. Compensating confirmed before running anything: `len(above)`
+  stays **61**, `len(below)` stays **35**, set membership swaps one for one. Harness: `ran=564
+  failures=1`, the single failure being `test_sentence_tier_rules_resolve_at_or_above_the_floor`.
+  Caught by the **SET** assertion — `AssertionError: Items in the first set but not the second`.
+  The length assertion runs first and passed.
+- **Duplicate removed** — the `@media(max-width:760px)` copy of
+  `.next-cockpit-scope-switcher>summary` deleted. Applied: selector occurrences `3 → 2`, the media
+  copy `1 → 0`. `len(above)` **61 → 60**, set size stays 60, the selector is still in the set.
+  Harness: `ran=564 failures=1`, same test. Caught by the **LENGTH** assertion —
+  `AssertionError: 61 != 60`.
+
+**This revises the INFO I filed above.** I called the `@media` duplicate a nuisance, on the ground
+that a pure tidy would red a count having changed nothing on the page. That is still true, and it is
+now also true that the length half is the **only** guard against duplicate drift — a selector
+gaining or losing a declaration site is invisible to the set. The comment above the two assertions
+records why the set is needed and says nothing about why the length is kept, which makes the length
+the half a future reader deletes as redundant. Worth one sentence in that comment; not a blocker,
+and it does not change this issue's verdict.
+
+**NO-GO stands**, on the blocker recorded above and unaffected by this addendum.

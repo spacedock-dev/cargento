@@ -532,3 +532,51 @@ The shipped behaviour is right and I verified it in a browser rather than inferr
 Three MINORs, none blocking. **AC-4's criterion text says the composer renders "below" the tab list and the test asserts the opposite** — the substance matches gate decision 1 and the triage surface table, so the criterion is the wrong half, but the deviation lives in a test docstring and was never recorded in the implementation stage report, where DRC-4596 recorded its analogous one. **AC-7's submit renders Space Mono/`--ink2`, not the primitive's sans/`--ink`** — `.next-steer button` (0,1,1) beats `.next-action` (0,1,0). I rate this MINOR against Lens A's MAJOR: measured in-browser, the sibling `.next-guardrail-add` renders identically, the box properties (44px, 1px border, 3px radius, 15px) do come from the primitive, so this is DRC-4590's uniform integration pattern rather than anything this change introduced. **AC-5's guard reads one rule's text**, so Lens A's `.next-steer>header p{font-size:var(--fs-xs)}` drops the caveat to 12.5px with every size guard green — the same rule-versus-element root cause as DRC-4596's blocker, and the reason both should be fixed in one round.
 
 Since DRC-4596 needs a fix round regardless, the AC-1 assertion and the AC-9 filing cost no extra CI cycle.
+
+### Review addendum — `nextCockpitContexts`, and the map beside it
+
+Asked for on the integrator's own request, since it said plainly that its clearance of this map was
+its reasoning rather than a measurement. The question that found the terminal bug — **who else
+writes this map, and in what states** — answered by inventory and execution.
+
+**`nextCockpitContexts`: the conclusion holds, but not for the reason given.** Three writers, whose
+field sets are `{data, revision}` (`next-cockpit.js:3182`), `{data, revision, error}` (`:3187`, the
+failure arm, which preserves the prior `data`) and `{data, revision}` (`next-render.js:81`, the
+explicit observer refresh). `error` is read at **seven** sites (`:435`, `:437`, `:788`, `:1221`,
+`:1236`, `:3677`, `:3721`). The safety property is not "only replaces an entry on resolve" — it is
+that **no writer anywhere in `web/` mutates a field of an existing entry**: every write replaces the
+whole object, so a success arm cannot leave a stale `error:true` beside fresh data, and the failure
+arm cannot leave fresh data unmarked. Grep for a read-modify-write on these entries returns nothing.
+That is the invariant to state in the comment, because it is the one a future writer would break.
+
+**One undocumented divergence between the writers, measured.** `next-render.js:81` stamps
+`revision` from `nextData.generated` at **response** time; `nextCockpitLoadContext` stamps the
+revision captured at **request** time, and its guard is `settled.revision >= revision`. Driven in
+the harness: a settled entry at 105, payload advanced to 400, one explicit observer refresh → entry
+revision **400**, field set still `{data, revision}`; a passive read then offered at 300 is
+suppressed (`passiveReloadArmed: false`). Plausibly deliberate — the adjacent comment says a passive
+read must not replace an explicit refresh's result, and it deletes `nextCockpitRequests` for exactly
+that. But the comment justifies cancelling the *request*, not stamping a *later* revision, and
+nothing records the second choice. INFO, not a defect.
+
+**The genuinely under-guarded multi-writer map in this neighbourhood is `projectContextByLabel`.**
+Five writers. The four in `project.js` (`:962`, `:987`, `:1001`, and the read at `:944`) carry
+`dashboard_revision` and the three states `loading` / `ready` / `error`. The fifth — the one the
+next UI added, `next-cockpit.js:3684` — writes `{state:"ready", data, generated}` only: no
+`dashboard_revision`, and never a non-ready state. Both readers key off what it omits:
+`projectLoadContext`'s guard is `Number(old && (old.dashboard_revision || old.generated))`, and
+`projectRefreshControl` is `entry.state === "loading"`. So a cockpit render lands on an in-flight
+slot, overwrites it `"ready"`, drops `dashboard_revision`, and re-enables a refresh control that is
+still fetching. **Latent, and stated as such:** the only caller that can put the slot into
+`"loading"` is `projectLoadContext(lastData, true)` at `project.js:432`, which sits inside
+`projectAction` — the dead function this review upheld as unreachable. Same family as the observer
+`model === null` arm: unreachable today, and reachable again the moment someone restores a
+dispatcher, which is a change that reads as safe. Worth filing against whoever removes
+`projectAction` rather than fixing here.
+
+**Mutation discipline.** Every mutation in this review asserted its anchor before writing and was
+verified applied after — the vacuous AC-1 mutation named above was caught that way and discarded,
+and the AC-1 finding rests on measured rendered indices (status 549 vs rail 831) rather than on a
+substitution I assumed landed.
+
+**NO-GO stands**, on the two unmet criteria recorded above and unaffected by this addendum.
