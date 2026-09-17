@@ -779,3 +779,41 @@ hygiene — **the fixture's shape, not the assertion's strength, is what hid M1.
 non-decision rows) and M4 (the stale-after-failure read in `nextCockpitTimeline`) ride the same
 round. Findings route to `implementation` with their evidence unchanged; I fixed nothing and edited
 no branch.
+
+## Pre-registered check for the M1/M4 fix (written before the fix exists)
+
+Not a report of work done. Written now, deliberately, so the pass conditions are fixed before the
+fix is visible — the same reason a falsifier is written before the verifier. If this session is lost,
+whoever takes the re-check inherits the conditions rather than re-deriving them from a green suite.
+
+**Three things must hold. A fix that satisfies only the first is the fix the integrator was about to
+write, and M4 says it is not enough.**
+
+1. **The key carries the project.** Press a mode on project A, open project B untouched, and B must
+   render `data-graph-mode="decisions"` with `decisions` `aria-pressed="true"`. Then press a mode on
+   B and re-open A: A must still hold its own. Two projects, both directions — a fix that namespaces
+   the key but resolves the fallback from the wrong scope passes the first half and fails the second.
+2. **The map's five states stay distinguishable.** After the fix, seed `{data:<stale>, revision, error:true}`
+   over a loaded context — the catch arm's shape verbatim — and both the cue and `nextCockpitTimeline`
+   must say the context is unavailable. Today both render byte-identical to a clean resolve. A fix
+   that only teaches the cue `.error` inside a `!data` branch does not move this, because `!data` is
+   false in that state. Also check `next-render.js:81`, the third writer: a successful explicit
+   refresh must clear `error`, and it does today — a fix must not regress that while adding a guard.
+3. **The fixture must be able to fail.** A multi-project fixture is mandatory but not sufficient:
+   `test_the_chosen_mode_is_written_to_storage_and_read_back_on_load` currently **seeds the collided
+   key** `{"": "all"}` as the expected value. That seed must change, or the oracle keeps asserting the
+   defect whatever the key becomes. Prove the new fixture can fail by mutating the fixed key back to
+   the collided one and watching it red.
+
+**Method, fixed in advance.** Every mutation under the handed-over harness at full width (564 + the
+new cases, byte pins excluded), each with a substitution-applied proof — target count before and
+after plus the file's sha256 prefix. Narrow selection is what produced two wrong findings in cycle 1;
+the check does not repeat it. **And the fixture is checked against a live board, not instead of one:**
+a real dashboard serving the fixed tree, two real projects, the assembled digest verified before
+driving. The fixture's shape, not the assertion's strength, is what hid M1, so a fixture agreeing
+with itself is not evidence.
+
+**What would make me wrong.** If the fix removes the storage mirror entirely rather than keying it,
+conditions 1 and 3 dissolve and only 2 remains — that is a legitimate answer to M1 (the mirror is
+what turned a per-tab quirk into a persisted one) and should not be argued down for not matching
+this plan. AC-4 would then need the captain, since it asks for the key by name.
