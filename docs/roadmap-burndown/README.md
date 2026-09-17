@@ -1349,34 +1349,84 @@ Branching from `origin/main` is the half that prevents recurrence on its own: a 
 local `main` that has drifted carries that drift into its pull request, where it reads as scope
 nobody asked for.
 
-## Two branches can each be wrong alone and correct only together
+## Two branches implemented one ruling without coordination, and only one is safe
 
-DRC-4589 removed `color:var(--ink3)` from the withheld override, leaving exactly one rule colouring
-`[data-next-withheld]` — which is what DRC-4597's AC-4 asks for, and which its own handover notes
-reported as a virtue. Resolving the element path through `tests/css_cascade.py` says otherwise: on
-that branch a withheld `<small>` in the scope tree renders `--ink2`, the ink reserved for values,
-because the bare `[data-next-withheld]` rule at (0,1,0) is outranked by
-`.next-cockpit-scope-tree small{…color:var(--ink2)…}` at (0,1,1). An absence rendering as a value,
-on the branch whose whole job is holding those inks apart.
+A captain's ruling said exactly one rule may assign a colour to `[data-next-withheld]`. Two branches
+delivered it independently and neither knew the other had. DRC-4592 removed the competing
+`--ink2` rule; DRC-4589 removed the guard rule that was beating it. Resolved through
+`tests/css_cascade.py`'s `matches()` down a real element path, on four trees:
 
-DRC-4592 reaches the same one-rule state and renders correctly, because rebuilding the rail card
-deletes the competing `--ink2` rules outright. So the two branches are jointly correct and 4589 is
-not correct alone. A resolution that takes 4589's override and keeps main's scope-tree block ships
-the defect, and the suite stays green: `InkRoleRegistersAreDeclaredOnceAndSpelledNowhereElseTest`
-enforces the rule count, which is the thing that was right.
+| tree | renders | winning selector |
+|---|---|---|
+| `origin/main` | `--ink3` | `.next-cockpit-scope-tree small[data-next-withheld]` (0,2,1) |
+| DRC-4589 | **`--ink2`, the value ink** | `.next-cockpit-scope-tree small` (0,1,1) |
+| DRC-4592 | `--ink3` | the bare `[data-next-withheld]` (0,1,0) |
+| DRC-4595 | `--ink3` | the (0,2,1) guard |
 
-Three consequences, each measured here rather than reasoned:
+So the three correct trees are correct for three different reasons, and only DRC-4592's is correct
+on its own. DRC-4589's edit is not merely insufficient alone — once 4592 lands it is **redundant**,
+because 4592 deletes the whole rule. An absence rendering in the value ink, on the branch whose
+entire job is holding those inks apart.
 
-- **Verify a cascade property at the end of the integration, not after the pick that raises it.**
-  The tree is legitimately wrong in between, and checking early reports a defect that the next pick
-  removes.
-- **A cross-branch dependency that lives only in an agent's head is not recorded anywhere.** Neither
-  entity file said 4589's removal assumed 4592's deletion. Ask the author which it was — a deliberate
-  dependency to write down, or a misread of which rule wins — because the two call for different
-  fixes and only one of them is a defect.
+The merge hazard is precise and no hunk conflicts: **take 4589's deletion of the guard while keeping
+the `--ink2` rule from main, and the defect reappears on a tree where every side was green in
+isolation.** Resolve the element path on the consolidated sheet; never infer it from each branch.
+
+Four things this earned:
+
+- **Run the falsifier, not just the verifier.** DRC-4589's AC-3 already contained the property — its
+  *Falsified by* said "or the register resolving to anything other than `--ink3`". The implementer
+  built the *Verified by* oracle, encoded that oracle as the test, and never ran the falsifier. The
+  suite is green on a criterion whose own falsifier is tripped. This is sharper than an
+  under-specified criterion and the fix is procedural: every criterion here carries both halves, and
+  only one of them was being run.
 - **Count-shaped criteria invite this.** "Exactly one rule colours it" is satisfied by the broken
-  tree and by the correct one. Write the criterion as the property a reader sees — the absence
-  resolves the absence ink — and verify it by resolving, never by counting.
+  tree and the correct one alike. Write the criterion as the property a reader sees and verify it by
+  resolving.
+- **Verify a cascade property at the end of the integration**, not after the pick that raises it. The
+  tree is legitimately wrong in between.
+- **A cross-branch dependency that lives only in an agent's head is recorded nowhere.** Neither
+  entity said so. Ask the author which it was — a dependency to write down, or a misread of which
+  rule wins — because only one of those is a defect.
+
+## A mutation check that includes the byte-pin oracles measures nothing
+
+DRC-4592 mutation-checked four assertions and reported all four killed. Re-running with the byte-pin
+tests excluded, the real answer was different: the pin test fires on **any** stylesheet edit, so it
+reports "killed" for every mutation and says nothing about whether the semantic oracle works.
+
+Exclude `test_next_page`, `test_next_flag` and `test_focus` from every mutation check on a stylesheet
+change, or "killed" means only that the file changed.
+
+The same run produced the other half of the rule. A surviving assertion can be stronger or weaker
+than the one it replaces, and only a mutation says which: three cue tuples were confirmed droppable
+because the surviving test killed all three planted mutations and is strictly stronger, while a
+title/meta tuple that looked equally redundant turned out to be the only thing catching `--fs-2xs`
+being redefined above `--fs-sm` in `:root` — the surviving assertions pin which *token* each half
+uses and cannot see the token move underneath them.
+
+## A count passes a compensating swap
+
+`assertEqual(70, len(above))` over a sentence-tier census reds when a rule leaves the tier, and reds
+when one leaves for a lower tier. It **passes** when one rule leaves and another joins at the same
+size. DRC-4589 moving `.next-cockpit-authority>span` off the tier while `>small` joins it is exactly
+that swap, so the integration carrying both is the case that walks through the hole, and the oracle
+would be green on the change that defeats it.
+
+Repairing an oracle that the merge itself defeats is not a promoted finding, and the no-promotion
+rule does not apply to it. Compare the set, not its length, wherever the census already returns
+`(selector, size)` pairs.
+
+## Report the measurement you took, not the one you meant to take
+
+The divergence between two bases was reported here as 333 insertions across four test files. It is
+399 across seven paths, and the seven include `styles.css` and a whole file that exists on one side
+and not the other. The figure came from a `git diff --stat` scoped to one directory, read from a
+truncated tail, and then stated as the total. The integrator re-measured and corrected it.
+
+Nothing about the conclusion changed, which is why it survived being wrong: a scoped measurement
+that happens to support the right answer is the easiest kind to ship. State the scope in the same
+sentence as the figure, and read the summary line rather than the tail.
 
 ## One pull request per conflict surface, not one per branch
 
