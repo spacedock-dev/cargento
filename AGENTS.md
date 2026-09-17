@@ -128,7 +128,12 @@ git commit -s -m "feat(skill): add new capability to cargento"
 ## PR Workflow
 
 - Always invoke the `sync-docs` skill right before opening a PR. Every code change must reconcile repository documentation against the code and pass the Step 10 verification checks before pushing and opening a PR. Any resulting doc updates must ride in the PR that changes the code.
-- When opening PRs that close issues, always use explicit `Closes #NNNN` lines (one per issue), never comma-separated lists, so GitHub autoclose works.
+- **`Closes #NNNN` is for GitHub issues, and this repository has almost none.** Work here is
+  tracked in Linear as `DRC-NNNN`, which is not a GitHub issue number: `Closes #4589` points at
+  nothing, and will point at the wrong thing once the repository's own numbering reaches it. Link
+  Linear work as `Implements [DRC-NNNN](<issue url>)`, one per line, which is the form the merged
+  PRs use. Reserve `Closes #NNNN` for an actual GitHub issue, and then use explicit lines, one per
+  issue, never comma-separated, so autoclose works.
 - After requesting a PR review, always check for Copilot inline review comments in addition to top-level reviews.
 - Never commit or push to another author's PR branch without explicit confirmation from the user.
 
