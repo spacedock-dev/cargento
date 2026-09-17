@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4607:triage:attempt-1:revision-1",
+  "question": "Approve DRC-4607's triage: the shared-size approach, the label correction, and landing it before DRC-4602?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4607:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/9f7700f0c4a71df38f219d1cac8f1bb0fe39808d/drc-4607.md",
+      "rev": "sha256:e3546c3c57f72003aa2b917225eebb454f8588ef4011054e02736da28efafdfd",
+      "mediaType": "text/markdown",
+      "summary": "Resolved all fifteen nextProjectValue slots down reconstructed element paths: two inverted, both in WAITING ON YOU, and the other thirteen equal rather than merely non-inverted. The cause is .next-cockpit-recovery span at (0,1,1) capturing every span, so the known value declares no size and loses to it at 11.5px while the absent variant escapes via its own (0,2,0) rule at 12.5px; the value also inherits the label's ink and 0.09em caps tracking, so it is drawn as a label in the cell where it is the answer. Re-derived at 21a0e93 after PR #362 merged, since the dispatch pinned the stale d9059ae. Three claims in the issue were corrected and one alternative struck. All five criteria resolve under --ac-scan. Nothing written to Linear yet."
+    }
+  ]
+}
