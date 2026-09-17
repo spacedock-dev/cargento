@@ -365,7 +365,7 @@ already has a rule for. The gate is where the captain confirms them; no blocker 
 
 ---
 
-## Acceptance criteria, with verification
+## Acceptance criteria
 
 **AC1 — On an untouched session the READING block renders the button, the offer paragraph, the
 sending disclosure and the request counter.**
@@ -530,3 +530,24 @@ and AC5 literally would ship a button that spends the reader's model capacity fr
 says is unavailable. Dropping the producer half (R3) takes the change from 11 files to 6; the one
 ruling that overturns a prior decision is R2, which inverts the second half of DRC-4565 AC7 while
 leaving its load-bearing claim untouched.
+
+### Evidence (continuation) — heading repair, 2026-09-17
+
+The drafted criteria section was headed `## Acceptance criteria, with verification`, which
+`--ac-scan` matches literally and so did not find. Renamed to exactly `## Acceptance criteria`
+(this file, one heading line). The two `## Acceptance` headings under `## Linear edits made` were
+left byte-identical: they are inside the verbatim capture of the Linear issue body, and renaming
+them would falsify the restore point. No criterion, clause or offline/interactive mark changed.
+
+Confirmed from the repo root:
+
+    spacedock status --read drc-4588 --ac-scan --json --workflow-dir docs/roadmap-burndown
+    {"command":"read","stage":"triage","acs":[]}   (exit 0)
+
+The named error is gone. **`acs` is empty rather than populated, and that is not specific to this
+entity:** the same command against `drc-4587`, whose criteria are already in the README template's
+numbered-list shape, also returns `{"command":"read","stage":"triage","acs":[]}`. Two entities with
+different criterion formatting and the same empty result, so the empty array is not caused by this
+file's shape and reformatting the criteria here would be a guess rather than a fix. Raised to the
+first officer rather than chased: writing scratch entities into the shared state checkout to bisect
+the scanner is not safe with concurrent writers.
