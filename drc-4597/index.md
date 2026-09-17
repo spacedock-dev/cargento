@@ -731,3 +731,78 @@ AC-2's derived count — and both are cheap to close. AC-6 is unsettled and stay
 **Verdict: NO-GO**, on the PR rather than on this issue's runtime. The blocker belongs to DRC-4598.
 This issue's own owed work is V1, V2, S1, S2 and AC-6, plus the captain's call on A1. Findings route
 to `implementation` unchanged; I fixed nothing and edited no branch.
+
+## Stage Report: review (cycle 1 addendum — mutation re-verification)
+
+Re-ran every SURVIVED verdict under the handed-over harness (7 semantic modules, 564 tests, the three
+byte-pin oracles excluded by regex), each with a substitution-applied proof: target-string count
+before and after plus the file's sha256 prefix. Baseline `ran=564 failures=0 errors=0`.
+**One of this issue's two FAILED items is withdrawn; the other is confirmed and now stronger.**
+
+- DONE: Confirm your mutation actually applied before reading its verdict.
+  Every case prints `APPLIED: <file> <sha-before>-><sha-after>; target N->M`. No no-ops: the
+  first-round runner already refused any case whose pattern was absent. The error that did occur was
+  the inverse — a narrow selection hiding a guard that exists — and it is corrected below.
+- DONE: Confirm the named rail-card token mutation (`--fs-2xs` redefined above `--fs-sm`).
+  Applied-proof: `styles.css` `59f31388e4d3`->`2d919a6426a1`, `--fs-2xs:11.5px` -> `16.5px`, target
+  count 1->0. **KILLED at 564, failures=2**, and both are this issue's own pair:
+  `NextPageAssetContractTest.test_the_rail_card_puts_the_title_above_its_meta_in_two_registers`, and
+  `AnAbsenceNeverRendersLargerThanItsValueTest.test_no_absence_declares_a_larger_size_than_the_value_it_replaces`
+  reporting `value='.next-cockpit-scope-title', absence='.next-cockpit-scope-meta'` — the exact rail
+  card pair, named in the subTest. The pin oracles were excluded, so the stylesheet edit could not
+  have manufactured this. **AC-1's two-register property is genuinely guarded, numerically, by two
+  independent tests.** This is the strongest verifier result in the group.
+- FAILED → **WITHDRAWN**: "AC-5's stated falsifier does not falsify it (V1)."
+  **I was wrong at the property level.** Destroying the rule that actually gives the card its target,
+  `#app a,#app button,…{min-block-size:44px}` at `styles.css:59` (applied-proof
+  `59f31388e4d3`->`ac1540e21c3c`, target 1->0), is **KILLED at 564** by
+  `NextChromeBehaviorTest.test_every_next_actionable_control_shares_the_44_pixel_target_contract` and
+  `TheBoardHasOneControlPrimitiveTest.test_the_tripwire_control_gets_the_box_its_hit_area_already_had`.
+  Lens B reported the survival against the single method; I reproduced it at the same width and
+  recorded it as an unguarded property. It is not: the 44px target is guarded board-wide, by a module
+  neither of us loaded, and `test_every_next_actionable_control_shares_the_44_pixel_target_contract`
+  is a better guard than the one AC-5 asked for. What remains is real but small — **AC-5's own
+  `assertIn("min-block-size:44px", styles)` is a whole-sheet substring over 7 occurrences and binds
+  to nothing about this card**; it is redundant rather than load-bearing. Verifier hygiene. Not
+  blocking, and not worth a fix round on its own.
+- DONE (STANDS, and re-proved at full width): AC-2's stated falsifier does not falsify it (V2).
+  Hard-coding the project subtitle — `esc(\`${rows.length} …\`)` -> `esc("2 sessions")`, applied-proof
+  `next-cockpit.js` `66b4f4628511`->`3b47c4dcd9f0`, target 1->0 — **survives all 564,
+  failures=0 errors=0.** Nothing anywhere in the semantic suite kills it. AC-2's wording is "derived
+  from the same array the session rows map over" and names hard-coding as its falsifier; the only
+  fixture has exactly two sessions and the expectation is computed from that same fixture, so the
+  criterion's central word — *derived* — has no verifier at all. This is the group's one genuinely
+  unguarded property claim. One more fixture at a different length closes it.
+- DONE (STANDS, and re-proved at full width): the bare-span guard pins a spelling, not a property (V4).
+  `.next-cockpit-scope-tree span{white-space:normal;overflow:visible;text-overflow:clip}` inserted
+  with no comma — same specificity, later in the sheet, the unclipped title the assertion names —
+  applied-proof `styles.css` `59f31388e4d3`->`d262795137c5`, **survives all 564, failures=0**. The
+  comma spelling is killed. A matched pair, both run at full width.
+
+### Corrections to the report above
+
+Two of my findings were measured at a width that could not see the guard. **V1 is withdrawn** and
+**AC-5's property is protected**; the criticism narrows to a redundant assertion. The note in the
+report above that the sibling assertion "already does it right" by anchoring `box-shadow` to
+`.next-cockpit-scope-tree a[aria-current="page"]` still holds as the shape AC-5 should have used, but
+it is now a style point rather than a gap. **V2 and V4 stand and are stronger**, having survived
+564 tests with the substitution proved applied.
+
+Unchanged: **A1** (AC-4's colour half amended by a worker rather than the captain, disclosed and
+reasoned at `2ead9711`, captain's ruling intact since `--ink-absence` is `var(--ink3)`), **S1** (the
+`styles.css:1216-1219` comment now contradicts the rule below it), **S2** (this issue's implementation
+report describes the rail rule as it was at `43a8e9ba`, not as it is at `2fa5a2f4`), and **AC-6**,
+which remains unsettled — I measured 55px card / 57px pitch on the sub-1280 surface at a 700x713
+viewport and will not call that a pass at the specified 980.
+
+### Summary
+
+The re-run cost me one finding and strengthened two. AC-1's two-register property is the best-guarded
+claim in the group: raising `--fs-2xs` above `--fs-sm` is caught numerically by two independent tests
+that resolve the tokens rather than counting rules. AC-5's target size is guarded too, just not by
+AC-5. What is left unguarded is AC-2's *derived* — a hard-coded count survives every one of the 564
+semantic tests — and the bare-span guard, which pins one spelling of a regression that has three.
+
+**Verdict unchanged: NO-GO**, on the PR rather than on this issue's runtime; the blocker is
+DRC-4598's M1. This issue's owed work is now V2, V4, S1, S2 and AC-6, plus the captain's call on A1.
+V1 is withdrawn and should not be fixed.

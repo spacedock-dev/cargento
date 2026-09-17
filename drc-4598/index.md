@@ -701,3 +701,81 @@ seeds the collided key as correct.
 
 **Verdict: NO-GO.** M1 blocks the merge; M2 rides the same round. Findings route to `implementation`
 with their evidence unchanged, never re-triaged. I fixed nothing and edited no branch.
+
+## Stage Report: review (cycle 1 addendum — mutation re-verification)
+
+Re-ran every SURVIVED verdict under the handed-over harness (7 semantic modules, 564 tests, byte-pin
+oracles excluded by regex), each with a substitution-applied proof: target-string count before and
+after plus the file's sha256 prefix. Baseline `ran=564 failures=0 errors=0`. **Nothing changes this
+issue's verdict, and the blocker does not depend on a mutation at all.**
+
+- DONE: Confirm your mutation actually applied before reading its verdict.
+  Every case prints `APPLIED: <file> <sha-before>-><sha-after>; target N->M`. No no-ops occurred in
+  either round. Two of my findings on the sibling issues were wrong for the inverse reason — a narrow
+  selection hiding a guard — and are withdrawn on `drc-4592` and `drc-4597`. **M1 is unaffected: it
+  was never a mutation result.** It is a live-board observation on an unmodified tree, so there is no
+  substitution whose application could be in doubt.
+- DONE: Re-verify this issue's survivor at full width.
+  The AC-4 storage assertion's weak direction — a press writing the right mode to the **wrong scope**
+  (`projectGraphModeBySession.set("some-other-scope", mode)`, applied-proof `project.js`
+  `d1f78af91a95`->`ffa3c772e29b`, target 1->0) — is **KILLED at 564** by
+  `test_the_decisions_panel_carries_the_filter_and_a_press_changes_the_mode` and
+  `test_the_panel_heading_names_the_mode_on_screen`, both in this issue's own class. So V5 narrows to
+  a within-method hygiene note: `assertIn("all", store[KEY])` cannot tell the value from the key, but
+  its siblings can. Not blocking, and **not the gap that let M1 through** — that gap is AC-2's
+  single-project fixtures, which no mutation at any width would have exposed, because the defect
+  needs a *second project* to be visible at all.
+- DONE: All of this issue's falsifiers re-confirmed applied.
+  `defaultMode:"active"` -> both AC-2 oracles red; `controls:false` restored -> AC-1 red;
+  `projectStoreGraphModes()` dropped -> AC-4 red; `projectLoadGraphModes()` dropped -> AC-4 red;
+  the heading hard-coded -> AC-3 red; the 15-site prefix-collision delete -> AC-5 red;
+  `NEXT_PROJECT_TABS` edited -> AC-7 red; `alias table` removed from NUI-3 -> AC-6 red.
+
+### M4 (Material candidate) — the `nextCockpitContexts` check, and it reaches this issue's panel
+
+The integrator asked for its own reasoning about this map to be checked. Checked by execution; it
+does not hold. Full evidence on `drc-4592/index.md`; the part that is this issue's:
+
+`nextCockpitLoadContext`'s **catch** arm (`next-cockpit.js:3187`) writes
+`{data: settled && settled.data || null, revision, error:true}` — a **merge, not a replacement**. It
+keeps the previous data and stamps the error over it, so a failed poll over an already-loaded context
+produces a state `.data` alone cannot distinguish from a clean resolve. There is also a **third
+writer**, `next-render.js:81` (the explicit observer refresh), which the earlier enumeration missed.
+
+`nextCockpitTimeline` tests `entry.error` only **inside** its `!entry.data` branch (`:3676-3678`), so
+in that state it renders the timeline from stale data and never says "Semantic context unavailable."
+Executed: stale-with-error rendered 1 row with no unavailable notice, byte-identical to the resolved
+render. **This half is pre-existing** — the same shape sits at the merge base `21a0e935:3363-3364` —
+so it is not a regression this change introduced, but this issue owns the function and the fix is one
+line: test `entry.error` before `entry.data`, as `nextCockpitAttentionCoverage` (`:433`) already does.
+
+Filing it here rather than promoting it: it is not what blocks the merge, and the round M1 already
+forces is the cheap place for it.
+
+### The blocker, restated after re-verification
+
+**M1 stands, unchanged and unmutated.** The graph-mode key is `String(projectQuerySession || "")`,
+which is the empty string for every project at project scope, and this change persists it to
+`cargento.next.graph.mode`. Measured in a real browser against a server serving the reviewed tree
+(assembled 958_263 / 38818e11, verified before driving): pressing **All events** on `recce/cargento`
+left `recce/recce-cloud-infra` — a project never pressed — opening its Decisions tab with
+`data-graph-mode="all"`, `all` `aria-pressed="true"`, heading `SEMANTIC TIMELINE`, store `{"":"all"}`,
+and a reload did not clear it.
+
+That is AC-2 verbatim. No mutation is involved, so none of the re-verification touches it. Its two
+oracles pass because both hold one project, and
+`test_the_chosen_mode_is_written_to_storage_and_read_back_on_load` **seeds the collided key as
+correct**, which is why 564 green tests and twelve green checks say nothing about it.
+
+### Summary
+
+The re-run corrected two findings on the sibling issues and none here. This issue's one verifier note
+(V5) narrows to within-method hygiene, because its siblings kill the mutation at full width. What
+none of it reaches is the blocker: a defect that needs two projects to be visible cannot be found by
+mutating a one-project fixture at any width, which is the more useful lesson than the mutation
+hygiene — **the fixture's shape, not the assertion's strength, is what hid M1.**
+
+**Verdict unchanged: NO-GO.** M1 blocks the merge. M2 (the decisions count rendered beside
+non-decision rows) and M4 (the stale-after-failure read in `nextCockpitTimeline`) ride the same
+round. Findings route to `implementation` with their evidence unchanged; I fixed nothing and edited
+no branch.

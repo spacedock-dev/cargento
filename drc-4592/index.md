@@ -631,3 +631,110 @@ said to look.
 (a persisted graph-mode key with no project in it, falsifying that issue's own AC-2 on a live board);
 the group lands as one PR, so it blocks this one too. This issue's own owed work is the AC-3 verifier
 and M3. Findings route to `implementation` unchanged; I fixed nothing and edited no branch.
+
+## Stage Report: review (cycle 1 addendum — mutation re-verification)
+
+Re-ran every SURVIVED verdict from the report above under the handed-over harness (7 semantic
+modules, 564 tests, the three byte-pin oracles excluded by regex), with a substitution-applied proof
+on each: target-string count before and after, plus the file's sha256 prefix. Baseline clean:
+`ran=564 failures=0 errors=0`. **Widening changed one of this issue's verdicts.**
+
+- DONE: Confirm your mutation actually applied before reading its verdict.
+  Every case now prints `APPLIED: <file> <sha-before>-><sha-after>; target N->M`. No case in either
+  round was a no-op: my first-round runner already refused to run a case whose pattern was absent
+  (it reported `PATTERN-MISS` three times and I re-targeted each), so the failure mode the integrator
+  hit did not occur here. The one that bit me was the opposite and I did not guard against it —
+  **a narrow selection making a guarded property look unguarded.**
+- DONE: Confirm the named rail-card token mutation.
+  Redefining `--fs-2xs:11.5px` to `16.5px` in `:root`, above `--fs-sm:14px`. Applied-proof:
+  `styles.css` `59f31388e4d3`->`2d919a6426a1`, target 1->0. **KILLED**, and by the right two tests:
+  `NextPageAssetContractTest.test_the_rail_card_puts_the_title_above_its_meta_in_two_registers` and
+  `AnAbsenceNeverRendersLargerThanItsValueTest.test_no_absence_declares_a_larger_size_than_the_value_it_replaces`
+  on exactly the `.next-cockpit-scope-title` / `.next-cockpit-scope-meta` pair. Pins excluded, so
+  this is a semantic kill rather than a stylesheet edit firing an oracle. Detail on `drc-4597`.
+- FAILED → **WITHDRAWN**: "AC-3's stated falsifier does not falsify it."
+  **I was wrong, and the correction is the same shape as the rule I was sent.** Collapsing every
+  window label with an early `return "all time"` in `nextWorkstreamWindowLabel` (applied-proof:
+  `next-workstream.js` `9680ee01d192`->`c7df1bd8d3fe`) is **KILLED by four tests** —
+  `test_the_heading_names_the_real_twelve_minute_window`,
+  `test_a_withheld_figure_over_a_seeded_window_names_that_window`,
+  `test_a_seeded_window_reports_a_figure_past_the_live_six_hour_ceiling` and
+  `test_no_trend_until_two_complete_six_hour_windows_exist`, all in `test_next_delegation`. Lens B
+  reported the survival against the method and the class; I reproduced it at the same width and
+  recorded it as a property gap. It is not one: the two windows are guarded, by a module neither of
+  us loaded. What remains is real but much smaller — **AC-3's own verifier is four `assertIn` greps
+  over source text and does not bind its second clause**; the property survives on another suite's
+  back. Verifier hygiene, not an unguarded property. Not blocking.
+- DONE: Re-verify the remaining survivors at full width.
+  AC-6's absence-only method (`if(true) return ""` in `nextCockpitTabCueHtml`, applied-proof
+  `66b4f4628511`->`65de1a9be583`): **KILLED** at 564 by `test_the_pending_mark_and_the_never_observed_mark_are_different`
+  and `test_local_tab_permalink_and_arrow_keys_preserve_project_session_route`. Stands as a
+  within-method hygiene note only. The capability gate's `=== true` relaxed to a truthy test
+  (`b45bb0299bd5`) survives all 564 and is **withdrawn as a finding**: it is an equivalent mutant —
+  `null`, `true` and `false` render identically through either gate, so nothing could detect it.
+
+### M4 (Material candidate) — `nextCockpitContexts` is NOT safe, and for a different reason than the first map
+
+The integrator asked for this to be checked rather than accepted. Checked, by execution, and its
+reasoning is wrong on both halves.
+
+**Three writers, not two.** `next-cockpit.js:3182` (resolve), `:3187` (reject), and
+**`next-render.js:81`** — the explicit observer refresh, which Lens A's enumeration missed. The third
+writes `{data, revision}` with no `error` key, so a successful refresh does correctly clear the flag.
+
+**Five reachable states, not three.** The claim "`nextCockpitLoadContext` only replaces an entry on
+resolve" misses that the catch arm writes too, and that what it writes is a **merge, not a
+replacement**: `{data: settled && settled.data || null, revision, error:true}` keeps the *previous*
+data and stamps the error over it. So an entry can be absent, resolved, failed-with-no-data, or
+**failed-while-holding-stale-data** — and `.data` alone cannot tell the last one from a clean resolve.
+
+Executed on the fixture, writing the catch arm's shape verbatim over a loaded context:
+
+| entry state | cue | `nextCockpitTimeline` |
+|---|---|---|
+| resolved | `{state:"count", value:1}` | 1 row |
+| **failed, stale data held** | `{state:"count", value:1}` — identical | 1 row, **no** "Semantic context unavailable." |
+| failed, no prior data | `{state:"pending"}` — "not loaded yet" | "Semantic context unavailable." |
+
+So the middle row is worse than M3: neither the cue nor the panel says anything at all, and both
+present stale figures as current. `nextCockpitProjectObservation` (`:3150`) returns
+`entry && entry.data || null` and drops `.error` entirely, so everything downstream of it inherits
+this. Two readers in the tree already get it right — `nextCockpitAttentionCoverage` (`:433`) and the
+lane reader (`:1221`, `:1236`), both testing `entry.error` **outside** the `!data` branch. Two get it
+wrong: `nextCockpitTimeline` (`:3676`, which tests `error` only *inside* `!entry.data`) and this
+issue's new cue.
+
+**Scope split, which matters for the disposition.** The panel half is **pre-existing** — the same
+`:3363-3364` shape is at the merge base `21a0e935`. What this PR adds is a third wrong reader, on the
+tab label, which is the most visible surface on the board. M3 and M4 close together: read
+`entry.error` before `entry.data`, the way `:433` already does.
+
+### M5 (Polish) — the trade at project scope, weighed
+
+Executed: `nextCockpitConsoleCapabilities(group, null)` returns `{terminal:null, observer:false}` and
+Console at project scope renders **"How this server was started — terminal bridge not read yet,
+observer model off"**, permanently. `focus` is `null`, so no lookup is ever attempted and nothing can
+resolve it.
+
+The trade is not uniform. **With a session selected the change is a clear improvement** and the
+regression it fixed was real — a refreshing terminal reported `null` on every poll. **Without one it
+is a lateral move**: nothing is pending, nothing will settle, and "not read yet" is as wrong as "off"
+was, in the other direction. The `observer:false` half is honest at both scopes, because the project
+entry does resolve and publishes no model. The missing value is a fourth one — *no session selected;
+the terminal bridge is per-session* — which is both true and actionable, where the current sentence
+is neither. Small, and it can ride the round M1 already forces rather than buying its own.
+
+### Summary
+
+One withdrawal, one downgrade, one new Material candidate. The withdrawal is mine: I called AC-3's
+window clause unguarded after reproducing a lens's survival at the same narrow width, and four tests
+in `test_next_delegation` kill it. The rule that caught it is the one I was sent — confirm the
+mutation applied, then confirm at a width that can see the guard — and it cost me a wrong finding in
+the first direction and would have cost a wrong refutation in the second.
+
+The `nextCockpitContexts` check the integrator asked for does not clear the map. It has a fifth state
+its own reasoning did not account for, in which a failed refresh renders as a clean read on both the
+cue and the panel.
+
+**Verdict unchanged: NO-GO**, still on DRC-4598's M1. This issue's owed work is now M3+M4 together,
+AC-3's verifier as hygiene, and M5 riding the same round.
