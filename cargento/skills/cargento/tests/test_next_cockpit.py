@@ -1063,8 +1063,17 @@ console.log(JSON.stringify({html,tabs,panel}));
         )
         self.assertNotIn("data-next-cockpit-task-subject", out["html"])
         self.assertEqual(4, len(out["tabs"]))
+        # The label is followed by its derived cue on the tabs that carry one,
+        # so each is bound to the start of its own button's content rather than
+        # to the close tag. Mutating the label or the button still breaks this;
+        # adding a cue after the label does not.
         for label in ("Now", "Course", "Decisions", "Console"):
-            self.assertTrue(any(f">{label}</button>" in tab for tab in out["tabs"]))
+            self.assertTrue(
+                any(
+                    re.search(rf">{label}(?:<span class=\"next-cockpit-tab-cue|</button>)", tab)
+                    for tab in out["tabs"]
+                )
+            )
         self.assertTrue(
             any('aria-selected="true"' in tab and ">Now</button>" in tab for tab in out["tabs"])
         )
@@ -1177,8 +1186,16 @@ console.log(JSON.stringify({project,session,narrowest}));
         self.assertIn('data-scope-owner="project"', out["project"])
         self.assertIn('data-scope-owner="pi:pi-idle"', out["session"])
         self.assertIn('class="next-scope-marker next-scope-marker--round"', out["session"])
-        self.assertIn('class="next-scope-cue next-scope-cue--session"', out["session"])
-        self.assertIn(">SESSION</strong>", out["session"])
+        # A session row keeps the marker and the connector rule, which carry the
+        # kind without words, and keeps the word itself in its accessible name.
+        # The full cue block stays on the project row and at the ten other sites
+        # that emit one; printing it on every session row was the repetition the
+        # rail was rebuilt to remove.
+        self.assertIn('<span class="next-visually-hidden">SESSION</span>', out["session"])
+        self.assertNotIn(
+            'class="next-scope-cue next-scope-cue--session"',
+            (out["session"].split('class="next-cockpit-scope-tree"')[1] or "").split("</nav>")[0],
+        )
         self.assertEqual("session", out["narrowest"]["same"]["kind"])
         self.assertEqual("project", out["narrowest"]["mixed"]["kind"])
         self.assertEqual("unknown", out["narrowest"]["unknown"]["kind"])
@@ -1492,7 +1509,9 @@ console.log(JSON.stringify({parsed,roundTrip,course,afterKey,hash:location.hash}
         self.assertEqual("course", out["parsed"]["tab"])
         self.assertEqual("#n=project:cargento:pi%3Api-idle:course", out["roundTrip"])
         self.assertIn('data-next-cockpit-panel="course"', out["course"])
-        self.assertIn('aria-selected="true" tabindex="0">Course</button>', out["course"])
+        # Course carries a derived cue after its label, so the close tag is no
+        # longer adjacent; selection, roving tabindex and label still are.
+        self.assertIn('aria-selected="true" tabindex="0">Course<span', out["course"])
         self.assertIn('data-next-cockpit-panel="decisions"', out["afterKey"])
         self.assertEqual("#n=project:cargento:pi%3Api-idle:decisions", out["hash"])
 
@@ -1910,7 +1929,9 @@ console.log(JSON.stringify({html,recovery,task,scope,visibleWords:visible?visibl
         assert isinstance(out, dict)
 
         self.assertEqual(0, out["primary"])
-        self.assertLessEqual(out["visibleWords"], 48)
+        # 48 before the per-tab lede, which is 17 words of deliberate prose
+        # naming what the panel holds. Raised by that sentence and no further.
+        self.assertLessEqual(out["visibleWords"], 65)
         self.assertIn("ASSIGNMENT", out["task"])
         self.assertIn("<strong>Not observed</strong>", out["task"])
         self.assertNotIn(">PROJECT</strong>", out["task"])
@@ -1945,15 +1966,29 @@ console.log(JSON.stringify({
         self.assertLess(out["header"], out["nav"])
         self.assertEqual(-1, out["plan"])
         self.assertLess(out["nav"], out["html"].index('class="next-cockpit-tabs"'))
+        # Two lines, title first. The whole line-1 sequence is pinned, so a
+        # change that puts the harness back above the title fails here rather
+        # than passing on a looser match.
         self.assertIn(
-            '<strong class="next-cockpit-scope-name">Codex</strong>'
-            '<span class="next-cockpit-scope-state next-cockpit-scope-state--working">'
-            '<span class="next-project-dot next-project-tone--unknown next-project-dot--working" role="img" aria-label="working"></span>'
-            "working</span>",
+            '<span class="next-cockpit-scope-mark" aria-hidden="true">'
+            '<i class="next-scope-marker next-scope-marker--round"></i></span>'
+            '<span class="next-visually-hidden">SESSION</span>'
+            '<span class="next-cockpit-scope-title" title="Shape project cockpit">'
+            "Shape project cockpit</span>",
             out["sessionNav"],
         )
-        self.assertIn("<small>Shape project cockpit</small>", out["sessionNav"])
-        self.assertNotIn("<strong>Shape project cockpit", out["sessionNav"])
+        self.assertIn(
+            '<span class="next-cockpit-scope-meta">Codex \u00b7 '
+            '<span class="next-cockpit-scope-state next-cockpit-scope-state--working">'
+            '<span class="next-project-dot next-project-tone--unknown next-project-dot--working"'
+            ' role="img" aria-label="working"></span>working</span>',
+            out["sessionNav"],
+        )
+        self.assertLess(
+            out["sessionNav"].index('class="next-cockpit-scope-title" title="Shape project'),
+            out["sessionNav"].index('class="next-cockpit-scope-meta">Codex'),
+        )
+        self.assertNotIn("<small>Shape project cockpit</small>", out["sessionNav"])
 
     def test_focus_keeps_project_status_and_canonical_labels_from_all_context(self) -> None:
         out = self.run_fixture(
@@ -2000,7 +2035,12 @@ console.log(JSON.stringify({html,requests:[...nextCockpitContexts.keys()]}));
         )
         self.assertIn('data-next-cockpit-panel="decisions"', out["html"])
         self.assertNotIn("PROJECT OVERVIEW", out["html"])
-        self.assertNotIn("All events", out["html"])
+        # "All events" is the renderer's own filter button, deliberately
+        # re-exposed. What must not leak is the all-events VIEW: the panel is
+        # still on decisions and that button is still unpressed.
+        self.assertIn('data-graph-mode="decisions"', out["html"])
+        self.assertIn("<h2>RECORDED DECISIONS</h2>", out["html"])
+        self.assertIn('data-arg="all" class="" aria-pressed="false"', out["html"])
 
     def test_session_permalink_selects_exact_focus_and_decisions_filter_is_present(self) -> None:
         out = self.run_fixture(
@@ -7552,8 +7592,14 @@ const links = Array.from(html.matchAll(/<a\s+([^>]+)>([\s\S]*?)<\/a>/g)).map(m =
   const working = (attrs.match(/data-next-working="([^"]+)"/) || [])[1] || null;
   const hasDot = body.includes("next-project-dot--working");
   const dotTone = (body.match(/next-project-tone--(\w+)/) || [])[1] || null;
-  const stateMatch = body.match(/class="next-cockpit-scope-state[^"]*">([\s\S]*?)<\/span><small/);
-  const state = stateMatch ? stateMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+  // Read out of the meta line rather than from whatever follows it. The old
+  // form required the state span to abut a <small>, which yielded "" into an
+  // assertEqual the moment the card changed shape.
+  const metaAt = body.indexOf('class="next-cockpit-scope-meta">');
+  const meta = metaAt < 0 ? "" : body.slice(body.indexOf(">", metaAt) + 1);
+  const stateAt = meta.indexOf('class="next-cockpit-scope-state');
+  const state = stateAt < 0 ? "" : meta.slice(meta.indexOf(">", stateAt) + 1)
+    .replace(/<[^>]+>/g, "").split("\u00b7")[0].trim();
   return {scope, kind, working, hasDot, dotTone, state};
 });
 console.log(JSON.stringify({scopes: links}));
@@ -9392,6 +9438,655 @@ class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
         self.assertLess(chip, captain)
         self.assertEqual(self.resolved_ink(".next-cockpit-authority>small"), self.inks["ink"])
         self.assertEqual(self.resolved_ink(".next-cockpit-authority>span"), self.inks["ink3"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitTabsNameTheirPanelTest(NextPageJsHarness):
+    """DRC-4592. A tab strip of five bare labels cannot be ranked before the
+    click: three of the five open onto a heading that does not repeat the label,
+    and nothing on a label says whether anything is behind it.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    LEDES: ClassVar[dict[str, str]] = {
+        "now": "Now:",
+        "course": "Course:",
+        "decisions": "Decisions:",
+        "console": "Console:",
+        "held-to": "Held to:",
+    }
+
+    def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude(storage or {}) + self.FIXTURE,
+        )
+
+    def test_every_tab_renders_exactly_one_lede_naming_its_own_tab_word(self) -> None:
+        """AC-1. Falsified by a tab with no lede, with two, or with a lede whose
+        text omits its own tab word."""
+        out = self.run_fixture(
+            """
+const seen = {};
+for(const tab of ["now","course","decisions","console","held-to"]){
+  navigateNext({view:"project",project:"cargento",
+    focus:tab === "held-to" ? "codex:focus-1" : null,tab});
+  await __settle();
+  const html = __els.app.innerHTML;
+  const ledes = [...html.matchAll(/<p class="next-cockpit-lede">([\\s\\S]*?)<\\/p>/g)]
+    .map(match => match[1]);
+  const panel = (html.match(/<section class="next-cockpit-panel"[\\s\\S]*/) || [""])[0];
+  seen[tab] = {count:ledes.length, text:ledes[0] || "",
+    firstInPanel:panel.indexOf('class="next-cockpit-lede"') > -1 &&
+      panel.indexOf('class="next-cockpit-lede"') < 200};
+}
+console.log(JSON.stringify(seen));
+"""
+        )
+        assert isinstance(out, dict)
+        for tab, word in self.LEDES.items():
+            with self.subTest(tab=tab):
+                self.assertEqual(1, out[tab]["count"], f"{tab} does not render exactly one lede")
+                self.assertTrue(
+                    out[tab]["text"].startswith(word),
+                    f"{tab} lede does not open on its own tab word: {out[tab]['text']!r}",
+                )
+                self.assertTrue(out[tab]["firstInPanel"], f"{tab} lede is not under the strip")
+
+    def test_departure_and_revision_are_defined_once_and_reading_is_not_defined_twice(self) -> None:
+        """AC-2. Falsified by a second copy of any of the three sentences, or a
+        definition rendered somewhere other than the first use of its noun."""
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const count = needle => html.split(needle).length - 1;
+console.log(JSON.stringify({
+  departure:count("A departure is a place the record does not match what you typed"),
+  revision:count("Each save is a revision"),
+  readingShort:count("A reading is one model pass over the record"),
+  readingOffer:count("A reading is a model\\u2019s account of the evidence on this page"),
+  departureAfterHeader:html.indexOf("A departure is a place the record") >
+    html.indexOf("DEPARTURES RAISED TO YOU"),
+  revisionNearStamp:Math.abs(html.indexOf("Each save is a revision") -
+    html.indexOf('class="next-cockpit-held-revision"')) < 400
+}));
+""",
+            storage_prelude({}) + CockpitHeldToTabTest.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["departure"])
+        self.assertEqual(1, out["revision"])
+        self.assertTrue(out["departureAfterHeader"])
+        self.assertTrue(out["revisionNearStamp"])
+        # Exactly one account of what a reading is, wherever the panel landed.
+        self.assertEqual(1, out["readingShort"] + out["readingOffer"])
+
+    def test_observed_state_changes_keeps_its_name_and_its_two_windows(self) -> None:
+        """AC-3. Falsified by renaming the heading at either emitter, or by
+        collapsing the 37m and 24h windows into one figure."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        project = (web / "next-project.js").read_text(encoding="utf-8")
+        workstream = (web / "next-workstream.js").read_text(encoding="utf-8")
+        observed = (web / "next-observed.js").read_text(encoding="utf-8")
+        self.assertIn("OBSERVED STATE CHANGES", project)
+        self.assertIn("OBSERVED STATE CHANGES", workstream)
+        # changeNoteText carries the unattended count and the window label as
+        # two separately-derived halves joined by " · ".
+        self.assertIn("unattended · ", observed)
+        self.assertIn("nextWorkstreamWindowLabel(window)", observed)
+
+    def test_each_cue_counts_its_own_collection_and_never_falls_back_to_zero(self) -> None:
+        """AC-4. Falsified by a cue that holds steady while its fixture
+        collection grows, or that renders 0 when the collection is undefined."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const cue = (tab, project, extra) => nextCockpitTabCue(tab,
+  Object.assign({group, project}, extra || {}), null, {semantic:{facts:[],work_items:[],projections:{}}});
+const courseFor = n => cue("course",
+  {key:"cargento", changes:Array.from({length:n}, (_, i) => ({at:i,label:"x"}))});
+const decisionsFor = n => nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null,
+  {semantic:{facts:Array.from({length:n}, (_, i) => ({fact_id:"d" + i, type:"gate_decision",
+    at:i, by:"person:captain", decision:"approve", stage:"review"})),
+    work_items:[], projections:{}}});
+const heldFor = n => {
+  nextData.annotate = true;
+  nextData.unasked = true;
+  const session = {harness:"codex", sid:"focus-1",
+    departures:Array.from({length:n}, (_, i) => ({id:"r" + i})), departure_checked:true};
+  return nextCockpitTabCue("held-to", {group, project:{key:"cargento"}}, session, null);
+};
+console.log(JSON.stringify({
+  course:[0,1,4].map(n => courseFor(n)),
+  courseAbsent:cue("course", {key:"cargento", changes:null}),
+  decisions:[0,2,5].map(n => decisionsFor(n)),
+  decisionsAbsent:nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null,
+    {semantic:{work_items:[], projections:{}}}),
+  held:[0,1,3].map(n => heldFor(n)),
+  heldAbsent:(() => { nextData.annotate = true; nextData.unasked = true;
+    return nextCockpitTabCue("held-to", {group, project:{key:"cargento"}},
+      {harness:"codex", sid:"focus-1"}, null); })()
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {"state": "zero", "value": 0},
+                {"state": "count", "value": 1},
+                {"state": "count", "value": 4},
+            ],
+            out["course"],
+        )
+        self.assertEqual(
+            [
+                {"state": "zero", "value": 0},
+                {"state": "count", "value": 2},
+                {"state": "count", "value": 5},
+            ],
+            out["decisions"],
+        )
+        self.assertEqual(
+            [
+                {"state": "zero", "value": 0},
+                {"state": "count", "value": 1},
+                {"state": "count", "value": 3},
+            ],
+            out["held"],
+        )
+        # A collection the board never published is not a collection read and
+        # found empty, and neither is 0.
+        for absent in ("courseAbsent", "decisionsAbsent", "heldAbsent"):
+            with self.subTest(absent=absent):
+                self.assertEqual({"state": "unobserved"}, out[absent])
+
+    def test_the_pending_mark_and_the_never_observed_mark_are_different(self) -> None:
+        """AC-5. Falsified by the two states rendering the same mark or the same
+        gloss."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+// Withhold the focused context entry so the Decisions panel takes the
+// "Loading semantic context…" arm the cue has to agree with.
+nextCockpitContexts.clear();
+const pending = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}},
+  {harness:"codex", sid:"focus-1"}, null);
+const unobserved = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null,
+  {semantic:{work_items:[], projections:{}}});
+console.log(JSON.stringify({pending, unobserved,
+  pendingHtml:nextCockpitTabCueHtml("decisions", pending),
+  unobservedHtml:nextCockpitTabCueHtml("decisions", unobserved),
+  countHtml:nextCockpitTabCueHtml("decisions", {state:"count", value:2})}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual({"state": "pending"}, out["pending"])
+        self.assertEqual({"state": "unobserved"}, out["unobserved"])
+        marks = {}
+        glosses = {}
+        for key in ("pendingHtml", "unobservedHtml", "countHtml"):
+            html = out[key]
+            assert isinstance(html, str)
+            mark = re.search(r'aria-hidden="true">([^<]*)<', html)
+            gloss = re.search(r'class="next-visually-hidden">([^<]*)<', html)
+            self.assertIsNotNone(mark, f"{key} renders no mark")
+            self.assertIsNotNone(gloss, f"{key} renders no gloss")
+            assert mark is not None and gloss is not None
+            marks[key] = mark.group(1)
+            glosses[key] = gloss.group(1)
+        self.assertEqual("…", marks["pendingHtml"])
+        self.assertEqual("·", marks["unobservedHtml"])
+        self.assertEqual(3, len(set(marks.values())))
+        self.assertEqual(3, len(set(glosses.values())))
+        self.assertIn("next-cockpit-tab-cue--pending", out["pendingHtml"])
+
+    def test_now_console_and_unannotated_held_to_render_no_cue_element(self) -> None:
+        """AC-6. Falsified by an empty cue span, a 0, or a · on any of the three."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const context = {group, project:{key:"cargento", changes:[]}};
+nextData.annotate = false;
+const cues = {
+  now:nextCockpitTabCue("now", context, null, null),
+  console:nextCockpitTabCue("console", context, null, null),
+  heldOff:nextCockpitTabCue("held-to", context,
+    {harness:"codex", sid:"focus-1", departures:[{id:"r"}]}, null)
+};
+navigateNext({view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"});
+await __settle();
+const strip = (__els.app.innerHTML.match(/<nav class="next-cockpit-tabs"[\\s\\S]*?<\\/nav>/) || [""])[0];
+const buttons = Object.fromEntries([...strip.matchAll(/<button[^>]*data-arg="([^"]+)"[^>]*>([\\s\\S]*?)<\\/button>/g)]
+  .map(match => [match[1], match[2]]));
+console.log(JSON.stringify({cues, buttons,
+  html:Object.fromEntries(Object.entries(cues).map(([k, v]) => [k, nextCockpitTabCueHtml(k, v)]))}));
+"""
+        )
+        assert isinstance(out, dict)
+        for tab in ("now", "console", "heldOff"):
+            with self.subTest(tab=tab):
+                self.assertIsNone(out["cues"][tab])
+                self.assertEqual("", out["html"][tab])
+        for tab in ("now", "console", "held-to"):
+            with self.subTest(button=tab):
+                self.assertNotIn("next-cockpit-tab-cue", out["buttons"][tab])
+
+    def test_the_strip_still_takes_its_tab_set_from_the_route(self) -> None:
+        """AC-7. Falsified by resolving the strip's tab set from the passed focus
+        argument instead of the route, which makes the nav and the panel
+        disagree on a stale route."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const context = {group, project:{key:"cargento", changes:[]}};
+const focus = group.sessions[0];
+navigateNext({view:"project",project:"cargento",focus:null,tab:"now"});
+await __settle();
+// The route has no focus; a session is handed in anyway. The nav must answer
+// four, the same as the panel, or a stale route splits them.
+const atProject = nextCockpitTabList(context, focus, null);
+navigateNext({view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"});
+await __settle();
+const atSession = nextCockpitTabList(context, null, null);
+const args = html => [...html.matchAll(/data-arg="([^"]+)"/g)].map(m => m[1]);
+console.log(JSON.stringify({atProject:args(atProject), atSession:args(atSession)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["now", "course", "decisions", "console"], out["atProject"])
+        self.assertEqual(["now", "course", "decisions", "console", "held-to"], out["atSession"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitTimelineFilterTest(NextPageJsHarness):
+    """DRC-4598. The Decisions tab is one of three modes of a renderer whose own
+    three-button filter the cockpit switched off, so the filtered activity view
+    and the all-events view were reachable nowhere in the next UI.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    FOCUS_DOM = NextCockpitCompositionTest.FOCUS_DOM
+    # Mirrored from next-cockpit.js; the first check below pins the two together.
+    KEY = "cargento.next.graph.mode"
+
+    def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + self.FOCUS_DOM + checks,
+            storage_prelude(storage or {}) + self.FIXTURE,
+        )
+
+    def test_the_decisions_panel_carries_the_filter_and_a_press_changes_the_mode(self) -> None:
+        """AC-1. Falsified by the panel rendering no filter, or a press that
+        leaves data-graph-mode unchanged after a redraw."""
+        out = self.run_fixture(
+            r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+const before = __els.app.innerHTML;
+const filter = (before.match(/<div class="pc-graph-filter"[\s\S]*?<\/div>/) || [""])[0];
+const buttons = [...filter.matchAll(/data-next-cockpit-action="graph-mode"[^>]*data-arg="([^"]+)"/g)]
+  .map(match => match[1]);
+const mode = html => (html.match(/data-graph-mode="([^"]+)"/) || [])[1] || "";
+const rows = html => (html.match(/class="pc-graph-row/g) || []).length;
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+press("all");
+await __settle();
+const afterAll = __els.app.innerHTML;
+press("decisions");
+await __settle();
+const afterDecisions = __els.app.innerHTML;
+console.log(JSON.stringify({buttons, hasFilter:Boolean(filter),
+  pressed:[...filter.matchAll(/aria-pressed="([^"]+)"/g)].map(m => m[1]),
+  modes:[mode(before), mode(afterAll), mode(afterDecisions)],
+  rows:[rows(before), rows(afterAll), rows(afterDecisions)]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["hasFilter"])
+        self.assertEqual(["active", "all", "decisions"], out["buttons"])
+        self.assertEqual(["false", "false", "true"], out["pressed"])
+        self.assertEqual(["decisions", "all", "decisions"], out["modes"])
+        self.assertNotEqual(out["rows"][0], out["rows"][1])
+        self.assertEqual(out["rows"][0], out["rows"][2])
+
+    def test_the_panel_heading_names_the_mode_on_screen(self) -> None:
+        """AC-3. Falsified by a heading that keeps saying RECORDED DECISIONS over
+        an all-events list."""
+        out = self.run_fixture(
+            r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+const head = html => (html.match(/<section class="next-cockpit-semantic"[^>]*><h2>([^<]*)<\/h2>/) || [])[1] || "";
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+const before = head(__els.app.innerHTML);
+press("all"); await __settle();
+const all = head(__els.app.innerHTML);
+press("decisions"); await __settle();
+console.log(JSON.stringify({before, all, back:head(__els.app.innerHTML)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("RECORDED DECISIONS", out["before"])
+        self.assertEqual("SEMANTIC TIMELINE", out["all"])
+        self.assertEqual("RECORDED DECISIONS", out["back"])
+
+    def test_the_chosen_mode_is_written_to_storage_and_read_back_on_load(self) -> None:
+        """AC-4. Falsified by a press that writes nothing, or a seeded store the
+        first render ignores."""
+        written = self.run_fixture(
+            r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+  c.dataset.arg === "all");
+__fire("click",{target:button,preventDefault(){}});
+await __settle();
+console.log(JSON.stringify({writes:__storageWrites, store:__store}));
+"""
+        )
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        self.assertIn(f'"{self.KEY}"', (web / "project.js").read_text(encoding="utf-8"))
+        assert isinstance(written, dict)
+        keys = [key for key in written["writes"] if key.startswith("cargento.next.")]
+        self.assertIn(self.KEY, keys)
+        self.assertIn("all", written["store"][self.KEY])
+
+        seeded = self.run_fixture(
+            r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+console.log(JSON.stringify({mode:(__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1]}));
+""",
+            storage={self.KEY: json.dumps({"": "all"})},
+        )
+        assert isinstance(seeded, dict)
+        self.assertEqual("all", seeded["mode"])
+
+    def test_the_dead_scope_helper_is_gone_and_its_neighbour_survives(self) -> None:
+        """AC-5. Falsified by deleting the wrong name, which takes
+        nextCockpitProjectScopeKind with it."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        sources = {path.name: path.read_text(encoding="utf-8") for path in web.glob("*.js")}
+        joined = "\n".join(sources.values())
+        self.assertNotIn("nextCockpitProjectScope(", joined)
+        # Fifteen, not the sixteen triage counted: one of those sites was the
+        # call inside the dead helper this change deletes. A grep-and-delete on
+        # the shorter name is a prefix match on the longer one and would take
+        # every remaining site with it.
+        self.assertGreaterEqual(joined.count("nextCockpitProjectScopeKind("), 15)
+
+    def test_nui_3_states_that_retiring_a_tab_slug_is_a_route_change(self) -> None:
+        """AC-6. Falsified by the section not saying it, or saying it somewhere a
+        merge proposal would not read."""
+        doc = (
+            pathlib.Path(__file__).resolve().parents[4] / "docs" / "design-next-ui.md"
+        ).read_text(encoding="utf-8")
+        heads = [index for index, line in enumerate(doc.splitlines()) if line.startswith("## ")]
+        lines = doc.splitlines()
+        start = next(index for index in heads if "NUI-3" in lines[index])
+        end = next((index for index in heads if index > start), len(lines))
+        section = "\n".join(lines[start:end])
+        self.assertIn("route change", section)
+        self.assertIn("nextRouteFromFragment", section)
+        self.assertIn("alias table", section)
+
+    def test_no_route_slug_and_no_fragment_behaviour_changes(self) -> None:
+        """AC-7. Falsified by any edit to NEXT_PROJECT_TABS, NEXT_SESSION_TABS or
+        nextRouteFromFragment."""
+        boot = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "cargento_runtime"
+            / "web"
+            / "next-boot.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];', boot)
+        self.assertIn('const NEXT_SESSION_TABS = ["held-to"];', boot)
+        out = self.run_fixture(
+            r"""
+const routes = ["#n=project:cargento:decisions", "#n=project:cargento:codex%3Afocus-1:held-to",
+  "#n=project:cargento", "#n=project:cargento:codex%3Afocus-1"].map(hash => {
+    const route = nextRouteFromFragment(hash);
+    return {view:route.view || null, project:route.project || null,
+      focus:route.focus || null, tab:route.tab || null};
+  });
+const round = nextFragmentForRoute({view:"project",project:"cargento",
+  focus:"codex:focus-1",tab:"held-to"});
+console.log(JSON.stringify({routes, round}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {"view": "project", "project": "cargento", "focus": None, "tab": "decisions"},
+                {
+                    "view": "project",
+                    "project": "cargento",
+                    "focus": "codex:focus-1",
+                    "tab": "held-to",
+                },
+                {"view": "project", "project": "cargento", "focus": None, "tab": None},
+                {
+                    "view": "project",
+                    "project": "cargento",
+                    "focus": "codex:focus-1",
+                    "tab": None,
+                },
+            ],
+            out["routes"],
+        )
+        self.assertEqual("#n=project:cargento:codex%3Afocus-1:held-to", out["round"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitScopeRailCardTest(NextPageJsHarness):
+    """DRC-4597. The rail card led with the harness and the state and put the
+    session's own title last and smallest, so the only string that tells one
+    card from another was the least prominent one in it.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    GROUP = r"""
+const mixed = {label:"cargento", sessions:[
+  {harness:"claude", sid:"c1", state:"idle", title:"Quiet lane", last_activity:40},
+  {harness:"codex", sid:"w1", state:"working", title:"Live lane", tone:"want",
+    last_activity:100}
+]};
+const single = {label:"cargento", sessions:[
+  {harness:"claude", sid:"c1", state:"idle", title:"First lane", last_activity:40},
+  {harness:"claude", sid:"c2", state:"idle", title:"Second lane", last_activity:60}
+]};
+const twins = {label:"cargento", sessions:[
+  {harness:"claude", sid:"t1", state:"idle", last_activity:40},
+  {harness:"claude", sid:"t2", state:"idle", last_activity:40}
+]};
+const rows = html => [...html.matchAll(/<a\s+([^>]+)>([\s\S]*?)<\/a>/g)]
+  .map(match => ({attrs:match[1], body:match[2]}));
+const slot = (body, name) => {
+  const open = `class="next-cockpit-scope-${name}"`;
+  const at = body.indexOf(open);
+  if(at < 0) return "";
+  const from = body.indexOf(">", at) + 1;
+  const tail = name === "meta" ? body.slice(from).replace(/<\/span>\s*$/, "") :
+    body.slice(from, body.indexOf("</span>", from));
+  return tail.replace(/<[^>]+>/g, "").trim();
+};
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + self.GROUP + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_title_is_line_one_and_the_meta_is_line_two(self) -> None:
+        """AC-1. Falsified by restoring the <small> title after the state span,
+        or letting the title and the meta resolve to the same size or ink."""
+        out = self.run_fixture(
+            r"""
+const html = nextCockpitScopeLinks(mixed, null);
+const sessions = rows(html).filter(row => row.attrs.includes('data-scope-kind="session"'));
+console.log(JSON.stringify({count:sessions.length, cards:sessions.map(row => ({
+  titleAt:row.body.indexOf('class="next-cockpit-scope-title"'),
+  metaAt:row.body.indexOf('class="next-cockpit-scope-meta"'),
+  title:slot(row.body, "title"), meta:slot(row.body, "meta")
+}))}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, out["count"])
+        for card in out["cards"]:
+            self.assertGreater(card["titleAt"], -1)
+            self.assertGreater(card["metaAt"], card["titleAt"])
+        self.assertEqual("Live lane", out["cards"][0]["title"])
+        self.assertIn("Codex", out["cards"][0]["meta"])
+        self.assertIn("working", out["cards"][0]["meta"])
+
+    def test_the_kind_is_stated_in_words_once_per_group(self) -> None:
+        """AC-2. Falsified by deleting the hidden span, hard-coding the count, or
+        reinstating the visible per-row cue."""
+        out = self.run_fixture(
+            r"""
+const html = nextCockpitScopeLinks(mixed, null);
+const all = rows(html);
+const sessions = all.filter(row => row.attrs.includes('data-scope-kind="session"'));
+console.log(JSON.stringify({
+  cuesOnSessions:sessions.filter(row => row.body.includes('class="next-scope-cue')).length,
+  hiddenSession:sessions.map(row =>
+    (row.body.match(/class="next-visually-hidden">([^<]*)<\/span>/) || [])[1] || ""),
+  markers:sessions.filter(row => row.body.includes("next-scope-marker--round")).length,
+  projectCue:all[0].body.includes('class="next-scope-cue'),
+  projectMeta:slot(all[0].body, "meta"),
+  expected:`${mixed.sessions.length} sessions`
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["cuesOnSessions"])
+        self.assertEqual(["SESSION", "SESSION"], out["hiddenSession"])
+        self.assertEqual(2, out["markers"])
+        self.assertTrue(out["projectCue"])
+        self.assertEqual(out["expected"], out["projectMeta"])
+
+    def test_the_harness_hoists_only_when_every_row_shares_one(self) -> None:
+        """AC-3. Falsified by hoisting on a mixed-harness group, or keeping the
+        per-row harness on a single-harness group."""
+        out = self.run_fixture(
+            r"""
+const draw = group => nextCockpitScopeTree(group, null);
+const count = (html, needle) => html.split(needle).length - 1;
+const singleHtml = draw(single);
+const mixedHtml = draw(mixed);
+const heading = html => (html.match(/class="next-cockpit-scope-heading">([^<]*)<\/span>/) || [])[1] || "";
+console.log(JSON.stringify({
+  singleHeading:heading(singleHtml), mixedHeading:heading(mixedHtml),
+  singleClaude:count(singleHtml, "Claude"), mixedClaude:count(mixedHtml, "Claude"),
+  mixedCodex:count(mixedHtml, "Codex"),
+  switcherHeading:heading(nextCockpitScopeSwitcher(single, null))
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("SCOPE · Claude", out["singleHeading"])
+        self.assertEqual("SCOPE", out["mixedHeading"])
+        # Once in the heading and on no row.
+        self.assertEqual(1, out["singleClaude"])
+        self.assertEqual(1, out["mixedClaude"])
+        self.assertEqual(1, out["mixedCodex"])
+        self.assertEqual("SCOPE · Claude", out["switcherHeading"])
+
+    def test_a_withheld_title_is_marked_on_twin_rows_too(self) -> None:
+        """AC-4. Falsified by re-appending the sid to the title string, or a
+        second [data-next-withheld] colour rule reappearing."""
+        out = self.run_fixture(
+            r"""
+const html = nextCockpitScopeLinks(twins, null);
+const sessions = rows(html).filter(row => row.attrs.includes('data-scope-kind="session"'));
+console.log(JSON.stringify({
+  marked:sessions.filter(row => row.body.includes("data-next-withheld")).length,
+  titles:sessions.map(row => slot(row.body, "title")),
+  metas:sessions.map(row => slot(row.body, "meta"))
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, out["marked"])
+        self.assertEqual(
+            ["Session title not published", "Session title not published"], out["titles"]
+        )
+        for meta, sid in zip(out["metas"], ("t1", "t2"), strict=True):
+            self.assertTrue(meta.endswith(sid), f"the twin sid is not last on the meta: {meta!r}")
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        coloured = [
+            block
+            for block in re.finditer(
+                r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", styles, flags=re.DOTALL)
+            )
+            if "[data-next-withheld]" in block.group(1) and "color:" in block.group(2)
+        ]
+        self.assertEqual(1, len(coloured), "more than one rule colours a withheld value")
+        self.assertIn("color:var(--ink3)", coloured[0].group(2))
+        rail = re.search(
+            r"\.next-cockpit-scope-tree \[data-next-withheld\][^{]*\{([^}]*)\}", styles
+        )
+        self.assertIsNotNone(rail)
+        self.assertEqual("font-family:var(--sans)", (rail.group(1) if rail else "").strip())
+
+    def test_the_card_keeps_its_target_size_and_selection_on_both_surfaces(self) -> None:
+        """AC-5. Falsified by a min-block-size override in the new card rules, or
+        a card shape that renders only in the tree and breaks in the disclosure."""
+        out = self.run_fixture(
+            r"""
+const focus = single.sessions[1];
+const tree = nextCockpitScopeLinks(single, focus);
+const switcher = nextCockpitScopeLinks(single, focus, "switcher");
+const current = html => rows(html).filter(row => row.attrs.includes('aria-current="page"')).length;
+const shape = html => rows(html).filter(row => row.attrs.includes('data-scope-kind="session"'))
+  .every(row => row.body.includes('class="next-cockpit-scope-title"') &&
+    row.body.includes('class="next-cockpit-scope-meta"'));
+console.log(JSON.stringify({treeCurrent:current(tree), switcherCurrent:current(switcher),
+  treeShape:shape(tree), switcherShape:shape(switcher),
+  switcherFocus:switcher.includes('data-next-focus="cockpit-scope:switcher:')}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["treeCurrent"])
+        self.assertEqual(1, out["switcherCurrent"])
+        self.assertTrue(out["treeShape"])
+        self.assertTrue(out["switcherShape"])
+        self.assertTrue(out["switcherFocus"])
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn("min-block-size:44px", styles)
+        selected = re.search(
+            r'\.next-cockpit-scope-tree a\[aria-current="page"\][^{]*\{([^}]*)\}', styles
+        )
+        self.assertIsNotNone(selected)
+        self.assertIn("box-shadow:inset 2px 0", selected.group(1) if selected else "")
+        # Nothing in the new card rules may take the target size back.
+        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", styles):
+            if "next-cockpit-scope-title" in block.group(
+                1
+            ) or "next-cockpit-scope-meta" in block.group(1):
+                self.assertNotIn("min-block-size", block.group(2))
 
 
 if __name__ == "__main__":

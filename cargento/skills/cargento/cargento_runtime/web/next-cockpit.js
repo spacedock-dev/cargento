@@ -200,27 +200,62 @@ function nextCockpitScopeSessionRank(session, group){
   return 3;
 }
 
+function nextCockpitScopeHarnessLabel(session){
+  return nextHarnessLabels().get(String(session && session.harness || "")) ||
+    String(session && session.harness || "Session");
+}
+
+/* The harness name when every row in the group carries the same one, so the
+   rail says it once in its heading instead of on every card. Empty on a mixed
+   group, where the name is the thing that tells two cards apart. */
+function nextCockpitScopeHoistedHarness(group){
+  const sessions = group && Array.isArray(group.sessions) ? group.sessions : [];
+  const labels = new Set(sessions.map(nextCockpitScopeHarnessLabel));
+  return sessions.length && labels.size === 1 ? [...labels][0] : "";
+}
+
+function nextCockpitScopeHeading(group){
+  const hoisted = nextCockpitScopeHoistedHarness(group);
+  return `<span class="next-cockpit-scope-heading">SCOPE${hoisted ? " \u00b7 " + esc(hoisted) : ""}</span>`;
+}
+
 function nextCockpitScopeLinks(group, focus, surface = "tree"){
   const selected = focus ? sessKey(focus) : "project";
-  const link = (key, label, state, subtitle, scope, isWorking = false, tone = "ok") => {
+  /* `value` and `meta`, not `label` and `subtitle`: the project row and the
+     session rows hold their value in opposite slots -- the project's is its
+     own name with the count beneath, a session's is its title with the
+     harness and state beneath. Reordering the DOM for every row would put the
+     project's count above its name, so each caller says which of its strings
+     is the value instead.
+
+     `value` is text and is escaped here; `meta` is HTML, because the session
+     row composes a state span into it. A caller passing text escapes it. */
+  const link = (key, rawValue, meta, scope, options = {}) => {
     const route = {view:"project",project:group.label,focus:key === "project" ? null : key,
       tab:nextRoute && nextRoute.tab || "now"};
-    const liveDot = isWorking
-      ? `<span class="next-project-dot next-project-tone--${esc(tone)} next-project-dot--working" role="img" aria-label="${esc(state)}"></span>`
-      : "";
-    const stateClass = isWorking ? "next-cockpit-scope-state next-cockpit-scope-state--working" : "next-cockpit-scope-state";
-    const stateHtml = state
-      ? `<span class="${stateClass}">${liveDot}${esc(state)}</span>`
+    /* Whitespace normalised, because line 1 is one clipped line and a title
+       carrying a newline would break both the line and the `title=` tooltip.
+       Not truncated: the 90-character slice this replaces existed when the
+       string wrapped to two rows with nothing clipping it, and cutting it here
+       now would take the tail that `text-overflow:ellipsis` is drawing. */
+    const value = String(rawValue).replace(/\s+/g, " ").trim();
+    const withheld = value === "Session title not published";
+    const kindMark = scope.kind === "session"
+      ? '<span class="next-cockpit-scope-mark" aria-hidden="true">' +
+        '<i class="next-scope-marker next-scope-marker--round"></i></span>' +
+        '<span class="next-visually-hidden">SESSION</span>'
       : "";
     return `<a href="${esc(nextFragmentForRoute(route))}" data-next-cockpit-scope="${esc(key)}"` +
       (selected === key ? ` aria-current="page"` : "") +
-      (isWorking ? ' data-next-working="true"' : "") +
-      ` data-scope-kind="${esc(scope.kind)}" data-next-focus="cockpit-scope:${surface}:${esc(key)}">` +
-      nextCockpitScopeCue(Object.assign({}, scope, {detail:""})) +
-      `<strong class="next-cockpit-scope-name">${esc(label)}</strong>` +
-      stateHtml +
-      (subtitle ? `<small${subtitle === "Session title not published" ? ' data-next-withheld' : ""}>` +
-        `${esc(String(subtitle).replace(/\s+/g, " ").slice(0, 90))}</small>` : "") +
+      (options.isWorking ? ' data-next-working="true"' : "") +
+      ` data-scope-kind="${esc(scope.kind)}" data-scope-owner="${esc(scope.owner || "unknown")}"` +
+      ` data-next-focus="cockpit-scope:${surface}:${esc(key)}">` +
+      (scope.kind === "session" ? "" :
+        nextCockpitScopeCue(Object.assign({}, scope, {detail:""}))) +
+      '<span class="next-cockpit-scope-line">' + kindMark +
+      `<span class="next-cockpit-scope-title"${withheld ? " data-next-withheld" : ""}` +
+      ` title="${esc(value)}">${esc(value)}</span></span>` +
+      (meta ? `<span class="next-cockpit-scope-meta">${meta}</span>` : "") +
       `</a>`;
   };
   const rows = [...group.sessions].sort((left, right) =>
@@ -232,30 +267,47 @@ function nextCockpitScopeLinks(group, focus, surface = "tree"){
      in the href and in a data attribute, and neither is on screen, so the
      reader picks one of two and finds out which by reading the tab it opens.
      Only the rows that collide carry the sid, because a key beside a name
-     that is already unique is noise on every other board. */
+     that is already unique is noise on every other board.
+
+     On the meta line rather than appended to the title: line 1 is clipped to
+     one line, so a sid on the end of it is the first thing truncated -- and
+     with the sid off the title the equality that stamps `data-next-withheld`
+     holds again on a title-less twin, which it did not before. */
   const face = session => [String(session.harness || ""), String(session.state || ""),
     String(session.title || "").trim()].join("\u0000");
   const faces = rows.map(face);
-  return link("project", nextCockpitScopeLabel(group), "",
-      `${rows.length} ${rows.length === 1 ? "session" : "sessions"}`,
+  const hoisted = nextCockpitScopeHoistedHarness(group);
+  return link("project", nextCockpitScopeLabel(group),
+      esc(`${rows.length} ${rows.length === 1 ? "session" : "sessions"}`),
       nextCockpitProjectScopeKind()) +
     rows.map((session, index) => {
-      const harness = nextHarnessLabels().get(String(session.harness || "")) ||
-        String(session.harness || "Session");
+      const harness = nextCockpitScopeHarnessLabel(session);
       const twin = faces.some((other, at) => at !== index && other === faces[index]);
       const title = String(session.title || "").trim() || "Session title not published";
       const isWorking = nextCockpitSessionIsWorking(session, group);
       const tone = nextCockpitSessionTone(session, group);
-      return link(sessKey(session), harness, String(session.state || "unknown"),
-        twin ? `${title} · ${String(session.sid || "")}` : title,
-        nextCockpitSessionScopeKind(session),
-        isWorking, tone);
+      const state = String(session.state || "unknown");
+      const liveDot = isWorking
+        ? `<span class="next-project-dot next-project-tone--${esc(tone)} next-project-dot--working" role="img" aria-label="${esc(state)}"></span>`
+        : "";
+      const stateClass = isWorking
+        ? "next-cockpit-scope-state next-cockpit-scope-state--working"
+        : "next-cockpit-scope-state";
+      const age = nextDurationSince(session.last_activity);
+      const meta = [
+        hoisted ? "" : esc(harness),
+        `<span class="${stateClass}">${liveDot}${esc(state)}</span>`,
+        age ? esc(age) : "",
+        twin ? esc(String(session.sid || "")) : ""
+      ].filter(Boolean).join(" \u00b7 ");
+      return link(sessKey(session), title, meta,
+        nextCockpitSessionScopeKind(session), {isWorking});
     }).join("");
 }
 
 function nextCockpitScopeTree(group, focus){
   return `<nav class="next-cockpit-scope-tree" aria-label="Project scope">` +
-    '<span class="next-cockpit-scope-heading">SCOPE</span>' +
+    nextCockpitScopeHeading(group) +
     nextCockpitScopeLinks(group, focus) + `</nav>`;
 }
 
@@ -267,6 +319,7 @@ function nextCockpitScopeSwitcher(group, focus){
   return '<details class="next-cockpit-scope-switcher"' + nextCockpitDisclosureAttr("scope") + '>' +
     `<summary><span>${esc(selected)}</span><strong>Change scope</strong></summary>` +
     `<nav class="next-cockpit-scope-options" aria-label="Change project scope">` +
+    nextCockpitScopeHeading(group) +
     nextCockpitScopeLinks(group, focus, "switcher") + '</nav></details>';
 }
 
@@ -1835,32 +1888,48 @@ const NEXT_COCKPIT_STEER_BY_HAND = "Raised to you and nowhere else. Cargento doe
    departures it raised, then how it landed, then where it is kept", and reading
    those three as five slots inside one section put the Intent-log pointer
    before HOW IT LANDED. `nextCockpitHeldTo` appends it. */
-function nextCockpitDepartures(shape, source, session){
-  const reading = nextCockpitReadingDepartures(shape, source);
-  /* The lane's rows, counted once and used twice: the delivery part is printed
-     only where one of THESE stands, because only this lane raises a
-     notification, and the figure below must count the rows this section
-     actually rendered.
+// Defined where the noun is first used rather than in a glossary nobody
+// opens. One sentence each, and each rendered exactly once per panel.
+const NEXT_COCKPIT_DEPARTURE_DEFINITION =
+  "A departure is a place the record does not match what you typed.";
+const NEXT_COCKPIT_REVISION_DEFINITION = "Each save is a revision.";
+const NEXT_COCKPIT_READING_DEFINITION =
+  "A reading is one model pass over the record, made only when you press for it.";
 
-     `departure_checked` and not the list's own length, because an empty list
-     is two different facts. The lane publishes `[]` for a session it read and
-     found nothing in AND for one it has never reached, and only the first is a
-     figure: walked with the switch on and this session unread, "Departures the
-     checks run while you were away raised 0" printed four lines under
-     "Cargento has not checked this session against what you asked for". The
-     switch test above is the same rule one layer out. */
+/* The lane's rows, counted once and used three times: the delivery part is
+   printed only where one of THESE stands, because only this lane raises a
+   notification; the figure below must count the rows this section actually
+   rendered; and the tab strip's cue must agree with both.
+
+   `departure_checked` and not the list's own length, because an empty list
+   is two different facts. The lane publishes `[]` for a session it read and
+   found nothing in AND for one it has never reached, and only the first is a
+   figure: walked with the switch on and this session unread, "Departures the
+   checks run while you were away raised 0" printed four lines under
+   "Cargento has not checked this session against what you asked for". The
+   switch test in `nextCockpitUnaskedPart` is the same rule one layer out.
+
+   With the lane off the figure is the rows this section actually drew, and
+   only where it drew some: `departure_checked` is not consulted there,
+   because a switch that is off publishes no capability key and a length read
+   off a list `base_session` declares empty on every row would report the
+   schema (DRC-4559, the first Measured Invariant). */
+function nextCockpitDepartureLaneCount(session){
   const laneOn = Boolean(nextData && nextData.unasked === true);
   const laneRows = Array.isArray(session && session.departures) ? session.departures : null;
-  /* With the lane off the figure is the rows this section actually drew, and
-     only where it drew some: `departure_checked` is not consulted there,
-     because a switch that is off publishes no capability key and a length read
-     off a list `base_session` declares empty on every row would report the
-     schema (DRC-4559, the first Measured Invariant). */
-  const lane = laneRows && (laneOn
+  if(!laneRows) return null;
+  const counted = laneOn
     ? (laneRows.length > 0 || session.departure_checked === true)
-    : laneRows.length > 0) ? laneRows.length : null;
+    : laneRows.length > 0;
+  return counted ? laneRows.length : null;
+}
+
+function nextCockpitDepartures(shape, source, session){
+  const reading = nextCockpitReadingDepartures(shape, source);
+  const lane = nextCockpitDepartureLaneCount(session);
   return '<section class="next-cockpit-departures"><header>' +
-    '<h2>DEPARTURES RAISED TO YOU</h2></header>' +
+    '<h2>DEPARTURES RAISED TO YOU</h2>' +
+    `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p></header>` +
     reading.html +
     nextCockpitUnaskedPart(session) +
     nextCockpitDeliveryPart(session, Boolean(lane)) +
@@ -2199,8 +2268,13 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
   const raw = annotation && annotation.assessment;
   const withheld = String(annotation && annotation.reading_withheld || "");
-  const close = (body, shape) => `${header}</header>${body}</section>` +
-    nextCockpitDepartures(shape, source, session);
+  /* `defined` rather than sniffing the composed body: the no-reading arm
+     already renders NEXT_READING_OFFER, which says what a reading is at more
+     length, and a second sentence saying the same thing is a regression
+     rather than a fix. Every other arm needs the short one. */
+  const close = (body, shape, defined) => `${header}</header>` +
+    (defined ? "" : `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>`) +
+    `${body}</section>` + nextCockpitDepartures(shape, source, session);
   /* A press that produced nothing is not the same as no press, and the
      reason it produced nothing is a sentence the producer chose from a
      closed set rather than one this page infers. */
@@ -2229,7 +2303,8 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
       : "";
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER} ` +
       `${NEXT_READING_NOT_A_VERIFICATION}</p>`;
-    return close(refused + offer + why + nextCockpitReadingControl(session, annotation, model), null);
+    return close(refused + offer + why + nextCockpitReadingControl(session, annotation, model),
+      null, true);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
   if(shape.malformed){
@@ -2258,7 +2333,8 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     ? `<p class="next-cockpit-reading-why">${esc(shape.scopeText)}</p>` : "";
   return header +
     (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
-    '</header>' + stale + nextCockpitReadingBaseline(shape) + scope + why +
+    '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
+    stale + nextCockpitReadingBaseline(shape) + scope + why +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
     nextCockpitReadingControl(session, annotation, model) + '</section>' +
     nextCockpitDepartures(shape, source, session);
@@ -2546,6 +2622,7 @@ function nextCockpitHeldTo(group, observation){
   return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
     `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
+    `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
@@ -3049,14 +3126,6 @@ function nextCockpitMemoFields(group, focus){
     '</section>';
 }
 
-function nextCockpitProjectScope(){
-  return '<section class="next-cockpit-scope next-cockpit-scope--project">' +
-    nextCockpitScopeCue(nextCockpitProjectScopeKind()) +
-    '<strong>OVERVIEW</strong>' +
-    '<span>Session selection filters Course, Decisions, and Console; Now remains project-wide.</span>' +
-    '</section>';
-}
-
 function nextCockpitConsoleScope(focus){
   const scope = focus ? nextCockpitSessionScopeKind(focus) : nextCockpitProjectScopeKind();
   return '<header class="next-cockpit-scope next-cockpit-scope--evidence">' +
@@ -3103,16 +3172,111 @@ function nextCockpitViewingSession(focus){
     `Viewing session · ${esc(scope.detail || "Session")} · ${esc(state)}</p>`;
 }
 
-function nextCockpitTabList(){
+/* One sentence per tab, naming the tab's own word and what its panel holds.
+   Three of the five open onto a heading that does not repeat the label -- Now
+   onto GOING ON, Course onto OBSERVED STATE CHANGES, Held to onto WHAT YOU
+   ASKED FOR -- and renaming either end would move a string two other views
+   share. */
+const NEXT_COCKPIT_TAB_LEDES = new Map([
+  ["now", "Now: what is running in this project this minute, and how sessions here have ended."],
+  ["course", "Course: direction changes Cargento observed in the session record."],
+  ["decisions", "Decisions: rulings found in the record, and what each one has been spent on."],
+  ["console", "Console: the read-only terminal of one selected session, and the controls for it."],
+  ["held-to", "Held to: what you asked this session for, and how its record measures against it."],
+]);
+
+// Singular and plural for the cue's gloss, per tab that carries one.
+const NEXT_COCKPIT_TAB_NOUNS = new Map([
+  ["course", ["observed state change", "observed state changes"]],
+  ["decisions", ["decision", "decisions"]],
+  ["held-to", ["departure raised", "departures raised"]],
+]);
+
+function nextCockpitTabLede(tab){
+  const text = NEXT_COCKPIT_TAB_LEDES.get(tab);
+  return text ? `<p class="next-cockpit-lede">${esc(text)}</p>` : "";
+}
+
+function nextCockpitTabCueCount(length){
+  return length > 0 ? {state:"count", value:length} : {state:"zero", value:0};
+}
+
+/* What the tab's own panel would count, in the four states the board can
+   honestly be in about it: a figure, a collection read and found empty, a
+   collection nothing has published, and one whose context has not arrived.
+   `null` means this tab renders no countable collection at all, which is not
+   an absence to assert -- Now draws three fixed cells and Console is a
+   terminal.
+
+   Every read is guarded on the collection being an array before `.length` is
+   taken. A length read off a list that is declared on every row whether or not
+   anything ran reports the schema rather than the session, which is the defect
+   DRC-4559 shipped and AGENTS.md's first Measured Invariant records. That is
+   also why `observation.semantic` is read directly here rather than through
+   `nextCockpitSemantic`, whose `{facts:[]}` default would turn "no observation
+   at all" into a confident zero. */
+function nextCockpitTabCue(tab, context, focus, observation){
+  const group = context && context.group;
+  if(tab === "course"){
+    const changes = context && context.project && context.project.changes;
+    return Array.isArray(changes) ? nextCockpitTabCueCount(changes.length) : {state:"unobserved"};
+  }
+  if(tab === "decisions"){
+    /* The same selection `nextCockpitDecisionSummary` makes, so the cue and
+       the panel count one collection: the focused context entry at session
+       scope, the project observation at project scope. */
+    const entry = focus && group
+      ? nextCockpitContexts.get(nextCockpitContextKey(group, focus)) : null;
+    if(focus && !(entry && entry.data)) return {state:"pending"};
+    const semantic = focus
+      ? entry.data.semantic
+      : observation && observation.semantic;
+    if(!semantic || !Array.isArray(semantic.facts)) return {state:"unobserved"};
+    return nextCockpitTabCueCount(projectDecisionFacts(
+      group ? nextCockpitCanonicalSemantic(group, semantic) : semantic).length);
+  }
+  if(tab === "held-to"){
+    // The panel renders no collection at all with the store off, which is the
+    // rule Now and Console are under rather than an absence to assert.
+    if(!focus || !(nextData && nextData.annotate === true)) return null;
+    const lane = nextCockpitDepartureLaneCount(focus);
+    return lane == null ? {state:"unobserved"} : nextCockpitTabCueCount(lane);
+  }
+  return null;
+}
+
+function nextCockpitTabCueHtml(tab, cue){
+  if(!cue) return "";
+  const nouns = NEXT_COCKPIT_TAB_NOUNS.get(tab) || ["item", "items"];
+  const mark = cue.state === "pending" ? "\u2026" :
+    cue.state === "unobserved" ? "\u00b7" : String(cue.value);
+  const gloss = cue.state === "count"
+    ? `${cue.value} ${cue.value === 1 ? nouns[0] : nouns[1]}`
+    : cue.state === "zero" ? `No ${nouns[1]} observed`
+    : cue.state === "pending" ? `${nouns[1]} not loaded yet`
+    : `${nouns[1]} not published`;
+  const variant = cue.state === "pending" ? " next-cockpit-tab-cue--pending" :
+    cue.state === "unobserved" ? " next-cockpit-tab-cue--unobserved" : "";
+  return `<span class="next-cockpit-tab-cue${variant}" data-next-cockpit-tab-cue="${cue.state}">` +
+    `<span aria-hidden="true">${esc(mark)}</span>` +
+    `<span class="next-visually-hidden">${esc(gloss)}</span></span>`;
+}
+
+function nextCockpitTabList(context, focus, observation){
+  /* The route's `focus`, not the `focus` argument. The argument carries the
+     session the cue needs; the tab SET stays on the route, because
+     `nextCockpitPanel` reads the route too and a stale route would otherwise
+     let the nav and the panel name different tabs. */
   const tabs = nextCockpitTabs(nextRoute && nextRoute.focus);
   const selected = tabs.includes(nextRoute && nextRoute.tab) ? nextRoute.tab : "now";
   return '<nav class="next-cockpit-tabs" role="tablist" aria-label="Project cockpit views">' +
     tabs.map(tab => {
       const label = nextCockpitHumanLabel(tab);
       const current = tab === selected;
+      const cue = nextCockpitTabCueHtml(tab, nextCockpitTabCue(tab, context, focus, observation));
       return `<button type="button" role="tab" data-next-cockpit-action="tab" ` +
         `data-arg="${tab}" data-next-focus="cockpit-tab:${tab}" aria-controls="next-cockpit-panel-${tab}" ` +
-        `aria-selected="${current}" tabindex="${current ? 0 : -1}">${label}</button>`;
+        `aria-selected="${current}" tabindex="${current ? 0 : -1}">${label}${cue}</button>`;
     }).join("") + '</nav>';
 }
 
@@ -3403,7 +3567,7 @@ function nextCockpitCourse(group, semantic, lanes){
     visible.map(nextCockpitCourseRow).join("") + other + '</div>';
 }
 
-function nextCockpitTimeline(group, focus, mode = "active"){
+function nextCockpitTimeline(group, focus){
   const key = nextCockpitContextKey(group, focus);
   const entry = nextCockpitContexts.get(key);
   const projectEntry = nextCockpitContexts.get(nextCockpitContextKey(group, null));
@@ -3424,10 +3588,23 @@ function nextCockpitTimeline(group, focus, mode = "active"){
     group,
     entry.data.semantic || {facts:[], work_items:[], projections:{}},
   );
+  /* `defaultMode` rather than `mode`: a pinned mode also swaps the event
+     source, so pinning it here was what took the renderer's other two modes
+     off the board. An untouched Decisions tab still resolves to decisions;
+     a reader who presses a button gets the other two.
+
+     `eventPrefix` is kept in all three, because it draws its per-event scope
+     cue from `event.fact`, which `projectGlobalEvents` sets on every event it
+     builds. Dropping it on a mode change would lose which session an event
+     came from exactly where the list gets longer. */
+  const options = {defaultMode:"decisions",
+    eventPrefix:event => nextCockpitScopeCue(nextCockpitFactScope(event.fact))};
   const timeline = projectSemanticTimeline(nextData, semantic, lanes, focus, group.sessions,
-    mode === "decisions" ? {mode:"decisions",controls:false,
-      eventPrefix:event => nextCockpitScopeCue(nextCockpitFactScope(event.fact))} : null)
+    options)
     .replaceAll('data-calm="project-graph-mode"', 'data-next-cockpit-action="graph-mode"');
+  /* Resolved by the renderer's own function rather than from the argument, so
+     the heading cannot say RECORDED DECISIONS over an all-events list. */
+  const mode = projectResolveGraphMode(options);
   return '<section class="next-cockpit-semantic" data-next-cockpit-semantic>' +
     `<h2>${mode === "decisions" ? "RECORDED DECISIONS" : "SEMANTIC TIMELINE"}</h2>` +
     timeline + '</section>';
@@ -3485,7 +3662,7 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
       nextCockpitCoursePanel(context.group, focus) + nextCockpitCompletedWork(context);
   }else if(tab === "decisions"){
     body = nextCockpitDecisionSummary(context.group, focus, observation) +
-      nextCockpitTimeline(context.group, focus, "decisions");
+      nextCockpitTimeline(context.group, focus);
   }else{
     body = nextCockpitConsoleScope(focus) + (focus
       ? nextCockpitTerminal(context.group, focus)
@@ -3498,7 +3675,8 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
       nextCockpitConsoleStatus(context.group) + nextProjectRail(context);
   }
   return `<section class="next-cockpit-panel" id="next-cockpit-panel-${tab}" role="tabpanel" ` +
-    `data-next-cockpit-panel="${tab}" aria-label="${nextCockpitHumanLabel(tab)}">${body}</section>`;
+    `data-next-cockpit-panel="${tab}" aria-label="${nextCockpitHumanLabel(tab)}">` +
+    nextCockpitTabLede(tab) + `${body}</section>`;
 }
 
 function nextProjectCockpit(context, observation, commandAttention){
@@ -3508,7 +3686,7 @@ function nextProjectCockpit(context, observation, commandAttention){
   lastData = nextData;
   return nextCockpitViewingSession(focus) +
     nextCockpitRecoveryStrip(group, observation, commandAttention, context.project) +
-    nextCockpitTabList() +
+    nextCockpitTabList(context, focus, observation) +
     nextCockpitPanel(context, focus, observation, commandAttention);
 }
 
@@ -3709,10 +3887,7 @@ document.addEventListener("click", event => {
   const key = String(target.dataset.arg || projectQuerySession || "");
   if(action === "graph-mode"){
     event.preventDefault();
-    if(["active", "all", "decisions"].includes(String(target.dataset.arg || ""))){
-      projectGraphModeBySession.set(projectQuerySession, String(target.dataset.arg));
-      renderNext();
-    }
+    if(projectSetGraphMode(projectQuerySession, String(target.dataset.arg || ""))) renderNext();
   }else if(action === "terminal-open"){
     event.preventDefault();
     projectTerminalOpenKey = key;

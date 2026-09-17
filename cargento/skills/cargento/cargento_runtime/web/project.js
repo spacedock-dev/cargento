@@ -20,7 +20,55 @@ const projectContextRequests = {};
 let projectContextRequestSequence = 0;
 const projectDisclosureOpenBySession = new Map();
 const projectDisclosurePendingBySession = new Set();
+const PROJECT_GRAPH_MODES = ["active", "all", "decisions"];
+/* The reader's timeline mode, per session key, surviving a reload the way the
+   workstream collapse does. One key holding a map rather than one key per
+   session: a reader who picked a mode on one session has not chosen one for
+   every other, and a per-session key would leave a row in browser storage for
+   every session the tab ever showed.
+
+   The lane is a reader-set one; `docs/design-reader-state.md` carries its row. */
+const NEXT_GRAPH_MODE_KEY = "cargento.next.graph.mode";
 const projectGraphModeBySession = new Map();
+
+function projectLoadGraphModes(){
+  try{
+    const stored = JSON.parse(localStorage.getItem(NEXT_GRAPH_MODE_KEY) || "null");
+    if(!stored || typeof stored !== "object") return;
+    for(const [key, value] of Object.entries(stored)){
+      if(PROJECT_GRAPH_MODES.includes(value)) projectGraphModeBySession.set(String(key), value);
+    }
+  }catch(_error){ /* storage off or unreadable: the tab keeps its own choice */ }
+}
+
+function projectStoreGraphModes(){
+  try{
+    localStorage.setItem(NEXT_GRAPH_MODE_KEY,
+      JSON.stringify(Object.fromEntries(projectGraphModeBySession)));
+  }catch(_error){ /* the choice still holds for the life of this tab */ }
+}
+
+function projectSetGraphMode(session, mode){
+  if(!PROJECT_GRAPH_MODES.includes(mode)) return false;
+  projectGraphModeBySession.set(String(session || ""), mode);
+  projectStoreGraphModes();
+  return true;
+}
+
+/* One resolver, because the cockpit's panel heading and the renderer's own
+   rows read the same answer. A caller that pins `mode` overrides the reader;
+   `defaultMode` is what an untouched panel falls back to before the shared
+   "active". */
+function projectResolveGraphMode(options){
+  const requested = options && options.mode;
+  if(PROJECT_GRAPH_MODES.includes(requested)) return requested;
+  const stored = projectGraphModeBySession.get(String(projectQuerySession || ""));
+  if(PROJECT_GRAPH_MODES.includes(stored)) return stored;
+  const fallback = options && options.defaultMode;
+  return PROJECT_GRAPH_MODES.includes(fallback) ? fallback : "active";
+}
+
+projectLoadGraphModes();
 let projectUsageCounts = null;
 let projectTabOrder = null;
 let projectOpenedKey = null;
@@ -351,7 +399,7 @@ function projectGoalAction(act, label){
 
 function projectAction(act, arg){
   if(act === "project-graph-mode"){
-    projectGraphModeBySession.set(String(projectQuerySession || ""), arg === "all" ? "all" : "active");
+    projectSetGraphMode(projectQuerySession, arg === "all" ? "all" : "active");
     if(lastData) render(lastData);
     return true;
   }
@@ -1762,9 +1810,7 @@ function projectUnboundContext(registry){
 
 function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins, options){
   const fullRegistry = projectLaneRegistry(model, workflowLanes, focus, sessionOrigins);
-  const requestedMode = options && options.mode;
-  const mode = ["active", "all", "decisions"].includes(requestedMode)
-    ? requestedMode : projectGraphModeBySession.get(String(projectQuerySession || "")) || "active";
+  const mode = projectResolveGraphMode(options);
   const visibleRegistry = projectVisibleRegistry(fullRegistry, mode);
   const registry = fullRegistry;
   const events = mode === "decisions" ? projectDecisionEvents(model, fullRegistry, focus) :
@@ -1790,7 +1836,7 @@ function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins,
     "pc-history-band", ` data-activity-band="earlier-meaningful"`) : "";
   const controls = options && options.controls === false ? "" :
     `<div class="pc-graph-filter" role="group" aria-label="Work activity filter">` +
-    ["active", "all", "decisions"].map(value => `<button type="button" data-calm="project-graph-mode"` +
+    PROJECT_GRAPH_MODES.map(value => `<button type="button" data-calm="project-graph-mode"` +
       ` data-arg="${value}" class="${mode === value ? "selected" : ""}"` +
       ` aria-pressed="${mode === value}">${value === "active" ? "Active" :
         (value === "all" ? "All events" : "Decisions")}</button>`).join("") +

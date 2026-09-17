@@ -585,6 +585,66 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIsNotNone(now_narrow)
         self.assertIn("grid-template-columns:1fr", now_narrow.group(1) if now_narrow else "")
 
+    def test_the_rail_card_puts_the_title_above_its_meta_in_two_registers(self) -> None:
+        """DRC-4597 AC-1 and AC-4. The title is the card's value and the meta is
+        the caption beneath it; a withheld title swaps the family and the ink
+        and never the size.
+        """
+        styles = frontend_page.asset_path("styles.css").read_text(encoding="utf-8")
+        title = re.search(r"\.next-cockpit-scope-title\{([^}]*)\}", styles)
+        meta = re.search(r"\.next-cockpit-scope-meta\{([^}]*)\}", styles)
+        self.assertIsNotNone(title)
+        self.assertIsNotNone(meta)
+        title_body = title.group(1) if title else ""
+        meta_body = meta.group(1) if meta else ""
+        self.assertIn("font:var(--fs-sm) var(--mono)", title_body)
+        self.assertIn("color:var(--ink)", title_body)
+        # One clipped line. `white-space:normal` from the rail's own reset is
+        # the rule this has to beat, and the reset no longer selects a bare
+        # `span` inside the link, so nothing overrides it at equal specificity.
+        self.assertIn("text-overflow:ellipsis", title_body)
+        self.assertIn("white-space:nowrap", title_body)
+        self.assertIn("font:var(--fs-2xs) var(--mono)", meta_body)
+        self.assertIn("color:var(--ink3)", meta_body)
+        self.assertNotIn(
+            ".next-cockpit-scope-tree span,", styles, "a bare span reset would unclip the title"
+        )
+        self.assertNotIn(".next-cockpit-scope-name{", styles)
+        mark = re.search(r"\.next-cockpit-scope-mark:before\{([^}]*)\}", styles)
+        self.assertIsNotNone(mark)
+        self.assertIn("border-top:1px solid", mark.group(1) if mark else "")
+
+    def test_the_tab_cue_never_renders_an_absence_larger_than_its_figure(self) -> None:
+        """DRC-4592 AC-4 and AC-5. Both branches of the cue's state ternary
+        resolve here; the pair is never on screen at one moment, so only the
+        stylesheet can be asked whether they agree.
+        """
+        styles = frontend_page.asset_path("styles.css").read_text(encoding="utf-8")
+        sizes = {}
+        for selector in (
+            ".next-cockpit-tab-cue",
+            ".next-cockpit-tab-cue--pending",
+            ".next-cockpit-tab-cue--unobserved",
+        ):
+            block = re.search(re.escape(selector) + r"\{([^}]*)\}", styles)
+            self.assertIsNotNone(block, f"{selector} declares no rule of its own")
+            body = block.group(1) if block else ""
+            token = re.search(r"font:(?:\d+ )?var\(--(fs-[a-z0-9-]+)\)", body)
+            self.assertIsNotNone(token, f"{selector} declares no size, so it inherits one")
+            sizes[selector] = token.group(1) if token else ""
+        self.assertEqual(1, len(set(sizes.values())), f"the cue states disagree on size: {sizes}")
+        lede = re.search(r"\.next-cockpit-lede\{([^}]*)\}", styles)
+        self.assertIsNotNone(lede)
+        self.assertIn("font:var(--fs-sentence)/1.55 var(--sans)", lede.group(1) if lede else "")
+        self.assertIn("color:var(--ink2)", lede.group(1) if lede else "")
+        define = re.search(r"\.next-cockpit-define\{([^}]*)\}", styles)
+        self.assertIsNotNone(define)
+        # 500 weight, matching `.next-cockpit-reading-why`: a definition sits in
+        # the same register as the caveats it stands beside, not a fourth one.
+        self.assertIn(
+            "font:500 var(--fs-sentence)/1.55 var(--sans)", define.group(1) if define else ""
+        )
+
     def test_four_cockpit_tabs_fit_the_smallest_phone_without_pills(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         phone_tabs = re.search(
@@ -632,8 +692,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                106_941,
-                "8d404a66a0fe5a8a021854b64fc48c80aeed260628efadde80c64862d07ce63e",
+                108_840,
+                "59623327f5200953b2b67ea075be000f896e468c3f5e6fe6d42a77be7ee677aa",
             ),
             "next-chrome.js": (
                 40_141,

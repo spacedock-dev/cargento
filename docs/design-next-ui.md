@@ -37,7 +37,9 @@ rule that every claim needs published evidence. The shared-label caveat stays wi
 Where the two designs had the same surface, the v2 renderer survives and the cockpit duplicate
 is removed. Its measured delegation and absence rules already had callers and tests; retaining a
 second rendering would give the same evidence two interpretations. Decisions shows recorded
-decisions and application evidence, not an approval mechanism.
+decisions and application evidence, not an approval mechanism. The tab opens on that view and
+keeps the renderer's own three-button filter, so a reader can widen the same panel to the filtered
+activity view or to every event without leaving it.
 
 RC-1 protects [P3's promise of one queue of everything blocked on the reader](promise-map.md#p3-is-anything-waiting-on-me).
 Putting all waiting evidence behind the Console tab would weaken that promise: a reader returning
@@ -262,6 +264,13 @@ Browser state keeps its `cargento.next.*` namespace. That prefix is no longer a 
 two live bundles; it is compatibility with storage written during the preview and protection from
 stale `cargento.leader` records written by the removed dashboard. The current leader uses
 `cargento.next.leader` and `cargento.next.revision` so a stale old lease cannot demote it.
+
+**Retiring a tab slug is a route change, not a layout change.** `nextRouteFromFragment` in
+`next-boot.js` has no alias table, so a three-part fragment whose last part is no longer in
+`nextCockpitTabs(null)` is not redirected: it falls through to the focus arm and is parsed as a
+session focus id, landing the reader on a session filter that matches nothing. A proposal that
+merges or drops a tab therefore owes an alias for the retired slug and an amendment to this
+section, and cannot be priced as a change to the strip alone.
 
 ## NUI-4: the canonical bundle fails before bind
 

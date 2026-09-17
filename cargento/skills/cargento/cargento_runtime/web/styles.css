@@ -757,6 +757,20 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-tabs button{margin-bottom:-1px;padding:12px 1px 10px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink3);font:var(--fs-sm) var(--mono);cursor:pointer}
 .next-cockpit-tabs button[aria-selected="true"]{border-bottom-color:var(--ink2);color:var(--ink)}
 .next-cockpit-tabs button:focus-visible{outline:2px solid var(--ink2);outline-offset:3px}
+/* The four cue states share one size, declared on each rule rather than
+   inherited, so a later change to one branch is visible in the pair check
+   beside the value it stands in for. Raising `--pending` or `--unobserved`
+   alone would put a state the board cannot establish above the figure it
+   replaces, which is the inversion this milestone exists to remove. */
+.next-cockpit-tab-cue{margin-left:6px;color:var(--ink2);font:var(--fs-machine) var(--mono)}
+.next-cockpit-tab-cue--pending{color:var(--ink3);font:var(--fs-machine) var(--mono)}
+.next-cockpit-tab-cue--unobserved{color:var(--ink3);font:var(--fs-machine) var(--mono)}
+.next-cockpit-lede{margin:0;padding:10px 12px;max-width:var(--measure);color:var(--ink2);font:var(--fs-sentence)/1.55 var(--sans)}
+.next-cockpit-panel>.next-cockpit-lede{grid-column:1/-1}
+.next-cockpit-panel[data-next-cockpit-panel="now"]>.next-cockpit-lede{padding:0}
+/* A noun resolved where it is first used, at the sentence tier so it is not
+   dimmer than the vocabulary it explains. */
+.next-cockpit-define{margin:0;max-width:var(--measure);color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-viewing-session{margin:0;padding:8px 12px;border-bottom:1px solid var(--line);color:var(--ink3);font:var(--fs-2xs) var(--mono)}
 .next-cockpit-panel{min-width:0}
 .next-cockpit-now-state{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
@@ -828,17 +842,27 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-stale-session h1{margin:8px 0;font-size:var(--fs-xl)}
 .next-cockpit-stale-session p{color:var(--ink3);font:var(--fs-xs) var(--mono);overflow-wrap:anywhere}
 .next-cockpit-stale-session a{color:var(--ink2);font:var(--fs-xs) var(--mono)}
-.next-cockpit-scope-name{font:var(--fs-sm) var(--mono)}
 .next-cockpit-scope-heading{padding:0 8px 7px;color:var(--ink3);font:var(--fs-2xs) var(--mono);letter-spacing:.09em}
 #app .next-cockpit-scope-tree a,#app .next-cockpit-scope-options a{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:7px 8px;color:var(--ink2);text-decoration:none}
 .next-cockpit-scope-tree a[data-scope-kind="session"],.next-cockpit-scope-options a[data-scope-kind="session"]{padding-left:14px}
 .next-cockpit-scope-tree a[aria-current="page"],.next-cockpit-scope-options a[aria-current="page"]{box-shadow:inset 2px 0 var(--ink2);background:var(--panel);color:var(--ink)}
 .next-cockpit-scope-tree .next-scope-cue,.next-cockpit-scope-options .next-scope-cue{grid-column:1/-1;margin-bottom:4px}
-.next-cockpit-scope-tree strong,.next-cockpit-scope-tree span,.next-cockpit-scope-tree small,.next-cockpit-scope-options strong,.next-cockpit-scope-options span,.next-cockpit-scope-options small{min-width:0;overflow-wrap:anywhere;white-space:normal}
-.next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-options .next-cockpit-scope-state{display:flex;align-items:center;gap:6px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
+.next-cockpit-scope-tree .next-scope-cue>span,.next-cockpit-scope-options .next-scope-cue>span{min-width:0;overflow-wrap:anywhere}
+/* Line 1 is the title and the card's value; everything else is line 2. The
+   title takes `--fs-sm`/`--ink` -- a swap inside this rail's own scale rather
+   than a new step, since 14px already rendered in this card on the harness
+   name, which is now on the meta line. Clipped to one line with the whole
+   string in `title=`, so a long title cannot push the card back to four rows. */
+.next-cockpit-scope-line{display:flex;min-width:0;align-items:center;gap:6px}
+/* The scope kind, kept non-verbally after the word SESSION left the card for
+   the accessible name: the round marker and the connector rule. The ○ says
+   KIND, not state -- the state indicator is the dot inside the state span. */
+.next-cockpit-scope-mark{position:relative;display:inline-flex;flex:0 0 auto;align-items:center;padding-left:16px;color:var(--ink3)}
+.next-cockpit-scope-mark:before{position:absolute;left:0;top:50%;width:12px;border-top:1px solid var(--ink2);content:""}
+.next-cockpit-scope-title{min-width:0;overflow:hidden;color:var(--ink);font:var(--fs-sm) var(--mono);text-overflow:ellipsis;white-space:nowrap}
+.next-cockpit-scope-meta{display:flex;min-width:0;overflow:hidden;align-items:center;gap:6px;color:var(--ink3);font:var(--fs-2xs) var(--mono);white-space:nowrap}
+.next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-options .next-cockpit-scope-state{display:flex;align-items:center;gap:6px;color:inherit;font:inherit}
 .next-cockpit-scope-tree .next-cockpit-scope-state--working,.next-cockpit-scope-options .next-cockpit-scope-state--working{color:var(--ink2)}
-.next-cockpit-scope-tree small,.next-cockpit-scope-options small{font:var(--fs-xs) var(--mono);color:var(--ink3)}
-.next-cockpit-scope-tree small,.next-cockpit-scope-options small{grid-column:1/-1;margin-top:3px;color:var(--ink2);line-height:1.5}
 .next-scope-cue{position:relative;display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%;color:var(--ink3);font:var(--fs-2xs) var(--mono);letter-spacing:.07em;line-height:1.2}
 .next-scope-cue>strong{color:var(--ink);font:inherit;font-weight:600}
 .next-scope-cue>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0}
@@ -1152,7 +1176,11 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-course-episode p,.next-course-episode ul,.next-course-direction p{font-family:var(--mono)}
 .next-cockpit-content .next-cockpit-source,.next-cockpit-recovery [data-next-cockpit-task-known]>strong{font-family:var(--mono)}
 .next-cockpit-recovery span.next-cockpit-source{display:inline;margin:0;color:inherit;font-size:inherit;letter-spacing:0}
-.next-cockpit-scope-tree small[data-next-withheld],.next-cockpit-scope-options small[data-next-withheld]{font-family:var(--sans)}
+/* Family only. The colour is the board-wide `[data-next-withheld]` rule, and
+   a second one here would be a second place to get it wrong; the size is the
+   title's own, so a withheld title can never render larger than a published
+   one. */
+.next-cockpit-scope-tree [data-next-withheld],.next-cockpit-scope-options [data-next-withheld]{font-family:var(--sans)}
 .next-cockpit-authority>strong,.next-cockpit-authority>small{font-family:var(--sans)}
 /* The chip and the line it used to outrank. `FO INSPECTING` is a state name a
    source published, so mono at the label tier is the register
@@ -1182,7 +1210,6 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-content summary:focus-visible,#app .next-cockpit-scope-tree a:focus-visible,
 #app .next-cockpit-scope-options a:focus-visible,.next-cockpit-scope-switcher>summary:focus-visible{outline:2px solid var(--ink2);outline-offset:3px}
 .next-cockpit-panel[data-next-cockpit-panel="now"]{gap:18px;padding:18px 12px}
-.next-cockpit-scope-tree .next-scope-cue--session,.next-cockpit-scope-options .next-scope-cue--session{margin-left:0}
 .next-cockpit-scope-switcher>summary{font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-content .next-rail-meta--amber{color:var(--ink3)}
 @media(max-width:1279px){
