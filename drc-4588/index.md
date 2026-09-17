@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4588:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4588-review-1
+              briefing:
+                id: briefing:drc-4588:review:attempt-1:revision-1
+                digest: sha256:2ca3f52a8ce5a41323fad944732f11126752a7009aa804ab6d4561e82964c270
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4588](https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason) — Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb
