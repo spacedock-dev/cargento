@@ -893,3 +893,47 @@ Two figures I did not simply adopt, both reported as measurements: the deferred 
 rather than nineteen, which matters because that number sizes DRC-4602 and the first officer is
 carrying it to Linear; and the rail's compact figures growing from about 11px to 15px is a visible
 density change the gate should see stated rather than discover.
+
+### Addendum to correction round 2 (2026-09-17)
+
+One authorized fix that arrived after the cycle-3 package. Documentation only: no CSS, so no byte
+pin moved, and no test figure changed.
+
+- DONE: FIX the membership test's definition, in THIS PR.
+  The sentence this branch authored defined the tier over **one rule's declarations** and then named
+  two composed cases beneath it as members. Those two fail its letter while passing its intent, so
+  an audit written against the sentence returns clean while elements still render at 12.5px. The
+  definition and the disclosure under it contradicted each other, and the disclosure was the half
+  that was right. Membership is now a property of the **element's resolved style**: sans with a
+  prose line-height, arriving through the cascade, either property possibly inherited, the two
+  possibly from different rules, so the element is the unit and a single rule is not. The warning
+  that a per-rule census understates the set now reads as what the rule predicts rather than as an
+  exception bolted onto a rule that denies it.
+- DONE: Keep the auditor, the remediation and the true count in DRC-4602.
+  **Every count of the remaining set is gone from the document.** Not reworded: removed. Each figure
+  this branch produced for that set came from a per-rule census, so each is a floor rather than a
+  count, and the document now says so instead of naming one. The two composed rules stay, named as
+  shapes rather than counted, because they are what the definition warns about. The `--fs-sm`,
+  `--fs-body` and `--fs-summary` steps are named without tallies. This also retires the
+  twenty-one-versus-nineteen disagreement rather than settling it: **the number is DRC-4602's to
+  measure with an auditor that can see composed elements, and no figure from this branch should be
+  carried to Linear.** That supersedes what I asked the first officer to carry in the cycle-3 report.
+- DONE: Element counts carry the date and the commit they were taken at.
+  Written into the document as a rule, with the 163-then-183 reading as its illustration. The
+  illustration carries its own provenance (both readings taken during this branch's review on
+  2026-09-17, reported by the reviewer rather than measured here), because a rule whose own example
+  breaks it teaches the opposite. The stable unit is named: the rule, or the element shape, never
+  its population.
+
+**One incident worth recording.** The addendum commit first landed on a **detached HEAD**: something
+outside this worker moved the worktree from `spacedock-ensign/drc-4587` to `origin/spacedock-ensign/drc-4587`
+between the cycle-3 commit and this one, and the reflog shows the checkout. The branch tip still
+held `e32b207d`, my commit sat one ahead of it unreferenced, and `git status` said only
+"HEAD (no branch)". I verified the addendum's parent **was** the branch tip, so the repair was a
+fast-forward rather than a rewrite, re-attached with `git checkout` and `git merge --ff-only`, and
+confirmed the tip moved. No history was rewritten and nothing was reset, which matters because
+`spacedock-ensign/drc-4588` is stacked here. **That sibling is stacked on `4fb5ee6d`, the cycle-2
+commit, not on the current tip**, so it will rebase across two commits rather than one.
+
+Candidate SHA after the addendum: **`3ab52025c86c27e3621423414d6ebc8c09f6c3a3`**. Addendum surface:
+`docs/design-next-ui.md` 41 added, 27 removed, one file, no code. Branch clean, not pushed.
