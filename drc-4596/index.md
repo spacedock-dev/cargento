@@ -443,3 +443,40 @@ One contradiction is surfaced rather than decided: `styles.css:1083-1087` rules
 `.next-cockpit-recovery small` deliberately down at 12.5px, while `docs/design-next-ui.md:143-147`
 counts the same rule among the nineteen still below the floor. `implementation` resolves it against
 the PR-6 tree.
+
+## Stage Report: implementation
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  Read back from Linear: the DRC-4596 body is the gate-approved rewrite including "What this guard cannot see, stated plainly" (`updatedAt` 2026-09-17T13:54:16Z); the milestone's "How this was measured" now carries the corrected DRC-4596 clause, so it no longer promises that this issue makes the APCA figures reproducible. Labels `move:keep`, `journey:mid-flight`, `Verification`, `discovered-by-agent`. Relations read back: blockedBy DRC-4589 and DRC-4587, relatedTo DRC-4602 and DRC-4606. **Attribution caveat:** written by the predecessor ensign this dispatch replaced; this stage verified the edges rather than created them.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  This guard's falsifiers are committed rather than performed, which AC-5 required: each assertion has a paired mutant test applying its mutation to an in-process copy of the stylesheet text, so the working tree is never touched and no byte pin moves. What each binds, and what reds it: the label floor — retune `--fs-label` to 10.5px and the token census reports one violation where the clean sheet reports none; the sentence floor — flip one `font:500 var(--fs-sentence)/1.55 var(--sans)` to `--fs-xs` and the above/below counts move by exactly one each, which a `font-size`-longhand-only parser would miss; the floor's independence from its token — retune `--fs-sentence` to 12px and the sub-floor inventory grows instead of emptying, which is what makes writing `15.0` as a literal load-bearing; the absence register — flip the reading clause to `var(--mono)` and the mono count goes 0 to 1. Pass ratios each ALONE: test_next_page 41/41, test_next_flag 7/7, test_focus 96/96. This issue moves no byte pin of its own; the 13 it shares the PR with are DRC-4595's and are reported there.
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  This issue raises nothing; it records. Its absence assertion is written as a pair rather than as a floor: the one absence rule declaring a sub-floor size, `.next-project-value--absent` at 12.5px, is asserted correct **because** `.next-project-value--known` declares no size of its own, resolved through the cascade at four call sites (12.5/12.5, 12.5/12.5, 14.0/14.0, 15.0/15.0). Give the value a size and the test reds, which is exactly when the pair needs re-measuring. A bare assertion that the absence is 12.5px would have passed while the value moved.
+- FAILED: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  The suite passed — figures in the DRC-4595 report, same tree, same commit. **The surface did not.** This issue's share of `test_next_page.py` is **+354 lines** against a declared **+170** with tolerance **+120 to +230**: 208% of the declared figure and **54% over the upper tolerance bound**. Split, so the reading is checkable: 143 lines of module-level parser and its blind-spot comment, 211 lines of test methods, 1 import line; DRC-4595's paired caveat test (32 lines) and the byte pins (+10/-10) are excluded and counted there. The docs share is +33/-20 (net +13) against a declared ~+8/-6 ±10, marginally outside on net. Files match: 1 test file, 1 doc file. Per the stage definition this is where the work stops and the captain decides, so it is reported rather than absorbed.
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4595`, candidate SHA **c7eb2f8**, signed off. Not pushed, no PR opened.
+
+### Summary
+
+The guard is built and every assertion has a committed falsifier. Its blind spot is stated in three
+places rather than implied away — a 24-line comment above the parser, the reworked "Type scale"
+paragraphs in `docs/design-next-ui.md`, and the issue body — because a size guard that passes while
+sentences render below its claimed floor would be this milestone's own defect shipped as its remedy.
+The census reproduces on the tree: 70 rules at or above 15px (68 on this branch's base, plus the two
+DRC-4595 raised), 19 recorded below.
+
+**One drafted criterion was measured false and the test asserts a different property.** AC-4 required
+`grep -c 'data-next-withheld[^{]*{[^}]*color:'` to return 1, on the reading that the second rule's
+`color:var(--ink3)` was redundant. It is not: `.next-cockpit-scope-tree small` sets `--ink2` at
+(0,1,1) and beats the bare `[data-next-withheld]` at (0,1,0), so the (0,2,1) rule is the only thing
+holding those withheld smalls on `--ink3`, and deleting it would break the ruling AC-4 exists to
+serve. The committed test asserts that **every** rule colouring a withheld element uses `--ink3`,
+which is the falsifiable property underneath. Only the captain changes an approved criterion, so this
+is recorded as a deviation for the review gate, not treated as satisfied.
+
+**The estimate overrun is the decision this stage cannot take.** The test surface is 54% over its
+upper tolerance. The overrun is concentrated in things triage costed at "roughly 45 lines": the
+parser is 143 lines against a census it assumed would be a few, and the two recorded inventories are
+about 50 lines of data on their own. Nothing here is scope this issue did not ask for; the estimating
+method is what mispriced it.
