@@ -550,3 +550,48 @@ sequence and `:7134` requires the state span to abut the `<small>`, yielding `""
 `assertEqual("working", …)`. They need rewriting, not patching. The nine byte-pin figures recorded
 here are a post-4587 baseline for spotting a stale number, not values to write: three more `web/`
 PRs land between this triage and this build.
+
+## Stage Report: implementation
+
+- DONE: Built on the shared group branch, not its own.
+  One of three in the tier-5 group (with DRC-4592 and DRC-4598); the full checklist report lives on
+  `drc-4592/index.md`. Branch `spacedock-ensign/drc-4592`, candidate `43a8e9ba`.
+- DONE: Gate-approved issue body written to Linear as the first action.
+  Written unwrapped. Labels `journey:open-sessions` and `move:sharpen` already correct; no milestone
+  edit from this issue, as its triage ruled. Relation edge created: **`relatedTo` DRC-4593**, read
+  back after the write. Two emphasis runs containing a code span lost their mark at the boundary
+  (`**Measured on** \`spacedock-ensign/drc-4587\``, `**Keep the heading literal** \`SCOPE\``) and one
+  in the History list. Reported, not repaired.
+- DONE: AC-1 to AC-5 satisfied offline; AC-6 is interactive and is NOT done.
+  Five new cases in `CockpitScopeRailCardTest`, each red first. AC-6 asks for the post-change card
+  pitch measured against a live board at 980px with a capture under `docs/screenshots/`. No offline
+  suite starts a server and this stage's ceremony is commit-and-stop, so it is outstanding and owed
+  before the issue closes. Named here rather than quietly marked done.
+- DONE: R4 applied, not reopened. The withheld title keeps sans `--ink3`.
+  Per the captain's ruling of 2026-09-17. The rail rule is now `font-family:var(--sans)` alone and
+  the board-wide `[data-next-withheld]{color:var(--ink3)}` is the only rule in the sheet that
+  colours a withheld value; a test asserts that count is exactly one, and adding a second colour
+  there was one of the twelve mutations, killed.
+- DONE: The `## Read before building` milestone bullet this issue is owed does NOT exist.
+  Checked live: the milestone description has no such section. DRC-4587 (PR 1) is still `Ready for
+  Review`, so its post-merge reconcile has not run and the bullet is absent for that reason rather
+  than because the ruling was lost. The ruling itself is in hand, in this entity and in the
+  dispatch, and was applied. Surfaced rather than authored, per the triage's own instruction.
+
+### Summary
+
+The card is two lines: the title alone on line 1 at `--fs-sm` in `--ink`, clipped with the whole
+string in `title=`, and harness, state, age and (on a twin) the sid on line 2 at `--fs-2xs` in
+`--ink3`. R1 through R4 all applied as ruled. The builder now takes a value and a meta, which is
+what lets the project row keep its name above its count while a session row puts its title above its
+harness.
+
+Two things worth a reviewer's attention. Moving the sid to the meta line repaired the
+withheld-title marker for free, as R2 predicted: `data-next-withheld` is stamped on an exact match,
+and a title-less twin never matched while the sid was appended. And `data-scope-owner` had to be
+restored onto the `<a>` when the session cue that used to carry it left the card; two existing tests
+caught that, which is the reason the anchor carries it now instead.
+
+The two tests triage said would break both broke loudly and were rewritten rather than patched: the
+exact DOM byte sequence, and the regex that required the state span to abut a `<small>` and would
+otherwise have yielded `""` into an `assertEqual`.
