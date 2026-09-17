@@ -592,3 +592,26 @@ Two lenses plus an arbiter, chosen up front because the diff owns the `web/` byt
 The verdict is **NO-GO**, and it rests on the one criterion nobody had checked. AC-7 was not attempted, and it fails on its own declared falsifier: raising `.next-cockpit-recovery>div` left `styles.css:1083` holding the values inside it at 12.5px, so on the live board the recovery briefing now prints "assignment unavailable" larger than the assignment, in the dimmest ink in the palette. No offline check could have caught it — the doc's admission test is rule-level and the defect is composed across three rules — which is exactly the argument the triage gate made for keeping AC-7 interactive.
 
 I edited nothing on the branch. F1, F2 and F3 route back to `implementation` with the evidence above; the product half of F1 — whether absences should outrank facts — is the captain's, not implementation's. The four documentation corrections, including Copilot's confirmed one, are in the same two files and can ride the same fix round.
+
+### Addendum: the branch moved under this review
+
+While this review was running, a sibling committed `a251ca4a` "docs(design): correct the
+tracking-inventory claim to the tree" onto the branch, fixing the Copilot finding I had just
+confirmed — and more completely than Copilot found it, naming six rules across `.06em`, `.07em`
+and `.04em` rather than the two Copilot cited. Recording it because it changes what this gate is
+approving, and because I did not make it:
+
+- **It is local only.** The PR head is still `3cc7ef49`; `a251ca4a` is unpushed. Every CI figure in
+  this report belongs to `3cc7ef49`, which is the commit the PR currently carries.
+- **It cannot move the byte pins.** `git diff --name-only 3cc7ef49 a251ca4a` touches
+  `docs/design-next-ui.md` only — no file under `web/` or `tests/` — so AC-6 is unaffected and the
+  nine pins I recomputed still hold.
+- **It does not touch F1, F2 or F3.** `styles.css` is byte-identical across the two commits, so the
+  measured 12.5px renders stand.
+- **When it is pushed, the current green becomes a superseded head's green** and the gate needs a
+  full re-run before merge — the stage definition's own warning, now live on this PR.
+- `mergeStateStatus` has since moved `BLOCKED` → `CLEAN` on `3cc7ef49`.
+
+One documentation correction from this review is therefore already addressed on the branch. The
+three remaining doc-count corrections (the 19-not-17 gap size, the two-not-three uncalled tokens,
+AC-3's "was 9") and findings F1/F2/F3 are still open.
