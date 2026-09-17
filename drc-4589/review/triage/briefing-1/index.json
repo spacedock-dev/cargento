@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4589:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4589 issue rewrite and milestone correction for writing to Linear, and approve the seven acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4589:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/87e4aaac859fe07bbb68e95f63e55bcc8ebadc6e/drc-4589.md",
+      "rev": "sha256:ee556b159918f4b14e9db8b5f058cfa73b5e21014b9548ef2956b7b8b45db377",
+      "mediaType": "text/markdown",
+      "summary": "Triage rebuilt every measurement against the post-DRC-4587 worktree rather than main, which mattered: the assembled-page pins have already moved and --fs-label is now 11px, so the LABEL register the issue specifies is reachable. Three of the issue's claims were refuted against the tree and demoted to a dated History section, the largest being AC2's DELEGATION claim, whose literal implementation would have brightened an absence. The captain's absence-ink ruling was applied and followed into two consequences it creates: AC-1 is scoped to present values with absence and caption exempt, and AC-4's three data-absence renderings must now differ without colour."
+    }
+  ]
+}
