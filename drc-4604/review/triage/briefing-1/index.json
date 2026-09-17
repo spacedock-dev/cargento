@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4604:triage:attempt-1:revision-1",
+  "question": "Approve DRC-4604's triage: fix the pre-existing .next-session-copy defect here, and confirm the four scope rulings?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4604:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/9f7700f0c4a71df38f219d1cac8f1bb0fe39808d/drc-4604.md",
+      "rev": "sha256:2a9ab4d36e52967086cb1e2bf719d745f07a85d2353ffa2a7173168d6a6a6f57",
+      "mediaType": "text/markdown",
+      "summary": "An independent census at 21a0e93 finds 14 control selectors declaring a non-zero radius or resting border, decomposing exactly into the primitive (1), exempt (7), a text input (1) and these five - so the five are confirmed while the issue's headline 24 rules reproduces at neither tree and is demoted to a dated history section. Two composed facts no per-rule reading shows, resolved through tests/css_cascade.py: 4 of the 6 shipped .next-action class combinations reach the promised 15px and the 2 carrying .next-session-copy reach 11.5px; and the exempt .next-session-raise renders 6px/11px inside .next-rail-wait-controls against 3px/11.5px outside it, because one of the five rules being removed outranks it on tag count - so the removal is not purely subtractive. The blocker relation is stale: DRC-4590 merged as 21a0e93 mid-triage, and the live blocker is DRC-4602 on the same stylesheet and the same byte pins. Seven ACs resolve under --ac-scan. Noted for anyone building on the resolver: matches() counts ids without checking them, reporting 14px from #app for every button."
+    }
+  ]
+}
