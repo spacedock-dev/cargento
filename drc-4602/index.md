@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4602:triage:attempt-1:revision-1
                 digest: sha256:689cdb18a09f058d869eb44cdcdbe22e57c69bf736aa8dbaf119fc743cd11d20
-                room-ref: ./drc-4602/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4602](https://linear.app/recce/issue/DRC-4602/seventeen-sans-rules-still-sit-below-the-15px-sentence-floor-so-the) — Seventeen sans rules still sit below the 15px sentence floor
