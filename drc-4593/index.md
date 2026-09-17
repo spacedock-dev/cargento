@@ -565,3 +565,104 @@ carries a caption has a value the board did observe, at `--ink-value`. The three
 than the value it explains. `TheBriefingsThreeRegistersStayApartTest` asserts exactly that, resolving
 each selector's LAST declaration through the cascade and then through the registers to a hex, because
 four of these selectors are declared twice and reading the first reports the pre-DRC-4587 sizes.
+
+## Stage Report: review
+
+Reviewed `spacedock-ensign/ui-integration` at **2fa5a2f4** (PR #364), read-only. Nothing on the
+branch was edited. Shared-checklist evidence — the byte pins, the capability-read scrutiny and the
+two refutations — is in `drc-4589/index.md`; this report covers DRC-4593's own share.
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort".
+  **Two lenses plus an arbiter**, stated before the first check. This issue's own surface is
+  `next-cockpit.js` and `styles.css` — both conflict-prone, both byte-pinned — which is the table's
+  two-lenses row. Full adversarial is not bought: nothing here touches credentials, a store, or a
+  published session field.
+- DONE: Reproduce every acceptance criterion of every issue in your group from its own Verified by clause, against 2fa5a2f4.
+  AC-1, AC-3, AC-4, AC-5, AC-6 reproduced offline from their clauses. AC-2 settled by live drive
+  below. AC-5's universal half reproduced directly: `grep -c captured` over all twenty bundle parts
+  returns **0**, and "None recorded" appears nowhere in the tree. AC-6 reproduced from the source —
+  `briefing.task.known && briefing.task.provenance ? … : briefing.task.known ? "Assignment evidence
+  not published" : ""`, so the false arm cannot render it.
+- DONE: RUN THE FALSIFIER, NOT JUST THE VERIFIER. For each criterion, execute its Falsified by condition and show it reds.
+  AC-1 (substitute prose for `FO INSPECTING`) reds `TheBriefingSaysWhoIsWaitingBeforeItNamesItself
+  Test` 2/2; dropping the gloss reds the module. AC-3 (demote the attention row label) reds it.
+  AC-5 reds on both "captured" restorations. AC-6 (remove the suppression) reds 2 tests. AC-4 reds on
+  caption-ink-onto-value and on caption-regains-the-larger-size; **its third falsifier survives** —
+  see F3. AC-2's offline proxy (chip back on the sentence tier) reds. Each mutation was applied
+  alone and reverted; `test_next_cockpit` carries zero byte pins, confirmed by grep before use.
+- DONE: For every criterion, report which of three it is.
+  AC-1 and AC-6: enumerated wording, enumerated verifier — honest, and both name their arms. **AC-3,
+  AC-4 and AC-5 are universal wording with an enumerated verifier.** AC-3 says "no briefing string
+  asserts agent behaviour" and checks a verb list. AC-5 says "captured" no longer appears "in the
+  briefing" and asserts `assertNotIn` over one rendered fixture — though the universal grep over the
+  bundle independently holds. AC-4 is the one with a live consequence, in F3.
+- DONE: Resolve rendered properties through tests/css_cascade.py down real element paths.
+  `TheBriefingsThreeRegistersStayApartTest` reads rules by **exact selector-head string**, which
+  assumes the head it names is the cascade winner — the same assumption that produced this
+  milestone's scope-title defect. I re-resolved the cell down a real path
+  (`.next-cockpit-content` › `.next-cockpit-recovery` › `div[data-next-cockpit-task…]` › span/strong/
+  small) with my own colour resolver over `css_cascade.matches()`. **It agrees**: on the task-known
+  arm, label (11.5, `--ink-label`), value (12.5, `--ink-value`), caption (12.5, `--ink-caption`) —
+  three distinct pairs, caption never larger. On the unknown arm value and caption do collapse onto
+  (12.5, ink3), and AC-6's suppression is what stops that pair co-rendering, exactly as the ruling
+  says. The ruling is confirmed by resolution, not accepted from the report.
+- DONE: Exclude the byte-pin oracles from every mutation check you run.
+  Confirmed `test_next_cockpit` contains none of the five pinned figures before using it as the
+  oracle for all nine mutations above.
+- DONE: Re-derive every byte pin from the assets rather than from any list.
+  All 22 recomputed and all agree; figures and method in `drc-4589/index.md`. Nothing disagrees.
+- DONE: Scrutinise the integrator's own self-caught regression and its fix; look for a second instance of the same shape.
+  Covered in `drc-4589/index.md`. The fix holds; a second instance exists, is reproduced, and is
+  outside both issues in this group.
+- DONE: Check the two refutations the integrator made rather than accepting them.
+  Both hold, by execution. Detail in `drc-4589/index.md`.
+- DONE: Write a `## Stage Report: review` into EVERY entity file in your group, and give a GO or NO-GO without editing the branch.
+  This report and DRC-4589's. Branch untouched.
+
+### AC-2, settled by live drive
+
+Not attempted against the board on :4553 — it serves a different tree (892,793 bytes against this
+one's 958,263), so driving it would have proved nothing. Started a server from the reviewed worktree
+and verified it byte-for-byte first (958,263 / `38818e11…` once the runtime-injected focus meta is
+stripped). `getComputedStyle` in the COMMAND cell of a real project:
+
+| string | size | weight | ink | family |
+|---|---|---|---|---|
+| `FO INSPECTING` (chip) | 11px | 700 | `#9b9484` | Space Mono |
+| `Captain state unknown` | **15px** | 600 | **`#f4f1e8`** | Space Grotesk |
+| attention `<strong>` | 12.5px | 500 | `#f4f1e8` | Space Grotesk |
+
+The captain line is the largest and is at the brightest ink; the chip is neither the largest nor the
+brightest, so AC-2's falsifier — "the chip still outranks the captain line on either size or ink" —
+does not fire. The gloss renders beside the briefing heading, which settles AC-1's second half live
+as well as offline. Capture in `docs/screenshots/`.
+
+### Findings
+
+- **F3 · Polish · this issue's own criterion.** AC-4's wording asks for "three distinct **registers**";
+  its verifier asserts three distinct **(size, ink) pairs**. These are different properties. Executed:
+  moving `.next-cockpit-recovery span`'s colour from `--ink-label` onto `--ink-caption` — collapsing
+  the label and caption roles onto one register, which is the precise defect DRC-4589 exists to
+  remove — **survives all 319 tests in `test_next_cockpit`**, because the sizes still differ so three
+  pairs remain. No user-visible loss today (the tree has the label on `--ink-label`), so this is
+  Polish and I am not promoting it into this PR. Its promote-to-material condition: any future change
+  that equalises two of the three sizes, after which the pair oracle stops separating the roles too.
+- **F4 · Polish.** The same test is selector-head-keyed rather than cascade-resolved. It is correct
+  today — I checked by resolving the real path — but it is the same shape as the defect this
+  milestone already paid for once, and it will not see a later rule that outranks the head it names.
+
+### Summary
+
+GO for DRC-4593. All six criteria hold: five reproduced offline with their falsifiers red, and AC-2
+settled on a live board I first proved was serving this exact tree rather than on the one already
+running, which was not. The emphasis really has moved — the chip is 11px dim mono against a 15px
+bright sans captain line — and "captured" is gone from all twenty bundle parts, not just from the
+fixture the test renders.
+
+One thing the gate should decide rather than take from me: AC-4 is met, but its verifier measures
+(size, ink) pairs where its wording says registers, and I have an executed mutation that collapses
+two roles onto one register while the test stays green. That is worth a follow-up issue, not a fix
+here — promoting it buys an implement-and-CI round for something already judged not to block.
+
+**Verdict: GO.** Twelve checks green on 2fa5a2f4, `mergeStateStatus` CLEAN, both Copilot inline
+threads read and independently re-refuted, zero unresolved threads.

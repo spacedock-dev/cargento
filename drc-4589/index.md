@@ -584,3 +584,108 @@ where nothing later claims the same element.** Three branches each added a rule 
 without that being true of the tree any of them tested on. The count-versus-property lesson recorded
 above is unchanged; this is a second instance of it, found the same way, on a tree none of the three
 branches could see.
+
+## Stage Report: review
+
+Reviewed `spacedock-ensign/ui-integration` at **2fa5a2f4** (PR #364), read-only. Nothing on the
+branch was edited. All work in a throwaway worktree at `/tmp/rv2-drc4589b`; no git was run under
+`.worktrees/`.
+
+- DONE: State the chosen review depth and the diff property that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort".
+  **Two lenses plus an arbiter**, stated before the first check. Diff property: it owns every
+  conflict-prone surface at once — `styles.css` +306/−156, `next-cockpit.js` +688/−167 and all three
+  byte-pin oracle files — and `SKILL.md` +40/−14. Not full adversarial: no credential, auth, store,
+  collector or published-session-field path is in the diff, which is the row that would buy it.
+- DONE: Reproduce every acceptance criterion of every issue in your group from its own Verified by clause, against 2fa5a2f4.
+  AC-1 verifier returns **0** (was 21). AC-2, AC-4, AC-5, AC-6 reproduced from their clauses. AC-3 is
+  **not met as written** — see the finding below. AC-7 settled by live drive, not asserted.
+- DONE: RUN THE FALSIFIER, NOT JUST THE VERIFIER. For each criterion, execute its Falsified by condition and show it reds.
+  Sixteen mutations run one at a time, each reverted. AC-1 (literal `--ink3` back beside `--fs-label`)
+  reds `InkRoleRegistersAreDeclaredOnceAndSpelledNowhereElseTest`. AC-2 (stamp unconditionally, so a
+  real `0` carries the dash) reds `CountsAbsenceIsStampedAndAZeroIsNotTest` 2/2. AC-4 reds
+  `AnAbsenceParagraphNamesItsKindTest` on all four (tag either named non-absence; a fourth kind;
+  collapse waiting-on-you). AC-5 reds on both a full wrap and a minimal well-formed partial wrap of
+  the paragraph in `<details>`. AC-6 (move `--ink3`'s hex) reds `test_next_page`. **Four of my first
+  mutations survived and all four were my aim, not the tests** — three prepended a declaration that
+  the block's own later declaration wins over, and one hit a site the fixture cannot reach. Re-aimed,
+  all four red. Reported because a survivor accepted at face value is how a weak test gets a pass.
+- DONE: For every criterion, report which of three it is.
+  AC-2 and AC-5: enumerated wording, enumerated verifier — honest. **AC-1, AC-4 and AC-6 are
+  universal wording with an enumerated verifier.** AC-1 finds "label rule" only via `var(--fs-label)`
+  and "ink token" only via `var(--ink3)`, and anchors the selector at line start; I probed all three
+  gaps (non-line-start rules, other ink tokens, literal hexes) and all are empty today. AC-4 says
+  "every emission that states an absence" but names two non-absence sites by hand; at least two
+  untagged emissions plausibly state absences (`next-cockpit.js:2327` withheld-reason, `:2361`
+  unknown-key). AC-6 says "no palette hex moves" but its token map is a projection over twelve named
+  hexes, so a new one is invisible. AC-3 and AC-7 are treated separately below.
+- DONE: Resolve rendered properties through tests/css_cascade.py down real element paths.
+  Wrote a colour resolver over `css_cascade.matches()` + source order, since `resolve()` is font-size
+  only. Withheld scope title resolves `var(--ink-absence)` and a present one `var(--ink)`, identically
+  with and without the `.next-cockpit-content` wrapper. No property in this report was concluded by
+  counting rules or reading specificity by hand.
+- DONE: Exclude the byte-pin oracles from every mutation check you run.
+  Every mutation ran against a named test class, or against `test_next_cockpit` — which I first
+  confirmed carries **zero** byte pins (`grep -c` for all five pinned figures returns 0). No mutation
+  result in this report was read off `test_next_page`'s pin block, `test_next_flag` or `test_focus`.
+- DONE: Re-derive every byte pin from the assets rather than from any list.
+  All 22 recomputed from the assets through `page.APP_PARTS` / `load_page()`: 20 parts plus
+  `styles.css` 120_893/`59f31388…` and assembled 958_263/`38818e11…`. **Every one agrees**, including
+  `next-cockpit.js` 228_956/`66b4f462…` and the assembled digest the integrator did not state. No
+  disagreement to report.
+- DONE: Scrutinise the integrator's own self-caught regression and its fix; look for a second instance of the same shape.
+  The fix is real: `nextCockpitConsoleCapabilities` reads `terminal.state`, and three of four mutants
+  die in `ConsoleSetupNeverCallsAnUnreadCapabilityOffTest`. The fourth (`Boolean(model)`) survives
+  that class and dies one class away in `NextCockpitCompositionTest` — a coverage seam, not a shipped
+  defect. **A second instance exists and I reproduced it myself** — see the finding below.
+- DONE: Check the two refutations the integrator made rather than accepting them.
+  **Both hold.** `projectAction` has exactly one occurrence repo-wide (its definition), `dataset.calm`
+  has no reader, and there is no `window[…]`/`eval`/`new Function` anywhere in `web/`; the live path
+  drives `decisions → all → decisions` correctly through `PROJECT_GRAPH_MODES`. For :2390, the
+  blank-slot premise is false over 4,200 driven inputs — every `endText`/`claimText` is a non-empty
+  string, because no `nextObservedLanding` call site supplies a falsy `reason`. Refuted by execution,
+  not by reading.
+- DONE: Write a `## Stage Report: review` into EVERY entity file in your group, and give a GO or NO-GO without editing the branch.
+  This report and DRC-4593's are the two. Branch untouched; `git status` clean in my scratch worktree.
+
+### Findings
+
+- **F1 · Material · task ownership NOT this group — route to the entity that owns the tab cue.**
+  `nextCockpitTabCue` (`next-cockpit.js:3332`) keys off `entry.data` alone; the panel beside it
+  (`:3677`) keys off `entry.data` **and** `entry.error`. The poll's `.catch()` (`:3187`) is the only
+  writer of `error`. So on a first fetch that fails, the panel says "Semantic context unavailable."
+  while the cue renders `state:"pending"`, mark `…`, gloss "decisions not loaded yet" — a completed,
+  failed read reported as still in flight. Reproduced in my own harness with
+  `{data:null, revision:105, error:true}`: `{"cue":{"state":"pending"},"panelSaysUnavailable":true,
+  "panelSaysLoading":false}`. The function's own comment at `:3323` asserts the opposite ("they read
+  one object under two names"). Same shape as the caught regression; evidence field 3 is
+  `contract[AGENTS.md#measured-invariants]`. Self-heals once an entry settles. **Not in DRC-4589 or
+  DRC-4593's scope** — filed here so the FO can route it, not promoted into this PR.
+- **F2 · Needs decision — the captain owns this.** AC-3's literal half, "after this change exactly
+  one rule in the sheet assigns a colour to `[data-next-withheld]`", is **not met**: the count is
+  still **2**. That sentence is also in the captain's own ruling of 2026-09-17. I executed the
+  amendment's premise rather than accepting it: stripping the override's colour makes the count
+  return **1** *and* makes a withheld scope title resolve to `var(--ink)` — byte-identical to a
+  published one — and reds `WithheldTitleKeepsTheAbsenceInkTest` 2/2. So the criterion as written is
+  satisfied exactly by the defect. The shipped test correctly asserts the property instead. The
+  engineering is right; the AC change is the captain's to ratify.
+- **F3 · Polish.** AC-4's enumerated verifier cannot see an absence emission outside the two it names.
+  `next-cockpit.js:2327` and `:2361` are candidates. The issue body already calls this per-site
+  judgement, so this is a note, not a defect.
+
+### Summary
+
+GO for DRC-4589. Six of seven criteria reproduce and every falsifier I could aim correctly reds;
+AC-7 was settled by a live drive against a server I started from this exact tree and verified
+byte-for-byte (958_263 after stripping the runtime-injected focus meta), because the board already
+running on :4553 serves a different tree and would have proved nothing. All three `data-absence`
+kinds render and stay apart in greyscale — solid at luminance 147, solid at 62, and **dotted** at 62,
+so no pair collapses — and an absent COUNTS figure renders `— not published` at 12.5px sans in
+`--ink` with a leading em dash against `10` at 12.5px mono with none. Captures in `docs/screenshots/`.
+
+Two things the gate should look at rather than take from me. AC-3 is not met as written and the
+reason is good, but ratifying an acceptance criterion is the captain's move, not this stage's. And
+the second instance of the map-read shape is real and reproduced — it is outside this group, and
+filing it beats promoting it into a PR that is otherwise ready.
+
+**Verdict: GO.** Twelve checks green on 2fa5a2f4, `mergeStateStatus` CLEAN, both Copilot inline
+threads read and independently re-refuted, zero unresolved threads.
