@@ -1070,3 +1070,56 @@ so on the one slot where the fixture and reality differ, reality is inverted and
 This is the third cycle, so it escalates. Two of the things the captain must settle are genuinely
 theirs and not another implementation round: whether the rail stays compact (F7), and whether the
 remaining four slots are fixed here or handed to DRC-4602 with the rest of the floor work.
+
+### Addendum: the docs-only addendum commit, and who moved the worktree
+
+My cycle-3 review was taken at `3ab52025`, so this commit is already inside it and the verdict does
+not move. **NO-GO stands**, on F4 and F5 — four more slots this branch inverted and a fixture that
+hides one of them. Both are code findings; a documentation commit cannot touch either.
+
+**Who checked the worktree over: I did.** Not a sibling worker, and not a review export — `git
+archive`, which is what I used for every later measurement, writes a tarball and never touches HEAD,
+so it cannot produce this. The reflog entry is mine: at the start of this cycle I ran
+`git checkout origin/spacedock-ensign/drc-4587` in the live worktree to read the new candidate,
+which detached HEAD between the ensign's two commits. I recorded it in the cycle-3 report before you
+asked and I am repeating it here so the question closes on fact rather than on the two hypotheses on
+the table, both of which are wrong. The repair was the right one: parent confirmed, `--ff-only`, no
+rewrite, which is what a stack on top requires. My error, and the fix for it is mine too — every
+measurement after that point ran against an export instead of the worktree.
+
+**Check 2, the attribution of my readings — accurate on authorship, wrong in one clause.** "163
+elements and then 183 forty minutes later", "during this branch's review on 2026-09-17", "reported
+by the reviewer rather than measured here" are all correct; those are my numbers, that is the date,
+and it does not claim them as its own. The shape was `.next-operation-fact--unknown strong` on the
+sessions view, which the sentence does not name but does not need to. **The false clause is "on an
+unchanged stylesheet."** The two readings were taken at `3cc7ef49` and `4fb5ee6d`, and `4fb5ee6d`
+changed `styles.css` by 13 insertions and 6 deletions. What was unchanged is narrower and is the
+part that matters: `git diff 3cc7ef49 4fb5ee6d -- styles.css` touches **zero** lines matching
+`operation-fact`, so the rules resolving that shape were identical across both readings. The
+paragraph exists to stop a number being read as a property of the code, and the clause carrying it
+overstates by one step. It should say the rules for that shape were unchanged, not the stylesheet.
+
+**Check 1, a count did survive the retraction, in the place it did not think to look.** Line 191:
+*"the set is comparable in size to the one this branch already moved."* The set this branch moved is
+stated three paragraphs earlier as **sixty-seven**. So the document still tells a reader the
+remainder is about sixty-seven rules — a count expressed as a comparison rather than a tally, which
+is why a sweep for digits and number-words does not find it.
+
+It is also the **least supported number in the document**. Every figure that was just retracted was a
+per-rule floor in the teens to the low thirties: seventeen, nineteen, twenty-one, and the audit's
+twenty-seven-to-thirty-one rules. "Comparable to sixty-seven" is two to three times the highest of
+them and no census produced it. The retraction's own argument is that a floor cannot be reported as a
+count; asserting a magnitude *above* every measured floor, with no instrument behind it, is the same
+error pointing the other way and in the confident direction. The honest form is the one the paragraph
+already uses for the steps: name the shapes, refuse the size. The clause "and some of it is not
+sentences at all, a textarea and the prototype terminal among them" is fine and should stay — it is
+an example, not a tally.
+
+Nothing else in lines 108-200 implies a count of the remaining set. The sixty-five / sixty-seven /
+forty-nine / eighteen / eight-and-eight figures all describe the sentence tier this branch *did*
+move, which is measured and was verified in cycle 1; the seven-token band and the twenty-four
+tracking declarations are likewise about the current tree, not the remainder.
+
+**Consequence for DRC-4602.** You retracted the number from the issue. The document still implies one,
+and implies a bigger one than the issue ever carried, so the two now disagree in the direction that
+would size the work wrongly. That is one sentence, and it rides with whatever fixes F4 and F5.
