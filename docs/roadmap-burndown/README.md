@@ -233,23 +233,32 @@ the only stage whose product is a change to the roadmap records rather than to t
     from the Linear issue's own `## Acceptance` section and each cost a repair round. The captured
     original under `## Linear edits made` keeps whatever heading Linear holds: it is a verbatim
     record, so it is exempt, and renaming it would falsify the restore point.
-    **And each criterion's id must be hyphenated — `AC-1`, never `AC1`** — because the heading
-    alone is not enough: a correct heading over criteria the scanner cannot see returns
-    `{"acs":[]}`, which reads as "this entity has no acceptance criteria" rather than as an error,
-    and is the quieter and more dangerous half of the same failure. Nothing else about the shape
-    matters. Measured 2026-09-17 in an isolated throwaway workflow carrying four criterion shapes
-    in one file:
+    **Two further things must hold, and both fail silently.** The heading alone is not enough: a
+    correct heading over criteria the scanner cannot see returns `{"acs":[]}`, which reads as "this
+    entity has no acceptance criteria" rather than as an error. Worse, a criterion list where only
+    some items parse returns a partial scan that looks like a complete one.
+
+    1. **The id is hyphenated** — `AC-1`, never `AC1`.
+    2. **The bold label opens and closes on the same line.** A label whose bold run wraps before
+       its closing marker is skipped, so in a hard-wrapped file a long property silently drops its
+       own criterion.
+
+    Write the bullet form, which satisfies both by construction — the bold closes right after the
+    mark, so the property may wrap freely:
 
     ```text
-    - **AC-1 — offline:** …bullet, hyphenated…     -> parsed
-    **AC-3 — paragraph, no bullet.** (offline)     -> parsed
-    **AC4 — paragraph, unhyphenated.**             -> NOT parsed
+    - **AC-1 — offline:** {end-state property, wraps freely}. **Verified by:** {command, test or
+      on-disk state, and what it returns today}. **Falsified by:** {the change that flips it}.
     ```
 
-    So bullet-versus-paragraph is free, `Verified by:` styling is free, and the hyphen is not. Two
-    earlier guesses at this — first the heading, then a required bullet list — were both wrong and
-    each cost a repair round; the isolated probe settled it in one. **Probe it there, never in the
-    state checkout**, which has concurrent writers.
+    Measured 2026-09-17 in an isolated throwaway workflow, one file per run: unhyphenated `AC4` is
+    skipped; a bold label wrapped across a newline is skipped; a bullet whose bold closes after the
+    mark parses however far the property wraps. The live cost was three repair rounds across
+    DRC-4587 and DRC-4588, two of them spent on first officer guesses — the heading, then a
+    supposedly-required bullet list — made before anything was measured. The partial-scan state was
+    found by the DRC-4587 ensign, whose paragraph rewrite resolved exactly one of seven criteria:
+    the only one short enough to close its bold on a single line. **Probe shapes in a throwaway
+    workflow, never in the state checkout**, which has concurrent writers.
 
     Citations resolve from later stage reports that name `AC-N`, so criteria authored here are
     expected to scan as unevidenced at this gate. That is correct, not a defect — `implementation`
