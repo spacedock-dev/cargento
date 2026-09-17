@@ -1423,10 +1423,12 @@ So the check is mechanical rather than a matter of judgement. **Before trusting 
 grep for the mutated string and assert the count changed.** Confirm the substitution applied, then
 read the verdict.
 
-**The check applies to SURVIVED, not to RED.** A red off a green baseline cannot be a no-op — the
-suite changed behaviour, so the mutation reached something. Only a survivor is ambiguous between "the
-oracle does not catch this" and "nothing was actually mutated", so that is the only verdict that owes
-a substitution proof. Bounding it this way matters, because a rule applied to every mutation doubles
+**The check applies to SURVIVED, not to RED**, and the asymmetry is worth stating as *why* rather
+than as a rule to remember. **A red is self-proving: it reports a behaviour change, and a no-op
+cannot produce one against a green baseline.** A survivor reports an *absence* of change — and
+"nothing changed because the oracle is blind" and "nothing changed because nothing was mutated" are
+the same observation until someone goes and looks. That is the entire rule, and it is why only a
+survivor owes a substitution proof. Bounding it this way matters, because a rule applied to every mutation doubles
 the cost of a pass that is mostly reds.
 
 **And a grep is not always sufficient proof.** The strongest version confirms the mutant reached the
