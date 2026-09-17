@@ -817,3 +817,63 @@ with itself is not evidence.
 conditions 1 and 3 dissolve and only 2 remains — that is a legitimate answer to M1 (the mirror is
 what turned a per-tab quirk into a persisted one) and should not be argued down for not matching
 this plan. AC-4 would then need the captain, since it asks for the key by name.
+
+## Stage Report: review (cycle 2 — re-check of the M1/M4 fix)
+
+Re-checked at **26223372**. Pins re-derived from the assets before anything else: `next-cockpit.js`
+**233_309 / b0e24842…**, `project.js` **110_869 / baae001e…**, `styles.css` **121_011 / f1d8a9bc…**,
+assembled **964_336 / 387e71e0…**; all five pin sites agree with the tree. Harness baseline
+`ran=577 failures=0 errors=0`. The three pre-registered conditions are the contract and all three
+pass. **Verdict on this issue: GO.**
+
+- DONE: **Condition 1 — the key carries the project, proved in BOTH directions.** PASS, on a live
+  board with two real projects, store cleared first:
+  1. `recce/cargento` Decisions opens `decisions` / RECORDED DECISIONS, store empty.
+  2. Press **All events** -> `all`, store `{"project:recce/cargento":"all"}` — scoped, not `""`.
+  3. `recce/recce-cloud-infra`, **never pressed** -> `decisions` / RECORDED DECISIONS / `decisions`
+     `aria-pressed="true"`. **This is the step that failed before the fix.**
+  4. Press **Active** on B -> store holds both keys separately.
+  5. Return to A -> **still `all`**. The second direction holds.
+  Falsifiers with applied-proof: reverting `projectGraphModeScope` to the collided key (`project.js`
+  `baae001e206f`->`31dbdb5e1687`, target 1->0) reds 2 including the new two-project test; and
+  **namespacing the write while resolving the read from the old scope** (`baae001e206f`->`fc37afcd8fa5`)
+  reds **4**. That second one is the exact half-fix my pre-registration warned about, and it is caught.
+  The per-session distinction survives: a focused scope resolves to `codex:focus-1`, the same shape
+  the old code built, so a per-session choice migrates rather than being flattened by a project-only key.
+- DONE: **Condition 3 — the fixture can fail.** PASS. The collided seed is **gone, not adjusted**:
+  `{"project:cargento": "all"}`, with a comment saying why changing it is part of the fix rather than
+  fallout. Proved able to fail — seeding `{"": "all"}` back (`test_next_cockpit.py` `6a11a06eb8e5`->`9871a80f1ce3`)
+  reds `test_the_chosen_mode_is_written_to_storage_and_read_back_on_load`. A new
+  `test_a_mode_pressed_on_one_project_does_not_follow_the_reader_to_another` covers both directions.
+- DONE: **The legacy-entry hazard — checked, and it does not fire.** Measured live with storage set
+  to exactly what an earlier build leaves, `{"": "all"}`, and nothing else: the Decisions tab opens
+  **`decisions` / RECORDED DECISIONS**. The legacy key does not match a project, because the scope
+  now resolves to `project:<name>` at project view. The only scope that still resolves to `""` is a
+  non-project route (measured: `nonProjectResolves: "all"`), which is the legacy project view's
+  pre-existing bucket and whose own control remains unreachable — `projectAction` still has no
+  dispatcher. Not a regression.
+  **One cosmetic residue, measured not reasoned:** the orphan row is immortal. After a press the store
+  read `{"":"all","project:recce/cargento":"all"}`. `projectLoadGraphModes` validates values but not
+  key shapes, so it loads the orphan and `projectStoreGraphModes` re-serializes the whole map. A
+  key-shape filter in the loader would drop it and would also guard the next key change. Polish.
+- DONE: AC-8 re-confirmed with the scoped key — `all` survives a real browser reload, heading
+  SEMANTIC TIMELINE, store intact.
+- DONE: Condition 2 (the five states) — PASS on the defect. Full detail on `drc-4592/index.md`.
+
+### Still open on this issue
+
+**M2 is not addressed, and correctly so.** Measured at the fixed head: with mode `all`, the tab still
+reads **"Decisions · 22 · 22 decisions"** over a **SEMANTIC TIMELINE** heading. That is the same
+question as the `stale` copy ruling — what a cue should say when the panel beside it is showing
+something else — and the fix files that as DRC-4613 rather than inventing copy here. Right call; it
+should not be promoted into this PR. Noting it so the gate sees it was measured, not missed.
+
+### Summary
+
+The fix is the one the criterion asked for and the halves were checked separately, which is what I
+pre-registered because a write-only namespace passes the first half. It does not: reverting either
+half reds the suite, and the live board shows a never-pressed second project opening on its own
+default with the first project keeping its choice. The oracle that used to assert the defect now
+asserts the fix and was proved able to fail.
+
+**Verdict: GO** on this issue. M2 rides DRC-4613; the orphan row is Polish.

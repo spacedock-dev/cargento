@@ -806,3 +806,60 @@ semantic tests — and the bare-span guard, which pins one spelling of a regress
 **Verdict unchanged: NO-GO**, on the PR rather than on this issue's runtime; the blocker is
 DRC-4598's M1. This issue's owed work is now V2, V4, S1, S2 and AC-6, plus the captain's call on A1.
 V1 is withdrawn and should not be fixed.
+
+## Stage Report: review (cycle 2 — AC-6 measurement attempt)
+
+Re-checked at **26223372**; pins re-derived and matching, harness baseline `ran=577 failures=0
+errors=0`. **Verdict on this issue's offline criteria: GO. AC-6 remains NOT MEASURED — I could not
+reach the viewport either, and I am reporting that rather than a number from the wrong width.**
+
+- FAILED: **AC-6 at 980px. Not measured. Two routes tried, both blocked.**
+  1. **`resize_window` is a no-op downward.** It returns success every time and changes nothing:
+     requested 980 three times and 1000 once across two windows, `innerWidth` stayed put. Only an
+     *upward* resize applied (1800 took; 980, 1000 and a later 980 did not). `outerWidth` reads `0`,
+     so the window metrics are not under the page's control here. This is the same wall the
+     integrator hit, reached by a different route.
+  2. **A same-origin 980px iframe is refused by the board itself.** The server sends
+     `Content-Security-Policy: frame-ancestors 'none'`, so the frame loads cross-origin-opaque and
+     every read throws `SecurityError`. That is correct behaviour and I did not work around it —
+     worth recording as a positive finding: the dashboard cannot be framed.
+- DONE: **What I did measure, at two widths straddling the 1280 breakpoint.** Offered as evidence for
+  whoever can set 980, explicitly **not** as the AC-6 figure:
+
+  | width | surface | card box | pitch | title | meta |
+  |---|---|---|---|---|---|
+  | inner 700 (cycle 1) | switcher disclosure (<1280) | 55px | 57px | — | — |
+  | inner 1800 (this head) | scope tree (>=1280) | 55px | 57px | 14px `--fs-sm` | 11.5px `--fs-2xs` |
+
+  Identical on both surfaces. The height is width-invariant because line 1 is clipped to one line, so
+  the card cannot grow by wrapping — which is why 980 would almost certainly read 55/57 on the
+  switcher surface too. **That is an inference and the criterion asks for a measurement**, so it does
+  not settle AC-6.
+  The half that genuinely cannot be inferred is "the number of cards visible in a 980px viewport",
+  because it depends on viewport height: at 913px, 4 of 4 were fully visible on a four-session
+  project, which says nothing about a long list.
+  **Recommend accepting AC-6 as unsettled and filing it**, per the first officer's standing offer.
+  Recording it on the issue is implementation's act in any case.
+- DONE: AC-1's two registers re-confirmed live at the fixed head.
+  Title `14px` in the value register above meta `11.5px` — the two-line card rendering as specified
+  on real data (`"This session is being continued from a previous conversation that ran out of…"` /
+  `"idle · 22h 30m · 317f461c"`, the twin sid last on the meta). Capture at
+  `docs/screenshots/recheck-26223372-scope-rail-and-cockpit.jpg`.
+- DONE: The cycle-1 findings on this issue, carried forward unchanged.
+  **V2 stands** — AC-2's "derived" still has no verifier, and it is still the group's one genuinely
+  unguarded property claim. **V4 stands** — the bare-span guard still pins one spelling of three.
+  **S1** (the `styles.css` comment contradicting the rule below it), **S2** (this issue's
+  implementation report describing the rail rule as it was at `43a8e9ba`) and **A1** (AC-4's colour
+  half amended by a worker, captain's call) are unchanged. **V1 remains withdrawn and must not be
+  fixed.** I re-state that here because it is the item most likely to be picked up by mistake.
+
+### Summary
+
+Nothing on this issue regressed and AC-1's card is right on a live board. AC-6 stays where it was for
+the same reason the integrator reported it unmeasured: the viewport cannot be set from here, and the
+one route that would have worked is closed by the board's own framing policy. I would rather hand
+over 55/57 at two bracketing widths and say plainly that neither is 980 than round an inference into
+a pass — a criterion recorded as settled at the wrong viewport is worse than one recorded as open.
+
+**Verdict: GO** on this issue's offline criteria. AC-6 unsettled, recommended for filing. V2 and V4
+still owed.

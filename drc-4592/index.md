@@ -738,3 +738,54 @@ cue and the panel.
 
 **Verdict unchanged: NO-GO**, still on DRC-4598's M1. This issue's owed work is now M3+M4 together,
 AC-3's verifier as hygiene, and M5 riding the same round.
+
+## Stage Report: review (cycle 2 — re-check of the M3/M4/M5 fix)
+
+Re-checked at **26223372**; pins re-derived and matching, harness baseline `ran=577 failures=0
+errors=0`. Shared evidence on `drc-4598/index.md`. **Verdict on this issue: GO.**
+
+- DONE: **Condition 2 — the map's five states stay distinguishable.** PASS on the defect. The fix
+  adds one classifier, `nextCockpitEntryState` / `nextCockpitContextRead`, and both surfaces ask it
+  rather than each keying off `.data`. Measured across four reachable states, cue and panel together:
+
+  | entry state | cue | `nextCockpitTimeline` |
+  |---|---|---|
+  | ready | count 1 | 1 row |
+  | **stale** (failed over loaded data) | count 1 | 1 row, no notice |
+  | **unavailable** (failed, no data) | `{state:"unavailable"}`, mark `—`, gloss "could not be read" | "Semantic context unavailable." |
+  | absent | pending | "Loading semantic context" |
+
+  **M3 is closed**: a finished failure no longer says "not loaded yet", it gets its own mark and its
+  own words, and the two surfaces agree at every state because there is one answer and both ask for
+  it. The new `—` is distinct from `…` and `·`, so AC-5's distinctness requirement now covers four
+  marks rather than three.
+- DONE: **Condition 2, the half my wording got wrong — reported as a partial, not waved through.**
+  I pre-registered that `stale` must make both surfaces say unavailable. The fix instead **rules**
+  that `stale` renders exactly as `ready`, states the ruling in the code, and files the copy question
+  as **DRC-4613**. I accept it: the defect I filed was the two surfaces disagreeing and a finished
+  read being called "not loaded yet", and both are closed. What my wording additionally demanded is
+  new on-screen copy nobody specified, which belongs in a filed issue rather than this PR. Flagging
+  only that the ruling is a worker's and is disclosed — the captain may want it, and I am not
+  treating my own pre-registration as authority over scope.
+- DONE: The comment now records what the next writer would break.
+  It names all three writers including `next-render.js:81`, says the `.catch` **merges rather than
+  replaces**, and states the by-construction invariant — every write is `.set(key, {...})` with a
+  fresh object literal, so no reader sees a half-written entry, and "a single `entry.data = ...`
+  would end it". That is the part a future change gets wrong silently, and it is written down.
+- DONE: **M5 addressed.** The code now says a capability "not read yet for one that nothing will ever
+  read is the same error inverted", and `projectTerminalLookup` preserves `unavailable` alongside
+  `registered` across a re-check. That second half fixes a defect adjacent to mine that I did not
+  find: a default bridge-off console flipped "terminal bridge off" to "not read yet" on every poll,
+  because the revision advances on every payload and that is what releases the guard.
+- DONE: AC-3's verifier, carried forward.
+  Unchanged and still hygiene rather than a gap — the property is guarded by `test_next_delegation`,
+  as the cycle-1 addendum establishes. Not re-opened, not to be fixed.
+
+### Summary
+
+The fix goes past where both reviewers independently landed. Teaching the cue to read `.error` would
+have closed only the state DRC-4589's reviewer found; the classifier closes that one, names the
+stale-over-failure state neither enumeration had, and puts the panel and the cue on one answer so
+they cannot drift apart again. The one place it stops short is on purpose, stated, and filed.
+
+**Verdict: GO** on this issue.
