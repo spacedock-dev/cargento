@@ -191,7 +191,7 @@ now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `
 its place is the line saying whether the captain is needed: prose the board wrote, and the string
 a reader opening a project is actually looking for.
 
-**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-four rules *that
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-five rules *that
 this census can see* resolve between 12.5px and 14.5px, and DRC-4596 records them as an exact set,
 so a rule leaving the sentence tier for a lower one reds the same way a new sub-floor rule does.
 That scope matters: it is a count of what a per-rule reading reaches, not a count of the sub-floor
@@ -203,7 +203,7 @@ sans from a second and its line-height from a third, and `.next-cockpit-recovery
 this repository sees either**, and DRC-4596's must not be read as establishing a universal floor;
 only a computed style reaches them.
 
-They were left alone: raising them is another thirty-four rules of review surface, and some of
+They were left alone: raising them is another thirty-five rules of review surface, and some of
 them are not sentences at all (a textarea and two prototype rules), so the set needs reading one
 selector at a time rather than a sweep.
 
@@ -272,6 +272,19 @@ emission because no selector can tell a null from a real `0`. The three kinds of
 paragraph can state carry `data-absence="not-observed|waiting-on-you|run-config"` and are told
 apart by a left rule: dim and solid, bright and solid, dotted. All three survive greyscale, which
 colour alone would not.
+
+Every rule that colours an absence names `--ink-absence`, and nothing names `--ink3` for that
+role. Four did: `.next-capacity-absent`, `.next-session-absent`, `.next-cockpit-held-absent` and
+`.next-cockpit-work-absent` each wrote the ink out directly, so repointing the register would have
+moved seven absence rules and left four behind in an ink now reserved for labels. They were
+invisible to the guard because it matched three spellings of the marker -- `--absent`,
+`[data-next-withheld]` and `-clause-absent` -- rather than the convention, and all four spell it
+with a single hyphen. The guard now derives its subject from an `-absent` class-name segment, which
+found 14 rules where the list found 8. Two grouped selectors were SPLIT rather than repointed
+whole, because each shared a rule with something that is not an absence: `.next-capacity-slack` is
+a figure (`~N% spare at reset`) and `.next-cockpit-work-dropped` is a bound on rows that did
+render. Nothing on screen changed -- `--ink-absence` resolves to `--ink3` -- and that is the point:
+the indirection is what makes the next repoint one edit rather than eleven.
 
 The pair to watch when editing any of this is a value and the absence that replaces it. They are
 chosen by a ternary, so they never co-exist in one render and no single rule holds both sides, which

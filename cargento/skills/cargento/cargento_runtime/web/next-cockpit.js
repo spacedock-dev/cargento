@@ -987,10 +987,15 @@ const NEXT_COCKPIT_HELD_CUES = {
   saved: "Saved as a new revision.",
   unchanged: "Already stored. These words match the saved revision, so no new revision " +
     "was minted.",
-  "settle-refused": "Not settled. The store refused the mark, so the question above still " +
+  /* "below" in both, and measured rather than reasoned: `nextCockpitConflict`
+     draws this cue inside its own `<header>`, immediately after the `<h2>`,
+     so the open question it refers to renders after it. Found by
+     `HeldToPositionalSentencesTest`, which is the third instance of DRC-4594's
+     class and the second one its by-hand sweep missed. */
+  "settle-refused": "Not settled. The store refused the mark, so the question below still " +
     "stands as it did.",
   "settle-unpersisted": "Not settled. The store could not be written, so the mark has " +
-    "already been dropped and the question above still stands.",
+    "already been dropped and the question below still stands.",
 };
 /* The one cue sentence this page owns rather than reads.
 
@@ -1474,7 +1479,7 @@ const NEXT_READING_MODEL_OFF =
   "Start with --observer-model to allow one; --no-observer-model refuses it.";
 const NEXT_READING_UNAUTHORIZED =
   "The abstention check this ruling requires has not been run, so a reading cannot be " +
-  "asked for yet. The evidence above stays readable without one.";
+  "asked for yet. The evidence below stays readable without one.";
 /* Which kind of absence each refusal is, held beside the sentences rather than
    recovered from them at render. One paragraph class prints all four and a
    regex over the prose would re-derive what the producer already knows. The
@@ -2263,8 +2268,14 @@ function nextCockpitReadingControl(session, annotation, model){
       : "");
 }
 
+/* "below", and the word is kept rather than dropped. DRC-4594 moved OBSERVED
+   RECORD to the end of this tab and left both of these sentences claiming the
+   side they used to have; the tempting repair is to delete the positional word
+   from each, after which the sweep that found them returns nothing and passes
+   forever. `HeldToPositionalSentencesTest` reads the direction each one states
+   and compares rendered indices, so a true word is what keeps it measuring. */
 const NEXT_READING_OFFER =
-  "A reading is a model\u2019s account of the evidence on this page: the observed record above " +
+  "A reading is a model\u2019s account of the evidence on this page: the observed record below " +
   "and the words you typed, and nothing else. It does not read a diff, a file, a test or a " +
   "deliverable.";
 
@@ -2505,16 +2516,24 @@ function nextCockpitHeldReEntry(session){
      The claim is what a reader deciding whether to click needs; the platform
      explanation is what they need only once they have read the claim and
      disagreed with it. */
+  /* The disclosure label travels with the branch rather than sitting on the
+     row, because the two branches put different things behind it. On the
+     available branch the body is the raise's LIMIT -- what a raise does and
+     does not move -- and a summary reading "Why a raise is unavailable" over
+     it contradicted the claim one line above it, which says the terminal can
+     be raised. Only the refusal branch is explaining an unavailability. */
   const raise = !nextFocusCapability()
-    ? {claim: NEXT_FOCUS_OFF_LINE, why: ""}
+    ? {claim: NEXT_FOCUS_OFF_LINE, why: "", whyLabel: ""}
     : session.focusable === true
       ? {claim: "Its terminal can be raised, and that control is offered while the session " +
           "is waiting on you.",
          why: "A raise switches what the terminal displays; its window may still be behind " +
-          "others."}
+          "others.",
+         whyLabel: "What a raise can and cannot change"}
       : {claim: "No terminal was reported for this session, so it cannot be raised.",
          why: "That is the ordinary answer outside tmux, for a session older than this " +
-          "server run, and on Linux and Windows."};
+          "server run, and on Linux and Windows.",
+         whyLabel: "Why a raise is unavailable"};
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
   const resume = !NEXT_RESUME_COMMANDS.has(harness)
     ? `${label} publishes no re-entry command, so there is none to copy.`
@@ -2543,7 +2562,7 @@ function nextCockpitHeldReEntry(session){
     (link ? `<p class="next-cockpit-held-reentry-action">${link}</p>` : "") +
     row("Re-entry", resume) +
     row("Raise", raise.claim) +
-    nextCockpitWhy("reentry-raise-why", "Why a raise is unavailable", raise.why) +
+    nextCockpitWhy("reentry-raise-why", raise.whyLabel, raise.why) +
     '</div>';
 }
 
@@ -3298,15 +3317,21 @@ function nextCockpitTabCue(tab, context, focus, observation){
     return Array.isArray(changes) ? nextCockpitTabCueCount(changes.length) : {state:"unobserved"};
   }
   if(tab === "decisions"){
-    /* The same selection `nextCockpitDecisionSummary` makes, so the cue and
-       the panel count one collection: the focused context entry at session
-       scope, the project observation at project scope. */
+    /* One collection, not two that agree. At project scope `observation` IS
+       the entry `nextCockpitTimeline` renders from: `nextCockpitProjectObservation`
+       returns `nextCockpitContexts.get(key(group, null))`, which is the same
+       lookup the panel makes with no focus. So the cue and the panel cannot
+       read different facts; they read one object under two names.
+
+       `pending` at BOTH scopes, which the focused arm alone used to carry. A
+       project entry that has not come back is a collection nobody has read,
+       and the panel beside the cue says "Loading semantic context" over it;
+       calling that "decisions not published" reports the schema rather than
+       the session, which is AGENTS.md's first Measured Invariant. */
     const entry = focus && group
       ? nextCockpitContexts.get(nextCockpitContextKey(group, focus)) : null;
-    if(focus && !(entry && entry.data)) return {state:"pending"};
-    const semantic = focus
-      ? entry.data.semantic
-      : observation && observation.semantic;
+    if(!(focus ? entry && entry.data : observation)) return {state:"pending"};
+    const semantic = focus ? entry.data.semantic : observation.semantic;
     if(!semantic || !Array.isArray(semantic.facts)) return {state:"unobserved"};
     return nextCockpitTabCueCount(projectDecisionFacts(
       group ? nextCockpitCanonicalSemantic(group, semantic) : semantic).length);
@@ -3724,20 +3749,42 @@ function nextCockpitTerminal(group, focus){
    or no registered surface and nextCockpitConsoleStatus returns "" with no
    sessions -- a structurally-present default standing in for a measurement,
    which is the shape AGENTS.md "Measured Invariants" names. */
+/* Three states and not two, which is the same invariant one layer in. The
+   first render of this tab has neither answer: the focused context entry
+   carrying `observer_model` is still in flight and the terminal lookup has not
+   returned. Collapsing that into `false` told a reader whose server was started
+   with BOTH capabilities on "terminal bridge off, observer model off", and the
+   sentence corrected itself a tick later. Measured on a fixture serving an
+   enabled model and a registered terminal: unread read {terminal:false,
+   observer:false} where settled read {terminal:true, observer:true}, and the
+   terminal section rendered inside the setup disclosure on that render.
+
+   Moving the lookup earlier does not remove the third state and cannot: the
+   lookup is a fetch, so the render that starts it still has no answer. What the
+   caller's reorder buys is that placement and summary read the same tick's map
+   rather than the previous render's.
+
+   `null` for an unfocused terminal too. The bridge is a per-session
+   registration, so with nothing selected there is no session whose bridge could
+   be reported either way. */
 function nextCockpitConsoleCapabilities(group, focus){
   const terminal = focus ? projectTerminalBySession[sessKey(focus)] : null;
   const entry = nextCockpitContexts.get(nextCockpitContextKey(group, focus));
-  const model = entry && entry.data && entry.data.observer_model;
+  // `undefined` distinguishes an entry that has not arrived from one that
+  // arrived publishing no observer model; `null` from the latter is a read.
+  const model = entry && entry.data ? entry.data.observer_model || null : undefined;
   return {
-    terminal: Boolean(terminal && terminal.state === "registered"),
-    observer: Boolean(model && model.enabled === true),
+    terminal: !terminal || terminal.loading === true ? null : terminal.state === "registered",
+    observer: model === undefined ? null : Boolean(model && model.enabled === true),
   };
 }
 
 function nextCockpitConsoleSetup(capabilities, body){
+  // Three words for three states. "off" for a capability nothing has read yet
+  // is the confident wrong answer this board is built against.
+  const said = value => value === true ? "on" : (value === false ? "off" : "not read yet");
   const summary = "How this server was started \u2014 terminal bridge " +
-    (capabilities.terminal ? "on" : "off") + ", observer model " +
-    (capabilities.observer ? "on" : "off");
+    said(capabilities.terminal) + ", observer model " + said(capabilities.observer);
   return '<details class="next-cockpit-console-setup" data-next-cockpit-console-setup' +
     nextCockpitDisclosureAttr("console-setup") + '>' +
     `<summary>${esc(summary)}</summary>${body}</details>`;
@@ -3772,8 +3819,11 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
        AFTER the rail rather than before it, because the rail is what the panel
        is now ordered around and a live terminal ahead of it would put the
        operations back below a screenful. */
-    const capabilities = nextCockpitConsoleCapabilities(context.group, focus);
+    /* The terminal before the capabilities, because `nextCockpitTerminal` is
+       what performs the lookup the capabilities then read. Reversed, the
+       placement decision read the map the next line fills. */
     const terminal = focus ? nextCockpitTerminal(context.group, focus) : "";
+    const capabilities = nextCockpitConsoleCapabilities(context.group, focus);
     const prompt = focus ? ""
       : '<p class="next-cockpit-empty">Select one exact session to open its read-only console.' +
         (context.group.sessions.length === 1
@@ -3781,10 +3831,16 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
             focus:sessKey(context.group.sessions[0]),tab:"console"}))}">Open this session’s console</a>`
           : "") + '</p>';
     const observer = nextObserverModelControls(context.group, focus);
+    /* `=== true` at every gate: an unread capability is not an enabled one,
+       and it offers nothing to operate on this render, so it keeps the
+       disclosure's placement until it resolves. Only the summary distinguishes
+       the two, because only the summary makes a claim about it. */
     body = nextCockpitConsoleScope(focus) + prompt + nextProjectRail(context) +
-      (capabilities.terminal ? terminal : "") + (capabilities.observer ? observer : "") +
+      (capabilities.terminal === true ? terminal : "") +
+      (capabilities.observer === true ? observer : "") +
       nextCockpitConsoleSetup(capabilities,
-        (capabilities.terminal ? "" : terminal) + (capabilities.observer ? "" : observer) +
+        (capabilities.terminal === true ? "" : terminal) +
+        (capabilities.observer === true ? "" : observer) +
         nextCockpitConsoleStatus(context.group));
   }
   return `<section class="next-cockpit-panel" id="next-cockpit-panel-${tab}" role="tabpanel" ` +

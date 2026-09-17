@@ -156,9 +156,34 @@ def _sub_label_floor_literals(css: str) -> set[tuple[str, float]]:
 
 
 def _absence_rules(css: str) -> list[tuple[str, str]]:
-    """Rules whose selector carries an absence marker."""
-    markers = ("--absent", "[data-next-withheld]", "-clause-absent")
-    return [(sel, decls) for sel, decls in _rules(css) if any(m in sel for m in markers)]
+    """Rules whose selector names an absence, by the sheet's own convention.
+
+    Derived from the convention -- an `-absent` class-name segment, or the
+    withheld attribute -- rather than from a list of the spellings someone
+    happened to think of. The list this replaces held three markers,
+    `--absent`, `[data-next-withheld]` and `-clause-absent`, and matched 8 of
+    the 14 rules that carry one. `.next-capacity-absent`,
+    `.next-session-absent`, `.next-cockpit-held-absent` and
+    `.next-cockpit-work-absent` spell the marker with a single hyphen, so the
+    guard could not see them, and all four spelled their ink `var(--ink3)`
+    directly rather than through `--ink-absence`: repointing the register
+    would have left them behind with this test green. That is the
+    enumerated-verifier defect this milestone has now shipped five times, and
+    the point of deriving is that the next absence emitter arrives inside the
+    guard instead of beside it.
+
+    `\\b` at the end, so a hypothetical `-absentee` cannot match. The grouped
+    selectors this found were split rather than repointed whole:
+    `.next-capacity-slack` is a figure (`~N% spare at reset`) and
+    `.next-cockpit-work-dropped` is a bound on rows that DID render, so
+    neither belongs on the absence register even though each shared a rule
+    with something that does.
+    """
+    return [
+        (sel, decls)
+        for sel, decls in _rules(css)
+        if re.search(r"-absent\b", sel) or "[data-next-withheld]" in sel
+    ]
 
 
 class NextPageAssetContractTest(unittest.TestCase):
@@ -679,7 +704,8 @@ class NextPageAssetContractTest(unittest.TestCase):
             ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ),
         (12.5, ".next-cockpit-recovery .next-project-value--absent"),
-        (12.5, ".next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped"),
+        (12.5, ".next-cockpit-work-absent,.next-cockpit-work-limit"),
+        (12.5, ".next-cockpit-work-dropped"),
         (12.5, ".next-delegation-withheld small"),
         (12.5, ".next-guardrail-copy small,.next-guardrail-empty"),
         (12.5, ".next-project-detail-rail .next-rail-reason"),
@@ -841,25 +867,35 @@ class NextPageAssetContractTest(unittest.TestCase):
 
         The ruling is that an absence is a SANS SENTENCE sharing `--ink3` with
         labels, separated by family and case rather than by ink. The family half
-        is checkable per rule. The size half is not, quite: three of these rules
-        declare no size at all and inherit one, and the one rule that declares a
-        sub-floor size is `.next-project-value--absent` at 12.5px -- which is
-        CORRECT, because its paired value resolves to 12.5px too in every
-        context that rule reaches. Resolved through the cascade at four call
-        sites: session line 12.5/12.5, project scope 12.5/12.5, activity title
-        14.0/14.0, cockpit recovery 15.0/15.0. Raising the absence alone would
-        make a stated absence render larger than the fact it replaces, which is
-        the defect this milestone has already shipped four times.
+        is checkable per rule, over every rule the derived sweep finds.
+
+        The size half is not, quite. `.next-project-value--absent` declares
+        12.5px, which is CORRECT, because its paired value resolves to 12.5px
+        too in every context that rule reaches. Resolved through the cascade at
+        four call sites: session line 12.5/12.5, project scope 12.5/12.5,
+        activity title 14.0/14.0, cockpit recovery 15.0/15.0. Raising the
+        absence alone would make a stated absence render larger than the fact it
+        replaces, which is the defect this milestone has already shipped four
+        times.
 
         So the size clause is bound to the pair rather than to a floor: the
         exception holds only while `.next-project-value--known` declares no size
         of its own. Give the value a size and this reds, which is exactly when
         the pair must be re-measured.
+
+        The census below is a census and not a pairing claim. Four of its seven
+        rows are the pairs `AnAbsenceNeverOutranksTheValueItReplacesTest`
+        resolves; the other three -- capacity, Held to's own absence paragraph,
+        and the observed record's -- are absence PARAGRAPHS that replace a
+        collection rather than a value, so there is no second selector to draw
+        them against. DRC-4602 owns that wider class. What this assertion holds
+        is that the set and the count are both what was measured, so a rule
+        arriving below the floor cannot do it quietly.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         tokens = _type_tokens(css)
         absences = _absence_rules(css)
-        self.assertEqual(7, len(absences))
+        self.assertEqual(14, len(absences))
         for selector, decls in absences:
             with self.subTest(selector=selector):
                 self.assertFalse(_is_mono(decls))
@@ -869,10 +905,10 @@ class NextPageAssetContractTest(unittest.TestCase):
             if (size := _declared_size(decls, tokens)) is not None
         }
         below = {sel: size for sel, size in sized.items() if size < SENTENCE_FLOOR_PX}
-        # Four rules sit below the floor, and each was measured against the
-        # value it replaces rather than asserted alone -- the discipline whose
-        # absence cost this milestone four review cycles. All four pairs
-        # resolve 12.5/12.5, so none outranks its value:
+        # Seven rules sit below the floor. The four that have a paired value
+        # were each measured against it rather than asserted alone -- the
+        # discipline whose absence cost this milestone four review cycles. All
+        # four pairs resolve 12.5/12.5, so none outranks its value:
         #   .next-project-value--absent            vs .next-project-value--known (unsized)
         #   .next-cockpit-recovery ...--absent     vs .next-cockpit-recovery strong      12.5
         #   .next-cockpit-reading-clause-absent    vs .next-cockpit-reading-clause       12.5
@@ -884,6 +920,9 @@ class NextPageAssetContractTest(unittest.TestCase):
                 ".next-cockpit-reading-clause-absent": 12.5,
                 ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n"
                 ".next-cockpit-recovery .next-project-goal-gap": 12.5,
+                ".next-capacity-absent": 12.5,
+                ".next-cockpit-held-absent": 12.5,
+                ".next-cockpit-work-absent,.next-cockpit-work-limit": 12.5,
             },
             below,
         )
@@ -892,6 +931,34 @@ class NextPageAssetContractTest(unittest.TestCase):
         ]
         self.assertEqual(1, len(known))
         self.assertIsNone(_declared_size(known[0], tokens))
+
+    def test_every_absence_rule_that_colours_itself_colours_through_the_register(self) -> None:
+        """The half of DRC-4589's ruling a repoint would otherwise break.
+
+        `--ink-absence` exists so the absence role can move without touching
+        every rule that plays it. Four rules spelled `var(--ink3)` instead, and
+        the marker list that preceded the derived sweep could not see any of
+        them: a repoint of the register would have moved seven absence rules
+        and left four behind, in an ink now reserved for labels, with this
+        module green.
+
+        The set AND the count, because neither implies the other. A rule that
+        declares no colour at all inherits one, and there are four of those --
+        asserting only the declared set would let a fifth rule lose its colour
+        silently.
+        """
+        css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        declared: list[str] = []
+        silent = 0
+        for _selector, decls in _absence_rules(css):
+            colour = re.search(r"(?:^|;)\s*color:\s*([^;]+)", decls)
+            if colour is None:
+                silent += 1
+                continue
+            declared.append(colour.group(1).strip())
+        self.assertEqual({"var(--ink-absence)"}, set(declared))
+        self.assertEqual(10, len(declared))
+        self.assertEqual(4, silent)
 
     def test_a_mono_absence_is_caught(self) -> None:
         """Mutation: the reading clause's `var(--sans)` -> `var(--mono)`.
@@ -1255,8 +1322,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "f580b09c634f7a7c2f60584f5fca486a3a28e6fee43ff8152f90e08fc432eed4",
             ),
             "next-cockpit.js": (
-                224_110,
-                "60f187a139265c87ca37a388db29d854ef0a1206a7db62a658f82b1f032ce008",
+                228_197,
+                "634bc2a97d69ef83882cdca8eba52aeecdf56b48099f94c3adc151fb978ffb5c",
             ),
             "next-render.js": (
                 8_960,
@@ -1275,16 +1342,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(120_737, len(styles))
+        self.assertEqual(120_893, len(styles))
         self.assertEqual(
-            "bb77b6a1c9a3f17c7edd6a91efe2c06c12dcf00d9a1d8793fb350f12d2f70f4c",
+            "59f31388e4d33af79afc6d1cb9800ceceed6d2d75434b382df43ec57a459b680",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(953_261, len(assembled))
+        self.assertEqual(957_504, len(assembled))
         self.assertEqual(
-            "74d2c75defa925a383b9b82920f60bacb6d032eeb95a7ffa8a715e05cebd1086",
+            "e4f70fd8bf018fe244872a22450fe7ec689fdaf68ea52f1649ff80b6ac942dda",
             hashlib.sha256(assembled).hexdigest(),
         )
 

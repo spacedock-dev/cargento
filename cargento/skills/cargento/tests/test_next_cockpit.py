@@ -5,13 +5,16 @@ import json
 import pathlib
 import re
 import shutil
+import subprocess
 import unittest
 from typing import Any, ClassVar
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
+from cargento_runtime.web import page as frontend_page
 
 from . import css_cascade
+from .js_literals import emitted_strings, reading_why_sentences
 from .next_harness import NextPageJsHarness, storage_prelude
 
 
@@ -6574,19 +6577,38 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
                 )
 
     def test_the_retired_axes_span_stays_retired(self) -> None:
-        """DRC-4591 deleted `two axes, read separately` as a duplicate.
+        """DRC-4591 AC-4: `two axes, read separately` appears nowhere in the runtime.
 
         A resolver cannot notice that an emitter stopped building a path, so a
         restored span would rejoin the page with no rule of its own and no entry
-        above holding it against a value. Asserted on both halves, because
+        above holding it against a value. Both halves are checked, because
         leaving the rule behind is how a later revert finds a selector waiting
         for it.
+
+        "Nowhere in the runtime" was verified against two files,
+        `next-cockpit.js` and `styles.css`, which is the criterion's own word
+        checked over the two places the author happened to look. Widened to the
+        whole-file walk `RuntimeDecisionCitationsTest` makes -- every `.py`,
+        `.js`, `.css` and `.html` under `cargento_runtime` -- because the span
+        could return through any of them and the sentence promises all of them.
+        The count is asserted too: a walk that reaches no file passes a
+        `assertNotIn` loop over nothing.
         """
-        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
-        styles = (web / "styles.css").read_text(encoding="utf-8")
-        self.assertNotIn("two axes, read separately", self.cockpit_js)
-        self.assertNotIn("next-cockpit-landed-axes", self.cockpit_js)
-        self.assertNotIn("next-cockpit-landed-axes", styles)
+        runtime = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime"
+        scanned = sorted(
+            source
+            for source in runtime.rglob("*")
+            if source.suffix in {".py", ".js", ".css", ".html"} and source.is_file()
+        )
+        # The bundle is ~40 files; a floor well under it catches a walk that
+        # silently reaches nothing without pinning a number that a new module
+        # would move.
+        self.assertGreater(len(scanned), 20, "the runtime walk found almost no files")
+        for source in scanned:
+            body = source.read_text(encoding="utf-8")
+            with self.subTest(source=source.name):
+                self.assertNotIn("two axes, read separately", body)
+                self.assertNotIn("next-cockpit-landed-axes", body)
 
     def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
         """The other raised absence has no value to be read beside.
@@ -7250,12 +7272,12 @@ console.log(JSON.stringify({{
         self.assertTrue(unwritable["open"])
         self.assertEqual(
             "Not settled. The store could not be written, so the mark has already been "
-            "dropped and the question above still stands.",
+            "dropped and the question below still stands.",
             unwritable["cue"],
         )
         self.assertTrue(refused["open"])
         self.assertEqual(
-            "Not settled. The store refused the mark, so the question above still stands as "
+            "Not settled. The store refused the mark, so the question below still stands as "
             "it did.",
             refused["cue"],
         )
@@ -8763,7 +8785,7 @@ console.log(JSON.stringify({
 
         self.assertIn(
             "The abstention check this ruling requires has not been run, so a reading cannot "
-            "be asked for yet. The evidence above stays readable without one.",
+            "be asked for yet. The evidence below stays readable without one.",
             control,
         )
         self.assertIn("Ask for a reading</button>", control)
@@ -9423,7 +9445,7 @@ console.log(JSON.stringify({
             [
                 (
                     "Not settled. The store could not be written, so the mark has already been "
-                    "dropped and the question above still stands."
+                    "dropped and the question below still stands."
                 )
             ],
             out["failed"],
@@ -9432,7 +9454,7 @@ console.log(JSON.stringify({
             [
                 (
                     "Not settled. The store could not be written, so the mark has already been "
-                    "dropped and the question above still stands."
+                    "dropped and the question below still stands."
                 ),
                 "Settled. A direction given after this will raise it again.",
             ],
@@ -10688,20 +10710,110 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         return out
 
+    # Derived, not selected. Every constant caveat sentence the PRE-CHANGE tree
+    # puts inside a `next-cockpit-reading-why`, taken from the merge base:
+    #
+    #   git show 21a0e935289ea64c963d4664daf7abab12c9866d:\
+    #     cargento/skills/cargento/cargento_runtime/web/next-cockpit.js > base.js
+    #
+    # then, from the repository root, sort what `reading_why_sentences` yields
+    # over `base.js` -- which is exactly what the test below does for you,
+    # against the same revision, whenever the blob is reachable.
+    #
+    # Re-running that command must reproduce this tuple exactly; the test below
+    # runs it for you whenever the base blob is reachable. AC-1's claim is
+    # "every caveat sentence on the pre-change tree still exists verbatim", and
+    # it was verified over five strings against roughly twenty-three emission
+    # sites -- a selection, which cannot fail on what it left out. What the
+    # derivation buys is that a sentence deleted from a site nobody listed reds
+    # this test. What it does not reach is a paragraph assembled through
+    # `${...}`: the text is not in the file, so it is out of scope here and is
+    # covered instead by `HeldToPositionalSentencesTest`, which reads the
+    # rendered page.
+    BASE_REVISION = "21a0e935289ea64c963d4664daf7abab12c9866d"
+    BASE_CAVEAT_SENTENCES: ClassVar[tuple[str, ...]] = (
+        (
+            "A count identifies a session worth reading; it establishes nothing about "
+            "whether the brief, the agent or Cargento\u2019s own judgement was poor, and "
+            "those three are not separable from it."
+        ),
+        "A reading is stored for this session and this build could not read it, so nothing from it is shown.",
+        "Five figures, and no arithmetic between them.",
+        "Neither card implies the other.",
+        "No reading has been made at your request, so nothing has been raised from one.",
+        "Nothing watches for a departure on its own.",
+        "Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.",
+        "The reading raised no departure from the revision it read.",
+        "This session was not in the observed payload, so nothing here says how it ended.",
+    )
+
+    # The three the fixture arms cannot reach, each with the state it needs and
+    # none of it reachable without a stored reading or a doctored payload. They
+    # are still held to the verbatim half above; what is declared here is only
+    # that nothing rendered them, so the render loop cannot quietly shrink to
+    # nothing while reporting success.
+    UNRENDERED_CAVEATS: ClassVar[frozenset[str]] = frozenset(
+        {
+            (
+                "A reading is stored for this session and this build could not read it, "
+                "so nothing from it is shown."
+            ),
+            "The reading raised no departure from the revision it read.",
+            "This session was not in the observed payload, so nothing here says how it ended.",
+        }
+    )
+
+    def test_the_base_sentence_list_is_what_the_command_derives(self) -> None:
+        """The difference between a derivation and a longer list.
+
+        Skipped rather than failed where the base blob is unreachable: CI
+        checks out at depth 1, and a test that cannot read the revision it
+        names has nothing to say about it. Locally it is the guarantee that the
+        tuple above was not edited by hand.
+        """
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        blob = f"{self.BASE_REVISION}:cargento/skills/cargento/cargento_runtime/web/next-cockpit.js"
+        try:
+            base = subprocess.run(
+                # Fixed argv and no shell; git is on PATH in every dev and CI image.
+                ["git", "show", blob],  # noqa: S607
+                capture_output=True,
+                check=True,
+                cwd=web,
+                text=True,
+                timeout=30,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            self.skipTest(f"{self.BASE_REVISION} is not in this clone")
+        self.assertEqual(set(self.BASE_CAVEAT_SENTENCES), reading_why_sentences(base))
+
     def test_every_caveat_sentence_survives_the_tiering(self) -> None:
-        """AC-1. Falsified by deleting or paraphrasing any of the four."""
+        """AC-1, over the derived set. Falsified by deleting or paraphrasing any
+        sentence the pre-change tree stated, at any of its emission sites.
+
+        Two halves, because the strong one cannot cover every sentence. The
+        verbatim check reaches all of them and is what makes the set worth
+        deriving; the rendered check reaches the ones a fixture can reach and is
+        what proves a surviving string is still on the page rather than only in
+        the file.
+        """
+        self.assertNotEqual((), self.BASE_CAVEAT_SENTENCES)
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        current = (web / "next-cockpit.js").read_text(encoding="utf-8")
+        emitted = "\n".join(" ".join(run.split()) for run in emitted_strings(current))
+        for sentence in self.BASE_CAVEAT_SENTENCES:
+            with self.subTest(sentence=sentence[:40]):
+                self.assertIn(sentence, emitted)
+
         out = self.held()
         html = out["html"]
         assert isinstance(html, str)
-        for sentence in (
-            self.COUNTS_CLAIM,
-            self.COUNTS_WHY,
-            self.STEER_CLAIM,
-            self.STEER_WHY,
-            self.LANDED_CLAIM,
-        ):
-            with self.subTest(sentence=sentence[:40]):
-                self.assertIn(sentence, html)
+        rendered = [s for s in self.BASE_CAVEAT_SENTENCES if s in html]
+        self.assertEqual(
+            sorted(set(self.BASE_CAVEAT_SENTENCES) - self.UNRENDERED_CAVEATS),
+            sorted(rendered),
+            "a caveat sentence stopped rendering, or one declared unreachable now renders",
+        )
         # And no disclosure standing empty in place of one.
         self.assertNotIn("</summary></details>", html)
 
@@ -10919,25 +11031,40 @@ console.log(JSON.stringify({
         out = self.tab()
         html = out["html"]
         assert isinstance(html, str)
-        at = html.index('class="next-cockpit-held-lede"')
-        self.assertLess(at, html.index('class="next-cockpit-held-fields"'))
-        self.assertLess(at, html.index('class="next-cockpit-held-reentry"'))
-        # The absence sentences this board actually renders, and there must be
-        # some: a tab with nothing to say nothing about proves nothing here.
-        rendered = [
-            absence
-            for absence in (
-                "No entry in the observed record names this session",
-                "No reading has been made at your request",
-                "Nothing watches for a departure on its own",
-                "so there is no re-entry command to copy",
+        # The tab, not the page. The chrome and the scope rail state absences of
+        # their own above every panel, and this criterion is about what the tab
+        # opens on. Sliced from the panel to the end of the document rather than
+        # to a matching `</section>`, which nested sections make unfindable by
+        # scan; anything after the panel is also after the lede, so the slice
+        # can only ever add elements the assertion still holds for.
+        panel = html[html.index('data-next-cockpit-panel="held-to"') :]
+        at = panel.index('class="next-cockpit-held-lede"')
+        self.assertLess(at, panel.index('class="next-cockpit-held-fields"'))
+        self.assertLess(at, panel.index('class="next-cockpit-held-reentry"'))
+        # Every absence element the board rendered, found by the same convention
+        # `test_next_page._absence_rules` sweeps the stylesheet with: an
+        # `-absent` class-name segment, or one of the three absence attributes.
+        #
+        # The four-string list this replaces failed twice over one gap, and the
+        # second failure is why adding a fifth string could not have fixed it:
+        # the strings were passed through `if absence in html`, so an absence
+        # this tab renders and nobody listed was both off the list AND filtered
+        # out of the comparison -- the loop then ran over the three that did
+        # render and reported success. A list that silently drops its own
+        # misses is not a shorter version of this sweep; it is a different
+        # assertion.
+        absences = [
+            match.start()
+            for match in re.finditer(
+                r'<\w+[^>]*?(?:class="[^"]*-absent[^"]*"'
+                r"|data-absence=|data-next-absent|data-next-withheld)[^>]*>",
+                panel,
             )
-            if absence in html
         ]
-        self.assertTrue(rendered, "no absence sentence rendered to be measured against")
-        for absence in rendered:
-            with self.subTest(absence=absence[:30]):
-                self.assertLess(at, html.index(absence))
+        self.assertGreater(len(absences), 3, "no absence element rendered to be measured against")
+        for start in absences:
+            with self.subTest(absence=panel[start : start + 60]):
+                self.assertLess(at, start)
 
     def test_the_lede_claims_no_automatic_reading(self) -> None:
         """AC-2, on the default board -- the one the `--unasked-readings`
@@ -10975,13 +11102,13 @@ console.log(JSON.stringify({
         # The Intent-log pointer is the tab's last line, after the record.
         self.assertLess(html.find("OBSERVED RECORD"), html.find("next-cockpit-departures-kept"))
 
-    def test_no_sentence_says_the_record_is_above_it(self) -> None:
-        """AC-4. Falsified by moving OBSERVED RECORD last and leaving the phrase,
-        which ships a false sentence through a green suite.
+    def test_the_record_read_phrase_did_not_merely_move(self) -> None:
+        """AC-4's original string check, kept as the regression it is.
 
-        Rendered on the branch that carries the sentence: the words saved after
-        every entry in the record, so no later direction is pending and nothing
-        has been settled.
+        The sweep that replaces it is `HeldToPositionalSentencesTest`. This one
+        stays because it is cheap and because the phrase it names is the one
+        DRC-4594 actually reworded; what it cannot do is notice the next one,
+        which is the whole reason the sweep exists.
         """
         out = self.tab("__dashboard.sessions[0].annotation_at = 200;\n")
         html = out["html"]
@@ -11082,6 +11209,182 @@ console.log(JSON.stringify({
         self.assertEqual(2, cockpit.count("your words"))
         self.assertIn("your words are still in the box", cockpit)
         self.assertIn("your words are kept", cockpit)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class HeldToPositionalSentencesTest(NextPageJsHarness):
+    """DRC-4594 AC-4, as a sweep over the class rather than over one phrase.
+
+    The criterion was written "no sentence says the record is above it" and
+    verified by asserting one phrase was gone. DRC-4594's own comment records
+    that it reworded "the one sentence that was positionally anchored" -- so it
+    swept by known string, and it missed two: `NEXT_READING_OFFER`, which was
+    false on every render, and `NEXT_READING_UNAUTHORIZED`, which is false
+    whenever it renders and renders rarely. This sweep then found a third, the
+    two settle cues, which no one had looked at at all. Three misses from a
+    by-hand pass is the argument for deriving the subject.
+
+    **Two things were deliberately not done here**, because each would leave a
+    sweep that passes while measuring nothing:
+
+    * The obvious repair for a false "above" is to delete the word. After that
+      the sweep returns an empty set and is green forever. So every sentence
+      keeps a positional word and the word is required to be TRUE, and the
+      assertions below require the sweep to be non-empty, to be a bijection
+      with the referents declared here, and for every member to have been
+      index-checked in at least one arm.
+    * "Every hit lands after the record" is right for *above* and wrong for
+      *below* -- and the record genuinely IS below now, so the correct fix
+      ("the observed record below") would FAIL that assertion. The direction is
+      read from each sentence and the comparison flips with it.
+
+    The referents are the one enumerated part, and they have to be: a marker's
+    identity is not in the sentence. What is derived is the SUBJECT, so a new
+    positional sentence reds this test until someone says what it points at.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ANNOTATED = HeldToOrderingTest.ANNOTATED
+
+    POSITIONAL = re.compile(r"\b(above|below)\b")
+
+    # A distinctive fragment of each swept sentence -> the rendered marker whose
+    # side it claims. Asserted below to be a bijection with the sweep.
+    REFERENTS: ClassVar[dict[str, str]] = {
+        "so the question below still stands as it did": "next-cockpit-conflict-open",
+        "already been dropped and the question below still stands": "next-cockpit-conflict-open",
+        "so nothing above is an inspected file": "OBSERVED RECORD",
+        "Save a goal above to enable a reading": 'class="next-cockpit-held-fields"',
+        "The evidence below stays readable without one": "OBSERVED RECORD",
+        "the observed record below and the words you typed": "OBSERVED RECORD",
+        "after you saved the words above": 'class="next-cockpit-held-fields"',
+    }
+
+    # Each arm exists to render sentences the default board does not. `model`
+    # supplies an observer model so the reading control stops refusing for a
+    # different reason and reaches the abstention sentence; `settle-*` marks the
+    # cue lane directly, which is the only way to reach a store outcome without
+    # driving a POST.
+    ARMS: ClassVar[dict[str, str]] = {
+        "default": "",
+        "late-words": "__dashboard.sessions[0].annotation_at = 200;\n",
+        "no-words": (
+            '__dashboard.sessions[0].annotation_goal = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+        ),
+        "settle-refused": "",
+        "settle-unpersisted": "",
+        "model": "",
+    }
+
+    def arm(self, name: str) -> str:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + self.ANNOTATED
+            + self.ARMS[name]
+            + f"const ARM = {json.dumps(name)};\n"
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const session = nextCockpitFocusedSession(group);
+if(ARM.startsWith("settle-")){
+  nextCockpitHeldMark(nextCockpitHeldKey(session, "settle"), ARM);
+  renderNext();
+}
+if(ARM === "model"){
+  for(const key of [nextCockpitContextKey(group, null), nextCockpitContextKey(group, session)]){
+    const entry = nextCockpitContexts.get(key);
+    if(entry && entry.data) entry.data = Object.assign({}, entry.data,
+      {observer_model:{enabled:true, disclosure:"x", model:"sonnet"}});
+  }
+  renderNext();
+}
+console.log(JSON.stringify({html: __els.app.innerHTML}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        html = out["html"]
+        assert isinstance(html, str)
+        return html
+
+    def sweep(self) -> list[str]:
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        return [
+            text
+            for text in emitted_strings(source)
+            if self.POSITIONAL.search(text) and text.strip()
+        ]
+
+    def test_the_sweep_and_the_referents_are_a_bijection(self) -> None:
+        """Non-vacuity. A sweep that can return nothing is not a measurement.
+
+        Two directions, because neither implies the other: a new positional
+        sentence with no referent is unchecked, and a referent whose sentence
+        has been deleted or reworded is a row measuring nothing.
+        """
+        found = self.sweep()
+        self.assertNotEqual([], found, "the sweep found no positional sentence at all")
+        matched: dict[str, list[str]] = {fragment: [] for fragment in self.REFERENTS}
+        unclaimed: list[str] = []
+        for text in found:
+            hits = [fragment for fragment in self.REFERENTS if fragment in text]
+            if not hits:
+                unclaimed.append(text)
+                continue
+            self.assertEqual(1, len(hits), f"{text[:60]!r} matches {len(hits)} referents")
+            matched[hits[0]].append(text)
+        self.assertEqual(
+            [],
+            unclaimed,
+            "a positional sentence has no declared referent; say what it points at",
+        )
+        for fragment, texts in matched.items():
+            with self.subTest(fragment=fragment[:40]):
+                self.assertEqual(1, len(texts), f"{fragment!r} matched {len(texts)} sentences")
+
+    def test_every_positional_sentence_renders_on_the_side_it_claims(self) -> None:
+        """AC-4, directionally. Falsified three ways, each one shipped here
+        before this test existed: a sentence saying `above` about something
+        below it, a sentence saying `below` about something above it, and a
+        sentence that was made true by deleting the word.
+        """
+        arms = {name: self.arm(name) for name in self.ARMS}
+        checked: dict[str, list[str]] = {}
+        for text in self.sweep():
+            fragment = next(f for f in self.REFERENTS if f in text)
+            marker = self.REFERENTS[fragment]
+            words = set(self.POSITIONAL.findall(text))
+            self.assertEqual(
+                1, len(words), f"{fragment!r} states two directions at once: {sorted(words)}"
+            )
+            claims_above = words == {"above"}
+            for name, html in arms.items():
+                at = html.find(text.strip())
+                anchor = html.find(marker)
+                if at == -1 or anchor == -1:
+                    continue
+                checked.setdefault(fragment, []).append(name)
+                with self.subTest(fragment=fragment[:40], arm=name):
+                    if claims_above:
+                        self.assertGreater(
+                            at, anchor, f"{fragment!r} says `above` about something below it"
+                        )
+                    else:
+                        self.assertLess(
+                            at, anchor, f"{fragment!r} says `below` about something above it"
+                        )
+        # Every sentence was measured somewhere. A referent no arm renders is a
+        # row this test carries and never reads, which is the vacuity the list
+        # form of this criterion had.
+        self.assertEqual(
+            sorted(self.REFERENTS),
+            sorted(checked),
+            "a positional sentence rendered in no arm, so nothing was compared for it",
+        )
 
 
 class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):
