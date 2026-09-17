@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4591:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4591 issue rewrite and the two-change milestone correction for writing to Linear, and approve the eight acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4591:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/dc295a045b7e5ce62f2bf910661b0d9609c398ea/drc-4591.md",
+      "rev": "sha256:689f487b9ae5e2ab60a26a0d7dc37bc10cc4f2ee73ba481a2dc9abd07ef5f1df",
+      "mediaType": "text/markdown",
+      "summary": "Re-measuring against the post-DRC-4587 tree changed the issue's argument rather than confirming it: the size-and-contrast half is now false because that PR already fixed it, while the underlying defect is sharper. A thirteen-row claim table records three dead claims, two understated counts and one wrong line number. The disclosure requirement now names its concrete mechanism - nextCockpitWhy reuses nextCockpitDisclosureAttr and projectDisclosure is reused as-is - so neither surface needs new plumbing."
+    }
+  ]
+}
