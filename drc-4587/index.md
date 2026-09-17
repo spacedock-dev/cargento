@@ -1643,3 +1643,77 @@ binding these rather than re-checking them, and it supports the ordering already
 
 The six inherited inversions belong with DRC-4602's floor work; they are recorded here with their
 measured gaps so that issue does not re-derive them.
+
+## Stage Report: implementation (cycle 6)
+
+Correction round 4 as revised: **F8 only**. Candidate SHA
+**`1f21b3e2371766171341fdd848cd8d43fb7fb1de`**, on the branch, history linear, nothing rewritten,
+not pushed.
+
+**The scope-back was already committed when the narrowing arrived, so it was withdrawn rather than
+left standing.** `39c81df1` had reverted twenty absence rules; `3b824d07` restores the round-3 tree
+by checking the paths out of `0f8a3a75`, not by rewriting history, because `spacedock-ensign/drc-4588`
+is stacked here. Two commits that cancel is a worse history than one, and it is the honest one: the
+branch did hold the reverted state for a while, and a reader tracing `drc-4588`'s base will see why.
+
+- DONE: Write the gate-approved drafts to Linear as the FIRST action before any code.
+  No Linear write this round and none was authorized.
+- DONE: Write the failing test first, regenerate the pins, re-run the three oracle modules ALONE.
+  The comparison was added **before** the fix and failed on the unfixed tree with the exact pair:
+  `absence 15.0px against value 12.5px`. It fails again with the fix removed. Pins: 7 of 8 written
+  sites moved, `next-cockpit.js` size and digest verified unchanged, no JS this round. Isolated:
+  `test_next_page` 25/25, `test_next_flag` 7/7, `test_focus` 96/96, guard 4/4.
+- DONE: Run the canonical pre-PR suite from AGENTS.md, invoke sync-docs, measure the surface.
+  Dashboard **3531 OK** (2 skipped), scripts **515 OK** (1 skipped), coverage 86.8%, `ruff`, `mypy`,
+  `validate_plugins`, `bump_version --current` 0.26.0, no version field moved.
+- DONE: Commit DCO signed off, do not push, report the SHA.
+  Reported above. Nothing pushed, no pull request touched.
+
+### F8: which branch, and why that one
+
+`nextCockpitRecovery` picks between a provenance string and "Assignment evidence not published" in
+one ternary at `next-cockpit.js:2755-2760`. This branch raised the absence, so this branch created
+the inversion: **12.5px mono against 15.0px sans**, on the briefing strip where a reader sees it.
+
+**The value rises.** `.next-cockpit-evidence-missing` is emitted at seven sites and six of them are
+genuine prose, so demoting the class would sink six real sentences to settle one slot. The rule
+allows either branch and the shared class rules out one of them, so this is a constraint rather
+than a preference. Scoped to `.next-cockpit-recovery small.next-cockpit-source`, which is the only
+`small` the disclosure draws, so nothing else in the strip moves. Recorded in
+`docs/design-next-ui.md` beside the demotions, so both branches of the rule are visible together.
+
+**The trap was real and I took the warning literally.** The test resolves `.next-cockpit-source` on
+the known branch, not the strip's `small` in general. The general selector inherits the same 12.5px,
+so a test written against it would have looked like a check and pinned the same inverted state under
+a new name. That would have been the fourth guard on this branch with that shape.
+
+### One thing that is not mine, established rather than asserted
+
+`scripts/lint_embedded.py` reported `opencode_plugin.js` and `pi_extension.js` as "native permission
+pair did not map to a gate pair", once as two problems and once as one, then **clean on five
+consecutive runs against an unchanged tree**. Both files are byte-identical to `main` and neither is
+touched by this branch. So the check is nondeterministic on files outside this diff. Reported rather
+than chased, and not the same thing as the `test_irreversible` flake the round already named.
+
+### Surface
+
+This round: `styles.css` **7 added, 0 removed**, `test_next_cockpit.py` 29 / 12,
+`docs/design-next-ui.md` 4 / 1, oracles 7. Small and nearly neutral, as the round asked.
+
+Cumulative against the merge base: runtime **163 changed** (`styles.css` 159, `next-cockpit.js` 4)
+against a declared ~105 and a 131.25 ceiling, **155.2%**. That is the highest it has been, and the
+reason is worth stating plainly rather than burying: the withdrawn scope-back is in this history as
+two cancelling commits, and `git diff` against the merge base counts the lines the second one
+restored. The *tree* is round 3 plus seven lines. The figure is honest and the explanation is not
+an excuse for it.
+
+### Summary
+
+F8 done and nothing else. The inversion this branch created on the briefing strip is closed by
+raising the value, because the absence class serves six other sentences and demoting it would trade
+one fixed slot for six broken ones. The test that missed it for three reviews now compares, against
+the selector the emitter actually pairs rather than the one that merely resolves to the same number.
+
+The scope-back I had already committed is withdrawn in the history rather than erased from it, which
+costs a cumulative surface figure I would otherwise not be reporting. I would rather carry that than
+rewrite a branch another worktree is stacked on.
