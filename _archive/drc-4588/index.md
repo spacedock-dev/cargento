@@ -1,11 +1,11 @@
 ---
 id:
 title: "Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason"
 started: 2026-09-17T06:57:18Z
-completed: ""
-verdict: ""
+completed: 2026-09-17T16:48:54Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4588
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed later as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-17T16:48:54Z
 ---
 
 [DRC-4588](https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason) — Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb
