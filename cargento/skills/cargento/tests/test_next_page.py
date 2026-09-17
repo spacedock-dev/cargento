@@ -12,6 +12,7 @@ from unittest import mock
 
 from cargento_runtime.web import page as frontend_page
 
+from . import css_cascade
 from .next_harness import NextPageJsHarness
 
 if TYPE_CHECKING:
@@ -184,6 +185,173 @@ def _absence_rules(css: str) -> list[tuple[str, str]]:
         for sel, decls in _rules(css)
         if re.search(r"-absent\b", sel) or "[data-next-withheld]" in sel
     ]
+
+
+def _tier_selectors(css: str) -> dict[str, float]:
+    """Each INDIVIDUAL selector its own rule puts on the sentence tier.
+
+    Grouped selectors are split, which is the whole point: the census reads a
+    rule's declaration, and a grouped rule declares for several elements at
+    once. `.next-guardrail-copy small` was declared at 15px inside one group
+    and at 12.5px by the next rule -- both (0,1,1), later wins -- so the
+    per-rule reading called an element compliant while it rendered below the
+    floor. Neither selector STRING appears twice, so no string comparison can
+    see it; only resolving the element can.
+    """
+    tokens = _type_tokens(css)
+    found: dict[str, float] = {}
+    for selector, decls in _rules(css):
+        if _is_mono(decls):
+            continue
+        height = _declared_line_height(decls)
+        size = _declared_size(decls, tokens)
+        if height is None or height < 1.3 or size is None or size < SENTENCE_FLOOR_PX:
+            continue
+        for raw in selector.split(","):
+            part = raw.strip()
+            if part:
+                found[part] = size
+    return found
+
+
+class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
+    """DRC-4596 AC-6, which asks what an element RENDERS at.
+
+    Every other guard in this module reads what a rule DECLARES. That is a fact
+    about the rule, and the two part company the moment a second rule at equal
+    specificity names the same element: the later one wins and the element
+    renders at a size its own tier rule never mentions. Measured here, and
+    independently with `getComputedStyle` in headless Chrome, which is the
+    method the criterion itself names.
+
+    **This is the direction `docs/design-next-ui.md` said was safe.** That file
+    said a per-rule census "will understate the set". It can also OVERSTATE it,
+    by reading a rule as compliant when a later equal-specificity rule takes the
+    element below the floor. The sentence is corrected there with the mechanism
+    named, because "understate" and "overstate" have different causes and only
+    one of them was written down.
+    """
+
+    tokens: ClassVar[dict[str, float]]
+    rules: ClassVar[list[tuple[str, str, int]]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tokens, cls.rules = css_cascade.load(frontend_page.WEB_DIR / "styles.css")
+
+    # Selectors some rule declares at or above the floor and another declares
+    # below it. Straddling is legal -- in all eight of these the COMPLIANT rule
+    # is the one that wins -- but it is the precondition for the defect, so the
+    # set is pinned and a ninth has to be looked at rather than discovered by a
+    # reader. `.next-guardrail-copy small` was the ninth: it straddled with the
+    # sub-floor rule winning, and it is gone from this list because the sheet no
+    # longer declares a size it immediately overrides.
+    STRADDLING: ClassVar[frozenset[str]] = frozenset(
+        {
+            ".next-capacity-pct",
+            ".next-cockpit-decision-summary",
+            ".next-cockpit-memos label>small",
+            ".next-cockpit-now-state small",
+            ".next-cockpit-recovery>div",
+            ".next-cockpit-viewing-session",
+            ".next-project-workflow-definition>small",
+            ".next-session-current>strong",
+        }
+    )
+
+    @staticmethod
+    def _straddling(css: str) -> set[str]:
+        tokens = _type_tokens(css)
+        sides: dict[str, set[bool]] = {}
+        for selector, decls in _rules(css):
+            size = _declared_size(decls, tokens)
+            if size is None:
+                continue
+            for part in selector.split(","):
+                cleaned = part.strip()
+                if cleaned:
+                    sides.setdefault(cleaned, set()).add(size >= SENTENCE_FLOOR_PX)
+        return {part for part, seen in sides.items() if len(seen) == 2}
+
+    @staticmethod
+    def _below_floor(
+        css: str, tokens: dict[str, float], rules: list[tuple[str, str, int]]
+    ) -> dict[str, float]:
+        """Tier selectors whose ELEMENT resolves below the floor."""
+        found: dict[str, float] = {}
+        for selector in _tier_selectors(css):
+            try:
+                path = css_cascade.path_for(selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            size = css_cascade.resolve(path, tokens, rules)
+            if size is not None and size < SENTENCE_FLOOR_PX:
+                found[selector] = size
+        return found
+
+    def test_every_sentence_tier_element_resolves_at_or_above_the_floor(self) -> None:
+        css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        # A sweep that resolved nothing would pass the check below in silence.
+        self.assertGreater(len(_tier_selectors(css)), 40, "the tier sweep found almost nothing")
+        self.assertEqual(
+            {},
+            self._below_floor(css, self.tokens, self.rules),
+            "a rule declares these on the sentence tier and a later rule renders "
+            "them below the floor",
+        )
+
+    def test_the_guard_reds_on_a_later_equal_specificity_rule_below_the_floor(self) -> None:
+        """Mutation: re-create the defect exactly, and run the GUARD on it.
+
+        Asserting that the resolver returns 12.5 would only prove the resolver
+        works. What has to be true is that the check above FAILS, so the mutant
+        is put through the same function the real sheet goes through.
+
+        `.next-steer-caveat` declares `--fs-sentence` and a later rule at the
+        same (0,1,0) takes it to `--fs-xs`, which is the shape
+        `.next-guardrail-copy small` shipped in.
+        """
+        css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        mutant = css + "\n.next-steer-caveat{font-size:var(--fs-xs);line-height:1.5}\n"
+        self.assertNotEqual(css, mutant)
+        tokens, rules = css_cascade.load_text(mutant)
+        self.assertEqual({".next-steer-caveat": 12.5}, self._below_floor(mutant, tokens, rules))
+        # And the clean sheet is not incidentally failing for some other reason.
+        self.assertEqual({}, self._below_floor(css, self.tokens, self.rules))
+
+    def test_the_set_of_selectors_declared_on_both_sides_is_pinned(self) -> None:
+        """The precondition, pinned as a census.
+
+        Every one of these resolves to its compliant rule today, so none is a
+        defect; what makes the set worth holding is that the shipped defect was
+        a member of it. A grouped-rule edit that adds a ninth gets reviewed
+        instead of being found by a reader.
+        """
+        css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertEqual(self.STRADDLING, self._straddling(css))
+        self.assertNotIn(".next-guardrail-copy small", self._straddling(css))
+
+    def test_the_straddle_census_would_have_seen_the_shipped_defect(self) -> None:
+        """Mutation: put the overridden declaration back.
+
+        This is the pre-fix sheet, and it proves the census is aimed at the
+        thing that actually shipped rather than at a shape resembling it.
+        """
+        css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        mutant = css.replace(
+            ".next-guardrail-copy strong,.next-guardrail-copy small"
+            "{display:block;overflow-wrap:anywhere;font-weight:500}\n"
+            ".next-guardrail-copy strong{font-size:var(--fs-sentence);line-height:1.55}",
+            ".next-guardrail-copy strong,.next-guardrail-copy small"
+            "{display:block;overflow-wrap:anywhere;font-size:var(--fs-sentence);"
+            "font-weight:500;line-height:1.55}",
+        )
+        self.assertNotEqual(css, mutant)
+        self.assertIn(".next-guardrail-copy small", self._straddling(mutant))
+        tokens, rules = css_cascade.load_text(mutant)
+        self.assertEqual(
+            {".next-guardrail-copy small": 12.5}, self._below_floor(mutant, tokens, rules)
+        )
 
 
 class NextPageAssetContractTest(unittest.TestCase):
@@ -664,7 +832,11 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-why>summary",
         ".next-cockpit-work-mix",
         ".next-delegation-caption",
-        ".next-guardrail-copy strong,.next-guardrail-copy small",
+        # Split from the grouped rule it shared: the group declared a size the
+        # very next rule overrode for `small`, so the sheet said one thing and
+        # painted another. `small` keeps every other declaration it had and
+        # now sits only on the sub-floor side, where it always rendered.
+        ".next-guardrail-copy strong",
         ".next-intent-note",
         ".next-intent-revision,.next-intent-why",
         ".next-operation-assignment",
@@ -784,13 +956,23 @@ class NextPageAssetContractTest(unittest.TestCase):
         # Recomputed on the merged tree. The branch this came from read 70 against
         # a pre-squash DRC-4587 tree that raised thirteen rules the narrower #361
         # did not; main resolves 55 and the four branches here add seven.
-        # A SET, not a length. Measured by DRC-4595 with three mutants: a rule
-        # leaving the tier for a lower one reds both this and the inventory, and
-        # a rule leaving the tier entirely reds this one. But one rule leaving
-        # while another joins at 15px passes a length check, and this
+        # A SET **and** a length, and each catches what the other cannot.
+        #
+        # The set is what a compensating swap needs: one rule leaving the tier
+        # while another joins at 15px keeps the length at 61, and this
         # integration is exactly that swap -- DRC-4589 moved
         # `.next-cockpit-authority>span` off the tier and `>small` on to it, so
-        # the oracle would have been green on the change that defeats it.
+        # a length check alone would have been green on the change that defeats
+        # it.
+        #
+        # The length is what a DUPLICATE needs, and this half went unexplained,
+        # which made it the one a reader would delete as redundant. Removing the
+        # `@media` copy of `.next-cockpit-scope-switcher>summary` takes the
+        # length 61 -> 60 and leaves the set the same size at 60, because a set
+        # cannot count a selector twice. Mutated both ways on the salvaged
+        # harness with each substitution proved before the verdict was read:
+        # neither half is decorative, and the length is the only guard this
+        # module has against duplicate drift.
         self.assertEqual(61, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
@@ -1274,8 +1456,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                109_267,
-                "d1f78af91a95d78c71ddfa2f6cfbb985cab7818ad8f9a0452a2a129db4dd2a5f",
+                110_869,
+                "baae001e206fecc549a93ffbfcf65f1c79eb4def8c4ae713935bb7e7bc1d83ff",
             ),
             "next-chrome.js": (
                 40_141,
@@ -1322,8 +1504,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "f580b09c634f7a7c2f60584f5fca486a3a28e6fee43ff8152f90e08fc432eed4",
             ),
             "next-cockpit.js": (
-                231_495,
-                "9cfb35b580f899098272113b9fb58f0ff03f97977bdc5d18efb176367c61ab5a",
+                233_309,
+                "b0e24842f6f36459e09540ee0c983cdff1361713844043968f50f97754e08805",
             ),
             "next-render.js": (
                 8_960,
@@ -1342,16 +1524,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(120_982, len(styles))
+        self.assertEqual(121_011, len(styles))
         self.assertEqual(
-            "e3d99370329ef007da655200b26793696e1bd515ee8a798bdf95151c59d0bdd1",
+            "f1d8a9bc903ebdc2ec99ab1cf1c972fe10fa97e1e1f8adb5a891b8e314815fdd",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(960_891, len(assembled))
+        self.assertEqual(964_336, len(assembled))
         self.assertEqual(
-            "ade950a9adbdfb0db65b56994ee3efdecd7c53735f0a454a88f0b1d345653eea",
+            "387e71e000549e3902aa31d8fc963c282086af8c3468af4e43f6da2661adb6cf",
             hashlib.sha256(assembled).hexdigest(),
         )
 

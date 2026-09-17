@@ -403,7 +403,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-guardrail-row:hover{border-color:var(--line2)}
 .next-guardrail-row[aria-checked="false"]{color:var(--ink3)}
 .next-guardrail-glyph{margin-top:2px;color:var(--ink3);font:var(--fs-label) var(--mono)}
-.next-guardrail-copy strong,.next-guardrail-copy small{display:block;overflow-wrap:anywhere;font-size:var(--fs-sentence);font-weight:500;line-height:1.55}
+.next-guardrail-copy strong,.next-guardrail-copy small{display:block;overflow-wrap:anywhere;font-weight:500}
+.next-guardrail-copy strong{font-size:var(--fs-sentence);line-height:1.55}
 .next-guardrail-copy small,.next-guardrail-empty{margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
 .next-guardrail-add-input{display:flex;align-items:center;gap:9px}
 .next-guardrail-add-input button{flex-shrink:0;color:var(--ink)}

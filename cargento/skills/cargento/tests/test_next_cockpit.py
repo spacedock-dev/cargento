@@ -1527,7 +1527,19 @@ console.log(JSON.stringify({shell,
         return out
 
     def test_console_puts_the_operations_rail_ahead_of_the_setup_disclosure(self) -> None:
-        """AC-1. Today the rail is emitted last, at next-cockpit.js:3402."""
+        """AC-1. Today the rail is emitted last, at next-cockpit.js:3402.
+
+        The disclosure's POSITION was the whole assertion, and its position is
+        not what the criterion is about. Hoisting `nextCockpitConsoleStatus`
+        above the rail -- literally this criterion's own Falsified-by condition
+        -- left `rail < setup` true, so AC-1 stayed green, the whole cockpit
+        module stayed green, and the live rail offset moved 111.5px -> 174.5px,
+        breaking AC-8 by 55px. A criterion whose named falsifier passes is not a
+        verified criterion.
+
+        So every part of the setup block is held behind the rail, not just the
+        `<details>` that wraps them. `console-status` is the one that moved.
+        """
         panel = str(self._console()["panel"])
 
         scope = panel.index("next-cockpit-scope")
@@ -1536,6 +1548,13 @@ console.log(JSON.stringify({shell,
         self.assertLess(scope, rail)
         self.assertLess(rail, setup)
         self.assertEqual(1, panel.count(self.CONSOLE_SETUP))
+        # Nothing the disclosure exists to hide may precede the rail, and the
+        # status must still be INSIDE it rather than merely after it.
+        status = panel.index("data-next-cockpit-console-status")
+        self.assertLess(rail, status, "setup content was hoisted above the operations rail")
+        self.assertLess(setup, status, "the raw status left the setup disclosure")
+        shut = panel.index("</details>", setup)
+        self.assertLess(status, shut, "the raw status is no longer inside the setup disclosure")
 
     def test_the_scope_header_and_the_project_prompt_stay_out_of_the_disclosure(self) -> None:
         """AC-2. Collapsing the prompt would leave project scope with no way in."""
@@ -9960,12 +9979,41 @@ class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
         self.assertTrue(found, f"{head} declares no size")
         return self.sizes[found[-1]]
 
+    def register(self, head: str) -> str:
+        """The register NAME the rule names, before any hop."""
+        found: list[str] = re.findall(r"color:var\(--([a-z0-9-]+)\)", self.body_of(head))
+        self.assertTrue(found, f"{head} declares no colour")
+        return found[-1]
+
     def test_label_value_and_caption_are_three_distinct_size_and_ink_pairs(self) -> None:
+        """AC-4, on all three things the criterion names, because each collapse
+        survives the other two assertions.
+
+        The criterion's word is REGISTERS. Asserting `(size, ink)` pairs alone
+        was not that: pointing two roles at one register keeps the pairs
+        distinct as long as the sizes differ, and it survived -- proved applied,
+        with the resolved ink moving `var(--ink-label)` -> `var(--ink-caption)`
+        down a real element path, so the mutant demonstrably reached the thing
+        under test, and 319 tests still passed.
+
+        Register names alone are not enough either, so both are asserted and
+        each is the only guard against its own collapse.
+
+        **What is deliberately NOT asserted is three distinct hexes.**
+        `--ink-label`, `--ink-caption` and `--ink-absence` all resolve to
+        `--ink3`, and `docs/design-next-ui.md` records that as a ruling rather
+        than an accident: the palette has three inks where the roles need four,
+        and label, caption and absence are separated by family, case and size
+        instead. A hex check here would contradict a shipped decision, which is
+        why the pair carries the on-screen half.
+        """
+        registers = {role: self.register(ink_head) for role, (ink_head, _s) in self.CELL.items()}
         pairs = {
             role: (self.resolved_size(size_head), self.resolved_ink(ink_head))
             for role, (ink_head, size_head) in self.CELL.items()
         }
 
+        self.assertEqual(3, len(set(registers.values())), registers)
         self.assertEqual(3, len(set(pairs.values())), pairs)
 
     def test_no_caption_is_drawn_larger_than_the_value_it_explains(self) -> None:
@@ -10296,6 +10344,19 @@ class CockpitTimelineFilterTest(NextPageJsHarness):
     # Mirrored from next-cockpit.js; the first check below pins the two together.
     KEY = "cargento.next.graph.mode"
 
+    # A SECOND project, because the per-project criterion is not expressible on
+    # a board with one. Built by appending a session to the shared fixture's
+    # payload rather than by writing a second fixture, so the two boards cannot
+    # drift apart in anything but the thing under test.
+    TWO_PROJECT_FIXTURE: ClassVar[str] = (
+        NextCockpitCompositionTest.FIXTURE
+        + """
+__dashboard.sessions.push({sid:"infra-1", harness:"claude", project:"recce-cloud-infra",
+  project_key:"recce/recce-cloud-infra", state:"working", active:true,
+  last_activity:104, title:"Rotate the SSO role", subagents:[]});
+"""
+    )
+
     def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
         return self._run_page_js(
             "await __settle();\nawait __settle();\n" + self.FOCUS_DOM + checks,
@@ -10392,10 +10453,92 @@ navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
 await __settle(); await __settle();
 console.log(JSON.stringify({mode:(__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1]}));
 """,
-            storage={self.KEY: json.dumps({"": "all"})},
+            # Keyed by the scope the press belonged to. This seed used to read
+            # `{"": "all"}`, which is the collided key M1 was about -- an
+            # oracle that asserts the defect stays green whatever the key
+            # becomes, so changing it is part of the fix rather than fallout.
+            storage={self.KEY: json.dumps({"project:cargento": "all"})},
         )
         assert isinstance(seeded, dict)
         self.assertEqual("all", seeded["mode"])
+
+    def test_a_mode_pressed_on_one_project_does_not_follow_the_reader_to_another(
+        self,
+    ) -> None:
+        """AC-2, on a board with TWO projects, which is the only board that can
+        show it.
+
+        `projectQuerySession` is "" at project scope for every project, so the
+        map held one entry for all of them -- and this branch mirrors that map
+        to `localStorage`, which turned a per-tab quirk into a persisted one.
+        Reproduced on a live board before the fix: "All events" pressed on
+        `cargento`, then `recce-cloud-infra` opened for the first time, drew
+        `data-graph-mode="all"` under a SEMANTIC TIMELINE heading with the store
+        reading `{"": "all"}`.
+
+        **Both directions, deliberately.** A fix that namespaces the write but
+        resolves the fallback from the other scope passes the first half and
+        fails the second, so pressing on the second project and returning to the
+        first is the half that catches it.
+
+        Neither a stronger assertion nor a wider mutation on the single-project
+        fixture could have found this: a defect that needs two projects to be
+        visible is invisible to a one-project board at any width. The fixture's
+        SHAPE is the oracle here.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  if(!button) throw new Error("no graph-mode button for " + value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+const open = async project => {
+  navigateNext({view:"project",project,focus:null,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1] || "";
+};
+const first = await open("cargento");
+press("all");
+await __settle();
+const firstAfterPress = await open("cargento");
+// A project this reader has never pressed anything on.
+const secondUntouched = await open("recce-cloud-infra");
+press("active");
+await __settle();
+const secondAfterPress = await open("recce-cloud-infra");
+// Back to the first: its own choice must have survived the second's press.
+const firstOnReturn = await open("cargento");
+console.log(JSON.stringify({first, firstAfterPress, secondUntouched,
+  secondAfterPress, firstOnReturn,
+  store:JSON.parse(__store["cargento.next.graph.mode"] || "{}")}));
+""",
+            storage_prelude({}) + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # The Decisions tab opens on decisions for both, untouched.
+        self.assertEqual("decisions", out["first"])
+        self.assertEqual("all", out["firstAfterPress"])
+        self.assertEqual(
+            "decisions",
+            out["secondUntouched"],
+            "a mode pressed on one project followed the reader to another",
+        )
+        self.assertEqual("active", out["secondAfterPress"])
+        self.assertEqual(
+            "all",
+            out["firstOnReturn"],
+            "the second project's press overwrote the first project's choice",
+        )
+        # And the persisted shape: one entry per scope, none of them the
+        # collided empty key.
+        store = out["store"]
+        assert isinstance(store, dict)
+        self.assertEqual({"project:cargento": "all", "project:recce-cloud-infra": "active"}, store)
+        self.assertNotIn("", store)
 
     def test_the_dead_scope_helper_is_gone_and_its_neighbour_survives(self) -> None:
         """AC-5. Falsified by deleting the wrong name, which takes
@@ -10552,7 +10695,16 @@ console.log(JSON.stringify({
   markers:sessions.filter(row => row.body.includes("next-scope-marker--round")).length,
   projectCue:all[0].body.includes('class="next-scope-cue'),
   projectMeta:slot(all[0].body, "meta"),
-  expected:`${mixed.sessions.length} sessions`
+  expected:`${mixed.sessions.length} sessions`,
+  /* Counted across group SIZES, because every fixture in this class holds
+     exactly two sessions and `esc("2 sessions")` therefore satisfies a
+     derivation asserted on one of them. Measured: that literal survived all
+     564 tests in the group with the substitution proved applied, and "derived"
+     is this criterion's central word. Sizes 1, 2 and 4 also put the
+     singular/plural on both arms. */
+  sized:[1, 2, 4].map(size => slot(rows(nextCockpitScopeLinks({label:"cargento",
+    sessions:Array.from({length:size}, (_, i) => ({harness:"claude", sid:`s${i}`,
+      state:"idle", title:`Lane ${i}`, last_activity:40 + i}))}, null))[0].body, "meta"))
 }));
 """
         )
@@ -10562,6 +10714,8 @@ console.log(JSON.stringify({
         self.assertEqual(2, out["markers"])
         self.assertTrue(out["projectCue"])
         self.assertEqual(out["expected"], out["projectMeta"])
+        # No single literal satisfies all three, which is the whole point.
+        self.assertEqual(["1 session", "2 sessions", "4 sessions"], out["sized"])
 
     def test_the_harness_hoists_only_when_every_row_shares_one(self) -> None:
         """AC-3. Falsified by hoisting on a mixed-harness group, or keeping the
@@ -10916,7 +11070,15 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         self.assertEqual([False] * len(keys), out["closed"])
 
     def test_the_five_count_rows_and_their_absences_never_collapse(self) -> None:
-        """AC-3. Only the explanatory paragraph may go behind a summary."""
+        """AC-3. Only the explanatory paragraph may go behind a summary.
+
+        "Only the paragraph goes behind the summary" has two halves and this
+        checked one. The rows staying out was asserted; the paragraph being
+        THERE was not, so the criterion's own empty-body falsifier -- a
+        disclosure rendered with nothing behind it -- passed. Every row is
+        still before the summary when the summary hides nothing at all, and a
+        reader then gets a control that opens onto emptiness.
+        """
         counts = self.held()["counts"]
         assert isinstance(counts, str)
         values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', counts)
@@ -10925,6 +11087,13 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         summary_at = counts.index("<summary>")
         for value in re.finditer(r'class="next-cockpit-count-value"', counts):
             self.assertLess(value.start(), summary_at)
+        # And the summary hides something: the half the falsifier aimed at.
+        shut = counts.index("</summary>") + len("</summary>")
+        body = counts[shut : counts.index("</details>", shut)]
+        self.assertNotEqual("", body.strip(), "the disclosure opens onto an empty body")
+        self.assertIn("<p", body, "the disclosure hides no paragraph")
+        prose = re.sub(r"<[^>]+>", "", body).strip()
+        self.assertGreater(len(prose), 40, f"the disclosure hides no sentence, only {prose!r}")
 
     def test_the_card_independence_claim_is_stated_exactly_once(self) -> None:
         """AC-4. Falsified by leaving both statements, or by deleting both."""
@@ -10960,12 +11129,43 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         A `docs/` href is a dead link in an installed plugin, where no `docs/`
         sits beside the page, and a bare `DEC-N` in a product string is a
         `RuntimeDecisionCitationsTest` hit.
+
+        Checked on every tab this issue tiered, not only Held to. The
+        criterion's own falsifier -- a `docs/` href planted in a rendered
+        tier-2 body -- did not fire on the `pc-`/Console surface, which is a
+        surface THIS ISSUE introduced. That is separate from the wording
+        amendment narrowing the `docs/` half to an enumerated claim: a
+        criterion's verifier not reaching a surface the same issue added is a
+        gap in the verifier, whatever the wording says.
         """
-        out = self.held()
-        html = out["html"]
-        assert isinstance(html, str)
-        self.assertNotIn("docs/design-", html)
-        self.assertIsNone(re.search(r"\bDEC-\d+\b", html))
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + HeldToOrderingTest.ANNOTATED
+            + """
+const seen = {};
+for(const tab of ["held-to", "console", "decisions", "course", "now"]){
+  navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab});
+  await __settle(); await __settle();
+  seen[tab] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(seen));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # Every tab rendered something, or the loop asserted over empty strings.
+        self.assertEqual(5, len(out))
+        for tab, html in out.items():
+            assert isinstance(html, str)
+            with self.subTest(tab=tab):
+                self.assertGreater(len(html), 2000, "this tab rendered nothing to check")
+                self.assertNotIn("docs/design-", html)
+                self.assertIsNone(re.search(r"\bDEC-\d+\b", html))
+        # The `pc-` surface is one this issue added, and it must be among what
+        # was actually drawn rather than assumed present.
+        self.assertIn("pc-semantic-timeline", out["decisions"])
 
     # A stored reading, so the branch that renders the reading section's own
     # baseline, scope and caveat actually executes. Without it the section
@@ -11189,6 +11389,68 @@ console.log(JSON.stringify({
         # Neither limit was dropped on the way into its own row.
         self.assertTrue(out["resume"])
         self.assertTrue(out["raise"])
+
+    def test_the_action_leads_on_every_branch_this_block_can_draw(self) -> None:
+        """AC-5 across the combinations it names, rather than the one the
+        default fixture happens to draw.
+
+        The criterion promises six: the raise arm has three branches (focus
+        capability off, a focusable session, a session with no terminal) and
+        the re-entry arm two that change what renders (a harness with a resume
+        command, and one without). The check above exercises exactly one of
+        them -- capability off, no resume command -- and that is the arm where
+        the anchor is emitted first anyway.
+
+        Measured before this was widened: moving the anchor to the END of the
+        block survives all 3639 behavioural tests on the branch a
+        FOCUS-CAPABLE board draws. That is not a narrow-selection artifact; the
+        whole suite does not catch it.
+        """
+        cases = {
+            "capability-off/no-resume": ("", "pi"),
+            "capability-off/resume": ("", "codex"),
+            "focusable/no-resume": ("focusable", "pi"),
+            "focusable/resume": ("focusable", "codex"),
+            "no-terminal/no-resume": ("unfocusable", "pi"),
+            "no-terminal/resume": ("unfocusable", "codex"),
+        }
+        for name, (focus_mode, harness) in cases.items():
+            with self.subTest(branch=name):
+                out = self._run_page_js(
+                    "await __settle();\nawait __settle();\n"
+                    "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+                    + self.ANNOTATED
+                    + f"__dashboard.sessions[0].harness = {json.dumps(harness)};\n"
+                    + (
+                        # A focus-capable board: the capability probe reads a
+                        # `<meta>`, so the stub answers one.
+                        'document.querySelector = () => ({content:"tmux"});\n'
+                        f"__dashboard.sessions[0].focusable = "
+                        f"{'true' if focus_mode == 'focusable' else 'false'};\n"
+                        if focus_mode
+                        else ""
+                    )
+                    + f"""
+navigateNext({{view:"project", project:"cargento",
+  focus:{json.dumps(harness + ":focus-1")}, tab:"held-to"}});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({{
+  anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
+  reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
+  raiseLabelAt: html.indexOf('reentry-label">Raise<')}}));
+""",
+                    storage_prelude({}) + self.FIXTURE,
+                )
+                assert isinstance(out, dict)
+                anchor_at = out["anchorAt"]
+                # Every branch must actually draw the block, or this subTest is
+                # asserting over a tab that never rendered it.
+                self.assertNotEqual(-1, anchor_at, "the re-entry anchor did not render")
+                self.assertNotEqual(-1, out["reentryLabelAt"], "the Re-entry row did not render")
+                self.assertNotEqual(-1, out["raiseLabelAt"], "the Raise row did not render")
+                self.assertLess(anchor_at, out["reentryLabelAt"])
+                self.assertLess(anchor_at, out["raiseLabelAt"])
 
     def test_the_managed_focus_lane_survives_the_restructure(self) -> None:
         """AC-6. Falsified by a wrapper that takes the attribute, which keeps a
@@ -11465,6 +11727,26 @@ const inDisclosure = html => (html.match(
   .includes("next-cockpit-terminal");
 """
 
+    # The same board with the bridge OFF, which is the default a plain
+    # `cargento` start gives. `/api/interaction/origin` answers, and its answer
+    # is "no terminal for this session" -- a measurement, not a missing read.
+    BRIDGE_OFF_SERVER = """
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {semantic: __semantic, child_assignments: [], observers: [],
+       observer_model: {enabled: true, disclosure: "x"}}
+    : String(url).startsWith("/api/interaction/origin")
+      ? {state: "unavailable", reason: "no terminal bridge on this server"}
+      : __dashboard});
+for(let i = 0; i < 10; i++) await __settle();
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"console"});
+for(let i = 0; i < 12; i++) await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const focus = group.sessions.find(session => session.sid === "focus-1");
+const summaryOf = html =>
+  (html.match(/<summary>(How this server was started[^<]*)<\\/summary>/) || [])[1] || null;
+"""
+
     def state(self, checks: str) -> dict[str, Any]:
         out = self._run_page_js(
             self.CAPABLE_SERVER + checks,
@@ -11472,6 +11754,103 @@ const inDisclosure = html => (html.match(
         )
         assert isinstance(out, dict)
         return out
+
+    def bridge_off(self, checks: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            self.BRIDGE_OFF_SERVER + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_an_unavailable_bridge_stays_off_across_every_poll(self) -> None:
+        """The reset that the `registered` half of this fix hid.
+
+        `projectTerminalLookup` preserved `registered` across a re-check and
+        reset `unavailable` to `loading`, so a default bridge-off console said
+        "terminal bridge off" and then "not read yet" on the very next poll,
+        for as long as the board stayed open. The revision advances every
+        payload and that is exactly what releases the lookup's guard.
+
+        **Driven the way production drives it** -- advance `nextData.generated`
+        and let `renderNext` run the lookup -- rather than by writing the map,
+        because writing the map is what let the sibling test pass over this.
+        The assertion is not the interesting part; the path is.
+        """
+        out = self.bridge_off("""
+const polls = [];
+for(const revision of [106, 107, 108]){
+  nextData.generated = revision;
+  /* Sampled on the render that STARTS the re-check, before its fetch settles.
+     That is the frame a reader sees, and it is the only frame the defect is
+     visible in: four microtasks later the reply has landed and the entry reads
+     `unavailable` again whatever the guard did to it in between. A sample
+     taken after the await passes on the broken code. */
+  renderNext();
+  const entry = projectTerminalBySession[sessKey(focus)];
+  polls.push({revision, state: entry && entry.state, loading: entry && entry.loading === true,
+    terminal: nextCockpitConsoleCapabilities(group, focus).terminal,
+    summary: summaryOf(__els.app.innerHTML)});
+  for(let i = 0; i < 4; i++) await __settle();
+}
+console.log(JSON.stringify({polls}));
+""")
+        polls = out["polls"]
+        assert isinstance(polls, list)
+        self.assertEqual(3, len(polls))
+        for poll in polls:
+            with self.subTest(revision=poll["revision"]):
+                # The re-check really is in flight on the sampled frame, or the
+                # guard was never released and nothing was measured.
+                self.assertTrue(poll["loading"], "no re-check was in flight on this poll")
+                self.assertEqual("unavailable", poll["state"])
+                self.assertIs(False, poll["terminal"])
+                self.assertIn("terminal bridge off", poll["summary"])
+                self.assertNotIn("not read yet", poll["summary"])
+
+    def test_with_no_session_selected_the_bridge_is_named_per_session(self) -> None:
+        """The fourth state, and it exists because the third one created a gap.
+
+        At project scope `focus` is null, so no lookup is ever attempted: the
+        board said "terminal bridge not read yet" for as long as it stayed
+        open. A pending state that can never resolve is the same defect as the
+        confident "off" it replaced, one step over -- both describe the board
+        rather than the server. The bridge is a per-session registration and
+        that is what the summary now says, next to the prompt already telling
+        the reader to select a session.
+        """
+        out = self.bridge_off("""
+const capabilities = nextCockpitConsoleCapabilities(group, null);
+navigateNext({view:"project", project:"cargento", focus:null, tab:"console"});
+for(let i = 0; i < 6; i++) await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({capabilities, summary: summaryOf(html),
+  prompt: html.includes("Select one exact session to open its read-only console")}));
+""")
+        self.assertEqual("per-session", out["capabilities"]["terminal"])
+        self.assertIn("terminal bridge per-session", out["summary"])
+        # Neither of the two wrong answers this state exists to avoid.
+        self.assertNotIn("terminal bridge off", out["summary"])
+        self.assertNotIn("terminal bridge not read yet", out["summary"])
+        # And the sentence is only complete beside the prompt, so the prompt
+        # rendering is part of what is asserted.
+        self.assertTrue(out["prompt"], "the select-a-session prompt did not render")
+
+    def test_a_bridge_nothing_has_looked_up_yet_still_reports_not_read(self) -> None:
+        """The reverse, and the reason this repair is not just "preserve
+        everything". A repair that pinned `unavailable` by making the third
+        state unreachable would trade this defect for the one the three-state
+        read exists to prevent, and nothing else in this class would notice.
+        """
+        out = self.bridge_off("""
+// A session whose lookup has never run: no entry in the map at all.
+delete projectTerminalBySession[sessKey(focus)];
+const capabilities = nextCockpitConsoleCapabilities(group, focus);
+console.log(JSON.stringify({capabilities,
+  summary: summaryOf(nextCockpitConsoleSetup(capabilities, ""))}));
+""")
+        self.assertIsNone(out["capabilities"]["terminal"])
+        self.assertIn("terminal bridge not read yet", out["summary"])
 
     def test_an_unread_capability_is_not_reported_as_disabled(self) -> None:
         """Falsified by `Boolean(...)` over either field: both arms then read
@@ -11615,6 +11994,120 @@ class EveryTabCueVariantIsColouredByItsOwnRuleTest(unittest.TestCase):
                     f"{variant} resolves to the cue's own ink, so an absence renders "
                     "in the ink a real figure gets",
                 )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheCueAndItsPanelAgreeInEveryContextStateTest(NextPageJsHarness):
+    """`nextCockpitContexts` has five reachable shapes, and both surfaces that
+    read it must describe each the same way.
+
+    Three writers store into that map and only one writes `error`, so the field
+    sets differ by writer. The tab cue this branch adds keyed off `.data`
+    alone: a read that had FINISHED AND FAILED with nothing to show rendered as
+    "decisions not loaded yet" beside a panel already saying "Semantic context
+    unavailable." -- a completed request described as still in flight.
+
+    The fifth shape is the one both independent enumerations missed and the
+    comparison between them found. The `.catch()` MERGES rather than replaces:
+    it carries the previous `data` into the new object and stamps `error` over
+    it, so a failed poll over a loaded context is indistinguishable from a
+    clean resolve by `.data` alone.
+
+    **Stale-plus-error renders exactly as resolved does, deliberately.**
+    Keeping the last known rows is a defensible product choice; saying so on
+    screen is new copy nobody specified, and it is filed as DRC-4613 rather
+    than invented here. What is asserted is that the two surfaces AGREE in
+    every state -- agreeing wrongly was the old defect and disagreeing would be
+    a new one, so a partial fix fails this as loudly as no fix.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def states(self) -> dict[str, Any]:
+        out = self._run_page_js(
+            """
+await __settle(); await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const key = nextCockpitContextKey(group, null);
+const resolved = nextCockpitContexts.get(key).data;
+const panelSays = () => {
+  const html = nextCockpitTimeline(group, null);
+  return html.includes("Semantic context unavailable.") ? "unavailable"
+    : (html.includes("Loading semantic context") ? "loading" : "rows");
+};
+const read = () => {
+  const cue = nextCockpitTabCue("decisions", {group}, null);
+  return {cue: cue.state, panel: panelSays(),
+    classified: nextCockpitContextRead(group, null).state};
+};
+const seen = {};
+// 1. Nothing has been read at all.
+nextCockpitContexts.delete(key);
+nextCockpitRequests.delete(key);
+seen.absent = read();
+// 2. An entry with neither data nor a failure.
+nextCockpitContexts.set(key, {data:null, revision:105});
+seen.pending = read();
+// 3. The read FINISHED and failed with nothing to show. This is the exact
+//    record the `.catch()` writes when no prior data existed.
+nextCockpitContexts.set(key, {data:null, revision:105, error:true});
+seen.unavailable = read();
+// 4. A clean resolve.
+nextCockpitContexts.set(key, {data:resolved, revision:105});
+seen.resolved = read();
+// 5. The merge: the catch carried the previous data forward and stamped
+//    `error` over it. Byte-identical to (4) on both surfaces by design.
+nextCockpitContexts.set(key, {data:resolved, revision:105, error:true});
+seen.stale = read();
+console.log(JSON.stringify(seen));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_no_finished_read_is_ever_called_pending(self) -> None:
+        """Falsified by the cue keying off `.data` alone, which is what it did.
+
+        The `unavailable` row is the defect: `pending` there claims a read is
+        still coming when it has already failed.
+        """
+        seen = self.states()
+        self.assertEqual(
+            {"cue": "unavailable", "panel": "unavailable", "classified": "unavailable"},
+            seen["unavailable"],
+        )
+
+    def test_the_two_surfaces_describe_every_state_the_same_way(self) -> None:
+        """The property a partial fix breaks. Teaching only the cue to read
+        `error` would make it claim failure over a panel rendering rows.
+        """
+        agreeing = {
+            "absent": ("pending", "loading", "absent"),
+            "pending": ("pending", "loading", "pending"),
+            "unavailable": ("unavailable", "unavailable", "unavailable"),
+            "resolved": ("count", "rows", "ready"),
+            "stale": ("count", "rows", "stale"),
+        }
+        seen = self.states()
+        # Five distinct classifications, so the separation is real rather than
+        # four states wearing five names.
+        self.assertEqual(5, len({row["classified"] for row in seen.values()}))
+        for name, (cue, panel, classified) in agreeing.items():
+            with self.subTest(state=name):
+                self.assertEqual({"cue": cue, "panel": panel, "classified": classified}, seen[name])
+
+    def test_a_failure_over_loaded_data_still_shows_the_rows_it_had(self) -> None:
+        """The ruling, pinned so a later change cannot quietly adopt the other
+        one. Stale-plus-error keeps the last known rows and claims nothing about
+        staleness; whether the board should SAY the rows are stale is DRC-4613.
+        """
+        seen = self.states()
+        self.assertEqual(seen["resolved"]["cue"], seen["stale"]["cue"])
+        self.assertEqual(seen["resolved"]["panel"], seen["stale"]["panel"])
+        self.assertEqual("rows", seen["stale"]["panel"])
+        # And it is still separable, which is what DRC-4613 will need.
+        self.assertNotEqual(seen["resolved"]["classified"], seen["stale"]["classified"])
 
 
 class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):

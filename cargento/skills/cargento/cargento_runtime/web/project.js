@@ -48,9 +48,31 @@ function projectStoreGraphModes(){
   }catch(_error){ /* the choice still holds for the life of this tab */ }
 }
 
-function projectSetGraphMode(session, mode){
+/* The scope a reader's choice belongs to: the exact session when one is
+   focused, and the PROJECT otherwise. `projectDisclosure` below composes the
+   same pair for the same reason, so this copies that shape rather than
+   inventing one.
+
+   Keying on the session alone was the defect. `projectQuerySession` is "" at
+   project scope for EVERY project, so one entry held every project's choice --
+   and this branch newly mirrors the map to `localStorage`, which turned a
+   per-tab quirk into a persisted one. Measured on a live board: "All events"
+   pressed on one project drew a second project, never pressed, in `all`, with
+   the store reading {"":"all"}, which is the per-project criterion that
+   issue asks for, verbatim.
+
+   ONE function for the write and the read. A fix that namespaces the write and
+   resolves the fallback from the other scope passes only the first half of the
+   criterion, and the halves are checked separately. */
+function projectGraphModeScope(){
+  return String(projectQuerySession ||
+    (typeof nextRoute !== "undefined" && nextRoute && nextRoute.view === "project"
+      ? `project:${nextRoute.project}` : ""));
+}
+
+function projectSetGraphMode(mode){
   if(!PROJECT_GRAPH_MODES.includes(mode)) return false;
-  projectGraphModeBySession.set(String(session || ""), mode);
+  projectGraphModeBySession.set(projectGraphModeScope(), mode);
   projectStoreGraphModes();
   return true;
 }
@@ -62,7 +84,7 @@ function projectSetGraphMode(session, mode){
 function projectResolveGraphMode(options){
   const requested = options && options.mode;
   if(PROJECT_GRAPH_MODES.includes(requested)) return requested;
-  const stored = projectGraphModeBySession.get(String(projectQuerySession || ""));
+  const stored = projectGraphModeBySession.get(projectGraphModeScope());
   if(PROJECT_GRAPH_MODES.includes(stored)) return stored;
   const fallback = options && options.defaultMode;
   return PROJECT_GRAPH_MODES.includes(fallback) ? fallback : "active";
@@ -399,7 +421,7 @@ function projectGoalAction(act, label){
 
 function projectAction(act, arg){
   if(act === "project-graph-mode"){
-    projectSetGraphMode(projectQuerySession, arg === "all" ? "all" : "active");
+    projectSetGraphMode(arg === "all" ? "all" : "active");
     if(lastData) render(lastData);
     return true;
   }
@@ -682,9 +704,16 @@ function projectTerminalLookup(d, sess){
   const revision = Number(d.generated) || 0;
   const current = projectTerminalBySession[key];
   if(current && (current.loading || Number(current.revision) >= revision)) return;
-  projectTerminalBySession[key] = current && current.state === "registered"
-    ? {state:"registered", revision, data:current.data, loading:true}
-    : {state:"loading", revision, loading:true};
+  /* Both settled answers survive a re-check, not just the affirmative one.
+     Preserving `registered` alone and resetting `unavailable` to `loading`
+     made a default bridge-off console flip "terminal bridge off" to "not read
+     yet" on every poll, because the revision advances on every payload and
+     that is what releases the guard above. `loading` now means what it says:
+     nothing has come back for this session yet. */
+  projectTerminalBySession[key] =
+    current && (current.state === "registered" || current.state === "unavailable")
+      ? {state:current.state, revision, data:current.data, loading:true}
+      : {state:"loading", revision, loading:true};
   const path = "/api/interaction/origin?harness=" + encodeURIComponent(sess.harness) +
     "&sid=" + encodeURIComponent(sess.sid);
   fetch(path).then(response => {

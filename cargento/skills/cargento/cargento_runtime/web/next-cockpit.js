@@ -3189,35 +3189,54 @@ function nextCockpitLoadContext(group, focus){
   });
 }
 
-/* What a context read is CURRENTLY in, classified once for the panel that
-   renders it and the cue that summarises it.
+/* The state of one `nextCockpitContexts` entry, and then of the pair a read
+   needs. Classified once, for the panel that renders a context and the cue
+   that labels its tab.
 
-   Written because the two disagreed. The panel keyed off `entry.data` AND
-   `entry.error`; the cue keyed off `entry.data` alone, so a first fetch that
-   FAILED -- the `.catch()` above is the only writer of `error`, and it stores
-   `{data:null, error:true}` -- left the panel saying "Semantic context
-   unavailable." beside a cue reporting `pending`, glossed "decisions not
-   loaded yet". A completed, failed read reported as still in flight. The
-   focused arms differed a second way: the panel also requires the PROJECT
-   entry when a session is focused, and the cue did not.
+   FIVE states, not two, because the map has five reachable shapes and the two
+   obvious ones hide the interesting one. Three writers store into it --
+   `nextCockpitLoadContext`'s `.then` and `.catch` above, and
+   `next-render.js:81` -- and only the `.catch` writes `error`. That `.catch`
+   MERGES rather than replaces: `data: settled && settled.data || null` carries
+   the PREVIOUS data into the new object, so a failed poll over an already
+   loaded context leaves `{data:<stale>, error:true}`, which a reader keying
+   off `.data` alone cannot tell from a clean resolve.
 
-   Two conditions that must agree is the shape that produced both, so this
-   returns the answer instead and neither caller re-derives it. `entry` and
-   `projectEntry` come back with it, because the ready path needs them and
-   fetching them twice is how the next divergence starts. */
+   Every write is `.set(key, {...})` with a fresh object literal, so no reader
+   ever sees a half-written entry. That is worth stating because it is the
+   invariant a future writer breaks -- it holds by construction today rather
+   than by any rule, and a single `entry.data = ...` would end it.
+
+   The negative `error` field is read rather than a positive one added. A
+   positive field would have to be written by all three writers, and the third
+   living in another file is exactly how the field sets came apart here. */
+function nextCockpitEntryState(entry){
+  if(!entry) return "absent";
+  if(entry.data) return entry.error === true ? "stale" : "ready";
+  return entry.error === true ? "unavailable" : "pending";
+}
+
+/* A focused read needs its own entry AND the project's, which is the pair the
+   panel has always required and the cue did not. Worst state wins, in the
+   order the panel already resolved them: a finished failure outranks a read
+   still in flight, which outranks data carried across a failure.
+
+   `stale` renders exactly as `ready` does at both call sites. That is a
+   ruling, not an oversight: keeping the last known rows is defensible, and
+   saying so on screen would be new copy nobody has specified (DRC-4613). What
+   this separation buys today is that neither surface can call a finished read
+   "not loaded yet", and that the two cannot disagree, because there is one
+   answer and both ask for it. */
+const NEXT_COCKPIT_READ_RANK = ["unavailable", "absent", "pending", "stale", "ready"];
+
 function nextCockpitContextRead(group, focus){
   const entry = nextCockpitContexts.get(nextCockpitContextKey(group, focus));
   const projectEntry = focus
     ? nextCockpitContexts.get(nextCockpitContextKey(group, null)) : entry;
-  if(entry && entry.data && (!focus || (projectEntry && projectEntry.data))){
-    return {state:"ready", entry, projectEntry};
-  }
-  /* A failure on EITHER entry the read needs, matching the condition the panel
-     has always used. `error` is written only by the poll's `.catch()`, so it
-     means a read that finished and did not arrive -- never one still running. */
-  const failed = Boolean(entry && entry.error) ||
-    Boolean(focus && projectEntry && projectEntry.error);
-  return {state: failed ? "unavailable" : "pending", entry, projectEntry};
+  const states = [nextCockpitEntryState(entry)];
+  if(focus) states.push(nextCockpitEntryState(projectEntry));
+  const state = NEXT_COCKPIT_READ_RANK.find(candidate => states.includes(candidate));
+  return {state, entry, projectEntry, shows: state === "ready" || state === "stale"};
 }
 
 function nextCockpitMemoFields(group, focus){
@@ -3365,7 +3384,10 @@ function nextCockpitTabCue(tab, context, focus){
        first Measured Invariant. */
     if(!group) return {state:"pending"};
     const read = nextCockpitContextRead(group, focus);
-    if(read.state !== "ready") return {state: read.state};
+    // `absent` and `pending` are both "nobody has finished reading this"; the
+    // cue has one mark for that. `unavailable` is its own, because a finished
+    // failure is not a read still coming.
+    if(!read.shows) return {state: read.state === "unavailable" ? "unavailable" : "pending"};
     const semantic = read.entry.data.semantic;
     if(!semantic || !Array.isArray(semantic.facts)) return {state:"unobserved"};
     return nextCockpitTabCueCount(projectDecisionFacts(
@@ -3721,7 +3743,7 @@ function nextCockpitTimeline(group, focus){
   nextCockpitLoadContext(group, focus);
   const read = nextCockpitContextRead(group, focus);
   const entry = read.entry;
-  if(read.state !== "ready"){
+  if(!read.shows){
     const label = read.state === "unavailable"
       ? "Semantic context unavailable." : "Loading semantic context…";
     return `<section class="next-cockpit-semantic" data-next-cockpit-semantic><h2>SEMANTIC TIMELINE</h2>` +
@@ -3812,9 +3834,14 @@ function nextCockpitTerminal(group, focus){
    caller's reorder buys is that placement and summary read the same tick's map
    rather than the previous render's.
 
-   `null` for an unfocused terminal too. The bridge is a per-session
-   registration, so with nothing selected there is no session whose bridge could
-   be reported either way.
+   A FOURTH value with no session selected, rather than `null`. The bridge is a
+   per-session registration, so with nothing focused there is no session whose
+   bridge could be reported either way -- but `null` reads as "not read yet",
+   and at project scope no lookup is ever attempted, so nothing is pending and
+   nothing can resolve. That is a pending state that never ends, which is the
+   same defect class as the "off" it replaced, one step over. `"per-session"`
+   says what is actually true, and the prompt directly above it already tells
+   the reader to select a session.
 
    Read from `state` and NOT from the `loading` flag beside it, which is a
    distinction the first draft of this function got wrong and a poll would have
@@ -3833,16 +3860,20 @@ function nextCockpitConsoleCapabilities(group, focus){
   // arrived publishing no observer model; `null` from the latter is a read.
   const model = entry && entry.data ? entry.data.observer_model || null : undefined;
   return {
-    terminal: !terminal || terminal.state === "loading" ? null
-      : terminal.state === "registered",
+    terminal: !focus ? "per-session"
+      : (!terminal || terminal.state === "loading" ? null
+        : terminal.state === "registered"),
     observer: model === undefined ? null : Boolean(model && model.enabled === true),
   };
 }
 
 function nextCockpitConsoleSetup(capabilities, body){
-  // Three words for three states. "off" for a capability nothing has read yet
-  // is the confident wrong answer this board is built against.
-  const said = value => value === true ? "on" : (value === false ? "off" : "not read yet");
+  // One word per state, and four of them. "off" for a capability nothing has
+  // read yet is the confident wrong answer this board is built against; "not
+  // read yet" for one that nothing will ever read is the same error inverted.
+  const said = value => value === true ? "on"
+    : (value === false ? "off"
+      : (value === "per-session" ? "per-session" : "not read yet"));
   const summary = "How this server was started \u2014 terminal bridge " +
     said(capabilities.terminal) + ", observer model " + said(capabilities.observer);
   return '<details class="next-cockpit-console-setup" data-next-cockpit-console-setup' +
@@ -4124,7 +4155,7 @@ document.addEventListener("click", event => {
   const key = String(target.dataset.arg || projectQuerySession || "");
   if(action === "graph-mode"){
     event.preventDefault();
-    if(projectSetGraphMode(projectQuerySession, String(target.dataset.arg || ""))) renderNext();
+    if(projectSetGraphMode(String(target.dataset.arg || ""))) renderNext();
   }else if(action === "terminal-open"){
     event.preventDefault();
     projectTerminalOpenKey = key;

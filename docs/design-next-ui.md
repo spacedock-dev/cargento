@@ -158,10 +158,27 @@ Resolved, not declared. Both properties come through the cascade, either may be 
 ancestor, and the two may arrive from different rules, so the element is the unit and a single rule
 is not. Mono is a string a source published, and a label resolves to no prose line-height at all.
 
-That distinction is the whole difficulty. **A census that reads one rule at a time will understate
-the set**, because it cannot see an element whose family, size and line-height are assembled from
-three rules, and it will report clean while such an element still renders below the floor on
+That distinction is the whole difficulty, and it cuts **both** ways. This paragraph used to say only
+that a per-rule census "will understate the set", which is true and is the smaller half.
+
+**It can understate**, because it cannot see an element whose family, size and line-height are
+assembled from three rules, and it reports clean while such an element renders below the floor on
 screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
+
+**It can also overstate**, and that is a different mechanism rather than the same one inverted: one
+element matched by **two rules at equal specificity**, where the later one wins. Nothing is composed
+across three rules here and each rule is individually legible; the census simply reads the wrong one
+of the two. Measured: `.next-guardrail-copy small` was declared at `--fs-sentence` inside one grouped
+rule and at `--fs-xs` by the next, both `(0,1,1)`, so the element rendered at 12.5px while a per-rule
+reading counted it among the compliant. Neither selector string appears twice, so no comparison of
+selector text can find it. `TheCompliantSetIsResolvedOnElementsNotOnRulesTest` resolves the element
+instead, and the sheet no longer declares a size it immediately overrides.
+
+That guard closes the equal-specificity case and **not** the general one: a rule reaching an element
+through ancestors the tier selector never names is still invisible to it, because the path is built
+from the selector rather than from the page. Widening it by hypothesising every DOM a rule could
+match was measured and abandoned at 8,873 false positives — the "built a DOM the application never
+renders" failure this file already warns about, one layer up.
 
 **Sixty-one rules resolve to `var(--fs-sentence)`**, across sixty distinct selectors, and
 `NextPageAssetContractTest` holds that as a set and not only as a count. The set is what matters:
