@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4593:triage:attempt-1:revision-1
                 digest: sha256:e88c57f07f3f52af5ff00ebf209e64b7df6fab30f1a98bb62718f2c8e9f0006c
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4593:triage:1
+                briefing: briefing:drc-4593:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T11:02:35.073148Z"
+                decision: approve
+                reason: 'Checklist 3 done / 1 skipped / 0 failed, and the skip is approved as a scope reduction. The collapse mechanism was measured rather than repaired: an all-absent briefing is 171px under today''s grid and 171px under the proposed one, because grid rows already size to content, so the remaining prize is about 16px of padding. Repairing a mechanism with zero measured payoff is exactly the scope the stage definition warns against, and the ensign put the reduction to the gate rather than taking it. AC-1..AC-6 resolve. The stage also found DRC-4587 made this surface worse in two measured ways and widened AC-4 to bind ordering rather than separation alone, and proved by running rather than reading that the whole briefing carries exactly one absent node.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4593](https://linear.app/recce/issue/DRC-4593/invert-the-briefings-emphasis-and-let-its-all-absent-grid-collapse) — Invert the briefing's emphasis and let its all-absent grid collapse
