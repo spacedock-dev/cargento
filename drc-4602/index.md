@@ -1,7 +1,7 @@
 ---
 id:
 title: "Seventeen sans rules still sit below the 15px sentence floor, so the floor is a claim rather than a property"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4602/seventeen-sans-rules-still-sit-below-the-15px-sentence-floor-so-the"
 started: 2026-09-17T11:10:09Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4602](https://linear.app/recce/issue/DRC-4602/seventeen-sans-rules-still-sit-below-the-15px-sentence-floor-so-the) — Seventeen sans rules still sit below the 15px sentence floor
