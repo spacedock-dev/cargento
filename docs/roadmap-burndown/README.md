@@ -1414,8 +1414,14 @@ that swap, so the integration carrying both is the case that walks through the h
 would be green on the change that defeats it.
 
 Repairing an oracle that the merge itself defeats is not a promoted finding, and the no-promotion
-rule does not apply to it. Compare the set, not its length, wherever the census already returns
-`(selector, size)` pairs.
+rule does not apply to it.
+
+**Assert the set and the count, not one of them.** "Compare the set rather than its length" was the
+first answer here and it is half of one: two selectors in this census are declared twice, so the
+collection held 61 entries across 60 distinct selectors, and a set alone silently loses that
+duplicate. The set catches the compensating swap; the count catches a duplicate appearing or
+vanishing. Each covers the other's blind spot, and either alone is an oracle with a hole in it that
+no one will look for again once the first hole is closed.
 
 ## Report the measurement you took, not the one you meant to take
 
