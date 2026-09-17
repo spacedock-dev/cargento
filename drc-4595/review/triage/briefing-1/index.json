@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4595:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4595 rewrite and milestone correction for writing to Linear, and the nine acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4595:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ed0883b7340cbb9fcfb6e8a064bb89a6a80b6bba/drc-4595.md",
+      "rev": "sha256:6f1ba9c6ea2c14542b338a141ed42fe9d6fea4c0e8eac05fdc8f255cd9a66067",
+      "mediaType": "text/markdown",
+      "summary": "The issue's structural claims reproduce on the tree the work will land on; its numbers do not, so the stage drove the live board rather than re-reading the annotated capture. DELEGATION starts 35.2 percent into the panel rather than the filed 43.3 percent, and three figures the issue rests on are dated into history because DRC-4587 moved them. Three items are put up explicitly: the issue's own wording places the promoted composer in the chrome, which renders it on all five tabs rather than Console alone; the next-action class does not yet exist so AC-7 is written as not-yet-assessable with a named fallback; and deleting the dead project-controls path is in scope because AC-4's renders-once claim is unprovable while a second construction path stands."
+    }
+  ]
+}
