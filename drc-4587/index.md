@@ -619,3 +619,50 @@ approving, and because I did not make it:
 One documentation correction from this review is therefore already addressed on the branch. The
 three remaining doc-count corrections (the 19-not-17 gap size, the two-not-three uncalled tokens,
 AC-3's "was 9") and findings F1/F2/F3 are still open.
+
+## Stage Report: implementation (cycle 2)
+
+Correction round 1, routed from a NO-GO review. Every disposition below was the one the first
+officer authorized; nothing was re-triaged and nothing was widened beyond the named findings.
+
+- DONE: Write the gate-approved drafts to Linear as the FIRST action before any code — the issue body, the owning milestone description, and the journey and move labels — sending each body unwrapped as one line per paragraph, then read back the issue's relation set and report every edge the write created.
+  Cycle 1 wrote both bodies and confirmed the labels; unchanged this round. The one Linear write this round is **AC-7, rewritten** to bind the rules this change moved, scoped on the AC-1 precedent the captain accepted, with the composed-rule residual named and pointed at DRC-4602. Sent as a single-paragraph `patch`, so no other text was resent. **A relation edge is present that was not there at cycle 1: `blocks` now carries DRC-4602, making eight.** I cannot attribute it with certainty: I did not read relations immediately before this write, and DRC-4602 was created by the reviewer between the rounds, so either the mention created it or it shipped with the issue. Flagging rather than removing it, since a removal would be a second unapproved write. `blockedBy`, `relatedTo` and `duplicateOf` all remain empty.
+- DONE: Write the failing test first and watch it fail for the right reason, then regenerate all nine byte pins from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting the pass ratio of each isolated run.
+  `AnAbsenceNeverOutranksTheValueItReplacesTest` resolves each selector's size from the stylesheet and asserts value >= companion over seven pairs. It failed **7 of 7 subtests** first, each naming its own figures. It goes red again if any one value drops below its absence: mutated `.next-cockpit-recovery strong` back to `var(--fs-xs)` and got the expected RED with the right message, then restored and GREEN. One defect in the test itself was found and fixed this way: the block scan read a preceding CSS comment as part of the selector, so a commented rule read as *undeclared* rather than as wrong; it now strips comments first. Pins: 7 of 8 written sites moved; **`next-cockpit.js` size and digest were both verified unchanged** because no JS changed this round, so 9 pins were checked and 7 rewritten, with no tenth moving. Isolated runs: `test_next_page` 25/25, `test_next_flag` 7/7, `test_focus` 96/96, invariant test 1/1, all OK.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file rather than from any copy, invoke the sync-docs skill and commit its doc updates onto this same branch, then measure the actual surface with git diff --numstat against the merge base and report files and LOC versus the declared estimate with the percentage.
+  Read from `AGENTS.md` in the worktree. `ruff check` clean, `ruff format --check` clean, `mypy` clean (it caught two missing class-attribute annotations on the new test and they were added), `lint_embedded.py` clean, `validate_plugins.py` clean, `bump_version.py --current` 0.26.0, no version field moved. Dashboard suite **3528 OK** (2 skipped), scripts suite **515 OK** (1 skipped), coverage 86.8% with `fail_under` satisfied. Load average 5.8-6.9, so I re-ran the three pin modules alone anyway and report both results. `sync-docs` ran in cycle 1; this round's doc edits are the four corrections it does not own, and `COMPATIBILITY.md`'s marker is still untouched.
+- DONE: Commit the work DCO signed off on the branch and STOP without pushing and without opening a pull request, reporting the branch name and the candidate SHA.
+  Branch `spacedock-ensign/drc-4587`, candidate SHA **`4fb5ee6d62c30e91fa0c6712c7ea29ab0ca52f59`**, tree clean, not pushed. PR #361 exists and was opened by the first officer; I did not touch it.
+
+### F1 and F2: the sweep, not just the three reported cells
+
+Seven value rules now sit at the sentence tier beside their absence or caption: `.next-cockpit-recovery strong` (split from the `small` storage cue, which is not a value and stays at 12.5px), `.next-cockpit-recovery .next-project-goal-text` (keeping mono), `.next-cockpit-now-state strong`, the memo field value, `.pc-terminal-identity code` and `strong`, and `.next-attention-open strong`. The last three were not in the finding: `.pc-terminal-identity` emits value and absence from the same ternary (`project.js:820-824`), which is the F1 shape exactly.
+
+**Nine candidates the sweep surfaced and I did not change, with reasons.** `.next-operations-fleet` is already correct: the value is 27px above a 15px note and an 11px label. `.next-cockpit-recovery>header`, `.next-cockpit-recovery span`, `.next-attention-open li>span` and `.pc-entry-details b` render captions (`PROJECT RECOVERY BRIEFING`, `ASSIGNMENT`, a code, `Why included`), so sitting below their values is the intended direction. `.next-cockpit-recovery .next-project-goal-source` and `.pc-entry-details time` are provenance and timestamps, not values the prose replaces. `.next-cockpit-recovery>div` at `:824` is overridden by `:1081` and is dead for this cascade. `.next-project-detail-rail .next-usage-*` only shares an ancestor with `.next-rail-reason`; they are separate components, not a value and its caption.
+
+**F2 is rule-level evidence, not a live reading**, as the finding said: the board carried no data rendering those two panels, so the cascade is what was read. F1 and the five others were confirmed live.
+
+### AC-7, re-driven after F1 and F2 landed
+
+Driven on **port 4557**, not 4553: another session's board already held 4553 and serves different assets, so driving it would have measured the wrong tree. Confirmed the page served `--fs-sentence:15px` before reading anything. Computed figures: `.next-cockpit-content` prose **15px / 500 / Space Grotesk**; both absence strings **15px / 500 / Space Grotesk, max-width 540px**, each on its own line. All seven value-and-companion pairs **PASS at 15px vs 15px**. The human "is it actually easier to read" half is the captain's, not mine. The server I started is stopped and 4553 is untouched.
+
+### D1 to D4, each measured before it was written
+
+D1: the deferred gap is **19**, not 17. A single-rule census finds 17 (seven `--fs-sm`, four `--fs-body`, two `--fs-summary`, four literals; my earlier "two literals" was the miscount that made the enumeration read as 15). The two it cannot see are `.next-operation-fact--unknown strong` (size and mono at `:482`, sans at `:483`, line-height at `:397`) and `.next-cockpit-recovery small` (size at `:1089`, family and line-height inherited). D2: **I measured three, not two**, and the difference is the boundary, not the fact. Zero-caller tokens are `--fs-column`, `--fs-meta` and `--fs-breadcrumb`; `--fs-breadcrumb` is exactly 12px, so "sub-12px" read strictly gives two and the issue's own "six sub-12px tokens" requires the inclusive reading that gives three. The doc now names them so neither count can be misread, and records the boundary. `--fs-meta-detail` was never among them; it had four callers, which the doc now says. D3: stated unambiguously as four `:root` steps below 11px with 9px the smallest, which removes the "9" that could be read as a count. **The Linear AC-1 text "(it shows 9 today)" is a minimum in px, not a count, and is correct as written** — I did not change it. D4: the APCA justification now carries the milestone's audit-only caveat verbatim in substance, beside the recomputed `--ink` on `--bg` of **16.36:1** with the asset test green.
+
+### Surface, reported rather than trimmed
+
+| Surface | Declared | Actual | Percentage |
+|---|---|---|---|
+| Runtime | ~105 changed, ceiling 131.25 | **145** (`styles.css` 141, `next-cockpit.js` 4) | **138.1%** |
+| Oracles | exactly 9 pins, zero tolerance | 9 checked, 7 rewritten, 2 verified unchanged | met |
+| Docs | ~18 changed, ceiling 28 | **62** (`design-next-ui.md` 60, `CONTRIBUTING.md` 2) | **344%** |
+| Tests | not costed | `test_next_cockpit.py` 132 | outside the estimate |
+
+Per the round's instruction I did not trim prose to fit. The runtime overrun is F1 and F2; the docs overrun is the four corrections plus the gap records. **One commit on this branch is not mine**: `3cc7ef49 docs(burndown): record the captain's act-don't-ask and visibility directives`, 19 lines in `docs/roadmap-burndown/README.md`, already on origin and riding in #361.
+
+### Summary
+
+The review was right and F1 was mine: raising `.next-cockpit-recovery>div` to the sentence tier without raising the value rules under it made the absence outrank the fact it replaced. I swept the class rather than patching the three reported cells, found four more instances and nine look-alikes that are correctly ordered, and pinned the invariant in a test that fails per pair and survives a mutation check. AC-7 re-drove green on all seven pairs against a board serving this branch's assets.
+
+Two things for the gate rather than for me. The surface now overruns on both runtime and docs, reported above and not trimmed. And a `blocks` edge to DRC-4602 is present that was absent at cycle 1, which I have flagged rather than removed because I cannot prove my write created it.
