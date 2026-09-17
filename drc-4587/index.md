@@ -1270,3 +1270,148 @@ moved and no test figure changed. Candidate SHA **`0f8a3a75524abd12a69fd49139ce9
 introduced *by the paragraphs written to prevent them*: a retraction paragraph that left a count in
 comparative form, and a provenance rule that overstated its own example's provenance. A rule stated
 in prose does not audit the prose around it, including the prose that states it.
+
+## Stage Report: review (cycle 4)
+
+Round 3 at `295b19ce`, plus the docs-only `0f8a3a75` that landed mid-review and changes no web asset
+or test figure, so every measurement below stands. **NO-GO**, on the fourth inversion and on the
+bound.
+
+- DONE: State the chosen review depth and the property of the diff that justified it BEFORE reviewing, per AGENTS.md "Calibrating Effort" — this diff owns the frontend byte pins, so the table's two-lenses-plus-an-arbiter row applies unless you argue otherwise.
+  Two lenses plus an arbiter has been the standing depth; this round I ran **no lenses and did it myself**, which is a deliberate step down and the diff justifies it: 8 added and 2 removed lines of CSS, zero emitter files, and four named claims each reducible to a command. Spending six agents on ten CSS lines is the uniformity the table exists to prevent. I did not check the worktree over this time either — every measurement ran against a `git archive` export.
+- DONE: Reproduce every acceptance criterion from its own Verified by clause rather than trusting the implementation self-report, and report AC-7 as settled by a live drive or explicitly not attempted, never by automation built here.
+  AC-2/3/4/5/6 PASS; pins recomputed a fourth time (styles.css 112140/`77dd73d3…`, cockpit.js 198105 unchanged, assembled 915434/`b48cdd7e…`), all matching. **AC-7 still FAILS** on "any value computing smaller than its own absence", in one slot, resolved with the branch's own resolver.
+- DONE: Read the Copilot inline review comments in addition to any top-level review, and confirm CI is green on the CURRENT head SHA with mergeStateStatus, naming the SHA the checks belong to.
+  No new Copilot comments. **The head is `0f8a3a75`, not the `295b19ce` I was given** — it moved again mid-review. **CI is RED on that head**: `Tests (macos-latest)` and `quality-gate` both `fail`, 10 of 12 pass. `mergeStateStatus: BLOCKED`. Cause read from the log and reported under F11; I do not certify green.
+- DONE: Give a GO or NO-GO verdict with the findings that produced it, and do NOT edit the branch — a confirmed material finding routes back to implementation with its evidence.
+  **NO-GO.** Branch not edited, no checkout, no server left running.
+
+### What holds, verified not accepted
+
+Three of the four inversions are fixed, and fixed the right way round — the absence demoted to the
+value's tier, not the value promoted. Resolved with the branch's own `css_cascade.py`:
+reading-clause 12.5/12.5, work-summary 12.5/12.5, graph time 11.0/11.0.
+
+**Claim 4 holds, both halves.** I reverted `.next-cockpit-recovery .next-project-value` to
+`var(--fs-xs)` — the mutation that survived round 2 by moving value and absence together — and it
+now dies on the promotion test: *"15.0 != 12.5 : recovery published value left the sentence tier,
+which design-next-ui.md records it on"*. A comparison test cannot see that; an absolute one can, and
+the round added the right kind.
+
+**F5, F6 and F7 are genuinely closed.** `_REC` now carries `_CONTENT` with a comment naming the
+specificity that made its absence a fixture bug. Appending my own always-true escape,
+`@media(min-width:1px){…font-size:9px}`, now **raises** `UnsupportedSelectorError: @media
+(min-width:1px) sets a font size` instead of passing green, and `_steps(".a + .b")` raises rather
+than returning `None`. The tier sentence names all six promotions and three demotions. And both of
+my cycle-3 addendum findings are closed correctly: the 163/183 clause now names `3cc7ef49` and
+`4fb5ee6d`, states the stylesheet changed by thirteen lines, and narrows the claim to the rules
+resolving that shape — which is exactly what I measured — and the remainder count is gone "in any
+form, including by comparison".
+
+### F8 — Material. The fourth inversion is unresolved, and the new test pins it as intended
+
+`next-cockpit.js:2755-2760` is one ternary: `<small class="next-cockpit-source">` when the
+provenance is known, `<small class="next-cockpit-evidence-missing">Assignment evidence not
+published</small>` when it is not. Resolved with the branch's own resolver on the real path:
+
+```
+value   .next-cockpit-source        12.5px  mono  (styles.css:1099 sets font-family:var(--mono))
+absence .next-cockpit-evidence-missing 15.0px sans (styles.css:1108)
+```
+
+**That is the same register signature as the three that were demoted** — sans absence, mono value —
+and it is the one the round did not demote. Instead it added `PROSE_ABSENCES`, whose test
+`test_a_prose_absence_keeps_the_sentence_floor` asserts `assertEqual(size, 15.0)` on the absence
+**alone and never compares it to the value**. So the inversion is invisible to the suite by
+construction, and the row asserts the inverted state as correct.
+
+The round has a real constraint here and it is worth stating: `.next-cockpit-evidence-missing` is
+emitted at **seven** sites, six of them genuine board prose ("Actionable direction not captured"),
+so demoting the class would sink six real sentences. That is the same shared-class constraint that
+kept round 2's six promoted. But the round's own rule then says promote the value, and it did
+neither — it documented neither, and the doc's six-promotions list does not mention this slot.
+
+### F9 — Material. The bound does not re-derive, which was the half claimed checkable
+
+I ran it. The helper column reproduces **exactly** once the three function definitions are excluded
+from the call-site counts — `next-activity.js` 8, `next-cockpit.js` 2, `next-project.js` 3,
+`next-projects.js` 4, `project.js` 14. That half is sound.
+
+The file split is not. The headline says "**eight** can contain a pairing; **twelve** cannot", while
+the table beneath it lists **nine** rows with a non-zero and "the other eleven" — off by one against
+itself. And the bucket is wrong on at least two files:
+
+- **`next-capacity.js`**, filed as unable to contain a pairing, emits `.next-capacity-absent` four
+  times, twice as an explicit same-slot ternary: `row.windowSec == null ? '…Window length not
+  published' : nextCapacityDuration(…)` at `:360`, and pace at `:362`. Their values resolve to
+  **10.5px** (`.next-capacity-window i`) and **11.5px** (`.next-capacity-pace`) against a **12.5px**
+  absence. Two inversions, in a file the bound says cannot hold one. They are **pre-existing, not
+  this branch's** — but the bound's claim is about capacity, not authorship.
+- **`next-intent.js`**, same bucket, carries a ternary at `:283` (`.next-intent-gone`, balanced at
+  11/11, so a pairing that happens to be level).
+
+`next-sessions.js:310` is `rows || '<p class="next-sessions-empty">'` — the same `rows || <p>` shape
+the round itself treated as a pairing when it demoted `.next-cockpit-work-absent`, and it is in the
+excluded bucket. Whole-panel empty states are a defensible exclusion; applying it to one file and
+not the other is not.
+
+### F10 — the 31 unread helper call sites are the next F4, not an acceptable residual
+
+Declaring them was right and I would rather have the declaration than not. But the argument for
+accepting them is that the bound contains them, and F9 shows the bound misfiles at least one file
+with two live inversions in it. An unread set inside a bound that does not re-derive is the same
+position cycle 1 was in, with a table in front of it. They belong to DRC-4602 with the rest of the
+floor work, named as unread, and the bound needs re-deriving before it can carry them.
+
+### F11 — CI is red on the current head and the cause is not yet knowable
+
+`Tests (macos-latest)` failed on `0f8a3a75`, and `quality-gate` failed with it as the aggregate. The
+run has since finished, so I read the log rather than speculating:
+
+```
+FAIL: test_a_gil_held_regex_remains_a_rejected_negative_control
+      (tests.test_irreversible.CommandSocketTest)
+AssertionError: b'regex-entered' != b''
+Ran 3531 tests ... FAILED (failures=1, skipped=1)
+```
+
+That is the command-socket guard, and **nothing in this PR can reach it**. The diff touches
+`styles.css`, `next-cockpit.js`, `css_cascade.py`, the three pin modules, `test_next_cockpit.py` and
+three documents; `test_irreversible.py` imports only stdlib and reads no web asset. The same suite
+from a pristine export of the same tree passes on this machine, which is also macOS: `Ran 3531
+tests … OK (skipped=2)` at load 2.85. A child process that wrote no stderr where the parent expected
+`b'regex-entered'` reads as a subprocess race.
+
+**That is a hypothesis and I am not recording it as a verdict.** `test_irreversible` is not on
+AGENTS.md's list of modules that manufacture failures under contention, so the documented
+explanation does not cover it, and a green local run is not a substitute for a green runner. The
+cycle-1 rule applies unchanged: a re-run settles it, and no re-run has happened. Until one does, the
+current head is red and I do not certify it.
+
+### On the economy point
+
+The structural fix was cheaper than any instance round — 8 lines, no emitter churn — and that is
+worth recording. I would not draw "it was available from cycle 1" from it, though. What was
+available from cycle 1 was the *question*, which is what three verdicts asked; the register pattern
+that made the answer checkable was only visible once four instances existed to measure. The lesson I
+would take is narrower and more useful: when a reviewer rejects twice on the same axis, the third
+round should be asked for the rule rather than for the next list — which is what this round was
+asked for, and it delivered it.
+
+### Summary
+
+This round did the thing the previous three did not: it produced a rule, measured it before forming
+a view, published a bound, and declared what it left unread. Three inversions are gone by demotion,
+the surviving mutation now dies on an absolute assertion, and F5, F6 and F7 are closed with my own
+escapes re-run against them.
+
+It is **NO-GO** on two things, both of which are the same finding as before wearing better clothes.
+The fourth inversion has the identical register signature to the three that were demoted, is
+resolved by neither of the rule's two branches, and is now asserted as correct by a test that
+compares the absence against a constant instead of against the value beside it. And the bound —
+offered as the answer to completeness — disagrees with itself by one file and puts a file holding
+two live inversions in the bucket that cannot hold any.
+
+Neither needs a fourth instance round. F8 is one disposition decision on one slot: demote the class
+and split the six prose uses, or promote that one value. F9 is a re-derivation of a table that is
+already nearly right, and the command that does it is the one I ran.
