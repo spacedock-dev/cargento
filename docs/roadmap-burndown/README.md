@@ -1571,6 +1571,39 @@ present has checked that an emitter ran. Whether anything downstream honours it 
 question, and on a cascading medium the default answer is that it does not — it inherits something,
 and what it inherits is usually the thing the variant exists to differ from.
 
+## Ask what a check would report if it were disconnected from the thing it tests
+
+This is the general form of most of what this milestone found, and the sections below it are
+instances rather than separate rules. It is `AGENTS.md`'s first Measured Invariant — *ask what the
+figure reads when nothing happened, and whether that differs from the figure when something happened
+and found nothing* — aimed one layer out, at the instrument instead of the data:
+
+> **What would this check report if it were disconnected from the thing it tests?** If that answer is
+> identical to its passing output, the check proves nothing.
+
+It does not matter how the disconnection happened. A mutation whose pattern never matched the file. A
+mutation that matched the wrong thing — a pinned fragment's capitalisation rather than the prose. A
+test whose class lacked the fixtures it needed. A one-project fixture that cannot express a
+collision. A sample taken four microtasks after the reply had already landed. In every case the
+instrument reported on something other than the subject, **and said so in exactly the words it would
+have used if it had worked.**
+
+The framing earns its place by telling you what to *do*, where the taxonomy only says what to avoid.
+**Disconnect the check deliberately and confirm it still reports.**
+
+- For a mutation: that is the substitution proof — grep the token, or better, watch the rendered
+  property move.
+- For a timing-sensitive test: run it against unmutated code at the same sample point. If it passes
+  there too, the sample point is the subject, not the code.
+- For a fixture: ask what it would print with the defect made impossible. A one-project fixture
+  prints the same thing either way, which is why no assertion over it could have caught a
+  cross-project collision.
+
+It also explains cleanly why survivors and reds divide the way they do. **A red reports a
+*difference*, and a disconnected instrument cannot produce one.** Only a claim of *sameness* is
+ambiguous between "nothing differs" and "nothing was measured" — which is why a survivor owes a
+proof and a red does not.
+
 ## A mutation that does not match the file's text is a no-op, and reads as SURVIVED
 
 A falsifier survived a set-equality assertion it should have killed. The oracle was fine: the `perl`
