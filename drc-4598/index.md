@@ -538,3 +538,41 @@ proposed labels invert the modes: `active` is the filtered subset and `all` is e
 entirely, taking three byte pins with them. Two existing Decisions-route tests are the oracle for the
 default-mode regression and are deliberately left unmodified; zero test repairs are expected, and a
 repair being needed is itself the signal that the default was dropped.
+
+## Stage Report: implementation
+
+- DONE: Built on the shared group branch, not its own.
+  This issue is one of three in the tier-5 group (with DRC-4592 and DRC-4597); the full checklist
+  report lives on `drc-4592/index.md`. Branch `spacedock-ensign/drc-4592`, candidate `43a8e9ba`.
+- DONE: Gate-approved issue body written to Linear as the first action.
+  Written unwrapped, one line per paragraph. Labels `journey:mid-flight` and `move:sharpen` were
+  already correct, so no label write; no milestone edit from this issue, as its triage ruled.
+  Relation edge created by the body write: **`relatedTo` DRC-4587**, read back after the write.
+  Three emphasis runs containing a code span lost their mark at the span boundary
+  (`**Keep** \`eventPrefix\``, `**Delete** \`nextCockpitProjectScope()\``, `**A** \`role="radiogroup"\``)
+  and one relative link was wrapped as `(<docs/design-next-ui.md>)`. Reported, not repaired.
+- DONE: All eight acceptance criteria satisfied, seven offline and one interactive.
+  Six new cases in `CockpitTimelineFilterTest`, each written red first. AC-2 is proved by its two
+  named oracles left unmodified: dropping `defaultMode` turns
+  `test_decisions_view_preserves_canonical_metadata_and_compacts_scan_line` and
+  `test_decisions_use_fact_scope_not_selected_session` red, measured. AC-8 (the mode surviving a
+  real browser reload) is interactive by declaration and was not exercised: the node DOM shim's
+  `localStorage` is a plain object, so AC-4 proves the key is written and read back and no more.
+- DONE: Zero existing-test repairs needed on this issue's own surface, as triage predicted.
+  One assertion did move, and it belongs to this issue: `assertNotIn("All events", …)` in
+  `test_focus_keeps_project_status_and_canonical_labels_from_all_context` forbade the filter's own
+  button text. Triage checked three assertions that looked like Decisions contracts and found them
+  on other routes; it did not reach this one. Rewritten to assert what it was guarding — the panel
+  still resolves to `decisions` with `all` unpressed — rather than deleted.
+
+### Summary
+
+Three quarters of the fix was already shipped and inert, exactly as triage read it. The work was to
+stop passing `mode:"decisions", controls:false`, carry a `defaultMode`, add one shared resolver so
+the panel heading and the renderer cannot disagree, mirror the mode to `cargento.next.graph.mode`,
+and delete the dead `nextCockpitProjectScope`. `styles.css` needed nothing for this issue;
+`next-boot.js` was not touched, and AC-7 pins that.
+
+`project.js` came in at +30 executable lines against a declared ~+22 (±40% → 13–31), at the top of
+its band. `docs/design-reader-state.md` gained the lane row and `docs/design-next-ui.md`'s NUI-3
+gained the route-change constraint AC-6 asks for.
