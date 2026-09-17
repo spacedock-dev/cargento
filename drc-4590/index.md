@@ -51,6 +51,20 @@ gates:
                 id: briefing:drc-4590:review:attempt-1:revision-1
                 digest: sha256:389a38fcc0c95199053fe4db0f69f3fecff1acb09c940a418b0f6c208a6df41f
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4590:review:1
+                briefing: briefing:drc-4590:review:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T16:47:49.006225Z"
+                decision: approve
+                reason: 'This issue''s share passed review clean; the NO-GO it carried belonged to DRC-4588 and is closed. All eight criteria were reproduced independently rather than trusted, two of them by live drive under greyscale, and the byte pins were recomputed from the assets into exactly the 2 length and 3 digest assertions AGENTS.md records. Both universal-sounding criteria are honestly enumerated with their remainders filed as DRC-4604 and DRC-4603 rather than claimed complete. Delivery is proven: #362 merged as 21a0e93, 11/11 green on head 333d478.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed later as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
+              application:
+                target-stage: done
+                state: pending
 ---
 
 [DRC-4590](https://linear.app/recce/issue/DRC-4590/add-a-control-primitive-with-one-primary-action-per-tab-and-a-disabled) — Add a control primitive with one primary action per tab and a disabled state that survives greyscale
