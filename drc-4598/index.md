@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4598:triage:attempt-1:revision-1
                 digest: sha256:e047a15d19b8b88c56ca09d82410ce1dba85e9513b101bf35e69d203c169e50a
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4598:triage:1
+                briefing: briefing:drc-4598:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T11:20:30.129046Z"
+                decision: approve
+                reason: 'Checklist 5 done / 0 skipped / 0 failed; AC-1..AC-8 resolve and all read unevidenced, which is correct at a triage gate. Both criteria the recon found unverifiable are dropped with reasons rather than carried as decoration: one had no offline path because the repository''s test shim is a node DOM with no layout engine and its remaining half was a process act rather than a property of the finished change, the other was a process obligation on a future issue and is replaced by a criterion that writes the route-change constraint where a merge proposer will actually meet it. The stage read DRC-4592''s seven approved criteria before writing its own, since both edit the same panel branch chain, and recorded the one adjacency and a third independent reason the relabel is rejected. It also avoided a self-citation that would have made its own report evidence its first criterion.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4598](https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its) — Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab
