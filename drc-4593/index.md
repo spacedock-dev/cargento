@@ -691,3 +691,19 @@ no-op, so the rule changes nothing else here. The `nextCockpitContexts` audit th
 for is in `drc-4589/index.md`; its result does not touch either of this issue's criteria.
 
 **Verdict unchanged: GO.**
+
+### Disposition correction, 2026-09-18 — F3 is in scope and goes into the fix commit
+
+My report classified F3 as Polish and declined to promote it. **The first officer overruled that, and
+the ruling is right.** Three non-falsifying falsifiers from DRC-4592's reviewer had already been
+ruled in scope on the grounds that a criterion's own verifier failing to verify is in scope by
+definition. F3 is the same class, and one group does not get a softer rule than another.
+
+What settled it is the strength of the proof rather than the finding's size: the mutation was shown
+to reach the thing under test — occurrences 1→0 and 0→1, and the **resolved ink moving
+`var(--ink-label)` → `var(--ink-caption)` down a real element path** — with 319 tests still green.
+That is a demonstrated miss, not a possible one, so "no user-visible loss today" was the wrong test
+to apply to it.
+
+Recorded here rather than by editing the finding above, so the reasoning that produced the wrong
+disposition stays readable. The verdict is unchanged: **GO**.

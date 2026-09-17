@@ -747,3 +747,17 @@ suppresses a retry within a revision and the claim is rebuilt identically at the
 `/api/project-context` failure therefore shows a permanently wrong cue, not a one-tick transient.
 Still outside this group, still filed rather than promoted — but it should be routed as material
 rather than cosmetic.
+
+### Disposition correction, 2026-09-18 — F1 is material and fixed in this PR, not filed
+
+My report routed F1 out of this group as a pre-existing defect to file. **The first officer corrected
+the disposition on a fact I could not see from inside this group:** `nextCockpitTabCue` does not exist
+on `origin/main`. It was introduced by `a54451d6`, DRC-4592's own commit in this PR, so it is new code
+shipping a defect — in scope, fix-not-file. The fix also corrects the comment at `next-cockpit.js:3323`,
+which asserts the invariant its own function violates.
+
+The severity in that brief is the corrected one from the addendum above, not the "self-heals once an
+entry settles" wording in the finding itself: the wrong cue is **persistent** under a persistent
+endpoint failure. The softer version was mine and is superseded.
+
+Verdict unchanged: **GO**.
