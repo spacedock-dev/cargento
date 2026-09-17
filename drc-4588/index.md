@@ -589,3 +589,85 @@ So R2 overturns an implementation-stage test assertion that carries an AC label,
 captain approved on the issue. Exactly two lines invert, :6554 and :6555, both from 0 to 1. It is
 still a change to shipped behaviour in three states and belongs at the gate — but the entity should
 not record it as overturning an approved acceptance criterion, because it is not one.
+
+## Stage Report: implementation
+
+- DONE: Write BOTH gate-approved drafts to Linear as the FIRST action before any code — DRC-4588's and DRC-4590's issue bodies, the owning milestone corrections, and any journey or move label named at triage — sending each body unwrapped as one line per paragraph, then read back each issue's relation set and report every edge the write created.
+  Both bodies written verbatim, unwrapped; one milestone carries both corrections (4588's "present and inert", 4590's primary clause plus the split-out sentence); labels already correct on both and confirmed rather than changed; follow-ups DRC-4603 and DRC-4604 filed. Edge report below.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, and for DRC-4588 specifically assert the rendered control does NOT match the bare disabled form, since the existing test_next_cockpit.py:5092 regex matches both spellings and cannot witness the change in either direction.
+  12 new tests, all watched failing first. Re-verified at final shape by reverting the seven assets to 4fb5ee6d: 5/5 and 7/7 fail, 12/12 pass on the change. The bare-form negative is `assertNotRegex(refused, r'reading-ask"[^>]*\sdisabled[=>\s]')` beside `assertRegex(..., r'reading-ask"[^>]*\saria-disabled="true"')`; changing the emitter back to ` disabled` fails the first, dropping the attribute entirely fails the second.
+- DONE: Regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting the pass ratio of each isolated run; recompute both size AND digest for every part, because next-cockpit.js has already kept its size across a digest change on this branch.
+  Regenerated twice from the assets (never patched textually), the second time after the comment trim. Isolated: test_next_page 31/31, test_next_flag 7/7, test_focus 106/106. 6 part pairs + styles pair + assembled pair; 2 assembled-length and 3 assembled-digest assertions across the three files, matching AGENTS.md's count.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file rather than any copy, invoke sync-docs and commit its updates to this same branch, then measure the actual surface with git diff --numstat against the merge base and report files and LOC versus each issue's declared estimate with the percentage.
+  Command list extracted from the worktree's own AGENTS.md. All green at load average 4.1: ruff, ruff format, mypy, lint_embedded, validate_plugins, bump_version --current (0.26.0, no version field moved), 3540 + 515 tests, coverage 86.8%. sync-docs updated design-next-ui.md (NUI-18), design-reader-state.md and SKILL.md, committed here. **Surface exceeds declared tolerance — see below.**
+- DONE: Commit DCO signed off on branch spacedock-ensign/drc-4588 and STOP without pushing and without opening a pull request, reporting the branch name and candidate SHA.
+  `spacedock-ensign/drc-4588` @ **2a073801**, signed off, 16 files / +720 / -91. Not pushed; no PR. Base is still 4fb5ee6d (PR 1 unmerged).
+
+### Linear relation edges created
+
+Read back after every write. Mentions create `relatedTo` only where no relation already exists.
+
+- **DRC-4588** gained `relatedTo` **DRC-4390** and **DRC-4565**, both from bare tracker keys in the approved History prose. `blocks DRC-4594` unchanged.
+- **DRC-4590** gained `relatedTo` **DRC-4381**, **DRC-4602**, **DRC-4561**, and `blocks` **DRC-4603** and **DRC-4604** from the follow-up filings. Its six **DRC-4587** mentions created no edge, because `blockedBy DRC-4587` already existed.
+- **DRC-4603** (new): `blockedBy DRC-4590`, no `relatedTo`. **DRC-4604** (new): `blockedBy DRC-4590`, `relatedTo DRC-4602`.
+
+### Two Linear hazards observed, reported rather than repaired
+
+- **Emphasis boundaries moved on both bodies**, and on DRC-4590 one mark was **dropped entirely**: the bullet authored `* **`+ set a tripwire`**, the only way...` stored as `* `+ set a tripwire`, the only way...`. The measured rule is about an emphasis run ending immediately before a code span; this is the adjacent case, a run that *contains* one, and the serializer splits the run around it (`**Gate** `nextCockpitAskForReading` **on...**`) or loses it. Not repaired, per the standing instruction that repair provably cannot succeed.
+- **The milestone `save_milestone` response echoed the pre-write description.** A fresh `get_milestone` confirmed both corrections landed. No retry was issued. The serializer also wrapped the existing DRC-4596 link target in angle brackets.
+
+### Surface against the declared estimates
+
+`git diff --numstat 4fb5ee6d` (the stacked base, which is this branch's real base; against the
+`main` merge base the figure is contaminated by PR 1's commits).
+
+| Layer | Declared (4588 + 4590) | Actual | Of declared |
+|---|---|---|---|
+| Runtime | ~33 net, ±25 | +88 net | **267%** |
+| Tests | ~256 net, ±120 | +481 net | **188%** |
+| Docs | ~30 net | +60 net | **200%** |
+| Files | 13 | 16 | **123%** |
+| **Total** | **~324 net, band 179–469** | **+629 net** | **194%** |
+
+**This is beyond the combined tolerance band and needs a captain-visible decision before the PR
+opens.** I did not open one, so nothing is committed to by this overrun yet. Three things drive it,
+and they are different in kind:
+
+1. **Comments, which the repository's own standard requires.** Runtime additions were 55% comment
+   lines. I applied AGENTS.md's own remedy ("if the explanation runs longer than the code it
+   explains, the reason belongs in `docs/design-*.md` and the comment shrinks to a reference"),
+   which moved the durable rationale into NUI-18 and took runtime from +117 to +88 net and the
+   comment share to 45%. The docs line doubles as a result. This is the estimate costing code lines
+   where the standard costs both.
+2. **Test comments and falsifiability.** `test_next_cockpit.py` is +327 net against a ~130 share.
+   The stage requires each test to name what would make it fail, and several existing tests needed
+   their claims restated rather than their numbers flipped. I have not trimmed these, because the
+   falsifying clause is the thing the gate reads.
+3. **Three files beyond the declared 13**, each compelled rather than chosen:
+   `tests/test_next_controls.py` (an undeclared literal tag-shape assertion, `type="submit">add ↵`,
+   which the class token splits), `docs/design-reader-state.md` (its own canonical rule: the refusal
+   lane gained a case), and `SKILL.md` (one sentence, the user-visible half).
+
+The declared-vs-actual gap is in the *estimate's model*, not in scope creep: no criterion was
+widened, nothing outside AC-1..AC-8 was built, and both universal criteria stayed enumerated with
+their remainders filed.
+
+### Deferred, filed rather than promoted
+
+Nothing was promoted into this branch. DRC-4603 and DRC-4604 carry the two scope reductions triage
+made.
+
+### Summary
+
+Both issues are built on one branch, stacked on the unmerged PR 1, and the two halves that make
+DRC-4588 safe shipped together: the control is `aria-disabled` so it keeps its place in the tab
+order and can be described, and both handlers refuse on the same expression their control renders,
+so the press the attribute restores cannot reach `/api/reading` or `/api/annotate` from a refused
+state. The captain's condition is met at `test_next_cockpit.py`: the two inverted assertions carry a
+replacement comment saying what superseded the withheld-offer decision and why, and the docstring
+above them was corrected too, since it made the same claim. DRC-4590 collapses seven control rules
+onto `.next-action`, marks the one tab that has an action to mark, and makes disabled dashed rather
+than dimmer; both of its universal-sounding criteria are accepted on enumerated verifiers with the
+remainders filed as DRC-4603 and DRC-4604. The suite is green (3540 + 515, coverage 86.8%) and the
+three byte-pin oracles pass alone. The one thing needing a decision before the PR opens is the
+surface at 194% of declared.
