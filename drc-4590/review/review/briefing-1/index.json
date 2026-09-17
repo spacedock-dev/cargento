@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4590:review:attempt-1:revision-1",
+  "question": "Approve DRC-4590 as delivered: did its own share pass review clean, and did it ship in the merged tree?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4590:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/475d5dc70270423d1289fc8a8c7f7224c5f18389/drc-4590/index.md",
+      "rev": "sha256:af7ffba00661e0378d124abf6028b932c94a0aee8ab6587d2391ca55bcd3b7d0",
+      "mediaType": "text/markdown",
+      "summary": "Review reproduced all eight criteria independently, two by live drive under greyscale, and found nothing blocking in this issue's share - the NO-GO it carried was DRC-4588's finding, since fixed in bb56beb. The control primitive collapses the seven recipes it claims, every emitter that can match them was updated, the dead .next-tabs removal took nothing live, and the byte pins recompute to exactly the 2 length and 3 digest assertions AGENTS.md records. Both universal-sounding criteria are honestly enumerated and both remainders filed as DRC-4604 and DRC-4603. Four smaller items filed, not promoted. PR #362 merged as 21a0e93, 11/11 green on head 333d478."
+    }
+  ]
+}

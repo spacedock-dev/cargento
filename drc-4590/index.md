@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4590:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4590-review-1
+              briefing:
+                id: briefing:drc-4590:review:attempt-1:revision-1
+                digest: sha256:389a38fcc0c95199053fe4db0f69f3fecff1acb09c940a418b0f6c208a6df41f
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4590](https://linear.app/recce/issue/DRC-4590/add-a-control-primitive-with-one-primary-action-per-tab-and-a-disabled) — Add a control primitive with one primary action per tab and a disabled state that survives greyscale
