@@ -1604,3 +1604,42 @@ over the defect they were named for, and each failure was in the fixture or the 
 in the assertion: what was compared, in what DOM, against which side. A test can be green, mutation
 -checked, and still be measuring the wrong thing, and the only defence that worked here was reading
 the emitter to find out what the product actually builds.
+
+### Round 4: regression check clean, one item filed
+
+Not a fifth verdict — the merge decision is the first officer's and I worked to it. One focused
+check, because returning twenty absence rules to their `main` bodies is the change most able to
+re-create what was fixed, and a regression this change created is the stated blocking bar.
+
+**Nothing this change created survives.** I resolved every pair established across four cycles at
+`39c81df1` and again against `main` at `6702fb5c`:
+
+| slot | main gap | head gap |
+|---|---|---|
+| graph time | 2.0 | **1.5** |
+| rail pace / resets | 2.5 | 2.5 |
+| rail token rate | 2.0 | 2.0 |
+| rail wait duration | 1.5 | 1.5 |
+| pc entry time | 1.5 | 1.5 |
+| recovery published value | 1.0 | 1.0 |
+
+Six inversions remain and **every one is at `main`'s gap or smaller**, one improved. They are
+inherited, not authored here, so none meets the bar. F8 is fixed and the trap was avoided: recovery
+evidence resolves 12.5 against 12.5, and reading-clause and work-absent hold. The briefing caption is
+12.5 against 12.5, identical to `main`, so dropping its test tracked a condition that no longer
+exists rather than removing a guard. Pins recomputed: styles.css 110704/`02aa3946…`, cockpit.js
+198105 unchanged, assembled 913998/`fabba3bc…`, all matching. The rewritten invariant class runs 2
+tests, both green.
+
+**One item found and filed, not held.** `docs/design-next-ui.md` still says "all **sixty-seven**
+resolve to `var(--fs-sentence)`", "**forty-nine** cap at `--measure`" and "the **eighteen** that do
+not"; the tree at the candidate holds **54**, **40** and **14**, and the sentence's own arithmetic
+(8+8+2=18) no longer closes against 14. Round 4's revert removed rules carrying the token and the
+counting paragraph was not re-derived. Not user-visible, so it does not block. Filed on **DRC-4606**
+with the two commands, as its first confirmed instance — which is worth noting because **the claim
+went stale on a revert rather than on the change that wrote it**, so a figure can be true when
+written and false three commits later with nothing touching the sentence. That is the argument for
+binding these rather than re-checking them, and it supports the ordering already on that issue.
+
+The six inherited inversions belong with DRC-4602's floor work; they are recorded here with their
+measured gaps so that issue does not re-derive them.
