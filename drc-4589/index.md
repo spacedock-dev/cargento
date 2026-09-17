@@ -700,3 +700,50 @@ filing it beats promoting it into a PR that is otherwise ready.
 
 **Verdict: GO.** Twelve checks green on 2fa5a2f4, `mergeStateStatus` CLEAN, both Copilot inline
 threads read and independently re-refuted, zero unresolved threads.
+
+### Addendum, 2026-09-18 — the `nextCockpitContexts` audit the integrator asked for, and the no-op rule applied
+
+Two sharpenings arrived from the integrator after the verdict. Both were run; neither changes the
+GO.
+
+**The mutation no-op rule, applied retroactively to every SURVIVED I reported.** Only one finding in
+this group rests on a survival (F3, in `drc-4593/index.md`), and it was re-run with the substitution
+proved rather than assumed: occurrences of the old string 1 → 0 and the new string 0 → 1, still 0/1
+after the run so nothing regenerated the file, and — the part a grep alone would not show — the
+**resolved property moved**, `var(--ink-label)` → `var(--ink-caption)` down a real element path. The
+mutant reached the thing under test and 319 tests still passed. F3 stands. Every other mutation in
+this review reported RED, and a RED off a green baseline cannot be a no-op.
+
+**`nextCockpitContexts`: who writes it, and in what states.** Three writers, two field shapes.
+
+| writer | shape | notes |
+|---|---|---|
+| `next-cockpit.js:3182` (poll resolve) | `{data, revision}` | |
+| `next-cockpit.js:3187` (poll reject) | `{data, revision, error:true}` | **the only writer of `error`** |
+| `next-render.js:81` (explicit observer refresh) | `{data, revision}` | no `error` key |
+
+**The integrator's reasoning holds on the axis it checked, and I confirmed each half rather than
+accepting it.** There is no transient entry: both poll writes are inside `.then`/`.catch`, so no
+reader can catch a half-written map the way `projectTerminalLookup`'s `{state:"registered",
+loading:true}` could. The revision source is the *same* expression in all three writers
+(`nextFiniteNumber(nextData.generated)`), so the loader's `settled.revision >= revision` guard cannot
+be confused by the third writer. And the stale-overwrite path is genuinely closed: `settled` is
+captured before the fetch and reused in the `.catch()`, but `nextRequestObserverModel` deletes the
+in-flight request key first, so a poll that lands after an explicit refresh returns early instead of
+overwriting fresh data with its stale closure. That guard is doing real work.
+
+**The axis it did not check is the field sets, and that is where the defect is.** Of seventeen reads,
+four consult `error` (`:434`, `:1217`, `:3673`, `:3717`) and seven key off `data` alone. I checked
+each of the seven rather than assuming: `:1394`, `:3150`, `:3498` and both `next-render` reads return
+a value or render nothing, so a missing read is not a false claim; `:3783` reports "not read yet",
+which is defensible for a read that failed, since nothing has in fact read it. **Exactly one turns a
+failed read into a positive claim about state** — `nextCockpitTabCue` at `:3332`, which is F1.
+
+**F1 is worse than I first recorded, and the correction is in this direction.** I called it
+self-healing. Executed across three revisions with the endpoint failing each time, the cue reads
+`pending` / "decisions not loaded yet" at every one, beside a panel reading "Semantic context
+unavailable." The `.catch()` restamps the entry at the current revision, so the loader's own guard
+suppresses a retry within a revision and the claim is rebuilt identically at the next. A persistent
+`/api/project-context` failure therefore shows a permanently wrong cue, not a one-tick transient.
+Still outside this group, still filed rather than promoted — but it should be routed as material
+rather than cosmetic.

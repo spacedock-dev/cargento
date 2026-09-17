@@ -666,3 +666,28 @@ here — promoting it buys an implement-and-CI round for something already judge
 
 **Verdict: GO.** Twelve checks green on 2fa5a2f4, `mergeStateStatus` CLEAN, both Copilot inline
 threads read and independently re-refuted, zero unresolved threads.
+
+### Addendum, 2026-09-18 — F3 re-verified under the mutation no-op rule
+
+The integrator asked that no SURVIVED be trusted until the substitution is proved to have applied,
+after one of its own falsifiers "survived" because a `perl` substitution had silently not matched.
+F3 is the only finding in this group that rests on a survival, so it was re-run with the mutation
+proved rather than assumed:
+
+| check | before | mutated | after the run |
+|---|---|---|---|
+| occurrences of `color:var(--ink-label)` in that rule | 1 | **0** | 0 |
+| occurrences of `color:var(--ink-caption)` in that rule | 0 | **1** | 1 |
+| resolved ink of the label span, down a real element path | `var(--ink-label)` | **`var(--ink-caption)`** | — |
+
+The file was still mutated when the run finished, so nothing regenerated it. The third row is the one
+a grep alone would not give: the mutation did not merely land in the text, it **moved the rendered
+property** — label and caption resolve to one register, which is the defect DRC-4589 exists to
+remove — and all 319 tests in `test_next_cockpit` still passed. F3 stands as written: AC-4's verifier
+measures (size, ink) pairs, the sizes still differ, so the pair oracle cannot see a register collapse.
+
+Every other mutation in this review reported RED, and a RED against a green baseline cannot be a
+no-op, so the rule changes nothing else here. The `nextCockpitContexts` audit the same message asked
+for is in `drc-4589/index.md`; its result does not touch either of this issue's criteria.
+
+**Verdict unchanged: GO.**
