@@ -541,3 +541,51 @@ middle forty-two words were about what cannot be done, and the existing probe wa
 the whole container while keeping its containment check rather than loosening it to "after the
 header", which is the exact regression that check was added for. The `your words` sub-label and the
 handler comment that explained itself by that label are both gone.
+
+### Rebase note — 2026-09-17
+
+Rebased with `--onto spacedock-ensign/drc-4588 2a073801`, so only this branch's own commits replay
+onto PR 2's rebased tip `1d847b0f`, one clean commit over merged `main`. Everything from `f6ced2f8`
+through `4fb5ee6d` is excluded as the upstream boundary.
+
+`4fb5ee6d` was deliberately **not** replayed. It raises seven value rules to the sentence tier and
+its own message refuses the alternative; merged `main` does the thing it refuses, lowering the
+absences and leaving the values alone. Those are two incompatible resolutions of one defect, and
+replaying it would have reversed a merged decision inside a commit this task did not write. The
+first officer confirmed the merged resolution stands and that the remainder is DRC-4602's.
+
+Two conflicts in this branch's own commit were resolved rather than skipped. `styles.css` kept the
+base's `.next-cockpit-reading-stale` rule, because PR 361's review lowered it on purpose, and added
+only the three new `.next-cockpit-why` rules. The three byte-pin modules were resolved
+**structurally and then recomputed from the assets**, never textually: each side held a figure
+correct for a tree that no longer exists. `styles.css` and the assembled page both moved
+(`113_433`/`de683e43…` and `925_578`/`76c2c418…`); `project.js` and `next-cockpit.js` did not, which
+was checked rather than assumed — the new base's diff against the old one touches neither file.
+
+The resolver was reconciled as the first officer directed. This branch's own resolver is deleted and
+both surviving guards are built on the merged `tests/css_cascade.py`. `RAISED_ABSENCES` held exactly
+one entry, the `two axes, read separately` span this change deletes, and it did **not** fail when
+that class went: `resolve` walks the path and inherits, so the absence still resolved to 15.0 off
+the section and compared equal to its value. That is the census's own second docstring failure
+reproduced in the test named for it. The entry is replaced by the landing card's real value/absence
+pair, and `test_the_retired_axes_span_stays_retired` holds the half no resolver can see.
+
+DRC-4607 was re-measured against `main` and its first finding **withdrawn**: the reading-clause pair
+is 12.5px against 12.5px there and is not inverted, so that reading was an artifact of the stale
+base. The issue now carries the pair that is real and shipped — `.next-project-value--known` at
+11.5px by inheritance against `--absent` at a declared 12.5px, which a per-rule census structurally
+cannot resolve.
+
+Four mutations were run against the reconciled guards and all four were killed: the summary dropped
+to the label tier, a second class on the COUNTS absence branch, the landing absence raised above its
+value, and the deleted aside restored.
+
+Re-verified after the rebase: `ruff`, `ruff format`, `mypy`, `lint_embedded`, `validate_plugins` and
+both native validators clean; dashboard suite **3562 OK / 2 skipped**; `scripts/tests` **515 OK / 1
+skipped**; coverage **86.8%** against `fail_under = 73`; no version field moved; tone clean. The
+three pin modules alone: `test_next_page` **31/31**, `test_next_flag` **7/7**, `test_focus` **96/96**.
+
+Surface against the new base `1d847b0f`: 11 files, net **+787** — runtime **+105**, tests **+625**,
+docs **+57**. The runtime half is unchanged by the rebase and still inside the combined ±35; the
+test half is 40 lines smaller than before, because deleting this branch's resolver gave back more
+than the census repointing cost.
