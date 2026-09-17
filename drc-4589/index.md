@@ -322,15 +322,26 @@ confirmed and a later reader needs to know which half is which.
   a real `0` carries the em dash — the failure this issue's own Measured Invariant warns of — or by
   moving either string's ink token.
 
-- **AC-3 — offline:** Every `--absent` rule and both `[data-next-withheld]` rules resolve to one
-  declared ABSENCE register, and after the change **exactly one rule in the sheet assigns a colour
-  to `[data-next-withheld]`**: styles.css:52 keeps it, styles.css:1089 keeps
-  `font-family:var(--sans)` and drops its redundant `color:var(--ink3)`. **Verified by:**
-  `grep -c 'data-next-withheld[^{]*{[^}]*color:' styles.css` returns **2** today and must return
-  **1**; a `tests/test_next_page.py` assertion pins that count so it cannot drift back.
-  **Falsified by:** a second colour-assigning `[data-next-withheld]` rule reappearing, or the
-  register resolving to anything other than `--ink3` — which would break DRC-4597's AC4, and the
-  captain ruled on 2026-09-17 that it stands verbatim.
+- **AC-3 — offline (amended 2026-09-18):** Every `--absent` rule and every `[data-next-withheld]`
+  rule resolves to one declared ABSENCE register, and **a withheld element resolves the absence ink
+  on the element that renders it**. The rule count is no longer part of this criterion.
+  **Verified by:** resolving the withheld and published scope titles down a real element path
+  through `tests/css_cascade.py` and asserting they differ, which `WithheldTitleKeepsTheAbsenceInkTest`
+  pins. **Falsified by:** a withheld element resolving the same ink as its published sibling — which
+  is what stripping the rail override's colour produces.
+
+  **Why the count was removed, recorded because it reverses a ruling.** The original wording
+  required "exactly one rule in the sheet assigns a colour to `[data-next-withheld]`", and the
+  captain's ruling of 2026-09-17 said the override keeps only its family swap. Both were correct on
+  the tree they were written against, where the withheld element was a `<small>` with no competing
+  colour rule. DRC-4597 then moved `data-next-withheld` onto `span.next-cockpit-scope-title`, which
+  declares `color:var(--ink)` at the same `(0,1,0)` specificity and later in the sheet, so it wins on
+  source order. Executed rather than argued, twice independently: stripping the override's colour
+  returns the count to **1** *and* makes a withheld scope title resolve `var(--ink)`, byte-identical
+  to a published one, reddening `WithheldTitleKeepsTheAbsenceInkTest`. **The criterion as written was
+  satisfied exactly by the defect.** The count is therefore the wrong property and the rendered ink
+  is the right one; the ruling's intent — one place owns the withheld colour — is unchanged, and only
+  which rule that is has moved.
 
 - **AC-4 — offline:** Every `.next-cockpit-reading-why` emission that states an absence carries
   `data-absence` with exactly one of `not-observed`, `waiting-on-you`, `run-config`; emissions that
