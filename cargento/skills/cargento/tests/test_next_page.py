@@ -588,11 +588,12 @@ class NextPageAssetContractTest(unittest.TestCase):
     # --- DRC-4596: the size guard, and the three mutants that falsify it ------
 
     SUB_LABEL_FLOOR_REGISTRY: ClassVar[set[tuple[float, str]]] = {
-        (10.5, ".next-capacity-scope"),
-        (10.5, ".next-capacity-window i"),
-        (10.5, ".next-delegation-metrics"),
-        (10.5, ".next-operation-harness"),
-        (10.5, ".next-project-change time,.next-project-change-harness"),
+        (10.0, '.next-rail-capacity-caption'),
+        (10.5, '.next-capacity-scope'),
+        (10.5, '.next-capacity-window i'),
+        (10.5, '.next-delegation-metrics'),
+        (10.5, '.next-operation-harness'),
+        (10.5, '.next-project-change time,.next-project-change-harness'),
     }
     """The px literals below the 11px label floor, recorded rather than raised.
 
@@ -602,37 +603,39 @@ class NextPageAssetContractTest(unittest.TestCase):
     """
 
     SUB_SENTENCE_FLOOR_INVENTORY: ClassVar[set[tuple[float, str]]] = {
-        (13.0, ".next-attention-part"),
-        (13.0, ".next-attention-risk-observation p"),
-        (13.0, ".next-cockpit-work-derived"),
-        (13.0, ".pc-semantic-timeline,.pc-terminal"),
-        (13.0, ".pc-trail-result"),
-        (13.5, ".next-attention-brief p"),
-        (13.5, ".next-attention-risk-identity h3"),
-        (13.5, ".next-capacity-prospect"),
-        (
-            13.5,
-            (
-                ".next-cockpit-reading-result,.next-cockpit-reading-detail,"
-                ".next-session-departure-reading"
-            ),
-        ),
-        (13.5, ".next-operations-header p"),
-        (14.0, ".next-cockpit-held-field textarea"),
-        (14.0, ".next-course-episode p,.next-course-episode ul,.next-course-direction p"),
-        (14.0, ".next-operation-identity strong,.next-operation-fact strong"),
-        (14.0, ".next-session-ask-question"),
-        (
-            14.0,
-            (
-                ".next-session-current>strong,.next-session-command-facts strong,"
-                ".next-session-command-context"
-            ),
-        ),
-        (14.0, ".next-session-detail-instruction"),
-        (14.0, ".next-session-health"),
-        (14.0, ".next-usage-consent"),
-        (14.5, ".next-project-goal-text"),
+        (12.5, '.next-cockpit-content .next-cockpit-evidence-missing'),
+        (12.5, '.next-cockpit-empty,.next-cockpit-evidence-missing'),
+        (12.5, '.next-cockpit-held-absent'),
+        (12.5, '.next-cockpit-reading-clause-absent'),
+        (12.5, '.next-cockpit-reading-stale,.next-session-departure-stale'),
+        (12.5, '.next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap'),
+        (12.5, '.next-cockpit-recovery .next-project-value--absent'),
+        (12.5, '.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped'),
+        (12.5, '.next-delegation-withheld small'),
+        (12.5, '.next-guardrail-copy small,.next-guardrail-empty'),
+        (12.5, '.next-project-detail-rail .next-rail-reason'),
+        (12.5, '.next-project-goal-gap'),
+        (12.5, '.pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p'),
+        (12.5, '.pc-trail-quiet,.pc-trail-history,.pc-event-evidence'),
+        (13.0, '.next-attention-part'),
+        (13.0, '.next-attention-risk-observation p'),
+        (13.0, '.next-cockpit-work-derived'),
+        (13.0, '.pc-semantic-timeline,.pc-terminal'),
+        (13.0, '.pc-trail-result'),
+        (13.5, '.next-attention-brief p'),
+        (13.5, '.next-attention-risk-identity h3'),
+        (13.5, '.next-capacity-prospect'),
+        (13.5, '.next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading'),
+        (13.5, '.next-operations-header p'),
+        (14.0, '.next-cockpit-held-field textarea'),
+        (14.0, '.next-course-episode p,.next-course-episode ul,.next-course-direction p'),
+        (14.0, '.next-operation-identity strong,.next-operation-fact strong'),
+        (14.0, '.next-session-ask-question'),
+        (14.0, '.next-session-current>strong,.next-session-command-facts strong,.next-session-command-context'),
+        (14.0, '.next-session-detail-instruction'),
+        (14.0, '.next-session-health'),
+        (14.0, '.next-usage-consent'),
+        (14.5, '.next-project-goal-text'),
     }
     """The sentence-tier rules still below the floor, which DRC-4602 sizes.
 
@@ -676,9 +679,10 @@ class NextPageAssetContractTest(unittest.TestCase):
     def test_sentence_tier_rules_resolve_at_or_above_the_floor(self) -> None:
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         above, below = _sentence_census(css)
-        # 68 on the base of this branch, plus the steer caveat and the steer
-        # input DRC-4595 raised with it.
-        self.assertEqual(70, len(above))
+        # Recomputed on the merged tree. The branch this came from read 70 against
+        # a pre-squash DRC-4587 tree that raised thirteen rules the narrower #361
+        # did not; main resolves 55 and the four branches here add seven.
+        self.assertEqual(62, len(above))
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
         )
@@ -781,7 +785,24 @@ class NextPageAssetContractTest(unittest.TestCase):
             if (size := _declared_size(decls, tokens)) is not None
         }
         below = {sel: size for sel, size in sized.items() if size < SENTENCE_FLOOR_PX}
-        self.assertEqual({".next-project-value--absent": 12.5}, below)
+        # Four rules sit below the floor, and each was measured against the
+        # value it replaces rather than asserted alone -- the discipline whose
+        # absence cost this milestone four review cycles. All four pairs
+        # resolve 12.5/12.5, so none outranks its value:
+        #   .next-project-value--absent            vs .next-project-value--known (unsized)
+        #   .next-cockpit-recovery ...--absent     vs .next-cockpit-recovery strong      12.5
+        #   .next-cockpit-reading-clause-absent    vs .next-cockpit-reading-clause       12.5
+        #   .next-cockpit-recovery goal --absent   vs ... .next-project-goal-text        12.5
+        self.assertEqual(
+            {
+                ".next-project-value--absent": 12.5,
+                ".next-cockpit-recovery .next-project-value--absent": 12.5,
+                ".next-cockpit-reading-clause-absent": 12.5,
+                ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n"
+                ".next-cockpit-recovery .next-project-goal-gap": 12.5,
+            },
+            below,
+        )
         known = [
             decls for selector, decls in _rules(css) if selector == ".next-project-value--known"
         ]
@@ -796,9 +817,14 @@ class NextPageAssetContractTest(unittest.TestCase):
         string a source published.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        # The shorthand as this lineage spells it. The branch this test came
+        # from read `font:500 var(--fs-sentence)/1.55`, which is the pre-squash
+        # DRC-4587 tree; the narrower #361 that merged left this rule on
+        # `--fs-xs`, and a mutation string that matches nothing is a mutation
+        # test that proves nothing.
         mutant = css.replace(
-            ".next-cockpit-reading-clause-absent{font:500 var(--fs-sentence)/1.55 var(--sans)",
-            ".next-cockpit-reading-clause-absent{font:500 var(--fs-sentence)/1.55 var(--mono)",
+            ".next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--sans)",
+            ".next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--mono)",
             1,
         )
         self.assertNotEqual(css, mutant)
@@ -826,7 +852,11 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(2, len(coloured))
         for selector, decls in coloured:
             with self.subTest(selector=selector):
-                self.assertEqual(["var(--ink3)"], re.findall(r"color:\s*([^;]+)", decls))
+                # The register rather than the literal, since DRC-4589 made it
+                # the single place the ruling can be re-read from.
+                self.assertEqual(
+                    ["var(--ink-absence)"], re.findall(r"color:\s*([^;]+)", decls)
+                )
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
@@ -1078,8 +1108,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                108_840,
-                "59623327f5200953b2b67ea075be000f896e468c3f5e6fe6d42a77be7ee677aa",
+                109_267,
+                "d1f78af91a95d78c71ddfa2f6cfbb985cab7818ad8f9a0452a2a129db4dd2a5f",
             ),
             "next-chrome.js": (
                 40_141,
@@ -1118,16 +1148,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "9680ee01d19296e87cf9b35230a51a7e98ddc764c5bfb80f0e18e7723ece8a04",
             ),
             "next-delegation.js": (
-                14_542,
-                "464fc88d73d81224ec8cce60227044909e8f189be0bf1d1200624b7d0f73629c",
+                14_536,
+                "48db57de6b518a4c52ceffff7b7f9e9d9a15725670a1cc57aab2c20e03448478",
             ),
             "next-controls.js": (
                 18_840,
                 "f580b09c634f7a7c2f60584f5fca486a3a28e6fee43ff8152f90e08fc432eed4",
             ),
             "next-cockpit.js": (
-                204_724,
-                "f4f61ce68045fe557376d20531915ca46c44f5181fd63c3985d0720e46dcdb11",
+                224_110,
+                "60f187a139265c87ca37a388db29d854ef0a1206a7db62a658f82b1f032ce008",
             ),
             "next-render.js": (
                 8_960,
@@ -1146,16 +1176,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(112_008, len(styles))
+        self.assertEqual(120_747, len(styles))
         self.assertEqual(
-            "af33306fe9ecc13445bb6ea0ba2024a7bb33938ddbe5dd175e004f1ed70c9367",
+            "787c0a30fe5859a450e2e6ebb6825acc0f7fe61c7774d21c0a6281f07c38d2dc",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(922_075, len(assembled))
+        self.assertEqual(953_271, len(assembled))
         self.assertEqual(
-            "f807d1314497a1acffc5a69235227974d9ead6c3fdf26dbfd5bdf87f2845a100",
+            "d8ff9423ff1c258fa60b5bb7b1badd1a638a846aa6f19b9a4b6593d1ba9cd4e6",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1481,20 +1511,32 @@ class InkRoleRegistersAreDeclaredOnceAndSpelledNowhereElseTest(unittest.TestCase
         ]
         self.assertEqual([], offenders)
 
-    def test_exactly_one_rule_assigns_a_colour_to_a_withheld_value(self) -> None:
-        """AC-3's falsifiable end state. Two rules both coloured
-        `[data-next-withheld]` -- the base and a scope-rail override restating
-        it -- which is how DRC-4589 and DRC-4597 came to disagree in writing
-        about the same declaration. The captain ruled the override keeps only
-        its family swap.
+    def test_every_rule_colouring_a_withheld_value_uses_the_absence_register(self) -> None:
+        """AC-3 restated as the property rather than as a count.
+
+        It was drafted as "exactly one rule colours `[data-next-withheld]`", on
+        the reading that the scope-rail override's colour merely restated the
+        base rule, and the captain ruled the override keeps only its family
+        swap. DRC-4597 then moved the attribute off a `<small>` and onto
+        `span.next-cockpit-scope-title`, which declares `color:var(--ink)` at
+        the same (0,1,0) specificity and later in the sheet. On that tree the
+        override is the only thing holding a withheld title on the absence
+        register, and stripping it rendered an absent title in FULL ink,
+        identical to a published one -- the inversion this milestone exists to
+        remove. A count could not see that; the register can, and
+        `WithheldTitleKeepsTheAbsenceInkTest` resolves the pair through the
+        cascade.
         """
         colouring = [
             line
             for line in self.styles.splitlines()
             if re.search(r"data-next-withheld[^{]*\{[^}]*color:", line)
         ]
-        self.assertEqual(1, len(colouring), colouring)
-        self.assertIn("var(--ink-absence)", colouring[0])
+        self.assertNotEqual([], colouring)
+        for line in colouring:
+            with self.subTest(rule=line[:60]):
+                self.assertIn("var(--ink-absence)", line)
+                self.assertNotIn("var(--ink3)", line)
 
     def test_every_absent_variant_resolves_through_the_absence_register(self) -> None:
         """No `--absent` or `-clause-absent` rule may set an ink token directly:

@@ -6302,6 +6302,64 @@ console.log(JSON.stringify({counts, steer, tripwire}));
         self.assertNotIn("next-action--primary", out["tripwire"])
 
 
+
+class WithheldTitleKeepsTheAbsenceInkTest(unittest.TestCase):
+    """A withheld session title must not resolve to the ink a published one gets.
+
+    Size is not the only way an absence can outrank the value it replaces, and
+    colour is the channel that went wrong here. DRC-4597 moved
+    `data-next-withheld` off a `<small>` and onto
+    `span.next-cockpit-scope-title`; that class declares `color:var(--ink)` at
+    (0,1,0), the same specificity as the bare `[data-next-withheld]` rule and
+    later in the sheet, so the bare rule lost and an absent title rendered in
+    full ink -- byte-identical to a real one. Two rule-counting tests passed
+    over it, because neither resolved the pair.
+
+    Asserted as inequality against the present branch rather than against a
+    named token, so it keeps holding if the register is ever repointed.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+
+    def ink(self, withheld: bool) -> str:
+        path = [
+            _node("div", "next-cockpit-scope-tree"),
+            _node("a"),
+            _node("span", "next-cockpit-scope-line"),
+            _node(
+                "span",
+                "next-cockpit-scope-title",
+                attrs=("data-next-withheld",) if withheld else (),
+            ),
+        ]
+        winning = []
+        for selector, body, order in self.rules:
+            try:
+                specificity = css_cascade.matches(path, selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            if specificity is None:
+                continue
+            declared = re.search(r"(?:^|;)\s*color:\s*([^;]+)", body)
+            if declared:
+                winning.append((specificity, order, declared.group(1).strip()))
+        self.assertNotEqual([], winning, "no rule colours the scope title at all")
+        winning.sort()
+        return winning[-1][2]
+
+    def test_a_withheld_title_does_not_resolve_to_the_present_title_ink(self) -> None:
+        self.assertNotEqual(self.ink(withheld=True), self.ink(withheld=False))
+
+    def test_a_withheld_title_resolves_through_the_absence_register(self) -> None:
+        self.assertEqual("var(--ink-absence)", self.ink(withheld=True))
+
+
 def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, object]:
     return {"tag": tag, "classes": set(classes), "attrs": set(attrs)}
 

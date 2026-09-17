@@ -1014,7 +1014,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    the division neither of them survives. */
 .next-cockpit-departure-counts{display:flex;flex-direction:column;gap:3px}
 .next-cockpit-count{display:flex;justify-content:space-between;gap:12px}
-.next-cockpit-count-group{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
+.next-cockpit-count-group{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
 .next-cockpit-count-group+.next-cockpit-count{margin-top:2px}
 .next-cockpit-count-label{color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-count-value{color:var(--ink-value);font:var(--fs-xs)/1.5 var(--mono)}
@@ -1152,7 +1152,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    at the label tier: the answer is a sentence and stays at the sentence
    tier, so a limitation never reads louder than the act offered above it. */
 .next-cockpit-held-reentry-row{display:flex;gap:10px;align-items:baseline}
-.next-cockpit-held-reentry-label{flex:none;min-width:64px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
+.next-cockpit-held-reentry-label{flex:none;min-width:64px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
 .next-cockpit-held-reentry-text{color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-held-reentry a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
 .next-cockpit-held-reentry a:hover{text-decoration-color:var(--accent)}
@@ -1215,7 +1215,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    a second one here would be a second place to get it wrong; the size is the
    title's own, so a withheld title can never render larger than a published
    one. */
-.next-cockpit-scope-tree [data-next-withheld],.next-cockpit-scope-options [data-next-withheld]{font-family:var(--sans)}
+.next-cockpit-scope-tree [data-next-withheld],.next-cockpit-scope-options [data-next-withheld]{font-family:var(--sans);color:var(--ink-absence)}
 .next-cockpit-authority>strong,.next-cockpit-authority>small{font-family:var(--sans)}
 /* The chip and the line it used to outrank. `FO INSPECTING` is a state name a
    source published, so mono at the label tier is the register
