@@ -1408,6 +1408,41 @@ Four things this earned:
   entity said so. Ask the author which it was — a dependency to write down, or a misread of which
   rule wins — because only one of those is a defect.
 
+## The fixture's shape hides what the assertion's strength cannot reach
+
+The worst defect this milestone shipped was a `localStorage` key that collapsed to the same value for
+every project, so one project's press rewrote every other project's tab and survived a reload. Both
+of its oracles passed, and **one of them seeded the collided key as the expected value.**
+
+The reviewer that found it drew the rule: **a defect needing two projects to be visible cannot be
+found by mutating a one-project fixture, at any width and with any assertion.** Strengthening the
+assertion would not have caught it. Only a second project does.
+
+So when a criterion quantifies over instances of a thing — projects, sessions, tabs, panels — ask
+whether the fixture contains **two** of that thing before asking whether the assertion is strong
+enough. A single-instance fixture cannot express a collision, an ordering, or an interference, and no
+amount of mutation testing over it will say so: every mutant dies or survives for reasons that have
+nothing to do with the property.
+
+An oracle that seeds the defect as its expected value is the end state of this. It is worse than
+having no oracle, because it converts the defect into a documented requirement.
+
+## A SURVIVED can also mean the run never loaded the test that kills it
+
+A second false-SURVIVED cause, found the same day as the no-op one and its exact mirror. Three
+mutations were reported as surviving; re-run against the full 564-test selection rather than a narrow
+one, all three died — two killed board-wide by a module the narrow run never loaded.
+
+So a survivor has three explanations, not two, and they need separating before it becomes a finding:
+
+1. The oracle genuinely does not catch it.
+2. **Nothing was mutated** — the substitution did not match the file.
+3. **Nothing that catches it was run** — the selection was too narrow.
+
+The reviewer withdrew all three findings and said plainly that the criticism narrowed to verifier
+hygiene rather than an unguarded property. Withdrawing a finding costs nothing here; a fix round
+spent closing a hole that was never open costs a CI cycle and a merge serialization.
+
 ## A mutation that does not match the file's text is a no-op, and reads as SURVIVED
 
 A falsifier survived a set-equality assertion it should have killed. The oracle was fine: the `perl`
