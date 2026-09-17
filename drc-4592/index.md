@@ -443,3 +443,78 @@ Proof of the AC shape is the scanner, not the prose: `status --read .spacedock-s
 that criterion while the scan still exits 0; that shape was not re-probed here, because the stage
 definition forbids probing in the shared state checkout.
 No decision issue was needed; the milestone correction is one word (`Twelve` → `Thirteen`, DRC-4602).
+
+## Stage Report: implementation
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  All three bodies written before the first code read, unwrapped one line per paragraph. Labels
+  already correct on all three, so no label write. Milestone: `Twelve issues.` → **`Fifteen
+  issues.`**, not the gate-approved `Thirteen` — a live count at write time returns fifteen
+  (DRC-4604 and DRC-4606 were filed after triage drafted the correction). Flagged rather than
+  silently written; the gate approved the correction's purpose, which is that the number be true.
+  **Relation edges created, read back after each write:** DRC-4592 gained `relatedTo` DRC-4559;
+  DRC-4598 gained `relatedTo` DRC-4587; DRC-4597 gained `relatedTo` DRC-4593. No `blocks`/`blockedBy`
+  edge moved. **Emphasis boundaries moved by Linear's own renderer, reported and not repaired:** six
+  runs across the three bodies (4592 ×1, 4598 ×3, 4597 ×2) where an emphasis run containing a code
+  span lost its mark at the span boundary. Table delimiter rows normalised to `| -- |`, and two
+  relative links were wrapped as `(<path>)`.
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  18 new cases written first, all 18 red before any runtime edit, each for its own reason
+  (`nextCockpitTabCue is not defined`, `'SCOPE · Claude' != 'SCOPE'`, `1 != 0` ledes, and so on).
+  Pins recomputed from the assets, never textually: `next-cockpit.js` and `project.js` parts,
+  `styles.css` `114_550`, assembled `933_180` / `75da98ab…`. Two assertions pin the assembled length
+  and three the digest; all five updated. Alone: **test_next_page 33/33, test_next_flag 7/7,
+  test_focus 96/96.**
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  Two ternaries introduced. The tab cue chooses between a figure and two absence marks: all three
+  rules restate `--fs-machine`, resolved through the cascade and compared as two new rows in
+  `AnAbsenceNeverOutranksTheValueItReplacesTest.PAIRS` plus a dedicated size-equality check in
+  `test_next_page`. The rail title chooses between a published title and `Session title not
+  published`: one element, one size rule, and the rail's withheld rule reduced to `font-family`
+  only, with the test asserting exactly one rule in the sheet colours `[data-next-withheld]`.
+  Third pair added: `.next-cockpit-scope-title` against `.next-cockpit-scope-meta`.
+  **Mutation-checked, 12 of 12 killed.** The falsifying changes: raising `--pending` to
+  `--fs-sentence`; a held-to cue defaulting to `0`; pending and unobserved sharing one mark; the
+  decisions cue reading `nextCockpitSemantic`'s `{facts:[]}` default; the strip taking its tab set
+  from the `focus` argument; a missing lede; the sid back on the title; a second withheld colour
+  rule; hoisting on a mixed group; dropping `defaultMode`; a press that writes no storage; a heading
+  read from the caller. Dropping `defaultMode` also turns AC-2's two named oracles red
+  (`test_decisions_view_preserves_canonical_metadata_and_compacts_scan_line`,
+  `test_decisions_use_fact_scope_not_selected_session`), both left unmodified.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  Read from `AGENTS.md` and run whole: ruff clean, `ruff format --check` clean, `mypy --strict`
+  clean, `lint_embedded.py` clean, `validate_plugins.py` clean, `bump_version.py --current` 0.26.0,
+  no version field moved since the merge base, **3560 dashboard tests OK (2 skipped)**, **515 script
+  tests OK (1 skipped)**, coverage **86.8%** against `fail_under = 73`. `claude plugin validate
+  --strict` passed; `agy` is not installed here. `sync-docs` run and its updates committed on this
+  branch: `design-runtime-architecture.md` (project.js now owns the timeline mode and its storage
+  mirror; next-cockpit.js owns the strip's lede and cue), `design-next-ui.md` (NUI-3 gains the
+  route-change constraint; the Decisions paragraph gains the filter), `design-reader-state.md` (one
+  new lane row). `COMPATIBILITY.md`'s marker deliberately untouched per the parallel-work rule.
+  **Surface — over the combined band on comments alone.** Runtime raw net **+248** across 3 files
+  against a combined declared **154** (**161%**), but **+128** of those lines are decision comments
+  the repository's Code Comments standard asks for; executable net is **+138**, **90%** of declared
+  and inside every per-issue band (`next-cockpit.js` code +100 vs ~113 declared, `project.js` +30 vs
+  13–31, `styles.css` +8 vs ~19). Reported rather than treated as a design reset, because the
+  measured excess is entirely prose; the captain owns that call before the PR opens.
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4592`, candidate `43a8e9ba`, signed off. Not pushed, no PR opened.
+
+### Summary
+
+The three issues share `nextCockpitPanel`'s branch chain and the frontend byte pins, so they land as
+one commit on one branch; the PR body owes one `Implements` line each. The one defect class this
+milestone has paid four review cycles for was met head on: both branches of each new
+value-and-absence ternary resolve at one tier, the pair is asserted against the cascade rather than
+against a rendered board, and every new assertion was mutation-checked.
+
+Three things a reviewer should know. The milestone number written is **fifteen**, not the approved
+thirteen, because the approved figure was already stale. `nextCockpitDepartureLaneCount` is lifted
+out of `nextCockpitDepartures` rather than copied, so the Held-to cue and the section it describes
+cannot disagree about what an empty `departures` list means. And `data-scope-owner` was restored
+onto the rail's `<a>` when the session cue that used to carry it left the card, which two existing
+tests caught.
+
+**Filed, not fixed:** `.next-cockpit-scope-note` (the Now-tab focus note) still has zero matching
+rules in `styles.css` and renders unstyled — pre-existing, and more visible now that a styled lede
+sits above it. Needs a Linear issue; not promoted into this PR.
