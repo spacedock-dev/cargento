@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4589:triage:attempt-1:revision-1
                 digest: sha256:18eef156a11c3741c78044c1444200f5f04a40dba4c36064f428c95e11e2eae6
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4589:triage:1
+                briefing: briefing:drc-4589:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T10:52:14.735098Z"
+                decision: approve
+                reason: 'Checklist 4 done / 0 skipped / 0 failed; AC-1..AC-7 resolve with AC-7 the user-visible interactive criterion. Every figure was rebuilt against the post-DRC-4587 worktree rather than main, which is what the dispatch asked and what made the LABEL register reachable at the new 11px --fs-label. Three issue claims were refuted against the tree and demoted to dated history rather than deleted, the largest being AC2''s DELEGATION claim whose literal implementation would have brightened an absence. The captain''s absence-ink ruling was applied and followed into the two consequences it creates rather than re-decided: AC-1 scoped to present values with absence and caption exempt, and AC-4''s three data-absence renderings required to differ without colour since the ruling removes the waiting-on-you ink lift.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17, answering the gate-authority question
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4589](https://linear.app/recce/issue/DRC-4589/split-the-three-inks-onto-label-value-and-absence-roles-so-a-label) — Split the three inks onto label, value and absence roles so a label stops sharing its ink with its own answer
