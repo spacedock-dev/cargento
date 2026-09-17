@@ -479,3 +479,65 @@ prose says "the record read above" — moving OBSERVED RECORD last while leaving
 ship a falsehood through a fully green suite, since nothing pins either the sentence or four of the
 six slots. Both halves are now settled in the drafted body, and two acceptance criteria close the
 test gap. Nothing was written to Linear; the gate authorizes that write.
+
+## Stage Report: implementation
+
+Built on one branch with DRC-4591 (`spacedock-ensign/drc-4591`), because exactly one in-flight PR
+may touch `cargento_runtime/web/`. The checklist is reported in full on both entities; the evidence
+below is this issue's half.
+
+- DONE: Write every gate-approved draft for THIS group's issues to Linear as the FIRST action before any code — each issue body, any milestone correction, and any journey or move label named at triage — sending bodies unwrapped as one line per paragraph, then read back each relation set and report the edges created.
+  DRC-4594's body written before any code read, unwrapped, one line per paragraph. **No milestone correction** — this triage declared none owed and recorded why (the "Twelve issues" drift belongs to whichever stage files DRC-4602, and this branch editing the shared milestone would collide with it for no gain). No label writes: `journey:mid-flight` and `move:sharpen` were already set. Relations read back after the write and **unchanged**: blockedBy [DRC-4589, DRC-4591, DRC-4587, DRC-4588], blocks [], relatedTo []. **Zero new edges.**
+- DONE: Write the failing test first for each issue and watch it fail for the right reason, then regenerate every byte pin your changes move from the assets and re-run test_next_page, test_next_flag and test_focus each ALONE, reporting each pass ratio.
+  `HeldToOrderingTest` covers AC-1..AC-8. At the red baseline **7 of 8 failed**; AC-6 passed because the managed focus lane is a preservation criterion, and it was mutation-checked instead. AC-1 failed as `ValueError: substring not found` on `next-cockpit-held-lede` — no such class existed. AC-3 failed on the pair `('HOW IT LANDED', 'OBSERVED RECORD')`, which is the reorder itself. Pins: same 9 figures as DRC-4591, recomputed from the assets. Alone: `test_next_page` **31/31 OK**, `test_next_flag` **7/7 OK**, `test_focus` **96/96 OK**.
+- DONE: Before finishing, resolve BOTH branches of every value-and-absence ternary you touch and confirm no absence you raise renders larger than the value it replaces; a test asserting an absence alone is not evidence, it must compare against its paired value.
+  This issue touches one branching emitter, `nextCockpitHeldReEntry`'s `raise`, which is now three `{claim, why}` branches rather than three strings. All three render through the same `next-cockpit-held-reentry-text` rule at 15px, and the `Raise` label beside them is the only thing in the block at the 11px label tier, so no limitation reads louder than the act offered above it. The count relabel adds `next-cockpit-count-group` at the label tier above rows whose labels stay at the sentence tier; the five `line()` value arguments and the null-to-`not published` branch are untouched, which AC-7 asserts positionally. The shared oracle is `PairedBranchRegisterTest`, described on DRC-4591, and DRC-4607 is the one open instance it found.
+- DONE: Run the canonical pre-PR suite from AGENTS.md "Pre-PR Checks" read from that file, invoke sync-docs and commit its updates, then report the actual surface against each issue's declared estimate.
+  Full suite results on DRC-4591's report; nothing in it is specific to one issue. `sync-docs` found two stale enumerations this issue's reorder created and both are fixed in `6c5f4c94`: `docs/design-runtime-architecture.md` listed the tab with "the observed record beside them" and no lede, and `cargento/skills/cargento/SKILL.md` said "Below the two fields, `Held to` shows what the record lets you inspect" and then described the record first. The `docs/design-reader-state.md` row this issue's estimate anticipated was **not** owed as a new row: `nextCockpitWhy` registers no lane of its own, so the two existing rows were corrected to name the new instances rather than a third row added.
+- DONE: Commit DCO signed off on your branch and STOP without pushing and without opening a pull request, reporting the branch and candidate SHA.
+  Branch `spacedock-ensign/drc-4591`, candidate SHA **`6c5f4c94`**. Not pushed, no PR opened.
+
+### The four settled rulings, as built
+
+Taken as settled and not re-decided, per the dispatch.
+
+1. **"Above the reading" kept.** `nextCockpitConflict` still renders before `nextCockpitReading`.
+2. **"Below the record" overturned.** `nextCockpitWorkEvidence` moved from first to after
+   `nextCockpitLanded`. The one positionally-anchored sentence is reworded in the same change:
+   "…is in the record read above" is now "…is in the observed record read for this session", and
+   AC-4 asserts both halves — the old phrase appears nowhere and the new one appears. The comment at
+   `nextCockpitHeldTo` is rewritten to record the overturn and its reason rather than leaving the
+   two-sided constraint standing against the code.
+3. **OBSERVED RECORD is the last section, not the last line.** `nextCockpitDeparturesKept` still
+   follows it; AC-3 asserts the pointer after the record.
+4. **COUNTS does not move independently.** Still emitted inside `nextCockpitDepartures`; the
+   single-pass derivation is untouched.
+
+### Surface against estimate
+
+Against the stack base `2a073801`. The two issues share one branch, so the halves below are the
+combined figures; the per-issue split is in DRC-4591's report.
+
+| Half | Declared here | Combined actual | Verdict |
+|---|---|---|---|
+| Runtime (`next-cockpit.js`, `styles.css`) | +45, ±15 | net +105 across three files with DRC-4591 | combined **inside** the combined ±35 |
+| Behavioural tests | +70, ±25 | net +658 combined | **4x beyond tolerance** |
+| Byte-pin oracles | 9 figures, exact | 9 figures, ±0 net | inside |
+| Docs (`design-reader-state.md`) | +1 row, 0-1 | 2 rows corrected, 0 added | inside, and a row cheaper than declared |
+
+The test overrun is the captain's call and is analysed on DRC-4591: both triages priced eight
+acceptance criteria at ~9 lines each against a measured per-criterion cost of about 35 in this
+suite. The runtime half, which is what carries merge risk, is inside tolerance.
+
+### Summary
+
+The tab now opens on a sentence saying what typing buys, worded to the default board because the
+unasked lane is off unless the reader started with `--unasked-readings`, and AC-2 renders it on
+that board rather than on one with the flag set. The observed record moved from the first of four
+consecutive absence sections to last, and AC-3 is the first test in the suite to pin more than two
+of the six slots — four of them were previously unpinned, which was the silent-regression risk the
+triage named. The re-entry block leads with its anchor rather than burying it in a paragraph whose
+middle forty-two words were about what cannot be done, and the existing probe was rewritten to read
+the whole container while keeping its containment check rather than loosening it to "after the
+header", which is the exact regression that check was added for. The `your words` sub-label and the
+handler comment that explained itself by that label are both gone.
