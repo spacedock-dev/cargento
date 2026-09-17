@@ -824,10 +824,24 @@ const NEXT_COCKPIT_HELD_UNSAFE = /[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\
    refuses the press silently, because the box beside it already shows that the
    draft matches what is stored. `clear` stays `hidden`, because an empty box
    has nothing to clear and no explanation to offer. */
-function nextCockpitHeldControl(action, label, kind, shown, inert){
+// The field's absence sentence, which the inert `save` is described by. One id
+// per field rather than one per page: both fields render at once.
+function nextCockpitHeldAbsentId(kind){
+  return `next-cockpit-held-absent-${kind}`;
+}
+
+/* `describedBy` is emitted only while the control is BOTH inert and has a
+   sentence to point at. `aria-disabled` keeps this control in the tab order
+   where `hidden` removed it from the page, so a screen-reader user now reaches
+   it and would otherwise hear "save, dimmed" and nothing about why. Pointing at
+   an id that is not on the page is worse than pointing at nothing, and a field
+   holding saved words renders no absence sentence, so the attribute is
+   conditional on the sentence rather than on the state alone. */
+function nextCockpitHeldControl(action, label, kind, shown, inert, describedBy){
   const off = inert ? ' aria-disabled="true"' : " hidden";
+  const why = !shown && inert && describedBy ? ` aria-describedby="${describedBy}"` : "";
   return `<button type="button" data-next-cockpit-action="${action}" data-arg="${kind}"` +
-    `${shown ? "" : off}>${label}</button>`;
+    `${shown ? "" : off}${why}>${label}</button>`;
 }
 
 function nextCockpitHeldToggle(field, action, shown, inert){
@@ -837,8 +851,17 @@ function nextCockpitHeldToggle(field, action, shown, inert){
      keystroke with no redraw, so whichever of the two the renderer chose is
      the one already in the DOM and the one that has to be cleared here. */
   if(!inert){ control.hidden = !shown; return; }
-  if(shown) control.removeAttribute("aria-disabled");
-  else control.setAttribute("aria-disabled", "true");
+  /* The description goes with the state it explains. A keystroke makes the
+     control live, and leaving the pointer behind would describe an active
+     control by the sentence saying its field is empty. */
+  const absent = field.querySelector("[data-next-cockpit-held-absent]");
+  if(shown){
+    control.removeAttribute("aria-disabled");
+    control.removeAttribute("aria-describedby");
+    return;
+  }
+  control.setAttribute("aria-disabled", "true");
+  if(absent && absent.id) control.setAttribute("aria-describedby", absent.id);
 }
 
 /* What the last save attempt is still worth saying, and for how long.
@@ -1053,7 +1076,8 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `<span class="next-cockpit-held-count" data-next-cockpit-held-count="${kind}">` +
     `${draft.length}/${cap}</span>` +
     nextCockpitHeldControl("held-clear", "clear", kind, Boolean(draft), false) +
-    nextCockpitHeldControl("held-save", "save", kind, draft !== saved, true) +
+    nextCockpitHeldControl("held-save", "save", kind, draft !== saved, true,
+      why ? nextCockpitHeldAbsentId(kind) : "") +
     /* The absence sentence answers "why is this empty", so it goes when the
        box stops being empty. It read the SERVER value alone, which put "No
        goal typed for this session." directly under the sentence the reader
@@ -1062,7 +1086,8 @@ function nextCockpitHeldField(session, annotation, spec, cap){
        the input handler gives: a keystroke does not redraw, so a paragraph
        that only the renderer can remove stays under the sentence being
        typed. */
-    (why ? `<p class="next-cockpit-held-absent" data-next-cockpit-held-absent="${kind}"` +
+    (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId(kind)}" ` +
+      `data-next-cockpit-held-absent="${kind}"` +
       `${draft ? " hidden" : ""}>${esc(why)}</p>` : "") +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }

@@ -3813,6 +3813,7 @@ __els.app = {
       const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
         .map(attr => [attr[1], decode(attr[2])]));
       return {textContent: decode(match[2]), hidden: /(^|\s)hidden(\s|$)/.test(match[1]),
+        id: attrs.id || "",
         dataset: Object.fromEntries(Object.entries(attrs)
           .filter(([key]) => key.startsWith("data-")).map(([key, value]) => [camel(key), value]))};
     });
@@ -5801,6 +5802,8 @@ const saveControl = () => controls.find(control =>
   control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal");
 const resting = saveTag();
 const restingClear = clearTag();
+const absentTag = (__els.app.innerHTML.match(
+  /<p class="next-cockpit-held-absent" id="[^"]*" data-next-cockpit-held-absent="goal"[^>]*>/) || [""])[0];
 // A press while inert, before anything is typed.
 let posts = 0;
 const upstream = __fetchImpl;
@@ -5818,8 +5821,9 @@ box.value = "Ship the cockpit";
 __fire("input", {target:box});
 const typed = saveControl();
 console.log(JSON.stringify({
-  resting, restingClear, posts, redrew: __els.renders !== before,
+  resting, restingClear, absentTag, posts, redrew: __els.renders !== before,
   typedAria: typed.attrs["aria-disabled"] || null, typedHidden: typed.hidden,
+  typedDescribedBy: typed.attrs["aria-describedby"] || null,
 }));
 """
         )
@@ -5831,6 +5835,16 @@ console.log(JSON.stringify({
         self.assertNotEqual("", resting)
         self.assertNotRegex(resting, r"\shidden[=>\s]")
         self.assertIn('aria-disabled="true"', resting)
+        # And it says WHY, which `hidden` never had to: the control was off the
+        # page entirely, so there was nobody to tell. `aria-disabled` puts it in
+        # the tab order, and a reader who reaches it would otherwise hear only
+        # that it is dimmed. The pointer resolves to the sentence on the page.
+        described = re.search(r'aria-describedby="([^"]+)"', resting)
+        self.assertIsNotNone(described)
+        assert described is not None
+        absent_tag = out["absentTag"]
+        assert isinstance(absent_tag, str)
+        self.assertIn(f'id="{described.group(1)}"', absent_tag)
         # `clear` keeps `hidden`: there is nothing to clear and nothing to
         # explain, so an inert control there would be noise rather than an
         # affordance.
@@ -5845,6 +5859,9 @@ console.log(JSON.stringify({
         self.assertFalse(out["redrew"])
         self.assertIsNone(out["typedAria"])
         self.assertFalse(out["typedHidden"])
+        # The description goes with the state it explains. Left behind, it
+        # describes a live control by the sentence saying its field is empty.
+        self.assertIsNone(out["typedDescribedBy"])
 
     def test_a_refusal_never_outlives_the_state_it_describes(self) -> None:
         """DRC-4588 AC-2 and AC-4 at the point they interact.

@@ -680,8 +680,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "34646eed0f1890628554fbe9216c937ddca5dd117e69292dfeeb24831a341dbc",
             ),
             "next-cockpit.js": (
-                203_325,
-                "3198b59be319f8fbdde193cef9625b54c8c86d24123bb637c72611d21f82e0af",
+                204_724,
+                "f4f61ce68045fe557376d20531915ca46c44f5181fd63c3985d0720e46dcdb11",
             ),
             "next-render.js": (
                 8_960,
@@ -707,9 +707,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(920_676, len(assembled))
+        self.assertEqual(922_075, len(assembled))
         self.assertEqual(
-            "1127c59659bf26aaaf6bd92e813048891bdd612f485c0e89391ec1e3635c7347",
+            "f807d1314497a1acffc5a69235227974d9ead6c3fdf26dbfd5bdf87f2845a100",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -852,10 +852,6 @@ console.log(JSON.stringify({
         self.assertNotIn("overview", out)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
     """DRC-4590. The stylesheet had no way to say "this one": no shared control
     class and no radius token, so every control was its own recipe and the whole
@@ -995,3 +991,7 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
         self.assertIn("display:flex", self.rule(".next-header-right"))
         self.assertRegex(self.rule(".next-crumb"), r"(?:^|;)border:0")
         self.assertRegex(self.rule(".next-menu button"), r"(?:^|;)border:0")
+
+
+if __name__ == "__main__":
+    unittest.main()
