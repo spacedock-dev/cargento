@@ -1114,7 +1114,11 @@ nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,revi
 renderNext();
 const html=__els.app.innerHTML;
 const panel=(html.match(/<section class="next-cockpit-panel"[\\s\\S]*<\\/section>/)||[""])[0];
-const mirror=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
+// Stop at the briefing's own close, not at the last section before the tabs.
+// DRC-4595 moved the steer composer into the project chrome as a sibling
+// <section> in that gap, and a lookahead anchored only on the tabs nav
+// swallowed it -- charging a control's 26 words to the briefing's word budget.
+const mirror=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<section class="next-control|<nav class="next-cockpit-tabs")/)||[""])[0];
 const visible=mirror
   .replace(/<details(?![^>]*\\bopen\\b)[^>]*>[\\s\\S]*?<\\/details>/g," ")
   .replace(/<[^>]+>/g," ").replace(/&[^;]+;/g," ")
@@ -9730,7 +9734,7 @@ class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
     # role -> (selector whose colour wins, selector whose size wins)
     CELL: ClassVar[dict[str, tuple[str, str]]] = {
         "label": (".next-cockpit-recovery span", ".next-cockpit-recovery span"),
-        "value": (VALUE_HEAD, ".next-cockpit-recovery strong"),
+        "value": (VALUE_HEAD, ".next-cockpit-recovery strong,.next-cockpit-recovery small"),
         "caption": (
             ".next-cockpit-content .next-cockpit-evidence-missing",
             ".next-cockpit-content .next-cockpit-evidence-missing",
@@ -10423,13 +10427,26 @@ console.log(JSON.stringify({
             )
             if "[data-next-withheld]" in block.group(1) and "color:" in block.group(2)
         ]
-        self.assertEqual(1, len(coloured), "more than one rule colours a withheld value")
-        self.assertIn("color:var(--ink3)", coloured[0].group(2))
+        # Two rules colour it, and both must resolve through DRC-4589's absence
+        # register. The criterion was drafted as "exactly one", on the reading
+        # that the rail override merely restated the base rule; this issue's own
+        # change refuted that, by moving the attribute onto
+        # `span.next-cockpit-scope-title`, which declares `color:var(--ink)` at
+        # the same (0,1,0) specificity and later in the sheet. With the override
+        # stripped, a withheld title rendered in full ink -- see
+        # `WithheldTitleKeepsTheAbsenceInkTest`, which resolves the pair.
+        self.assertNotEqual([], coloured)
+        for block in coloured:
+            with self.subTest(rule=block.group(1).strip()[:60]):
+                self.assertIn("color:var(--ink-absence)", block.group(2))
         rail = re.search(
             r"\.next-cockpit-scope-tree \[data-next-withheld\][^{]*\{([^}]*)\}", styles
         )
         self.assertIsNotNone(rail)
-        self.assertEqual("font-family:var(--sans)", (rail.group(1) if rail else "").strip())
+        self.assertEqual(
+            "font-family:var(--sans);color:var(--ink-absence)",
+            (rail.group(1) if rail else "").strip(),
+        )
 
     def test_the_card_keeps_its_target_size_and_selection_on_both_surfaces(self) -> None:
         """AC-5. Falsified by a min-block-size override in the new card rules, or
@@ -10617,7 +10634,7 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         """AC-3. Only the explanatory paragraph may go behind a summary."""
         counts = self.held()["counts"]
         assert isinstance(counts, str)
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', counts)
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', counts)
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
         # None of the five rows sits inside the disclosure body.
         summary_at = counts.index("<summary>")
@@ -10907,7 +10924,7 @@ console.log(JSON.stringify({
         )
         groups = re.findall(r'class="next-cockpit-count-group">([^<]*)<', counts)
         self.assertEqual(["DEPARTURES", "RAISES"], groups)
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', counts)
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', counts)
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
 
     def test_the_your_words_sub_label_and_everything_citing_it_are_gone(self) -> None:
