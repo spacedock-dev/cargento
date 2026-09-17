@@ -699,3 +699,18 @@ Contracts run as pinned. Suite is **3652** tests; the three byte-pin oracles are
 **AC-3 — FAIL.** Deleting `if(!text) return "";` from `nextCockpitWhy` still leaves **3652 behavioural tests green**. Not a no-op: with the guard gone, `HeldToOrderingTest.tab()` renders exactly one `<p class="next-cockpit-reading-why"></p>`, in the re-entry block, in the fixture the ACs themselves use. Unchanged from the `2fa5a2f4` and `9959f623` measurements.
 
 **The `sed` restoration — PASS, on a check that resolves values rather than reading lines.** Comparing `26223372` against `9959f623` by AST: five classes define `ANNOTATED` before and after, none added, none removed, and **no assignment changed**. Resolving the attributes at import time rather than trusting the source: every one of the five carries its own `ANNOTATED` (`own=True`), so **nothing falls through the MRO to another class's fixture** — the failure shape you asked about is absent. Three distinct values across the five, with two deliberate source-level aliases (`CockpitCuesReachTheReaderTest` sharing `CockpitHeldToTabTest`'s object, `HeldToPositionalSentencesTest` sharing `HeldToOrderingTest`'s), both identical to their pre-damage form. Worth recording that my first pass compared AST dumps and would have scored those two aliases as opaque strings of equal length; the resolved read is what actually answers the question.
+
+### Re-check at `ddd422bf` — AC-7 PASS, AC-3 FAIL
+
+Head derived rather than taken on trust: `git branch -a --contains ddd422bf` gives `spacedock-ensign/ui-integration`, whose local and remote tips are both `ddd422bf`, so this is the tip and nothing was newer when I measured. Suite **3654**; byte pins discounted. Both contract anchors still resolved to exactly one occurrence — nothing in either contract rests on a line number, which is why this re-point cost nothing.
+
+**AC-7 — PASS.** It landed as the derived sweep, and it meets the spec on all four points:
+
+- **Sweeps every script:** `sorted(web.glob("*.js"))` over `cargento_runtime/web`, 20 files today.
+- **Both halves red.** A `docs/design-reading-a-session.md#dec-16` href planted in the rendered Console recipe now fails `test_no_rendered_string_carries_a_docs_link_or_a_decision_token` **and nothing else** — the same mutation that survived all 3652 at `26223372`. A bare `DEC-16` planted in the same rendered string fails it too. Clean tree green (10/10 in the class).
+- **File count asserted:** `assertGreater(len(scripts), 15, "the bundle walk found almost no scripts")`, so a walk reaching nothing cannot pass an empty loop. Measured 20 against a floor of 15.
+- **Blind spot stated:** the docstring records that `emitted_strings` splits a template literal at each `${...}`, so an href composed through a hole is out of reach, and says the answer is a different instrument rather than a longer list.
+
+One deliberate non-issue, recorded so nobody narrows it later: the token half uses `\bDEC-\d+\b` where this review's sweep used `(?<![A-Za-z0-9_-])DEC-\d+(?![A-Za-z0-9_-])`. `\b` treats a hyphen as a boundary, so it is *looser* — it would also flag `FOO-DEC-16`. That errs toward flagging, never toward missing, so it is the safe direction and should stay.
+
+**AC-3 — FAIL, unchanged across four heads.** Deleting `if(!text) return "";` from `nextCockpitWhy` leaves **3654 behavioural tests green**, only the three byte pins firing; survivor confirmed against the full suite, not a module. Not a no-op — the guard count goes 1 → 0 and the ACs' own fixture then renders one empty `<p class="next-cockpit-reading-why"></p>` in the re-entry block. This commit did not touch it and was not expected to.
