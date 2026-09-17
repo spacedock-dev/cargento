@@ -1473,3 +1473,22 @@ and belongs with DRC-4602's audit, since a membership test that enumerates eleme
 6 is already DRC-4596's.
 
 That is the residual named rather than discovered as a fourth wave, which is what was asked.
+
+### F11 closed: the re-run is green, verified here
+
+My cycle-4 report says the current head is red and that I do not certify it. **That is now stale and
+I am closing it rather than leaving a false statement in the record.** Checked from this session, not
+taken on report: `0f8a3a75`, **12/12 SUCCESS**, `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`,
+with `Tests (macos-latest)` and `quality-gate` — the two that failed — both SUCCESS on the same
+unchanged head, their re-runs starting at 12:38:52Z and 12:43:46Z, after the failure. So
+`test_irreversible.CommandSocketTest.test_a_gil_held_regex_remains_a_rejected_negative_control` was a
+flake, substantiated by a passing re-run rather than by the plausibility of the explanation. F11 is
+closed. **F8, F9 and F10 are untouched by it and the NO-GO stands on those three.**
+
+Worth keeping with the flake, since it is the second time in one PR: `test_irreversible` is not on
+AGENTS.md's contention list, and neither was the Windows tripwire test in cycle 1. Two misses is not
+a basis for rewriting the list, and lengthening it would be the enumerated-forms instrument that let
+a retracted count through four sweeps — the list would have to be closed by someone, and nobody can
+close it. The useful form of the observation is the one the list cannot hold: **a platform job that
+fails a test the diff cannot reach is re-run before it is believed, whether or not the module is
+named anywhere.** That rule needs no maintenance and would have covered both.
