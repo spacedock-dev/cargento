@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4596:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4596 rewrite and the load-bearing milestone correction for writing to Linear, and the six acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4596:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/05f9a0f00bad93883175d6cda746ab9cee554be4/drc-4596.md",
+      "rev": "sha256:bbd629f763d222b82cda91995a7bc41c58255fefa646bb98156d9c6a27ec3399",
+      "mediaType": "text/markdown",
+      "summary": "AC2 as filed is unbuildable: implemented literally it inspects 137 rules and fails 68, and the only route to green is a seventy-entry allowlist, which is the measuring-nothing failure AGENTS.md names. It is replaced by the membership predicate DRC-4587 already wrote into the design doc, and an independent implementation at triage reproduced that doc's census exactly. AC3 is dead by the captain's ruling rather than by sequencing, since absence keeps ink3 and there is no absence token for a test to require. The guard's structural blind spot is stated plainly rather than implied away, and the milestone needs a correction because it currently promises this issue makes the APCA figures reproducible from the tree, which it does not and nothing in this milestone does."
+    }
+  ]
+}
