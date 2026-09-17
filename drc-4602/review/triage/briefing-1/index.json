@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4602:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4602 rewrite and milestone correction for writing to Linear, and the six acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4602:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ff937d7c6f042772163687e3fe1524d3d6414ecb/drc-4602.md",
+      "rev": "sha256:bf9a5e1fd68cec811a018a312469552fc75a31b4a85170752ade89852747ebb4",
+      "mediaType": "text/markdown",
+      "summary": "The stage refused to inherit any of the three counts in circulation and wrote a composing auditor instead - one that expands the font shorthand, dereferences the size tokens, and resolves size, family and line-height through the cascade - and it reproduces both cases the DRC-4587 review measured live and that a rule-level census structurally cannot see. Its own figures then moved under it, 38 selectors across 31 rules at one commit and 33 across 27 forty minutes later, because DRC-4587 was still committing to the branch being measured. The conclusion is that the count is not the deliverable: the rewrite ships the repository-resident composed audit with the raise as its consequence, and every criterion re-derives its baseline at implementation."
+    }
+  ]
+}
