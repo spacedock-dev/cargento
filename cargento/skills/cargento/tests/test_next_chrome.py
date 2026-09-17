@@ -1102,13 +1102,19 @@ console.log(JSON.stringify(Object.assign(held, {
         self.assertLess(NEXT_STYLES.index(busy.group(0)), NEXT_STYLES.index(sending.group(0)))
 
     def test_the_irreversible_control_has_its_own_look_and_a_focus_ring(self) -> None:
-        # `.next-session-copy` has no `:focus-visible` rule, which DRC-4381 left
-        # standing; the irreversible control is not going to be the third to inherit
-        # that gap.
+        # The DRC-4381 gap this comment used to describe as standing is closed:
+        # `.next-session-copy` carries `.next-action`, whose `:focus-visible`
+        # rule reaches it, so the copy control is no longer a control without a
+        # ring. The raise keeps its own, brighter one -- it is the control this
+        # test is named for and the one whose look must stay distinct.
         # The whole declaration, not the property name: stopping at the colon let
         # `outline:none` satisfy a test named for the ring (DRC-4017 review).
         self.assertIn(
             ".next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            ".next-action:focus-visible{outline:2px solid var(--accent);outline-offset:3px}",
             NEXT_STYLES,
         )
         copy = re.search(r"\.next-session-copy\{([^}]*)\}", NEXT_STYLES)
@@ -1118,8 +1124,18 @@ console.log(JSON.stringify(Object.assign(held, {
         assert copy is not None
         assert raised is not None
         self.assertNotEqual(copy.group(1), raised.group(1))
-        self.assertIn("background:transparent", copy.group(1))
+        # `background:transparent` moved to `.next-action` with the rest of the
+        # resting box (DRC-4590). Asserted where it now lives, because leaving
+        # it asserted on the copy rule would forbid the collapse rather than
+        # check the property the reader sees.
+        action = re.search(r"\.next-action\{([^}]*)\}", NEXT_STYLES)
+        self.assertIsNotNone(action)
+        assert action is not None
+        self.assertIn("background:transparent", action.group(1))
         self.assertNotIn("background:transparent", raised.group(1))
+        # And the copy control still does not redeclare it, which is what
+        # "collapsed onto the primitive" has to mean.
+        self.assertNotIn("background:", copy.group(1))
 
     def test_breadcrumb_segments_mark_current_location_and_escape_walks_up(self) -> None:
         out = self._run_page_js(

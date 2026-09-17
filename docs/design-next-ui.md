@@ -797,6 +797,66 @@ while the live region beside it already said the raise was sent. Two channels of
 contradicting each other is worse than a cue that was merely missing, which is what the same case
 produced before any of this.
 
+## NUI-18: one control primitive, and an inert control stays on the page
+
+Two rulings, taken together because the second is only safe given the first.
+
+**The stylesheet had no way to say "this one."** There was no shared control class and no radius
+token: 43 literal `border-radius` declarations and zero `--radius` anywhere. A sweep of the resting
+control rules (a selector naming a `button`, a `summary`, or a class the JS puts on one, excluding
+state and `:hover` variants) found **24 rules declaring their own radius or resting border, across
+six corner treatments**: none, 3px, 4px, 6px, 9px and 999px. Because every one was a variation on
+"faint outlined box" or "bare text", the whole range was spent on the secondary tier and nothing was
+left to mark the one control to press. `--accent` never appeared at rest on a control at all.
+
+`.next-action` is that primitive, with `--radius-control`, `--control-bd` and `--control-pad`. It is
+a class a control opts into by writing it, **not** a selector group in the stylesheet. The group was
+tried on paper and rejected: it touches one file instead of seven and satisfies the same grep, but it
+means every new control must be appended to a growing list in the sheet, which is precisely the
+ad-hoc drift that produced the 24 recipes. The resting border is `--ink3` (5.67:1 on `--panel`)
+rather than `--line2` (1.61:1), because a box a reader is meant to see has to clear the 3:1
+non-text bar.
+
+Seven rules collapse onto it. The criterion was stated universally and **is not**: it is accepted on
+an enumerated verifier, with five further action rules filed as their own issue and the exempt ones
+named with their reasons in the sheet: `--amber` state signals, a `role="switch"`, a selection, two
+disclosures, and the legacy project view. `.next-action--primary` reaches exactly one tab, because
+four of the five have no action to mark at all; what each of those tabs' main action should *be* is
+a product question filed separately rather than answered in a restyle.
+
+**Disabled is dashed, not dimmer.** `--ink3` is the resting colour of the prose these controls sit
+in, so a disabled control drawn one ink step down was being drawn in the body ink and disappeared
+entirely in greyscale. `border-style` carries it because no ink choice can. `.next-stalled
+button:disabled` keeps `cursor:wait` as an explicit override: that control is waiting, not refusing,
+and collapsing the two loses a distinction a reader acts on.
+
+### An inert control is present and refusing, never absent
+
+The reading control was deleted outright whenever a reason withheld it, which took the button, the
+offer paragraph, the sending disclosure and the request counter off the page together, in the one
+state a newcomer lands in. It is now rendered in all four reason states, with the reason printed
+after it rather than in place of it.
+
+This **supersedes** the DRC-4565-era ruling that the offer stays withheld on the discarded and
+never-typed rows. That ruling's argument was that withholding is what makes the sentence
+load-bearing rather than decoration. What changed is that the sentence is now bound to the control
+through `aria-describedby`: it explains the button instead of competing with it, and withholding the
+button was costing the reader the tab's only verb in the two states they most often arrive in. The
+narrower claim that ruling was really making, that a discarded row says the discard sentence and
+not "nothing typed", is untouched and still asserted.
+
+**`aria-disabled`, not `disabled`, and the handler gate ships with it.** The browser's attribute
+takes a control out of the tab order and silences its `aria-describedby`, so a reader who cannot
+find the verb would meet a control they cannot reach and a reason they are never told. The same
+ruling was already taken for the RAISE control. But `aria-disabled` **restores the click that
+`disabled` was suppressing**, and the two handlers behind these controls gated on nothing that could
+refuse it: a press would have reached `POST /api/reading` and spent the reader's own model capacity
+from a state the page calls unavailable. So each handler refuses on the *same* expression its
+control renders, from one function, rather than computing its own answer. A handler with a second
+opinion can refuse a press the button offered, or take one the button refused. The refusal is
+answered rather than dropped, because a clicked control that goes silent is indistinguishable from a
+dead one.
+
 ## What this does not decide
 
 Promotion itself did not create durable history. DRC-4234 subsequently authorized the bounded

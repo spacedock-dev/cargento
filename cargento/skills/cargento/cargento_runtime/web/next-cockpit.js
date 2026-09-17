@@ -818,14 +818,50 @@ function nextCockpitHeldCap(){
    raw bidi control in a source file is the thing this class exists to strip. */
 const NEXT_COCKPIT_HELD_UNSAFE = /[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\u2066-\u2069]+/g;
 
-function nextCockpitHeldControl(action, label, kind, shown){
-  return `<button type="button" data-next-cockpit-action="${action}" data-arg="${kind}"` +
-    `${shown ? "" : " hidden"}>${label}</button>`;
+/* `inert` picks how a control that does not apply is drawn, and the two here
+   want different answers. `save` is the field's own verb, so it stays on the
+   page and reachable rather than vanishing from under a keyboard reader; it
+   refuses the press silently, because the box beside it already shows that the
+   draft matches what is stored. `clear` stays `hidden`, because an empty box
+   has nothing to clear and no explanation to offer. */
+// The field's absence sentence, which the inert `save` is described by. One id
+// per field rather than one per page: both fields render at once.
+function nextCockpitHeldAbsentId(kind){
+  return `next-cockpit-held-absent-${kind}`;
 }
 
-function nextCockpitHeldToggle(field, action, shown){
+/* `describedBy` is emitted only while the control is BOTH inert and has a
+   sentence to point at. `aria-disabled` keeps this control in the tab order
+   where `hidden` removed it from the page, so a screen-reader user now reaches
+   it and would otherwise hear "save, dimmed" and nothing about why. Pointing at
+   an id that is not on the page is worse than pointing at nothing, and a field
+   holding saved words renders no absence sentence, so the attribute is
+   conditional on the sentence rather than on the state alone. */
+function nextCockpitHeldControl(action, label, kind, shown, inert, describedBy){
+  const off = inert ? ' aria-disabled="true"' : " hidden";
+  const why = !shown && inert && describedBy ? ` aria-describedby="${describedBy}"` : "";
+  return `<button type="button" data-next-cockpit-action="${action}" data-arg="${kind}"` +
+    `${shown ? "" : off}${why}>${label}</button>`;
+}
+
+function nextCockpitHeldToggle(field, action, shown, inert){
   const control = field.querySelector(`[data-next-cockpit-action="${action}"]`);
-  if(control) control.hidden = !shown;
+  if(!control) return;
+  /* The attribute, not the property, on the inert path. This runs on a
+     keystroke with no redraw, so whichever of the two the renderer chose is
+     the one already in the DOM and the one that has to be cleared here. */
+  if(!inert){ control.hidden = !shown; return; }
+  /* The description goes with the state it explains. A keystroke makes the
+     control live, and leaving the pointer behind would describe an active
+     control by the sentence saying its field is empty. */
+  const absent = field.querySelector("[data-next-cockpit-held-absent]");
+  if(shown){
+    control.removeAttribute("aria-disabled");
+    control.removeAttribute("aria-describedby");
+    return;
+  }
+  control.setAttribute("aria-disabled", "true");
+  if(absent && absent.id) control.setAttribute("aria-describedby", absent.id);
 }
 
 /* What the last save attempt is still worth saying, and for how long.
@@ -1039,8 +1075,9 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
     `<span class="next-cockpit-held-count" data-next-cockpit-held-count="${kind}">` +
     `${draft.length}/${cap}</span>` +
-    nextCockpitHeldControl("held-clear", "clear", kind, Boolean(draft)) +
-    nextCockpitHeldControl("held-save", "save", kind, draft !== saved) +
+    nextCockpitHeldControl("held-clear", "clear", kind, Boolean(draft), false) +
+    nextCockpitHeldControl("held-save", "save", kind, draft !== saved, true,
+      why ? nextCockpitHeldAbsentId(kind) : "") +
     /* The absence sentence answers "why is this empty", so it goes when the
        box stops being empty. It read the SERVER value alone, which put "No
        goal typed for this session." directly under the sentence the reader
@@ -1049,7 +1086,8 @@ function nextCockpitHeldField(session, annotation, spec, cap){
        the input handler gives: a keystroke does not redraw, so a paragraph
        that only the renderer can remove stays under the sentence being
        typed. */
-    (why ? `<p class="next-cockpit-held-absent" data-next-cockpit-held-absent="${kind}"` +
+    (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId(kind)}" ` +
+      `data-next-cockpit-held-absent="${kind}"` +
       `${draft ? " hidden" : ""}>${esc(why)}</p>` : "") +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }
@@ -1693,7 +1731,15 @@ function nextCockpitReadingStates(annotation, model){
   }
   if(!String(annotation && annotation.goal || "").trim() &&
       !String(annotation && annotation.output || "").trim()){
-    return "Nothing has been typed for this session, so there is nothing to read it against.";
+    /* Both sentences are this page's. The route refuses the same state in its
+       own words -- `reading.REFUSALS` says "Nothing is typed against this
+       session" where this says "has been typed for" -- so unlike the discard
+       arm above, which carries the server's string, these two are not the same
+       characters and this comment does not claim they are. The second sentence
+       exists because the control now renders beside the reason, so a reader
+       who is being refused can see the one step that would permit it. */
+    return "Nothing has been typed for this session, so there is nothing to read it against. " +
+      "Save a goal above to enable a reading.";
   }
   if(!model) return "Observer model availability has not been read, so no reading can be offered.";
   if(model.enabled !== true){
@@ -1996,16 +2042,43 @@ function nextCockpitReadingDepartures(shape, source){
    press count to render beside the control, which could then only ever have
    shown zero. A reader looking at the amber "revision 3 is current" line had
    no way to ask for a current one. */
-function nextCockpitReadingControl(session, annotation, model){
+/* One reason, read by the control that renders it and by the handler that
+   refuses the press: a handler with a second opinion can refuse a press the
+   button offered, or take one it refused
+   ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)). */
+function nextCockpitReadingRefusal(annotation, model){
   const authorized = nextData && ["passed", "accepted"].includes(nextData.reading_check);
   /* A stored reading outlives the model option. Only the new request is
      gated here; retaining the old account never establishes availability. */
-  const reason = nextCockpitReadingStates(annotation, model) || (authorized ? "" :
+  return nextCockpitReadingStates(annotation, model) || (authorized ? "" :
     "The abstention check this ruling requires has not been run, so a reading cannot be " +
     "asked for yet. The evidence above stays readable without one.");
-  const request = nextCockpitReadingRequests.get(sessKey(session));
+}
+
+// One block renders per page -- the focused session's -- so the paragraph the
+// button points at can carry a constant id, as the discard control's warning
+// already does two hundred lines below.
+const NEXT_READING_REFUSED_ID = "next-cockpit-reading-refused";
+
+function nextCockpitReadingControl(session, annotation, model){
+  const reason = nextCockpitReadingRefusal(annotation, model);
+  const key = sessKey(session);
+  let request = nextCockpitReadingRequests.get(key);
+  /* A refusal is a state, not an event, and it stops being true the moment the
+     reader does what it asks. Dropped as soon as that state has gone: one that
+     nothing clears leaves "Nothing has been typed for this session" standing
+     under a button that is no longer refused, which is the board asserting an
+     absence after it stopped being true. A response is an event and is kept --
+     "Reading received." describes a press that happened, not a state. */
+  if(request && request.refusal && request.message !== reason){
+    nextCockpitReadingRequests.delete(key);
+    request = undefined;
+  }
   const pending = request && request.pending;
-  const enabled = authorized && !reason && !pending;
+  /* `authorized` is no longer a second term here: an unauthorized check is
+     one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
+     already carries it. */
+  const enabled = !reason && !pending;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
   const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
   /* Before the button, not after the press. The reading spends the reader's
@@ -2015,13 +2088,30 @@ function nextCockpitReadingControl(session, annotation, model){
      read this has not been warned. */
   const disclosure = nextData && nextData.reading_disclosure
     ? `<p class="next-cockpit-reading-why">${esc(nextData.reading_disclosure)}</p>` : "";
+  /* `aria-disabled` rather than `disabled`, so the control keeps its place in
+     the tab order and its reason is announced. The press this lets back in is
+     refused by `nextCockpitAskForReading`, on the reason computed above. */
+  /* The board's one primary. Four of the five cockpit tabs have no action to
+     mark at all, so this is where "the one thing to press" is said (DRC-4590). */
   return disclosure +
-    '<button type="button" data-next-cockpit-action="reading-ask" ' +
-    `data-next-focus="reading:${esc(sessKey(session))}"${enabled ? "" : " disabled"}>` +
+    '<button type="button" class="next-action next-action--primary" ' +
+    'data-next-cockpit-action="reading-ask" ' +
+    `data-next-focus="reading:${esc(sessKey(session))}"` +
+    `${enabled ? "" : ' aria-disabled="true"'}` +
+    `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
     `${pending ? "Reading in progress…" : "Ask for a reading"}</button>` +
-    (request ? `<p class="next-cockpit-reading-why" role="status">${esc(request.message)}</p>` : "") +
+    (request && !request.refusal
+      ? `<p class="next-cockpit-reading-why" role="status">${esc(request.message)}</p>` : "") +
     `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
-    (reason ? `<p class="next-cockpit-reading-why">${esc(reason)}</p>` : "");
+    /* The announcement and the description are one node while a refusal
+       stands. Printing the stored message and the reason separately rendered
+       the same sentence twice, adjacent and identical, where the contract is
+       that it renders exactly once. The press is still announced, because this
+       node carries `role="status"` when it is the refusal. */
+    (reason
+      ? `<p class="next-cockpit-reading-why"${request && request.refusal ? ' role="status"' : ""}` +
+        ` id="${NEXT_READING_REFUSED_ID}">${esc(reason)}</p>`
+      : "");
 }
 
 const NEXT_READING_OFFER =
@@ -2077,10 +2167,10 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
      conflating the two made a stored reading disappear the moment the
      observer model was switched off. */
   if(!raw){
-    const reason = nextCockpitReadingStates(annotation, model);
-    if(reason){
-      return close(`<p class="next-cockpit-reading-why">${esc(reason)}</p>`, null);
-    }
+    /* No early return on a reason: the control renders in all four of them and
+       prints the reason after the button, so the sentence moves rather than
+       going. This supersedes the withheld-offer ruling
+       ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)). */
     /* A reading the store refused on read-back is not a session nobody
        pressed on. `readings` survives a refusal, so without this the block
        said "N readings asked for" above "No reading has been made" and left
@@ -2328,7 +2418,8 @@ function nextCockpitHeldDiscardBlock(session, annotation){
        looking for. No live region reaches that state, because nothing mutates
        when you tab. */
     (offer
-      ? '<button type="button" data-next-cockpit-action="held-discard" ' +
+      ? '<button type="button" class="next-action" ' +
+        'data-next-cockpit-action="held-discard" ' +
         `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}"` +
         (warning ? ' aria-describedby="next-cockpit-discard-armed"' : "") + ">" +
         `${armed ? "confirm discard" : "discard everything"}</button>`
@@ -2435,9 +2526,19 @@ function nextCockpitHeldTo(group, observation){
    answered a disclosure, so it MEANS they consented. Here it is a constant.
    What stands in for consent is the press itself, under a disclosure the
    control renders above the button. */
-async function nextCockpitAskForReading(session){
+async function nextCockpitAskForReading(session, model){
   const key = sessKey(session);
   if(nextCockpitReadingRequests.get(key)?.pending) return;
+  /* This press arrives from states the browser used to swallow, and an
+     ungated one spends the reader's own model capacity from a state the page
+     calls unavailable. Answered rather than dropped, because a clicked control
+     that goes silent is indistinguishable from a dead one. */
+  const refusal = nextCockpitReadingRefusal(nextCockpitAnnotation(session), model);
+  if(refusal){
+    nextCockpitReadingRequests.set(key, {pending: false, message: refusal, refusal: true});
+    renderNext();
+    return;
+  }
   /* Session-scoped state survives polling and navigation while the model
      runs. Another press must not spend capacity on a duplicate request. */
   const request = {pending: true, message: "Reading in progress. This may take a minute."};
@@ -2576,6 +2677,13 @@ async function nextCockpitDiscardAnnotation(session){
 
 async function nextCockpitHeldSave(session, kind){
   const key = nextCockpitHeldKey(session, kind);
+  /* The same expression `nextCockpitHeldField` decides `shown` with, so the
+     control and the gate cannot disagree. Without it an inert-but-reachable
+     control mints a revision identical to the stored one. */
+  const annotation = nextCockpitAnnotation(session);
+  const stored = String(annotation && annotation[kind] || "");
+  const typed = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : stored;
+  if(typed === stored) return;
   // Only the field that changed. `null` is "leave this one alone" at the
   // endpoint, and "" is "clear it": sending both every time would let a stale
   // draft of one field overwrite a save of the other.
@@ -3426,9 +3534,9 @@ document.addEventListener("input", event => {
   if(!field || !field.querySelector) return;
   const count = field.querySelector("[data-next-cockpit-held-count]");
   if(count) count.textContent = `${value.length}/${nextCockpitHeldCap()}`;
-  nextCockpitHeldToggle(field, "held-clear", Boolean(value));
+  nextCockpitHeldToggle(field, "held-clear", Boolean(value), false);
   nextCockpitHeldToggle(field, "held-save",
-    value !== String(input.dataset.nextCockpitHeldSaved || ""));
+    value !== String(input.dataset.nextCockpitHeldSaved || ""), true);
   // The fourth thing an edit changes. "No goal typed for this session" is an
   // answer to "why is this empty", and it stayed under the reader's own
   // half-typed sentence until something else forced a redraw.
@@ -3454,7 +3562,7 @@ document.addEventListener("click", event => {
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;
     event.preventDefault();
-    nextCockpitAskForReading(session);
+    nextCockpitAskForReading(session, nextCockpitObserverModel(group));
     return;
   }
   if(action === "conflict-settle" || action === "conflict-retype"){

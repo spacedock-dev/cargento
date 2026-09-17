@@ -66,7 +66,7 @@ them. **Console** holds Delegation, Waiting on you, Capacity, and Tripwires, fol
 selected session's optional read-only terminal in the same panel. **Held to** appears only with a
 session selected and holds the goal and expected output you typed for it, the observed entries
 naming it, any direction you gave after you saved those words, the reading block, and how the
-session landed as two cards that do not imply each other. Missing readings name their reason.
+session landed as two cards that do not imply each other. The control that asks for a reading is always on the tab; when it cannot fire it stays put, refuses the press and names the reason beside itself.
 Browser-local
 human context and old tripwire notes do not instruct an agent and remain inert.
 

@@ -167,7 +167,8 @@ function nextUsageSwitch(payload){
   const granted = consent === "granted";
   return '<p class="next-usage-switch">' +
     `<span>Vendor quota fetch: <strong>${granted ? "on" : "off"}</strong></span>` +
-    `<button type="button" data-next-usage-answer="${granted ? "declined" : "granted"}">` +
+    '<button type="button" class="next-action" ' +
+    `data-next-usage-answer="${granted ? "declined" : "granted"}">` +
     `Turn ${granted ? "off" : "on"}</button>` +
     (granted ? "" : '<span class="next-usage-lapse">Windows above are the last cached read and will lapse.</span>') +
     "</p>";

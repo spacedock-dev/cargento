@@ -57,7 +57,10 @@ console.log(JSON.stringify({before, calls: __fetchCalls, value: input.value,
         )
         assert isinstance(out, dict)
         self.assertIn("data-next-guardrail-form", out["before"])
-        self.assertIn('type="submit">add ↵', out["before"])
+        # The label and its own class, not the exact tag punctuation: the
+        # button carries `.next-action` now, so a literal `>` after the
+        # type attribute asserts the attribute ORDER rather than the control.
+        self.assertRegex(out["before"], r'<button type="submit"[^>]*>add ↵')
         self.assertEqual([], out["calls"])
         self.assertEqual("", out["value"])
         self.assertEqual(50, len(out["rules"]))

@@ -164,7 +164,7 @@ function nextNotifyControl(payload){
     return '<span class="next-notify-note" title="Re-enable notifications for this site in ' +
       'your browser settings to be alerted when a session needs you.">notifications blocked</span>';
   }
-  return '<button type="button" class="next-notify-button" ' +
+  return '<button type="button" class="next-action next-notify-button" ' +
     'data-next-action="enable-notifications">Enable notifications</button>';
 }
 
