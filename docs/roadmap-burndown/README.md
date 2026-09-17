@@ -860,6 +860,494 @@ Two rulings, in the captain's own words, scoped to this milestone's burndown.
 - **A filed follow-up is not a disposal route.** "Don't just let it dangle." A gap deferred out of
   one PR is worked inside the same milestone, and the milestone is not complete while it is open.
   Filing it records the gap; scheduling it is what closes it.
+## The first officer's own failure mode: asserting provenance it has not traced
+
+Three times in one session on 2026-09-17, the FO stated where something came from with the
+confidence it should have reserved for something it had actually followed. Workers caught all three.
+
+- It told the captain a pull request was blocked by the ruleset's unattributed-changes clause. The
+  real cause was an unresolved Copilot review thread, and the captain found it. The tell was there:
+  `mergeStateStatus: BLOCKED` with **no failing check**, which the FO read as confirming its guess
+  instead of as a thing it had not explained.
+- It told the captain a worktree reflog entry pointed at an ensign's own tooling. It was the
+  reviewer, which had already owned it in its report — and which pointed out that `git archive`, the
+  FO's other candidate, cannot touch HEAD at all, so that guess was not merely wrong but impossible.
+- It sent an ensign a correction for a claim that ensign had never made. The claim belonged to a
+  sibling's report. The ensign grepped its own report, found nothing, and sent it back: an accepted
+  correction becomes part of the record, and a misattributed one hardens into a fault on a report
+  that never carried it.
+
+The shape is always the same — a plausible attribution offered as a finding. **Trace it or mark it
+untraced.** "I have not checked which of these it was" costs one clause and is worth more than a
+confident wrong answer, which is the defect class this whole product exists to remove. The FO is
+not exempt from the standard it holds its workers to, and a worker that pushes back on a
+misattribution is doing the job.
+
+**A second FO failure sits beside it and is not the same one: asserting current STATE from a stale
+read.** Three of four consecutive messages to one worker on 2026-09-17 described a state that had
+already changed — a report said to be missing that had been committed and pushed minutes earlier, a
+branch said to be untouched that had already been rebased, a rebase instruction whose premise no
+longer held. Each cost a round trip, and one of them would have corrupted a branch had the worker
+complied instead of checking.
+
+That is distinct from an unchecked *provenance* claim: nothing was misattributed, the reading was
+simply old. The trigger is specific and easy to guard — **the FO asserts state most confidently
+right after dispatching a write to it**, when its own read is guaranteed stale. Re-read immediately
+before asserting, and when telling a worker what its own artifact contains, prefer asking it to
+confirm over telling it what is there. The worker holds the current copy; the FO holds a snapshot.
+
+**And the fix is structural rather than a resolution to be more careful**, which is the sharper
+version and belongs to the ensign that offered it. Each of those three was caught by the party
+holding the artifact — the captain who could see the pull request, the reviewer whose reflog entry
+it was, the ensign who could grep its own report. **A provenance claim is cheaply checkable by
+whoever owns the source and nearly unfalsifiable by anyone else**, so the receiving party is
+structurally the wrong place to verify it. Route the claim to the owner of the source before
+asserting it, or state it as unverified when the owner is not reachable. Vigilance does not scale
+here; addressing does.
+
+## Cost the contracts, not just the code — the estimating method, fixed
+
+**AGENTS.md** already ruled that an overrun of this shape "is accepted once — if a later one repeats
+it, fix the estimating method rather than stretching the tolerance again." It has now repeated. The
+recorded case was DRC-4037's PR 1, where runtime landed at exactly the declared figure and tests came
+in at 9 files and +541 against 6 declared. On 2026-09-17 DRC-4588 and DRC-4590 landed at **194% of a
+combined estimate** with no criterion widened and nothing built outside the acceptance criteria, and
+DRC-4587's docs reached 344% of its own. Three occurrences, one cause: **the estimate models the
+code and the repository charges for its contracts.**
+
+So a triage estimate costs these as separate lines, not as a margin on the runtime figure:
+
+- **Comments, at this repository's standard.** Measured on DRC-4588: comment lines were **55% of the
+  runtime additions**. Applying AGENTS.md's own remedy — move a rationale longer than the code it
+  explains into `docs/design-*.md` and shrink the comment to a reference — took runtime from +117 to
+  +88 net and moved the volume into docs, which doubled. That is not a saving, it is a transfer, and
+  an estimate that budgets only the runtime line sees it as an overrun on both.
+- **Falsifiability clauses in tests, and the measured unit is the acceptance criterion.** Every
+  criterion names what would make its evidence fail, and several existing tests need their *claims*
+  restated rather than their numbers flipped. That clause is what the gate reads, so it is never the
+  thing to trim to hit a number. **Price it at ~35 lines of behavioural test per acceptance
+  criterion in this suite** — measured 2026-09-17 on DRC-4591 and DRC-4594, whose triages each
+  assumed ~9 and came in four times over on the test line alone while the runtime line stayed inside
+  tolerance. Eight criteria is therefore roughly 280 lines of test before a single line of the
+  feature. Estimate from the criterion count, not from the feature's size.
+- **Compelled files.** Not the ones the change chooses — the ones the repository demands: a
+  literal-shape assertion a class token breaks, a canonical design doc whose own rule gained a case,
+  a `SKILL.md` sentence for the user-visible half. DRC-4037 was compelled into three; DRC-4588 into
+  three more, each named in its report.
+
+**And the runtime figure splits again, into executable lines and comment lines.** Measured
+2026-09-17 on DRC-4592's group: **161% of the declared runtime estimate on raw lines, 90% on
+executable lines**, the difference being 128 decision comments, with every per-file executable
+figure inside its declared band. A single raw-line runtime estimate therefore reads a repository
+*standard* as an overrun, and reports a change whose shape has not grown as one that has. Declare
+the executable figure and the comment figure separately, and judge the design-reset question on the
+executable one — the shape of the change is what a reset is for.
+
+The estimate then declares five figures with their own tolerances — executable runtime, comments,
+tests, docs, oracles — rather than one. The oracle line is already separate here and works: it has been exact every time,
+because byte pins are countable in advance. The others are being estimated the way the oracles were
+before anyone counted them.
+
+**An overrun whose cause is the estimate's model is not scope creep, and the two must not be reported
+as the same thing.** Ask the diagnostic question: was a criterion widened, or was anything built
+outside the acceptance criteria? If no to both, the number is evidence about the method. If yes to
+either, it is a design reset and goes to the captain.
+
+## A figure an instrument cannot fully see is a floor, not a count
+
+DRC-4587 produced four counts of the same set in one afternoon — seventeen, fifteen, nineteen,
+twenty-one — and **every move between them was a defect in the instrument, never a change in the
+tree.** Seventeen came from a `font:` shorthand regex matching the weight instead of the size,
+silently dropping two rules. Fifteen was a hand enumeration that under-listed. Nineteen fixed the
+regex. Twenty-one added two rules already known by name.
+
+The retraction is the lesson, not the arithmetic. All four came from a per-rule census, and a
+per-rule census **cannot see a rule whose family or line-height arrives through the cascade**. So
+none of them was a count; each was a floor, and every one was stated as a count. The implementation
+that produced twenty-one retracted it an hour after asking the first officer to carry it to Linear,
+and removed every figure from the document rather than rewording them. That also retired a
+twenty-one-versus-nineteen disagreement instead of settling it, which is the better outcome: two
+floors from the same blind instrument cannot adjudicate each other.
+
+Three rules follow, and they cost two correction rounds:
+
+- **State the unit before comparing two figures.** One census counted sans-prose *rules* in a pixel
+  band; another counted *selectors* resolving below a floor by composition. Different populations,
+  different methods, neither refuting the other — but set side by side without their definitions,
+  the later reader takes one as contradicting the other.
+- **An element tally is a fact about a moment.** The same shape measured 163 elements and then 183
+  forty minutes later, because the board renders whatever sessions exist. Any element count
+  reaching a document carries its date and commit; the stable unit is the rule set.
+- **And state the narrowest true version of the control, not the convenient one.** The first
+  officer wrote that pair up as taken "on an unchanged stylesheet". It was not: the two readings
+  sat either side of a commit that changed `styles.css` by 13 insertions and 6 deletions. The true
+  claim is narrower — none of those lines touched the rules resolving that shape, so the resolution
+  was identical. A sentence whose whole job is to stop a number being read as a property of the
+  code cannot itself overstate by a step, and this one did until a reviewer checked it.
+- **A count can survive a retraction by being a comparison.** The same document kept "the set is
+  comparable in size to the one this branch already moved" after every digit was removed — a claim
+  of sixty-seven, in words, that a sweep for numerals never sees. It was also the least supported
+  figure in the file: every measured floor was in the teens to low thirties, so the surviving claim
+  asserted two to three times the highest of them. Retracting a number and leaving its comparison
+  is the same error in the confident direction.
+- **A rule whose own example violates it teaches the opposite.** The document's element-count rule
+  now carries provenance on its own illustration for exactly that reason.
+
+## A grouped pull request still owes a stage report per entity
+
+Measured on PR #362, the first grouped PR this milestone shipped. The captain's tier-grouping ruling
+puts several issues on one branch with one worker, and that worker naturally writes **one** stage
+report. The advance guard is **per entity**:
+
+```
+Error: entity drc-4590 cannot change status away from entered stage "implementation"
+until a durable, complete ## Stage Report: implementation is committed.
+```
+
+So the entity whose slug does not name the branch silently has no report, and the group cannot
+advance to review until it does. The guard is right — an entity with no report has no evidence
+anyone did its work — and grouping is what makes it easy to miss.
+
+**Say it in the dispatch:** a grouped worker writes a `## Stage Report: {stage}` into **every**
+entity in the group, each covering that issue's share against the same checklist. Combined surface
+figures are fine as long as they are declared as combined rather than repeated in each report as
+though they were that issue's alone; the same goes for the Linear relation edges, which belong in
+the report of the issue whose write created them.
+
+This is the second per-entity obligation grouping does not relax. The first is the post-merge Linear
+reconcile, which the captain's ruling already states runs **once per issue** — a tier is the
+merge-risk unit, an issue remains the reconcile unit, and now also the report unit.
+
+## Tell the worker its pull request merged, before it keeps building on the branch
+
+A near-miss on DRC-4587, and it would have undone the merge. The first officer merged the PR and did
+not tell the implementation ensign, which was still alive and still holding the branch. It kept
+working, and — reading a narrowing instruction as superseding an earlier one — **withdrew the very
+commit that had merged**, re-raising twenty rules and re-creating ten inversions that four review
+cycles had removed. Nothing landed only because the FO owns pushes and checked `origin/main` before
+acting on the report.
+
+Two rules, and the first is the cheap one:
+
+- **A merge is an event the worker must be told**, in the same turn it happens, before it can act on
+  a stale instruction. A worker cannot see the merge from inside its worktree, and its branch still
+  looks live.
+- **A narrowing instruction says what it supersedes.** "Do only X, drop everything else I sent" is
+  ambiguous when an earlier message carried a scope decision: the worker read "drop the scope-back"
+  and that reading was defensible. Name what survives, not just what is dropped — the ambiguity is
+  the instruction's defect, not the worker's comprehension.
+
+What made this recoverable rather than costly: the worker **refused to rewrite history** with a
+sibling stacked on its branch and withdrew by checking paths out instead, so the stacked branch
+rebased cleanly onto the merged trunk rather than onto a rewritten base. Preserve that instinct.
+
+## What blocks a merge: a regression this change created, and nothing else
+
+**This is the rule the first officer failed to apply, and the failure cost a session.** DRC-4587 took
+four review cycles and four correction rounds. Every cycle surfaced real findings. Only some of them
+were reasons not to merge.
+
+**A finding blocks a merge only if it is a user-visible regression THIS change created.** Everything
+else is filed as a Linear issue and shipped past:
+
+- a defect that **predates the branch**, however related it looks;
+- the **remainder** of a criterion accepted on an enumerated verifier;
+- an **unbound prose claim**, an off-by-one in a table, a vague quantifier;
+- work the reviewer **names as the next issue** rather than as a defect here.
+
+The reviewer's job is to find things; the first officer's is to decide which of them stop a merge.
+Treating every `NO-GO` as an automatic correction round abdicates that to the reviewer, who is not
+positioned to make it and does not claim to be — on this branch the reviewer's own closing note said
+the remainder was "one disposition on one slot" and "a re-derivation of a table that's nearly right",
+which the FO then answered with a full scope-back.
+
+**Two mechanical consequences:**
+
+- **One correction round per pull request is the default.** A second needs a reason stated in one
+  line: which user-visible regression it closes. If there is none, file and merge.
+- **Never serialise the rest of a milestone behind one pull request.** Only `implementation` and
+  `review` are bound by the one-PR-per-`web/` constraint, and stacking removes even that. Twelve
+  gate-approved issues sat idle behind one branch through four review cycles because the FO waited
+  on a verdict instead of dispatching the work that did not depend on it.
+
+## When a second review finds more of the same class, stop fixing instances
+
+Measured on DRC-4587, and the cost is the point. Three correction rounds fixed exactly what each was
+handed — three cells, then six slots, then four more — and each time the next review found more of the
+same defect. Only at the fourth attempt was the instruction "fix the class structurally" rather than
+"fix these". **That fix was CSS only: zero emitter files, eight lines added and two removed — cheaper
+than any of the three instance rounds it followed.**
+
+The first officer wrote all four assignments. Rounds 1 to 3 were not careless; round 2's emitter
+method was a genuine improvement and found every slot it looked for. The dispatcher error was
+repeating the *shape* of an assignment that had already failed once.
+
+**Do not over-read this into "the structural fix was available from cycle 1".** The FO wrote that
+first and the reviewer corrected it: what was available from cycle 1 was the *question*. The
+register that made membership checkable — a sans absence paired with a mono value — only became
+measurable once four instances existed to see the pattern in. The honest rule is narrower and it is
+about the dispatcher's next move rather than a missed insight: **when a reviewer rejects twice on
+the same axis, ask the next round for the rule rather than the next list.**
+
+**And when the rule round still rejects, read what is left before widening the response.** The FO's
+first instinct after the fourth rejection was to scope the whole change back — which would have
+discarded three verified fixes, a promotion test that killed a previously-surviving mutation, and
+three closed findings, in order to avoid two small ones. The reviewer's measurement was that the
+remainder was "one disposition on one slot" and "a re-derivation of a table that's nearly right".
+Rejection count is not a measure of remaining work, and a class containing defects that **predate
+the branch** is not the branch's to close — the standard is that it creates none, not that it ends
+them.
+
+**The trigger is cheap to watch for: a second review that finds more of the same class, rather than
+something new.** One round finding a miss is ordinary. Two rounds finding the same defect in new
+places means the set was never bounded, so completeness could only be asserted — and a third round
+of instances will produce a third assertion.
+
+What the structural round must produce, and what the three before it could not:
+
+- **A membership rule the reviewer can check.** Here it turned out three of the four inversions paired
+  a sans absence with a mono value, so "figure-paired" resolved to a register the document already
+  owned rather than a judgment per slot.
+- **A published bound, re-derivable in one command.** Twenty files scanned, eight can contain a
+  pairing, twelve cannot. A bound nobody can re-derive is the same assertion wearing a table.
+- **An explicit statement of what was NOT checked.** Three helper functions hid 31 pairings inside
+  call sites; the round listed them as unverified rather than letting a completeness claim cover
+  them. Unchecked-and-named is a reviewable residual; unchecked-and-silent is the next finding.
+
+## A recorded figure goes stale on a commit that never touches the sentence
+
+Measured on DRC-4587 at the moment of merge. The design document said sixty-seven rules resolve to
+the sentence token, forty-nine carry the measure cap, and eighteen do not. The tree held **54**, **40**
+and **14** — and the sentence's own arithmetic, eight plus eight plus two, no longer closed against
+its own total.
+
+**Nothing edited that paragraph.** It was true when written. What made it false was the *revert* three
+commits later, which removed rules carrying the token and left the counting prose untouched. A figure
+can be accurate on the commit that writes it and wrong on a commit that never opens the file.
+
+Two consequences:
+
+- **A revert is a change, and it invalidates records the same way an addition does.** Re-derive every
+  census the reverted rules feed. This is easy to miss precisely because a revert feels like a return
+  to a known-good state rather than a new one.
+- **This is the argument for binding a census rather than re-checking it.** A bound census fails on
+  the commit that breaks it; a prose census fails silently and is discovered by whoever next reads
+  it carefully. The stale figures above were found by a reviewer doing a regression pass, not by any
+  check, and they had already merged.
+
+## Enumerating the forms of a thing you want gone is the defect, not the search
+
+The same claim survived **four** sweeps of one document, wearing a different form each time: first
+"two literals", then "four literals", then a **comparison** to a number three paragraphs up, then
+the hedge **"a handful"**. Each sweep enumerated the forms a count can take — digits, then
+number-words, then comparisons — and each finished satisfied. A fourth form appeared every time.
+
+**The enumeration is the defect.** No list of spellings is closed, so a search built from one is
+never finished; it just stops. The question that catches all four is not *which forms are present*
+but **"does this sentence tell a reader how many"** — and no grep answers that, which is exactly why
+three passes by two different agents each believed the job was done.
+
+This generalises past counts. Whenever a rule bans a *property* — a magnitude, a promise, an
+unhedged claim, a credential — a search enumerating its known spellings will miss the next one.
+Either ask the semantic question of each candidate sentence, or bind the property mechanically so
+the form does not matter. The forms are unbounded; the property is not.
+
+## A rule written in prose does not audit the prose around it
+
+The sharpest finding of the DRC-4587 cycles, and it belongs to the ensign that hit it twice in one
+edit. **Both errors were introduced by the paragraphs written to prevent them.**
+
+- A paragraph retracting every count of a set — because each figure was a floor a blind instrument
+  produced — left the size stated as a **comparison** to another number three paragraphs up. Three
+  separate passes believed they had removed every count; two were wrong, and the sweep that finally
+  worked had to look for digits, number-words *and* comparisons.
+- A paragraph establishing that an element tally is a fact about a moment, not about the code,
+  **overstated the provenance of its own example**, claiming the two readings were taken on an
+  unchanged stylesheet when a commit sat between them.
+
+Neither error was careless, and neither was catchable by the rule it violated, because a rule
+written in prose cannot audit the prose around it — including the sentence that states it.
+
+**So bind the claim mechanically wherever it can be made mechanical.** On this branch the tier
+sentence stopped being prose the moment a promotion test bound the six promoted rules directly; the
+claims that stayed prose are the ones that needed three passes. When a finding is closed in prose,
+say so explicitly and carry it as a named residual rather than treating the edit as the fix — a
+reviewer can then check the sentence, which is more than the sentence can do for itself.
+
+## Check the property the claim is about, not one that usually moves with it
+
+The general form of every guard failure this milestone produced, and it belongs to the ensign that
+stated it. Five guards were green, mutation-checked, and could not witness the thing they were named
+for:
+
+| The claim | What the guard actually checked |
+|---|---|
+| an absence never outranks its value | the two sizes **compared** — blind when both moved together |
+| the recovery rows hold their tier | a DOM the emitter never builds |
+| a prose absence keeps the floor | the absence **alone**, so it pinned the inversion as correct |
+| the primitive owns the resting box | `border-radius` and `border:1px`, blind to a `font-size` override |
+| the sentence tier is universal | one rule at a time, blind to a cascade composed across three |
+
+**In every case the assertion was sound and the framing was not.** Nothing was carelessly written;
+each guard checked a property that *usually* moves with the claim, and passed at the moment the two
+came apart. That is also why mutation-checking did not save them — a mutation of the property being
+checked dies correctly, and says nothing about the property being claimed.
+
+**A sixth instance, and it is the one that shows deletion is not enough.** An entry in that census
+named a class its own change **deleted**. It did not fail: the resolver walks the element path, so
+with the rule gone the absence inherited 15.0 from the section, compared equal to its value, and
+passed — green, over a DOM the emitter no longer builds. The fix that worked asserts **both halves**:
+the pair's sizes *and* that the emitter stopped building the path, because leaving the rule behind is
+how a later revert finds a selector waiting for it. Where a guard names a thing being removed, assert
+the removal at the emitter, not only the consequence in the sheet.
+
+**A seventh, and it is a different shape from the other six: a fix that makes its own test vacuous.**
+The guards above checked a proxy for their claim. This one checked the claim's *symptom*, and the fix
+removed the symptom while leaving the cause. A leaked entry could no longer reach any render path, so
+deleting the fix left **every rendered assertion green** — the entry lives forever and nothing
+observable changes. Reported upward, that reads as "fixed and green". The answer was to bind the
+cause directly: assert the lane is empty, not only that nothing visible is wrong.
+
+**So mutation-check the fix, not only the code it fixes.** A mutation that removes the fix must fail;
+if it does not, the test is measuring a symptom the fix happens to suppress.
+
+**And the original defect survived because two criteria were each right alone.** One asserted the
+refusal text was present after a press — which *was* the duplicate — and the other never pressed.
+Neither criterion was wrong about its own clause; the *interaction* was unasserted. No per-criterion
+review catches that, which argues for at least one criterion per issue that exercises two others
+together.
+
+Ask one question of a new guard: **if this claim were false, would this assertion change?** If the
+honest answer is "usually", the guard is a proxy, and the milestone's record is that proxies fail on
+exactly the case worth catching. The defence that worked every time was reading the emitter — what
+the product actually builds — rather than the stylesheet, the test fixture, or the rule.
+
+A related distinction, cheap and worth keeping: **"I committed it" and "the remote has it" are
+different claims**, and only the second unblocks anyone waiting on it. Check the pushed blob.
+
+## A comparison test cannot see both sides moving together
+
+A corollary, found when the mutation checks were re-run at the FO's instruction after a fixture bug
+was fixed — **four mutations killed and one survived.** Reverting a value dropped the value *and* its
+absence together, so a test asserting `value >= absence` stayed green while the value silently left
+the tier the document records it on.
+
+**A test that compares two things cannot detect both moving together.** Where the contract is that a
+thing sits on a named tier, bind it to the tier directly; a relation between two movable quantities
+is a weaker claim than either of the positions it is standing in for. This was the second test on
+this branch that passed over the defect it was written for — the first had a fixture that built a DOM
+the application never renders — and both were found by re-running mutations rather than by reading.
+
+## A polymorphic slot is invisible to both a selector sweep and a live walk
+
+Measured across two review cycles on DRC-4587, at the cost of two correction rounds. **A value and
+the absence that replaces it never co-exist in one render.** One expression picks a class — a known
+class or an absent class — so the pair exists in the *emitter*, never on the screen at one moment
+and never in one CSS rule.
+
+Three instruments therefore cannot see it, and all three were used before it was found:
+
+- A **selector sweep** compares rules, and the pair is not a rule. DRC-4587's round-1 fix swept the
+  class, raised seven value rules, justified nine exemptions — and still missed six slots, two of
+  them *behind* exemptions it had written reasons for.
+- A **live walk of a populated board** compares siblings in one render, which is exactly what the
+  pair never is. The reviewer's own cycle-1 sweep used this and it recorded the method failure
+  against itself.
+- A **green test suite**, because the invariant test written in round 1 pinned seven CSS pairs and
+  would have stayed green through all six.
+
+The sharpest single piece of evidence: `.pc-substrate-reason,.pc-terminal-identity p` is **one
+declaration**, and the round raised the values paired with one half of it while leaving the values
+paired with the other half on that same line.
+
+**Read the emitter, and resolve both branches.** For each ternary choosing between a value class
+and an absence class, compute both sides and compare them. Any invariant test binding a
+value-and-absence relationship must key on the emitters for the same reason; one that reads the
+stylesheet binds the shape the defect is not in.
+
+The class generalises past font size. Wherever a slot is polymorphic — value or absence, present or
+withheld, measured or unmeasurable — a change that touches one branch has touched a pair, and the
+branch it did not touch is the one to check.
+
+## Never let a pull request sit blocked on an unresolved Copilot thread
+
+The `main` ruleset sets `required_review_thread_resolution: true`, and Copilot reviews every pull
+request here automatically. One unresolved Copilot thread therefore holds the merge, with
+`mergeStateStatus` reading `BLOCKED` and **no failing check to point at** — which is how it gets
+misread. Measured 2026-09-17 on PR #361: the FO diagnosed the block as the ruleset's
+`require_extra_approval_for_unattributed_changes` clause and asked the captain for an approving
+review. That was the wrong cause; the captain found the real one and resolved the thread by hand.
+
+**The merge ceremony reads and dispositions every review thread before it reports a PR blocked.**
+Not "checks for Copilot comments" — reads them, decides on each, and resolves it. `gh pr view` does
+not show them; they are a GraphQL surface:
+
+```bash
+gh api graphql -F owner=spacedock-dev -F repo=cargento -F pr=<N> -F query=@q.graphql \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | ...'
+```
+
+and each is closed with the `resolveReviewThread` mutation against its thread id. The FO can do
+both; neither needs the captain.
+
+**Resolving is not dispositioning, and the order matters.** Read the finding first and rule on it
+under `## Review-finding disposition`. On PR #361 Copilot was **right**: `docs/design-next-ui.md`
+claimed the uppercase label tier carries one tracking value with three exceptions, and the
+stylesheet had nine rules off that value — one of them, `.next-capacity-head span`, rendering the
+literal `WINDOW` and `USED` on the label tier at `.06em`. A thread resolved without being read
+would have merged a false record into a repository whose whole discipline is records specific
+enough to be contradicted. Per the captain's standing directive a fix that small rides the PR in
+flight rather than being filed.
+
+## Do not stop while the milestone is open
+
+Given by the captain on 2026-09-17: "I forbid you to stop until the milestone is fully taken care
+of." It followed a session where the FO reported a blocked pull request and then waited, having
+dispatched nobody — the captain's view was "nothing has changed" and it was accurate.
+
+**A blocked PR is work, not a stopping point.** A red check is triaged and re-run or fixed the same
+turn it is seen. The FO never ends a turn on "PR is blocked" without having either routed the
+failure or dispatched something else.
+
+**Independent work always exists while the milestone has open issues.** Triage holds no worktree
+and takes no lock, so every issue not yet triaged can be triaged NOW, in parallel, up to the
+stage's concurrency — waiting for a PR to merge before triaging the next issue serialises a stage
+that has no reason to serialise. Only `implementation` and `review` are bound by the
+one-in-flight-PR-per-`web/` constraint.
+
+**Arm a watch before yielding.** When the next event genuinely is external — CI settling, a merge —
+arm the runtime's monitor on it so the session is woken by the event rather than waiting on a
+human to notice. Yield only with a watch armed AND no dispatchable work left, and say which watch
+is armed.
+
+**The end condition is the milestone, not the PR.** The burndown is done when every issue in the
+milestone is `Done` or `Canceled` in Linear with its reconcile receipt posted — including issues
+filed mid-milestone out of a deferred finding.
+
+## The first officer commits in a worktree, never in the primary checkout
+
+Given by the captain on 2026-09-17: "you can use worktrees in order to minimize any accidental
+resets causing local destruction."
+
+**The primary checkout is read-only for commits.** Every commit this session makes lands in a
+worktree on a branch — the FO's own process-doc edits to this README included. New worktrees branch
+from `origin/main`, not from local `main`:
+
+```bash
+git worktree add -b fo/{topic} .worktrees/fo-{topic} origin/main
+```
+
+The state checkout already works this way, which is why state commits have never put the code
+branch at risk while FO commits on `main` did. What went wrong once, on 2026-09-17: seven FO
+process-doc commits accumulated on local `main`, which is protected and cannot be pushed, so they
+could neither land nor be discarded without a `reset` on a checkout holding someone else's
+uncommitted work. They were recovered by moving them onto the in-flight PR's branch, and the
+`reset --hard` that would have "cleaned up" was refused by a guardrail — the same operation
+**AGENTS.md, "Parallel Work"** records as having destroyed a file here once.
+
+Branching from `origin/main` is the half that prevents recurrence on its own: a worktree cut from a
+local `main` that has drifted carries that drift into its pull request, where it reads as scope
+nobody asked for.
 
 ## Workflow State
 
