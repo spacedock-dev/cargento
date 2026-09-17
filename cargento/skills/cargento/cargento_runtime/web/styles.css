@@ -306,7 +306,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-delegation progress::-webkit-progress-bar{background:var(--line)}
 .next-delegation progress::-webkit-progress-value{background:var(--accent-dim)}
 .next-delegation progress::-moz-progress-bar{background:var(--accent-dim)}
-.next-delegation-metrics{display:flex;flex-wrap:wrap;gap:4px 9px;color:var(--ink2);font:10.5px/1.5 var(--mono)}
+.next-delegation-metrics{display:flex;flex-wrap:wrap;gap:4px 9px;color:var(--ink2);font:var(--fs-sentence)/1.5 var(--mono)}
 .next-delegation-withheld{display:flex;flex-direction:column;gap:6px;color:var(--ink2)}
 .next-delegation-withheld strong{font:700 16px var(--mono)}
 .next-delegation-withheld small{color:var(--ink3);font-size:var(--fs-sentence);font-weight:500;line-height:1.55;max-width:var(--measure)}
@@ -315,7 +315,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-rail-wait-heading{display:flex;align-items:baseline;gap:9px}
 .next-rail-wait-heading a{min-width:0;color:var(--ink);font-size:var(--fs-sentence);font-weight:500;line-height:1.55;overflow-wrap:anywhere;text-decoration:none}
 .next-rail-wait-heading a:hover{text-decoration:underline}
-.next-rail-wait-duration{margin-left:auto;flex-shrink:0;color:var(--amber);font:700 11px var(--mono)}
+.next-rail-wait-duration{margin-left:auto;flex-shrink:0;color:var(--amber);font:700 var(--fs-sentence) var(--mono)}
 .next-rail-question{margin:0;color:var(--ink2);font-size:var(--fs-sentence);font-weight:500;line-height:1.55;overflow-wrap:anywhere}
 .next-rail-wait-controls{display:flex;flex-wrap:wrap;gap:7px;padding-top:2px}
 .next-rail-wait-controls button{margin-top:0;padding:5px 10px;border-radius:6px;font-size:var(--fs-label)}
@@ -331,7 +331,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-rail-capacity-fill--amber{background:var(--amber)}
 .next-rail-capacity-fill--unknown{background:var(--ink3)}
 .next-rail-capacity-tick{position:absolute;top:-2px;bottom:-2px;width:1.5px;background:var(--ink2)}
-.next-rail-capacity-caption{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;color:var(--ink3);font:var(--fs-label) var(--mono)}
+.next-rail-capacity-caption{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;color:var(--ink3);font:var(--fs-sentence) var(--mono)}
 .next-project-detail-rail .next-usage-consent{margin:0;padding:12px;font-size:var(--fs-xs)}
 .next-project-detail-rail .next-usage-consent-note{font-family:var(--sans);font-size:var(--fs-xs)}
 .next-project-detail-rail .next-usage-switch{margin:0;font-size:var(--fs-xs)}
@@ -835,6 +835,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-recovery-memos textarea{grid-column:1/-1;width:100%;min-height:54px;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:inherit}
 .next-cockpit-recovery span,.next-cockpit-recovery strong,.next-cockpit-recovery small{display:block}
 .next-cockpit-recovery span{margin-bottom:5px;color:var(--ink3);font-size:var(--fs-2xs);letter-spacing:.09em}
+.next-cockpit-recovery .next-project-value{font-size:var(--fs-sentence);letter-spacing:0}
 .next-cockpit-recovery strong{font-weight:500;overflow-wrap:anywhere}
 .next-cockpit-recovery small{margin-top:4px;color:var(--ink3);overflow-wrap:anywhere}
 .next-cockpit-recovery details{margin-top:5px;color:var(--ink3)}
@@ -1085,7 +1086,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    it reinstates the sub-floor sentence. The value keeps mono and --ink, so
    it still outranks its absence on family and tone. `small` is the storage
    cue, not a value, and stays down. */
-.next-cockpit-recovery strong{font-size:var(--fs-sentence)}
+.next-cockpit-recovery div strong{font-size:var(--fs-sentence)}
 .next-cockpit-recovery small{font-size:var(--fs-xs)}
 .next-cockpit-recovery-evidence>strong,.next-cockpit-execution-root>strong,.next-cockpit-child-row>strong,
 .next-cockpit-recovery [data-next-cockpit-memo-field]>strong,.next-cockpit-recovery textarea,
@@ -1176,7 +1177,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .pc-trail-summary,.pc-trail-summary>span{display:block}
 .pc-entry-details{display:grid;gap:7px;margin-top:9px;padding:10px 12px;border-left:2px solid var(--line2);background:var(--sunk);color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);overflow-wrap:anywhere}
 .pc-entry-details b{color:var(--ink2);font:var(--fs-machine) var(--mono)}
-.pc-entry-details time,.pc-event-evidence time{font:var(--fs-machine) var(--mono)}
+.pc-entry-details time,.pc-event-evidence time{font:var(--fs-sentence) var(--mono)}
 .pc-entry-source-list{display:grid;gap:6px;margin-top:6px}
 .pc-trail-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .pc-trail-top strong{color:var(--ink);font-size:var(--fs-body)}
@@ -1192,6 +1193,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .pc-terminal-identity{flex-basis:100%;min-width:0}
 .pc-terminal-identity p{margin:3px 0}
 .pc-terminal-identity strong{font-size:var(--fs-sentence)}
+.pc-semantic-timeline .pc-source{font-size:var(--fs-sentence)}
 .pc-terminal-identity code{margin-right:10px;font-size:var(--fs-sentence)}
 .pc-terminal-viewport{height:340px;overflow:auto;overscroll-behavior:contain}
 .pc-terminal-screen{min-width:100%;min-height:340px;padding:6px;box-sizing:content-box;font:500 var(--fs-sentence)/1.55 var(--sans)}

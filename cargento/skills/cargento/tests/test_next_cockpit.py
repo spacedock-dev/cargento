@@ -10,6 +10,7 @@ from typing import Any
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
 
+from . import css_cascade
 from .next_harness import NextPageJsHarness, storage_prelude
 
 
@@ -5576,92 +5577,193 @@ console.log(JSON.stringify({
                 self.assertNotIn("var(--mono)", rule)
 
 
-class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
-    """DRC-4587 F1. Raising a container to the sentence tier without raising the
-    value rules inside it leaves the absence larger than the fact it stands in
-    for, which is the inversion this milestone exists to remove: "you can tell a
-    label from its answer, a figure from a gap".
+def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, object]:
+    return {"tag": tag, "classes": set(classes), "attrs": set(attrs)}
 
-    Read off the stylesheet rather than a live board because three of these
-    panels need data the fixtures do not carry, and the cascade is what decides
-    the outcome either way.
+
+_REC = [_node("section", "next-cockpit-recovery")]
+_RAIL = [_node("div", "next-project-detail-rail")]
+_TL = [_node("div", "pc-semantic-timeline")]
+
+
+class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
+    """DRC-4587 F1 and its correction round. A stated absence must never render
+    larger than the fact it stands in for: "you can tell a label from its
+    answer, a figure from a gap".
+
+    **The pairs are read from the emitters, not from the stylesheet.** Each row
+    below is one ternary that picks a value class or an absence class, and the
+    two branches never co-exist in a render. A sweep of co-existing selectors
+    cannot see such a pair, and neither can a live board: only one branch is
+    ever on screen. Round 1 swept selectors, passed, and missed six of these.
     """
 
-    # value selector -> the absence or caption drawn beside it in the same cell.
-    PAIRS = (
-        (".next-cockpit-recovery strong", ".next-cockpit-recovery .next-project-value--absent"),
+    # (name, emitter, value path, absence path). Paths are the DOM the emitter
+    # actually builds; `css_cascade` resolves each branch on its own.
+    SLOTS = (
         (
-            ".next-cockpit-recovery .next-project-goal-text",
-            ".next-cockpit-recovery .next-project-goal-gap",
+            "recovery published value",
+            "next-cockpit.js nextCockpitWaitingCommand",
+            [
+                *_REC,
+                _node("div", "next-cockpit-waiting"),
+                _node("span", "next-project-value", "next-project-value--known"),
+            ],
+            [
+                *_REC,
+                _node("div", "next-cockpit-waiting"),
+                _node("span", "next-project-value", "next-project-value--absent"),
+            ],
         ),
-        (".next-cockpit-now-state strong", ".next-cockpit-now-state small"),
         (
-            ".next-cockpit-memos [data-next-cockpit-memo-field]>strong",
-            ".next-cockpit-memos label>small",
+            "rail wait duration",
+            "next-delegation.js nextRailWaiting",
+            [
+                *_RAIL,
+                _node("section", "next-rail-panel"),
+                _node("article", "next-rail-wait"),
+                _node("div", "next-rail-wait-heading"),
+                _node("span", "next-rail-wait-duration"),
+            ],
+            [
+                *_RAIL,
+                _node("section", "next-rail-panel"),
+                _node("article", "next-rail-wait"),
+                _node("div", "next-rail-wait-heading"),
+                _node("span", "next-rail-reason"),
+            ],
         ),
-        (".pc-terminal-identity code", ".pc-terminal-identity p"),
-        (".pc-terminal-identity strong", ".pc-terminal-identity p"),
-        (".next-attention-open strong", ".next-attention-open p"),
+        (
+            "rail token rate",
+            "next-delegation.js nextRailDelegation",
+            [
+                *_RAIL,
+                _node("section", "next-delegation"),
+                _node("div", "next-delegation-metrics"),
+                _node("span", attrs=("data-next-delegation-rate",)),
+            ],
+            [
+                *_RAIL,
+                _node("section", "next-delegation"),
+                _node("div", "next-delegation-metrics"),
+                _node("span", "next-rail-reason", attrs=("data-next-delegation-rate-withheld",)),
+            ],
+        ),
+        (
+            "rail pace and resets",
+            "next-delegation.js nextRailCapacityWindow",
+            [
+                *_RAIL,
+                _node("div", "next-rail-capacity-window"),
+                _node("div", "next-rail-capacity-caption"),
+                _node("span"),
+            ],
+            [
+                *_RAIL,
+                _node("div", "next-rail-capacity-window"),
+                _node("div", "next-rail-capacity-caption"),
+                _node("span", "next-rail-reason"),
+            ],
+        ),
+        (
+            "event time",
+            "project.js projectEventTime",
+            [
+                *_TL,
+                _node("div", "pc-entry-details"),
+                _node("div"),
+                _node("time", attrs=("datetime",)),
+            ],
+            [
+                *_TL,
+                _node("div", "pc-entry-details"),
+                _node("div"),
+                _node("span", "pc-substrate-reason"),
+            ],
+        ),
+        (
+            "published value",
+            "project.js projectPublishedValue",
+            [*_TL, _node("div", "pc-entry-details"), _node("div"), _node("span", "pc-source")],
+            [
+                *_TL,
+                _node("div", "pc-entry-details"),
+                _node("div"),
+                _node("span", "pc-substrate-reason"),
+            ],
+        ),
+        (
+            "terminal identity window",
+            "project.js projectTerminalIdentity",
+            [_node("div", "pc-terminal-identity"), _node("code")],
+            [_node("div", "pc-terminal-identity"), _node("p")],
+        ),
+        (
+            "terminal identity session name",
+            "project.js projectTerminalIdentity",
+            [_node("div", "pc-terminal-identity"), _node("strong")],
+            [_node("div", "pc-terminal-identity"), _node("p")],
+        ),
+        (
+            "recovery assignment",
+            "next-cockpit.js nextCockpitRecovery",
+            [*_REC, _node("div"), _node("strong")],
+            [*_REC, _node("div"), _node("span", "next-project-value--absent")],
+        ),
+        (
+            "recovery goal",
+            "next-cockpit.js nextProjectGoal",
+            [*_REC, _node("p", "next-project-goal-text")],
+            [*_REC, _node("p", "next-project-goal-gap")],
+        ),
     )
 
-    css: str
-    tokens: dict[str, float]
+    # A caption labels the values beside it, so it must stay below them. The
+    # round-1 fix used a descendant selector and pulled this one level with the
+    # strip it labels, which is the same collapse of register the other way up.
+    CAPTION_BELOW_VALUE = (
+        (
+            "briefing caption",
+            [*_REC, _node("header"), _node("strong")],
+            [*_REC, _node("div"), _node("strong")],
+        ),
+    )
 
     @classmethod
     def setUpClass(cls) -> None:
-        source = (
+        cls.tokens, cls.rules = css_cascade.load(
             pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
-        ).read_text(encoding="utf-8")
-        # Comments first: the block scan below reads everything before a `{` as
-        # the selector, so a comment above a rule silently detaches it and the
-        # rule reads as undeclared rather than as wrong.
-        cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
-        cls.tokens = {
-            name: float(value)
-            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", cls.css)
-        }
+        )
 
-    def resolved_px(self, selector: str) -> float | None:
-        """The size the cascade lands on: last declaration for this exact
-        selector wins, which holds here because every rule in `PAIRS` is a
-        single class or one descendant step.
-        """
-        found: float | None = None
-        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css):
-            if selector not in [head.strip() for head in block.group(1).split(",")]:
-                continue
-            body = block.group(2)
-            token = re.search(r"font-size:var\(--(fs-[a-z0-9-]+)\)", body) or re.search(
-                r"font:(?:\d+ )?var\(--(fs-[a-z0-9-]+)\)", body
-            )
-            if token:
-                found = self.tokens[token.group(1)]
-                continue
-            literal = re.search(r"font-size:([0-9.]+)px", body) or re.search(
-                r"font:(?:\d+ )?([0-9.]+)px", body
-            )
-            if literal:
-                found = float(literal.group(1))
-        return found
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
 
-    def test_no_value_is_drawn_smaller_than_its_absence_or_caption(self) -> None:
-        for value, companion in self.PAIRS:
-            with self.subTest(value=value):
-                value_px = self.resolved_px(value)
-                companion_px = self.resolved_px(companion)
-                self.assertIsNotNone(
-                    companion_px, f"{companion} declares no size to compare against"
-                )
-                self.assertIsNotNone(
-                    value_px,
-                    f"{value} declares no size, so it inherits one smaller than {companion}",
-                )
-                assert value_px is not None and companion_px is not None
+    def size(self, path: list[dict[str, object]]) -> float:
+        resolved = css_cascade.resolve(path, self.tokens, self.rules)
+        self.assertIsNotNone(resolved, f"no size resolves for {path}")
+        assert resolved is not None
+        return resolved
+
+    def test_no_slot_draws_its_value_smaller_than_its_absence(self) -> None:
+        for name, emitter, value_path, absence_path in self.SLOTS:
+            with self.subTest(slot=name):
+                value, absence = self.size(value_path), self.size(absence_path)
                 self.assertGreaterEqual(
-                    value_px,
-                    companion_px,
-                    f"{value} is {value_px}px against {companion} at {companion_px}px: "
-                    "the absence outranks the fact it replaces",
+                    value,
+                    absence,
+                    f"{name} ({emitter}): value {value}px against absence {absence}px, "
+                    "so the absence outranks the fact it replaces",
+                )
+
+    def test_a_caption_stays_below_the_values_it_labels(self) -> None:
+        for name, caption_path, value_path in self.CAPTION_BELOW_VALUE:
+            with self.subTest(caption=name):
+                caption, value = self.size(caption_path), self.size(value_path)
+                self.assertLess(
+                    caption,
+                    value,
+                    f"{name}: caption {caption}px against value {value}px, "
+                    "so the label reads level with its own answer",
                 )
 
 

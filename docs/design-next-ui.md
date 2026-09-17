@@ -112,10 +112,12 @@ regions is an ownership change, not incidental cleanup.
 Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels,
 identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px. Four
 `:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
-and 9px was the smallest step in the file. Of the six tokens at or below 12px, three had no callers
-anywhere: `--fs-column`, `--fs-meta` and `--fs-breadcrumb`. (`--fs-breadcrumb` is exactly 12px, so
-a reader counting strictly below 12px finds two. `--fs-meta-detail` was never one of them; it had
-four callers and was folded into `--fs-label`.)
+and 9px was the smallest step in the file. **Counts here read "at or below 12px" inclusively**, so
+the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 10px,
+`--fs-meta-detail` 10.5px, `--fs-machine` 11px, `--fs-2xs` 11.5px and `--fs-breadcrumb` 12px. Three
+of the seven had no callers anywhere and were deleted: `--fs-column`, `--fs-meta` and
+`--fs-breadcrumb`. `--fs-meta-detail` had four callers and was folded into `--fs-label`; `--fs-2xs`
+has forty-one and stays. The issue said six because it omitted `--fs-2xs`.
 
 The floor left 12.5px on the strength of an APCA reading that put `--ink`, the brightest colour in
 the palette, below the body-text requirement there. **Those figures are audit-only: no APCA
@@ -125,8 +127,22 @@ never a contrast defect: `--ink` on `--bg` recomputes to 16.36:1 and the asset t
 than 4.5:1 is green. DRC-4596 adds the guardrail that would close the gap, and lands after the
 change the figures justify. The absence explanations the prototype placed at 10px are sentences, so
 they take the sentence tier, and two of them had to leave an `<h2>`'s `<header>` to get there.
-A value is never drawn smaller than the absence or caption beside it in the same cell, which is
-what raising a container without raising its value rules quietly breaks. The stylesheet
+A value is never drawn smaller than the absence that replaces it, nor than the caption that labels
+it, which is what raising a container without raising its value rules quietly breaks.
+
+**Finding that class needs a census taken from the emitters, not from the stylesheet.** A value and
+its absence are chosen by a ternary, so they never co-exist in one render: no sweep of co-existing
+selectors sees the pair, and neither does reading a populated board, because only one branch is
+ever on screen. Two passes over this stylesheet missed the same six slots for that reason before a
+per-slot reading found them. `AnAbsenceNeverOutranksTheValueItReplacesTest` now lists the ternaries
+and resolves both branches separately through `tests/css_cascade.py`; its numbers were checked
+against `getComputedStyle` in a browser before they were trusted. Two exemptions in the first pass
+were wrong on exactly this point: `.next-cockpit-recovery span` was read as a caption when it also
+sizes every `nextProjectValue` span, and `.pc-entry-details time` as a timestamp when
+`projectEventTime` swaps it for a reason. A rule is a caption only when nothing chooses it as the
+answer, and only the emitter can say so: `.next-cockpit-recovery>header` qualifies because it holds
+one fixed string, and `.next-usage-consent` is not in the census at all because it has no absence
+branch to be paired with. The stylesheet
 retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
 above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
 between contrast steps.
@@ -141,18 +157,26 @@ eight carry `overflow-wrap:anywhere`, eight are layout boxes rather than single 
 `.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
 would clamp the cards inside them instead of the sentences.
 
-**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Nineteen further sans
-rules pass the same test at 13px to 14.5px: seven on `--fs-sm`, four on `--fs-body`, two on
-`--fs-summary`, four literals (one 14.5px, two 13.5px, one 14px), and **two that no single-rule
-census can see**, because their size, family and line-height are composed across three rules each.
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Twenty-one further sans
+rules pass the same test, at 12.5px to 14.5px: nineteen a single-rule census finds (seven on
+`--fs-sm`, four on `--fs-body`, two on `--fs-summary`, six literals) and **two it cannot see**,
+because their size, family and line-height are composed across three rules each.
 Those two are `.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a
 flip back to sans from a second and its line-height from a third, and `.next-cockpit-recovery
 small`, which takes 12.5px from its own rule and inherits sans and the line-height from the cell.
-A census that reads one rule at a time reports seventeen and misses both.
+They are also the two that set the bottom of the range.
 
-They were left alone: raising them is another nineteen rules of review surface, and two of the
-nineteen are not sentences at all (a textarea and the prototype terminal), so the set needs reading
-one selector at a time rather than a sweep.
+The count was reported as nineteen and before that as seventeen, and both were wrong for reasons
+worth keeping. Seventeen came from a census whose `font:` shorthand pattern matched the weight
+instead of the size, so `font:13px/1.5` read as no size at all and two rules
+(`.next-cockpit-work-derived` and the reading-result group) fell out silently. Nineteen then
+counted those two back in but treated the composed pair as part of the nineteen rather than beside
+it. A census that cannot fail loudly on a shorthand it does not understand will keep producing
+plausible totals.
+
+They were left alone: raising them is another twenty-one rules of review surface, and two of the
+twenty-one are not sentences at all (a textarea and the prototype terminal), so the set needs
+reading one selector at a time rather than a sweep.
 
 Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
 eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
