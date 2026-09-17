@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4589:triage:attempt-1:revision-1
                 digest: sha256:18eef156a11c3741c78044c1444200f5f04a40dba4c36064f428c95e11e2eae6
-                room-ref: ./drc-4589/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4589](https://linear.app/recce/issue/DRC-4589/split-the-three-inks-onto-label-value-and-absence-roles-so-a-label) — Split the three inks onto label, value and absence roles so a label stops sharing its ink with its own answer
