@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4593:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4593 rewrite and milestone correction for writing to Linear, and the six acceptance criteria and declared surface as implementation's contract.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4593:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/ed0883b7340cbb9fcfb6e8a064bb89a6a80b6bba/drc-4593.md",
+      "rev": "sha256:41b4a052eb8cafe43887f1969fb259b6235cf7644da4e07de62fbab66de992ca",
+      "mediaType": "text/markdown",
+      "summary": "Driving the live board off the post-4587 worktree killed two of the issue's six criteria. The all-absent collapse buys nothing: an all-absent briefing measures 171px before and 171px after the proposed grid change, because grid rows already size to content, so the remaining prize is about 16px of padding and the mechanism the recon showed could not fire is not worth repairing. The None recorded convention exists nowhere in the repository, so it is replaced by a tier-derived two-verb rule that introduces no new string. DRC-4587 also made the briefing worse in two measured ways, and AC-4 is widened to bind ordering rather than separation alone."
+    }
+  ]
+}
