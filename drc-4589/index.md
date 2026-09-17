@@ -761,3 +761,42 @@ entry settles" wording in the finding itself: the wrong cue is **persistent** un
 endpoint failure. The softer version was mine and is superseded.
 
 Verdict unchanged: **GO**.
+
+### Addendum, 2026-09-18 — the layer under F1: stale-data-plus-error is invisible in BOTH surfaces
+
+DRC-4592's reviewer went a layer below F1 and is right. Verified here by execution rather than
+accepted, and my first run was wrong in a way worth recording.
+
+The `.catch()` at `next-cockpit.js:3187` **merges rather than replaces** — it keeps the previous
+`data` and stamps `error:true` over it. So the reachable states are five, not three. My first
+enumeration reported that the panel still says "Semantic context unavailable" in the stale case,
+which would have refuted the reviewer. **That was my fixture's fault**: I populated only the focused
+key, so the panel took its failure arm on the *missing project-scope entry* rather than on the
+focused entry's error. With both scopes populated the confound disappears:
+
+| entry state (focus / project) | tab cue | panel says unavailable |
+|---|---|---|
+| both resolved | `{state:"count",value:1}` | no |
+| focus **stale + error** | `{state:"count",value:1}` | **no** |
+| **both** stale + error | `{state:"count",value:1}` | **no** |
+| focus failed, no prior data (F1) | `{state:"pending"}` | yes |
+
+So a refresh that failed over data already held is **indistinguishable from a clean resolve in both
+surfaces**, not just in the cue. Two consequences for the fix, and the second is the one that changes
+the shape I recommended:
+
+1. Teaching only the cue to read `.error` closes F1 and leaves this state untouched.
+2. Worse, it would make the cue claim failure while the panel renders rows with no caveat —
+   **swapping one cue/panel disagreement for another**. Whatever the fix does must move both.
+
+One scope caution, raised rather than decided. "Keep showing last-known-good after a failed refresh"
+is a defensible product choice, and whether the board must *say* the rows are stale is a product
+decision, not self-evidently a defect — the disposition rules put that with the captain, not with a
+reviewer or an integrator. The unambiguous in-scope defect remains F1's state: a failed read with
+nothing to show, claiming "not loaded yet". The stale state deserves a decision before a staleness
+cue nobody specified gets invented inside a fix commit.
+
+**Record correction.** The relay to me said `next-render.js:81` was missed by both enumerations. It
+is in the table at line 723 of this report, named, with its shape and the note that it omits `error`
+— which is exactly why it reads as correctly falsy. The two-reviewer comparison is what found the
+merge semantics; it did not find that writer, because this enumeration already had it.
