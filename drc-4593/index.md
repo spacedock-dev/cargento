@@ -538,3 +538,30 @@ stylesheet explicitly refuses to lower or brightening an absence the captain rul
 the only cell that can still render one has a known value at `--ink-value`, so the three pairs are
 (11.5, ink3), (15, ink), (15, ink3). The criterion is met, but by closing a route rather than by
 re-tiering anything, and that reading is this stage's and should be confirmed.
+
+## Ruling — how AC-4 is met, 2026-09-17
+
+Confirmed by the first officer at the implementation stage, against the reading this stage put to
+the gate rather than assumed. Recorded here so a reviewer reads it beside the criterion instead of
+re-deriving it from the cascade and concluding the criterion was missed.
+
+**AC-4 is met by AC-6's suppression, not by any size or ink moving.** As filed, AC-4 asks for three
+distinct (size, ink) pairs in an absent ASSIGNMENT cell and cites today's figures as label
+11.5px/`--ink3`, value 12.5px/`--ink3`, caption 15px/`--ink3`. Those figures are stale: a commit
+already on this branch's base, `4fb5ee6d`, raised `.next-cockpit-recovery strong` to 15px, which
+fixed the inversion AC-4 names and collapsed the value and its caption onto the same size **and**
+the same ink.
+
+Neither of the two ways to separate them directly is available. Lowering the caption back to 12.5px
+is refused in the stylesheet's own words at `.next-cockpit-recovery strong` -- it reinstates the
+sub-floor sentence DRC-4587 existed to remove. Brightening the absence is refused by the captain's
+ruling of 2026-09-17, which is settled and not reopenable: absence keeps `--ink3`, and DRC-4597's
+AC4 stands verbatim.
+
+What separates them is that the collapsed pairing can no longer render. AC-6 suppresses
+`Assignment evidence not published` when `briefing.task.known` is false, so the only cell that still
+carries a caption has a value the board did observe, at `--ink-value`. The three pairs are therefore
+(11.5, `--ink3`), (15, `--ink`), (15, `--ink3`) -- distinct, with caption equal to and never larger
+than the value it explains. `TheBriefingsThreeRegistersStayApartTest` asserts exactly that, resolving
+each selector's LAST declaration through the cascade and then through the registers to a hex, because
+four of these selectors are declared twice and reading the first reports the pre-DRC-4587 sizes.
