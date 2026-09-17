@@ -5576,6 +5576,95 @@ console.log(JSON.stringify({
                 self.assertNotIn("var(--mono)", rule)
 
 
+class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
+    """DRC-4587 F1. Raising a container to the sentence tier without raising the
+    value rules inside it leaves the absence larger than the fact it stands in
+    for, which is the inversion this milestone exists to remove: "you can tell a
+    label from its answer, a figure from a gap".
+
+    Read off the stylesheet rather than a live board because three of these
+    panels need data the fixtures do not carry, and the cascade is what decides
+    the outcome either way.
+    """
+
+    # value selector -> the absence or caption drawn beside it in the same cell.
+    PAIRS = (
+        (".next-cockpit-recovery strong", ".next-cockpit-recovery .next-project-value--absent"),
+        (
+            ".next-cockpit-recovery .next-project-goal-text",
+            ".next-cockpit-recovery .next-project-goal-gap",
+        ),
+        (".next-cockpit-now-state strong", ".next-cockpit-now-state small"),
+        (
+            ".next-cockpit-memos [data-next-cockpit-memo-field]>strong",
+            ".next-cockpit-memos label>small",
+        ),
+        (".pc-terminal-identity code", ".pc-terminal-identity p"),
+        (".pc-terminal-identity strong", ".pc-terminal-identity p"),
+        (".next-attention-open strong", ".next-attention-open p"),
+    )
+
+    css: str
+    tokens: dict[str, float]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        # Comments first: the block scan below reads everything before a `{` as
+        # the selector, so a comment above a rule silently detaches it and the
+        # rule reads as undeclared rather than as wrong.
+        cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+        cls.tokens = {
+            name: float(value)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", cls.css)
+        }
+
+    def resolved_px(self, selector: str) -> float | None:
+        """The size the cascade lands on: last declaration for this exact
+        selector wins, which holds here because every rule in `PAIRS` is a
+        single class or one descendant step.
+        """
+        found: float | None = None
+        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css):
+            if selector not in [head.strip() for head in block.group(1).split(",")]:
+                continue
+            body = block.group(2)
+            token = re.search(r"font-size:var\(--(fs-[a-z0-9-]+)\)", body) or re.search(
+                r"font:(?:\d+ )?var\(--(fs-[a-z0-9-]+)\)", body
+            )
+            if token:
+                found = self.tokens[token.group(1)]
+                continue
+            literal = re.search(r"font-size:([0-9.]+)px", body) or re.search(
+                r"font:(?:\d+ )?([0-9.]+)px", body
+            )
+            if literal:
+                found = float(literal.group(1))
+        return found
+
+    def test_no_value_is_drawn_smaller_than_its_absence_or_caption(self) -> None:
+        for value, companion in self.PAIRS:
+            with self.subTest(value=value):
+                value_px = self.resolved_px(value)
+                companion_px = self.resolved_px(companion)
+                self.assertIsNotNone(
+                    companion_px, f"{companion} declares no size to compare against"
+                )
+                self.assertIsNotNone(
+                    value_px,
+                    f"{value} declares no size, so it inherits one smaller than {companion}",
+                )
+                assert value_px is not None and companion_px is not None
+                self.assertGreaterEqual(
+                    value_px,
+                    companion_px,
+                    f"{value} is {value_px}px against {companion} at {companion_px}px: "
+                    "the absence outranks the fact it replaces",
+                )
+
+
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class CockpitReadingShapeTest(NextPageJsHarness):
     """DEC-17's seven rules, one case each (DRC-4511 AC4).

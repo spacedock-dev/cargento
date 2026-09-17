@@ -110,13 +110,23 @@ region; a shared responsive block would make every view edit the same tail. Movi
 regions is an ownership change, not incidental cleanup.
 
 Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels,
-identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px; the
-four steps that ran 9px, 9.5px, 10px and 10.5px were a 3px band nobody can rank, and three of the
-six sub-12px tokens had no callers at all. The floor left 12.5px because the audit put `--ink`,
-the brightest colour in the palette, below the body-text requirement there: brightening the ink
-was not available, so size was the only lever left. The absence explanations the prototype placed
-at 10px are sentences, so they take the sentence tier, and two of them had to leave an `<h2>`'s
-`<header>` to get there. The stylesheet
+identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px. Four
+`:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
+and 9px was the smallest step in the file. Of the six tokens at or below 12px, three had no callers
+anywhere: `--fs-column`, `--fs-meta` and `--fs-breadcrumb`. (`--fs-breadcrumb` is exactly 12px, so
+a reader counting strictly below 12px finds two. `--fs-meta-detail` was never one of them; it had
+four callers and was folded into `--fs-label`.)
+
+The floor left 12.5px on the strength of an APCA reading that put `--ink`, the brightest colour in
+the palette, below the body-text requirement there. **Those figures are audit-only: no APCA
+implementation, table or fixture exists in this repository, so they cannot be reproduced from the
+tree**, which is the same caveat the milestone carries. What the tree does say is that this was
+never a contrast defect: `--ink` on `--bg` recomputes to 16.36:1 and the asset test asserting more
+than 4.5:1 is green. DRC-4596 adds the guardrail that would close the gap, and lands after the
+change the figures justify. The absence explanations the prototype placed at 10px are sentences, so
+they take the sentence tier, and two of them had to leave an `<h2>`'s `<header>` to get there.
+A value is never drawn smaller than the absence or caption beside it in the same cell, which is
+what raising a container without raising its value rules quietly breaks. The stylesheet
 retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
 above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
 between contrast steps.
@@ -131,11 +141,18 @@ eight carry `overflow-wrap:anywhere`, eight are layout boxes rather than single 
 `.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
 would clamp the cards inside them instead of the sentences.
 
-**The floor is not yet universal, and this is the gap to close next.** Seventeen further sans rules
-pass the same test at 13px to 14.5px, on the `--fs-body`, `--fs-summary` and `--fs-sm` steps plus
-two literals. They were left alone: raising them is another seventeen rules of review surface, and
-two of the seventeen are not sentences at all (a textarea and the prototype terminal), so the set
-needs reading one selector at a time rather than a sweep.
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Nineteen further sans
+rules pass the same test at 13px to 14.5px: seven on `--fs-sm`, four on `--fs-body`, two on
+`--fs-summary`, four literals (one 14.5px, two 13.5px, one 14px), and **two that no single-rule
+census can see**, because their size, family and line-height are composed across three rules each.
+Those two are `.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a
+flip back to sans from a second and its line-height from a third, and `.next-cockpit-recovery
+small`, which takes 12.5px from its own rule and inherits sans and the line-height from the cell.
+A census that reads one rule at a time reports seventeen and misses both.
+
+They were left alone: raising them is another nineteen rules of review surface, and two of the
+nineteen are not sentences at all (a textarea and the prototype terminal), so the set needs reading
+one selector at a time rather than a sweep.
 
 Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
 eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value

@@ -700,16 +700,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(111_050, len(styles))
+        self.assertEqual(111_533, len(styles))
         self.assertEqual(
-            "91a303b22906b2f94fcd0f023a4c001388e840efa9f245d08e22822b1180b754",
+            "0cdd948320e546ec9b589103f95f080c75a700093f6e39dafcdcb4be0fea7799",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(914_344, len(assembled))
+        self.assertEqual(914_827, len(assembled))
         self.assertEqual(
-            "2165bf68d82b7f98853561d56b3f0300240095a964bd040d74b080de45080ce6",
+            "9a29a48f99fba7eee3ea0ab0b94c40cf332e94cb4eaff14d58d7c468375776ea",
             hashlib.sha256(assembled).hexdigest(),
         )
 

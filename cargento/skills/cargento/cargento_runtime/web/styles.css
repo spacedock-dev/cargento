@@ -598,7 +598,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-attention-open{margin:0;padding:0;list-style:none}
 .next-attention-open li{display:grid;grid-template-columns:34px 210px minmax(0,1fr);gap:16px;align-items:baseline;padding:9px 18px;border-bottom:1px solid var(--line)}
 .next-attention-open li>span{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700}
-.next-attention-open strong{color:var(--ink2);font-size:var(--fs-body);font-weight:400}
+.next-attention-open strong{color:var(--ink2);font-size:var(--fs-sentence);font-weight:400}
 .next-attention-open p{margin:0;color:var(--ink3);font-size:var(--fs-sentence);font-weight:500;line-height:1.55;max-width:var(--measure)}
 @media(min-width:900px){
   .next-attention-item--legacy{grid-template-columns:minmax(150px,.8fr) minmax(180px,1fr) minmax(180px,1.2fr) minmax(140px,.8fr) minmax(130px,.7fr)}
@@ -725,7 +725,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-now-state>div{min-width:0;padding:10px 12px;border-right:1px solid var(--line)}
 .next-cockpit-now-state>div:last-child{border-right:0}
 .next-cockpit-now-state strong,.next-cockpit-now-state small{display:block;margin-top:4px;overflow-wrap:anywhere}
-.next-cockpit-now-state strong{font-size:var(--fs-xs);font-weight:600}
+.next-cockpit-now-state strong{font-size:var(--fs-sentence);font-weight:600}
 .next-cockpit-now-state small{color:var(--ink3);font-size:var(--fs-2xs)}
 .next-cockpit-panel[data-next-cockpit-panel="now"]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
 .next-cockpit-panel[data-next-cockpit-panel="now"]>.next-project-detail-status,.next-cockpit-panel[data-next-cockpit-panel="now"]>.next-cockpit-plan-details{grid-column:1/-1}
@@ -766,7 +766,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-memos>div>[data-next-cockpit-memo-field]{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:8px;padding:10px 12px}
 .next-cockpit-memos>div>[data-next-cockpit-memo-field]+[data-next-cockpit-memo-field]{border-left:1px solid var(--line)}
 .next-cockpit-memos [data-next-cockpit-memo-field]>span,.next-cockpit-memos label>small{color:var(--ink3);font:var(--fs-2xs) var(--mono)}
-.next-cockpit-memos [data-next-cockpit-memo-field]>strong{overflow:hidden;color:var(--ink2);font-size:var(--fs-sm);font-weight:450;text-overflow:ellipsis;white-space:nowrap}
+.next-cockpit-memos [data-next-cockpit-memo-field]>strong{overflow:hidden;color:var(--ink2);font-size:var(--fs-sentence);font-weight:450;text-overflow:ellipsis;white-space:nowrap}
 .next-cockpit-memos [data-next-cockpit-action^="memo-"]{border:0;background:none;color:var(--ink2);font:var(--fs-2xs) var(--mono);cursor:pointer}
 .next-cockpit-memos textarea{grid-column:1/-1;display:block;width:100%;min-height:64px;resize:vertical;padding:9px;border:1px solid var(--line);border-radius:0;background:var(--panel);color:var(--ink);font:inherit;line-height:1.45}
 .next-cockpit-memos label>small{grid-column:1/3}
@@ -1080,7 +1080,13 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-recovery [data-next-cockpit-task-known]>strong,.next-cockpit-recovery .next-cockpit-recovery-evidence>strong{color:var(--ink)}
 .next-cockpit-recovery>div{font:500 var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-recovery span{font-family:var(--mono)}
-.next-cockpit-recovery strong,.next-cockpit-recovery small{font-size:var(--fs-xs)}
+/* A stated absence must never read larger than the fact it stands in for.
+   Lowering the absence back to 12.5px is the other way out and is refused:
+   it reinstates the sub-floor sentence. The value keeps mono and --ink, so
+   it still outranks its absence on family and tone. `small` is the storage
+   cue, not a value, and stays down. */
+.next-cockpit-recovery strong{font-size:var(--fs-sentence)}
+.next-cockpit-recovery small{font-size:var(--fs-xs)}
 .next-cockpit-recovery-evidence>strong,.next-cockpit-execution-root>strong,.next-cockpit-child-row>strong,
 .next-cockpit-recovery [data-next-cockpit-memo-field]>strong,.next-cockpit-recovery textarea,
 .next-course-episode p,.next-course-episode ul,.next-course-direction p{font-family:var(--mono)}
@@ -1097,7 +1103,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-content .next-course-evidence{font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-content .next-course-evidence .next-cockpit-source{display:inline;font:inherit;font-family:var(--mono)}
 .next-cockpit-recovery .next-project-goal{margin-top:12px;padding:10px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
-.next-cockpit-recovery .next-project-goal-text{font:var(--fs-xs)/1.55 var(--mono)}
+.next-cockpit-recovery .next-project-goal-text{font:var(--fs-sentence)/1.55 var(--mono)}
 .next-cockpit-recovery .next-project-goal-text.next-project-value--absent,
 .next-cockpit-recovery .next-project-goal-gap{font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-recovery .next-project-goal-source{font-size:var(--fs-2xs)}
@@ -1185,7 +1191,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .pc-terminal-bar>span{margin-left:auto;color:var(--ink3)}
 .pc-terminal-identity{flex-basis:100%;min-width:0}
 .pc-terminal-identity p{margin:3px 0}
-.pc-terminal-identity code{margin-right:10px}
+.pc-terminal-identity strong{font-size:var(--fs-sentence)}
+.pc-terminal-identity code{margin-right:10px;font-size:var(--fs-sentence)}
 .pc-terminal-viewport{height:340px;overflow:auto;overscroll-behavior:contain}
 .pc-terminal-screen{min-width:100%;min-height:340px;padding:6px;box-sizing:content-box;font:500 var(--fs-sentence)/1.55 var(--sans)}
 .pc-terminal-screen>.xterm{width:100%;height:100%}
