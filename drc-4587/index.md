@@ -1,7 +1,7 @@
 ---
 id:
 title: "Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens"
 started: 2026-09-17T06:57:18Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, in answer to the gate-authority question on 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4587](https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens) — Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier
