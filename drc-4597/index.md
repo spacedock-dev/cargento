@@ -572,11 +572,24 @@ PRs land between this triage and this build.
   the board-wide `[data-next-withheld]{color:var(--ink3)}` is the only rule in the sheet that
   colours a withheld value; a test asserts that count is exactly one, and adding a second colour
   there was one of the twelve mutations, killed.
-- DONE: The `## Read before building` milestone bullet this issue is owed does NOT exist.
-  Checked live: the milestone description has no such section. DRC-4587 (PR 1) is still `Ready for
-  Review`, so its post-merge reconcile has not run and the bullet is absent for that reason rather
-  than because the ruling was lost. The ruling itself is in hand, in this entity and in the
-  dispatch, and was applied. Surfaced rather than authored, per the triage's own instruction.
+- DONE: The `## Read before building` bullet this issue is owed EXISTS, and matches what was built.
+  **Corrected 2026-09-17 after the first officer's reply; my first report of this item was wrong
+  twice.** It is a comment on the milestone (`38cca5e4`, posted 11:18:20Z), not a section of the
+  description, and I read only the description: `get_milestone` returns no comments, so an absence
+  there is not an absence. It was also not blocked on PR 1, which merged as `84d27a53` at 13:05:03Z
+  under PR #361; DRC-4587's state history shows `Ready for Review` ending at that exact timestamp,
+  and my read of it as still open was a few minutes stale.
+  Read now and checked against the build rather than taken on report. The bullet's falsifiable end
+  state is "exactly one rule in the sheet assigns a colour to `[data-next-withheld]`, and `:1081`
+  keeps only its family swap", which is precisely what this change lands and what
+  `test_a_withheld_title_is_marked_on_twin_rows_too` asserts: the rail rule reduced to
+  `font-family:var(--sans)`, the board-wide rule left as the only colour, and the count pinned at
+  one. Adding a second colour rule there was one of the twelve planted mutations, killed. The
+  bullet also carries the two-rules-not-one finding and the captain's ruling verbatim; nothing in
+  it was re-opened.
+  **Lesson for the next worker on this milestone:** contract notes on this board live in a milestone
+  COMMENT, because `save_milestone` has no patch operation and resends the whole description.
+  Check `list_comments` with the milestone id, not the description alone.
 
 ### Summary
 
