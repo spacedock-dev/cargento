@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4588:triage:attempt-1:revision-1",
+  "question": "Approve the DRC-4588 issue rewrite and the milestone correction for writing to Linear, and approve the amended acceptance criteria and declared surface as the contract implementation will be held to.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4588:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/e90deec3401ed90c5cf30479ad2bb6a76a933896/drc-4588.md",
+      "rev": "sha256:5a8af19f2d462b06a041e43ff4369968be29178f8a2f4360ef9216d54d818bfb",
+      "mediaType": "text/markdown",
+      "summary": "Triage confirmed all ten line references in the issue and found its prescription wrong in three places, each demoted to a dated History section rather than deleted. The finding that changes the work is not in the issue: aria-disabled restores the click that disabled was suppressing, and neither handler gates on the reason it renders, so implementing AC4 and AC5 literally would ship a button that spends the reader's model capacity from a state the page says is unavailable. Dropping the producer half takes the change from 11 files to 6."
+    }
+  ]
+}
