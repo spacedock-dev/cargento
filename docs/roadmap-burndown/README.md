@@ -224,6 +224,15 @@ the only stage whose product is a change to the roadmap records rather than to t
     clauses, each split as **offline** (a test, command, or on-disk state a fresh agent reproduces)
     or **interactive** (needs a human or a live drive). The split is declared here, at the gate, so
     a plan to build a harness that automates an interactive AC is visible before the harness exists.
+    **The heading is exactly `## Acceptance criteria`, and that is machine-read rather than
+    stylistic.** `status --read {slug} --ac-scan` matches that string literally: `## Acceptance`
+    and `## Acceptance criteria, with verification` both return `Error: no ## Acceptance criteria
+    section in this file`, which leaves the triage gate and every later review gate without their
+    structured acceptance read — and the error appears only when the FO runs the read, not when
+    the criteria are written. Measured 2026-09-17 on DRC-4587 and DRC-4588, which drew the heading
+    from the Linear issue's own `## Acceptance` section and each cost a repair round. The captured
+    original under `## Linear edits made` keeps whatever heading Linear holds: it is a verbatim
+    record, so it is exempt, and renaming it would falsify the restore point.
   - At least one acceptance criterion that is a property a user can see, with its own `Verified
     by:` clause. When the move is `none`, one sentence in the brief on why no user sees this
     change instead, and the gate is told so up front.
