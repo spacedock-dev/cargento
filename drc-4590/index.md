@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4590:triage:attempt-1:revision-1
                 digest: sha256:4127aed007a76074a97a696eee95dfe9e01ca24b9d4dec3e1b62f100ce5f0012
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4590:triage:1
+                briefing: briefing:drc-4590:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T11:02:29.102184Z"
+                decision: approve
+                reason: 'Checklist 4 done / 0 skipped / 0 failed; AC-1..AC-8 resolve. Three scope calls are all narrowing rather than widening and each is evidenced: the primary-per-tab criterion reaches one tab of five and is filed out rather than stretched to fit, the no-own-radius criterion is accepted on its enumerated verifier against 24 rules over six corner treatments, and the rename is declined rather than reversing DRC-4561''s shipped ruling and pulling SECURITY.md into a styling change. The stage also corrected the recon''s own contrast figures by recomputing from the shipped tokens, and found two compelled test dependencies by reading the tests rather than the diff, declaring them in the estimate instead of letting them surface as an overrun.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4590](https://linear.app/recce/issue/DRC-4590/add-a-control-primitive-with-one-primary-action-per-tab-and-a-disabled) — Add a control primitive with one primary action per tab and a disabled state that survives greyscale
