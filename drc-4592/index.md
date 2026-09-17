@@ -515,6 +515,9 @@ cannot disagree about what an empty `departures` list means. And `data-scope-own
 onto the rail's `<a>` when the session cue that used to carry it left the card, which two existing
 tests caught.
 
-**Filed, not fixed:** `.next-cockpit-scope-note` (the Now-tab focus note) still has zero matching
-rules in `styles.css` and renders unstyled — pre-existing, and more visible now that a styled lede
-sits above it. Needs a Linear issue; not promoted into this PR.
+**Filed, not fixed — two issues, neither promoted into this PR.** **DRC-4608**:
+`.next-cockpit-scope-note` (the Now-tab focus note) still has zero matching rules in `styles.css`
+and renders at the browser's default size, which the new lede directly above it makes obvious.
+**DRC-4609**: the legacy project view's `projectAction` collapses any graph-mode argument that is
+not `"all"` to `"active"`, so that view's own `Decisions` button is unreachable. Both pre-existing;
+neither is a regression this change created.
