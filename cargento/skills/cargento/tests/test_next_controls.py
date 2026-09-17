@@ -437,7 +437,11 @@ console.log(JSON.stringify({
         self.assertIn('class="next-steer-receipts"', out["html"])
         self.assertEqual(2, out["html"].count("data-next-steer-receipt"))
         self.assertEqual(2, out["html"].count("Not delivered."))
-        self.assertEqual(2, out["html"].count("Cargento has no write path into a session."))
+        # Two receipts plus the pre-submit caveat, which DRC-4595 added so the
+        # correction stops arriving only after the press. Counted apart rather
+        # than raised to three, or the caveat could vanish and this stay green.
+        self.assertEqual(3, out["html"].count("Cargento has no write path into a session."))
+        self.assertEqual(1, out["html"].count('class="next-steer-caveat"'))
         self.assertIn('aria-checked="false"', out["html"])
         self.assertEqual(["cargento.next.leader", self.STORAGE_KEY], out["writes"])
         leader = json.loads(out["stored"]["cargento.next.leader"])

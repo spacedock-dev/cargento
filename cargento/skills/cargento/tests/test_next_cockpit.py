@@ -1142,11 +1142,17 @@ console.log(JSON.stringify({html,panel,mirror,visible,visibleWords:visible ? vis
             "COMPLETED RESULT",
             'data-next-project-section="plan"',
             "data-next-delegation",
-            "STEER · LOCAL ONLY",
             "GUARDRAILS · LOCAL ONLY",
             "<textarea",
         ):
             self.assertNotIn(old_surface, panel)
+        # DRC-4595 moved the composer to the chrome, which made "absent from
+        # this panel" true of every panel and of no arrangement in particular.
+        # Re-pointed at the pair, so the assertion still measures a placement:
+        # out of the panel, and present once in the shell around it.
+        assert isinstance(panel, str)
+        self.assertNotIn("STEER · LOCAL ONLY", panel)
+        self.assertEqual(1, str(out["html"]).count("STEER · LOCAL ONLY"))
         self.assertIn("Retry workflow discovery", out["visible"])
         self.assertIn("Retry workflow discovery", out["visible"])
         self.assertNotIn("System details", out["mirror"])
@@ -1474,13 +1480,230 @@ console.log(JSON.stringify({project,session}));
         self.assertNotIn('data-scope-kind="session"', project_panel)
         self.assertIn('data-scope-kind="session"', session_panel)
         self.assertIn(">SESSION</strong>", session_panel)
-        self.assertIn("STEER · LOCAL ONLY", project_panel)
         self.assertIn("<h2>TRIPWIRES</h2>", project_panel)
         self.assertIn("local only · nothing enforces these", project_panel)
         self.assertIn("data-next-delegation", project_panel)
-        self.assertIn("STEER · LOCAL ONLY", session_panel)
+        # The composer is no longer the last child of TRIPWIRES. Re-pointed at
+        # where it went rather than deleted: it renders once per route, in the
+        # chrome, at both project and session scope.
+        for scope, shell, panel in (
+            ("project", str(out["project"]), project_panel),
+            ("session", str(out["session"]), session_panel),
+        ):
+            with self.subTest(scope=scope):
+                self.assertEqual(1, shell.count("STEER · LOCAL ONLY"))
+                self.assertNotIn("STEER · LOCAL ONLY", panel)
         self.assertIn("Raw project status", project_panel)
         self.assertNotIn("Latest decisions", project_panel)
+
+    # --- DRC-4595: operations first, and the composer out of TRIPWIRES -------
+
+    CONSOLE_SETUP = 'class="next-cockpit-console-setup"'
+
+    def _console(self, extra: str = "") -> dict[str, object]:
+        """Render the session-scoped Console and hand back the shell and panel."""
+        out = self.run_fixture(
+            """
+nextCockpitContexts.clear();
+"""
+            + extra
+            + """
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+renderNext();await __settle();await __settle();
+const shell=__els.app.innerHTML;
+console.log(JSON.stringify({shell,
+  panel:shell.slice(shell.indexOf('data-next-cockpit-panel="console"'))}));
+"""
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_console_puts_the_operations_rail_ahead_of_the_setup_disclosure(self) -> None:
+        """AC-1. Today the rail is emitted last, at next-cockpit.js:3402."""
+        panel = str(self._console()["panel"])
+
+        scope = panel.index("next-cockpit-scope")
+        rail = panel.index("data-next-project-rail")
+        setup = panel.index(self.CONSOLE_SETUP)
+        self.assertLess(scope, rail)
+        self.assertLess(rail, setup)
+        self.assertEqual(1, panel.count(self.CONSOLE_SETUP))
+
+    def test_the_scope_header_and_the_project_prompt_stay_out_of_the_disclosure(self) -> None:
+        """AC-2. Collapsing the prompt would leave project scope with no way in."""
+        out = self.run_fixture(
+            """
+nextCockpitContexts.clear();
+nextRoute=nextRouteFromFragment("#n=project:cargento:console");
+renderNext();await __settle();await __settle();
+const shell=__els.app.innerHTML;
+console.log(JSON.stringify({panel:shell.slice(
+  shell.indexOf('data-next-cockpit-panel="console"'))}));
+"""
+        )
+        assert isinstance(out, dict)
+        panel = str(out["panel"])
+
+        setup = panel.index(self.CONSOLE_SETUP)
+        self.assertLess(panel.index("next-cockpit-scope"), setup)
+        prompt = "Select one exact session to open its read-only console."
+        self.assertIn(prompt, panel)
+        self.assertLess(panel.index(prompt), setup)
+        self.assertNotIn(prompt, panel[setup:])
+
+    def test_the_setup_summary_reads_the_flags_and_an_enabled_capability_leaves_it(self) -> None:
+        """AC-3. Derived from the flags, never from whether a body came back.
+
+        `nextCockpitTerminal` returns "" with no focus and
+        `nextCockpitConsoleStatus` returns "" with no sessions, so a summary
+        read off the rendered body would report an enabled bridge as off.
+        """
+        out = self.run_fixture(
+            r"""
+nextCockpitContexts.clear();
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+renderNext();await __settle();await __settle();
+const group=nextProjectGroups().find(g=>g.label==="cargento");
+const focus=nextCockpitFocusedSession(group);
+const entry=nextCockpitContexts.get(nextCockpitContextKey(group,focus));
+// The setup disclosure nests the console-status <details>, so the matching
+// close tag is found by depth rather than by the first "</details>".
+const read=()=>{
+  const html=__els.app.innerHTML;
+  const panel=html.slice(html.indexOf('data-next-cockpit-panel="console"'));
+  const open=panel.lastIndexOf("<details",panel.indexOf('class="next-cockpit-console-setup"'));
+  let depth=0,shut=open;
+  for(const token of panel.slice(open).matchAll(/<details|<\/details>/g)){
+    depth+=token[0]==="<details"?1:-1;
+    if(depth===0){ shut=open+token.index; break; }
+  }
+  const body=panel.slice(open,shut);
+  return {summary:(panel.slice(open).match(/<summary>([^<]*)<\/summary>/)||[])[1]||"",
+    insideOff:body.includes("Observer model is disabled for this run"),
+    insideOn:body.includes("data-next-observer-consent"),
+    presentOff:panel.includes("Observer model is disabled for this run"),
+    present:panel.includes("data-next-observer-consent")};
+};
+entry.data=Object.assign({},entry.data,{observer_model:{enabled:false}});
+renderNext();const off=read();
+entry.data=Object.assign({},entry.data,{observer_model:{enabled:true,disclosure:"x"}});
+renderNext();const on=read();
+console.log(JSON.stringify({off,on}));
+"""
+        )
+        assert isinstance(out, dict)
+        off = out["off"]
+        on = out["on"]
+        assert isinstance(off, dict)
+        assert isinstance(on, dict)
+
+        self.assertIn("observer model off", off["summary"])
+        self.assertIn("observer model on", on["summary"])
+        self.assertIn("terminal bridge off", off["summary"])
+        # Off: the section is rendered, and it is inside the disclosure.
+        self.assertTrue(off["presentOff"])
+        self.assertTrue(off["insideOff"])
+        # On: the section is rendered, and it has left the disclosure.
+        self.assertTrue(on["present"])
+        self.assertFalse(on["insideOn"])
+
+    def test_the_steer_composer_is_built_once_in_the_chrome(self) -> None:
+        """AC-4. One construction path, reused rather than retyped.
+
+        The composer's index is ABOVE the tab list because the issue's solution
+        puts the call in `nextProjectCockpit` immediately before
+        `nextCockpitTabList()`. AC-4 as drafted says "below", which contradicts
+        that sentence; the solution paragraph governs, and the point either
+        reading shares -- out of the panel, out of TRIPWIRES -- is asserted too.
+        """
+        out = self._console()
+        shell = str(out["shell"])
+        panel = str(out["panel"])
+
+        self.assertEqual(1, shell.count("data-next-steer-form"))
+        self.assertEqual(1, shell.count("data-next-steer>"))
+        self.assertNotIn("data-next-steer", panel)
+        guardrails = shell.index("data-next-guardrails")
+        self.assertLess(shell.index("data-next-steer>"), guardrails)
+        self.assertLess(shell.index("data-next-steer>"), shell.index('role="tablist"'))
+        for attribute in (
+            "data-next-steer-form",
+            'data-next-draft="steer"',
+            "data-next-controls-project=",
+            'data-next-focus="steer-draft:',
+            'maxlength="500"',
+        ):
+            with self.subTest(attribute=attribute):
+                self.assertIn(attribute, shell)
+
+    def test_the_second_composer_construction_path_is_gone(self) -> None:
+        """AC-4's other half: "renders once" is unprovable while a second
+        builder stands. `nextProjectControls` has no caller in `web/`."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        sources = [path.read_text(encoding="utf-8") for path in sorted(web.glob("*.js"))]
+        joined = "\n".join(sources)
+        self.assertNotIn("nextProjectControls", joined)
+        self.assertEqual(2, joined.count("nextProjectSteer("))
+
+    def test_the_composer_warns_before_the_first_keystroke(self) -> None:
+        """AC-5. Today the sentence exists only in the post-submit receipt."""
+        out = self.run_fixture(
+            """
+console.log(JSON.stringify({steer:nextProjectSteer("cargento",{steers:[]})}));
+"""
+        )
+        assert isinstance(out, dict)
+        steer = str(out["steer"])
+
+        self.assertIn("Cargento has no write path into a session.", steer)
+        self.assertIn("kept in this browser tab", steer)
+        self.assertNotIn("next-steer-receipt", steer)
+        self.assertIn("Draft a next step — kept in this tab only", steer)
+        self.assertNotIn("Tell this project what to do next", steer)
+        self.assertIn('class="next-steer-caveat"', steer)
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        rule = re.search(r"\.next-steer-caveat\{([^}]*)\}", styles)
+        assert rule is not None
+        self.assertIn("var(--fs-sentence)", rule.group(1))
+        self.assertRegex(rule.group(1), r"line-height:|var\(--fs-sentence\)/")
+        self.assertNotIn("var(--mono)", rule.group(1))
+
+    def test_the_setup_disclosure_survives_a_redraw(self) -> None:
+        """AC-6. A bare `<details>` snaps shut on every poll."""
+        panel = str(self._console()["panel"])
+
+        setup = panel.index(self.CONSOLE_SETUP)
+        tag = panel[panel.rindex("<details", 0, setup) : panel.index(">", setup) + 1]
+        self.assertIn("data-next-cockpit-disclosure=", tag)
+        key = re.search(r'data-next-cockpit-disclosure="([^"]*)"', tag)
+        assert key is not None
+        self.assertIn("cargento", key.group(1))
+        self.assertIn("console-setup", key.group(1))
+
+    def test_the_promoted_submit_uses_the_plain_control_primitive(self) -> None:
+        """AC-7, re-measured. Triage wrote this as not-yet-assessable because
+        `.next-action` did not exist; DRC-4590 has since defined it, so the
+        criterion is assessed against the real primitive rather than a fallback.
+        """
+        out = self.run_fixture(
+            """
+console.log(JSON.stringify({steer:nextProjectSteer("cargento",{steers:[]})}));
+"""
+        )
+        assert isinstance(out, dict)
+        submit = re.search(r'<button type="submit"[^>]*>', str(out["steer"]))
+        assert submit is not None
+        self.assertIn('class="next-action"', submit.group(0))
+        self.assertNotIn("next-action--primary", submit.group(0))
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".next-action{", styles)
+        self.assertIn(".next-action--primary{", styles)
 
     def test_local_tab_permalink_and_arrow_keys_preserve_project_session_route(self) -> None:
         out = self.run_fixture(

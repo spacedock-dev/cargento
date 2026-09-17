@@ -379,8 +379,20 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-control>header{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
 .next-steer{padding-top:12px;border-top:1px solid var(--line)}
 .next-steer form{display:flex;gap:7px;padding:12px 0}
+.next-steer>header{display:grid;gap:4px}
+.next-steer-label{color:var(--ink3);font:var(--fs-label)/1.2 var(--mono);letter-spacing:.09em}
+.next-steer-caveat{margin:0;max-width:var(--measure);color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans)}
+/* Raised with the caveat above it, not on its own. A 15px sentence over a
+   12.5px input would draw the warning larger than the words it warns about,
+   which is the same ordering defect as an absence outranking its value
+   (docs/design-next-ui.md: a value is never drawn smaller than the caption
+   beside it in the same cell). The add button next to the tripwire input is
+   already 15px through .next-action, so this closes that pair too. */
 .next-steer label,.next-guardrail-add-input label{flex:1;min-width:0}
-.next-steer input,.next-guardrail-add-input input{width:100%;min-width:0;padding:8px;border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans)}
+.next-steer input,.next-guardrail-add-input input{width:100%;min-width:0;padding:8px;border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink);font:var(--fs-sentence)/1.55 var(--sans)}
+.next-steer--bar{padding:0 0 12px;border-top:0;border-bottom:1px solid var(--line)}
+.next-steer--bar>header{padding-top:12px}
+.next-steer--bar form{padding-bottom:0}
 .next-steer button,.next-guardrail-add,.next-guardrail-add-input button{color:var(--ink2);font-family:var(--mono)}
 .next-guardrail-add{align-self:flex-start;color:var(--ink3)}
 .next-steer-receipts,.next-guardrail-rows{display:grid;gap:8px}
@@ -828,6 +840,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-plan-details>div{margin-top:12px;color:var(--ink);font-family:var(--sans)}
 .next-cockpit-decision-summary{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink3);font:var(--fs-2xs) var(--mono)}
 .next-cockpit-console-status{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink3);font:var(--fs-2xs) var(--mono)}
+.next-cockpit-console-setup{margin:0;padding:9px 12px;border-top:1px solid var(--line2)}
+.next-cockpit-console-setup>ul{margin:8px 0 0;padding-left:18px}
 .next-cockpit-console-status summary{cursor:pointer}
 .next-cockpit-console-status ul{margin:8px 0 0;padding-left:18px}
 .next-cockpit-empty{margin:0;padding:12px 10px;color:var(--ink2);font-size:var(--fs-xs)}
@@ -1205,7 +1219,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-recovery .next-project-goal-gap{font:var(--fs-xs)/1.55 var(--sans)}
 .next-cockpit-recovery .next-project-goal-source{font-size:var(--fs-2xs)}
 .next-cockpit-recovery details>summary,.next-course-evidence>summary,
-.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px;max-width:var(--measure)}
+.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,
+.next-cockpit-console-setup>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px;max-width:var(--measure)}
 .next-cockpit-recovery details>summary:hover,.next-course-evidence>summary:hover{color:var(--ink)}
 .next-cockpit-content summary:focus-visible,#app .next-cockpit-scope-tree a:focus-visible,
 #app .next-cockpit-scope-options a:focus-visible,.next-cockpit-scope-switcher>summary:focus-visible{outline:2px solid var(--ink2);outline-offset:3px}

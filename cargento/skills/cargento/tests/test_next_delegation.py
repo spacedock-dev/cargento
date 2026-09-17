@@ -183,7 +183,12 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("30 tok/m while delegated", block)
         self.assertIn("2 human turns", block)
         self.assertIn("<progress", block)
-        self.assertLess(html.index("DELEGATION"), html.index("STEER · LOCAL ONLY"))
+        # The rail used to end in the steer composer, which DRC-4595 moved to
+        # the project chrome. Re-pointed from "DELEGATION comes first" -- true
+        # of an empty rail too -- to the placement that replaced it.
+        self.assertNotIn("STEER · LOCAL ONLY", html)
+        self.assertNotIn("data-next-steer", html)
+        self.assertIn("data-next-guardrails", html)
 
     def test_gate_exit_across_idle_resumption_counts_one_human_turn(self) -> None:
         out = self.run_fixture(

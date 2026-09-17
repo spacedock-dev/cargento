@@ -126,8 +126,9 @@ the palette, below the body-text requirement there. **Those figures are audit-on
 implementation, table or fixture exists in this repository, so they cannot be reproduced from the
 tree**, which is the same caveat the milestone carries. What the tree does say is that this was
 never a contrast defect: `--ink` on `--bg` recomputes to 16.36:1 and the asset test asserting more
-than 4.5:1 is green. DRC-4596 adds the guardrail that would close the gap, and lands after the
-change the figures justify. The absence explanations the prototype placed at 10px are sentences, so
+than 4.5:1 is green. No issue here adds an APCA implementation, so the audit
+figures stay audit-only. DRC-4596 guards the **px floors** the audit motivated, which is a
+different and weaker property than reproducing it. The absence explanations the prototype placed at 10px are sentences, so
 they take the sentence tier, and two of them had to leave an `<h2>`'s `<header>` to get there.
 **Raising an absence is not safe on its own.** An absence and the value it replaces are chosen by a
 ternary, so they never co-exist in one render: no sweep of co-existing selectors sees the pair, and
@@ -142,8 +143,14 @@ with, so both branches resolve identically whatever the tier is.
 safely, because doing so needs a census of the emitters that this stylesheet cannot supply. The
 stylesheet
 retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
-above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
-between contrast steps.
+above 4.5:1 on the ground, panel and inset surfaces. Since DRC-4596 it also enforces size, and the
+census below is its output rather than a hand count: every `--fs-*` token resolves at or above 11px
+with `--fs-sentence` pinned to 15px, the px literals below the label floor are an exact registry, and
+every rule passing the membership test resolves at or above a literal 15.0 except an exact recorded
+inventory. **What it still cannot see is a sentence composed across several rules.** Where one rule
+sets the size, a second the family and a third the line-height, no single-rule census can join them,
+and the two that render that way today are named at the end of this section. It does not enforce
+spacing between contrast steps.
 
 What counts as a sentence is a test, not a judgement call, so a reviewer argues with a list:
 **an element is on the sentence tier when its resolved style is sans with a prose line-height.**
@@ -156,13 +163,15 @@ the set**, because it cannot see an element whose family, size and line-height a
 three rules, and it will report clean while such an element still renders below the floor on
 screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
 
-Sixty-five rules on the old `--fs-xs` step carry the whole declaration themselves, plus the two
-absence explanations above, and all sixty-seven resolve to `var(--fs-sentence)`. Forty-nine of them
-also cap at `--measure` (540px, about 72 characters at this tier). The eighteen that do not are
-the ones a cap would clamp wrongly: eight carry `overflow-wrap:anywhere`, eight are layout boxes
-rather than single lines, and
-`.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
-would clamp the cards inside them instead of the sentences.
+Sixty-five rules on the old `--fs-xs` step qualified when the tier was drawn, plus the two absence
+explanations above; **seventy rules resolve to `var(--fs-sentence)` today**, the three added since
+being DRC-4590's control primitive and the two DRC-4595 raised with the steer caveat. Forty-seven of
+them also cap at `--measure` (540px, about 72 characters at this tier). The twenty-three that do not
+are the ones a cap would clamp wrongly: eight carry `overflow-wrap:anywhere`, thirteen are layout
+boxes, fields or grid children rather than single lines, and `.next-cockpit-content` and
+`.next-cockpit-recovery>div` are the prose containers, where 540px would clamp the cards inside them
+instead of the sentences. These counts are asserted by `NextPageAssetContractTest`, so they move with
+the sheet rather than with whoever last read it.
 
 One member of the sixty-seven was exchanged for another on 2026-09-17, and all three counts above
 are unchanged because of that exchange rather than in spite of it: `.next-cockpit-authority>span`
@@ -174,20 +183,21 @@ now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `
 its place is the line saying whether the captain is needed: prose the board wrote, and the string
 a reader opening a project is actually looking for.
 
-**The floor is not yet universal, and DRC-4602 owns both the audit and the remainder.** Sans text
-still resolves below 15px in two shapes. The first is a rule that declares a smaller size outright,
-on the `--fs-sm`, `--fs-body` and `--fs-summary` steps and on a handful of literals. The second is
-the composed kind the definition above warns about: `.next-operation-fact--unknown strong` takes
-its size and mono family from one rule, a flip back to sans from a second and its line-height from
-a third, and `.next-cockpit-recovery small` takes its size from its own rule and inherits sans and
-the line-height from the cell around it. Neither appears in a census that reads one rule at a time,
-and both render at 12.5px, below anything the first shape reaches.
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Nineteen further sans
+rules pass the same test at 13px to 14.5px: seven on `--fs-sm`, three on `--fs-body`, two on
+`--fs-summary`, and seven literals (one 14.5px, three 13.5px, one 14px, two 13px). DRC-4596 records
+them as an exact inventory, so a rule leaving the sentence tier for a lower one reds the same way a
+new sub-floor rule does. Beyond them sit **two that no single-rule census can see**, because their
+size, family and line-height are composed across three rules each. Those two are
+`.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a flip back to
+sans from a second and its line-height from a third, and `.next-cockpit-recovery small`, which takes
+12.5px from its own rule and inherits sans and the line-height from the cell. **No offline guard in
+this repository sees either**, and DRC-4596's must not be read as establishing a universal floor;
+only a computed style reaches them.
 
-**The size of that set is not stated here**, because every figure this branch produced for it was
-produced by a per-rule census and is therefore a floor rather than a count. One of them was wrong
-for a second reason worth keeping: a `font:` shorthand pattern that matched the weight instead of
-the size read `font:13px/1.5` as no size at all and dropped two rules silently. A census that
-cannot fail loudly on a shorthand it does not understand will keep producing plausible totals.
+They were left alone: raising them is another nineteen rules of review surface, and some of the
+nineteen are not sentences at all (a textarea and two prototype rules), so the set needs reading
+one selector at a time rather than a sweep.
 
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
@@ -197,14 +207,6 @@ thirteen lines, but none of those lines matches `operation-fact`, so the rules r
 that was counted were the same for both readings. The narrower claim is the true one. A bare number reads as a
 property of the code when it is a property of an afternoon. The stable unit is the rule, or the
 element shape, never its population.
-
-They were left alone rather than swept, and **how many there are is not stated here in any form**,
-including by comparison with the tier this branch did move. Every figure this branch produced was a
-per-rule floor, and a floor cannot be reported as a count in either direction: asserting a
-magnitude above the highest of them would be the same error pointing the confident way. What can be
-said is the shape. Some of the set is not sentences at all, a textarea and the prototype terminal
-among them, so it needs reading one element at a time. That is the work DRC-4602 carries, and the
-size is its to measure.
 
 Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
 eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
@@ -550,12 +552,27 @@ happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-Console includes STEER and TRIPWIRES because the dashboard needs the interaction shape,
+The board carries STEER and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
 makes no request. A disabled field was rejected because it could not demonstrate the interaction,
 while an enabled field with no receipt would look like a successful send.
+
+The steer composer is built once, in the project chrome above the tab strip, rather than inside
+TRIPWIRES. DRC-4595 moved it: as the last child of a section captioned "local only · nothing
+enforces these" it was 86% of the way down the Console panel, subordinate to a section it has
+nothing to do with, and absent from the other four tabs. The chrome is where a project-scoped draft
+belongs, and a single call site is what makes "renders once" provable: a second builder stood in
+`next-controls.js` with no caller and was deleted for that reason.
+
+**The correction no longer waits for the press.** It used to be built from the stored drafts, so
+before the first keystroke the control promised delivery and said nothing about what it does.
+A caveat now sits above the field in every render: one sentence on the sentence tier saying there is
+no write path and that anything typed is a note to yourself. Raising it alone would have drawn the
+warning larger than the words it warns about, so the field was raised with it and the pair is
+asserted as a pair. The `send ⏎` submit keeps its wording under this ruling, which retains the
+control specifically to demonstrate the interaction shape; renaming it is filed separately.
 
 Tripwire rules are viewer preferences. They are stored under a project-label key in the next
 bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
@@ -763,6 +780,20 @@ any member is working, waiting or carrying an exact request. Historical projects
 and counts but omit member activity lines. Project detail then owns workflow and grouped activity;
 session detail owns the exact session's current activity and progressive command facts. No level
 repeats a broader summary merely because it can.
+
+The same order governs inside a panel, and Console is where it was breached. Measured at 1680x1057,
+its first operational heading began 341px into a 968px panel: 309px of that was an exact-session
+terminal, an observer-model notice and a raw status line, three blocks describing capabilities a
+default run has switched off. They never change while a reader works, and the figures under them
+change minute to minute. The panel now emits the scope header, the select-a-session prompt at
+project scope, the operations rail, and then one disclosure holding the setup blocks. Nothing left
+the page.
+
+Two rules keep that honest. The disclosure summary reads the capability flags, not the rendered
+bodies: the terminal section returns empty with no focus and the status line returns empty with no
+sessions, so a summary derived from what came back would report an enabled bridge as off. And a
+capability that is on is operational content, so its section renders expanded and outside the
+disclosure rather than collapsed with the rest.
 
 ## NUI-17: the gate queue hands over a command, and only where one was measured
 

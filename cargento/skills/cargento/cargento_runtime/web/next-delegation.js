@@ -288,5 +288,5 @@ function nextProjectRail(context){
   const state = nextControlsProjectState(project.key);
   return '<aside class="next-project-detail-rail" data-next-project-rail>' +
     nextRailDelegation(project) + nextRailWaiting(project) + nextRailCapacity(payload, model) +
-    nextProjectGuardrails(project.key, state, true) + '</aside>';
+    nextProjectGuardrails(project.key, state) + '</aside>';
 }

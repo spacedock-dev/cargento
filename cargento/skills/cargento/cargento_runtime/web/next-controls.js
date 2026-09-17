@@ -108,7 +108,7 @@ function nextControlsStoreRules(project, state){
   }
 }
 
-function nextProjectSteer(project, state){
+function nextProjectSteer(project, state, layout = ""){
   const receipts = state.steers.map(record =>
     '<div class="next-steer-receipt" data-next-steer-receipt>' +
     `<strong>${esc(record.text)}</strong>` +
@@ -116,11 +116,19 @@ function nextProjectSteer(project, state){
     'Cargento has no write path into a session.</p></div>'
   ).join("");
   const history = receipts ? `<div class="next-steer-receipts">${receipts}</div>` : "";
-  return '<section class="next-control next-steer" data-next-steer>' +
-    '<header><span>STEER · LOCAL ONLY</span></header>' +
+  /* The correction used to arrive only after the press, because it was built
+     from state.steers: before the first keystroke the control promised
+     delivery ("Tell this project what to do next", submit "send") and said
+     nothing about what it does. The caveat is a sentence rather than a label
+     because it is prose a person reads once and must believe. */
+  return `<section class="next-control next-steer${layout ? " " + layout : ""}" data-next-steer>` +
+    '<header><span class="next-steer-label">STEER · LOCAL ONLY</span>' +
+    '<p class="next-steer-caveat">Cargento has no write path into a session. Anything you type ' +
+    'here is a note to yourself, kept in this browser tab.</p></header>' +
     `<form data-next-steer-form data-next-controls-project="${esc(project)}">` +
     '<label><span class="next-visually-hidden">Steer draft</span>' +
-    '<input name="steer" maxlength="500" placeholder="Tell this project what to do next" ' +
+    '<input name="steer" maxlength="500" ' +
+    'placeholder="Draft a next step — kept in this tab only" ' +
     `data-next-draft="steer" data-next-controls-project="${esc(project)}" ` +
     `data-next-focus="steer-draft:${esc(project)}" ` +
     `value="${esc(nextControlsDraft(project, "steer"))}"></label>` +
@@ -157,21 +165,19 @@ function nextProjectGuardrailAdd(project, state){
     `data-next-controls-project="${esc(project)}">+ set a tripwire</button>`;
 }
 
-function nextProjectGuardrails(project, state, includeSteer = false){
+/* No `includeSteer` any more. TRIPWIRES used to carry the steer composer as its
+   last child, which is what put the page's one writing surface under a section
+   captioned "local only · nothing enforces these". The composer is built once,
+   in the project chrome; leaving a second construction path here would make
+   "renders once" unprovable and let a later caller restore the arrangement. */
+function nextProjectGuardrails(project, state){
   return '<section class="next-control next-guardrails next-rail-panel" data-next-guardrails ' +
     'data-next-rail-panel="tripwires">' +
     nextRailHeader("TRIPWIRES", "local only · nothing enforces these", "amber", true) +
     `<div class="next-guardrail-rows">${nextProjectGuardrailRows(project, state)}</div>` +
     nextProjectGuardrailAdd(project, state) +
     '<p class="next-rail-reason">C1 would let an observer act on these. Until it ships they are ' +
-    'a note to yourself, held in this browser.</p>' +
-    (includeSteer ? nextProjectSteer(project, state) : "") + '</section>';
-}
-
-function nextProjectControls(context){
-  const project = context.group.label;
-  const state = nextControlsProjectState(project);
-  return nextProjectSteer(project, state) + nextProjectGuardrails(project, state);
+    'a note to yourself, held in this browser.</p></section>';
 }
 
 function nextControlsClosest(event, selector){

@@ -3642,6 +3642,31 @@ function nextCockpitTerminal(group, focus){
     '</section>';
 }
 
+/* Read from the sources the two sections read, rather than from
+   whether their HTML came back non-empty. A body-derived summary reports an
+   enabled bridge as off, because nextCockpitTerminal returns "" with no focus
+   or no registered surface and nextCockpitConsoleStatus returns "" with no
+   sessions -- a structurally-present default standing in for a measurement,
+   which is the shape AGENTS.md "Measured Invariants" names. */
+function nextCockpitConsoleCapabilities(group, focus){
+  const terminal = focus ? projectTerminalBySession[sessKey(focus)] : null;
+  const entry = nextCockpitContexts.get(nextCockpitContextKey(group, focus));
+  const model = entry && entry.data && entry.data.observer_model;
+  return {
+    terminal: Boolean(terminal && terminal.state === "registered"),
+    observer: Boolean(model && model.enabled === true),
+  };
+}
+
+function nextCockpitConsoleSetup(capabilities, body){
+  const summary = "How this server was started \u2014 terminal bridge " +
+    (capabilities.terminal ? "on" : "off") + ", observer model " +
+    (capabilities.observer ? "on" : "off");
+  return '<details class="next-cockpit-console-setup" data-next-cockpit-console-setup' +
+    nextCockpitDisclosureAttr("console-setup") + '>' +
+    `<summary>${esc(summary)}</summary>${body}</details>`;
+}
+
 function nextCockpitPanel(context, focus, observation, commandAttention){
   /* The route's `focus`, not this function's resolved `focus` session. Every
      other site that needs the tab set has only the route: the keydown handler
@@ -3664,15 +3689,27 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
     body = nextCockpitDecisionSummary(context.group, focus, observation) +
       nextCockpitTimeline(context.group, focus);
   }else{
-    body = nextCockpitConsoleScope(focus) + (focus
-      ? nextCockpitTerminal(context.group, focus)
+    /* Operations first. The reader came here to act, and the two setup
+       sections describe capabilities a default run has switched off: 309px of
+       968px, measured, that never change while you work. An enabled capability
+       is operational content, so it leaves the disclosure -- but it is emitted
+       AFTER the rail rather than before it, because the rail is what the panel
+       is now ordered around and a live terminal ahead of it would put the
+       operations back below a screenful. */
+    const capabilities = nextCockpitConsoleCapabilities(context.group, focus);
+    const terminal = focus ? nextCockpitTerminal(context.group, focus) : "";
+    const prompt = focus ? ""
       : '<p class="next-cockpit-empty">Select one exact session to open its read-only console.' +
         (context.group.sessions.length === 1
           ? ` <a href="${esc(nextFragmentForRoute({view:"project",project:context.group.label,
             focus:sessKey(context.group.sessions[0]),tab:"console"}))}">Open this session’s console</a>`
-          : "") + '</p>') +
-      nextObserverModelControls(context.group, focus) +
-      nextCockpitConsoleStatus(context.group) + nextProjectRail(context);
+          : "") + '</p>';
+    const observer = nextObserverModelControls(context.group, focus);
+    body = nextCockpitConsoleScope(focus) + prompt + nextProjectRail(context) +
+      (capabilities.terminal ? terminal : "") + (capabilities.observer ? observer : "") +
+      nextCockpitConsoleSetup(capabilities,
+        (capabilities.terminal ? "" : terminal) + (capabilities.observer ? "" : observer) +
+        nextCockpitConsoleStatus(context.group));
   }
   return `<section class="next-cockpit-panel" id="next-cockpit-panel-${tab}" role="tabpanel" ` +
     `data-next-cockpit-panel="${tab}" aria-label="${nextCockpitHumanLabel(tab)}">` +
@@ -3684,8 +3721,17 @@ function nextProjectCockpit(context, observation, commandAttention){
   const focus = nextCockpitFocusedSession(group);
   projectQuerySession = focus ? sessKey(focus) : "";
   lastData = nextData;
+  /* The one place on this page a person can write anything. It used to be the
+     last child of TRIPWIRES, a section captioned "local only \u00b7 nothing
+     enforces these", 86% of the way down the Console panel and on no other tab.
+     The draft is project-scoped, so the project chrome is where it belongs.
+     Reused rather than retyped: the renderer carries data-next-steer-form,
+     data-next-draft, data-next-controls-project, data-next-focus and the
+     500-character cap, and a second copy of the markup loses them silently. */
+  const projectKey = context.project && context.project.key || group.label;
   return nextCockpitViewingSession(focus) +
     nextCockpitRecoveryStrip(group, observation, commandAttention, context.project) +
+    nextProjectSteer(projectKey, nextControlsProjectState(projectKey), "next-steer--bar") +
     nextCockpitTabList(context, focus, observation) +
     nextCockpitPanel(context, focus, observation, commandAttention);
 }
