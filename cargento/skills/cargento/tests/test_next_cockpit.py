@@ -10099,13 +10099,21 @@ console.log(JSON.stringify({
             """
 const group = nextProjectGroups()[0];
 const cue = (tab, project, extra) => nextCockpitTabCue(tab,
-  Object.assign({group, project}, extra || {}), null, {semantic:{facts:[],work_items:[],projections:{}}});
+  Object.assign({group, project}, extra || {}), null);
 const courseFor = n => cue("course",
   {key:"cargento", changes:Array.from({length:n}, (_, i) => ({at:i,label:"x"}))});
-const decisionsFor = n => nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null,
-  {semantic:{facts:Array.from({length:n}, (_, i) => ({fact_id:"d" + i, type:"gate_decision",
+// Seeded on the context entry the cue reads, not passed in beside it. The cue
+// and the Decisions panel resolve one entry through `nextCockpitContextRead`,
+// so a fixture that supplies facts any other way is describing a board that
+// cannot exist.
+const seedProject = semantic => nextCockpitContexts.set(
+  nextCockpitContextKey(group, null), {data:{semantic}, revision:105});
+const decisionsFor = n => {
+  seedProject({facts:Array.from({length:n}, (_, i) => ({fact_id:"d" + i, type:"gate_decision",
     at:i, by:"person:captain", decision:"approve", stage:"review"})),
-    work_items:[], projections:{}}});
+    work_items:[], projections:{}});
+  return nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null);
+};
 const heldFor = n => {
   nextData.annotate = true;
   nextData.unasked = true;
@@ -10117,8 +10125,8 @@ console.log(JSON.stringify({
   course:[0,1,4].map(n => courseFor(n)),
   courseAbsent:cue("course", {key:"cargento", changes:null}),
   decisions:[0,2,5].map(n => decisionsFor(n)),
-  decisionsAbsent:nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null,
-    {semantic:{work_items:[], projections:{}}}),
+  decisionsAbsent:(() => { seedProject({work_items:[], projections:{}});
+    return nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null); })(),
   held:[0,1,3].map(n => heldFor(n)),
   heldAbsent:(() => { nextData.annotate = true; nextData.unasked = true;
     return nextCockpitTabCue("held-to", {group, project:{key:"cargento"}},
@@ -10163,25 +10171,42 @@ console.log(JSON.stringify({
         out = self.run_fixture(
             """
 const group = nextProjectGroups()[0];
-// Withhold the focused context entry so the Decisions panel takes the
+const projectKey = nextCockpitContextKey(group, null);
+// Withhold the context entry so the Decisions panel takes the
 // "Loading semantic context…" arm the cue has to agree with.
 nextCockpitContexts.clear();
 const pending = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}},
-  {harness:"codex", sid:"focus-1"}, null);
-const unobserved = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null,
-  {semantic:{work_items:[], projections:{}}});
-console.log(JSON.stringify({pending, unobserved,
+  {harness:"codex", sid:"focus-1"});
+// The entry arrived and published no facts: read, and empty-handed.
+nextCockpitContexts.set(projectKey, {data:{semantic:{work_items:[], projections:{}}},
+  revision:105});
+const unobserved = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null);
+// The read FINISHED and failed. `nextCockpitLoadContext`'s catch is the only
+// writer of `error`, and this is the exact record it stores.
+nextCockpitContexts.set(projectKey, {data:null, revision:105, error:true});
+const unavailable = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null);
+const panelUnavailable = nextCockpitTimeline(group, null)
+  .includes("Semantic context unavailable.");
+console.log(JSON.stringify({pending, unobserved, unavailable, panelUnavailable,
   pendingHtml:nextCockpitTabCueHtml("decisions", pending),
   unobservedHtml:nextCockpitTabCueHtml("decisions", unobserved),
+  unavailableHtml:nextCockpitTabCueHtml("decisions", unavailable),
   countHtml:nextCockpitTabCueHtml("decisions", {state:"count", value:2})}));
 """
         )
         assert isinstance(out, dict)
         self.assertEqual({"state": "pending"}, out["pending"])
         self.assertEqual({"state": "unobserved"}, out["unobserved"])
+        # A read that FINISHED and failed is neither. The cue reported it as
+        # `pending` -- "decisions not loaded yet", about a read that was over --
+        # beside a panel already saying "Semantic context unavailable."; the two
+        # now resolve one `nextCockpitContextRead`, so they cannot disagree
+        # about what state the read is in.
+        self.assertEqual({"state": "unavailable"}, out["unavailable"])
+        self.assertTrue(out["panelUnavailable"], "the panel did not take its failed arm")
         marks = {}
         glosses = {}
-        for key in ("pendingHtml", "unobservedHtml", "countHtml"):
+        for key in ("pendingHtml", "unobservedHtml", "unavailableHtml", "countHtml"):
             html = out[key]
             assert isinstance(html, str)
             mark = re.search(r'aria-hidden="true">([^<]*)<', html)
@@ -10193,9 +10218,14 @@ console.log(JSON.stringify({pending, unobserved,
             glosses[key] = gloss.group(1)
         self.assertEqual("…", marks["pendingHtml"])
         self.assertEqual("·", marks["unobservedHtml"])
-        self.assertEqual(3, len(set(marks.values())))
-        self.assertEqual(3, len(set(glosses.values())))
+        self.assertEqual("—", marks["unavailableHtml"])
+        self.assertEqual(4, len(set(marks.values())))
+        self.assertEqual(4, len(set(glosses.values())))
         self.assertIn("next-cockpit-tab-cue--pending", out["pendingHtml"])
+        # Every non-count state names its own variant. One that fell through to
+        # "" would inherit the cue's `--ink2`, the ink a real figure gets.
+        self.assertIn("next-cockpit-tab-cue--unavailable", out["unavailableHtml"])
+        self.assertIn("next-cockpit-tab-cue--unobserved", out["unobservedHtml"])
 
     def test_now_console_and_unannotated_held_to_render_no_cue_element(self) -> None:
         """AC-6. Falsified by an empty cue span, a 0, or a · on any of the three."""
@@ -11515,6 +11545,76 @@ console.log(JSON.stringify({capabilities,
 """)
         self.assertEqual({"terminal": False, "observer": True}, out["capabilities"])
         self.assertIn("terminal bridge off", out["summary"])
+
+
+class EveryTabCueVariantIsColouredByItsOwnRuleTest(unittest.TestCase):
+    """A cue variant with no rule renders in the ink a real figure gets.
+
+    `.next-cockpit-tab-cue` is `--ink2`, the value ink. Each non-count state
+    adds a variant class that takes it down to the absence ink, so a variant
+    the producer emits and the sheet does not style resolves to `--ink2` and a
+    stated absence renders exactly as loudly as the count it replaces -- the
+    inversion this milestone exists to remove.
+
+    This was written because the obvious assertion does not catch it. Pinning
+    the emitted class name passes whether or not a rule exists: measured, the
+    `--unavailable` rule was deleted and the whole cockpit module stayed green.
+    The byte-pin oracles went red, but they go red on any stylesheet edit and
+    so are evidence of nothing here.
+
+    The variants are DERIVED from the producer, so a state added with no rule
+    reds this instead of arriving beside it. Resolved through the cascade and
+    compared against the unmodified cue, per this sheet's standing rule that a
+    colour is read by resolving an element and never by counting rules.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+        cls.cockpit_js = (web / "next-cockpit.js").read_text(encoding="utf-8")
+
+    cockpit_js: str
+
+    def ink(self, *classes: str) -> str:
+        path = [_node("span", "next-cockpit-tab-cue", *classes)]
+        winning = []
+        for selector, body, order in self.rules:
+            try:
+                specificity = css_cascade.matches(path, selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            if specificity is None:
+                continue
+            declared = re.search(r"(?:^|;)\s*color:\s*([^;]+)", body)
+            if declared:
+                winning.append((specificity, order, declared.group(1).strip()))
+        self.assertNotEqual([], winning, f"no rule colours {classes or ('the bare cue',)}")
+        winning.sort()
+        return winning[-1][2]
+
+    def variants(self) -> set[str]:
+        """Every variant class `nextCockpitTabCueHtml` can put on a cue."""
+        return set(re.findall(r'" (next-cockpit-tab-cue--[a-z-]+)"', self.cockpit_js))
+
+    def test_every_variant_the_producer_emits_is_styled(self) -> None:
+        found = self.variants()
+        # A derivation that found nothing would pass the loop below in silence.
+        self.assertEqual(
+            {"pending", "unobserved", "unavailable"}, {name.rsplit("--", 1)[1] for name in found}
+        )
+        value = self.ink()
+        for variant in sorted(found):
+            with self.subTest(variant=variant):
+                self.assertNotEqual(
+                    value,
+                    self.ink(variant),
+                    f"{variant} resolves to the cue's own ink, so an absence renders "
+                    "in the ink a real figure gets",
+                )
 
 
 class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):

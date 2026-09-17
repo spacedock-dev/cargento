@@ -3189,6 +3189,37 @@ function nextCockpitLoadContext(group, focus){
   });
 }
 
+/* What a context read is CURRENTLY in, classified once for the panel that
+   renders it and the cue that summarises it.
+
+   Written because the two disagreed. The panel keyed off `entry.data` AND
+   `entry.error`; the cue keyed off `entry.data` alone, so a first fetch that
+   FAILED -- the `.catch()` above is the only writer of `error`, and it stores
+   `{data:null, error:true}` -- left the panel saying "Semantic context
+   unavailable." beside a cue reporting `pending`, glossed "decisions not
+   loaded yet". A completed, failed read reported as still in flight. The
+   focused arms differed a second way: the panel also requires the PROJECT
+   entry when a session is focused, and the cue did not.
+
+   Two conditions that must agree is the shape that produced both, so this
+   returns the answer instead and neither caller re-derives it. `entry` and
+   `projectEntry` come back with it, because the ready path needs them and
+   fetching them twice is how the next divergence starts. */
+function nextCockpitContextRead(group, focus){
+  const entry = nextCockpitContexts.get(nextCockpitContextKey(group, focus));
+  const projectEntry = focus
+    ? nextCockpitContexts.get(nextCockpitContextKey(group, null)) : entry;
+  if(entry && entry.data && (!focus || (projectEntry && projectEntry.data))){
+    return {state:"ready", entry, projectEntry};
+  }
+  /* A failure on EITHER entry the read needs, matching the condition the panel
+     has always used. `error` is written only by the poll's `.catch()`, so it
+     means a read that finished and did not arrive -- never one still running. */
+  const failed = Boolean(entry && entry.error) ||
+    Boolean(focus && projectEntry && projectEntry.error);
+  return {state: failed ? "unavailable" : "pending", entry, projectEntry};
+}
+
 function nextCockpitMemoFields(group, focus){
   const field = (kind, label, placeholder) => {
     const key = nextCockpitMemoKey(group, focus, kind);
@@ -3296,42 +3327,46 @@ function nextCockpitTabCueCount(length){
   return length > 0 ? {state:"count", value:length} : {state:"zero", value:0};
 }
 
-/* What the tab's own panel would count, in the four states the board can
+/* What the tab's own panel would count, in the five states the board can
    honestly be in about it: a figure, a collection read and found empty, a
-   collection nothing has published, and one whose context has not arrived.
-   `null` means this tab renders no countable collection at all, which is not
-   an absence to assert -- Now draws three fixed cells and Console is a
-   terminal.
+   collection nothing has published, one whose context has not arrived, and one
+   whose context was read and did not come back. `null` means this tab renders
+   no countable collection at all, which is not an absence to assert -- Now
+   draws three fixed cells and Console is a terminal.
 
    Every read is guarded on the collection being an array before `.length` is
    taken. A length read off a list that is declared on every row whether or not
    anything ran reports the schema rather than the session, which is the defect
    DRC-4559 shipped and AGENTS.md's first Measured Invariant records. That is
-   also why `observation.semantic` is read directly here rather than through
-   `nextCockpitSemantic`, whose `{facts:[]}` default would turn "no observation
-   at all" into a confident zero. */
-function nextCockpitTabCue(tab, context, focus, observation){
+   also why the semantic collection is reached through the context entry rather
+   than through `nextCockpitSemantic`, whose `{facts:[]}` default would turn
+   "no context at all" into a confident zero. */
+function nextCockpitTabCue(tab, context, focus){
   const group = context && context.group;
   if(tab === "course"){
     const changes = context && context.project && context.project.changes;
     return Array.isArray(changes) ? nextCockpitTabCueCount(changes.length) : {state:"unobserved"};
   }
   if(tab === "decisions"){
-    /* One collection, not two that agree. At project scope `observation` IS
-       the entry `nextCockpitTimeline` renders from: `nextCockpitProjectObservation`
-       returns `nextCockpitContexts.get(key(group, null))`, which is the same
-       lookup the panel makes with no focus. So the cue and the panel cannot
-       read different facts; they read one object under two names.
+    /* The state from `nextCockpitContextRead`, so the cue cannot describe the
+       read differently from the panel it labels -- including the failed case,
+       which this cue used to report as `pending`.
 
-       `pending` at BOTH scopes, which the focused arm alone used to carry. A
-       project entry that has not come back is a collection nobody has read,
-       and the panel beside the cue says "Loading semantic context" over it;
-       calling that "decisions not published" reports the schema rather than
-       the session, which is AGENTS.md's first Measured Invariant. */
-    const entry = focus && group
-      ? nextCockpitContexts.get(nextCockpitContextKey(group, focus)) : null;
-    if(!(focus ? entry && entry.data : observation)) return {state:"pending"};
-    const semantic = focus ? entry.data.semantic : observation.semantic;
+       The facts come from that same read at BOTH scopes, rather than from the
+       `observation` argument at project scope. The two were the same object --
+       `nextCockpitProjectObservation` returns
+       `nextCockpitContexts.get(key(group, null))`, measured `===` -- so this
+       changes no board. What it removes is the SECOND read, which is the shape
+       that let the state and the facts drift apart here in the first place.
+
+       Neither `pending` nor `unavailable` is `unobserved`. A collection nobody
+       has finished reading is not a collection nothing published, and calling
+       it that reports the schema rather than the session, which is AGENTS.md's
+       first Measured Invariant. */
+    if(!group) return {state:"pending"};
+    const read = nextCockpitContextRead(group, focus);
+    if(read.state !== "ready") return {state: read.state};
+    const semantic = read.entry.data.semantic;
     if(!semantic || !Array.isArray(semantic.facts)) return {state:"unobserved"};
     return nextCockpitTabCueCount(projectDecisionFacts(
       group ? nextCockpitCanonicalSemantic(group, semantic) : semantic).length);
@@ -3349,21 +3384,34 @@ function nextCockpitTabCue(tab, context, focus, observation){
 function nextCockpitTabCueHtml(tab, cue){
   if(!cue) return "";
   const nouns = NEXT_COCKPIT_TAB_NOUNS.get(tab) || ["item", "items"];
+  /* Four states, and the em dash is this sheet's existing mark for a slot with
+     no figure in it -- `[data-next-absent]::before` puts the same character in
+     front of one. A read that finished and failed is not one still running and
+     not a collection nothing published, so it says so rather than borrowing
+     either mark.
+
+     Every state names its own variant. A state that fell through to "" would
+     inherit `.next-cockpit-tab-cue`'s `--ink2`, which is the ink a real figure
+     gets: an absence rendering as loudly as the fact it replaces is the
+     inversion this milestone exists to remove. */
   const mark = cue.state === "pending" ? "\u2026" :
-    cue.state === "unobserved" ? "\u00b7" : String(cue.value);
+    cue.state === "unobserved" ? "\u00b7" :
+    cue.state === "unavailable" ? "\u2014" : String(cue.value);
   const gloss = cue.state === "count"
     ? `${cue.value} ${cue.value === 1 ? nouns[0] : nouns[1]}`
     : cue.state === "zero" ? `No ${nouns[1]} observed`
     : cue.state === "pending" ? `${nouns[1]} not loaded yet`
+    : cue.state === "unavailable" ? `${nouns[1]} could not be read`
     : `${nouns[1]} not published`;
   const variant = cue.state === "pending" ? " next-cockpit-tab-cue--pending" :
-    cue.state === "unobserved" ? " next-cockpit-tab-cue--unobserved" : "";
+    cue.state === "unobserved" ? " next-cockpit-tab-cue--unobserved" :
+    cue.state === "unavailable" ? " next-cockpit-tab-cue--unavailable" : "";
   return `<span class="next-cockpit-tab-cue${variant}" data-next-cockpit-tab-cue="${cue.state}">` +
     `<span aria-hidden="true">${esc(mark)}</span>` +
     `<span class="next-visually-hidden">${esc(gloss)}</span></span>`;
 }
 
-function nextCockpitTabList(context, focus, observation){
+function nextCockpitTabList(context, focus){
   /* The route's `focus`, not the `focus` argument. The argument carries the
      session the cue needs; the tab SET stays on the route, because
      `nextCockpitPanel` reads the route too and a stale route would otherwise
@@ -3374,7 +3422,7 @@ function nextCockpitTabList(context, focus, observation){
     tabs.map(tab => {
       const label = nextCockpitHumanLabel(tab);
       const current = tab === selected;
-      const cue = nextCockpitTabCueHtml(tab, nextCockpitTabCue(tab, context, focus, observation));
+      const cue = nextCockpitTabCueHtml(tab, nextCockpitTabCue(tab, context, focus));
       return `<button type="button" role="tab" data-next-cockpit-action="tab" ` +
         `data-arg="${tab}" data-next-focus="cockpit-tab:${tab}" aria-controls="next-cockpit-panel-${tab}" ` +
         `aria-selected="${current}" tabindex="${current ? 0 : -1}">${label}${cue}</button>`;
@@ -3670,12 +3718,12 @@ function nextCockpitCourse(group, semantic, lanes){
 
 function nextCockpitTimeline(group, focus){
   const key = nextCockpitContextKey(group, focus);
-  const entry = nextCockpitContexts.get(key);
-  const projectEntry = nextCockpitContexts.get(nextCockpitContextKey(group, null));
   nextCockpitLoadContext(group, focus);
-  if(!entry || !entry.data || focus && (!projectEntry || !projectEntry.data)){
-    const failed = entry && entry.error || focus && projectEntry && projectEntry.error;
-    const label = failed ? "Semantic context unavailable." : "Loading semantic context…";
+  const read = nextCockpitContextRead(group, focus);
+  const entry = read.entry;
+  if(read.state !== "ready"){
+    const label = read.state === "unavailable"
+      ? "Semantic context unavailable." : "Loading semantic context…";
     return `<section class="next-cockpit-semantic" data-next-cockpit-semantic><h2>SEMANTIC TIMELINE</h2>` +
       `<p class="next-cockpit-empty">${label}</p></section>`;
   }
@@ -3876,7 +3924,7 @@ function nextProjectCockpit(context, observation, commandAttention){
   return nextCockpitViewingSession(focus) +
     nextCockpitRecoveryStrip(group, observation, commandAttention, context.project) +
     nextProjectSteer(projectKey, nextControlsProjectState(projectKey), "next-steer--bar") +
-    nextCockpitTabList(context, focus, observation) +
+    nextCockpitTabList(context, focus) +
     nextCockpitPanel(context, focus, observation, commandAttention);
 }
 

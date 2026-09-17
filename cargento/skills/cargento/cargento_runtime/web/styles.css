@@ -778,6 +778,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-tab-cue{margin-left:6px;color:var(--ink2);font:var(--fs-machine) var(--mono)}
 .next-cockpit-tab-cue--pending{color:var(--ink3);font:var(--fs-machine) var(--mono)}
 .next-cockpit-tab-cue--unobserved{color:var(--ink3);font:var(--fs-machine) var(--mono)}
+.next-cockpit-tab-cue--unavailable{color:var(--ink3);font:var(--fs-machine) var(--mono)}
 .next-cockpit-lede{margin:0;padding:10px 12px;max-width:var(--measure);color:var(--ink2);font:var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-panel>.next-cockpit-lede{grid-column:1/-1}
 .next-cockpit-panel[data-next-cockpit-panel="now"]>.next-cockpit-lede{padding:0}
