@@ -274,16 +274,17 @@ apart by a left rule: dim and solid, bright and solid, dotted. All three survive
 colour alone would not.
 
 The pair to watch when editing any of this is a value and the absence that replaces it. They are
-chosen by a ternary, so they never co-exist in one render and no single rule holds both sides,
-which is why a selector sweep and a live board both miss it. Where the two are separate selectors,
-resolve both through the cascade and compare them:
-`AnAbsenceNeverOutranksTheValueItReplacesTest` does that for the absences raised to the sentence
-tier, and `AnAbsenceNeverRendersLargerThanItsValueTest` compares the declared sizes of the pairs
-that are not raised. Where the two are one selector and an attribute, as in COUNTS, that comparison
-is not available at all, and the test instead requires the absent variant to declare no size of its
-own so it inherits the value's. `AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` holds
-that form, and the delegation pair besides, because a stamp that adds no size still says nothing
-about the base rule it sits on.
+chosen by a ternary, so they never co-exist in one render and no single rule holds both sides, which
+is why a selector sweep and a live board both miss it. Where the two are separate selectors there
+are two ways to hold them and they answer different questions.
+`AnAbsenceNeverOutranksTheValueItReplacesTest` resolves both through the cascade, for the absences
+raised to the sentence tier. `AnAbsenceNeverRendersLargerThanItsValueTest` compares the size each
+rule declares for itself, for the pairs that are not raised, so a pair that stops declaring one
+fails loudly instead of quietly inheriting. Where the two are one selector and an attribute, as in
+COUNTS, neither comparison is available, and the test instead requires the absent variant to declare
+no size of its own so it inherits the value's.
+`AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` holds that form, and holds the delegation
+pair beside it, because a stamp that adds no size still says nothing about the base rule it sits on.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
