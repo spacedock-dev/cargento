@@ -845,3 +845,46 @@ assembled `920_676` / `1127c596…`, styles.css `112_008` / `af33306f…`.
 
 Branch now carries three commits: `1d847b0` (the feature), `bb56beb` (the regression), `9cc6f64`
 (these four).
+
+### Copilot round, and a stranded branch ref, 2026-09-18
+
+Candidate **333d478** on `spacedock-ensign/drc-4588`, not pushed. Three findings: two fixed, one
+refuted.
+
+**T1 — real, and a regression this change created.** `aria-disabled` keeps the save control in the
+tab order where `hidden` removed it from the page, so a screen-reader user now reaches it and heard
+only that it was dimmed. The field's absence sentence gains a per-field id and the control points at
+it. The pointer is conditional on the sentence existing rather than on the state: a field holding
+saved words renders no absence paragraph, and an `aria-describedby` resolving to nothing is worse
+than none. `nextCockpitHeldToggle` drops it on a keystroke beside `aria-disabled`, because a live
+control described by "No goal typed for this session" is the same defect one state on. Both halves
+mutation-checked: not emitting it fails on `unexpectedly None`, leaving it behind fails on
+`'next-cockpit-held-absent-goal' is not None`.
+
+**T4 — real, fixed, and smaller than stated.** The direct-run guard sat 140 lines before the end of
+`test_next_page.py`. Moved. But that path fails on imports anyway
+(`ModuleNotFoundError: cargento_runtime`), so nothing was being skipped and the 31/31 was honest.
+The trap sat behind another trap; the move removes it for whoever fixes the import someday.
+
+**T3 — refuted, by execution rather than by reading.** The claim was that `\\s` inside a JS regex in
+a Python string reaches the engine as literal backslash-s, leaving the bare-`disabled` guard unable
+to fail. The enclosing string is a plain triple-quote, not a raw one, so Python collapses `\\s` to
+`\s` first. Run in node against both spellings: `{bare_disabled: true, aria_disabled: false}`. Then
+mutation-checked end to end — reverting the emitter to the bare attribute makes `bare` read true on
+all four refused states and the assertion fires. The difference from the raw-string site is real and
+harmless. Both the reviewer and the FO had agreed with the argument without running it; the FO
+recorded that reasoning about a guard is not checking a guard, whoever reasons.
+
+**A stranded branch ref, and why nothing was lost.** The FO ran `git checkout 36cdc64e` in this live
+worktree to verify the findings, which detached HEAD, so the T1/T4 commit landed off-branch while
+`spacedock-ensign/drc-4588` stayed at `9cc6f64`. Caught at commit time from the `detached HEAD`
+line, tagged `recovery/drc-4588-t1-t4` before reporting, and escalated rather than resolved: a merge
+commit in the PR is a shape decision. The FO chose to keep the merge, since `gh pr update-branch`
+had already put it on GitHub, and `git branch -f` to `333d478` was a fast-forward that discarded
+nothing. Verified after: `9cc6f64` and `origin/main` both still ancestors, tree clean, byte pins
+unmoved against the assets.
+
+**Green on the recovered branch.** Oracles alone: test_next_page 31/31, test_next_flag 7/7,
+test_focus 106/106. Full 3542 and scripts 515. ruff, ruff format, mypy, lint_embedded,
+validate_plugins, bump_version --current (0.26.0) clean; no version field moved. Pins match the
+assets with zero drift.
