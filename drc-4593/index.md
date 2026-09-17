@@ -1,7 +1,7 @@
 ---
 id:
 title: "Invert the briefing's emphasis and let its all-absent grid collapse"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4593/invert-the-briefings-emphasis-and-let-its-all-absent-grid-collapse"
 started: 2026-09-17T10:42:56Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4593](https://linear.app/recce/issue/DRC-4593/invert-the-briefings-emphasis-and-let-its-all-absent-grid-collapse) — Invert the briefing's emphasis and let its all-absent grid collapse
