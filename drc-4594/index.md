@@ -1,7 +1,7 @@
 ---
 id:
 title: "Reorder Held to so its purpose and its inputs come before the caveats"
-status: implementation
+status: review
 source: "https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats"
 started: 2026-09-17T10:47:44Z
 completed: ""
