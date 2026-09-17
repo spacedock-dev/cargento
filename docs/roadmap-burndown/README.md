@@ -1434,6 +1434,35 @@ what it covers. Silently covering more than before and less than promised is not
 through a template hole, because the helper splits literals at `${...}`. A derived instrument with an
 unstated limit is how the next reader concludes it proves more than it does.
 
+## A pre-registered contract cannot rest on line numbers
+
+A reviewer pinned its re-check conditions into the entity files so they would survive its own session
+ending — and the very next commit moved its anchors: an ordering test from 11119 to 11149, a fixture
+from 7681 to 7682, a guard from 35 to 36. **A contract meant to survive a fix round cannot rest on
+numbers that drift under it**, and the round it exists to check is precisely the round that moves
+them.
+
+Two repairs, both cheap:
+
+- **Anchor on greppable strings**, not offsets — a test class name, a selector, a literal.
+- **Mark measured offsets as re-measure-on-the-fix rather than compare-against-these.** An A/B
+  baseline is evidence the property was real, not a value the fix must reproduce.
+
+## Consolidating two blind readers makes one shared blindness, not a fix
+
+Two readers of the same map were independently blind to a state. The right repair was to give them
+one classifier to ask, and that repair is genuinely better: the remaining defect became one condition
+in one function instead of two readers to keep in step.
+
+But it converts two independent bugs into one shared bug, and the reviewer that spotted it drew the
+warning worth keeping: **"the two readers now agree" must not be written as "the state is handled".**
+The commit message framed the win as the two resolving one read, which a later reader can take as
+coverage. Say what agrees and what is still open.
+
+This is the same hazard as a comment asserting an invariant its own function violates — three of
+those shipped in this milestone — except a commit message has a longer half-life and no one greps it
+when the behaviour changes.
+
 ## Pre-register the re-check conditions before the fix exists
 
 Two reviewers, waiting on a fix round, wrote down what they would accept **before** the fix was
