@@ -198,14 +198,20 @@ cannot fail loudly on a shorthand it does not understand will keep producing pla
 
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
-minutes later on an unchanged stylesheet, both readings taken during this branch's review on
-2026-09-17 and reported by the reviewer rather than measured here. A bare number reads as a
+minutes later, at `3cc7ef49` and `4fb5ee6d` on 2026-09-17, both reported by the reviewer rather
+than measured here. The stylesheet was not identical across that pair, `4fb5ee6d` changed it by
+thirteen lines, but none of those lines matches `operation-fact`, so the rules resolving the shape
+that was counted were the same for both readings. The narrower claim is the true one. A bare number reads as a
 property of the code when it is a property of an afternoon. The stable unit is the rule, or the
 element shape, never its population.
 
-They were left alone rather than swept: the set is comparable in size to the one this branch
-already moved, and some of it is not sentences at all, a textarea and the prototype terminal among
-them. It needs reading one element at a time, which is the work DRC-4602 carries.
+They were left alone rather than swept, and **how many there are is not stated here in any form**,
+including by comparison with the tier this branch did move. Every figure this branch produced was a
+per-rule floor, and a floor cannot be reported as a count in either direction: asserting a
+magnitude above the highest of them would be the same error pointing the confident way. What can be
+said is the shape. Some of the set is not sentences at all, a textarea and the prototype terminal
+among them, so it needs reading one element at a time. That is the work DRC-4602 carries, and the
+size is its to measure.
 
 Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
 eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
