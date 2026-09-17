@@ -1420,8 +1420,11 @@ rule does not apply to it.
 first answer here and it is half of one: two selectors in this census are declared twice, so the
 collection held 61 entries across 60 distinct selectors, and a set alone silently loses that
 duplicate. The set catches the compensating swap; the count catches a duplicate appearing or
-vanishing. Each covers the other's blind spot, and either alone is an oracle with a hole in it that
-no one will look for again once the first hole is closed.
+vanishing. **Neither is a superset of the other** — that is the whole reason, and without it the
+next reader will reasonably simplify the pair back to one. A set cannot see a duplicate appear or
+vanish because it collapses them; a count cannot see a swap because the total does not move. Either
+alone is an oracle with a hole in it that nobody will look for again, because the first hole is
+closed and the assertion reads thorough.
 
 ## Report the measurement you took, not the one you meant to take
 
