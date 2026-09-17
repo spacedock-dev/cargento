@@ -29,6 +29,20 @@ gates:
                 id: briefing:drc-4595:triage:attempt-1:revision-1
                 digest: sha256:720c6d3f6d8db629e83203955eb1d5345f96ce307917bb0a66260053d948a171
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4595:triage:1
+                briefing: briefing:drc-4595:triage:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-17T11:02:46.458825Z"
+                decision: approve
+                reason: 'Checklist 4 done / 0 skipped / 0 failed; AC-1..AC-9 resolve. The stage drove the live board rather than re-reading the issue''s annotated capture, and three of the figures the issue rests on are dated into history because DRC-4587 moved them. Its three flagged items are approved as recommended: the composer follows the issue''s own wording into the chrome with the cheaper Console-only alternative named and rejected on the value it cannot deliver; AC-7 is written as not-yet-assessable with a named fallback rather than assuming a primitive DRC-4590 has not yet built, which is the honest treatment of a cross-PR dependency; and deleting the dead project-controls path is in scope because the renders-once claim is unprovable while a second construction path stands.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: Captain, this session, 2026-09-17
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4595](https://linear.app/recce/issue/DRC-4595/put-consoles-operations-first-and-lift-the-steer-box-out-of-tripwires) — Put Console's operations first and lift the steer box out of TRIPWIRES
