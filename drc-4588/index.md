@@ -1,7 +1,7 @@
 ---
 id:
 title: "Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb"
-status: triage
+status: implementation
 source: "https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason"
 started: 2026-09-17T06:57:18Z
 completed: ""
@@ -42,7 +42,7 @@ gates:
                     source: Captain, this session, 2026-09-17, answering the corrected R2 framing directly
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4588](https://linear.app/recce/issue/DRC-4588/always-render-the-held-to-reading-control-disabled-with-its-reason) — Always render the Held to reading control, disabled with its reason, instead of deleting the tab's only verb
