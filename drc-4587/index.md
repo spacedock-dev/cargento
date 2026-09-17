@@ -477,6 +477,7 @@ scan does not depend on the stage being inferred from frontmatter.
 
 - Cycle 1: NO-GO — review (two lenses plus an arbiter); surface 9 files/132 runtime + 45 docs vs estimate 105 runtime (125.7%) / 28 docs (161%); AC narrowed: AC-7 scoped to the rules this change moved, composed-rule residual routed to DRC-4602 on the precedent AC-1 set.
 - Cycle 2: NO-GO — review (two lenses plus an arbiter, cycle 2); surface re-baselined per the correction-round rule; AC unchanged: AC-7's own new clause falsified six times by slot-shaped pairs a selector sweep cannot see. Cycle 3 escalates to the captain rather than running a fourth round.
+- Cycle 3: NO-GO — review (two lenses plus an arbiter, cycle 3); escalated to the captain per the three-cycle limit and resumed on the captain's standing take-the-recommended-route directive; surface docs re-measured at 100 added against 86 reported; AC unchanged. The verdict is completeness, not execution: four further inversions this branch created, in twelve emitter files the round never opened, plus a guard fixture that builds a DOM the app never renders. Round 3 is structural — figure-paired absences get their own class — rather than a fourth pass at instances.
 
 ## Stage Report: implementation
 
