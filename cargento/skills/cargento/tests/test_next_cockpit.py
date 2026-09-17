@@ -6,7 +6,7 @@ import pathlib
 import re
 import shutil
 import unittest
-from typing import Any, ClassVar
+from typing import Any
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
@@ -6316,11 +6316,12 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
     """DRC-4587. A stated absence must never render larger than the fact it
     stands in for: "you can tell a label from its answer, a figure from a gap".
 
-    **This asserts only what the pull request claims.** It raises two absence
-    rules, both named by string in the issue's own criterion, and each is listed
-    below with the value it is drawn against. Enumerating them exhaustively is
-    the whole claim; the wider class of sub-floor absences is DRC-4602's, and
-    nothing here asserts anything about it.
+    **This asserts only what the pull request claims.** Each pair is listed below
+    with the value it is drawn against. Enumerating them exhaustively is the
+    whole claim; the wider class of sub-floor absences is DRC-4602's, and nothing
+    here asserts anything about it. One inversion this guard cannot see is
+    tracked as DRC-4607: a value that declares no size of its own and inherits
+    one, drawn against an absence that declares a larger one.
 
     Three earlier versions of this guard passed over the defect they were named
     for, and the shape of each failure is why this one is written as it is. One
@@ -6331,14 +6332,33 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
     """
 
     # (name, emitter, absence path, the value it is drawn against).
+    #
+    # The entry that stood here was `two axes, read separately`, and DRC-4591
+    # deleted that span as a duplicate of the footer under the same cards. It was
+    # replaced rather than dropped, because removing it silently would have left
+    # this tuple empty and the loop below green over nothing.
+    #
+    # It also did not fail when the class went. `css_cascade.resolve` walks up
+    # the path and inherits, so with the rule gone the absence still resolved to
+    # 15.0 off the section and compared equal to its value. That is this class's
+    # own second failure shape, "one built a DOM the application never renders",
+    # reproduced in the test named for it: a path is only evidence while the
+    # emitter still builds it, and no resolver can tell you that it does.
+    # `test_the_retired_axes_span_stays_retired` below is what holds that half.
     RAISED_ABSENCES = (
         (
-            "two axes, read separately",
+            "landing card value",
             "next-cockpit.js nextCockpitLanded",
             [
                 *_CONTENT,
                 _node("section", "next-cockpit-landed"),
-                _node("span", "next-cockpit-landed-axes"),
+                _node("div", "next-cockpit-landed-cards"),
+                _node("div", "next-cockpit-landed-card"),
+                _node(
+                    "span",
+                    "next-cockpit-landed-value",
+                    "next-cockpit-landed-value--absent",
+                ),
             ],
             [
                 *_CONTENT,
@@ -6378,6 +6398,21 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
                     f'"{name}" ({emitter}): absence {absence}px against value {value}px, '
                     "so the absence outranks the fact it replaces",
                 )
+
+    def test_the_retired_axes_span_stays_retired(self) -> None:
+        """DRC-4591 deleted `two axes, read separately` as a duplicate.
+
+        A resolver cannot notice that an emitter stopped building a path, so a
+        restored span would rejoin the page with no rule of its own and no entry
+        above holding it against a value. Asserted on both halves, because
+        leaving the rule behind is how a later revert finds a selector waiting
+        for it.
+        """
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        styles = (web / "styles.css").read_text(encoding="utf-8")
+        self.assertNotIn("two axes, read separately", self.cockpit_js)
+        self.assertNotIn("next-cockpit-landed-axes", self.cockpit_js)
+        self.assertNotIn("next-cockpit-landed-axes", styles)
 
     def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
         """The other raised absence has no value to be read beside.
@@ -10831,143 +10866,75 @@ console.log(JSON.stringify({
         self.assertIn("your words are kept", cockpit)
 
 
-class PairedBranchRegisterTest(unittest.TestCase):
-    """DRC-4591. A value and the absence that replaces it never co-exist.
+class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):
+    """DRC-4591. The summary of a tier-2 disclosure, read beside the body it hides.
 
-    The pair is chosen by a ternary in the emitter, so it lives in two CSS
-    rules that are never on screen at the same moment. A selector sweep cannot
-    see it and a walk of a populated board cannot see it, which is how DRC-4587
-    raised absence rules to the sentence tier and left ten paired values below
-    them across four review rounds.
+    Not a value/absence pair, which is why it is not in
+    `AnAbsenceNeverOutranksTheValueItReplacesTest` above: that test is scoped to
+    DRC-4587's claim and says so. But it is the same trap one layer out. A
+    summary and the body behind it never render together either, because the
+    body is collapsed until the summary is clicked, and the summary carries the
+    only words a reader has for deciding whether to open it. A control set below
+    the text it conceals loses the caveat as surely as deleting it, which is the
+    whole thing the three-tier rule exists to prevent.
 
-    So both branches are resolved here and compared. No browser: every selector
-    in these pairs is a single class at specificity 0-1-0, so source order is
-    the whole cascade, and the resolver below is that order.
+    Resolved through `css_cascade` rather than by reading the two rules, for the
+    reason that module's own docstring gives: the number only exists once the
+    cascade is composed down a path the application really builds.
     """
 
-    WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
-
-    # The declared sizes, so a token rename cannot quietly make two branches
-    # compare equal by both resolving to nothing.
-    TOKENS: ClassVar[dict[str, float]] = {
-        "--fs-label": 11.0,
-        "--fs-machine": 11.0,
-        "--fs-sentence": 15.0,
-        "--fs-xs": 12.5,
-    }
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+    cockpit_js: str
 
     @classmethod
-    def rules(cls) -> list[tuple[str, str]]:
-        text = (cls.WEB / "styles.css").read_text(encoding="utf-8")
-        text = re.sub(r"/\*[\s\S]*?\*/", "", text)
-        out: list[tuple[str, str]] = []
-        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", text):
-            body = match.group(2)
-            out.extend((selector.strip(), body) for selector in match.group(1).split(","))
-        return out
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+        cls.cockpit_js = (web / "next-cockpit.js").read_text(encoding="utf-8")
 
-    def size_of(self, selector_chain: list[str]) -> float:
-        """The font size the last winning declaration leaves on this element."""
-        size: float | None = None
-        for selector, body in self.rules():
-            if selector not in selector_chain:
-                continue
-            found = re.search(r"(?:^|;)\s*font-size:\s*([^;]+)", body)
-            if not found:
-                shorthand = re.search(r"(?:^|;)\s*font:\s*([^;]+)", body)
-                if not shorthand:
-                    continue
-                found = re.search(r"(var\(--fs-[a-z]+\)|[\d.]+px)", shorthand.group(1))
-                if not found:
-                    continue
-            raw = found.group(1).strip()
-            token = re.fullmatch(r"var\((--fs-[a-z]+)\)", raw)
-            if token:
-                size = self.TOKENS[token.group(1)]
-            elif raw.endswith("px"):
-                size = float(raw[:-2])
-        assert size is not None, f"no font size resolved for {selector_chain}"
-        return size
+    def size(self, path: list[dict[str, object]]) -> float:
+        resolved = css_cascade.resolve(path, self.tokens, self.rules)
+        self.assertIsNotNone(resolved, f"no size resolves for {path}")
+        assert resolved is not None
+        return resolved
 
-    def test_the_declared_size_tokens_are_the_ones_the_stylesheet_defines(self) -> None:
-        """The resolver is only as good as its token table."""
-        text = (self.WEB / "styles.css").read_text(encoding="utf-8")
-        for token, expected in self.TOKENS.items():
-            with self.subTest(token=token):
-                found = re.search(re.escape(token) + r":\s*([\d.]+)px", text)
-                assert found is not None, f"{token} is not defined"
-                self.assertEqual(expected, float(found.group(1)))
-
-    # Every value/absence ternary on the cockpit surface, as class lists. The
-    # emitter picks one branch per render, so both are listed here or neither
-    # is ever compared.
-    PAIRS: ClassVar[list[tuple[list[str], list[str]]]] = [
-        # HOW IT LANDED: `known` picks one of these two.
-        # next-cockpit.js, `nextCockpitLanded`'s `card`.
-        (
-            [".next-cockpit-landed-value"],
-            [".next-cockpit-landed-value", ".next-cockpit-landed-value--absent"],
-        ),
-        # The reading clause and the board's sentence where the revision's
-        # words were not retained. next-cockpit.js:1752 and :2128-2129.
-        ([".next-cockpit-reading-clause"], [".next-cockpit-reading-clause-absent"]),
-    ]
-    # `.next-project-value--known` is deliberately absent from this table. Its
-    # branch declares no size at all and inherits one from whichever container
-    # it renders in, while `--absent` pins `--fs-xs`; resolving that pair needs
-    # the containing element, which this resolver does not model. Listing it
-    # would compare a resolved size against nothing and pass for the wrong
-    # reason, which is the failure mode this whole test exists to avoid.
-
-    # Instances that are open on this branch and are NOT this change's to fix.
-    # Listed rather than dropped: a new violation fails the test, and so does
-    # fixing one of these without moving it off the list.
-    KNOWN_OPEN: ClassVar[dict[str, str]] = {".next-cockpit-reading-clause-absent": "DRC-4607"}
-
-    def test_no_absence_outranks_the_value_it_replaces(self) -> None:
-        """Both branches of each ternary, resolved and compared.
-
-        Falsified by raising an absence rule without raising the value rule the
-        same branch would have rendered -- the shape that shipped ten times
-        across four review rounds on DRC-4587, because the two are chosen by a
-        ternary and never render together.
-        """
-        violations = {}
-        for value, absent in self.PAIRS:
-            absent_size = self.size_of(absent)
-            value_size = self.size_of(value)
-            if absent_size > value_size:
-                violations[absent[-1]] = f"{absent_size} > {value_size}"
-        self.assertEqual(
-            sorted(self.KNOWN_OPEN),
-            sorted(violations),
-            "an absence renders larger than the fact it replaces",
-        )
-
-    def test_a_tier_two_control_is_never_smaller_than_the_body_it_hides(self) -> None:
-        """DRC-4591's own instance of the same shape.
-
-        The summary and the body are not a value/absence pair, but they are the
-        same trap one layer out: the summary is the only words a reader has for
-        deciding whether to open the body, so a control below the text it
-        conceals loses the caveat as surely as deleting it.
-        """
+    def test_the_summary_is_not_smaller_than_the_body_it_conceals(self) -> None:
+        """Falsified by dropping the summary to the label tier, which reads as
+        the tidier choice and makes the control quieter than what it hides."""
+        disclosure = [
+            *_CONTENT,
+            _node("section", "next-cockpit-departures"),
+            _node("details", "next-cockpit-why"),
+        ]
+        summary = self.size([*disclosure, _node("summary")])
+        body = self.size([*disclosure, _node("p", "next-cockpit-reading-why")])
         self.assertGreaterEqual(
-            self.size_of([".next-cockpit-why>summary"]),
-            self.size_of([".next-cockpit-reading-why"]),
+            summary,
+            body,
+            f"the summary resolves {summary}px against a {body}px body, "
+            "so the control is quieter than the text it conceals",
         )
 
-    def test_a_count_and_its_not_published_share_one_class(self) -> None:
+    def test_a_count_and_its_not_published_cannot_diverge(self) -> None:
         """The five COUNTS rows have no absence class at all, and that is the
-        point: one rule cannot diverge from itself. Asserted against the
-        emitter, because a second class added there is what would start the
-        divergence a CSS-only check could not see."""
-        source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
-        emitter = re.search(r"const line = \(label, value\) =>([\s\S]*?);\n", source)
+        point: one rule cannot diverge from itself.
+
+        Asserted against the emitter and not the stylesheet, the same way
+        `test_the_revision_slot_cannot_invert_because_one_class_carries_both`
+        asserts its chain: a second class added here is what would start the
+        divergence, and by the time it is in the stylesheet a CSS-only check is
+        already comparing two rules rather than noticing there is now a pair.
+        """
+        emitter = re.search(r"const line = \(label, value\) =>([\s\S]*?);\n", self.cockpit_js)
         assert emitter is not None, "the COUNTS row emitter moved"
         body = emitter.group(1)
         self.assertIn('value == null ? "not published"', body)
-        self.assertEqual(1, len(set(re.findall(r"next-cockpit-count-value[a-z-]*", body))))
+        self.assertEqual(
+            1,
+            len(set(re.findall(r"next-cockpit-count-value[a-z-]*", body))),
+            "the value and its absence no longer share one class",
+        )
 
 
 if __name__ == "__main__":
