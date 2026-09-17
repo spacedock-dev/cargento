@@ -1,11 +1,11 @@
 ---
 id:
 title: "Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier"
-status: implementation
+status: done
 source: "https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens"
 started: 2026-09-17T06:57:18Z
-completed: ""
-verdict: ""
+completed: 2026-09-17T13:58:01Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4587
 issue: ""
@@ -43,6 +43,7 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+archived: 2026-09-17T13:58:01Z
 ---
 
 [DRC-4587](https://linear.app/recce/issue/DRC-4587/raise-board-sentences-to-a-15px-tier-and-collapse-six-sub-12px-tokens) — Raise board sentences to a 15px tier and collapse six sub-12px tokens into one label tier
