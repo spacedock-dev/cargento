@@ -1349,6 +1349,25 @@ Branching from `origin/main` is the half that prevents recurrence on its own: a 
 local `main` that has drifted carries that drift into its pull request, where it reads as scope
 nobody asked for.
 
+
+### Do not run git inside another agent's worktree at all, even read-only
+
+The first officer detached a live worktree's HEAD **twice in one day** — once mid-implementation,
+recovered by the ensign with a tag, and once while verifying byte pins on a frozen integration
+branch. The second time was after writing this rule down and quoting it at someone else.
+
+So the rule is not "be careful in someone else's worktree". Care did not work. The rule is that a
+first officer has no reason to be in one:
+
+- To read a file at a commit: `git show <sha>:<path>` from the primary checkout. No worktree, no
+  checkout, nothing to detach.
+- To compute something over a tree: write the blob to a temporary file and work on that.
+- To need a real checkout: `git worktree add /tmp/<name> <sha>`, which is yours and disposable.
+
+`git checkout` inside a worktree another agent is working in is the one command that looks read-only
+and is not. Both incidents recovered without loss, and both times the recovery was luck rather than
+design: the first because the ensign read `[detached HEAD ...]` in output it had already skimmed
+four times, the second because the branch ref, HEAD and origin all happened to be the same commit.
 ## Two branches implemented one ruling without coordination, and only one is safe
 
 A captain's ruling said exactly one rule may assign a colour to `[data-next-withheld]`. Two branches
