@@ -1,7 +1,7 @@
 ---
 id:
 title: "Make the asset test enforce font size, not the contrast that already passes"
-status: implementation
+status: review
 source: "https://linear.app/recce/issue/DRC-4596/make-the-asset-test-enforce-font-size-not-the-contrast-that-already"
 started: 2026-09-17T11:10:03Z
 completed: ""
