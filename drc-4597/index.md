@@ -28,7 +28,7 @@ gates:
               briefing:
                 id: briefing:drc-4597:triage:attempt-1:revision-1
                 digest: sha256:3a2d2f42e557a511b2192e864cc04a2dc2fda662b1747e948127f7fbcbb2755d
-                room-ref: ./drc-4597/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4597](https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title) — Rebuild the scope rail card around the session title
