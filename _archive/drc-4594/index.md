@@ -1,11 +1,11 @@
 ---
 id:
 title: "Reorder Held to so its purpose and its inputs come before the caveats"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats"
 started: 2026-09-17T10:47:44Z
-completed: ""
-verdict: ""
+completed: 2026-09-18T02:28:44Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4591
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-18T02:28:44Z
 ---
 
 [DRC-4594](https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats) — Reorder Held to so its purpose and its inputs come before the caveats
