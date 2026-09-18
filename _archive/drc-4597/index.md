@@ -1,11 +1,11 @@
 ---
 id:
 title: "Rebuild the scope rail card around the session title"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title"
 started: 2026-09-17T11:07:52Z
-completed: ""
-verdict: ""
+completed: 2026-09-18T02:29:02Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4592
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-18T02:29:02Z
 ---
 
 [DRC-4597](https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title) — Rebuild the scope rail card around the session title
