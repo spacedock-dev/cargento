@@ -591,3 +591,41 @@ behind it now, and the `assertGreater(..., 40)` vacuity guard covers the collaps
 counter-assertion if the sweep ever grows a skip.
 
 **The blocker is cleared. This entity is GO.**
+
+### Re-check at c88cc110 — PASS, and the carry did NOT hold this time
+
+Harness baseline **ran=579 failures=0 errors=0**. Pins re-derived from the assets, not from any
+figure quoted to me: `project.js` **111_842** / `0fcc61b6…`, assembled **965_309** / `e79d000c…`,
+`styles.css` **121_011** / `f1d8a9bc…` (unchanged since 26223372), 22 asset digests matched in
+`test_next_page` and the assembled pair in `test_next_flag` and `test_focus`.
+
+**Applying the dependency rule reversed the carry.** No runtime file moved and `styles.css` is
+untouched, so the sheet half carried — but `TheCompliantSetIsResolvedOnElementsNotOnRulesTest` is
+**not** byte-identical across `ddd422bf..c88cc110`: 140 → 162 lines, because the counter-assertion
+reshaped `_below_floor` into a tuple return and updated three call sites. The guard my conditions
+run through changed, so I re-ran all four rather than carrying them. All PASS: class 4/4 OK,
+both-sides set EMPTY, `.next-guardrail-copy small` absent from the compliant set and present in
+`SUB_SENTENCE_FLOOR_INVENTORY` at 12.5, cascade small **12.5** / strong **15.0**, `_below_floor`
+clean at 77 swept / 0 skipped. Both mutants still red through the reshaped guard: the ninth
+straddler reds the pinned census, and sinking `.next-delegation-caption` reds the element sweep
+`{} != {'.next-delegation-caption': 12.5}`.
+
+**The counter-assertion landed with a claim I did not make, and it is true.** Its docstring says the
+branch is *"a tripwire rather than a live guard, and that is measured"* — that a sibling combinator
+on a tier selector raises out of `resolve` before the skip branch is reached, because `_steps` is
+shared, so the assertion can only fire if the resolver is later changed to skip rules it cannot
+express. Verified by execution: appending `.next-delegation-caption + p{…}` makes the sweep raise
+`UnsupportedSelectorError: .next-delegation-caption + p` rather than increment `skipped`, and the
+guard test errors — still a red, so the property stays guarded, but by the exception and not by my
+line. That is a better disposition than I asked for: I asked for the assertion, and it shipped with
+a measurement of what it cannot do, so nobody mistakes a tripwire for a live guard.
+
+**The `--ink-caption` sentence is true of the sheet, and its wider claim checks out.** The four names
+resolve `--ink-label`, `--ink-absence`, `--ink-caption` → `var(--ink3)` and `--ink-value` →
+`var(--ink)`: three on one ink, only `--ink-value` with an ink to itself, exactly as written. Two
+distinct inks across four names, so the "three distinct hexes" assertion the paragraph says it
+deliberately does not make would indeed fail. `TheBriefingsThreeRegistersStayApartTest` exists
+(`test_next_cockpit.py:9908`) and resolves through the cascade before mapping to registers, which is
+the pairing the sentence describes — checked rather than taken from the name.
+
+**GO stands.**

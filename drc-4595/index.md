@@ -612,3 +612,23 @@ than the intent, so `loading` now means what it says.
 
 **Both findings on this entity are cleared.** AC-1's guard and the AC-9 filing were routed
 elsewhere by the captain; on the two items I owned, this entity is **GO**.
+
+### Re-check at c88cc110 — PASS, terminal half re-run rather than carried
+
+`test_next_cockpit.py` moved +84, so nothing here was carried. Pins re-derived from the assets:
+`project.js` **111_842** / `0fcc61b6…`, `next-cockpit.js` 233_309 / `b0e24842…`, assembled
+**965_309** / `e79d000c…`, matched across all three oracle files. Harness baseline 579/0/0.
+
+The three-poll probe, run at both sample points against both trees, as before:
+
+| Sample point | Repaired (c88cc110) | Defect restored |
+|---|---|---|
+| **After** four settles | `unavailable` / `false` ×3 | `unavailable` / `false` ×3 — identical, still passes on broken code |
+| **Before** settling | `unavailable` / `false` ×3 | `loading` / `null` ×3 — sees it |
+
+Reverse check holds on both trees: a bridge nothing has looked up reports `{terminal:null}` /
+"terminal bridge not read yet", and so does the genuinely in-flight first lookup at `midState:
+'loading'`. The third state was not traded away. The committed test reds on the restored defect at
+all three revisions (`'unavailable' != 'loading'` at 106, 107, 108).
+
+**GO stands on the two items I owned.**
