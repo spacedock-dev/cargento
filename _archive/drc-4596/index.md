@@ -1,11 +1,11 @@
 ---
 id:
 title: "Make the asset test enforce font size, not the contrast that already passes"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4596/make-the-asset-test-enforce-font-size-not-the-contrast-that-already"
 started: 2026-09-17T11:10:03Z
-completed: ""
-verdict: ""
+completed: 2026-09-18T02:28:56Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4595
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-18T02:28:56Z
 ---
 
 [DRC-4596](https://linear.app/recce/issue/DRC-4596/make-the-asset-test-enforce-font-size-not-the-contrast-that-already) — Make the asset test enforce font size, not the contrast that already passes
