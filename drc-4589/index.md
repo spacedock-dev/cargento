@@ -876,3 +876,37 @@ replaced by a derived one, which is the right direction.
 the merge gate needs those two to land. Stated separately on purpose — the stage definition asks for
 CI green on the *current* head, and a verdict written against an incomplete run is the stale-green
 failure one step early.
+
+### Re-confirmed at `c88cc110`, 2026-09-18 — GO on the conditions; CI still mid-flight
+
+Head derived from the PR, not taken from the relay. Diff from `ddd422bf`: two test files and
+`design-next-ui.md`. **No runtime file moved — confirmed independently** by
+`git diff --name-only | grep cargento_runtime/`, which returns nothing. So by the sequencing rule
+this is a rerun, and the classifier mutant's anchor still matching one occurrence is the second,
+independent confirmation that `nextCockpitContextRead` is untouched.
+
+**The pins did NOT move, contrary to the relay.** Assembled is **965_309 / `e79d000c…`**, byte-identical
+to `ddd422bf`, and the diff changes no pinned value. That follows from the runtime being untouched:
+`load_page()` cannot move when no file it assembles has. The two halves of that message contradicted
+each other and the cheaper half was checkable without measuring anything.
+
+**Every condition holds.** Classifier mutant **killed** by the same four tests, proved at all three
+layers, `e79d000c` → `0f9a538d` — the same digest pair as the previous head, which is itself the
+expected result when the runtime has not moved. All five absolute state tuples intact, the
+`assertEqual(5, len({row["classified"] ...}))` guard at its place, and the `assertNotEqual`
+separability check present. `test_next_cockpit` + `test_next_page` green at 382, load 5.72.
+
+**The doc sentence landed wider than I filed it, and the wider claim is true.** Measured from the
+sheet: `--ink-label` `#9b9484`, `--ink-absence` `#9b9484`, `--ink-caption` `#9b9484`,
+`--ink-value` `#f4f1e8` — three of four names on one hex, and only `--ink-value` with an ink to
+itself, exactly as written. No heading was added, so the anchor tripwire is respected.
+
+One nuance, not a correction. The sentence separates a caption from a label "by family, case and
+size", and family and size are in the rules — label `var(--mono)` at `--fs-2xs` with `.09em`
+tracking, caption `var(--sans)` at `--fs-xs`. **Case is not**: the labels are uppercase because the
+emitter writes `<span>ASSIGNMENT</span>`, not because any rule transforms them. The claim is true of
+what renders, which is what the paragraph is about; it is worth knowing only because a future label
+emitted in sentence case would lose that channel with no stylesheet change and no test to notice.
+
+**CI is still not green:** nine pass, two IN_PROGRESS, `mergeStateStatus` **BLOCKED**. The conditions
+verdict is GO; the merge gate is not mine to call until those land.
