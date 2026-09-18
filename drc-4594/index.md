@@ -708,3 +708,23 @@ Head derived rather than taken on trust: both tips of `spacedock-ensign/ui-integ
 **The fix is copying a line that already exists three times in this same file.** The capability is read as `typeof meta.getAttribute === "function" ? meta.getAttribute("content") : null`, and three other stubs in `test_next_cockpit.py` get that right — two spelled `document.querySelector = () => ({getAttribute: () => "test-capability"})` and `CockpitHeldReEntryTest.FOCUS_ON` spelled `selector === 'meta[name="cargento-focus"]' ? {getAttribute: …} : null`. The matrix's own stub returns `{content:"tmux"}`, an object with no `getAttribute`, so the probe yields `null` and the capability resolves to `""`.
 
 **Still recommended alongside the stub fix:** an assertion that the six cases *differ* — that the disclosure is drawn wherever `whyLabel` is set, or simply that the six produce more than one distinct raise sentence. The per-branch guards assert the anchor and both rows rendered, and all three render on every branch, so they cannot see a matrix whose rows have collapsed. That is the failure this criterion has now had twice, in two different forms.
+
+### Final re-check at `c88cc110` — GO
+
+Head derived, not taken on trust: both tips of `spacedock-ensign/ui-integration` are `c88cc110`. Clean tree **3654 OK / 2 skipped** at load 5.17. Byte pins re-derived from the assets and agree.
+
+**AC-5 — PASS, and the matrix was re-measured before the falsifier, not assumed fixed.** Driving the test's own case table and stub:
+
+| case | `nextFocusCapability()` | disclosure | raise claim |
+|---|---|---|---|
+| capability-off × 2 | `''` | no | Terminal raise: off for this run. |
+| focusable × 2 | `'0a1b2c3d'` | **yes** | Its terminal can be raised… |
+| no-terminal × 2 | `'0a1b2c3d'` | **yes** | No terminal was reported… |
+
+**3 distinct raise claims, 2 distinct re-entry sentences, 6 distinct pairs, 4 of 6 drawing the disclosure** — against 1/1/1/0 at every previous head. The stub is now `CockpitHeldReEntryTest.FOCUS_ON`'s, which satisfies `typeof meta.getAttribute === "function"`, and the shapes are asserted to differ as well as to be ordered, so a future collapse reds instead of passing quietly.
+
+**The falsifier then reds on exactly the right branches.** The anchor-last mutation fails `test_the_action_leads_on_every_branch_this_block_can_draw` on the four subtests that draw a disclosure — `focusable/no-resume`, `focusable/resume`, `no-terminal/no-resume`, `no-terminal/resume` — and correctly does not fire on the two capability-off cases, which have no disclosure to be inverted against. That is the shape a correct six-case matrix should produce, and it is why the differ-assertions matter: without them the four silent passes and the two correct passes are indistinguishable.
+
+**AC-4 re-run at this head rather than carried:** restoring "the record read above" reds three tests, including the derived positional sweep and its bijection check.
+
+**Verdict: GO.** Every criterion reproduces from its own Verified-by clause and every Falsified-by condition reds, with AC-10 settled by a live board drive earlier in this review. Two standing class-(c) notes are unchanged and remain non-blocking: AC-1's "first child" is still satisfied by a verifier checking three named successors — the hoist mutation still survives, and the literal first child is `<header>` — and AC-7's "mono" sub-labels still have no font verifier. Both are wording-versus-verifier gaps with no shipped defect behind them.
