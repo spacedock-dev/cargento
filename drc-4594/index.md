@@ -51,6 +51,20 @@ gates:
                 id: briefing:drc-4594:review:attempt-1:revision-1
                 digest: sha256:9e5b3ba76d2209b0c37be8f366a917aedc352bcee05ef3e86169245f8370a760
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4594:review:1
+                briefing: briefing:drc-4594:review:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-18T02:27:25.93066Z"
+                decision: approve
+                reason: 'Review returned GO after a user-visible regression this change created was found, fixed and guarded by a class oracle rather than a third string list - and that oracle found a third instance nobody had looked for on its first run. The six-branch matrix now asserts its cases DIFFER, which is what stopped it collapsing a third time. PR #364 merged as f4561750.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
+              application:
+                target-stage: done
+                state: pending
 ---
 
 [DRC-4594](https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats) — Reorder Held to so its purpose and its inputs come before the caveats
