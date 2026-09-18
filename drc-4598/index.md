@@ -51,6 +51,20 @@ gates:
                 id: briefing:drc-4598:review:attempt-1:revision-1
                 digest: sha256:40e8fb4646231c4f27c1d275f3b64282b345569b4231b7b2b69a1879db5e8ae8
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4598:review:1
+                briefing: briefing:drc-4598:review:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-18T02:27:43.162923Z"
+                decision: approve
+                reason: 'Review returned GO. Its AC-2 was the criterion the storage collision violated verbatim, and the fix was proved in both directions on a live board with two real projects, with the seeded expectation that had encoded the defect as correct rewritten on a multi-project fixture rather than patched. PR #364 merged as f4561750.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
+              application:
+                target-stage: done
+                state: pending
 ---
 
 [DRC-4598](https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its) — Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab
