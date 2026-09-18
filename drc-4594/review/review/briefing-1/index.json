@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4594:review:attempt-1:revision-1",
+  "question": "Approve DRC-4594 as delivered: Held to reordered so purpose and inputs precede the caveats?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4594:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4594/index.md",
+      "rev": "sha256:80b5467289888c455089c9481da71404c04b88bdb02b85900c763ff52256e391",
+      "mediaType": "text/markdown",
+      "summary": "GO. Review found a user-visible regression this change created: the reorder moved the observed record below a sentence asserting it was above, on the default no-reading-yet arm, measured at 4,241 characters apart on the implementer's own fixture. Both sentences were corrected to a true positional word rather than having the word removed, and the replacement oracle is direction-aware with a non-vacuity assertion, because dropping the word would have left a sweep that returns nothing and passes forever. That sweep then found a third instance nobody had looked for. AC-5's six-branch matrix collapsed twice - once exercising one arm, once exercising six copies of one arm through a stub lacking getAttribute - and now asserts the six shapes DIFFER, giving three distinct raise claims, two re-entry sentences and six distinct pairs against 1/1/1 before."
+    }
+  ]
+}

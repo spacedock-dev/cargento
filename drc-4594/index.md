@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4594:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4594-review-1
+              briefing:
+                id: briefing:drc-4594:review:attempt-1:revision-1
+                digest: sha256:9e5b3ba76d2209b0c37be8f366a917aedc352bcee05ef3e86169245f8370a760
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4594](https://linear.app/recce/issue/DRC-4594/reorder-held-to-so-its-purpose-and-its-inputs-come-before-the-caveats) — Reorder Held to so its purpose and its inputs come before the caveats
