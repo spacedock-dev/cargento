@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4593:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4593-review-1
+              briefing:
+                id: briefing:drc-4593:review:attempt-1:revision-1
+                digest: sha256:e40ed998b2c60a65dac809130aaa9954b56f9ecb0b8a80b400a7f27d52e66e0c
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4593](https://linear.app/recce/issue/DRC-4593/invert-the-briefings-emphasis-and-let-its-all-absent-grid-collapse) — Invert the briefing's emphasis and let its all-absent grid collapse

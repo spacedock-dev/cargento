@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4593:review:attempt-1:revision-1",
+  "question": "Approve DRC-4593 as delivered: the briefing's emphasis inverted and its all-absent grid collapsing?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4593:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4593/index.md",
+      "rev": "sha256:6c66b3f25b6a05ab4698fd1277c88a22a91df331026ddb1b7822c147d729ea69",
+      "mediaType": "text/markdown",
+      "summary": "GO. All three absence kinds render and stay apart in greyscale - solid at luminance 147, solid at 62, dotted at 62 - verified live rather than from the stylesheet. AC-4's verifier was widened after a properly proved mutation showed it measured (size, ink) pairs where its wording said registers: the mutation moved the resolved ink down a real element path and 319 tests still passed. A guard for the captain-needed ink step, which nothing tested, was added during integration and confirmed to fail on its mutation."
+    }
+  ]
+}
