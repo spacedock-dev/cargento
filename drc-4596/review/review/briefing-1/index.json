@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4596:review:attempt-1:revision-1",
+  "question": "Approve DRC-4596 as delivered: the asset test enforcing font size rather than contrast?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4596:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4596/index.md",
+      "rev": "sha256:98db531609701b5f8e12303d6617e11e6317b50ba635da4a91dd36b70ba8e346",
+      "mediaType": "text/markdown",
+      "summary": "GO. Review found a blocker the offline half could not: the guard's compliant set contained an element rendering at 12.5px, established twice - offline through css_cascade and in headless Chrome through getComputedStyle, the method the criterion itself names - and the criterion had never been attempted by the implementer. Repaired structurally by making the compliant set element-resolved rather than rule-read, with a new test redding when any selector lands on both sides of the floor. That finding also falsified a claim in this PR's own design doc, which said a per-rule census can only understate the set; it can overstate, and the doc now names the mechanism. AC-4's earlier overturn stands: the rule count was the wrong property and the rendered ink is the right one. One residual is filed as DRC-4614 with the 8,873 false-positive figure that rejected the general widening."
+    }
+  ]
+}

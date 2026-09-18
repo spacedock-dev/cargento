@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4596:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4596-review-1
+              briefing:
+                id: briefing:drc-4596:review:attempt-1:revision-1
+                digest: sha256:df7c07059c72131f48af8223138bc8fe83aff4d69d376a6552a6d3013f73faeb
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4596](https://linear.app/recce/issue/DRC-4596/make-the-asset-test-enforce-font-size-not-the-contrast-that-already) — Make the asset test enforce font size, not the contrast that already passes
