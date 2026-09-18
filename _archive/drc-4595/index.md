@@ -1,11 +1,11 @@
 ---
 id:
 title: "Put Console's operations first and lift the steer box out of TRIPWIRES"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4595/put-consoles-operations-first-and-lift-the-steer-box-out-of-tripwires"
 started: 2026-09-17T10:47:50Z
-completed: ""
-verdict: ""
+completed: 2026-09-18T02:28:50Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4595
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-18T02:28:50Z
 ---
 
 [DRC-4595](https://linear.app/recce/issue/DRC-4595/put-consoles-operations-first-and-lift-the-steer-box-out-of-tripwires) — Put Console's operations first and lift the steer box out of TRIPWIRES
