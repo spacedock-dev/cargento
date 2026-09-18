@@ -789,3 +789,26 @@ stale-over-failure state neither enumeration had, and puts the panel and the cue
 they cannot drift apart again. The one place it stops short is on purpose, stated, and filed.
 
 **Verdict: GO** on this issue.
+
+## Stage Report: review (cycle 3 — re-check at ddd422bf)
+
+The head moved from `26223372` to **ddd422bf** while cycle 2 was in flight. The change is confined to
+the graph-mode key and its tests, so nothing on this issue's own surface moved: `next-cockpit.js` is
+byte-identical at both heads (**233_309 / b0e24842…**), as is `styles.css` (**121_011 / f1d8a9bc…**).
+Assembled is now **965_309 / e79d000c…** and the three pin sites agree. Harness baseline
+`ran=579 failures=0 errors=0`. **Verdict: GO, unchanged.**
+
+- DONE: Re-confirm this issue's findings survive the repoint.
+  The cycle-2 result stands without re-running the state probes, because the classifier this issue
+  owns is in `next-cockpit.js` and that file did not change between the two heads — verified by
+  digest rather than by reading the diff. M3 closed, M4's five states classified once and read by
+  both surfaces, M5 addressed.
+- DONE: Re-confirm at full width.
+  All 579 tests green on the new head, so nothing in the key change disturbed the context-read
+  classifier or the tab cue.
+- DONE: AC-3's verifier — unchanged, still hygiene rather than a gap, still not to be fixed.
+
+### Summary
+
+Nothing on this issue moved. Recorded so the gate does not have to infer it from a silence, and so
+the GO is anchored to a head that exists rather than to the one it was written against.

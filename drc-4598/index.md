@@ -877,3 +877,65 @@ default with the first project keeping its choice. The oracle that used to asser
 asserts the fix and was proved able to fail.
 
 **Verdict: GO** on this issue. M2 rides DRC-4613; the orphan row is Polish.
+
+## Stage Report: review (cycle 3 — re-check at ddd422bf, the composite key)
+
+Cycle 2 was run against `26223372` and the key changed under it, so those M1 results are void and
+this supersedes them. Re-pointed to **ddd422bf**. Pins re-derived from the assets first: `project.js`
+**111_842 / 0fcc61b6…**, `next-cockpit.js` **233_309 / b0e24842…**, `styles.css` **121_011 /
+f1d8a9bc…**, assembled **965_309 / e79d000c…**, all agreeing with the three pin sites. Harness
+baseline `ran=579 failures=0 errors=0`. **Verdict: GO.**
+
+The key is now `${project}\u0000${session}` — both halves, session empty at project scope — and
+`projectLoadGraphModes` drops any key that is not exactly one `\u0000`-joined pair.
+
+- DONE: **Condition 1 — both directions, live board, two real projects**, store cleared first.
+  1. `recce/cargento` Decisions opens `decisions` / RECORDED DECISIONS, store empty.
+  2. Press **All events** -> `all`, store `{"recce/cargento\u0000":"all"}`.
+  3. `recce/recce-cloud-infra`, never pressed -> **`decisions` / RECORDED DECISIONS**.
+  4. Press **Active** on B -> both keys held separately.
+  5. Return to A -> **still `all`**.
+  Falsifiers, each with applied-proof and run at full width:
+  - session-only (the original collided key), `0fcc61b60d78`->`97ade2e37e7c`: **4 red**.
+  - **project-only key**, `0fcc61b60d78`->`89a24d84e24a`: **1 red**,
+    `test_two_sessions_in_one_project_keep_their_own_modes`. This is the implementer's first caution,
+    now guarded by a test rather than by a comment. A project-only key passes direction one and fails
+    the per-session half, exactly as it warned.
+  - namespace the write, resolve the read from the old scope, `0fcc61b60d78`->`0c93b99edc6f`: **5 red**.
+- DONE: **The per-session half, verified live rather than only by mutation.** With project scope
+  holding `all`, focusing a session in the same project and pressing `decisions` left the store
+  holding two independent entries — `"recce/cargento\u0000": "all"` and
+  `"recce/cargento\u0000claude:7985111d": "decisions"` — and project scope still resolved to `all`
+  afterwards. Both halves of the composite key are in use on a real board, not only in a fixture.
+- DONE: **Condition 3 — the fixture can fail.** The AC-4 seed is now composite
+  (`{"cargento" + NUL_CHAR: "all"}`). Seeding the collided `{"": "all"}` back
+  (`test_next_cockpit.py` `50090a837701`->`c9de45aa623b`) reds it. Gone, not adjusted.
+- DONE: **The legacy-entry hazard — now closed rather than merely inert.** This is the one item that
+  changed character since cycle 2, in the right direction. Measured live with storage seeded to
+  `{"": "all", "codex:focus-1": "active"}`, both shapes an earlier build could have written:
+  - Decisions opens **`decisions` / RECORDED DECISIONS** — neither legacy row leaks.
+  - **After one press the store is exactly `{"recce/cargento\u0000":"all"}`.** Both legacy rows are
+    *retired*, not carried. The immortal-orphan residue I filed as Polish in cycle 2 is fixed.
+  - Falsifier: deleting the key-shape filter (`0fcc61b60d78`->`b5b63394feba`) reds
+    `test_a_key_shape_this_build_cannot_parse_is_dropped_on_load`. The migration has its own guard.
+  The separator choice is load-bearing and the comment says why: a scheme whose legacy empty key
+  parsed as a real project would hand the old collision to the new key.
+- DONE: **AC-8 re-confirmed at this head.** After a real browser reload the mode is still `all`,
+  heading SEMANTIC TIMELINE, and both composite keys survive.
+
+### Unchanged
+
+**M2 is still open and still correctly out of scope** — measured again here: with mode `all` the tab
+reads "Decisions · 22 · 22 decisions" over a SEMANTIC TIMELINE heading. Same question as the `stale`
+copy ruling, filed as DRC-4613.
+
+### Summary
+
+The second commit answers the caution the first one's author left rather than the criterion alone:
+the key carries project **and** session, so the per-session distinction survives, and the shape is
+decidable enough that the loader can retire what an earlier build wrote. Three of the four runtime
+falsifiers are shapes a reasonable fix could have taken — session-only, project-only, and write-only
+namespacing — and each reds a different test, which is the property I wanted from the halves being
+checked separately.
+
+**Verdict: GO.** Nothing outstanding on this issue but M2, which belongs to DRC-4613.

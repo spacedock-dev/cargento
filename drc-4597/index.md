@@ -863,3 +863,37 @@ a pass — a criterion recorded as settled at the wrong viewport is worse than o
 
 **Verdict: GO** on this issue's offline criteria. AC-6 unsettled, recommended for filing. V2 and V4
 still owed.
+
+## Stage Report: review (cycle 3 — re-check at ddd422bf)
+
+The head moved from `26223372` to **ddd422bf** while cycle 2 was in flight. `styles.css` is
+byte-identical at both heads (**121_011 / f1d8a9bc…**) and so is `next-cockpit.js`
+(**233_309 / b0e24842…**), so nothing this issue owns changed; assembled is **965_309 / e79d000c…**
+and the three pin sites agree. Harness baseline `ran=579 failures=0 errors=0`.
+**Verdict: GO on the offline criteria, unchanged. AC-6 still NOT MEASURED.**
+
+- FAILED: AC-6 at 980px, carried forward from cycle 2 and independent of this commit.
+  I could not reach the viewport and I am not reporting a number from the wrong one. `resize_window`
+  returns success and is a no-op downward — 980 requested three times and 1000 once across two
+  windows, `innerWidth` never moved, and only an upward resize took. The same-origin iframe route is
+  refused by the board's own `Content-Security-Policy: frame-ancestors 'none'`, which is correct
+  behaviour I did not work around.
+  For whoever can set 980: card box **55px**, pitch **57px**, identical at inner 700 on the switcher
+  surface and inner 1800 on the tree surface, with title **14px** over meta **11.5px**. The height is
+  width-invariant because line 1 is clipped to one line, so 980 would very likely read the same — but
+  that is an inference, not the measurement the criterion asks for. The cards-visible half depends on
+  viewport height and cannot be inferred at all. **Recommend accepting AC-6 unsettled and filing it.**
+- DONE: V2 and V4 carried forward, unchanged.
+  AC-2's "derived" still has no verifier — still the group's one genuinely unguarded property claim —
+  and the bare-span guard still pins one spelling of three.
+- DONE: **V1 remains withdrawn and must not be fixed.** Repeated at each cycle because it is the item
+  most likely to be picked up by mistake.
+- DONE: S1, S2 and A1 unchanged. S1 (the `styles.css` comment contradicting the rule below it) is
+  worth folding into whatever next touches that file, since `styles.css` did not move in this commit.
+
+### Summary
+
+Nothing this issue owns moved between the two heads, verified by digest rather than by reading the
+diff. AC-6 stays open for the same reason it was open before the repoint: the viewport is not
+settable from here, and the one route that would have worked is closed by the board's own framing
+policy — correctly.
