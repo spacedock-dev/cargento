@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4597:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4597-review-1
+              briefing:
+                id: briefing:drc-4597:review:attempt-1:revision-1
+                digest: sha256:cd51aa6a5748975311cb0a9ef1d8ba34bcac2d52dc303b763d6365cd4367fa5e
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4597](https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title) — Rebuild the scope rail card around the session title

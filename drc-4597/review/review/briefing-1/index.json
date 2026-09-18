@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4597:review:attempt-1:revision-1",
+  "question": "Approve DRC-4597 as delivered: the scope rail card rebuilt around the session title?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4597:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4597/index.md",
+      "rev": "sha256:04549148ee90170e0f70f5519333fc58d85ff00065bbea10ed82a714fb23f554",
+      "mediaType": "text/markdown",
+      "summary": "GO on the criteria that could be settled. AC-2's derived count was satisfied by a literal because every fixture in its class held exactly two sessions, and now runs at sizes one, two and four. AC-5's target-size finding was withdrawn by the reviewer after re-running against the full suite rather than a narrow selection - the property is guarded board-wide by a module the narrow run never loaded. AC-6 is NOT settled and is filed as DRC-4615 rather than closed: two agents could not reach the specified 980px viewport by two different routes, resize_window is a no-op downward and the iframe route is refused by the board's own frame-ancestors policy, and neither reported a figure from the wrong viewport."
+    }
+  ]
+}
