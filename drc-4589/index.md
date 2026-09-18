@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4589:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4589-review-1
+              briefing:
+                id: briefing:drc-4589:review:attempt-1:revision-1
+                digest: sha256:52a33aef95b0c3b0977d605c6c3937297e3315c85cbdd7d3453a514acc33d823
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4589](https://linear.app/recce/issue/DRC-4589/split-the-three-inks-onto-label-value-and-absence-roles-so-a-label) — Split the three inks onto label, value and absence roles so a label stops sharing its ink with its own answer

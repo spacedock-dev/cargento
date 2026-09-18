@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4589:review:attempt-1:revision-1",
+  "question": "Approve DRC-4589 as delivered: three inks split onto label, value and absence roles?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4589:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4589/index.md",
+      "rev": "sha256:356b5b80d4151e16cd3e12a66f8b414489b0ddd60c66fb0742dd1fce09696570",
+      "mediaType": "text/markdown",
+      "summary": "GO. Six of seven criteria reproduced from their own Verified by clauses against the merged head, every falsifier aimed correctly redding, and AC-7 settled by a live drive on a board started from the reviewed tree after the reviewer rejected one already running that served a different tree. Review found a real defect this branch created - a withheld scope title resolving the value ink, byte-identical to a published one - which was fixed by restoring the rail override's colour, reversing a 2026-09-17 ruling whose premise DRC-4597 had changed. That reversal was verified twice independently, by the FO applying the ruling literally and by the reviewer re-deriving it. AC-3's wording was amended from a rule count to the rendered property, because the criterion as written was satisfied exactly by the defect."
+    }
+  ]
+}
