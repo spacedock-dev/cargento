@@ -179,7 +179,7 @@ function nextProjectDelegation(context){
   if(withheld){
     return '<section class="next-delegation" data-next-delegation>' + header +
       '<div class="next-delegation-withheld" data-next-delegation-withheld>' +
-      '<strong>no figure yet</strong>' +
+      '<strong data-next-absent>no figure yet</strong>' +
       '<small>Waiting for one complete token-rate window.</small></div></section>';
   }
   const rounded = Math.round(metric.delegatedPct);
@@ -206,7 +206,7 @@ function nextRailDelegation(project){
   let body;
   if(!metric.pctKnown){
     body = '<div class="next-delegation-withheld" data-next-delegation-withheld>' +
-      `<strong>${esc(metric.pctText)}</strong>${note}</div>`;
+      `<strong data-next-absent>${esc(metric.pctText)}</strong>${note}</div>`;
   }else{
     const figure = metric.pctText;
     body = '<div class="next-delegation-figure">' +
@@ -288,5 +288,5 @@ function nextProjectRail(context){
   const state = nextControlsProjectState(project.key);
   return '<aside class="next-project-detail-rail" data-next-project-rail>' +
     nextRailDelegation(project) + nextRailWaiting(project) + nextRailCapacity(payload, model) +
-    nextProjectGuardrails(project.key, state, true) + '</aside>';
+    nextProjectGuardrails(project.key, state) + '</aside>';
 }

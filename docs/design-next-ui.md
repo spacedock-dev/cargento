@@ -37,7 +37,9 @@ rule that every claim needs published evidence. The shared-label caveat stays wi
 Where the two designs had the same surface, the v2 renderer survives and the cockpit duplicate
 is removed. Its measured delegation and absence rules already had callers and tests; retaining a
 second rendering would give the same evidence two interpretations. Decisions shows recorded
-decisions and application evidence, not an approval mechanism.
+decisions and application evidence, not an approval mechanism. The tab opens on that view and
+keeps the renderer's own three-button filter, so a reader can widen the same panel to the filtered
+activity view or to every event without leaving it.
 
 RC-1 protects [P3's promise of one queue of everything blocked on the reader](promise-map.md#p3-is-anything-waiting-on-me).
 Putting all waiting evidence behind the Console tab would weaken that promise: a reader returning
@@ -124,8 +126,9 @@ the palette, below the body-text requirement there. **Those figures are audit-on
 implementation, table or fixture exists in this repository, so they cannot be reproduced from the
 tree**, which is the same caveat the milestone carries. What the tree does say is that this was
 never a contrast defect: `--ink` on `--bg` recomputes to 16.36:1 and the asset test asserting more
-than 4.5:1 is green. DRC-4596 adds the guardrail that would close the gap, and lands after the
-change the figures justify. The absence explanations the prototype placed at 10px are sentences, so
+than 4.5:1 is green. No issue here adds an APCA implementation, so the audit
+figures stay audit-only. DRC-4596 guards the **px floors** the audit motivated, which is a
+different and weaker property than reproducing it. The absence explanations the prototype placed at 10px are sentences, so
 they take the sentence tier, and two of them had to leave an `<h2>`'s `<header>` to get there.
 **Raising an absence is not safe on its own.** An absence and the value it replaces are chosen by a
 ternary, so they never co-exist in one render: no sweep of co-existing selectors sees the pair, and
@@ -140,8 +143,14 @@ with, so both branches resolve identically whatever the tier is.
 safely, because doing so needs a census of the emitters that this stylesheet cannot supply. The
 stylesheet
 retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
-above 4.5:1 on the ground, panel and inset surfaces; it does not enforce all font sizes or spacing
-between contrast steps.
+above 4.5:1 on the ground, panel and inset surfaces. Since DRC-4596 it also enforces size, and the
+census below is its output rather than a hand count: every `--fs-*` token resolves at or above 11px
+with `--fs-sentence` pinned to 15px, the px literals below the label floor are an exact registry, and
+every rule passing the membership test resolves at or above a literal 15.0 except an exact recorded
+inventory. **What it still cannot see is a sentence composed across several rules.** Where one rule
+sets the size, a second the family and a third the line-height, no single-rule census can join them,
+and the two that render that way today are named at the end of this section. It does not enforce
+spacing between contrast steps.
 
 What counts as a sentence is a test, not a judgement call, so a reviewer argues with a list:
 **an element is on the sentence tier when its resolved style is sans with a prose line-height.**
@@ -149,33 +158,78 @@ Resolved, not declared. Both properties come through the cascade, either may be 
 ancestor, and the two may arrive from different rules, so the element is the unit and a single rule
 is not. Mono is a string a source published, and a label resolves to no prose line-height at all.
 
-That distinction is the whole difficulty. **A census that reads one rule at a time will understate
-the set**, because it cannot see an element whose family, size and line-height are assembled from
-three rules, and it will report clean while such an element still renders below the floor on
+That distinction is the whole difficulty, and it cuts **both** ways. This paragraph used to say only
+that a per-rule census "will understate the set", which is true and is the smaller half.
+
+**It can understate**, because it cannot see an element whose family, size and line-height are
+assembled from three rules, and it reports clean while such an element renders below the floor on
 screen. Two of those are named below; how many exist, and what to do about them, is DRC-4602's.
 
-Sixty-five rules on the old `--fs-xs` step carry the whole declaration themselves, plus the two
-absence explanations above, and all sixty-seven resolve to `var(--fs-sentence)`. Forty-nine of them
-also cap at `--measure` (540px, about 72 characters at this tier). The eighteen that do not are
-the ones a cap would clamp wrongly: eight carry `overflow-wrap:anywhere`, eight are layout boxes
-rather than single lines, and
-`.next-cockpit-content` and `.next-cockpit-recovery>div` are the prose containers, where 540px
-would clamp the cards inside them instead of the sentences.
+**It can also overstate**, and that is a different mechanism rather than the same one inverted: one
+element matched by **two rules at equal specificity**, where the later one wins. Nothing is composed
+across three rules here and each rule is individually legible; the census simply reads the wrong one
+of the two. Measured: `.next-guardrail-copy small` was declared at `--fs-sentence` inside one grouped
+rule and at `--fs-xs` by the next, both `(0,1,1)`, so the element rendered at 12.5px while a per-rule
+reading counted it among the compliant. Neither selector string appears twice, so no comparison of
+selector text can find it. `TheCompliantSetIsResolvedOnElementsNotOnRulesTest` resolves the element
+instead, and the sheet no longer declares a size it immediately overrides.
 
-**The floor is not yet universal, and DRC-4602 owns both the audit and the remainder.** Sans text
-still resolves below 15px in two shapes. The first is a rule that declares a smaller size outright,
-on the `--fs-sm`, `--fs-body` and `--fs-summary` steps and on a handful of literals. The second is
-the composed kind the definition above warns about: `.next-operation-fact--unknown strong` takes
-its size and mono family from one rule, a flip back to sans from a second and its line-height from
-a third, and `.next-cockpit-recovery small` takes its size from its own rule and inherits sans and
-the line-height from the cell around it. Neither appears in a census that reads one rule at a time,
-and both render at 12.5px, below anything the first shape reaches.
+That guard closes the equal-specificity case and **not** the general one: a rule reaching an element
+through ancestors the tier selector never names is still invisible to it, because the path is built
+from the selector rather than from the page. Widening it by hypothesising every DOM a rule could
+match was measured and abandoned at 8,873 false positives — the "built a DOM the application never
+renders" failure this file already warns about, one layer up.
 
-**The size of that set is not stated here**, because every figure this branch produced for it was
-produced by a per-rule census and is therefore a floor rather than a count. One of them was wrong
-for a second reason worth keeping: a `font:` shorthand pattern that matched the weight instead of
-the size read `font:13px/1.5` as no size at all and dropped two rules silently. A census that
-cannot fail loudly on a shorthand it does not understand will keep producing plausible totals.
+**Sixty-one rules resolve to `var(--fs-sentence)`**, across sixty distinct selectors, and
+`NextPageAssetContractTest` holds that as a set and not only as a count. The set is what matters:
+a count passes a swap where one rule leaves the tier and another joins it at 15px, and this
+milestone shipped exactly that swap when the authority chip left the tier and the captain line
+joined it. Some of those rules also cap at `--measure` (540px, about 72 characters at this tier).
+The ones that do not are those a cap would clamp wrongly: rules carrying `overflow-wrap:anywhere`,
+layout boxes, fields and grid children rather than single lines, and `.next-cockpit-content` and
+`.next-cockpit-recovery>div`, the prose containers where 540px would clamp the cards inside them
+instead of the sentences. How many fall each side of that line is **not** stated here, because
+nothing asserts it.
+
+That figure is written down only because a test holds it, and the rule is worth stating plainly:
+**every hand-counted version of it has been wrong.** This paragraph said sixty-seven until the
+count was run, a reading of a pre-squash DRC-4587 tree that raised thirteen rules the narrower
+change that merged did not, stale on `main` from the day it was written. The branch that added the
+assertion carried seventy, from the same superseded tree, plus a capped/uncapped split that no test
+held at all. Two independent counts, both confidently specific, both wrong, neither caught by
+review. A number in prose is a claim about an afternoon.
+
+That exchange was `.next-cockpit-authority>span` leaving the tier and
+`.next-cockpit-authority>small` joining it. The span prints
+`FO INSPECTING` and `FO CONTINUES`, which are state names a source published, so the rule above
+always excluded it. The sweep that raised the tier admitted it anyway, and full ink on top of
+15px made the loudest string on the page the one piece of vocabulary the page never defines. It is
+now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `<small>` that took
+its place is the line saying whether the captain is needed: prose the board wrote, and the string
+a reader opening a project is actually looking for.
+
+**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-five rules *that
+this census can see* resolve between 12.5px and 14.5px, and DRC-4596 records them as an exact set,
+so a rule leaving the sentence tier for a lower one reds the same way a new sub-floor rule does.
+That scope matters: it is a count of what a per-rule reading reaches, not a count of the sub-floor
+sentences on the page. Beyond them sit **two that no single-rule census can see**, because their
+size, family and line-height are composed across three rules each. Those two are
+`.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a flip back to
+sans from a second and its line-height from a third, and `.next-cockpit-recovery small`, which takes
+12.5px from its own rule and inherits sans and the line-height from the cell. **No offline guard in
+this repository sees either**, and DRC-4596's must not be read as establishing a universal floor;
+only a computed style reaches them.
+
+They were left alone: raising them is another thirty-five rules of review surface, and some of
+them are not sentences at all (a textarea and two prototype rules), so the set needs reading one
+selector at a time rather than a sweep.
+
+**How many sub-floor sentences the page actually has is not stated here, in any form**, including
+by comparison with the tier this milestone did move. The set above is bounded by the instrument,
+not by the page: a sentence whose family, size and line-height are assembled across three rules is
+invisible to it, two such sentences are named above, and nothing offline reaches either. A figure
+that counts what the tool can see, reported as though it counted what exists, is the same error as
+a stale number and reads more convincingly.
 
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
@@ -185,14 +239,6 @@ thirteen lines, but none of those lines matches `operation-fact`, so the rules r
 that was counted were the same for both readings. The narrower claim is the true one. A bare number reads as a
 property of the code when it is a property of an afternoon. The stable unit is the rule, or the
 element shape, never its population.
-
-They were left alone rather than swept, and **how many there are is not stated here in any form**,
-including by comparison with the tier this branch did move. Every figure this branch produced was a
-per-rule floor, and a floor cannot be reported as a count in either direction: asserting a
-magnitude above the highest of them would be the same error pointing the confident way. What can be
-said is the shape. Some of the set is not sentences at all, a textarea and the prototype terminal
-among them, so it needs reading one element at a time. That is the work DRC-4602 carries, and the
-size is its to measure.
 
 Twenty-four declarations carry `.09em`: the whole `.13em` and `.14em` groups, plus eight of the
 eleven in the `.1em` and `.08em` groups. The other three of those eleven keep their own value
@@ -208,6 +254,73 @@ at `.07em`; and the recovery memo field labels (`OUTCOME`, `FOCUS`) at `.04em`. 
 because the issue inventoried four tracking values and the stylesheet had seven, so sweeping the
 four named groups never reached the other six declarations. Count the values in the tree, not in
 the issue.
+
+Four ink registers sit in the one `:root` block and name what an ink is for rather than which ink
+it is: `--ink-label`, `--ink-value`, `--ink-absence` and `--ink-caption`. They exist because a
+label and its own answer were drawn in the same colour, and because twenty-one cockpit and session
+label rules each spelled `var(--ink3)` in their own declaration block, so moving the label tier
+meant editing twenty-one rules by hand and hoping none of them was a value.
+
+A register makes a repoint safe and a removal dangerous, and the two look alike in a diff. Swapping
+`var(--ink3)` for `var(--ink-label)` inside a rule changes nothing about which rule wins, because
+the selector and its specificity are untouched. Deleting a colour declaration does change it:
+whatever was second in line now paints. That happened twice here, on two different trees, from one
+criterion drafted as a count. On the branch that introduced the registers, dropping
+`color:var(--ink3)` from `.next-cockpit-scope-tree small[data-next-withheld]` at (0,2,1) left the
+bare `[data-next-withheld]` rule at (0,1,0) outranked by `.next-cockpit-scope-tree small` at
+(0,1,1). On the merged tree that competitor is gone, and a different one took its place: the rail
+card's own `.next-cockpit-scope-title` declares `color:var(--ink)` at (0,1,0) and sits later in the
+sheet, so it beats the bare rule on source order alone. Both times the rule count was correct and
+the rendered colour was not, and both times the absence rendered in an ink reserved for values.
+Before removing a colour anywhere in this sheet, resolve the element through the cascade with real
+specificity and read the hex, rather than counting the rules that mention it.
+
+The palette has three inks and the roles need four, so `--ink-label` and `--ink-absence` both
+resolve to `--ink3`. **So does `--ink-caption`**, which this paragraph did not say and should have:
+three of the four names land on one hex, and only `--ink-value` has an ink to itself. A caption is
+separated from a label the way an absence is -- by family, case and size -- which is why
+`TheBriefingsThreeRegistersStayApartTest` asserts the register NAMES and the (size, ink) pairs, and
+deliberately not three distinct hexes, an assertion that fails on the shipped sheet. Recording the
+doubling here is the point of the indirection: a role that shares an ink has to be re-readable from
+this file rather than rediscovered from a failing test. That is a ruling, not an accident. `--ink3` on panel is 5.67:1, just above the
+floor the asset test asserts, so labels cannot go dimmer, and brightening them makes them compete
+with values. Labels can afford the double-up because they also carry uppercase, tracking and mono,
+while an absence is a sans sentence, so family and case already separate the two. Brightening an
+absence was refused on a different ground: the failure this board is built against is the confident
+wrong answer, so a missing fact must not read as loudly as a present one.
+
+An absence therefore separates from its value on shape, never on tone. A figure slot keeps its own
+ink and gains a family swap plus a leading em dash from `[data-next-absent]::before`, stamped at
+emission because no selector can tell a null from a real `0`. The three kinds of absence a reading
+paragraph can state carry `data-absence="not-observed|waiting-on-you|run-config"` and are told
+apart by a left rule: dim and solid, bright and solid, dotted. All three survive greyscale, which
+colour alone would not.
+
+Every rule that colours an absence names `--ink-absence`, and nothing names `--ink3` for that
+role. Four did: `.next-capacity-absent`, `.next-session-absent`, `.next-cockpit-held-absent` and
+`.next-cockpit-work-absent` each wrote the ink out directly, so repointing the register would have
+moved seven absence rules and left four behind in an ink now reserved for labels. They were
+invisible to the guard because it matched three spellings of the marker -- `--absent`,
+`[data-next-withheld]` and `-clause-absent` -- rather than the convention, and all four spell it
+with a single hyphen. The guard now derives its subject from an `-absent` class-name segment, which
+found 14 rules where the list found 8. Two grouped selectors were SPLIT rather than repointed
+whole, because each shared a rule with something that is not an absence: `.next-capacity-slack` is
+a figure (`~N% spare at reset`) and `.next-cockpit-work-dropped` is a bound on rows that did
+render. Nothing on screen changed -- `--ink-absence` resolves to `--ink3` -- and that is the point:
+the indirection is what makes the next repoint one edit rather than eleven.
+
+The pair to watch when editing any of this is a value and the absence that replaces it. They are
+chosen by a ternary, so they never co-exist in one render and no single rule holds both sides, which
+is why a selector sweep and a live board both miss it. Where the two are separate selectors there
+are two ways to hold them and they answer different questions.
+`AnAbsenceNeverOutranksTheValueItReplacesTest` resolves both through the cascade, for the absences
+raised to the sentence tier. `AnAbsenceNeverRendersLargerThanItsValueTest` compares the size each
+rule declares for itself, for the pairs that are not raised, so a pair that stops declaring one
+fails loudly instead of quietly inheriting. Where the two are one selector and an attribute, as in
+COUNTS, neither comparison is available, and the test instead requires the absent variant to declare
+no size of its own so it inherits the value's.
+`AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` holds that form, and holds the delegation
+pair beside it, because a stamp that adds no size still says nothing about the base rule it sits on.
 
 Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
@@ -225,6 +338,13 @@ Browser state keeps its `cargento.next.*` namespace. That prefix is no longer a 
 two live bundles; it is compatibility with storage written during the preview and protection from
 stale `cargento.leader` records written by the removed dashboard. The current leader uses
 `cargento.next.leader` and `cargento.next.revision` so a stale old lease cannot demote it.
+
+**Retiring a tab slug is a route change, not a layout change.** `nextRouteFromFragment` in
+`next-boot.js` has no alias table, so a three-part fragment whose last part is no longer in
+`nextCockpitTabs(null)` is not redirected: it falls through to the focus arm and is parsed as a
+session focus id, landing the reader on a session filter that matches nothing. A proposal that
+merges or drops a tab therefore owes an alias for the retired slug and an amendment to this
+section, and cannot be priced as a change to the strip alone.
 
 ## NUI-4: the canonical bundle fails before bind
 
@@ -504,12 +624,27 @@ happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-Console includes STEER and TRIPWIRES because the dashboard needs the interaction shape,
+The board carries STEER and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
 makes no request. A disabled field was rejected because it could not demonstrate the interaction,
 while an enabled field with no receipt would look like a successful send.
+
+The steer composer is built once, in the project chrome above the tab strip, rather than inside
+TRIPWIRES. DRC-4595 moved it: as the last child of a section captioned "local only · nothing
+enforces these" it was 86% of the way down the Console panel, subordinate to a section it has
+nothing to do with, and absent from the other four tabs. The chrome is where a project-scoped draft
+belongs, and a single call site is what makes "renders once" provable: a second builder stood in
+`next-controls.js` with no caller and was deleted for that reason.
+
+**The correction no longer waits for the press.** It used to be built from the stored drafts, so
+before the first keystroke the control promised delivery and said nothing about what it does.
+A caveat now sits above the field in every render: one sentence on the sentence tier saying there is
+no write path and that anything typed is a note to yourself. Raising it alone would have drawn the
+warning larger than the words it warns about, so the field was raised with it and the pair is
+asserted as a pair. The `send ⏎` submit keeps its wording under this ruling, which retains the
+control specifically to demonstrate the interaction shape; renaming it is filed separately.
 
 Tripwire rules are viewer preferences. They are stored under a project-label key in the next
 bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
@@ -718,6 +853,20 @@ and counts but omit member activity lines. Project detail then owns workflow and
 session detail owns the exact session's current activity and progressive command facts. No level
 repeats a broader summary merely because it can.
 
+The same order governs inside a panel, and Console is where it was breached. Measured at 1680x1057,
+its first operational heading began 341px into a 968px panel: 309px of that was an exact-session
+terminal, an observer-model notice and a raw status line, three blocks describing capabilities a
+default run has switched off. They never change while a reader works, and the figures under them
+change minute to minute. The panel now emits the scope header, the select-a-session prompt at
+project scope, the operations rail, and then one disclosure holding the setup blocks. Nothing left
+the page.
+
+Two rules keep that honest. The disclosure summary reads the capability flags, not the rendered
+bodies: the terminal section returns empty with no focus and the status line returns empty with no
+sessions, so a summary derived from what came back would report an enabled bridge as off. And a
+capability that is on is operational content, so its section renders expanded and outside the
+disclosure rather than collapsed with the rest.
+
 ## NUI-17: the gate queue hands over a command, and only where one was measured
 
 A gate-queue row names a session that is waiting and then leaves the reader to find its terminal.
@@ -856,6 +1005,55 @@ control renders, from one function, rather than computing its own answer. A hand
 opinion can refuse a press the button offered, or take one the button refused. The refusal is
 answered rather than dropped, because a clicked control that goes silent is indistinguishable from a
 dead one.
+
+## NUI-19: a caveat has three tiers
+
+Cargento pays for its honesty in vertical space, and before this rule it paid the same price for
+every sentence. Each caveat rendered as one `<p class="next-cockpit-reading-why">` in the reading
+flow, so COUNTS closed with sixty-nine words under five numbers and the one operational
+instruction in them was the third sentence. DRC-4587 made this worse rather than better: raising
+board sentences to `--fs-sentence` gave `.next-cockpit-count-label` and `.next-cockpit-reading-why`
+the identical font shorthand, so size stopped separating a caveat from the finding it qualifies.
+
+A caveat now goes in one of three tiers, and the rule is about placement rather than length:
+
+1. Tier 1 is always visible. It is one clause carrying the claim itself, twelve words or fewer,
+   plus every absence value. If a reader acts on it, it is tier 1. "Five figures, and no arithmetic
+   between them." is tier 1, and so is every `not published`.
+2. Tier 2 sits behind a disclosure. It holds everything past that clause, under a summary of two to
+   four words naming what is inside. `nextCockpitWhy` provides it on the `next-` surface and
+   `projectDisclosure` on the `pc-` one.
+3. Tier 3 is the design records. A sentence too long for tier 2 leaves the panel, and its full form
+   is written here or in [design-reading-a-session.md](design-reading-a-session.md), cited from a
+   source comment in the citation grammar `AGENTS.md` describes.
+
+Tiering deletes nothing. Every sentence that existed before the rule still exists after it, inline
+or one click away. The rule sanctions one exception, for a claim stated twice: the
+`two axes, read separately` aside said what the footer under the same cards already said, and a
+duplicate is not a tier.
+
+### Tier 3 ships no `docs/` href and no `DEC-N` token
+
+The obvious build of tier 3 is a link from the disclosure body to the design record. It cannot
+ship, for two independent reasons, and both are invisible in a diff:
+
+- An installed plugin has no `docs/` directory beside the page. The link resolves in a checkout
+  and 404s everywhere the product actually runs.
+- `RuntimeDecisionCitationsTest` reads every `.py`, `.js`, `.css` and `.html` under
+  `cargento_runtime` as a whole file, not as comments. A bare `DEC-16` in a product string is a
+  checker hit whether or not a reader ever sees it.
+
+So tier 3 cites from a **source comment**, in the grammar the checker already enforces, and the
+rendered page carries neither the token nor the path.
+
+### The control is never smaller than what it hides
+
+A tier-2 summary is set at `--fs-sentence`, the same tier as the body it reveals, because it
+carries the only words a reader has for deciding whether to open it. A control set below the text
+it conceals is the same defect class as an absence set above the value it replaces, which
+DRC-4587 shipped in ten places across four review rounds: the two halves are chosen by a branch
+and never render together, so no selector sweep and no walk of a populated board can see the pair.
+Resolve both branches through the cascade and compare them.
 
 ## What this does not decide
 

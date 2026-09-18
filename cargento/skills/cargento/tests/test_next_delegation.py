@@ -183,7 +183,12 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("30 tok/m while delegated", block)
         self.assertIn("2 human turns", block)
         self.assertIn("<progress", block)
-        self.assertLess(html.index("DELEGATION"), html.index("STEER · LOCAL ONLY"))
+        # The rail used to end in the steer composer, which DRC-4595 moved to
+        # the project chrome. Re-pointed from "DELEGATION comes first" -- true
+        # of an empty rail too -- to the placement that replaced it.
+        self.assertNotIn("STEER · LOCAL ONLY", html)
+        self.assertNotIn("data-next-steer", html)
+        self.assertIn("data-next-guardrails", html)
 
     def test_gate_exit_across_idle_resumption_counts_one_human_turn(self) -> None:
         out = self.run_fixture(
@@ -792,6 +797,87 @@ console.log(JSON.stringify(__els.app.innerHTML));
         # a floor that is true and useless, and reads as a broken figure.
         self.assertIn("≥100 tok/m while delegated", block)
         self.assertIn("100%", block)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class BothWithheldFiguresCarryTheAbsenceStampTest(NextPageJsHarness):
+    """DRC-4589 AC-2 over both "no figure yet" paths.
+
+    The issue as filed claimed this string rendered in the large bright figure
+    type; it does not, at either site. It is `--ink2` at `700 16px var(--mono)`
+    inside `.next-delegation-withheld`, and the 32px accent rule reaches
+    neither. So the ink stays exactly where it is and the cue is the stamp: a
+    family swap and a leading em dash, both of which survive greyscale.
+
+    Both sites are asserted because they are different emitters -- the Console
+    card builds its own markup, the project rail renders `metric.pctText` --
+    and a stamp on one is not a stamp on the other.
+    """
+
+    FIXTURE = NextDelegationBehaviorTest.FIXTURE
+
+    def test_the_second_emitter_stamps_the_string_it_prints_instead_of_a_figure(self) -> None:
+        """`nextProjectDelegation` builds its own markup rather than rendering
+        `metric.pctText`, so a stamp on the rail is not a stamp here.
+
+        Called directly, because on this tree the function has **no caller**:
+        `grep -rn nextProjectDelegation cargento_runtime/` returns its own
+        definition and nothing else, and it has been that way since the commit
+        that promoted this interface. That is filed rather than fixed here. The
+        assertion below is worth keeping anyway — it is what stops the two
+        emitters disagreeing the moment one is wired back up — but it is stated
+        as a unit call and not as a rendered board, because rendering it is what
+        no route does.
+        """
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+nextWorkstreamProjectWindow = () => ({seeded:false, samples:[]});
+console.log(JSON.stringify(
+  nextProjectDelegation({group:{label:"alpha/repo"}})));
+"""
+        )
+        assert isinstance(out, str)
+
+        self.assertIn("<strong data-next-absent>no figure yet</strong>", out)
+        # And the section is the withheld one, not the figure one.
+        self.assertIn("data-next-delegation-withheld", out)
+        self.assertNotIn("next-delegation-figure", out)
+
+    def test_the_project_rail_stamps_its_withheld_figure_too(self) -> None:
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(out, str)
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out)
+        assert block is not None
+
+        self.assertIn("<strong data-next-absent>no figure yet</strong>", block.group())
+
+    def test_a_measured_percentage_carries_no_stamp(self) -> None:
+        """The negative arm, and the one that matters: a stamp on a real figure
+        prints an em dash in front of it and reads as an absence."""
+        out = self._run_page_js(
+            RAIL_FIXTURE
+            + """
+Object.assign(railProject.delegation, {
+  pctText: "99%", pctKnown: true, pct: 99, trendKnown: false,
+  tpsText: "99 tok/m", tpsKnown: true, humanText: "2 human turns"
+});
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(out, str)
+        block = re.search(r"<section[^>]*data-next-delegation[\s\S]*?</section>", out)
+        assert block is not None
+
+        self.assertIn("99%", block.group())
+        self.assertNotIn("data-next-absent", block.group())
 
 
 if __name__ == "__main__":

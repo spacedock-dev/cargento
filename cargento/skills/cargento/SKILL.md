@@ -54,7 +54,11 @@ made in another tab. The annotation store keeps at most 256 records and sixteen 
 discard records are evicted before retained words, then oldest first. These limits do not apply
 to board-only rows. A present session without a project says so and offers no project link.
 Each project opens its cockpit:
-a left **Scope** rail selects the project or one exact session, while a persistent briefing shows
+a left **Scope** rail selects the project or one exact session. Each row leads with the session
+title, with its harness, state and age as a caption beneath; a row whose title was never published says
+so in place of the title rather than falling back to an id. Where two sessions of one harness would
+otherwise render identically, the row carries the session key so you are not picking blind. A
+persistent briefing shows
 **ASSIGNMENT / EXECUTION / COMMAND**, latest evidence, and direction. Assignment retains the
 stated goal, its source, and the reason when no goal is available. Command keeps a project session
 waiting on you visible above the tabs, with raise and copy-resume controls where supported.
@@ -62,13 +66,25 @@ waiting on you visible above the tabs, with raise and copy-resume controls where
 **Now** pairs current activity with observed session endings, their outcome glyphs and git readings,
 plus workflow evidence. **Course** holds observed state changes, semantic history, and completed
 tasks. **Decisions** shows recorded decisions and their application state; it does not approve
-them. **Console** holds Delegation, Waiting on you, Capacity, and Tripwires, followed by the
-selected session's optional read-only terminal in the same panel. **Held to** appears only with a
+them. **Console** leads with the operations rail, Delegation, Waiting on you, Capacity and
+Tripwires, and keeps how the server was started in one disclosure beneath it, holding the selected
+session's optional read-only terminal, the observer-model controls and the status line. The summary
+names the state of both capabilities. A capability that is on renders expanded and outside the
+disclosure, so nothing you can act on is behind a click. **Held to** appears only with a
 session selected and holds the goal and expected output you typed for it, the observed entries
 naming it, any direction you gave after you saved those words, the reading block, and how the
 session landed as two cards that do not imply each other. The control that asks for a reading is always on the tab; when it cannot fire it stays put, refuses the press and names the reason beside itself.
 Browser-local
 human context and old tripwire notes do not instruct an agent and remain inert.
+
+Each tab names its own panel in a line beneath the strip, because three of the five open onto a
+heading that does not repeat the label. Course, Decisions and Held to also carry a cue on the tab
+itself: the number of observed state changes, decisions, or departures raised. A cue reads `…` while
+the record is still loading and `·` where nothing published the figure, and those two are never the
+same claim as a zero. Every cue is spelled out for a screen reader beside its mark.
+
+The composer for a note to yourself sits in the project header, above the tabs, rather than inside
+Tripwires. It is the same control wherever you reach it, and it still writes nothing into a session.
 
 Workflow stage conditions are separate typed controls in Course and Projects. Save one declared
 stage per exact workflow; the first current entity observed entering it trips the condition once.
@@ -80,7 +96,9 @@ writes into an agent. Notification outcomes report service acceptance or failure
 person saw a banner.
 
 The state-change timeline and delegation figure use the server's local session history, survive a
-restart or fresh tab, and caption the window actually observed. The cockpit's semantic history is
+restart or fresh tab, and caption the window actually observed. The timeline carries its own filter
+again: active, all, or decisions. The choice is remembered per session in this browser, so picking
+one on a session does not pick it for the next. The cockpit's semantic history is
 a separate prototype store; `--forget` does not delete it. The terminal is also a prototype: it
 requires both interaction flags and registration from inside the selected session's tmux pane,
 and accepts no input. Its xterm assets are vendored and served from loopback.
@@ -253,7 +271,9 @@ counts until anything in it writes again; a subagent write counts. Marks live in
 You can record a goal and an expected output against one session, in your own words. Both are
 optional and set independently, bounded at 240 characters each, and saving one leaves the other
 alone. Select a session in the project view and open its `Held to` tab, which appears only when a
-session is selected because there is nobody whose words these would be otherwise. Each field shows
+session is selected because there is nobody whose words these would be otherwise. A line above
+the fields says what typing buys: a reading happens when you ask for one, and Cargento never writes
+into the session. Each field shows
 how many of its 240 characters you have used as you type, offers `clear` only when there is text and `save`
 only when the box differs from what is stored, and Escape puts the stored value back.
 
@@ -278,13 +298,19 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields, `Held to` shows what the record lets you inspect. Work evidence lists every
-observed entry naming that session with its own type and the source that published it, and states
-the limit under it: demonstrated work results are read on Pi alone, so on every other harness those
-entries are instructions, dispatches and gate decisions and never an inspected file, test or
-deliverable. Your words also appear beside the goal the harness published, in the project view's
-stated goal block, each on its own row so the two claims are never merged, and the derived row says
-when the directive was observed.
+Below the two fields the tab runs in reading order: a later direction, the reading, the departures
+it raised, how it landed, and last the observed record. The record is last because it is the longest
+block here and its absence sentence is one of four that used to arrive before you reached the
+reading. It lists every observed entry naming that session with its own type and the source that
+published it, and states the limit under it: demonstrated work results are read on Pi alone, so on
+every other harness those entries are instructions, dispatches and gate decisions and never an
+inspected file, test or deliverable. Your words also appear beside the goal the harness published,
+in the project view's stated goal block, each on its own row so the two claims are never merged, and
+the derived row says when the directive was observed.
+
+Long caveats keep their claim on the page and put the rest behind a summary you can open, on both
+`Held to` and Console. Nothing is removed by that: an opened one stays open when the board redraws,
+and a closed one still holds every word it was written with.
 
 A later direction gets its own block. Every instruction you gave after your newest save is listed
 there with its age, and nothing there decides whether it changes what you asked for: that is yours,
@@ -321,7 +347,7 @@ after the session leaves the board.
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
-one control. The accepted case review enables that control; the evidence above stays readable
+one control. The accepted case review enables that control; the evidence stays readable
 whether or not you ask for a reading. A press shows progress while the request runs and prevents
 another press in this tab until it finishes. The response says whether a reading arrived or none
 was produced; a failed request says its result could not be confirmed and is never retried

@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+import itertools
 import json
 import pathlib
 import re
 import shutil
+import subprocess
 import unittest
-from typing import Any
+from typing import Any, ClassVar
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
+from cargento_runtime.web import page as frontend_page
 
 from . import css_cascade
+from .js_literals import emitted_strings, reading_why_sentences
 from .next_harness import NextPageJsHarness, storage_prelude
+
+# The joiner `projectGraphModeScope` builds its storage key with. Written as
+# an escape rather than inline, so a reader sees a separator rather than an
+# invisible byte, and so an editor cannot silently eat it.
+NUL_CHAR = "\u0000"
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -346,7 +355,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         # Then
         assert isinstance(out, str)
         self.assertIn("Exact operator direction", out)
-        self.assertNotIn("Actionable direction not captured", out)
+        self.assertNotIn("Actionable direction not observed", out)
         self.assertIn("Direction shown in assignment", out)
 
     def test_decision_rows_and_counts_include_unknown_authors_without_claiming_captain(
@@ -733,9 +742,10 @@ console.log(JSON.stringify(briefing.replace(/<details[^>]*>[\\s\\S]*?<\\/details
 
         # Then
         assert isinstance(out, str)
-        self.assertIn("Assignment evidence not published", out)
-        self.assertIn("Actionable direction not captured", out)
-        self.assertIn("Session result not captured", out)
+        self.assertNotIn("Assignment evidence not published", out)
+        self.assertIn("Not observed", out)
+        self.assertIn("Actionable direction not observed", out)
+        self.assertIn("Session result not observed", out)
         self.assertIn("Captain attention unavailable", out)
         self.assertIn("project context coverage unavailable", out)
 
@@ -758,7 +768,7 @@ console.log(JSON.stringify(html.slice(html.indexOf('<section class="next-cockpit
         assert isinstance(out, str)
         self.assertIn("LATEST EXACT RESULT", out)
         self.assertIn("Root finished", out)
-        self.assertIn("Actionable direction not captured", out)
+        self.assertIn("Actionable direction not observed", out)
 
     def test_scope_and_evidence_stay_open_through_a_redraw(self) -> None:
         out = self.run_fixture(
@@ -1062,8 +1072,17 @@ console.log(JSON.stringify({html,tabs,panel}));
         )
         self.assertNotIn("data-next-cockpit-task-subject", out["html"])
         self.assertEqual(4, len(out["tabs"]))
+        # The label is followed by its derived cue on the tabs that carry one,
+        # so each is bound to the start of its own button's content rather than
+        # to the close tag. Mutating the label or the button still breaks this;
+        # adding a cue after the label does not.
         for label in ("Now", "Course", "Decisions", "Console"):
-            self.assertTrue(any(f">{label}</button>" in tab for tab in out["tabs"]))
+            self.assertTrue(
+                any(
+                    re.search(rf">{label}(?:<span class=\"next-cockpit-tab-cue|</button>)", tab)
+                    for tab in out["tabs"]
+                )
+            )
         self.assertTrue(
             any('aria-selected="true"' in tab and ">Now</button>" in tab for tab in out["tabs"])
         )
@@ -1103,7 +1122,11 @@ nextCockpitContexts.set(nextCockpitContextKey(group,null),{data:observation,revi
 renderNext();
 const html=__els.app.innerHTML;
 const panel=(html.match(/<section class="next-cockpit-panel"[\\s\\S]*<\\/section>/)||[""])[0];
-const mirror=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<nav class="next-cockpit-tabs")/)||[""])[0];
+// Stop at the briefing's own close, not at the last section before the tabs.
+// DRC-4595 moved the steer composer into the project chrome as a sibling
+// <section> in that gap, and a lookahead anchored only on the tabs nav
+// swallowed it -- charging a control's 26 words to the briefing's word budget.
+const mirror=(html.match(/<section class="next-cockpit-recovery"[\\s\\S]*?<\\/section>(?=<section class="next-control|<nav class="next-cockpit-tabs")/)||[""])[0];
 const visible=mirror
   .replace(/<details(?![^>]*\\bopen\\b)[^>]*>[\\s\\S]*?<\\/details>/g," ")
   .replace(/<[^>]+>/g," ").replace(/&[^;]+;/g," ")
@@ -1132,11 +1155,17 @@ console.log(JSON.stringify({html,panel,mirror,visible,visibleWords:visible ? vis
             "COMPLETED RESULT",
             'data-next-project-section="plan"',
             "data-next-delegation",
-            "STEER · LOCAL ONLY",
             "GUARDRAILS · LOCAL ONLY",
             "<textarea",
         ):
             self.assertNotIn(old_surface, panel)
+        # DRC-4595 moved the composer to the chrome, which made "absent from
+        # this panel" true of every panel and of no arrangement in particular.
+        # Re-pointed at the pair, so the assertion still measures a placement:
+        # out of the panel, and present once in the shell around it.
+        assert isinstance(panel, str)
+        self.assertNotIn("STEER · LOCAL ONLY", panel)
+        self.assertEqual(1, str(out["html"]).count("STEER · LOCAL ONLY"))
         self.assertIn("Retry workflow discovery", out["visible"])
         self.assertIn("Retry workflow discovery", out["visible"])
         self.assertNotIn("System details", out["mirror"])
@@ -1176,8 +1205,16 @@ console.log(JSON.stringify({project,session,narrowest}));
         self.assertIn('data-scope-owner="project"', out["project"])
         self.assertIn('data-scope-owner="pi:pi-idle"', out["session"])
         self.assertIn('class="next-scope-marker next-scope-marker--round"', out["session"])
-        self.assertIn('class="next-scope-cue next-scope-cue--session"', out["session"])
-        self.assertIn(">SESSION</strong>", out["session"])
+        # A session row keeps the marker and the connector rule, which carry the
+        # kind without words, and keeps the word itself in its accessible name.
+        # The full cue block stays on the project row and at the ten other sites
+        # that emit one; printing it on every session row was the repetition the
+        # rail was rebuilt to remove.
+        self.assertIn('<span class="next-visually-hidden">SESSION</span>', out["session"])
+        self.assertNotIn(
+            'class="next-scope-cue next-scope-cue--session"',
+            (out["session"].split('class="next-cockpit-scope-tree"')[1] or "").split("</nav>")[0],
+        )
         self.assertEqual("session", out["narrowest"]["same"]["kind"])
         self.assertEqual("project", out["narrowest"]["mixed"]["kind"])
         self.assertEqual("unknown", out["narrowest"]["unknown"]["kind"])
@@ -1456,13 +1493,249 @@ console.log(JSON.stringify({project,session}));
         self.assertNotIn('data-scope-kind="session"', project_panel)
         self.assertIn('data-scope-kind="session"', session_panel)
         self.assertIn(">SESSION</strong>", session_panel)
-        self.assertIn("STEER · LOCAL ONLY", project_panel)
         self.assertIn("<h2>TRIPWIRES</h2>", project_panel)
         self.assertIn("local only · nothing enforces these", project_panel)
         self.assertIn("data-next-delegation", project_panel)
-        self.assertIn("STEER · LOCAL ONLY", session_panel)
+        # The composer is no longer the last child of TRIPWIRES. Re-pointed at
+        # where it went rather than deleted: it renders once per route, in the
+        # chrome, at both project and session scope.
+        for scope, shell, panel in (
+            ("project", str(out["project"]), project_panel),
+            ("session", str(out["session"]), session_panel),
+        ):
+            with self.subTest(scope=scope):
+                self.assertEqual(1, shell.count("STEER · LOCAL ONLY"))
+                self.assertNotIn("STEER · LOCAL ONLY", panel)
         self.assertIn("Raw project status", project_panel)
         self.assertNotIn("Latest decisions", project_panel)
+
+    # --- DRC-4595: operations first, and the composer out of TRIPWIRES -------
+
+    CONSOLE_SETUP = 'class="next-cockpit-console-setup"'
+
+    def _console(self, extra: str = "") -> dict[str, object]:
+        """Render the session-scoped Console and hand back the shell and panel."""
+        out = self.run_fixture(
+            """
+nextCockpitContexts.clear();
+"""
+            + extra
+            + """
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+renderNext();await __settle();await __settle();
+const shell=__els.app.innerHTML;
+console.log(JSON.stringify({shell,
+  panel:shell.slice(shell.indexOf('data-next-cockpit-panel="console"'))}));
+"""
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_console_puts_the_operations_rail_ahead_of_the_setup_disclosure(self) -> None:
+        """AC-1. Today the rail is emitted last, at next-cockpit.js:3402.
+
+        The disclosure's POSITION was the whole assertion, and its position is
+        not what the criterion is about. Hoisting `nextCockpitConsoleStatus`
+        above the rail -- literally this criterion's own Falsified-by condition
+        -- left `rail < setup` true, so AC-1 stayed green, the whole cockpit
+        module stayed green, and the live rail offset moved 111.5px -> 174.5px,
+        breaking AC-8 by 55px. A criterion whose named falsifier passes is not a
+        verified criterion.
+
+        So every part of the setup block is held behind the rail, not just the
+        `<details>` that wraps them. `console-status` is the one that moved.
+        """
+        panel = str(self._console()["panel"])
+
+        scope = panel.index("next-cockpit-scope")
+        rail = panel.index("data-next-project-rail")
+        setup = panel.index(self.CONSOLE_SETUP)
+        self.assertLess(scope, rail)
+        self.assertLess(rail, setup)
+        self.assertEqual(1, panel.count(self.CONSOLE_SETUP))
+        # Nothing the disclosure exists to hide may precede the rail, and the
+        # status must still be INSIDE it rather than merely after it.
+        status = panel.index("data-next-cockpit-console-status")
+        self.assertLess(rail, status, "setup content was hoisted above the operations rail")
+        self.assertLess(setup, status, "the raw status left the setup disclosure")
+        shut = panel.index("</details>", setup)
+        self.assertLess(status, shut, "the raw status is no longer inside the setup disclosure")
+
+    def test_the_scope_header_and_the_project_prompt_stay_out_of_the_disclosure(self) -> None:
+        """AC-2. Collapsing the prompt would leave project scope with no way in."""
+        out = self.run_fixture(
+            """
+nextCockpitContexts.clear();
+nextRoute=nextRouteFromFragment("#n=project:cargento:console");
+renderNext();await __settle();await __settle();
+const shell=__els.app.innerHTML;
+console.log(JSON.stringify({panel:shell.slice(
+  shell.indexOf('data-next-cockpit-panel="console"'))}));
+"""
+        )
+        assert isinstance(out, dict)
+        panel = str(out["panel"])
+
+        setup = panel.index(self.CONSOLE_SETUP)
+        self.assertLess(panel.index("next-cockpit-scope"), setup)
+        prompt = "Select one exact session to open its read-only console."
+        self.assertIn(prompt, panel)
+        self.assertLess(panel.index(prompt), setup)
+        self.assertNotIn(prompt, panel[setup:])
+
+    def test_the_setup_summary_reads_the_flags_and_an_enabled_capability_leaves_it(self) -> None:
+        """AC-3. Derived from the flags, never from whether a body came back.
+
+        `nextCockpitTerminal` returns "" with no focus and
+        `nextCockpitConsoleStatus` returns "" with no sessions, so a summary
+        read off the rendered body would report an enabled bridge as off.
+        """
+        out = self.run_fixture(
+            r"""
+nextCockpitContexts.clear();
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+renderNext();await __settle();await __settle();
+const group=nextProjectGroups().find(g=>g.label==="cargento");
+const focus=nextCockpitFocusedSession(group);
+const entry=nextCockpitContexts.get(nextCockpitContextKey(group,focus));
+// The setup disclosure nests the console-status <details>, so the matching
+// close tag is found by depth rather than by the first "</details>".
+const read=()=>{
+  const html=__els.app.innerHTML;
+  const panel=html.slice(html.indexOf('data-next-cockpit-panel="console"'));
+  const open=panel.lastIndexOf("<details",panel.indexOf('class="next-cockpit-console-setup"'));
+  let depth=0,shut=open;
+  for(const token of panel.slice(open).matchAll(/<details|<\/details>/g)){
+    depth+=token[0]==="<details"?1:-1;
+    if(depth===0){ shut=open+token.index; break; }
+  }
+  const body=panel.slice(open,shut);
+  return {summary:(panel.slice(open).match(/<summary>([^<]*)<\/summary>/)||[])[1]||"",
+    insideOff:body.includes("Observer model is disabled for this run"),
+    insideOn:body.includes("data-next-observer-consent"),
+    presentOff:panel.includes("Observer model is disabled for this run"),
+    present:panel.includes("data-next-observer-consent")};
+};
+entry.data=Object.assign({},entry.data,{observer_model:{enabled:false}});
+renderNext();const off=read();
+entry.data=Object.assign({},entry.data,{observer_model:{enabled:true,disclosure:"x"}});
+renderNext();const on=read();
+console.log(JSON.stringify({off,on}));
+"""
+        )
+        assert isinstance(out, dict)
+        off = out["off"]
+        on = out["on"]
+        assert isinstance(off, dict)
+        assert isinstance(on, dict)
+
+        self.assertIn("observer model off", off["summary"])
+        self.assertIn("observer model on", on["summary"])
+        self.assertIn("terminal bridge off", off["summary"])
+        # Off: the section is rendered, and it is inside the disclosure.
+        self.assertTrue(off["presentOff"])
+        self.assertTrue(off["insideOff"])
+        # On: the section is rendered, and it has left the disclosure.
+        self.assertTrue(on["present"])
+        self.assertFalse(on["insideOn"])
+
+    def test_the_steer_composer_is_built_once_in_the_chrome(self) -> None:
+        """AC-4. One construction path, reused rather than retyped.
+
+        The composer's index is ABOVE the tab list because the issue's solution
+        puts the call in `nextProjectCockpit` immediately before
+        `nextCockpitTabList()`. AC-4 as drafted says "below", which contradicts
+        that sentence; the solution paragraph governs, and the point either
+        reading shares -- out of the panel, out of TRIPWIRES -- is asserted too.
+        """
+        out = self._console()
+        shell = str(out["shell"])
+        panel = str(out["panel"])
+
+        self.assertEqual(1, shell.count("data-next-steer-form"))
+        self.assertEqual(1, shell.count("data-next-steer>"))
+        self.assertNotIn("data-next-steer", panel)
+        guardrails = shell.index("data-next-guardrails")
+        self.assertLess(shell.index("data-next-steer>"), guardrails)
+        self.assertLess(shell.index("data-next-steer>"), shell.index('role="tablist"'))
+        for attribute in (
+            "data-next-steer-form",
+            'data-next-draft="steer"',
+            "data-next-controls-project=",
+            'data-next-focus="steer-draft:',
+            'maxlength="500"',
+        ):
+            with self.subTest(attribute=attribute):
+                self.assertIn(attribute, shell)
+
+    def test_the_second_composer_construction_path_is_gone(self) -> None:
+        """AC-4's other half: "renders once" is unprovable while a second
+        builder stands. `nextProjectControls` has no caller in `web/`."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        sources = [path.read_text(encoding="utf-8") for path in sorted(web.glob("*.js"))]
+        joined = "\n".join(sources)
+        self.assertNotIn("nextProjectControls", joined)
+        self.assertEqual(2, joined.count("nextProjectSteer("))
+
+    def test_the_composer_warns_before_the_first_keystroke(self) -> None:
+        """AC-5. Today the sentence exists only in the post-submit receipt."""
+        out = self.run_fixture(
+            """
+console.log(JSON.stringify({steer:nextProjectSteer("cargento",{steers:[]})}));
+"""
+        )
+        assert isinstance(out, dict)
+        steer = str(out["steer"])
+
+        self.assertIn("Cargento has no write path into a session.", steer)
+        self.assertIn("kept in this browser tab", steer)
+        self.assertNotIn("next-steer-receipt", steer)
+        self.assertIn("Draft a next step — kept in this tab only", steer)
+        self.assertNotIn("Tell this project what to do next", steer)
+        self.assertIn('class="next-steer-caveat"', steer)
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        rule = re.search(r"\.next-steer-caveat\{([^}]*)\}", styles)
+        assert rule is not None
+        self.assertIn("var(--fs-sentence)", rule.group(1))
+        self.assertRegex(rule.group(1), r"line-height:|var\(--fs-sentence\)/")
+        self.assertNotIn("var(--mono)", rule.group(1))
+
+    def test_the_setup_disclosure_survives_a_redraw(self) -> None:
+        """AC-6. A bare `<details>` snaps shut on every poll."""
+        panel = str(self._console()["panel"])
+
+        setup = panel.index(self.CONSOLE_SETUP)
+        tag = panel[panel.rindex("<details", 0, setup) : panel.index(">", setup) + 1]
+        self.assertIn("data-next-cockpit-disclosure=", tag)
+        key = re.search(r'data-next-cockpit-disclosure="([^"]*)"', tag)
+        assert key is not None
+        self.assertIn("cargento", key.group(1))
+        self.assertIn("console-setup", key.group(1))
+
+    def test_the_promoted_submit_uses_the_plain_control_primitive(self) -> None:
+        """AC-7, re-measured. Triage wrote this as not-yet-assessable because
+        `.next-action` did not exist; DRC-4590 has since defined it, so the
+        criterion is assessed against the real primitive rather than a fallback.
+        """
+        out = self.run_fixture(
+            """
+console.log(JSON.stringify({steer:nextProjectSteer("cargento",{steers:[]})}));
+"""
+        )
+        assert isinstance(out, dict)
+        submit = re.search(r'<button type="submit"[^>]*>', str(out["steer"]))
+        assert submit is not None
+        self.assertIn('class="next-action"', submit.group(0))
+        self.assertNotIn("next-action--primary", submit.group(0))
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".next-action{", styles)
+        self.assertIn(".next-action--primary{", styles)
 
     def test_local_tab_permalink_and_arrow_keys_preserve_project_session_route(self) -> None:
         out = self.run_fixture(
@@ -1491,7 +1764,9 @@ console.log(JSON.stringify({parsed,roundTrip,course,afterKey,hash:location.hash}
         self.assertEqual("course", out["parsed"]["tab"])
         self.assertEqual("#n=project:cargento:pi%3Api-idle:course", out["roundTrip"])
         self.assertIn('data-next-cockpit-panel="course"', out["course"])
-        self.assertIn('aria-selected="true" tabindex="0">Course</button>', out["course"])
+        # Course carries a derived cue after its label, so the close tag is no
+        # longer adjacent; selection, roving tabindex and label still are.
+        self.assertIn('aria-selected="true" tabindex="0">Course<span', out["course"])
         self.assertIn('data-next-cockpit-panel="decisions"', out["afterKey"])
         self.assertEqual("#n=project:cargento:pi%3Api-idle:decisions", out["hash"])
 
@@ -1575,6 +1850,59 @@ console.log(JSON.stringify(views));
         for html in out.values():
             self.assertIn("EXACT SESSION TERMINAL", html)
             self.assertNotIn("Open terminal", html)
+
+    def test_the_registration_recipe_is_two_steps_behind_a_redraw_safe_disclosure(self) -> None:
+        """DRC-4591 AC-1 and AC-2 on the `pc-` surface.
+
+        The recipe rendered as one paragraph of running prose in which both
+        flags wrap. It is now a numbered two-step list behind
+        `projectDisclosure`, whose open state survives a redraw -- a bare
+        `<details>` would snap shut on every live payload, losing the reader's
+        place mid-command.
+        """
+        out = self.run_fixture(
+            """
+nextRoute=nextRouteFromFragment("#n=project:cargento:codex%3Afocus-1:console");
+delete projectTerminalBySession["codex:focus-1"];
+__fetchImpl = async () => ({ok:true,status:200,
+  json:async()=>({state:"refused",reason:"unregistered-origin"})});
+renderNext();
+await __settle(); await __settle();
+const closed = __els.app.innerHTML;
+// Open it the way a click does, then redraw.
+projectDisclosureOpenBySession.set("codex:focus-1\\nterminal-registration", true);
+renderNext();
+await __settle();
+console.log(JSON.stringify({closed, reopened: __els.app.innerHTML}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        closed, reopened = out["closed"], out["reopened"]
+        assert isinstance(closed, str) and isinstance(reopened, str)
+        # AC-1: a closed <details> still contributes its body to innerHTML, so
+        # every load-bearing fragment of the recipe is still on the page.
+        self.assertIn("How to register a terminal", closed)
+        self.assertIn('data-pc-disclosure="terminal-registration"', closed)
+        self.assertIn("pc-substrate-steps", closed)
+        for fragment in (
+            "--interaction-origin-session harness:sid",
+            "--interaction-origin-registration-file PATH",
+            "inside the tmux pane for this exact session with that file",
+            "Output is read-only.",
+        ):
+            with self.subTest(fragment=fragment[:40]):
+                self.assertIn(fragment, closed)
+        # Two steps, not one paragraph -- counted inside the list, because the
+        # rest of the Console tab carries list items of its own.
+        steps = re.search(r'<ol class="pc-substrate-steps">([\s\S]*?)</ol>', closed)
+        assert steps is not None, "the recipe did not render as a list"
+        self.assertEqual(2, steps.group(1).count("<li>"))
+        # AC-2: the open state is the board's own persisted one, and it survives
+        # the redraw. Falsified by a bare <details>, which carries no
+        # data-pc-disclosure and so is never restored.
+        self.assertNotIn(' open data-pc-disclosure="terminal-registration"', closed)
+        self.assertIn(' open data-pc-disclosure="terminal-registration"', reopened)
 
     def test_terminal_identity_keeps_zero_indices_and_names_missing_coordinates(self) -> None:
         out = self.run_fixture(
@@ -1909,7 +2237,9 @@ console.log(JSON.stringify({html,recovery,task,scope,visibleWords:visible?visibl
         assert isinstance(out, dict)
 
         self.assertEqual(0, out["primary"])
-        self.assertLessEqual(out["visibleWords"], 48)
+        # 48 before the per-tab lede, which is 17 words of deliberate prose
+        # naming what the panel holds. Raised by that sentence and no further.
+        self.assertLessEqual(out["visibleWords"], 65)
         self.assertIn("ASSIGNMENT", out["task"])
         self.assertIn("<strong>Not observed</strong>", out["task"])
         self.assertNotIn(">PROJECT</strong>", out["task"])
@@ -1944,15 +2274,29 @@ console.log(JSON.stringify({
         self.assertLess(out["header"], out["nav"])
         self.assertEqual(-1, out["plan"])
         self.assertLess(out["nav"], out["html"].index('class="next-cockpit-tabs"'))
+        # Two lines, title first. The whole line-1 sequence is pinned, so a
+        # change that puts the harness back above the title fails here rather
+        # than passing on a looser match.
         self.assertIn(
-            '<strong class="next-cockpit-scope-name">Codex</strong>'
-            '<span class="next-cockpit-scope-state next-cockpit-scope-state--working">'
-            '<span class="next-project-dot next-project-tone--unknown next-project-dot--working" role="img" aria-label="working"></span>'
-            "working</span>",
+            '<span class="next-cockpit-scope-mark" aria-hidden="true">'
+            '<i class="next-scope-marker next-scope-marker--round"></i></span>'
+            '<span class="next-visually-hidden">SESSION</span>'
+            '<span class="next-cockpit-scope-title" title="Shape project cockpit">'
+            "Shape project cockpit</span>",
             out["sessionNav"],
         )
-        self.assertIn("<small>Shape project cockpit</small>", out["sessionNav"])
-        self.assertNotIn("<strong>Shape project cockpit", out["sessionNav"])
+        self.assertIn(
+            '<span class="next-cockpit-scope-meta">Codex \u00b7 '
+            '<span class="next-cockpit-scope-state next-cockpit-scope-state--working">'
+            '<span class="next-project-dot next-project-tone--unknown next-project-dot--working"'
+            ' role="img" aria-label="working"></span>working</span>',
+            out["sessionNav"],
+        )
+        self.assertLess(
+            out["sessionNav"].index('class="next-cockpit-scope-title" title="Shape project'),
+            out["sessionNav"].index('class="next-cockpit-scope-meta">Codex'),
+        )
+        self.assertNotIn("<small>Shape project cockpit</small>", out["sessionNav"])
 
     def test_focus_keeps_project_status_and_canonical_labels_from_all_context(self) -> None:
         out = self.run_fixture(
@@ -1999,7 +2343,12 @@ console.log(JSON.stringify({html,requests:[...nextCockpitContexts.keys()]}));
         )
         self.assertIn('data-next-cockpit-panel="decisions"', out["html"])
         self.assertNotIn("PROJECT OVERVIEW", out["html"])
-        self.assertNotIn("All events", out["html"])
+        # "All events" is the renderer's own filter button, deliberately
+        # re-exposed. What must not leak is the all-events VIEW: the panel is
+        # still on decisions and that button is still unpressed.
+        self.assertIn('data-graph-mode="decisions"', out["html"])
+        self.assertIn("<h2>RECORDED DECISIONS</h2>", out["html"])
+        self.assertIn('data-arg="all" class="" aria-pressed="false"', out["html"])
 
     def test_session_permalink_selects_exact_focus_and_decisions_filter_is_present(self) -> None:
         out = self.run_fixture(
@@ -3273,7 +3622,7 @@ console.log(JSON.stringify({text:briefing.text,
             self.assertIn("Candidate verification completed", value)
             self.assertIn("latest session result", value.casefold())
         self.assertIn("codex:focus-1", out["text"])
-        self.assertIn("session output; semantic result not captured", out["text"])
+        self.assertIn("session output; semantic result not published", out["text"])
         self.assertIn("Detailed verification transcript", out["text"])
         start = out["html"].index("LATEST ACTIONABLE DIRECTION")
         disclosure = out["html"].find("<details", start)
@@ -3284,7 +3633,7 @@ console.log(JSON.stringify({text:briefing.text,
         self.assertNotIn("Detailed verification transcript", primary)
         self.assertIn("Evidence", evidence)
         self.assertIn("codex:focus-1", evidence)
-        self.assertIn("session output; semantic result not captured", evidence)
+        self.assertIn("session output; semantic result not published", evidence)
 
     def test_recovery_promotes_first_fo_action_when_captain_is_empty(self) -> None:
         out = self.run_fixture(
@@ -5193,12 +5542,13 @@ const read = () => {
   const html = __els.app.innerHTML;
   const block = html.slice(html.indexOf('class="next-cockpit-reading"'));
   return {
-    text: (block.match(/class="next-cockpit-reading-why">([^<]*)</) || [])[1],
+    text: (block.match(/class="next-cockpit-reading-why"[^>]*>([^<]*)</) || [])[1],
     // The refusal by its id rather than by being first. The offer paragraph
     // now precedes it in every state, because the control renders in all of
     // them, and "the first reason paragraph" stopped naming the reason.
     reason: (block.match(
-      /class="next-cockpit-reading-why" id="next-cockpit-reading-refused">([^<]*)</) || [])[1],
+      /class="next-cockpit-reading-why" id="next-cockpit-reading-refused"[^>]*>([^<]*)</
+      ) || [])[1],
     control: block.includes('data-next-cockpit-action="reading-ask"'),
     disabled: /data-next-cockpit-action="reading-ask"[^>]*aria-disabled="true"/.test(block),
     // The bare attribute the browser acts on, kept apart from the aria one:
@@ -5331,7 +5681,10 @@ const read = () => {
     cards: [...block.matchAll(/landed-label">([^<]*)<\/span><span class="([^"]*)">([^<]*)</g)]
       .map(m => [m[1], m[3], m[2].includes("--absent")]),
     note: (block.match(/class="next-cockpit-landed-note">([^<]*)</) || [])[1],
-    axes: block.includes("two axes, read separately"),
+    // DRC-4591 deleted the duplicate aside. What survives is the single
+    // footer, which is what the claim was always for.
+    axes: block.includes("Neither card implies the other."),
+    duplicate: block.includes("two axes, read separately"),
     provisional: html.includes("This covers only the work so far"),
   };
 };
@@ -5354,6 +5707,7 @@ console.log(JSON.stringify({running, ended: read()}));
         # evidence while the claim axis does not follow it.
         assert isinstance(out, dict)
         self.assertTrue(out["running"]["axes"])
+        self.assertFalse(out["running"]["duplicate"])
         self.assertEqual(
             [
                 ["END EVIDENCE", "No stop or end observed while the session is running", True],
@@ -5582,9 +5936,13 @@ const html = __els.app.innerHTML;
 const headers = [...html.matchAll(/<header>([\s\S]*?)<\/header>/g)].map(m => m[1]).join("|");
 console.log(JSON.stringify({
   revisionInHeader: headers.includes("next-cockpit-held-revision"),
-  axesInHeader: headers.includes("next-cockpit-landed-axes"),
   revisionPresent: html.includes('class="next-cockpit-held-revision"'),
+  // DRC-4591 deleted the aside this rule was written for. Its surviving half
+  // is the footer under the cards, which is a `reading-why` and is measured
+  // by that selector's own rule below.
   axesPresent: html.includes('class="next-cockpit-landed-axes"'),
+  landedFooter: html.includes(
+    '<p class="next-cockpit-reading-why">Neither card implies the other.'),
 }));
 """
         )
@@ -5594,16 +5952,16 @@ console.log(JSON.stringify({
         # label with it.
         assert isinstance(out, dict)
         self.assertTrue(out["revisionPresent"])
-        self.assertTrue(out["axesPresent"])
         self.assertFalse(out["revisionInHeader"])
-        self.assertFalse(out["axesInHeader"])
+        self.assertFalse(out["axesPresent"])
+        self.assertTrue(out["landedFooter"])
 
         # And the register they are drawn in is the sentence one, not a label
         # bumped to 15px while keeping mono -- the falsifier AC-2 names.
         styles = (
             pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
         ).read_text(encoding="utf-8")
-        for cls in ("next-cockpit-held-revision", "next-cockpit-landed-axes"):
+        for cls in ("next-cockpit-held-revision", "next-cockpit-reading-why"):
             with self.subTest(rule=cls):
                 rule = next(line for line in styles.split("\n") if line.startswith("." + cls + "{"))
                 self.assertIn("var(--sans)", rule)
@@ -5975,6 +6333,176 @@ console.log(JSON.stringify({counts, steer, tripwire}));
         self.assertNotIn("next-action--primary", out["tripwire"])
 
 
+class AnAbsenceNeverRendersLargerThanItsValueTest(unittest.TestCase):
+    """Three pairs DRC-4592 and DRC-4597 added, carried across from a table that
+    no longer exists.
+
+    Both branches appended these to `AnAbsenceNeverOutranksTheValueItReplacesTest`
+    when it was a flat table of CSS selector pairs. It was rewritten on the way
+    in to resolve DOM paths through the cascade, and narrowed to the absences
+    raised to the sentence tier -- which these are not, so they no longer fit
+    it. The property they asserted is still true and still worth holding, so it
+    is held here instead of being dropped on a technicality.
+
+    Declared size rather than resolved, because that is what the pairs were
+    written to state: each absence restates its value's size in its own rule so
+    the two cannot drift apart. A pair that stops declaring a size belongs in
+    the cascade test above, not here, and the `NO RULE` failure says so.
+
+    One pair that belongs here by type is deliberately NOT here. DELEGATION's
+    figure against the withheld string that replaces it -- 32px against 16px,
+    both literal, both separate selectors, neither raised -- lives in
+    `AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` instead. It is
+    kept beside that class's stamp assertions because it exists precisely to
+    show they are not sufficient: the stamp constrains only the absent VARIANT
+    and says nothing about the base rule it sits on, so the absence can be
+    raised to any size at all and every stamp assertion stays green. Measured
+    at 40px against the 32px figure. Filing it here by type would put it where
+    a reader looking for it would find it, and take it away from the reader
+    about to make the mistake.
+    """
+
+    PAIRS = (
+        # The tab cue's figure against the two marks that stand in for it.
+        (".next-cockpit-tab-cue", ".next-cockpit-tab-cue--pending"),
+        (".next-cockpit-tab-cue", ".next-cockpit-tab-cue--unobserved"),
+        # DRC-4597's rail card: the session title against the caption beneath it.
+        (".next-cockpit-scope-title", ".next-cockpit-scope-meta"),
+    )
+
+    tokens: dict[str, float]
+    bodies: dict[str, str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, rules = css_cascade.load(web / "styles.css")
+        cls.bodies = {}
+        for selector, body, _order in rules:
+            if selector.strip() in {s for pair in cls.PAIRS for s in pair}:
+                cls.bodies[selector.strip()] = body
+
+    def size(self, selector: str) -> float:
+        body = self.bodies.get(selector)
+        self.assertIsNotNone(body, f"{selector} declares no rule of its own")
+        assert body is not None
+        declared = css_cascade.declared_size(body, self.tokens)
+        self.assertIsNotNone(declared, f"{selector} declares no size of its own")
+        assert declared is not None
+        return declared
+
+    def test_no_absence_declares_a_larger_size_than_the_value_it_replaces(self) -> None:
+        for value, absence in self.PAIRS:
+            with self.subTest(value=value, absence=absence):
+                self.assertLessEqual(self.size(absence), self.size(value))
+
+
+class TheCaptainNeededInkStepSurvivesTest(unittest.TestCase):
+    """DRC-4589 trap 1, which nothing else in this suite catches.
+
+    `.next-cockpit-authority>span` takes its colour from the per-state rules,
+    which are the same (0,1,1) specificity and sit earlier in the sheet, so the
+    state that needs the captain reads brighter than the two that do not. The
+    override block further down sets that selector's font and letter-spacing
+    and deliberately sets NO colour: a colour tidied into it would win on source
+    order and silently retire the whole step, leaving every state one ink.
+
+    Resolved through the cascade rather than read off the block, because the
+    defect is precisely that the block a reader would check looks fine.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+
+    def ink(self, state: str) -> str:
+        path = [_node("div", "next-cockpit-authority", state), _node("span")]
+        winning = []
+        for selector, body, order in self.rules:
+            try:
+                specificity = css_cascade.matches(path, selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            if specificity is None:
+                continue
+            declared = re.search(r"(?:^|;)\s*color:\s*([^;]+)", body)
+            if declared:
+                winning.append((specificity, order, declared.group(1).strip()))
+        self.assertNotEqual([], winning, f"no rule colours the {state} chip")
+        winning.sort()
+        return winning[-1][2]
+
+    def test_the_state_that_needs_the_captain_does_not_share_its_ink(self) -> None:
+        needed = self.ink("next-cockpit-authority--captain-needed")
+        for quiet in (
+            "next-cockpit-authority--fo-inspecting",
+            "next-cockpit-authority--fo-continues",
+        ):
+            with self.subTest(state=quiet):
+                self.assertNotEqual(needed, self.ink(quiet))
+
+
+class WithheldTitleKeepsTheAbsenceInkTest(unittest.TestCase):
+    """A withheld session title must not resolve to the ink a published one gets.
+
+    Size is not the only way an absence can outrank the value it replaces, and
+    colour is the channel that went wrong here. DRC-4597 moved
+    `data-next-withheld` off a `<small>` and onto
+    `span.next-cockpit-scope-title`; that class declares `color:var(--ink)` at
+    (0,1,0), the same specificity as the bare `[data-next-withheld]` rule and
+    later in the sheet, so the bare rule lost and an absent title rendered in
+    full ink -- byte-identical to a real one. Two rule-counting tests passed
+    over it, because neither resolved the pair.
+
+    Asserted as inequality against the present branch rather than against a
+    named token, so it keeps holding if the register is ever repointed.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+
+    def ink(self, withheld: bool) -> str:
+        path = [
+            _node("div", "next-cockpit-scope-tree"),
+            _node("a"),
+            _node("span", "next-cockpit-scope-line"),
+            _node(
+                "span",
+                "next-cockpit-scope-title",
+                attrs=("data-next-withheld",) if withheld else (),
+            ),
+        ]
+        winning = []
+        for selector, body, order in self.rules:
+            try:
+                specificity = css_cascade.matches(path, selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            if specificity is None:
+                continue
+            declared = re.search(r"(?:^|;)\s*color:\s*([^;]+)", body)
+            if declared:
+                winning.append((specificity, order, declared.group(1).strip()))
+        self.assertNotEqual([], winning, "no rule colours the scope title at all")
+        winning.sort()
+        return winning[-1][2]
+
+    def test_a_withheld_title_does_not_resolve_to_the_present_title_ink(self) -> None:
+        self.assertNotEqual(self.ink(withheld=True), self.ink(withheld=False))
+
+    def test_a_withheld_title_resolves_through_the_absence_register(self) -> None:
+        self.assertEqual("var(--ink-absence)", self.ink(withheld=True))
+
+
 def _node(tag: str, *classes: str, attrs: tuple[str, ...] = ()) -> dict[str, object]:
     return {"tag": tag, "classes": set(classes), "attrs": set(attrs)}
 
@@ -5989,11 +6517,12 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
     """DRC-4587. A stated absence must never render larger than the fact it
     stands in for: "you can tell a label from its answer, a figure from a gap".
 
-    **This asserts only what the pull request claims.** It raises two absence
-    rules, both named by string in the issue's own criterion, and each is listed
-    below with the value it is drawn against. Enumerating them exhaustively is
-    the whole claim; the wider class of sub-floor absences is DRC-4602's, and
-    nothing here asserts anything about it.
+    **This asserts only what the pull request claims.** Each pair is listed below
+    with the value it is drawn against. Enumerating them exhaustively is the
+    whole claim; the wider class of sub-floor absences is DRC-4602's, and nothing
+    here asserts anything about it. One inversion this guard cannot see is
+    tracked as DRC-4607: a value that declares no size of its own and inherits
+    one, drawn against an absence that declares a larger one.
 
     Three earlier versions of this guard passed over the defect they were named
     for, and the shape of each failure is why this one is written as it is. One
@@ -6004,14 +6533,33 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
     """
 
     # (name, emitter, absence path, the value it is drawn against).
+    #
+    # The entry that stood here was `two axes, read separately`, and DRC-4591
+    # deleted that span as a duplicate of the footer under the same cards. It was
+    # replaced rather than dropped, because removing it silently would have left
+    # this tuple empty and the loop below green over nothing.
+    #
+    # It also did not fail when the class went. `css_cascade.resolve` walks up
+    # the path and inherits, so with the rule gone the absence still resolved to
+    # 15.0 off the section and compared equal to its value. That is this class's
+    # own second failure shape, "one built a DOM the application never renders",
+    # reproduced in the test named for it: a path is only evidence while the
+    # emitter still builds it, and no resolver can tell you that it does.
+    # `test_the_retired_axes_span_stays_retired` below is what holds that half.
     RAISED_ABSENCES = (
         (
-            "two axes, read separately",
+            "landing card value",
             "next-cockpit.js nextCockpitLanded",
             [
                 *_CONTENT,
                 _node("section", "next-cockpit-landed"),
-                _node("span", "next-cockpit-landed-axes"),
+                _node("div", "next-cockpit-landed-cards"),
+                _node("div", "next-cockpit-landed-card"),
+                _node(
+                    "span",
+                    "next-cockpit-landed-value",
+                    "next-cockpit-landed-value--absent",
+                ),
             ],
             [
                 *_CONTENT,
@@ -6051,6 +6599,40 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
                     f'"{name}" ({emitter}): absence {absence}px against value {value}px, '
                     "so the absence outranks the fact it replaces",
                 )
+
+    def test_the_retired_axes_span_stays_retired(self) -> None:
+        """DRC-4591 AC-4: `two axes, read separately` appears nowhere in the runtime.
+
+        A resolver cannot notice that an emitter stopped building a path, so a
+        restored span would rejoin the page with no rule of its own and no entry
+        above holding it against a value. Both halves are checked, because
+        leaving the rule behind is how a later revert finds a selector waiting
+        for it.
+
+        "Nowhere in the runtime" was verified against two files,
+        `next-cockpit.js` and `styles.css`, which is the criterion's own word
+        checked over the two places the author happened to look. Widened to the
+        whole-file walk `RuntimeDecisionCitationsTest` makes -- every `.py`,
+        `.js`, `.css` and `.html` under `cargento_runtime` -- because the span
+        could return through any of them and the sentence promises all of them.
+        The count is asserted too: a walk that reaches no file passes a
+        `assertNotIn` loop over nothing.
+        """
+        runtime = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime"
+        scanned = sorted(
+            source
+            for source in runtime.rglob("*")
+            if source.suffix in {".py", ".js", ".css", ".html"} and source.is_file()
+        )
+        # The bundle is ~40 files; a floor well under it catches a walk that
+        # silently reaches nothing without pinning a number that a new module
+        # would move.
+        self.assertGreater(len(scanned), 20, "the runtime walk found almost no files")
+        for source in scanned:
+            body = source.read_text(encoding="utf-8")
+            with self.subTest(source=source.name):
+                self.assertNotIn("two axes, read separately", body)
+                self.assertNotIn("next-cockpit-landed-axes", body)
 
     def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
         """The other raised absence has no value to be read beside.
@@ -6714,12 +7296,12 @@ console.log(JSON.stringify({{
         self.assertTrue(unwritable["open"])
         self.assertEqual(
             "Not settled. The store could not be written, so the mark has already been "
-            "dropped and the question above still stands.",
+            "dropped and the question below still stands.",
             unwritable["cue"],
         )
         self.assertTrue(refused["open"])
         self.assertEqual(
-            "Not settled. The store refused the mark, so the question above still stands as "
+            "Not settled. The store refused the mark, so the question below still stands as "
             "it did.",
             refused["cue"],
         )
@@ -7155,7 +7737,12 @@ const held = html.indexOf('class="next-cockpit-held"');
 const closes = html.indexOf("</section>", held);
 const at = html.indexOf('class="next-cockpit-held-reentry"');
 console.log(JSON.stringify({
-  note: (html.match(/class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/p>/) || [])[1] || "",
+  // The whole container, not one paragraph: DRC-4594 split the block into a
+  // primary action over two labelled rows plus a disclosure, so a probe that
+  // reads to the first </p> now reads the action alone and would call every
+  // limitation below it missing.
+  note: (html.match(
+    /class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/div>(?=<\\/section>)/) || [])[1] || "",
   // Inside the WHAT YOU ASKED FOR section, not merely after its header.
   // Asserted against that section's own closing tag, because "after the bound
   // header" is also true of a paragraph that escaped the section entirely.
@@ -7550,8 +8137,14 @@ const links = Array.from(html.matchAll(/<a\s+([^>]+)>([\s\S]*?)<\/a>/g)).map(m =
   const working = (attrs.match(/data-next-working="([^"]+)"/) || [])[1] || null;
   const hasDot = body.includes("next-project-dot--working");
   const dotTone = (body.match(/next-project-tone--(\w+)/) || [])[1] || null;
-  const stateMatch = body.match(/class="next-cockpit-scope-state[^"]*">([\s\S]*?)<\/span><small/);
-  const state = stateMatch ? stateMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+  // Read out of the meta line rather than from whatever follows it. The old
+  // form required the state span to abut a <small>, which yielded "" into an
+  // assertEqual the moment the card changed shape.
+  const metaAt = body.indexOf('class="next-cockpit-scope-meta">');
+  const meta = metaAt < 0 ? "" : body.slice(body.indexOf(">", metaAt) + 1);
+  const stateAt = meta.indexOf('class="next-cockpit-scope-state');
+  const state = stateAt < 0 ? "" : meta.slice(meta.indexOf(">", stateAt) + 1)
+    .replace(/<[^>]+>/g, "").split("\u00b7")[0].trim();
   return {scope, kind, working, hasDot, dotTone, state};
 });
 console.log(JSON.stringify({scopes: links}));
@@ -7904,7 +8497,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', drawn["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', drawn["block"])
         self.assertEqual(["not published", "1", "3", "3", "2"], values)
 
     def test_a_check_with_no_words_behind_it_renders_the_never_checked_sentence(self) -> None:
@@ -7931,7 +8524,7 @@ console.log(JSON.stringify({
         self.assertIn(departures.NEVER_CHECKED, out["visible"])
         self.assertNotIn(departures.NOTHING_DEPARTED, out["visible"])
         # And no figure beside a sentence saying nothing was read.
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
 
     def test_a_raise_read_against_a_superseded_revision_says_so_here_too(self) -> None:
@@ -8068,7 +8661,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "2", "2", "2", "1"], values)
         # No ratio, no percentage, and no further figure composed from these.
         self.assertNotIn("%", out["visible"])
@@ -8084,7 +8677,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "1", "3", "not published", "not published"], values)
 
     def test_the_departure_figure_is_absent_rather_than_zero_when_nothing_watches(self) -> None:
@@ -8100,7 +8693,7 @@ console.log(JSON.stringify({
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
         self.assertIn("Nothing watches for a departure on its own", out["visible"])
         self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
@@ -8124,7 +8717,7 @@ console.log(JSON.stringify({
             'anything.";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "not published", "3", "3", "2"], values)
         self.assertIn("Cargento has not checked this session", out["visible"])
         self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
@@ -8140,7 +8733,7 @@ console.log(JSON.stringify({
             'against what you asked for and found nothing to raise.";\n'
         )
 
-        values = re.findall(r'class="next-cockpit-count-value">([^<]*)<', out["block"])
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
         self.assertEqual(["not published", "0", "3", "3", "2"], values)
 
     def test_each_figure_counts_the_rows_its_own_part_rendered(self) -> None:
@@ -8184,11 +8777,11 @@ console.log(JSON.stringify({
         self.assertIn("It changed the board mid-capture.", reading_only["visible"])
         self.assertEqual(
             ["1", "0", "1", "1", "0"],
-            re.findall(r'class="next-cockpit-count-value">([^<]*)<', reading_only["block"]),
+            re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', reading_only["block"]),
         )
         self.assertEqual(
             ["1", "1", "1", "1", "0"],
-            re.findall(r'class="next-cockpit-count-value">([^<]*)<', both["block"]),
+            re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', both["block"]),
         )
 
     def test_the_review_surface_does_not_open_a_closed_reading_gate(self) -> None:
@@ -8216,7 +8809,7 @@ console.log(JSON.stringify({
 
         self.assertIn(
             "The abstention check this ruling requires has not been run, so a reading cannot "
-            "be asked for yet. The evidence above stays readable without one.",
+            "be asked for yet. The evidence below stays readable without one.",
             control,
         )
         self.assertIn("Ask for a reading</button>", control)
@@ -8876,7 +9469,7 @@ console.log(JSON.stringify({
             [
                 (
                     "Not settled. The store could not be written, so the mark has already been "
-                    "dropped and the question above still stands."
+                    "dropped and the question below still stands."
                 )
             ],
             out["failed"],
@@ -8885,13 +9478,2871 @@ console.log(JSON.stringify({
             [
                 (
                     "Not settled. The store could not be written, so the mark has already been "
-                    "dropped and the question above still stands."
+                    "dropped and the question below still stands."
                 ),
                 "Settled. A direction given after this will raise it again.",
             ],
             out["polite"],
         )
         self.assertEqual([], out["alert"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CountsAbsenceIsStampedAndAZeroIsNotTest(NextPageJsHarness):
+    """DRC-4589 AC-2. COUNTS wrote "not published" into the same span a real
+    figure gets, so an absence rendered byte-identical to a fact.
+
+    The attribute is what the stylesheet hangs the em dash and the family swap
+    on, and the case that matters is the negative one: a real `0` is a
+    measurement and must carry neither. A rule cannot make that distinction --
+    `0` and `null` reach the same selector -- so it is stamped at emission and
+    asserted here on both arms.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    DEPARTURE = CockpitDepartureReviewTest.DEPARTURE
+
+    def counts(self, setup: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const block = (__els.app.innerHTML.match(
+  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
+// Every count span with its attribute, in document order: an assertion that
+// reads only the absent ones cannot see a stamp landing on a real figure.
+const spans = [...block.matchAll(
+  /<span class="next-cockpit-count-value"([^>]*)>([^<]*)</g)].map(
+  m => [m[2], m[1].includes("data-next-absent")]);
+console.log(JSON.stringify({spans}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_null_count_is_stamped_and_a_real_zero_is_not(self) -> None:
+        out = self.counts(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 0, attempted: 0, handed_over: 0};\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        # The first row is the unmeasured one and the three zeroes behind it are
+        # measurements. A blanket stamp passes an absent-only assertion and
+        # fails this one.
+        self.assertEqual(
+            [["not published", True], ["1", False], ["0", False], ["0", False], ["0", False]],
+            out["spans"],
+        )
+
+    def test_the_stamp_follows_the_value_and_not_the_row(self) -> None:
+        """The same rows with figures behind them carry no stamp at all."""
+        out = self.counts(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
+
+        self.assertEqual(
+            [["not published", True], ["1", False], ["3", False], ["3", False], ["2", False]],
+            out["spans"],
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnAbsenceParagraphNamesItsKindTest(NextPageJsHarness):
+    """DRC-4589 AC-4. One paragraph class carried a rule, an offer, a result and
+    three different kinds of absence in one treatment.
+
+    The two negative cases below are the point of the criterion: tagging all
+    twenty-one emission sites would turn `data-absence` into a
+    structurally-present default that measures nothing about the session, and
+    would put an absence cue on a reading that ran and raised nothing.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def whys(self, setup: str, after: str = "") -> list[list[Any]]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+"""
+            + after
+            + """
+const rows = [...__els.app.innerHTML.matchAll(
+  /<(?:p|span) class="next-cockpit-reading-why"([^>]*)>([^<]*)</g)].map(m => {
+  const kind = (m[1].match(/data-absence="([a-z-]+)"/) || [null, ""])[1];
+  return [m[2].slice(0, 46), kind];
+});
+console.log(JSON.stringify({rows}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return [list(row) for row in out["rows"]]
+
+    def kind_of(self, rows: list[list[Any]], prefix: str) -> str:
+        found = [row for row in rows if row[0].startswith(prefix)]
+        self.assertEqual(1, len(found), f"{prefix!r} matched {len(found)} paragraphs: {rows}")
+        return str(found[0][1])
+
+    def test_the_run_config_sentence_names_the_flag_and_the_kind(self) -> None:
+        """The `--unasked-readings` paragraph, which AC-5 also holds in place."""
+        rows = self.whys("delete __dashboard.unasked;\n")
+
+        self.assertEqual(
+            "run-config", self.kind_of(rows, "Nothing watches for a departure on its own")
+        )
+
+    def test_a_reading_nobody_asked_for_is_not_observed_rather_than_waited_on(self) -> None:
+        rows = self.whys(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "ship the thing";\n'
+            "delete __dashboard.sessions[0].assessment;\n"
+        )
+
+        self.assertEqual(
+            "not-observed", self.kind_of(rows, "No reading has been made at your request")
+        )
+
+    def test_a_reader_who_has_typed_nothing_is_waiting_on_themselves(self) -> None:
+        """The one kind the reader can act on, and the only one the stylesheet
+        marks with the accent rule."""
+        rows = self.whys(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+        )
+
+        self.assertEqual(
+            "waiting-on-you", self.kind_of(rows, "Nothing has been typed for this session")
+        )
+
+    def test_a_disabled_observer_model_is_a_choice_about_the_run(self) -> None:
+        # The model lands on the context entry the cockpit fetches, so it is set
+        # after navigation and re-rendered rather than seeded on the payload.
+        rows = self.whys(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].annotation_goal = "ship the thing";\n',
+            """
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const entry = nextCockpitContexts.get(
+  nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
+entry.data = Object.assign({}, entry.data, {observer_model:{enabled:false}});
+renderNext();
+""",
+        )
+
+        self.assertEqual(
+            "run-config", self.kind_of(rows, "Observer model is disabled for this run")
+        )
+
+    def test_a_statement_that_is_not_an_absence_carries_no_attribute(self) -> None:
+        """Two paragraphs the criterion names by hand. Both are the board
+        reasoning about figures it has, not reporting a gap."""
+        rows = self.whys(
+            "delete __dashboard.unasked;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+        )
+
+        self.assertEqual("", self.kind_of(rows, "Five figures, and no arithmetic between them"))
+        self.assertEqual("", self.kind_of(rows, "Neither card implies the other"))
+
+    def test_no_emission_carries_a_kind_outside_the_declared_three(self) -> None:
+        rows = self.whys("delete __dashboard.unasked;\n")
+
+        self.assertEqual(
+            set(),
+            {row[1] for row in rows} - {"", "not-observed", "waiting-on-you", "run-config"},
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheBriefingSaysWhoIsWaitingBeforeItNamesItselfTest(NextPageJsHarness):
+    """DRC-4593 AC-1, AC-3, AC-5 and AC-6.
+
+    The briefing is redrawn above every tab, and its loudest string was
+    `FO INSPECTING` -- workflow vocabulary, never glossed, computed from
+    attention coverage rather than from anything an agent is doing -- while the
+    line telling the reader they are off the hook was the dimmest thing in the
+    same cell.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def briefing(self, setup: str = "", after: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"now"});
+await __settle();
+"""
+            + after
+            + """
+const html = __els.app.innerHTML;
+// Balanced rather than lazy: STATED GOAL is a nested <section>, so a lazy match
+// cuts the briefing off three cells before COMMAND and every assertion below
+// would pass against a fragment that never contained what it denies.
+const start = html.indexOf('<section class="next-cockpit-recovery"');
+let block = "";
+if(start >= 0){
+  const scan = /<section\\b|<\\/section>/g;
+  scan.lastIndex = start;
+  let depth = 0, hit;
+  while((hit = scan.exec(html))){
+    depth += hit[0] === "</section>" ? -1 : 1;
+    if(depth === 0){ block = html.slice(start, scan.lastIndex); break; }
+  }
+}
+const header = (block.match(/<header>[\\s\\S]*?<\\/header>/) || [""])[0];
+const authority = (block.match(
+  /<div class="next-cockpit-authority[\\s\\S]*?<details/) || [""])[0];
+console.log(JSON.stringify({block, header, authority,
+  chip: (authority.match(/<span>([^<]*)</) || [null, ""])[1],
+  strongs: [...authority.matchAll(/<strong>([^<]*)</g)].map(m => m[1]),
+  smalls: [...authority.matchAll(/<small>([^<]*)</g)].map(m => m[1])}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_the_state_names_survive_verbatim_and_the_gloss_sits_in_the_header(self) -> None:
+        """AC-1. The states are strings a source published, so substituting
+        prose about what the agent is doing would be a claim nothing observed.
+        """
+        out = self.briefing()
+
+        self.assertIn(out["chip"], {"FO INSPECTING", "FO CONTINUES", "CAPTAIN NEEDED"})
+        self.assertIn(
+            "FO is the first officer, the agent driving this workflow; Captain is you.",
+            out["header"],
+        )
+        self.assertIn("next-cockpit-recovery-gloss", out["header"])
+
+    def test_the_authority_block_states_no_agent_activity(self) -> None:
+        """AC-3. `fo-inspecting` is computed from attention coverage, so a verb
+        about what the agent is doing would be unobserved on every board."""
+        out = self.briefing()
+
+        for invented in ("is looking", "is working", "is thinking", "is editing"):
+            self.assertNotIn(invented, out["authority"])
+
+    def test_the_fo_attention_row_renders_unchanged_when_discovery_errors(self) -> None:
+        """AC-3's second half: the row is emitted only when workflow discovery
+        fails, so demoting it would delete a live signal."""
+        # Discovery lands on the project context entry, so it is set after
+        # navigation and re-rendered rather than seeded on the payload.
+        out = self.briefing(
+            after="""
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const key = nextCockpitContextKey(group, null);
+const entry = nextCockpitContexts.get(key) || {};
+entry.data = Object.assign({}, entry.data, {workflow_discovery:
+  {state:"error", reason:"timed out", source:"project workflow discovery"}});
+nextCockpitContexts.set(key, entry);
+renderNext();
+""",
+        )
+
+        self.assertIn("refresh workflow discovery", out["authority"])
+        self.assertIn("<strong>", out["authority"])
+
+    def test_the_briefing_states_absence_on_two_verbs_and_never_on_captured(self) -> None:
+        """AC-5. A value says what was not observed; a caption says what was not
+        published. "captured" said neither and implied a third distinction."""
+        out = self.briefing()
+
+        self.assertNotIn("captured", out["block"])
+        self.assertIn("not observed", out["block"])
+
+    def test_no_absence_phrase_absent_from_the_tree_is_introduced(self) -> None:
+        """AC-5's other half: "None recorded" was proposed at triage and found
+        nowhere in the repository, so adopting it would have created a
+        convention and its documentation in one change."""
+        out = self.briefing()
+
+        self.assertNotIn("None recorded", out["block"])
+
+    def test_the_evidence_caption_renders_only_when_the_task_is_known(self) -> None:
+        """AC-6. With no task observed the value cell already reads
+        "Not observed", and the caption states a second absence about a first.
+        """
+        # `task.known` is computed from the project observation's trail head, not
+        # from the session rows, so the unknown arm empties the observation after
+        # navigation. Emptying the session rows leaves it known and the test
+        # passes against a board that never entered the arm it names.
+        strip = """
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const key = nextCockpitContextKey(group, null);
+const entry = nextCockpitContexts.get(key) || {};
+entry.data = Object.assign({}, entry.data,
+  {semantic:{facts:[], work_items:[], projections:{}}});
+nextCockpitContexts.set(key, entry);
+for(const session of __dashboard.sessions){
+  delete session.last_output;
+  session.subagent_hierarchy = [];
+}
+renderNext();
+"""
+        known = self.briefing()
+        unknown = self.briefing(after=strip)
+
+        self.assertIn("data-next-cockpit-task-known", known["block"])
+        self.assertNotIn("data-next-cockpit-task-known", unknown["block"])
+        self.assertNotIn("Assignment evidence not published", unknown["block"])
+        self.assertIn("Not observed", unknown["block"])
+
+
+class AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest(unittest.TestCase):
+    """DRC-4589 AC-2, the half a selector sweep cannot reach.
+
+    COUNTS and DELEGATION choose between a real figure and its absence with a
+    ternary, so the two never co-exist in one render and no CSS rule holds both
+    sides. The sibling comparison test above works because those pairs are two
+    selectors; these are one selector and an attribute. What is asserted instead
+    is that the absent variant declares no size of its own -- neither
+    `font-size` nor a `font` shorthand, which would reset it -- so its size is
+    the value's by construction and cannot drift above it.
+
+    Read off the stylesheet: the cascade is what decides this either way, and
+    three tests on the branch that introduced this defect class passed over it
+    by asserting an absence with its value left out.
+    """
+
+    ABSENT_VARIANTS = (
+        ".next-cockpit-count-value[data-next-absent]",
+        ".next-delegation-withheld strong[data-next-absent]",
+    )
+
+    css: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+
+    def block_for(self, selector: str) -> str:
+        for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css):
+            if selector in [head.strip() for head in rule.group(1).split(",")]:
+                return rule.group(2)
+        self.fail(f"{selector} declares no rule at all, so the stamp draws nothing")
+        raise AssertionError
+
+    def test_no_absent_variant_declares_a_size(self) -> None:
+        for selector in self.ABSENT_VARIANTS:
+            with self.subTest(selector=selector):
+                body = self.block_for(selector)
+                self.assertNotIn("font-size", body)
+                self.assertFalse(
+                    re.search(r"(?<![-a-z])font:", body),
+                    f"{selector} sets the font shorthand, which resets the size it "
+                    "must inherit from the value it replaces",
+                )
+                # And it does change something, or the stamp is decorative.
+                self.assertIn("font-family", body)
+
+    def test_the_withheld_figure_is_smaller_than_the_figure_it_replaces(self) -> None:
+        """The other half of AC-2, and the half the stamp assertions cannot see.
+
+        Everything above proves the STAMP adds no size. None of it constrains
+        the base rule the stamp sits on, so a `.next-delegation-withheld strong`
+        raised above `.next-delegation-figure>strong` passes every assertion in
+        this class while rendering an absence larger than the figure it stands
+        in for. Measured: at 40px against the figure's 32px the class above is
+        still green.
+
+        It lives here rather than with the raised absences, which are scoped to
+        the two DRC-4587 lifted to the sentence tier. This pair is not one of
+        them -- the withheld caption is still `--fs-xs` -- so widening that
+        class to reach it would contradict its own stated bound.
+        """
+
+        def literal_px(head: str) -> float:
+            found = re.findall(r"font:(?:\d+ )?([0-9.]+)px", self.block_for(head))
+            self.assertTrue(found, f"{head} declares no literal size")
+            return float(found[-1])
+
+        figure = literal_px(".next-delegation-figure>strong")
+        withheld = literal_px(".next-delegation-withheld strong")
+
+        self.assertLessEqual(
+            withheld,
+            figure,
+            f"withheld {withheld}px against figure {figure}px: "
+            "the absence outranks the fact it replaces",
+        )
+
+    def test_the_dash_is_a_mark_and_never_a_size_or_a_tone_step(self) -> None:
+        """The shared `::before`. A dash drawn brighter than the string it
+        prefixes would put the emphasis on the absence rather than the fact."""
+        body = self.block_for("[data-next-absent]::before")
+
+        self.assertIn("content", body)
+        self.assertNotIn("font-size", body)
+        self.assertIn("var(--ink-absence)", body)
+
+
+# The briefing's value rule is declared with its evidence sibling in one head, and
+# the head is what identifies the rule, so it is spelled once here rather than
+# wrapped inside the table below where a line break reads as two selectors.
+VALUE_HEAD = (
+    ".next-cockpit-recovery [data-next-cockpit-task-known]>strong,"
+    ".next-cockpit-recovery .next-cockpit-recovery-evidence>strong"
+)
+
+
+class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
+    """DRC-4593 AC-4. In an absent ASSIGNMENT cell the label, the value and the
+    caption explaining it all resolved to one ink, and DRC-4587 left the caption
+    the biggest of the three.
+
+    The cell this reads is the only one that can still render a caption: AC-6
+    suppresses `Assignment evidence not published` when the task is unknown, so
+    a caption now only ever sits beside a value the board did observe. That is
+    what separates the registers -- the value is at `--ink-value`, the caption
+    at `--ink-caption` -- rather than any size or hex moving.
+
+    Resolved through the cascade and then through the registers, because a test
+    that compared register NAMES would pass with all four pointing at one ink.
+    """
+
+    # role -> (selector whose colour wins, selector whose size wins)
+    CELL: ClassVar[dict[str, tuple[str, str]]] = {
+        "label": (".next-cockpit-recovery span", ".next-cockpit-recovery span"),
+        "value": (VALUE_HEAD, ".next-cockpit-recovery strong,.next-cockpit-recovery small"),
+        "caption": (
+            ".next-cockpit-content .next-cockpit-evidence-missing",
+            ".next-cockpit-content .next-cockpit-evidence-missing",
+        ),
+    }
+
+    css: str
+    sizes: dict[str, float]
+    inks: dict[str, str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+        cls.sizes = {
+            name: float(value)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", cls.css)
+        }
+        cls.inks = dict(re.findall(r"--(ink[a-z0-9-]*):(#[0-9a-f]{6}|var\(--ink[0-9]?\))", cls.css))
+
+    def body_of(self, head: str) -> str:
+        """Every block with this exact head, in source order and joined.
+
+        Four of these selectors are declared twice -- once in their own region
+        and once in the override region below it -- and the second declaration
+        is the one that paints. Reading only the first reported the pre-DRC-4587
+        sizes and would have called the inversion fixed while it was still on
+        screen.
+        """
+        bodies = [
+            rule.group(2)
+            for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css)
+            if rule.group(1).strip() == head
+        ]
+        self.assertTrue(bodies, f"no rule with head {head!r}")
+        return ";".join(bodies)
+
+    def resolved_ink(self, head: str) -> str:
+        """The hex the rule's colour lands on, one register hop at a time."""
+        found = re.findall(r"color:var\(--([a-z0-9-]+)\)", self.body_of(head))
+        self.assertTrue(found, f"{head} declares no colour")
+        name = found[-1]
+        for _ in range(4):
+            value = self.inks.get(name, "")
+            hop = re.fullmatch(r"var\(--(ink[0-9]?)\)", value)
+            if not hop:
+                return value
+            name = hop.group(1)
+        self.fail(f"{head} never resolves to a hex")
+        raise AssertionError
+
+    def resolved_size(self, head: str) -> float:
+        found = re.findall(
+            r"(?:font-size:|font:(?:\d+ )?)var\(--(fs-[a-z0-9-]+)\)", self.body_of(head)
+        )
+        self.assertTrue(found, f"{head} declares no size")
+        return self.sizes[found[-1]]
+
+    def register(self, head: str) -> str:
+        """The register NAME the rule names, before any hop."""
+        found: list[str] = re.findall(r"color:var\(--([a-z0-9-]+)\)", self.body_of(head))
+        self.assertTrue(found, f"{head} declares no colour")
+        return found[-1]
+
+    def test_label_value_and_caption_are_three_distinct_size_and_ink_pairs(self) -> None:
+        """AC-4, on all three things the criterion names, because each collapse
+        survives the other two assertions.
+
+        The criterion's word is REGISTERS. Asserting `(size, ink)` pairs alone
+        was not that: pointing two roles at one register keeps the pairs
+        distinct as long as the sizes differ, and it survived -- proved applied,
+        with the resolved ink moving `var(--ink-label)` -> `var(--ink-caption)`
+        down a real element path, so the mutant demonstrably reached the thing
+        under test, and 319 tests still passed.
+
+        Register names alone are not enough either, so both are asserted and
+        each is the only guard against its own collapse.
+
+        **What is deliberately NOT asserted is three distinct hexes.**
+        `--ink-label`, `--ink-caption` and `--ink-absence` all resolve to
+        `--ink3`, and `docs/design-next-ui.md` records that as a ruling rather
+        than an accident: the palette has three inks where the roles need four,
+        and label, caption and absence are separated by family, case and size
+        instead. A hex check here would contradict a shipped decision, which is
+        why the pair carries the on-screen half.
+        """
+        registers = {role: self.register(ink_head) for role, (ink_head, _s) in self.CELL.items()}
+        pairs = {
+            role: (self.resolved_size(size_head), self.resolved_ink(ink_head))
+            for role, (ink_head, size_head) in self.CELL.items()
+        }
+
+        self.assertEqual(3, len(set(registers.values())), registers)
+        self.assertEqual(3, len(set(pairs.values())), pairs)
+
+    def test_no_caption_is_drawn_larger_than_the_value_it_explains(self) -> None:
+        """The inversion DRC-4587 left behind: the caption went to 15px while the
+        value stayed at 12.5px, so the least important string in the cell was
+        the biggest."""
+        value = self.resolved_size(self.CELL["value"][1])
+        caption = self.resolved_size(self.CELL["caption"][1])
+
+        self.assertLessEqual(caption, value, f"caption {caption}px against value {value}px")
+
+    def test_the_authority_chip_is_smaller_than_the_captain_line_beside_it(self) -> None:
+        """DRC-4593 AC-2's offline half. The chip carried 15px and full `--ink`
+        against a 12.5px `--ink3` captain line, so the loudest string on the page
+        was the one piece of vocabulary the page never defines. This is a proxy
+        for the criterion and not the criterion: AC-2 is judged on a painted
+        board, because size and contrast are what a reader sees.
+        """
+        chip = self.resolved_size(".next-cockpit-authority>span")
+        captain = self.resolved_size(".next-cockpit-authority>small")
+
+        self.assertLess(chip, captain)
+        self.assertEqual(self.resolved_ink(".next-cockpit-authority>small"), self.inks["ink"])
+        self.assertEqual(self.resolved_ink(".next-cockpit-authority>span"), self.inks["ink3"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitTabsNameTheirPanelTest(NextPageJsHarness):
+    """DRC-4592. A tab strip of five bare labels cannot be ranked before the
+    click: three of the five open onto a heading that does not repeat the label,
+    and nothing on a label says whether anything is behind it.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    LEDES: ClassVar[dict[str, str]] = {
+        "now": "Now:",
+        "course": "Course:",
+        "decisions": "Decisions:",
+        "console": "Console:",
+        "held-to": "Held to:",
+    }
+
+    def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude(storage or {}) + self.FIXTURE,
+        )
+
+    def test_every_tab_renders_exactly_one_lede_naming_its_own_tab_word(self) -> None:
+        """AC-1. Falsified by a tab with no lede, with two, or with a lede whose
+        text omits its own tab word."""
+        out = self.run_fixture(
+            """
+const seen = {};
+for(const tab of ["now","course","decisions","console","held-to"]){
+  navigateNext({view:"project",project:"cargento",
+    focus:tab === "held-to" ? "codex:focus-1" : null,tab});
+  await __settle();
+  const html = __els.app.innerHTML;
+  const ledes = [...html.matchAll(/<p class="next-cockpit-lede">([\\s\\S]*?)<\\/p>/g)]
+    .map(match => match[1]);
+  const panel = (html.match(/<section class="next-cockpit-panel"[\\s\\S]*/) || [""])[0];
+  seen[tab] = {count:ledes.length, text:ledes[0] || "",
+    firstInPanel:panel.indexOf('class="next-cockpit-lede"') > -1 &&
+      panel.indexOf('class="next-cockpit-lede"') < 200};
+}
+console.log(JSON.stringify(seen));
+"""
+        )
+        assert isinstance(out, dict)
+        for tab, word in self.LEDES.items():
+            with self.subTest(tab=tab):
+                self.assertEqual(1, out[tab]["count"], f"{tab} does not render exactly one lede")
+                self.assertTrue(
+                    out[tab]["text"].startswith(word),
+                    f"{tab} lede does not open on its own tab word: {out[tab]['text']!r}",
+                )
+                self.assertTrue(out[tab]["firstInPanel"], f"{tab} lede is not under the strip")
+
+    def test_departure_and_revision_are_defined_once_and_reading_is_not_defined_twice(self) -> None:
+        """AC-2. Falsified by a second copy of any of the three sentences, or a
+        definition rendered somewhere other than the first use of its noun."""
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const count = needle => html.split(needle).length - 1;
+console.log(JSON.stringify({
+  departure:count("A departure is a place the record does not match what you typed"),
+  revision:count("Each save is a revision"),
+  readingShort:count("A reading is one model pass over the record"),
+  readingOffer:count("A reading is a model\\u2019s account of the evidence on this page"),
+  departureAfterHeader:html.indexOf("A departure is a place the record") >
+    html.indexOf("DEPARTURES RAISED TO YOU"),
+  revisionNearStamp:Math.abs(html.indexOf("Each save is a revision") -
+    html.indexOf('class="next-cockpit-held-revision"')) < 400
+}));
+""",
+            storage_prelude({}) + CockpitHeldToTabTest.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["departure"])
+        self.assertEqual(1, out["revision"])
+        self.assertTrue(out["departureAfterHeader"])
+        self.assertTrue(out["revisionNearStamp"])
+        # Exactly one account of what a reading is, wherever the panel landed.
+        self.assertEqual(1, out["readingShort"] + out["readingOffer"])
+
+    def test_observed_state_changes_keeps_its_name_and_its_two_windows(self) -> None:
+        """AC-3. Falsified by renaming the heading at either emitter, or by
+        collapsing the 37m and 24h windows into one figure."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        project = (web / "next-project.js").read_text(encoding="utf-8")
+        workstream = (web / "next-workstream.js").read_text(encoding="utf-8")
+        observed = (web / "next-observed.js").read_text(encoding="utf-8")
+        self.assertIn("OBSERVED STATE CHANGES", project)
+        self.assertIn("OBSERVED STATE CHANGES", workstream)
+        # changeNoteText carries the unattended count and the window label as
+        # two separately-derived halves joined by " · ".
+        self.assertIn("unattended · ", observed)
+        self.assertIn("nextWorkstreamWindowLabel(window)", observed)
+
+    def test_each_cue_counts_its_own_collection_and_never_falls_back_to_zero(self) -> None:
+        """AC-4. Falsified by a cue that holds steady while its fixture
+        collection grows, or that renders 0 when the collection is undefined."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const cue = (tab, project, extra) => nextCockpitTabCue(tab,
+  Object.assign({group, project}, extra || {}), null);
+const courseFor = n => cue("course",
+  {key:"cargento", changes:Array.from({length:n}, (_, i) => ({at:i,label:"x"}))});
+// Seeded on the context entry the cue reads, not passed in beside it. The cue
+// and the Decisions panel resolve one entry through `nextCockpitContextRead`,
+// so a fixture that supplies facts any other way is describing a board that
+// cannot exist.
+const seedProject = semantic => nextCockpitContexts.set(
+  nextCockpitContextKey(group, null), {data:{semantic}, revision:105});
+const decisionsFor = n => {
+  seedProject({facts:Array.from({length:n}, (_, i) => ({fact_id:"d" + i, type:"gate_decision",
+    at:i, by:"person:captain", decision:"approve", stage:"review"})),
+    work_items:[], projections:{}});
+  return nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null);
+};
+const heldFor = n => {
+  nextData.annotate = true;
+  nextData.unasked = true;
+  const session = {harness:"codex", sid:"focus-1",
+    departures:Array.from({length:n}, (_, i) => ({id:"r" + i})), departure_checked:true};
+  return nextCockpitTabCue("held-to", {group, project:{key:"cargento"}}, session, null);
+};
+console.log(JSON.stringify({
+  course:[0,1,4].map(n => courseFor(n)),
+  courseAbsent:cue("course", {key:"cargento", changes:null}),
+  decisions:[0,2,5].map(n => decisionsFor(n)),
+  decisionsAbsent:(() => { seedProject({work_items:[], projections:{}});
+    return nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null); })(),
+  held:[0,1,3].map(n => heldFor(n)),
+  heldAbsent:(() => { nextData.annotate = true; nextData.unasked = true;
+    return nextCockpitTabCue("held-to", {group, project:{key:"cargento"}},
+      {harness:"codex", sid:"focus-1"}, null); })()
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {"state": "zero", "value": 0},
+                {"state": "count", "value": 1},
+                {"state": "count", "value": 4},
+            ],
+            out["course"],
+        )
+        self.assertEqual(
+            [
+                {"state": "zero", "value": 0},
+                {"state": "count", "value": 2},
+                {"state": "count", "value": 5},
+            ],
+            out["decisions"],
+        )
+        self.assertEqual(
+            [
+                {"state": "zero", "value": 0},
+                {"state": "count", "value": 1},
+                {"state": "count", "value": 3},
+            ],
+            out["held"],
+        )
+        # A collection the board never published is not a collection read and
+        # found empty, and neither is 0.
+        for absent in ("courseAbsent", "decisionsAbsent", "heldAbsent"):
+            with self.subTest(absent=absent):
+                self.assertEqual({"state": "unobserved"}, out[absent])
+
+    def test_the_pending_mark_and_the_never_observed_mark_are_different(self) -> None:
+        """AC-5. Falsified by the two states rendering the same mark or the same
+        gloss."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const projectKey = nextCockpitContextKey(group, null);
+// Withhold the context entry so the Decisions panel takes the
+// "Loading semantic context…" arm the cue has to agree with.
+nextCockpitContexts.clear();
+const pending = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}},
+  {harness:"codex", sid:"focus-1"});
+// The entry arrived and published no facts: read, and empty-handed.
+nextCockpitContexts.set(projectKey, {data:{semantic:{work_items:[], projections:{}}},
+  revision:105});
+const unobserved = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null);
+// The read FINISHED and failed. `nextCockpitLoadContext`'s catch is the only
+// writer of `error`, and this is the exact record it stores.
+nextCockpitContexts.set(projectKey, {data:null, revision:105, error:true});
+const unavailable = nextCockpitTabCue("decisions", {group, project:{key:"cargento"}}, null);
+const panelUnavailable = nextCockpitTimeline(group, null)
+  .includes("Semantic context unavailable.");
+console.log(JSON.stringify({pending, unobserved, unavailable, panelUnavailable,
+  pendingHtml:nextCockpitTabCueHtml("decisions", pending),
+  unobservedHtml:nextCockpitTabCueHtml("decisions", unobserved),
+  unavailableHtml:nextCockpitTabCueHtml("decisions", unavailable),
+  countHtml:nextCockpitTabCueHtml("decisions", {state:"count", value:2})}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual({"state": "pending"}, out["pending"])
+        self.assertEqual({"state": "unobserved"}, out["unobserved"])
+        # A read that FINISHED and failed is neither. The cue reported it as
+        # `pending` -- "decisions not loaded yet", about a read that was over --
+        # beside a panel already saying "Semantic context unavailable."; the two
+        # now resolve one `nextCockpitContextRead`, so they cannot disagree
+        # about what state the read is in.
+        self.assertEqual({"state": "unavailable"}, out["unavailable"])
+        self.assertTrue(out["panelUnavailable"], "the panel did not take its failed arm")
+        marks = {}
+        glosses = {}
+        for key in ("pendingHtml", "unobservedHtml", "unavailableHtml", "countHtml"):
+            html = out[key]
+            assert isinstance(html, str)
+            mark = re.search(r'aria-hidden="true">([^<]*)<', html)
+            gloss = re.search(r'class="next-visually-hidden">([^<]*)<', html)
+            self.assertIsNotNone(mark, f"{key} renders no mark")
+            self.assertIsNotNone(gloss, f"{key} renders no gloss")
+            assert mark is not None and gloss is not None
+            marks[key] = mark.group(1)
+            glosses[key] = gloss.group(1)
+        self.assertEqual("…", marks["pendingHtml"])
+        self.assertEqual("·", marks["unobservedHtml"])
+        self.assertEqual("—", marks["unavailableHtml"])
+        self.assertEqual(4, len(set(marks.values())))
+        self.assertEqual(4, len(set(glosses.values())))
+        self.assertIn("next-cockpit-tab-cue--pending", out["pendingHtml"])
+        # Every non-count state names its own variant. One that fell through to
+        # "" would inherit the cue's `--ink2`, the ink a real figure gets.
+        self.assertIn("next-cockpit-tab-cue--unavailable", out["unavailableHtml"])
+        self.assertIn("next-cockpit-tab-cue--unobserved", out["unobservedHtml"])
+
+    def test_now_console_and_unannotated_held_to_render_no_cue_element(self) -> None:
+        """AC-6. Falsified by an empty cue span, a 0, or a · on any of the three."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const context = {group, project:{key:"cargento", changes:[]}};
+nextData.annotate = false;
+const cues = {
+  now:nextCockpitTabCue("now", context, null, null),
+  console:nextCockpitTabCue("console", context, null, null),
+  heldOff:nextCockpitTabCue("held-to", context,
+    {harness:"codex", sid:"focus-1", departures:[{id:"r"}]}, null)
+};
+navigateNext({view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"});
+await __settle();
+const strip = (__els.app.innerHTML.match(/<nav class="next-cockpit-tabs"[\\s\\S]*?<\\/nav>/) || [""])[0];
+const buttons = Object.fromEntries([...strip.matchAll(/<button[^>]*data-arg="([^"]+)"[^>]*>([\\s\\S]*?)<\\/button>/g)]
+  .map(match => [match[1], match[2]]));
+console.log(JSON.stringify({cues, buttons,
+  html:Object.fromEntries(Object.entries(cues).map(([k, v]) => [k, nextCockpitTabCueHtml(k, v)]))}));
+"""
+        )
+        assert isinstance(out, dict)
+        for tab in ("now", "console", "heldOff"):
+            with self.subTest(tab=tab):
+                self.assertIsNone(out["cues"][tab])
+                self.assertEqual("", out["html"][tab])
+        for tab in ("now", "console", "held-to"):
+            with self.subTest(button=tab):
+                self.assertNotIn("next-cockpit-tab-cue", out["buttons"][tab])
+
+    def test_the_strip_still_takes_its_tab_set_from_the_route(self) -> None:
+        """AC-7. Falsified by resolving the strip's tab set from the passed focus
+        argument instead of the route, which makes the nav and the panel
+        disagree on a stale route."""
+        out = self.run_fixture(
+            """
+const group = nextProjectGroups()[0];
+const context = {group, project:{key:"cargento", changes:[]}};
+const focus = group.sessions[0];
+navigateNext({view:"project",project:"cargento",focus:null,tab:"now"});
+await __settle();
+// The route has no focus; a session is handed in anyway. The nav must answer
+// four, the same as the panel, or a stale route splits them.
+const atProject = nextCockpitTabList(context, focus, null);
+navigateNext({view:"project",project:"cargento",focus:"codex:focus-1",tab:"now"});
+await __settle();
+const atSession = nextCockpitTabList(context, null, null);
+const args = html => [...html.matchAll(/data-arg="([^"]+)"/g)].map(m => m[1]);
+console.log(JSON.stringify({atProject:args(atProject), atSession:args(atSession)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["now", "course", "decisions", "console"], out["atProject"])
+        self.assertEqual(["now", "course", "decisions", "console", "held-to"], out["atSession"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitTimelineFilterTest(NextPageJsHarness):
+    """DRC-4598. The Decisions tab is one of three modes of a renderer whose own
+    three-button filter the cockpit switched off, so the filtered activity view
+    and the all-events view were reachable nowhere in the next UI.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    FOCUS_DOM = NextCockpitCompositionTest.FOCUS_DOM
+    # Mirrored from next-cockpit.js; the first check below pins the two together.
+    KEY = "cargento.next.graph.mode"
+
+    # A SECOND project, because the per-project criterion is not expressible on
+    # a board with one. Built by appending a session to the shared fixture's
+    # payload rather than by writing a second fixture, so the two boards cannot
+    # drift apart in anything but the thing under test.
+    TWO_PROJECT_FIXTURE: ClassVar[str] = (
+        NextCockpitCompositionTest.FIXTURE
+        + """
+__dashboard.sessions.push({sid:"infra-1", harness:"claude", project:"recce-cloud-infra",
+  project_key:"recce/recce-cloud-infra", state:"working", active:true,
+  last_activity:104, title:"Rotate the SSO role", subagents:[]});
+"""
+    )
+
+    def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + self.FOCUS_DOM + checks,
+            storage_prelude(storage or {}) + self.FIXTURE,
+        )
+
+    def test_the_decisions_panel_carries_the_filter_and_a_press_changes_the_mode(self) -> None:
+        """AC-1. Falsified by the panel rendering no filter, or a press that
+        leaves data-graph-mode unchanged after a redraw."""
+        out = self.run_fixture(
+            r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+const before = __els.app.innerHTML;
+const filter = (before.match(/<div class="pc-graph-filter"[\s\S]*?<\/div>/) || [""])[0];
+const buttons = [...filter.matchAll(/data-next-cockpit-action="graph-mode"[^>]*data-arg="([^"]+)"/g)]
+  .map(match => match[1]);
+const mode = html => (html.match(/data-graph-mode="([^"]+)"/) || [])[1] || "";
+const rows = html => (html.match(/class="pc-graph-row/g) || []).length;
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+press("all");
+await __settle();
+const afterAll = __els.app.innerHTML;
+press("decisions");
+await __settle();
+const afterDecisions = __els.app.innerHTML;
+console.log(JSON.stringify({buttons, hasFilter:Boolean(filter),
+  pressed:[...filter.matchAll(/aria-pressed="([^"]+)"/g)].map(m => m[1]),
+  modes:[mode(before), mode(afterAll), mode(afterDecisions)],
+  rows:[rows(before), rows(afterAll), rows(afterDecisions)]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["hasFilter"])
+        self.assertEqual(["active", "all", "decisions"], out["buttons"])
+        self.assertEqual(["false", "false", "true"], out["pressed"])
+        self.assertEqual(["decisions", "all", "decisions"], out["modes"])
+        self.assertNotEqual(out["rows"][0], out["rows"][1])
+        self.assertEqual(out["rows"][0], out["rows"][2])
+
+    def test_the_panel_heading_names_the_mode_on_screen(self) -> None:
+        """AC-3. Falsified by a heading that keeps saying RECORDED DECISIONS over
+        an all-events list."""
+        out = self.run_fixture(
+            r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+const head = html => (html.match(/<section class="next-cockpit-semantic"[^>]*><h2>([^<]*)<\/h2>/) || [])[1] || "";
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+const before = head(__els.app.innerHTML);
+press("all"); await __settle();
+const all = head(__els.app.innerHTML);
+press("decisions"); await __settle();
+console.log(JSON.stringify({before, all, back:head(__els.app.innerHTML)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("RECORDED DECISIONS", out["before"])
+        self.assertEqual("SEMANTIC TIMELINE", out["all"])
+        self.assertEqual("RECORDED DECISIONS", out["back"])
+
+    def test_the_chosen_mode_is_written_to_storage_and_read_back_on_load(self) -> None:
+        """AC-4. Falsified by a press that writes nothing, or a seeded store the
+        first render ignores.
+
+        Run on the TWO-project board, not patched. This test seeded the empty
+        key and asserted the first render took it -- the collided key written
+        down as the expected result, and on a one-project fixture that key
+        reads as "project scope" rather than as "every project", so the oracle
+        could not tell the two apart. Changing the seed alone would have left a
+        one-project board asserting a per-project property.
+
+        The seed is now a real key for a real project, and a SECOND project is
+        on the board to prove the seed reaches the one it names and no other.
+        """
+        written = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+navigateNext({view:"project",project:"cargento",focus:null,tab:"decisions"});
+await __settle(); await __settle();
+const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+  c.dataset.arg === "all");
+__fire("click",{target:button,preventDefault(){}});
+await __settle();
+console.log(JSON.stringify({writes:__storageWrites, store:__store}));
+""",
+            storage_prelude({}) + self.TWO_PROJECT_FIXTURE,
+        )
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        self.assertIn(f'"{self.KEY}"', (web / "project.js").read_text(encoding="utf-8"))
+        assert isinstance(written, dict)
+        keys = [key for key in written["writes"] if key.startswith("cargento.next.")]
+        self.assertIn(self.KEY, keys)
+        self.assertIn("all", written["store"][self.KEY])
+
+        seeded = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const read = async project => {
+  navigateNext({view:"project",project,focus:null,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1];
+};
+console.log(JSON.stringify({seeded: await read("cargento"),
+  other: await read("recce-cloud-infra")}));
+""",
+            storage_prelude({self.KEY: json.dumps({"cargento" + NUL_CHAR: "all"})})
+            + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(seeded, dict)
+        self.assertEqual("all", seeded["seeded"], "the seeded project did not take its mode")
+        self.assertEqual(
+            "decisions",
+            seeded["other"],
+            "a seeded mode reached a project the seed does not name",
+        )
+
+    def test_two_sessions_in_one_project_keep_their_own_modes(self) -> None:
+        """The half a project-only key would destroy, and the reason the key
+        carries BOTH halves.
+
+        The resolver reads a per-session distinction at session scope: the
+        filter is drawn on a focused board too, and a mode chosen while looking
+        at one session is that session's. Keying by project alone fixes the
+        cross-project collision and silently collapses this one -- measured,
+        that mutant passes every other test in this class, which is why this
+        one exists.
+
+        Three scopes on one project, each pressed to a different mode, each
+        read back after visiting the others.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const open = async focus => {
+  navigateNext({view:"project",project:"cargento",focus,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1];
+};
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  if(!button) throw new Error("no graph-mode button for " + value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+await open(null); press("all"); await __settle();
+await open("codex:focus-1"); press("active"); await __settle();
+await open("claude:claude-idle"); press("decisions"); await __settle();
+// Read every scope back, after each has been left and returned to.
+const after = {project: await open(null), focus1: await open("codex:focus-1"),
+  idle: await open("claude:claude-idle")};
+console.log(JSON.stringify({after,
+  store: JSON.parse(__store["cargento.next.graph.mode"] || "{}")}));
+""",
+            storage_prelude({}) + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            {"project": "all", "focus1": "active", "idle": "decisions"},
+            out["after"],
+            "one scope's press reached another scope in the same project",
+        )
+        store = out["store"]
+        assert isinstance(store, dict)
+        self.assertEqual(
+            {
+                "cargento" + NUL_CHAR: "all",
+                "cargento" + NUL_CHAR + "codex:focus-1": "active",
+                "cargento" + NUL_CHAR + "claude:claude-idle": "decisions",
+            },
+            store,
+        )
+
+    def test_a_key_shape_this_build_cannot_parse_is_dropped_on_load(self) -> None:
+        """The migration, which is the half a new key scheme quietly skips.
+
+        A browser that already ran this branch holds every project's choice
+        under ONE empty key. `projectLoadGraphModes` validated VALUES and not
+        key shapes, so a scheme where that empty key parses as a real project
+        would hand the old collision straight to the new one. It is dropped at
+        load instead, once, rather than defended against at each read site.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const read = async project => {
+  navigateNext({view:"project",project,focus:null,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1];
+};
+const modes = {cargento: await read("cargento"), infra: await read("recce-cloud-infra")};
+// And the legacy entry does not survive the next write either.
+const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+  c.dataset.arg === "active");
+__fire("click",{target:button,preventDefault(){}});
+await __settle();
+console.log(JSON.stringify({modes,
+  store: JSON.parse(__store["cargento.next.graph.mode"] || "{}")}));
+""",
+            storage_prelude({self.KEY: json.dumps({"": "all"})}) + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # Neither project inherits the legacy entry.
+        self.assertEqual({"cargento": "decisions", "infra": "decisions"}, out["modes"])
+        store = out["store"]
+        assert isinstance(store, dict)
+        self.assertNotIn("", store, "the legacy collided key survived a load and a write")
+        self.assertEqual({"recce-cloud-infra" + NUL_CHAR: "active"}, store)
+
+    def test_a_mode_pressed_on_one_project_does_not_follow_the_reader_to_another(
+        self,
+    ) -> None:
+        """AC-2, on a board with TWO projects, which is the only board that can
+        show it.
+
+        `projectQuerySession` is "" at project scope for every project, so the
+        map held one entry for all of them -- and this branch mirrors that map
+        to `localStorage`, which turned a per-tab quirk into a persisted one.
+        Reproduced on a live board before the fix: "All events" pressed on
+        `cargento`, then `recce-cloud-infra` opened for the first time, drew
+        `data-graph-mode="all"` under a SEMANTIC TIMELINE heading with the store
+        reading `{"": "all"}`.
+
+        **Both directions, deliberately.** A fix that namespaces the write but
+        resolves the fallback from the other scope passes the first half and
+        fails the second, so pressing on the second project and returning to the
+        first is the half that catches it.
+
+        Neither a stronger assertion nor a wider mutation on the single-project
+        fixture could have found this: a defect that needs two projects to be
+        visible is invisible to a one-project board at any width. The fixture's
+        SHAPE is the oracle here.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + self.FOCUS_DOM
+            + r"""
+const press = value => {
+  const button = controls.find(c => c.dataset.nextCockpitAction === "graph-mode" &&
+    c.dataset.arg === value);
+  if(!button) throw new Error("no graph-mode button for " + value);
+  __fire("click",{target:button,preventDefault(){}});
+};
+const open = async project => {
+  navigateNext({view:"project",project,focus:null,tab:"decisions"});
+  await __settle(); await __settle();
+  return (__els.app.innerHTML.match(/data-graph-mode="([^"]+)"/) || [])[1] || "";
+};
+const first = await open("cargento");
+press("all");
+await __settle();
+const firstAfterPress = await open("cargento");
+// A project this reader has never pressed anything on.
+const secondUntouched = await open("recce-cloud-infra");
+press("active");
+await __settle();
+const secondAfterPress = await open("recce-cloud-infra");
+// Back to the first: its own choice must have survived the second's press.
+const firstOnReturn = await open("cargento");
+console.log(JSON.stringify({first, firstAfterPress, secondUntouched,
+  secondAfterPress, firstOnReturn,
+  store:JSON.parse(__store["cargento.next.graph.mode"] || "{}")}));
+""",
+            storage_prelude({}) + self.TWO_PROJECT_FIXTURE,
+        )
+        assert isinstance(out, dict)
+        # The Decisions tab opens on decisions for both, untouched.
+        self.assertEqual("decisions", out["first"])
+        self.assertEqual("all", out["firstAfterPress"])
+        self.assertEqual(
+            "decisions",
+            out["secondUntouched"],
+            "a mode pressed on one project followed the reader to another",
+        )
+        self.assertEqual("active", out["secondAfterPress"])
+        self.assertEqual(
+            "all",
+            out["firstOnReturn"],
+            "the second project's press overwrote the first project's choice",
+        )
+        # And the persisted shape: one entry per scope, none of them the
+        # collided empty key.
+        store = out["store"]
+        assert isinstance(store, dict)
+        self.assertEqual(
+            {"cargento" + NUL_CHAR: "all", "recce-cloud-infra" + NUL_CHAR: "active"},
+            store,
+        )
+        self.assertNotIn("", store)
+
+    def test_the_dead_scope_helper_is_gone_and_its_neighbour_survives(self) -> None:
+        """AC-5. Falsified by deleting the wrong name, which takes
+        nextCockpitProjectScopeKind with it."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        sources = {path.name: path.read_text(encoding="utf-8") for path in web.glob("*.js")}
+        joined = "\n".join(sources.values())
+        self.assertNotIn("nextCockpitProjectScope(", joined)
+        # Fifteen, not the sixteen triage counted: one of those sites was the
+        # call inside the dead helper this change deletes. A grep-and-delete on
+        # the shorter name is a prefix match on the longer one and would take
+        # every remaining site with it.
+        self.assertGreaterEqual(joined.count("nextCockpitProjectScopeKind("), 15)
+
+    def test_nui_3_states_that_retiring_a_tab_slug_is_a_route_change(self) -> None:
+        """AC-6. Falsified by the section not saying it, or saying it somewhere a
+        merge proposal would not read."""
+        doc = (
+            pathlib.Path(__file__).resolve().parents[4] / "docs" / "design-next-ui.md"
+        ).read_text(encoding="utf-8")
+        heads = [index for index, line in enumerate(doc.splitlines()) if line.startswith("## ")]
+        lines = doc.splitlines()
+        start = next(index for index in heads if "NUI-3" in lines[index])
+        end = next((index for index in heads if index > start), len(lines))
+        section = "\n".join(lines[start:end])
+        self.assertIn("route change", section)
+        self.assertIn("nextRouteFromFragment", section)
+        self.assertIn("alias table", section)
+
+    def test_no_route_slug_and_no_fragment_behaviour_changes(self) -> None:
+        """AC-7. Falsified by any edit to NEXT_PROJECT_TABS, NEXT_SESSION_TABS or
+        nextRouteFromFragment."""
+        boot = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "cargento_runtime"
+            / "web"
+            / "next-boot.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];', boot)
+        self.assertIn('const NEXT_SESSION_TABS = ["held-to"];', boot)
+        out = self.run_fixture(
+            r"""
+const routes = ["#n=project:cargento:decisions", "#n=project:cargento:codex%3Afocus-1:held-to",
+  "#n=project:cargento", "#n=project:cargento:codex%3Afocus-1"].map(hash => {
+    const route = nextRouteFromFragment(hash);
+    return {view:route.view || null, project:route.project || null,
+      focus:route.focus || null, tab:route.tab || null};
+  });
+const round = nextFragmentForRoute({view:"project",project:"cargento",
+  focus:"codex:focus-1",tab:"held-to"});
+console.log(JSON.stringify({routes, round}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {"view": "project", "project": "cargento", "focus": None, "tab": "decisions"},
+                {
+                    "view": "project",
+                    "project": "cargento",
+                    "focus": "codex:focus-1",
+                    "tab": "held-to",
+                },
+                {"view": "project", "project": "cargento", "focus": None, "tab": None},
+                {
+                    "view": "project",
+                    "project": "cargento",
+                    "focus": "codex:focus-1",
+                    "tab": None,
+                },
+            ],
+            out["routes"],
+        )
+        self.assertEqual("#n=project:cargento:codex%3Afocus-1:held-to", out["round"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CockpitScopeRailCardTest(NextPageJsHarness):
+    """DRC-4597. The rail card led with the harness and the state and put the
+    session's own title last and smallest, so the only string that tells one
+    card from another was the least prominent one in it.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    GROUP = r"""
+const mixed = {label:"cargento", sessions:[
+  {harness:"claude", sid:"c1", state:"idle", title:"Quiet lane", last_activity:40},
+  {harness:"codex", sid:"w1", state:"working", title:"Live lane", tone:"want",
+    last_activity:100}
+]};
+const single = {label:"cargento", sessions:[
+  {harness:"claude", sid:"c1", state:"idle", title:"First lane", last_activity:40},
+  {harness:"claude", sid:"c2", state:"idle", title:"Second lane", last_activity:60}
+]};
+const twins = {label:"cargento", sessions:[
+  {harness:"claude", sid:"t1", state:"idle", last_activity:40},
+  {harness:"claude", sid:"t2", state:"idle", last_activity:40}
+]};
+const rows = html => [...html.matchAll(/<a\s+([^>]+)>([\s\S]*?)<\/a>/g)]
+  .map(match => ({attrs:match[1], body:match[2]}));
+const slot = (body, name) => {
+  const open = `class="next-cockpit-scope-${name}"`;
+  const at = body.indexOf(open);
+  if(at < 0) return "";
+  const from = body.indexOf(">", at) + 1;
+  const tail = name === "meta" ? body.slice(from).replace(/<\/span>\s*$/, "") :
+    body.slice(from, body.indexOf("</span>", from));
+  return tail.replace(/<[^>]+>/g, "").trim();
+};
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + self.GROUP + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_the_title_is_line_one_and_the_meta_is_line_two(self) -> None:
+        """AC-1. Falsified by restoring the <small> title after the state span,
+        or letting the title and the meta resolve to the same size or ink."""
+        out = self.run_fixture(
+            r"""
+const html = nextCockpitScopeLinks(mixed, null);
+const sessions = rows(html).filter(row => row.attrs.includes('data-scope-kind="session"'));
+console.log(JSON.stringify({count:sessions.length, cards:sessions.map(row => ({
+  titleAt:row.body.indexOf('class="next-cockpit-scope-title"'),
+  metaAt:row.body.indexOf('class="next-cockpit-scope-meta"'),
+  title:slot(row.body, "title"), meta:slot(row.body, "meta")
+}))}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, out["count"])
+        for card in out["cards"]:
+            self.assertGreater(card["titleAt"], -1)
+            self.assertGreater(card["metaAt"], card["titleAt"])
+        self.assertEqual("Live lane", out["cards"][0]["title"])
+        self.assertIn("Codex", out["cards"][0]["meta"])
+        self.assertIn("working", out["cards"][0]["meta"])
+
+    def test_the_kind_is_stated_in_words_once_per_group(self) -> None:
+        """AC-2. Falsified by deleting the hidden span, hard-coding the count, or
+        reinstating the visible per-row cue."""
+        out = self.run_fixture(
+            r"""
+const html = nextCockpitScopeLinks(mixed, null);
+const all = rows(html);
+const sessions = all.filter(row => row.attrs.includes('data-scope-kind="session"'));
+console.log(JSON.stringify({
+  cuesOnSessions:sessions.filter(row => row.body.includes('class="next-scope-cue')).length,
+  hiddenSession:sessions.map(row =>
+    (row.body.match(/class="next-visually-hidden">([^<]*)<\/span>/) || [])[1] || ""),
+  markers:sessions.filter(row => row.body.includes("next-scope-marker--round")).length,
+  projectCue:all[0].body.includes('class="next-scope-cue'),
+  projectMeta:slot(all[0].body, "meta"),
+  expected:`${mixed.sessions.length} sessions`,
+  /* Counted across group SIZES, because every fixture in this class holds
+     exactly two sessions and `esc("2 sessions")` therefore satisfies a
+     derivation asserted on one of them. Measured: that literal survived all
+     564 tests in the group with the substitution proved applied, and "derived"
+     is this criterion's central word. Sizes 1, 2 and 4 also put the
+     singular/plural on both arms. */
+  sized:[1, 2, 4].map(size => slot(rows(nextCockpitScopeLinks({label:"cargento",
+    sessions:Array.from({length:size}, (_, i) => ({harness:"claude", sid:`s${i}`,
+      state:"idle", title:`Lane ${i}`, last_activity:40 + i}))}, null))[0].body, "meta"))
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["cuesOnSessions"])
+        self.assertEqual(["SESSION", "SESSION"], out["hiddenSession"])
+        self.assertEqual(2, out["markers"])
+        self.assertTrue(out["projectCue"])
+        self.assertEqual(out["expected"], out["projectMeta"])
+        # No single literal satisfies all three, which is the whole point.
+        self.assertEqual(["1 session", "2 sessions", "4 sessions"], out["sized"])
+
+    def test_the_harness_hoists_only_when_every_row_shares_one(self) -> None:
+        """AC-3. Falsified by hoisting on a mixed-harness group, or keeping the
+        per-row harness on a single-harness group."""
+        out = self.run_fixture(
+            r"""
+const draw = group => nextCockpitScopeTree(group, null);
+const count = (html, needle) => html.split(needle).length - 1;
+const singleHtml = draw(single);
+const mixedHtml = draw(mixed);
+const heading = html => (html.match(/class="next-cockpit-scope-heading">([^<]*)<\/span>/) || [])[1] || "";
+console.log(JSON.stringify({
+  singleHeading:heading(singleHtml), mixedHeading:heading(mixedHtml),
+  singleClaude:count(singleHtml, "Claude"), mixedClaude:count(mixedHtml, "Claude"),
+  mixedCodex:count(mixedHtml, "Codex"),
+  switcherHeading:heading(nextCockpitScopeSwitcher(single, null))
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("SCOPE · Claude", out["singleHeading"])
+        self.assertEqual("SCOPE", out["mixedHeading"])
+        # Once in the heading and on no row.
+        self.assertEqual(1, out["singleClaude"])
+        self.assertEqual(1, out["mixedClaude"])
+        self.assertEqual(1, out["mixedCodex"])
+        self.assertEqual("SCOPE · Claude", out["switcherHeading"])
+
+    def test_a_withheld_title_is_marked_on_twin_rows_too(self) -> None:
+        """AC-4. Falsified by re-appending the sid to the title string, or a
+        second [data-next-withheld] colour rule reappearing."""
+        out = self.run_fixture(
+            r"""
+const html = nextCockpitScopeLinks(twins, null);
+const sessions = rows(html).filter(row => row.attrs.includes('data-scope-kind="session"'));
+console.log(JSON.stringify({
+  marked:sessions.filter(row => row.body.includes("data-next-withheld")).length,
+  titles:sessions.map(row => slot(row.body, "title")),
+  metas:sessions.map(row => slot(row.body, "meta"))
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, out["marked"])
+        self.assertEqual(
+            ["Session title not published", "Session title not published"], out["titles"]
+        )
+        for meta, sid in zip(out["metas"], ("t1", "t2"), strict=True):
+            self.assertTrue(meta.endswith(sid), f"the twin sid is not last on the meta: {meta!r}")
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        coloured = [
+            block
+            for block in re.finditer(
+                r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", styles, flags=re.DOTALL)
+            )
+            if "[data-next-withheld]" in block.group(1) and "color:" in block.group(2)
+        ]
+        # Two rules colour it, and both must resolve through DRC-4589's absence
+        # register. The criterion was drafted as "exactly one", on the reading
+        # that the rail override merely restated the base rule; this issue's own
+        # change refuted that, by moving the attribute onto
+        # `span.next-cockpit-scope-title`, which declares `color:var(--ink)` at
+        # the same (0,1,0) specificity and later in the sheet. With the override
+        # stripped, a withheld title rendered in full ink -- see
+        # `WithheldTitleKeepsTheAbsenceInkTest`, which resolves the pair.
+        self.assertNotEqual([], coloured)
+        for block in coloured:
+            with self.subTest(rule=block.group(1).strip()[:60]):
+                self.assertIn("color:var(--ink-absence)", block.group(2))
+        rail = re.search(
+            r"\.next-cockpit-scope-tree \[data-next-withheld\][^{]*\{([^}]*)\}", styles
+        )
+        self.assertIsNotNone(rail)
+        self.assertEqual(
+            "font-family:var(--sans);color:var(--ink-absence)",
+            (rail.group(1) if rail else "").strip(),
+        )
+
+    def test_the_card_keeps_its_target_size_and_selection_on_both_surfaces(self) -> None:
+        """AC-5. Falsified by a min-block-size override in the new card rules, or
+        a card shape that renders only in the tree and breaks in the disclosure."""
+        out = self.run_fixture(
+            r"""
+const focus = single.sessions[1];
+const tree = nextCockpitScopeLinks(single, focus);
+const switcher = nextCockpitScopeLinks(single, focus, "switcher");
+const current = html => rows(html).filter(row => row.attrs.includes('aria-current="page"')).length;
+const shape = html => rows(html).filter(row => row.attrs.includes('data-scope-kind="session"'))
+  .every(row => row.body.includes('class="next-cockpit-scope-title"') &&
+    row.body.includes('class="next-cockpit-scope-meta"'));
+console.log(JSON.stringify({treeCurrent:current(tree), switcherCurrent:current(switcher),
+  treeShape:shape(tree), switcherShape:shape(switcher),
+  switcherFocus:switcher.includes('data-next-focus="cockpit-scope:switcher:')}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["treeCurrent"])
+        self.assertEqual(1, out["switcherCurrent"])
+        self.assertTrue(out["treeShape"])
+        self.assertTrue(out["switcherShape"])
+        self.assertTrue(out["switcherFocus"])
+
+        styles = (
+            pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn("min-block-size:44px", styles)
+        selected = re.search(
+            r'\.next-cockpit-scope-tree a\[aria-current="page"\][^{]*\{([^}]*)\}', styles
+        )
+        self.assertIsNotNone(selected)
+        self.assertIn("box-shadow:inset 2px 0", selected.group(1) if selected else "")
+        # Nothing in the new card rules may take the target size back.
+        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", styles):
+            if "next-cockpit-scope-title" in block.group(
+                1
+            ) or "next-cockpit-scope-meta" in block.group(1):
+                self.assertNotIn("min-block-size", block.group(2))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CaveatTieringTest(NextPageJsHarness):
+    """DRC-4591. Three tiers, and nothing deleted.
+
+    Every caveat on this tab used to render as one paragraph in the reading
+    flow. The claim now stays inline and the rest goes behind a summary whose
+    open state survives a redraw. What is asserted is that no sentence left the
+    page, that no figure moved behind a click, and that the disclosure is the
+    board's own redraw-safe one rather than a bare `<details>`.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    # The four caveat sentences that exist on the pre-change tree. AC-1 is that
+    # each still reaches `innerHTML` -- a closed `<details>` contributes its
+    # body to markup, so no browser is needed to read one.
+    COUNTS_CLAIM = "Five figures, and no arithmetic between them."
+    COUNTS_WHY = (
+        "A count identifies a session worth reading; it establishes nothing about whether "
+        "the brief, the agent or Cargento\u2019s own judgement was poor, and those three are "
+        "not separable from it."
+    )
+    STEER_CLAIM = "Raised to you and nowhere else."
+    STEER_WHY = (
+        "Cargento does not write into a session, so steering is by hand; the steer box in "
+        "Console states the same rule about notes you write there."
+    )
+    LANDED_CLAIM = "Neither card implies the other."
+
+    def held(self, setup: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  html,
+  counts: (html.match(
+    /<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/details><\\/div>|<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/div><\\/div>/) || [""])[0],
+  landed: (html.match(
+    /<section class="next-cockpit-landed">[\\s\\S]*?<\\/section>/) || [""])[0],
+  departures: (html.match(
+    /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0],
+  reading: (html.match(
+    /<section class="next-cockpit-reading">[\\s\\S]*?<\\/section>/) || [""])[0],
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    # Derived, not selected. Every constant caveat sentence the PRE-CHANGE tree
+    # puts inside a `next-cockpit-reading-why`, taken from the merge base:
+    #
+    #   git show 21a0e935289ea64c963d4664daf7abab12c9866d:\
+    #     cargento/skills/cargento/cargento_runtime/web/next-cockpit.js > base.js
+    #
+    # then, from the repository root, sort what `reading_why_sentences` yields
+    # over `base.js` -- which is exactly what the test below does for you,
+    # against the same revision, whenever the blob is reachable.
+    #
+    # Re-running that command must reproduce this tuple exactly; the test below
+    # runs it for you whenever the base blob is reachable. AC-1's claim is
+    # "every caveat sentence on the pre-change tree still exists verbatim", and
+    # it was verified over five strings against roughly twenty-three emission
+    # sites -- a selection, which cannot fail on what it left out. What the
+    # derivation buys is that a sentence deleted from a site nobody listed reds
+    # this test. What it does not reach is a paragraph assembled through
+    # `${...}`: the text is not in the file, so it is out of scope here and is
+    # covered instead by `HeldToPositionalSentencesTest`, which reads the
+    # rendered page.
+    BASE_REVISION = "21a0e935289ea64c963d4664daf7abab12c9866d"
+    BASE_CAVEAT_SENTENCES: ClassVar[tuple[str, ...]] = (
+        (
+            "A count identifies a session worth reading; it establishes nothing about "
+            "whether the brief, the agent or Cargento\u2019s own judgement was poor, and "
+            "those three are not separable from it."
+        ),
+        "A reading is stored for this session and this build could not read it, so nothing from it is shown.",
+        "Five figures, and no arithmetic between them.",
+        "Neither card implies the other.",
+        "No reading has been made at your request, so nothing has been raised from one.",
+        "Nothing watches for a departure on its own.",
+        "Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.",
+        "The reading raised no departure from the revision it read.",
+        "This session was not in the observed payload, so nothing here says how it ended.",
+    )
+
+    # The three the fixture arms cannot reach, each with the state it needs and
+    # none of it reachable without a stored reading or a doctored payload. They
+    # are still held to the verbatim half above; what is declared here is only
+    # that nothing rendered them, so the render loop cannot quietly shrink to
+    # nothing while reporting success.
+    UNRENDERED_CAVEATS: ClassVar[frozenset[str]] = frozenset(
+        {
+            (
+                "A reading is stored for this session and this build could not read it, "
+                "so nothing from it is shown."
+            ),
+            "The reading raised no departure from the revision it read.",
+            "This session was not in the observed payload, so nothing here says how it ended.",
+        }
+    )
+
+    def test_the_base_sentence_list_is_what_the_command_derives(self) -> None:
+        """The difference between a derivation and a longer list.
+
+        Skipped rather than failed where the base blob is unreachable: CI
+        checks out at depth 1, and a test that cannot read the revision it
+        names has nothing to say about it. Locally it is the guarantee that the
+        tuple above was not edited by hand.
+        """
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        blob = f"{self.BASE_REVISION}:cargento/skills/cargento/cargento_runtime/web/next-cockpit.js"
+        try:
+            base = subprocess.run(
+                # Fixed argv and no shell; git is on PATH in every dev and CI image.
+                ["git", "show", blob],  # noqa: S607
+                capture_output=True,
+                check=True,
+                cwd=web,
+                text=True,
+                timeout=30,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            self.skipTest(f"{self.BASE_REVISION} is not in this clone")
+        self.assertEqual(set(self.BASE_CAVEAT_SENTENCES), reading_why_sentences(base))
+
+    def test_every_caveat_sentence_survives_the_tiering(self) -> None:
+        """AC-1, over the derived set. Falsified by deleting or paraphrasing any
+        sentence the pre-change tree stated, at any of its emission sites.
+
+        Two halves, because the strong one cannot cover every sentence. The
+        verbatim check reaches all of them and is what makes the set worth
+        deriving; the rendered check reaches the ones a fixture can reach and is
+        what proves a surviving string is still on the page rather than only in
+        the file.
+        """
+        self.assertNotEqual((), self.BASE_CAVEAT_SENTENCES)
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        current = (web / "next-cockpit.js").read_text(encoding="utf-8")
+        emitted = "\n".join(" ".join(run.split()) for run in emitted_strings(current))
+        for sentence in self.BASE_CAVEAT_SENTENCES:
+            with self.subTest(sentence=sentence[:40]):
+                self.assertIn(sentence, emitted)
+
+        out = self.held()
+        html = out["html"]
+        assert isinstance(html, str)
+        rendered = [s for s in self.BASE_CAVEAT_SENTENCES if s in html]
+        self.assertEqual(
+            sorted(set(self.BASE_CAVEAT_SENTENCES) - self.UNRENDERED_CAVEATS),
+            sorted(rendered),
+            "a caveat sentence stopped rendering, or one declared unreachable now renders",
+        )
+        # And no disclosure standing empty in place of one.
+        self.assertNotIn("</summary></details>", html)
+
+    def test_the_remainder_is_behind_a_summary_and_the_claim_is_not(self) -> None:
+        """AC-1 and the tier rule together: the claim inline, the rest one click away."""
+        counts = self.held()["counts"]
+        assert isinstance(counts, str)
+        self.assertIn(self.COUNTS_CLAIM, counts)
+        self.assertIn("What a count does not say", counts)
+        # The claim is before the summary; the remainder is after it.
+        self.assertLess(counts.index(self.COUNTS_CLAIM), counts.index("<summary>"))
+        self.assertGreater(counts.index(self.COUNTS_WHY), counts.index("</summary>"))
+        self.assertIn("data-next-cockpit-disclosure", counts)
+
+    def test_the_steer_claim_stays_inline_and_its_reason_discloses(self) -> None:
+        """AC-1 on the DEPARTURES site."""
+        block = self.held()["departures"]
+        assert isinstance(block, str)
+        self.assertIn(self.STEER_CLAIM, block)
+        self.assertIn("Why no raise goes further", block)
+        self.assertLess(block.index(self.STEER_CLAIM), block.index(self.STEER_WHY))
+        self.assertGreater(block.index(self.STEER_WHY), block.index("</summary>"))
+
+    def test_an_opened_disclosure_is_still_open_after_a_redraw(self) -> None:
+        """AC-2, the offline half. A bare `<details>` snaps shut on every redraw.
+
+        Falsified by a helper that emits no `data-next-cockpit-disclosure`,
+        which makes the generic restore lane skip it. The node list is stubbed
+        off the rendered markup the way the scope/attention case above does it,
+        because this fixture's `app` is a plain object.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+let markup = __els.app.innerHTML;
+let disclosures = [];
+__els.app.querySelectorAll = selector =>
+  selector === "[data-next-cockpit-disclosure]" ? disclosures : [];
+Object.defineProperty(__els.app, "innerHTML", {
+  get: () => markup,
+  set: value => {
+    markup = value;
+    disclosures = [...value.matchAll(
+      /class="next-cockpit-why" data-next-cockpit-disclosure="([^"]+)"/g)]
+      .map(match => ({key:match[1],open:false,
+        getAttribute: () => match[1],querySelector: () => ({setAttribute(){}})}));
+  }
+});
+__els.app.innerHTML = markup;
+const keys = disclosures.map(row => row.key);
+disclosures.forEach(row => {row.open = true;});
+renderNext();
+const kept = disclosures.map(row => row.open);
+disclosures.forEach(row => {row.open = false;});
+renderNext();
+console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        keys = out["keys"]
+        assert isinstance(keys, list)
+        self.assertTrue(keys, "no tier-2 disclosure carried the restore attribute")
+        self.assertEqual([True] * len(keys), out["kept"], "a disclosure snapped shut")
+        # And the lane restores the closed state too, rather than latching open.
+        self.assertEqual([False] * len(keys), out["closed"])
+
+    def test_the_five_count_rows_and_their_absences_never_collapse(self) -> None:
+        """AC-3. Only the explanatory paragraph may go behind a summary.
+
+        "Only the paragraph goes behind the summary" has two halves and this
+        checked one. The rows staying out was asserted; the paragraph being
+        THERE was not, so the criterion's own empty-body falsifier -- a
+        disclosure rendered with nothing behind it -- passed. Every row is
+        still before the summary when the summary hides nothing at all, and a
+        reader then gets a control that opens onto emptiness.
+        """
+        counts = self.held()["counts"]
+        assert isinstance(counts, str)
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', counts)
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+        # None of the five rows sits inside the disclosure body.
+        summary_at = counts.index("<summary>")
+        for value in re.finditer(r'class="next-cockpit-count-value"', counts):
+            self.assertLess(value.start(), summary_at)
+        # And the summary hides something: the half the falsifier aimed at.
+        shut = counts.index("</summary>") + len("</summary>")
+        body = counts[shut : counts.index("</details>", shut)]
+        self.assertNotEqual("", body.strip(), "the disclosure opens onto an empty body")
+        self.assertIn("<p", body, "the disclosure hides no paragraph")
+        prose = re.sub(r"<[^>]+>", "", body).strip()
+        self.assertGreater(len(prose), 40, f"the disclosure hides no sentence, only {prose!r}")
+        # The other half of the same guard, and the one nothing reached: a
+        # caveat paragraph with nothing in it, anywhere on the tab. Removing
+        # `nextCockpitWhy`'s empty-body return leaves 3652 behavioural tests
+        # green and draws exactly one of these, in the re-entry block, on the
+        # default board -- a reachable arm emitting an empty sentence.
+        html = self.held()["html"]
+        assert isinstance(html, str)
+        self.assertNotIn(
+            '<p class="next-cockpit-reading-why"></p>',
+            html,
+            "a caveat paragraph rendered with nothing in it",
+        )
+        self.assertNotIn(
+            "</summary></details>", html, "a disclosure rendered with nothing behind it"
+        )
+
+    def test_the_card_independence_claim_is_stated_exactly_once(self) -> None:
+        """AC-4. Falsified by leaving both statements, or by deleting both."""
+        out = self.held()
+        html, landed = out["html"], out["landed"]
+        assert isinstance(html, str) and isinstance(landed, str)
+        self.assertNotIn("two axes, read separately", html)
+        self.assertEqual(1, landed.count(self.LANDED_CLAIM))
+        # The claim did not merely move -- it is still adjacent to the cards.
+        self.assertIn("next-cockpit-landed-cards", landed)
+
+    def test_the_unasked_instruction_needs_no_click(self) -> None:
+        """AC-6. Falsified by wrapping the unasked part's first paragraph."""
+        out = self.held("delete __dashboard.unasked;\n")
+        html = out["html"]
+        assert isinstance(html, str)
+        part = re.search(
+            r'<div class="next-cockpit-departure-part">'
+            r'<span class="next-cockpit-departure-label">FROM THE CHECKS'
+            r"[\s\S]*?</div>",
+            html,
+        )
+        assert part is not None, "the unasked part did not render"
+        body = part.group(0)
+        self.assertIn("--unasked-readings", body)
+        summary_at = body.find("<summary>")
+        if summary_at != -1:
+            self.assertLess(body.index("--unasked-readings"), summary_at)
+
+    def test_no_rendered_string_carries_a_docs_link_or_a_decision_token(self) -> None:
+        """AC-7. Tier 3 cites a source comment, never rendered HTML.
+
+        A `docs/` href is a dead link in an installed plugin, where no `docs/`
+        sits beside the page, and a bare `DEC-N` in a product string is a
+        `RuntimeDecisionCitationsTest` hit.
+
+        **Derived over the bundle, not rendered on a list of tabs.** The first
+        repair for this added the Console surface to a fixture, and a second
+        fixture still cannot fail on the surface nobody thought to add -- the
+        argument `js_literals` makes about itself, and the same reason AC-4's
+        retired-span check walks every runtime file instead of naming two. The
+        criterion's own falsifier did not fire on the `pc-`/Console surface,
+        which this issue itself introduced, and naming that surface would have
+        left the next one uncovered.
+
+        The file count is asserted because a walk that reaches nothing passes
+        an empty loop in silence.
+
+        One blind spot, stated rather than left implicit: `emitted_strings`
+        splits a template literal at each `${...}`, so an href composed through
+        a hole is out of this sweep's reach. Nothing in the bundle builds one
+        today; a future one needs a different instrument, not a longer list.
+        """
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        scripts = sorted(web.glob("*.js"))
+        self.assertGreater(len(scripts), 15, "the bundle walk found almost no scripts")
+        decision = re.compile(r"\bDEC-\d+\b")
+        offenders = [
+            f"{script.name}: {text[:70]}"
+            for script in scripts
+            for text in emitted_strings(script.read_text(encoding="utf-8"))
+            if "docs/" in text or decision.search(text)
+        ]
+        self.assertEqual([], offenders)
+
+    # A stored reading, so the branch that renders the reading section's own
+    # baseline, scope and caveat actually executes. Without it the section
+    # returns early and a tier-2 body planted in that branch is never drawn,
+    # which is how the assertion below first passed over its own mutation.
+    READING = (
+        '__dashboard.sessions[0].annotation_goal = "do not change the board";\n'
+        '__dashboard.sessions[0].annotation_goal_why = "";\n'
+        '__dashboard.sessions[0].annotation_output = "";\n'
+        '__dashboard.sessions[0].annotation_output_why = "No expected output typed.";\n'
+        "__dashboard.sessions[0].annotation_revision = 1;\n"
+        "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+        "__dashboard.sessions[0].annotation_at = 100;\n"
+        '__dashboard.sessions[0].annotation_binding_why = "";\n'
+        "__dashboard.sessions[0].annotation_assessment = {revision_read:1,\n"
+        '  scope:"mid-flight",\n'
+        '  scope_text:"This covers only the work so far.",\n'
+        '  criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]}}};\n'
+    )
+
+    def test_the_reading_sections_own_first_caveat_is_untouched(self) -> None:
+        """AC-8. A new `reading-why` emitted earlier hijacks three assertions
+        that read the first one in a slice running to end of document.
+
+        Asserted on a board that has a reading, so the section renders its
+        baseline, scope and caveat rather than returning on its absence branch.
+        """
+        out = self.held(self.READING)
+        html, reading = out["html"], out["reading"]
+        assert isinstance(html, str) and isinstance(reading, str)
+        self.assertIn("This covers only the work so far", reading)
+        # No tier-2 control anywhere inside the reading section -- the four
+        # sites this change touches all sit after it.
+        self.assertNotIn("next-cockpit-why", reading)
+        # And the first `reading-why` in a slice to end of document is still
+        # the reading section's own, not one tiered from below it.
+        block = html[html.index('class="next-cockpit-reading"') :]
+        first = re.search(r'class="next-cockpit-reading-why">([^<]*)<', block)
+        assert first is not None
+        self.assertLess(
+            block.index(first.group(0)),
+            block.index("next-cockpit-departures"),
+            "a caveat from the departures section became the reading's first one",
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class HeldToOrderingTest(NextPageJsHarness):
+    """DRC-4594. Purpose and inputs before the caveats.
+
+    The tab opened on its two textareas, followed them with a paragraph whose
+    middle forty-two words explained why this session cannot be raised, and
+    then ran four sections that each reported that nothing is here. The lede
+    says what typing buys, and the record moves to last.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    ANNOTATED = (
+        '__dashboard.sessions[0].annotation_goal = "Ship the cockpit";\n'
+        '__dashboard.sessions[0].annotation_output = "A green suite";\n'
+        "__dashboard.sessions[0].annotation_revision = 1;\n"
+        "__dashboard.sessions[0].annotation_revision_count = 1;\n"
+        "__dashboard.sessions[0].annotation_at = 100;\n"
+        '__dashboard.sessions[0].annotation_binding_why = "";\n'
+    )
+
+    def tab(self, setup: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + self.ANNOTATED
+            + setup
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({
+  html,
+  lede: (html.match(/class="next-cockpit-held-lede">([\\s\\S]*?)<\\/p>/) || [])[1] || "",
+  counts: (html.match(
+    /<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/details><\\/div>|<div class="next-cockpit-departure-part"><span class="next-cockpit-departure-label">COUNTS[\\s\\S]*?<\\/div><\\/div>/) || [""])[0],
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_the_lede_is_the_first_thing_on_the_tab(self) -> None:
+        """AC-1. Falsified by emitting it after the fields grid, or omitting it."""
+        out = self.tab()
+        html = out["html"]
+        assert isinstance(html, str)
+        # The tab, not the page. The chrome and the scope rail state absences of
+        # their own above every panel, and this criterion is about what the tab
+        # opens on. Sliced from the panel to the end of the document rather than
+        # to a matching `</section>`, which nested sections make unfindable by
+        # scan; anything after the panel is also after the lede, so the slice
+        # can only ever add elements the assertion still holds for.
+        panel = html[html.index('data-next-cockpit-panel="held-to"') :]
+        at = panel.index('class="next-cockpit-held-lede"')
+        self.assertLess(at, panel.index('class="next-cockpit-held-fields"'))
+        self.assertLess(at, panel.index('class="next-cockpit-held-reentry"'))
+        # Every absence element the board rendered, found by the same convention
+        # `test_next_page._absence_rules` sweeps the stylesheet with: an
+        # `-absent` class-name segment, or one of the three absence attributes.
+        #
+        # The four-string list this replaces failed twice over one gap, and the
+        # second failure is why adding a fifth string could not have fixed it:
+        # the strings were passed through `if absence in html`, so an absence
+        # this tab renders and nobody listed was both off the list AND filtered
+        # out of the comparison -- the loop then ran over the three that did
+        # render and reported success. A list that silently drops its own
+        # misses is not a shorter version of this sweep; it is a different
+        # assertion.
+        absences = [
+            match.start()
+            for match in re.finditer(
+                r'<\w+[^>]*?(?:class="[^"]*-absent[^"]*"'
+                r"|data-absence=|data-next-absent|data-next-withheld)[^>]*>",
+                panel,
+            )
+        ]
+        self.assertGreater(len(absences), 3, "no absence element rendered to be measured against")
+        for start in absences:
+            with self.subTest(absence=panel[start : start + 60]):
+                self.assertLess(at, start)
+
+    def test_the_lede_claims_no_automatic_reading(self) -> None:
+        """AC-2, on the default board -- the one the `--unasked-readings`
+        instruction four sections down exists for."""
+        out = self.tab("delete __dashboard.unasked;\n")
+        lede = out["lede"]
+        assert isinstance(lede, str)
+        self.assertTrue(lede.strip(), "no lede rendered")
+        for claim in ("watch", "automatic", "checks for you"):
+            with self.subTest(claim=claim):
+                self.assertNotIn(claim, lede.lower())
+        self.assertIn("Ask for a reading", lede)
+
+    def test_the_section_order_puts_the_record_last(self) -> None:
+        """AC-3. Falsified by moving any section, including re-raising OBSERVED
+        RECORD, which no test on the pre-change tree can see."""
+        out = self.tab()
+        html = out["html"]
+        assert isinstance(html, str)
+        order = [
+            "WHAT YOU ASKED FOR",
+            "A LATER DIRECTION",
+            "READING",
+            "DEPARTURES RAISED TO YOU",
+            "HOW IT LANDED",
+            "OBSERVED RECORD",
+        ]
+        found = [html.find(heading) for heading in order]
+        for heading, at in zip(order, found, strict=True):
+            with self.subTest(section=heading):
+                self.assertNotEqual(-1, at, f"{heading} did not render")
+        for before, after in itertools.pairwise(order):
+            with self.subTest(pair=(before, after)):
+                self.assertLess(html.find(before), html.find(after))
+        # The Intent-log pointer is the tab's last line, after the record.
+        self.assertLess(html.find("OBSERVED RECORD"), html.find("next-cockpit-departures-kept"))
+
+    def test_the_record_read_phrase_did_not_merely_move(self) -> None:
+        """AC-4's original string check, kept as the regression it is.
+
+        The sweep that replaces it is `HeldToPositionalSentencesTest`. This one
+        stays because it is cheap and because the phrase it names is the one
+        DRC-4594 actually reworded; what it cannot do is notice the next one,
+        which is the whole reason the sweep exists.
+        """
+        out = self.tab("__dashboard.sessions[0].annotation_at = 200;\n")
+        html = out["html"]
+        assert isinstance(html, str)
+        self.assertNotIn("record read above", html)
+        self.assertIn("is in the observed record read for this session", html)
+
+    def test_the_reentry_block_leads_with_the_action(self) -> None:
+        """AC-5. The containment check is kept rather than loosened -- "after the
+        header" is also true of a paragraph that escaped the section entirely.
+
+        Both limits still render, each with its own sentence; what moves is
+        that the one act this block offers is no longer the opening clause of a
+        paragraph whose remainder is about what cannot be done.
+        """
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            + self.ANNOTATED
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const held = html.indexOf('class="next-cockpit-held"');
+const closes = html.indexOf("</section>", held);
+const at = html.indexOf('class="next-cockpit-held-reentry"');
+console.log(JSON.stringify({
+  inside: at > held && at < closes,
+  anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
+  reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
+  raiseLabelAt: html.indexOf('reentry-label">Raise<'),
+  resume: html.includes("there is no re-entry command to copy"),
+  raise: html.includes(NEXT_FOCUS_OFF_LINE),
+}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["inside"], "the block rendered outside the section it describes")
+        anchor_at = out["anchorAt"]
+        reentry_at, raise_at = out["reentryLabelAt"], out["raiseLabelAt"]
+        assert isinstance(anchor_at, int)
+        for name, at in (("anchor", anchor_at), ("Re-entry", reentry_at), ("Raise", raise_at)):
+            with self.subTest(part=name):
+                self.assertNotEqual(-1, at, f"{name} did not render")
+        self.assertLess(anchor_at, reentry_at, "a limitation arrived before the action")
+        self.assertLess(anchor_at, raise_at, "a limitation arrived before the action")
+        # Neither limit was dropped on the way into its own row.
+        self.assertTrue(out["resume"])
+        self.assertTrue(out["raise"])
+
+    def test_the_action_leads_on_every_branch_this_block_can_draw(self) -> None:
+        """AC-5 across the combinations it names, and asserted to BE different.
+
+        The criterion promises six: three raise branches (focus capability off,
+        a focusable session, a session with no terminal) against two re-entry
+        arms (a harness with a resume command and one without). The check above
+        exercises one -- capability off, no resume command -- and that is the
+        arm where the anchor is emitted first anyway.
+
+        **This matrix has now collapsed twice.** First by exercising one arm.
+        Then by exercising six copies of one arm: the capability stub returned
+        `{content:"tmux"}`, and `nextFocusCapability` requires
+        `typeof meta.getAttribute === "function"`, so it resolved to "" and all
+        six drew the capability-off branch -- one raise sentence, no
+        disclosure. Every per-case guard passed, because the anchor and both
+        rows render on every branch. Guarding each case cannot see six
+        identical cases.
+
+        So the shapes are asserted to DIFFER as well as to be ordered: three
+        distinct raise claims, two distinct re-entry sentences, six distinct
+        pairs. The stub is `CockpitHeldReEntryTest.FOCUS_ON`'s, which answers
+        `getAttribute` as the page reads it.
+
+        Measured before this was widened: moving the anchor to the END of the
+        block survives all 3639 behavioural tests on the branch a
+        FOCUS-CAPABLE board draws. That is not a narrow-selection artifact.
+        """
+        cases = {
+            "capability-off/no-resume": ("", "pi"),
+            "capability-off/resume": ("", "codex"),
+            "focusable/no-resume": ("focusable", "pi"),
+            "focusable/resume": ("focusable", "codex"),
+            "no-terminal/no-resume": ("unfocusable", "pi"),
+            "no-terminal/resume": ("unfocusable", "codex"),
+        }
+        shapes: dict[str, tuple[str, str, bool]] = {}
+        for name, (focus_mode, harness) in cases.items():
+            with self.subTest(branch=name):
+                out = self._run_page_js(
+                    "await __settle();\nawait __settle();\n"
+                    "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+                    + self.ANNOTATED
+                    + f"__dashboard.sessions[0].harness = {json.dumps(harness)};\n"
+                    + (
+                        CockpitHeldReEntryTest.FOCUS_ON + f"__dashboard.sessions[0].focusable = "
+                        f"{'true' if focus_mode == 'focusable' else 'false'};\n"
+                        if focus_mode
+                        else ""
+                    )
+                    + f"""
+navigateNext({{view:"project", project:"cargento",
+  focus:{json.dumps(harness + ":focus-1")}, tab:"held-to"}});
+await __settle();
+const html = __els.app.innerHTML;
+const block = (html.match(
+  /<div class="next-cockpit-held-reentry">[\\s\\S]*?<\\/div>\\s*<\\/section>/) || [""])[0];
+const rowText = label => {{
+  const at = block.indexOf(`>${{label}}<`);
+  if(at < 0) return "";
+  const from = block.indexOf('next-cockpit-held-reentry-text">', at);
+  return from < 0 ? "" : block.slice(from + 32, block.indexOf("<", from + 32));
+}};
+console.log(JSON.stringify({{
+  anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
+  reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
+  raiseLabelAt: html.indexOf('reentry-label">Raise<'),
+  raise: rowText("Raise"), resume: rowText("Re-entry"),
+  disclosure: (block.match(/<summary>([^<]*)<\\/summary>/) || [])[1] || ""}}));
+""",
+                    storage_prelude({}) + self.FIXTURE,
+                )
+                assert isinstance(out, dict)
+                anchor_at = out["anchorAt"]
+                self.assertNotEqual(-1, anchor_at, "the re-entry anchor did not render")
+                self.assertNotEqual(-1, out["reentryLabelAt"], "the Re-entry row did not render")
+                self.assertNotEqual(-1, out["raiseLabelAt"], "the Raise row did not render")
+                self.assertLess(anchor_at, out["reentryLabelAt"])
+                self.assertLess(anchor_at, out["raiseLabelAt"])
+                raise_text, resume_text = out["raise"], out["resume"]
+                assert isinstance(raise_text, str) and isinstance(resume_text, str)
+                self.assertNotEqual("", raise_text, "the Raise row rendered no sentence")
+                self.assertNotEqual("", resume_text, "the Re-entry row rendered no sentence")
+                shapes[name] = (raise_text, resume_text, bool(out["disclosure"]))
+
+        # The six are six. Without this, six copies of one branch pass every
+        # assertion above -- which is how this matrix collapsed the second time.
+        self.assertEqual(6, len(set(shapes.values())), shapes)
+        self.assertEqual(3, len({shape[0] for shape in shapes.values()}), "raise branches")
+        self.assertEqual(2, len({shape[1] for shape in shapes.values()}), "re-entry arms")
+        # And the capability-off branch is the one that draws no disclosure,
+        # which is the arm the broken stub made universal.
+        self.assertFalse(shapes["capability-off/resume"][2])
+        self.assertTrue(shapes["focusable/resume"][2])
+        self.assertTrue(shapes["no-terminal/resume"][2])
+
+    def test_the_managed_focus_lane_survives_the_restructure(self) -> None:
+        """AC-6. Falsified by a wrapper that takes the attribute, which keeps a
+        bare string assertion green while focus lands on the wrapper.
+
+        Asserted against the opening tag that carries the attribute, not
+        against the attribute's presence anywhere in the markup.
+        """
+        out = self.tab()
+        html = out["html"]
+        assert isinstance(html, str)
+        tag = re.search(r'<([a-z]+)[^>]*data-next-focus="cockpit-held-reentry"[^>]*>', html)
+        assert tag is not None, "the managed focus lane is not on the tab"
+        self.assertEqual("a", tag.group(1), "the focus lane moved off the anchor")
+        self.assertIn("#n=session:cargento:codex:focus-1", tag.group(0))
+
+    def test_the_count_labels_drop_the_repeated_quantity_noun(self) -> None:
+        """AC-7. Falsified by rewording any `line()` value argument or collapsing
+        the null-to-"not published" branch while relabelling."""
+        out = self.tab("delete __dashboard.unasked;\n__dashboard.sessions[0].departures = [];\n")
+        counts = out["counts"]
+        assert isinstance(counts, str)
+        labels = re.findall(r'class="next-cockpit-count-label">([^<]*)<', counts)
+        self.assertEqual(
+            [
+                "From the reading you asked for",
+                "From the checks run while you were away",
+                "On record for this board",
+                "This board attempted",
+                "A notification service accepted",
+            ],
+            labels,
+        )
+        groups = re.findall(r'class="next-cockpit-count-group">([^<]*)<', counts)
+        self.assertEqual(["DEPARTURES", "RAISES"], groups)
+        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', counts)
+        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
+
+    def test_the_your_words_sub_label_and_everything_citing_it_are_gone(self) -> None:
+        """AC-8. Falsified by deleting the span and leaving the rule, or leaving
+        the handler comment that explains itself by that label."""
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cockpit = (web / "next-cockpit.js").read_text(encoding="utf-8")
+        styles = (web / "styles.css").read_text(encoding="utf-8")
+        self.assertNotIn("next-cockpit-held-sub", cockpit)
+        self.assertNotIn("next-cockpit-held-sub", styles)
+        # The two surviving occurrences are sentences, not labels.
+        self.assertEqual(2, cockpit.count("your words"))
+        self.assertIn("your words are still in the box", cockpit)
+        self.assertIn("your words are kept", cockpit)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class HeldToPositionalSentencesTest(NextPageJsHarness):
+    """DRC-4594 AC-4, as a sweep over the class rather than over one phrase.
+
+    The criterion was written "no sentence says the record is above it" and
+    verified by asserting one phrase was gone. DRC-4594's own comment records
+    that it reworded "the one sentence that was positionally anchored" -- so it
+    swept by known string, and it missed two: `NEXT_READING_OFFER`, which was
+    false on every render, and `NEXT_READING_UNAUTHORIZED`, which is false
+    whenever it renders and renders rarely. This sweep then found a third, the
+    two settle cues, which no one had looked at at all. Three misses from a
+    by-hand pass is the argument for deriving the subject.
+
+    **Two things were deliberately not done here**, because each would leave a
+    sweep that passes while measuring nothing:
+
+    * The obvious repair for a false "above" is to delete the word. After that
+      the sweep returns an empty set and is green forever. So every sentence
+      keeps a positional word and the word is required to be TRUE, and the
+      assertions below require the sweep to be non-empty, to be a bijection
+      with the referents declared here, and for every member to have been
+      index-checked in at least one arm.
+    * "Every hit lands after the record" is right for *above* and wrong for
+      *below* -- and the record genuinely IS below now, so the correct fix
+      ("the observed record below") would FAIL that assertion. The direction is
+      read from each sentence and the comparison flips with it.
+
+    The referents are the one enumerated part, and they have to be: a marker's
+    identity is not in the sentence. What is derived is the SUBJECT, so a new
+    positional sentence reds this test until someone says what it points at.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ANNOTATED = HeldToOrderingTest.ANNOTATED
+
+    POSITIONAL = re.compile(r"\b(above|below)\b")
+
+    # A distinctive fragment of each swept sentence -> the rendered marker whose
+    # side it claims. Asserted below to be a bijection with the sweep.
+    REFERENTS: ClassVar[dict[str, str]] = {
+        "so the question below still stands as it did": "next-cockpit-conflict-open",
+        "already been dropped and the question below still stands": "next-cockpit-conflict-open",
+        "so nothing above is an inspected file": "OBSERVED RECORD",
+        "Save a goal above to enable a reading": 'class="next-cockpit-held-fields"',
+        "The evidence below stays readable without one": "OBSERVED RECORD",
+        "the observed record below and the words you typed": "OBSERVED RECORD",
+        "after you saved the words above": 'class="next-cockpit-held-fields"',
+    }
+
+    # Each arm exists to render sentences the default board does not. `model`
+    # supplies an observer model so the reading control stops refusing for a
+    # different reason and reaches the abstention sentence; `settle-*` marks the
+    # cue lane directly, which is the only way to reach a store outcome without
+    # driving a POST.
+    ARMS: ClassVar[dict[str, str]] = {
+        "default": "",
+        "late-words": "__dashboard.sessions[0].annotation_at = 200;\n",
+        "no-words": (
+            '__dashboard.sessions[0].annotation_goal = "";\n'
+            '__dashboard.sessions[0].annotation_output = "";\n'
+        ),
+        "settle-refused": "",
+        "settle-unpersisted": "",
+        "model": "",
+    }
+
+    def arm(self, name: str) -> str:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + self.ANNOTATED
+            + self.ARMS[name]
+            + f"const ARM = {json.dumps(name)};\n"
+            + """
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const session = nextCockpitFocusedSession(group);
+if(ARM.startsWith("settle-")){
+  nextCockpitHeldMark(nextCockpitHeldKey(session, "settle"), ARM);
+  renderNext();
+}
+if(ARM === "model"){
+  for(const key of [nextCockpitContextKey(group, null), nextCockpitContextKey(group, session)]){
+    const entry = nextCockpitContexts.get(key);
+    if(entry && entry.data) entry.data = Object.assign({}, entry.data,
+      {observer_model:{enabled:true, disclosure:"x", model:"sonnet"}});
+  }
+  renderNext();
+}
+console.log(JSON.stringify({html: __els.app.innerHTML}));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        html = out["html"]
+        assert isinstance(html, str)
+        return html
+
+    def sweep(self) -> list[str]:
+        source = (frontend_page.WEB_DIR / "next-cockpit.js").read_text(encoding="utf-8")
+        return [
+            text
+            for text in emitted_strings(source)
+            if self.POSITIONAL.search(text) and text.strip()
+        ]
+
+    def test_the_sweep_and_the_referents_are_a_bijection(self) -> None:
+        """Non-vacuity. A sweep that can return nothing is not a measurement.
+
+        Two directions, because neither implies the other: a new positional
+        sentence with no referent is unchecked, and a referent whose sentence
+        has been deleted or reworded is a row measuring nothing.
+        """
+        found = self.sweep()
+        self.assertNotEqual([], found, "the sweep found no positional sentence at all")
+        matched: dict[str, list[str]] = {fragment: [] for fragment in self.REFERENTS}
+        unclaimed: list[str] = []
+        for text in found:
+            hits = [fragment for fragment in self.REFERENTS if fragment in text]
+            if not hits:
+                unclaimed.append(text)
+                continue
+            self.assertEqual(1, len(hits), f"{text[:60]!r} matches {len(hits)} referents")
+            matched[hits[0]].append(text)
+        self.assertEqual(
+            [],
+            unclaimed,
+            "a positional sentence has no declared referent; say what it points at",
+        )
+        for fragment, texts in matched.items():
+            with self.subTest(fragment=fragment[:40]):
+                self.assertEqual(1, len(texts), f"{fragment!r} matched {len(texts)} sentences")
+
+    def test_every_positional_sentence_renders_on_the_side_it_claims(self) -> None:
+        """AC-4, directionally. Falsified three ways, each one shipped here
+        before this test existed: a sentence saying `above` about something
+        below it, a sentence saying `below` about something above it, and a
+        sentence that was made true by deleting the word.
+        """
+        arms = {name: self.arm(name) for name in self.ARMS}
+        checked: dict[str, list[str]] = {}
+        for text in self.sweep():
+            fragment = next(f for f in self.REFERENTS if f in text)
+            marker = self.REFERENTS[fragment]
+            words = set(self.POSITIONAL.findall(text))
+            self.assertEqual(
+                1, len(words), f"{fragment!r} states two directions at once: {sorted(words)}"
+            )
+            claims_above = words == {"above"}
+            for name, html in arms.items():
+                at = html.find(text.strip())
+                anchor = html.find(marker)
+                if at == -1 or anchor == -1:
+                    continue
+                checked.setdefault(fragment, []).append(name)
+                with self.subTest(fragment=fragment[:40], arm=name):
+                    if claims_above:
+                        self.assertGreater(
+                            at, anchor, f"{fragment!r} says `above` about something below it"
+                        )
+                    else:
+                        self.assertLess(
+                            at, anchor, f"{fragment!r} says `below` about something above it"
+                        )
+        # Every sentence was measured somewhere. A referent no arm renders is a
+        # row this test carries and never reads, which is the vacuity the list
+        # form of this criterion had.
+        self.assertEqual(
+            sorted(self.REFERENTS),
+            sorted(checked),
+            "a positional sentence rendered in no arm, so nothing was compared for it",
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ConsoleSetupNeverCallsAnUnreadCapabilityOffTest(NextPageJsHarness):
+    """The Console setup summary, in the three states it can honestly be in.
+
+    Reported by review: the two booleans collapsed an unread capability into
+    `false`, so a server started with BOTH capabilities on opened its Console
+    saying "terminal bridge off, observer model off" and corrected itself a tick
+    later. That is AGENTS.md's first Measured Invariant -- a structurally
+    present default standing in for a measurement -- in a function whose own
+    comment cites it.
+
+    The fixture serves an enabled observer model and a registered terminal, so
+    every `false` this test sees is wrong about the fixture rather than merely
+    unproven.
+
+    The refresh arm is the one that matters most and it is a defect the FIX
+    introduced, caught by re-reading the diff rather than by a suite.
+    `projectTerminalLookup` marks a registered terminal
+    `{state:"registered", loading:true}` while it re-checks, and it re-checks
+    whenever the payload revision advances -- so a first draft that read the
+    `loading` flag reported `null` on EVERY poll of a working console, flipped
+    the summary to "not read yet" and moved the live terminal into the setup
+    disclosure. Reading `state` is what makes the third value mean "no answer
+    yet" rather than "an answer is being refreshed".
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    CAPABLE_SERVER = """
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {semantic: __semantic, child_assignments: [], observers: [],
+       observer_model: {enabled: true, disclosure: "x"}}
+    : String(url).startsWith("/api/interaction/origin")
+      ? {state: "registered", tty: "/dev/ttys004"}
+      : __dashboard});
+for(let i = 0; i < 10; i++) await __settle();
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"console"});
+for(let i = 0; i < 12; i++) await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const focus = group.sessions.find(session => session.sid === "focus-1");
+const summaryOf = html =>
+  (html.match(/<summary>(How this server was started[^<]*)<\\/summary>/) || [])[1] || null;
+const inDisclosure = html => (html.match(
+  /<details class="next-cockpit-console-setup"[\\s\\S]*?<\\/details>/) || [""])[0]
+  .includes("next-cockpit-terminal");
+"""
+
+    # The same board with the bridge OFF, which is the default a plain
+    # `cargento` start gives. `/api/interaction/origin` answers, and its answer
+    # is "no terminal for this session" -- a measurement, not a missing read.
+    BRIDGE_OFF_SERVER = """
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {semantic: __semantic, child_assignments: [], observers: [],
+       observer_model: {enabled: true, disclosure: "x"}}
+    : String(url).startsWith("/api/interaction/origin")
+      ? {state: "unavailable", reason: "no terminal bridge on this server"}
+      : __dashboard});
+for(let i = 0; i < 10; i++) await __settle();
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"console"});
+for(let i = 0; i < 12; i++) await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const focus = group.sessions.find(session => session.sid === "focus-1");
+const summaryOf = html =>
+  (html.match(/<summary>(How this server was started[^<]*)<\\/summary>/) || [])[1] || null;
+"""
+
+    def state(self, checks: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            self.CAPABLE_SERVER + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def bridge_off(self, checks: str) -> dict[str, Any]:
+        out = self._run_page_js(
+            self.BRIDGE_OFF_SERVER + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_an_unavailable_bridge_stays_off_across_every_poll(self) -> None:
+        """The reset that the `registered` half of this fix hid.
+
+        `projectTerminalLookup` preserved `registered` across a re-check and
+        reset `unavailable` to `loading`, so a default bridge-off console said
+        "terminal bridge off" and then "not read yet" on the very next poll,
+        for as long as the board stayed open. The revision advances every
+        payload and that is exactly what releases the lookup's guard.
+
+        **Driven the way production drives it** -- advance `nextData.generated`
+        and let `renderNext` run the lookup -- rather than by writing the map,
+        because writing the map is what let the sibling test pass over this.
+        The assertion is not the interesting part; the path is.
+        """
+        out = self.bridge_off("""
+const polls = [];
+for(const revision of [106, 107, 108]){
+  nextData.generated = revision;
+  /* Sampled on the render that STARTS the re-check, before its fetch settles.
+     That is the frame a reader sees, and it is the only frame the defect is
+     visible in: four microtasks later the reply has landed and the entry reads
+     `unavailable` again whatever the guard did to it in between. A sample
+     taken after the await passes on the broken code. */
+  renderNext();
+  const entry = projectTerminalBySession[sessKey(focus)];
+  polls.push({revision, state: entry && entry.state, loading: entry && entry.loading === true,
+    terminal: nextCockpitConsoleCapabilities(group, focus).terminal,
+    summary: summaryOf(__els.app.innerHTML)});
+  for(let i = 0; i < 4; i++) await __settle();
+}
+console.log(JSON.stringify({polls}));
+""")
+        polls = out["polls"]
+        assert isinstance(polls, list)
+        self.assertEqual(3, len(polls))
+        for poll in polls:
+            with self.subTest(revision=poll["revision"]):
+                # The re-check really is in flight on the sampled frame, or the
+                # guard was never released and nothing was measured.
+                self.assertTrue(poll["loading"], "no re-check was in flight on this poll")
+                self.assertEqual("unavailable", poll["state"])
+                self.assertIs(False, poll["terminal"])
+                self.assertIn("terminal bridge off", poll["summary"])
+                self.assertNotIn("not read yet", poll["summary"])
+
+    def test_with_no_session_selected_the_bridge_is_named_per_session(self) -> None:
+        """The fourth state, and it exists because the third one created a gap.
+
+        At project scope `focus` is null, so no lookup is ever attempted: the
+        board said "terminal bridge not read yet" for as long as it stayed
+        open. A pending state that can never resolve is the same defect as the
+        confident "off" it replaced, one step over -- both describe the board
+        rather than the server. The bridge is a per-session registration and
+        that is what the summary now says, next to the prompt already telling
+        the reader to select a session.
+        """
+        out = self.bridge_off("""
+const capabilities = nextCockpitConsoleCapabilities(group, null);
+navigateNext({view:"project", project:"cargento", focus:null, tab:"console"});
+for(let i = 0; i < 6; i++) await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({capabilities, summary: summaryOf(html),
+  prompt: html.includes("Select one exact session to open its read-only console")}));
+""")
+        self.assertEqual("per-session", out["capabilities"]["terminal"])
+        self.assertIn("terminal bridge per-session", out["summary"])
+        # Neither of the two wrong answers this state exists to avoid.
+        self.assertNotIn("terminal bridge off", out["summary"])
+        self.assertNotIn("terminal bridge not read yet", out["summary"])
+        # And the sentence is only complete beside the prompt, so the prompt
+        # rendering is part of what is asserted.
+        self.assertTrue(out["prompt"], "the select-a-session prompt did not render")
+
+    def test_a_bridge_nothing_has_looked_up_yet_still_reports_not_read(self) -> None:
+        """The reverse, and the reason this repair is not just "preserve
+        everything". A repair that pinned `unavailable` by making the third
+        state unreachable would trade this defect for the one the three-state
+        read exists to prevent, and nothing else in this class would notice.
+        """
+        out = self.bridge_off("""
+// A session whose lookup has never run: no entry in the map at all.
+delete projectTerminalBySession[sessKey(focus)];
+const capabilities = nextCockpitConsoleCapabilities(group, focus);
+console.log(JSON.stringify({capabilities,
+  summary: summaryOf(nextCockpitConsoleSetup(capabilities, ""))}));
+""")
+        self.assertIsNone(out["capabilities"]["terminal"])
+        self.assertIn("terminal bridge not read yet", out["summary"])
+
+    def test_an_unread_capability_is_not_reported_as_disabled(self) -> None:
+        """Falsified by `Boolean(...)` over either field: both arms then read
+        `false`, and the summary says `off` about a server that has them on."""
+        out = self.state("""
+const settled = nextCockpitConsoleCapabilities(group, focus);
+const settledHtml = __els.app.innerHTML;
+// Rewind to the state the first render of this tab is in.
+nextCockpitContexts.delete(nextCockpitContextKey(group, focus));
+nextCockpitRequests.delete(nextCockpitContextKey(group, focus));
+delete projectTerminalBySession[sessKey(focus)];
+const unread = nextCockpitConsoleCapabilities(group, focus);
+renderNext();
+const firstHtml = __els.app.innerHTML;
+console.log(JSON.stringify({unread, settled,
+  firstSummary: summaryOf(firstHtml), settledSummary: summaryOf(settledHtml),
+  firstInDisclosure: inDisclosure(firstHtml),
+  settledInDisclosure: inDisclosure(settledHtml)}));
+""")
+        self.assertEqual({"terminal": None, "observer": None}, out["unread"])
+        self.assertEqual({"terminal": True, "observer": True}, out["settled"])
+        self.assertEqual(
+            "How this server was started — terminal bridge not read yet, "
+            "observer model not read yet",
+            out["firstSummary"],
+        )
+        self.assertEqual(
+            "How this server was started — terminal bridge on, observer model on",
+            out["settledSummary"],
+        )
+        # Placement is unchanged by the third state: nothing unread is operable.
+        self.assertTrue(out["firstInDisclosure"])
+        self.assertFalse(out["settledInDisclosure"])
+
+    def test_a_refreshing_terminal_keeps_the_answer_it_already_has(self) -> None:
+        """Falsified by reading `terminal.loading` instead of `terminal.state`.
+
+        One revision bump is all it takes, and the payload's revision advances
+        on every poll.
+        """
+        out = self.state("""
+const settled = nextCockpitConsoleCapabilities(group, focus);
+nextData.generated = 106;
+renderNext();
+const refreshing = nextCockpitConsoleCapabilities(group, focus);
+const entry = projectTerminalBySession[sessKey(focus)];
+const html = __els.app.innerHTML;
+console.log(JSON.stringify({settled, refreshing, loading: entry.loading === true,
+  state: entry.state, summary: summaryOf(html), inDisclosure: inDisclosure(html)}));
+""")
+        # The refresh really is in flight, or this test proves nothing.
+        self.assertTrue(out["loading"], "the lookup did not re-arm, so no refresh was measured")
+        self.assertEqual("registered", out["state"])
+        self.assertEqual(out["settled"], out["refreshing"])
+        self.assertEqual({"terminal": True, "observer": True}, out["refreshing"])
+        self.assertEqual(
+            "How this server was started — terminal bridge on, observer model on",
+            out["summary"],
+        )
+        self.assertFalse(out["inDisclosure"], "a live terminal moved into the setup disclosure")
+
+    def test_an_unavailable_terminal_is_reported_off_and_not_unknown(self) -> None:
+        """The third value must not swallow a real negative: a session with no
+        registered terminal is a measurement, and `off` is what it deserves."""
+        out = self.state("""
+projectTerminalBySession[sessKey(focus)] = {state:"unavailable", revision:105,
+  data:{reason:"lookup-failed"}};
+const capabilities = nextCockpitConsoleCapabilities(group, focus);
+console.log(JSON.stringify({capabilities,
+  summary: summaryOf(nextCockpitConsoleSetup(capabilities, ""))}));
+""")
+        self.assertEqual({"terminal": False, "observer": True}, out["capabilities"])
+        self.assertIn("terminal bridge off", out["summary"])
+
+
+class EveryTabCueVariantIsColouredByItsOwnRuleTest(unittest.TestCase):
+    """A cue variant with no rule renders in the ink a real figure gets.
+
+    `.next-cockpit-tab-cue` is `--ink2`, the value ink. Each non-count state
+    adds a variant class that takes it down to the absence ink, so a variant
+    the producer emits and the sheet does not style resolves to `--ink2` and a
+    stated absence renders exactly as loudly as the count it replaces -- the
+    inversion this milestone exists to remove.
+
+    This was written because the obvious assertion does not catch it. Pinning
+    the emitted class name passes whether or not a rule exists: measured, the
+    `--unavailable` rule was deleted and the whole cockpit module stayed green.
+    The byte-pin oracles went red, but they go red on any stylesheet edit and
+    so are evidence of nothing here.
+
+    The variants are DERIVED from the producer, so a state added with no rule
+    reds this instead of arriving beside it. Resolved through the cascade and
+    compared against the unmodified cue, per this sheet's standing rule that a
+    colour is read by resolving an element and never by counting rules.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+        cls.cockpit_js = (web / "next-cockpit.js").read_text(encoding="utf-8")
+
+    cockpit_js: str
+
+    def ink(self, *classes: str) -> str:
+        path = [_node("span", "next-cockpit-tab-cue", *classes)]
+        winning = []
+        for selector, body, order in self.rules:
+            try:
+                specificity = css_cascade.matches(path, selector)
+            except css_cascade.UnsupportedSelectorError:
+                continue
+            if specificity is None:
+                continue
+            declared = re.search(r"(?:^|;)\s*color:\s*([^;]+)", body)
+            if declared:
+                winning.append((specificity, order, declared.group(1).strip()))
+        self.assertNotEqual([], winning, f"no rule colours {classes or ('the bare cue',)}")
+        winning.sort()
+        return winning[-1][2]
+
+    def variants(self) -> set[str]:
+        """Every variant class `nextCockpitTabCueHtml` can put on a cue."""
+        return set(re.findall(r'" (next-cockpit-tab-cue--[a-z-]+)"', self.cockpit_js))
+
+    def test_every_variant_the_producer_emits_is_styled(self) -> None:
+        found = self.variants()
+        # A derivation that found nothing would pass the loop below in silence.
+        self.assertEqual(
+            {"pending", "unobserved", "unavailable"}, {name.rsplit("--", 1)[1] for name in found}
+        )
+        value = self.ink()
+        for variant in sorted(found):
+            with self.subTest(variant=variant):
+                self.assertNotEqual(
+                    value,
+                    self.ink(variant),
+                    f"{variant} resolves to the cue's own ink, so an absence renders "
+                    "in the ink a real figure gets",
+                )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheCueAndItsPanelAgreeInEveryContextStateTest(NextPageJsHarness):
+    """`nextCockpitContexts` has five reachable shapes, and both surfaces that
+    read it must describe each the same way.
+
+    Three writers store into that map and only one writes `error`, so the field
+    sets differ by writer. The tab cue this branch adds keyed off `.data`
+    alone: a read that had FINISHED AND FAILED with nothing to show rendered as
+    "decisions not loaded yet" beside a panel already saying "Semantic context
+    unavailable." -- a completed request described as still in flight.
+
+    The fifth shape is the one both independent enumerations missed and the
+    comparison between them found. The `.catch()` MERGES rather than replaces:
+    it carries the previous `data` into the new object and stamps `error` over
+    it, so a failed poll over a loaded context is indistinguishable from a
+    clean resolve by `.data` alone.
+
+    **Stale-plus-error renders exactly as resolved does, deliberately.**
+    Keeping the last known rows is a defensible product choice; saying so on
+    screen is new copy nobody specified, and it is filed as DRC-4613 rather
+    than invented here. What is asserted is that the two surfaces AGREE in
+    every state -- agreeing wrongly was the old defect and disagreeing would be
+    a new one, so a partial fix fails this as loudly as no fix.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def states(self) -> dict[str, Any]:
+        out = self._run_page_js(
+            """
+await __settle(); await __settle();
+const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
+const key = nextCockpitContextKey(group, null);
+const resolved = nextCockpitContexts.get(key).data;
+const panelSays = () => {
+  const html = nextCockpitTimeline(group, null);
+  return html.includes("Semantic context unavailable.") ? "unavailable"
+    : (html.includes("Loading semantic context") ? "loading" : "rows");
+};
+const read = () => {
+  const cue = nextCockpitTabCue("decisions", {group}, null);
+  return {cue: cue.state, panel: panelSays(),
+    classified: nextCockpitContextRead(group, null).state};
+};
+const seen = {};
+// 1. Nothing has been read at all.
+nextCockpitContexts.delete(key);
+nextCockpitRequests.delete(key);
+seen.absent = read();
+// 2. An entry with neither data nor a failure.
+nextCockpitContexts.set(key, {data:null, revision:105});
+seen.pending = read();
+// 3. The read FINISHED and failed with nothing to show. This is the exact
+//    record the `.catch()` writes when no prior data existed.
+nextCockpitContexts.set(key, {data:null, revision:105, error:true});
+seen.unavailable = read();
+// 4. A clean resolve.
+nextCockpitContexts.set(key, {data:resolved, revision:105});
+seen.resolved = read();
+// 5. The merge: the catch carried the previous data forward and stamped
+//    `error` over it. Byte-identical to (4) on both surfaces by design.
+nextCockpitContexts.set(key, {data:resolved, revision:105, error:true});
+seen.stale = read();
+console.log(JSON.stringify(seen));
+""",
+            storage_prelude({}) + self.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_no_finished_read_is_ever_called_pending(self) -> None:
+        """Falsified by the cue keying off `.data` alone, which is what it did.
+
+        The `unavailable` row is the defect: `pending` there claims a read is
+        still coming when it has already failed.
+        """
+        seen = self.states()
+        self.assertEqual(
+            {"cue": "unavailable", "panel": "unavailable", "classified": "unavailable"},
+            seen["unavailable"],
+        )
+
+    def test_the_two_surfaces_describe_every_state_the_same_way(self) -> None:
+        """The property a partial fix breaks. Teaching only the cue to read
+        `error` would make it claim failure over a panel rendering rows.
+        """
+        agreeing = {
+            "absent": ("pending", "loading", "absent"),
+            "pending": ("pending", "loading", "pending"),
+            "unavailable": ("unavailable", "unavailable", "unavailable"),
+            "resolved": ("count", "rows", "ready"),
+            "stale": ("count", "rows", "stale"),
+        }
+        seen = self.states()
+        # Five distinct classifications, so the separation is real rather than
+        # four states wearing five names.
+        self.assertEqual(5, len({row["classified"] for row in seen.values()}))
+        for name, (cue, panel, classified) in agreeing.items():
+            with self.subTest(state=name):
+                self.assertEqual({"cue": cue, "panel": panel, "classified": classified}, seen[name])
+
+    def test_a_failure_over_loaded_data_still_shows_the_rows_it_had(self) -> None:
+        """The ruling, pinned so a later change cannot quietly adopt the other
+        one. Stale-plus-error keeps the last known rows and claims nothing about
+        staleness; whether the board should SAY the rows are stale is DRC-4613.
+        """
+        seen = self.states()
+        self.assertEqual(seen["resolved"]["cue"], seen["stale"]["cue"])
+        self.assertEqual(seen["resolved"]["panel"], seen["stale"]["panel"])
+        self.assertEqual("rows", seen["stale"]["panel"])
+        # And it is still separable, which is what DRC-4613 will need.
+        self.assertNotEqual(seen["resolved"]["classified"], seen["stale"]["classified"])
+
+
+class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):
+    """DRC-4591. The summary of a tier-2 disclosure, read beside the body it hides.
+
+    Not a value/absence pair, which is why it is not in
+    `AnAbsenceNeverOutranksTheValueItReplacesTest` above: that test is scoped to
+    DRC-4587's claim and says so. But it is the same trap one layer out. A
+    summary and the body behind it never render together either, because the
+    body is collapsed until the summary is clicked, and the summary carries the
+    only words a reader has for deciding whether to open it. A control set below
+    the text it conceals loses the caveat as surely as deleting it, which is the
+    whole thing the three-tier rule exists to prevent.
+
+    Resolved through `css_cascade` rather than by reading the two rules, for the
+    reason that module's own docstring gives: the number only exists once the
+    cascade is composed down a path the application really builds.
+    """
+
+    tokens: dict[str, float]
+    rules: list[tuple[str, str, int]]
+    cockpit_js: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        web = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
+        cls.tokens, cls.rules = css_cascade.load(web / "styles.css")
+        cls.cockpit_js = (web / "next-cockpit.js").read_text(encoding="utf-8")
+
+    def size(self, path: list[dict[str, object]]) -> float:
+        resolved = css_cascade.resolve(path, self.tokens, self.rules)
+        self.assertIsNotNone(resolved, f"no size resolves for {path}")
+        assert resolved is not None
+        return resolved
+
+    def test_the_summary_is_not_smaller_than_the_body_it_conceals(self) -> None:
+        """Falsified by dropping the summary to the label tier, which reads as
+        the tidier choice and makes the control quieter than what it hides."""
+        disclosure = [
+            *_CONTENT,
+            _node("section", "next-cockpit-departures"),
+            _node("details", "next-cockpit-why"),
+        ]
+        summary = self.size([*disclosure, _node("summary")])
+        body = self.size([*disclosure, _node("p", "next-cockpit-reading-why")])
+        self.assertGreaterEqual(
+            summary,
+            body,
+            f"the summary resolves {summary}px against a {body}px body, "
+            "so the control is quieter than the text it conceals",
+        )
+
+    def test_a_count_and_its_not_published_cannot_diverge(self) -> None:
+        """The five COUNTS rows have no absence class at all, and that is the
+        point: one rule cannot diverge from itself.
+
+        Asserted against the emitter and not the stylesheet, the same way
+        `test_the_revision_slot_cannot_invert_because_one_class_carries_both`
+        asserts its chain: a second class added here is what would start the
+        divergence, and by the time it is in the stylesheet a CSS-only check is
+        already comparing two rules rather than noticing there is now a pair.
+        """
+        emitter = re.search(r"const line = \(label, value\) =>([\s\S]*?);\n", self.cockpit_js)
+        assert emitter is not None, "the COUNTS row emitter moved"
+        body = emitter.group(1)
+        self.assertIn('value == null ? "not published"', body)
+        self.assertEqual(
+            1,
+            len(set(re.findall(r"next-cockpit-count-value[a-z-]*", body))),
+            "the value and its absence no longer share one class",
+        )
 
 
 if __name__ == "__main__":

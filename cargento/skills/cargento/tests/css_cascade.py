@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+from typing import cast
 
 Rule = tuple[str, str, int]
 Node = dict[str, object]
@@ -65,7 +66,11 @@ def _strip_media(css: str) -> str:
 
 def load(path: pathlib.Path | str) -> tuple[dict[str, float], list[Rule]]:
     """Return the `--fs-*` token table and every non-media rule, in source order."""
-    source = pathlib.Path(path).read_text(encoding="utf-8")
+    return load_text(pathlib.Path(path).read_text(encoding="utf-8"))
+
+
+def load_text(source: str) -> tuple[dict[str, float], list[Rule]]:
+    """The same, from a string, so a mutant sheet resolves without a temp file."""
     body = _strip_media(re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL))
     tokens = {
         name: float(value) for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", body)
@@ -216,3 +221,29 @@ def resolve(path: list[Node], tokens: dict[str, float], rules: list[Rule]) -> fl
         if best is not None:
             return best[1]
     return None
+
+
+def path_for(selector: str) -> list[Node]:
+    """A node path the given selector matches, by construction.
+
+    The census that calls this reads each rule's own declaration, which is a
+    fact about the RULE. What a reader sees is a fact about the ELEMENT, and the
+    two part company the moment two rules at equal specificity name the same
+    element: `.next-guardrail-copy small` is declared at 15px in one grouped
+    rule and 12.5px in the next, both (0,1,1), and the later one wins. A
+    per-rule reading called that element compliant while it rendered below the
+    floor -- so the census can OVERSTATE the compliant set, not only understate
+    it as `docs/design-next-ui.md` said.
+
+    Only the ancestors the selector names are built, which is the point: a rule
+    needing an ancestor this selector does not mention correctly fails to match,
+    while a rule matching the leaf alone correctly does. Descendant steps are
+    built as a chain, so `>` and ` ` both resolve; sibling combinators raise,
+    as everywhere else in this module.
+    """
+    path: list[Node] = []
+    for _combinator, compound in _steps(selector):
+        classes = cast("set[str]", compound["classes"])
+        attrs = cast("set[str]", compound["attrs"])
+        path.append({"tag": compound["tag"] or "div", "classes": set(classes), "attrs": set(attrs)})
+    return path

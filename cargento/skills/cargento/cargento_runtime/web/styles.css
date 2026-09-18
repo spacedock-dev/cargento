@@ -34,6 +34,17 @@
   --sel-bd:color-mix(in oklab,var(--accent) 52%,transparent);
   --bg:#14140f; --panel:#1c1c16; --sunk:#11110c; --line:#2c2c23; --line2:#403f33;
   --ink:#f4f1e8; --ink2:#c9c4b4; --ink3:#9b9484;
+  /* Four roles, three inks: `--ink3` carries both LABEL and ABSENCE because the
+     palette has no fourth step and the captain ruled on 2026-09-17 that an
+     absence keeps it. Labels can afford the double-up -- they also carry
+     uppercase, tracking and mono, and an absence is a sans sentence, so family
+     and case already separate the two. Brightening either was refused: `--ink3`
+     on panel is 5.67:1, just above the asset test's floor, so labels cannot go
+     dimmer, and a louder absence is this project's named defect class. The
+     registers exist so the NEXT move of a tier is one line rather than the
+     21-rule hand edit this replaced. */
+  --ink-label:var(--ink3); --ink-value:var(--ink);
+  --ink-absence:var(--ink3); --ink-caption:var(--ink3);
   --accent:#c6e07a; --accent-dim:#8ea254; --amber:#e8b45c; --clay:#e08a6a;
   --sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
   --mono:'Space Mono',ui-monospace,monospace;
@@ -71,7 +82,14 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-plan-row--unhealthy,
 .next-activity-card--blocked,
 .next-session-detail--blocked{box-shadow:inset 3px 0 var(--amber)}
-[data-next-withheld]{color:var(--ink3)}
+[data-next-withheld]{color:var(--ink-absence)}
+/* A figure slot keeps its own ink -- COUNTS at `--ink`, DELEGATION at `--ink2`
+   -- because dimming the one string that has to be read as "no figure" is the
+   confident-wrong-answer failure inverted. The dash is the cue instead, and it
+   is a mark rather than a tone, so it survives greyscale. Stamped at emission
+   and never by a rule: a selector cannot tell a null from a real `0`, and a
+   real `0` must get neither the dash nor the family swap. */
+[data-next-absent]::before{content:"\2014";margin-right:6px;color:var(--ink-absence)}
 .next-status-dot{font-family:var(--mono);font-size:var(--fs-xs)}
 .next-visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @keyframes next-live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -178,7 +196,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-project{display:flex;flex-direction:column;gap:7px;min-width:0}
 .next-project-name{min-width:0;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-sm);font-weight:700}
 .next-project-value--known{color:var(--ink2);font-family:var(--mono)}
-.next-project-value--absent{color:var(--ink3);font-family:var(--sans);font-size:var(--fs-xs)}
+.next-project-value--absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-xs)}
 .next-project-scope{overflow-wrap:anywhere;font-size:var(--fs-xs)}
 .next-project-summary{display:flex;flex-wrap:wrap;gap:4px 10px}
 .next-project-summary,.next-project-detail-count{color:var(--ink2);font-size:var(--fs-xs)}
@@ -331,6 +349,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-delegation-metrics{display:flex;flex-wrap:wrap;gap:4px 9px;color:var(--ink2);font:10.5px/1.5 var(--mono)}
 .next-delegation-withheld{display:flex;flex-direction:column;gap:6px;color:var(--ink2)}
 .next-delegation-withheld strong{font:700 16px var(--mono)}
+.next-delegation-withheld strong[data-next-absent]{font-family:var(--sans)}
 .next-delegation-withheld small{color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
 .next-delegation-trend{color:var(--ink3);font:var(--fs-xs) var(--mono)}
 .next-rail-wait{display:flex;flex-direction:column;gap:8px;padding:12px 13px;border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:9px;background:var(--panel)}
@@ -360,8 +379,20 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-control>header{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
 .next-steer{padding-top:12px;border-top:1px solid var(--line)}
 .next-steer form{display:flex;gap:7px;padding:12px 0}
+.next-steer>header{display:grid;gap:4px}
+.next-steer-label{color:var(--ink3);font:var(--fs-label)/1.2 var(--mono);letter-spacing:.09em}
+.next-steer-caveat{margin:0;max-width:var(--measure);color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans)}
+/* Raised with the caveat above it, not on its own. A 15px sentence over a
+   12.5px input would draw the warning larger than the words it warns about,
+   which is the same ordering defect as an absence outranking its value
+   (docs/design-next-ui.md: a value is never drawn smaller than the caption
+   beside it in the same cell). The add button next to the tripwire input is
+   already 15px through .next-action, so this closes that pair too. */
 .next-steer label,.next-guardrail-add-input label{flex:1;min-width:0}
-.next-steer input,.next-guardrail-add-input input{width:100%;min-width:0;padding:8px;border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans)}
+.next-steer input,.next-guardrail-add-input input{width:100%;min-width:0;padding:8px;border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink);font:var(--fs-sentence)/1.55 var(--sans)}
+.next-steer--bar{padding:0 0 12px;border-top:0;border-bottom:1px solid var(--line)}
+.next-steer--bar>header{padding-top:12px}
+.next-steer--bar form{padding-bottom:0}
 .next-steer button,.next-guardrail-add,.next-guardrail-add-input button{color:var(--ink2);font-family:var(--mono)}
 .next-guardrail-add{align-self:flex-start;color:var(--ink3)}
 .next-steer-receipts,.next-guardrail-rows{display:grid;gap:8px}
@@ -372,7 +403,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-guardrail-row:hover{border-color:var(--line2)}
 .next-guardrail-row[aria-checked="false"]{color:var(--ink3)}
 .next-guardrail-glyph{margin-top:2px;color:var(--ink3);font:var(--fs-label) var(--mono)}
-.next-guardrail-copy strong,.next-guardrail-copy small{display:block;overflow-wrap:anywhere;font-size:var(--fs-sentence);font-weight:500;line-height:1.55}
+.next-guardrail-copy strong,.next-guardrail-copy small{display:block;overflow-wrap:anywhere;font-weight:500}
+.next-guardrail-copy strong{font-size:var(--fs-sentence);line-height:1.55}
 .next-guardrail-copy small,.next-guardrail-empty{margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
 .next-guardrail-add-input{display:flex;align-items:center;gap:9px}
 .next-guardrail-add-input button{flex-shrink:0;color:var(--ink)}
@@ -455,7 +487,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-capacity-pace,.next-capacity-ends,.next-capacity-resets{font-family:var(--mono);font-size:var(--fs-xs);font-variant-numeric:tabular-nums;color:var(--ink2);min-width:0}
 .next-capacity-pace{font-size:11.5px;text-align:right;color:var(--ink3)}
 .next-capacity-pace.hot{color:var(--amber)}
-.next-capacity-absent,.next-capacity-slack{color:var(--ink3);font-family:var(--sans);font-size:var(--fs-xs)}
+.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-xs)}
+.next-capacity-slack{color:var(--ink3);font-family:var(--sans);font-size:var(--fs-xs)}
 .next-capacity-ends em{font-family:var(--sans);font-size:var(--fs-xs)}
 .next-capacity-spent{color:var(--clay)}
 .next-capacity-row small{display:none}
@@ -690,7 +723,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-footer{padding:20px 0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-xs);text-align:right}
 .next-session-detail-empty{margin-top:34px;padding:24px;border:1px solid var(--line);color:var(--ink2);font-size:var(--fs-sm)}
 .next-session-current>strong{font-size:var(--fs-section);font-weight:600}
-.next-session-detail .next-session-absent{color:var(--ink3);font-family:var(--sans)}
+.next-session-detail .next-session-absent{color:var(--ink-absence);font-family:var(--sans)}
 .next-session-identity{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-machine);overflow-wrap:anywhere}
 .next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 10px}
 .next-session-controls .next-session-copy,.next-session-controls .next-session-raise{margin:0}
@@ -700,14 +733,14 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-ask-callout>span{color:var(--amber);font-size:var(--fs-label);letter-spacing:.09em}
 .next-session-wait{color:var(--ink3);font-family:var(--sans);font-size:var(--fs-xs);letter-spacing:normal;text-transform:none}
 .next-session-wait[data-known="true"]{color:var(--amber);font-family:var(--mono);font-size:var(--fs-label)}
-.next-session-ask-callout h2{margin:7px 0 0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:400}
+.next-session-ask-callout h2{margin:7px 0 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:400}
 .next-session-facts{margin:20px 0 0}
 .next-session-facts>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:18px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}
-.next-session-facts dt{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-session-facts dt{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
 .next-session-facts dd{min-width:0;margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
 .next-session-fact-note{display:block;margin-top:4px;color:var(--ink3);font-family:var(--sans);font-size:var(--fs-xs)}
 .next-session-evidence{margin-top:20px}
-.next-session-evidence h2{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:400}
+.next-session-evidence h2{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:400}
 .next-session-source-coverage summary{min-height:44px;align-content:center}
 .next-session-source-coverage summary:focus-visible,.next-session-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(max-width:760px){
@@ -738,6 +771,21 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-tabs button{margin-bottom:-1px;padding:12px 1px 10px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink3);font:var(--fs-sm) var(--mono);cursor:pointer}
 .next-cockpit-tabs button[aria-selected="true"]{border-bottom-color:var(--ink2);color:var(--ink)}
 .next-cockpit-tabs button:focus-visible{outline:2px solid var(--ink2);outline-offset:3px}
+/* The four cue states share one size, declared on each rule rather than
+   inherited, so a later change to one branch is visible in the pair check
+   beside the value it stands in for. Raising `--pending` or `--unobserved`
+   alone would put a state the board cannot establish above the figure it
+   replaces, which is the inversion this milestone exists to remove. */
+.next-cockpit-tab-cue{margin-left:6px;color:var(--ink2);font:var(--fs-machine) var(--mono)}
+.next-cockpit-tab-cue--pending{color:var(--ink3);font:var(--fs-machine) var(--mono)}
+.next-cockpit-tab-cue--unobserved{color:var(--ink3);font:var(--fs-machine) var(--mono)}
+.next-cockpit-tab-cue--unavailable{color:var(--ink3);font:var(--fs-machine) var(--mono)}
+.next-cockpit-lede{margin:0;padding:10px 12px;max-width:var(--measure);color:var(--ink2);font:var(--fs-sentence)/1.55 var(--sans)}
+.next-cockpit-panel>.next-cockpit-lede{grid-column:1/-1}
+.next-cockpit-panel[data-next-cockpit-panel="now"]>.next-cockpit-lede{padding:0}
+/* A noun resolved where it is first used, at the sentence tier so it is not
+   dimmer than the vocabulary it explains. */
+.next-cockpit-define{margin:0;max-width:var(--measure);color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-viewing-session{margin:0;padding:8px 12px;border-bottom:1px solid var(--line);color:var(--ink3);font:var(--fs-2xs) var(--mono)}
 .next-cockpit-panel{min-width:0}
 .next-cockpit-now-state{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
@@ -795,6 +843,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-plan-details>div{margin-top:12px;color:var(--ink);font-family:var(--sans)}
 .next-cockpit-decision-summary{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink3);font:var(--fs-2xs) var(--mono)}
 .next-cockpit-console-status{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink3);font:var(--fs-2xs) var(--mono)}
+.next-cockpit-console-setup{margin:0;padding:9px 12px;border-top:1px solid var(--line2)}
+.next-cockpit-console-setup>ul{margin:8px 0 0;padding-left:18px}
 .next-cockpit-console-status summary{cursor:pointer}
 .next-cockpit-console-status ul{margin:8px 0 0;padding-left:18px}
 .next-cockpit-empty{margin:0;padding:12px 10px;color:var(--ink2);font-size:var(--fs-xs)}
@@ -809,17 +859,27 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-stale-session h1{margin:8px 0;font-size:var(--fs-xl)}
 .next-cockpit-stale-session p{color:var(--ink3);font:var(--fs-xs) var(--mono);overflow-wrap:anywhere}
 .next-cockpit-stale-session a{color:var(--ink2);font:var(--fs-xs) var(--mono)}
-.next-cockpit-scope-name{font:var(--fs-sm) var(--mono)}
 .next-cockpit-scope-heading{padding:0 8px 7px;color:var(--ink3);font:var(--fs-2xs) var(--mono);letter-spacing:.09em}
 #app .next-cockpit-scope-tree a,#app .next-cockpit-scope-options a{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:7px 8px;color:var(--ink2);text-decoration:none}
 .next-cockpit-scope-tree a[data-scope-kind="session"],.next-cockpit-scope-options a[data-scope-kind="session"]{padding-left:14px}
 .next-cockpit-scope-tree a[aria-current="page"],.next-cockpit-scope-options a[aria-current="page"]{box-shadow:inset 2px 0 var(--ink2);background:var(--panel);color:var(--ink)}
 .next-cockpit-scope-tree .next-scope-cue,.next-cockpit-scope-options .next-scope-cue{grid-column:1/-1;margin-bottom:4px}
-.next-cockpit-scope-tree strong,.next-cockpit-scope-tree span,.next-cockpit-scope-tree small,.next-cockpit-scope-options strong,.next-cockpit-scope-options span,.next-cockpit-scope-options small{min-width:0;overflow-wrap:anywhere;white-space:normal}
-.next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-options .next-cockpit-scope-state{display:flex;align-items:center;gap:6px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
+.next-cockpit-scope-tree .next-scope-cue>span,.next-cockpit-scope-options .next-scope-cue>span{min-width:0;overflow-wrap:anywhere}
+/* Line 1 is the title and the card's value; everything else is line 2. The
+   title takes `--fs-sm`/`--ink` -- a swap inside this rail's own scale rather
+   than a new step, since 14px already rendered in this card on the harness
+   name, which is now on the meta line. Clipped to one line with the whole
+   string in `title=`, so a long title cannot push the card back to four rows. */
+.next-cockpit-scope-line{display:flex;min-width:0;align-items:center;gap:6px}
+/* The scope kind, kept non-verbally after the word SESSION left the card for
+   the accessible name: the round marker and the connector rule. The ○ says
+   KIND, not state -- the state indicator is the dot inside the state span. */
+.next-cockpit-scope-mark{position:relative;display:inline-flex;flex:0 0 auto;align-items:center;padding-left:16px;color:var(--ink3)}
+.next-cockpit-scope-mark:before{position:absolute;left:0;top:50%;width:12px;border-top:1px solid var(--ink2);content:""}
+.next-cockpit-scope-title{min-width:0;overflow:hidden;color:var(--ink);font:var(--fs-sm) var(--mono);text-overflow:ellipsis;white-space:nowrap}
+.next-cockpit-scope-meta{display:flex;min-width:0;overflow:hidden;align-items:center;gap:6px;color:var(--ink3);font:var(--fs-2xs) var(--mono);white-space:nowrap}
+.next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-options .next-cockpit-scope-state{display:flex;align-items:center;gap:6px;color:inherit;font:inherit}
 .next-cockpit-scope-tree .next-cockpit-scope-state--working,.next-cockpit-scope-options .next-cockpit-scope-state--working{color:var(--ink2)}
-.next-cockpit-scope-tree small,.next-cockpit-scope-options small{font:var(--fs-xs) var(--mono);color:var(--ink3)}
-.next-cockpit-scope-tree small,.next-cockpit-scope-options small{grid-column:1/-1;margin-top:3px;color:var(--ink2);line-height:1.5}
 .next-scope-cue{position:relative;display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%;color:var(--ink3);font:var(--fs-2xs) var(--mono);letter-spacing:.07em;line-height:1.2}
 .next-scope-cue>strong{color:var(--ink);font:inherit;font-weight:600}
 .next-scope-cue>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0}
@@ -853,21 +913,27 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]>button{border:0;background:none;color:var(--ink2);font:inherit;cursor:pointer}
 .next-cockpit-recovery-memos textarea{grid-column:1/-1;width:100%;min-height:54px;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:inherit}
 .next-cockpit-recovery span,.next-cockpit-recovery strong,.next-cockpit-recovery small{display:block}
-.next-cockpit-recovery span{margin-bottom:5px;color:var(--ink3);font-size:var(--fs-2xs);letter-spacing:.09em}
+.next-cockpit-recovery span{margin-bottom:5px;color:var(--ink-label);font-size:var(--fs-2xs);letter-spacing:.09em}
 .next-cockpit-recovery strong{font-weight:500;overflow-wrap:anywhere}
 .next-cockpit-recovery small{margin-top:4px;color:var(--ink3);overflow-wrap:anywhere}
 .next-cockpit-recovery details{margin-top:5px;color:var(--ink3)}
 .next-cockpit-recovery summary{cursor:pointer}
 .next-cockpit-recovery ul{margin:5px 0 0;padding-left:18px;color:var(--ink2)}
 .next-cockpit-authority{margin:-10px -12px;padding:10px 12px;min-height:0;box-sizing:border-box}
-.next-cockpit-authority>span{font-weight:700}
+/* Sans and untracked against the mono uppercase heading beside it: the gloss is
+   the board explaining its own vocabulary, not a string a source published. */
+.next-cockpit-recovery-gloss{margin:0;color:var(--ink-caption);font-family:var(--sans);font-weight:400;letter-spacing:0;text-transform:none}
+.next-cockpit-authority>span{font-weight:700;color:var(--ink-label)}
 .next-cockpit-authority>strong+strong{margin-top:5px}
 .next-cockpit-authority--captain-needed{box-shadow:inset 3px 0 var(--amber)}
 .next-cockpit-authority--captain-needed>span{color:var(--ink2)}
 .next-cockpit-authority--fo-inspecting{box-shadow:inset 2px 0 var(--line2)}
-.next-cockpit-authority--fo-inspecting>span{color:var(--ink)}
+/* `fo-inspecting` is computed from attention coverage, never from anything an
+   agent is doing, so full ink here spent the page's strongest emphasis on a
+   claim it cannot make. The inset rule beside it still marks the state. */
+.next-cockpit-authority--fo-inspecting>span{color:var(--ink-label)}
 .next-cockpit-authority--fo-continues{box-shadow:inset 2px 0 var(--line2)}
-.next-cockpit-authority--fo-continues>span,.next-cockpit-authority--fo-continues>strong{color:var(--ink3)}
+.next-cockpit-authority--fo-continues>span,.next-cockpit-authority--fo-continues>strong{color:var(--ink-label)}
 .next-cockpit-child-row{margin-top:7px}
 .next-cockpit-child-row+.next-cockpit-child-row{padding-top:7px;border-top:1px solid var(--line)}
 .next-cockpit-execution-root+.next-cockpit-execution-root{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
@@ -881,21 +947,24 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    words reach the server. */
 .next-cockpit-held{display:flex;flex-direction:column;gap:11px;padding:14px 16px}
 .next-cockpit-held>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.next-cockpit-held h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-held h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+/* What the tab is for, in full ink, above everything that qualifies it. The
+   only prose on this panel at `--ink`: every other sentence here is the
+   board hedging, and the one sentence that is not must not read as one. */
+.next-cockpit-held-lede{margin:0;color:var(--ink);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-held-revision{color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--line2)}
-.next-cockpit-held-label{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
-.next-cockpit-held-sub{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:14px/1.55 var(--sans)}
-.next-cockpit-held-count{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line2);background:var(--panel);color:var(--ink-value);font:14px/1.55 var(--sans)}
+.next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-field button{border:0;background:none;color:var(--ink2);font:var(--fs-xs) var(--mono);cursor:pointer}
 .next-cockpit-held-field button[hidden]{display:none}
 /* `save` is inert rather than absent, so it needs a resting look that reads
    as refused. `clear` keeps the rule above it: nothing to clear is nothing
    to explain. */
 .next-cockpit-held-field button[aria-disabled="true"]{color:var(--ink3);cursor:not-allowed}
-.next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink3);font-size:var(--fs-xs);line-height:1.5}
+.next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink-absence);font-size:var(--fs-xs);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink3);font-size:var(--fs-xs)}
 /* Section scope, outside the field grid: the act is per annotation and the
    grid has exactly three columns for the counter and the two field controls.
@@ -914,18 +983,19 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    so it is sans. */
 .next-cockpit-work{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
 .next-cockpit-work>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.next-cockpit-work h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-work h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
 .next-cockpit-work-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:3px 10px;padding-left:9px;border-left:1px solid var(--line)}
 .next-cockpit-work-row+.next-cockpit-work-row{margin-top:5px}
-.next-cockpit-work-type{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.1em}
+.next-cockpit-work-type{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.1em}
 .next-cockpit-work-summary{font:var(--fs-xs)/1.55 var(--mono);overflow-wrap:anywhere}
 /* A model's paraphrase inside the observed record takes the same third
    treatment a reading does: italic sans on a dotted rule, no colour. */
 .next-cockpit-work-derived{font:italic 13px/1.55 var(--sans);color:var(--ink2);padding-left:7px;border-left:1px dotted var(--line2);overflow-wrap:anywhere}
 .next-cockpit-work-mix{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-work-at{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-work-source{grid-column:1/-1;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-work-absent,.next-cockpit-work-limit,.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-work-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-work-source{grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-work-absent,.next-cockpit-work-limit{margin:0;color:var(--ink-absence);font:var(--fs-xs)/1.5 var(--sans)}
+.next-cockpit-work-dropped{margin:0;color:var(--ink3);font:var(--fs-xs)/1.5 var(--sans)}
 /* The third treatment, for a model reading: italic Space Grotesk on the
    secondary ink over a dotted rule, so it reads as neither a published string
    nor the board stating a fact. No colour under any result, ever, because
@@ -935,21 +1005,26 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    revisions rather than part of the reading. */
 .next-cockpit-reading,.next-cockpit-departures{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
 .next-cockpit-reading>header,.next-cockpit-departures>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.next-cockpit-reading h2,.next-cockpit-departures h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
-.next-cockpit-reading-stamp{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-reading h2,.next-cockpit-departures h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-reading-stamp{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 /* The review section holds two collections and two more parts, so each is
    fenced and named. The label takes the mono uppercase every other source label
    on this panel takes; it names a collection rather than quoting one, which is
    note 7 of the design's own compromise list and is kept deliberately. */
 .next-cockpit-departure-part{display:flex;flex-direction:column;gap:4px;padding:8px 0 0}
 .next-cockpit-departure-part+.next-cockpit-departure-part{margin-top:6px;border-top:1px solid var(--line)}
-.next-cockpit-departure-label{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
+.next-cockpit-departure-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
 /* Figures, one per line and never side by side: two numbers on one line invite
    the division neither of them survives. */
 .next-cockpit-departure-counts{display:flex;flex-direction:column;gap:3px}
 .next-cockpit-count{display:flex;justify-content:space-between;gap:12px}
+.next-cockpit-count-group{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
+.next-cockpit-count-group+.next-cockpit-count{margin-top:2px}
 .next-cockpit-count-label{color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-count-value{color:var(--ink);font:var(--fs-xs)/1.5 var(--mono)}
+.next-cockpit-count-value{color:var(--ink-value);font:var(--fs-xs)/1.5 var(--mono)}
+/* `font-family` alone, not the `font` shorthand: the absence must not move a
+   pixel off the figure it replaces, and a shorthand here would reset the size. */
+.next-cockpit-count-value[data-next-absent]{font-family:var(--sans)}
 .next-cockpit-departures-kept{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-departures-kept a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
 .next-cockpit-departures-kept a:hover{text-decoration-color:var(--accent)}
@@ -967,18 +1042,37 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 /* The constraint name and the stamp on one line. A float does not survive the
    flex column above, so the row carries them together. */
 .next-session-departure-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.next-cockpit-reading-name,.next-session-departure-name{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-reading-name,.next-session-departure-name{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
 .next-cockpit-reading-clause,.next-session-departure-clause{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
 /* The board saying the revision's words are not retained, which is the board
    talking and not a quotation, so sans for the reason the limit line below
    gives. */
-.next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--sans);color:var(--ink3);overflow-wrap:anywhere}
+.next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--sans);color:var(--ink-absence);overflow-wrap:anywhere}
 .next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading{font:italic 13.5px/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
-.next-cockpit-reading-evidence,.next-session-departure-base{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
+.next-cockpit-reading-evidence,.next-session-departure-base{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
 /* The board talking, not a string a source published, so sans. The
    evidence line above it names a type and a source and stays mono. */
 .next-cockpit-reading-limit{color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);overflow-wrap:anywhere}
 .next-cockpit-reading-why{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
+/* Three kinds of absence in one paragraph class, told apart by shape rather
+   than by ink. The captain's ruling keeps every absence on `--ink3`, which
+   leaves shape as the only channel, and shape is the one that survives
+   greyscale. `waiting-on-you` takes the brighter rule because it is the only
+   one of the three the reader can act on; `run-config` is dotted because a
+   flag is a choice about the run rather than a fact about the session. */
+.next-cockpit-reading-why[data-absence]{padding-left:9px;border-left:2px solid var(--line2)}
+.next-cockpit-reading-why[data-absence="waiting-on-you"]{border-left-color:var(--accent-dim)}
+.next-cockpit-reading-why[data-absence="run-config"]{border-left-style:dotted}
+/* Tier 2 of the caveat rule. The summary is set at the SENTENCE tier and not
+   at the label tier below it: it carries the only words a reader has for
+   deciding whether to open the body, and a control smaller than what it
+   reveals is the same mistake as an absence louder than the value it
+   replaces. Both branches resolve to `--fs-sentence` here -- the summary at
+   ink2 and the body at ink3, so the control reads as the more prominent of
+   the two and never the less. */
+.next-cockpit-why{margin:0}
+.next-cockpit-why>summary{color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure);cursor:pointer}
+.next-cockpit-why[open]>summary{margin-bottom:4px}
 .next-cockpit-reading-stale,.next-session-departure-stale{margin:0;color:var(--amber);font:var(--fs-xs)/1.5 var(--sans)}
 .next-cockpit-reading button{align-self:flex-start}
 /* HOW IT LANDED. Two cards side by side and never one verdict: what ended and
@@ -987,9 +1081,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    any state. */
 .next-cockpit-landed{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
 .next-cockpit-landed>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.next-cockpit-landed h2{margin:0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
-.next-cockpit-landed-axes{color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-held-bound{margin-left:auto;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-landed h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-held-bound{margin-left:auto;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 /* What the unasked lane raised. The same label shape as every other fact on
    this panel, for the reason the delivery block beside it carries one.
 
@@ -1000,7 +1093,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    not make. The baseline line is dimmer still, because it is provenance rather
    than the reading. */
 .next-session-departures{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--line2)}
-.next-session-departures h2{margin:0;color:var(--ink3);font-family:var(--mono);
+.next-session-departures h2{margin:0;color:var(--ink-label);font-family:var(--mono);
   font-size:var(--fs-label);font-weight:400}
 .next-session-departures-count{margin:6px 0 0;color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 /* The sentence saying why there is nothing. Dimmer than a departure, because a
@@ -1010,7 +1103,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    is left here is spacing and the one element that row has no counterpart for:
    the stamp saying when the raise happened. */
 .next-session-departure{margin:8px 0 0}
-.next-session-departure-at{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
+.next-session-departure-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-session-departure-reading,.next-session-departure-base{margin:0}
 /* What later evidence showed. Sans and upright, because it is the board
    reporting a derivation over its own store and not a model reading, and no
@@ -1057,7 +1150,14 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
    anchor announces itself as the one thing on the page from outside the design,
    and the `#app a` rules at the top of this file win on specificity against a
    class-only selector. */
-.next-cockpit-held-reentry{margin:0;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
+.next-cockpit-held-reentry{display:flex;flex-direction:column;gap:4px;color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
+.next-cockpit-held-reentry-action{margin:0}
+/* Label and answer on one line, and the label is the only thing in the block
+   at the label tier: the answer is a sentence and stays at the sentence
+   tier, so a limitation never reads louder than the act offered above it. */
+.next-cockpit-held-reentry-row{display:flex;gap:10px;align-items:baseline}
+.next-cockpit-held-reentry-label{flex:none;min-width:64px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.09em}
+.next-cockpit-held-reentry-text{color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-held-reentry a{color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
 .next-cockpit-held-reentry a:hover{text-decoration-color:var(--accent)}
 /* The baseline question. Sans and no colour throughout: none of it is a model
@@ -1085,14 +1185,14 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 /* A direction is a string the reader published, so mono, the same register the
    observed record's own rows take. */
 .next-cockpit-conflict-text{font:var(--fs-xs)/1.5 var(--mono);color:var(--ink2);overflow-wrap:anywhere}
-.next-cockpit-conflict-at{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-conflict-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-conflict-choices{display:flex;flex-wrap:wrap;gap:8px}
 .next-cockpit-conflict-choices button{padding:5px 10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--sans);cursor:pointer}
 .next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--line2)}
-.next-cockpit-landed-label{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
-.next-cockpit-landed-value{font:500 var(--fs-sentence)/1.55 var(--sans);color:var(--ink);max-width:var(--measure)}
-.next-cockpit-landed-value--absent{color:var(--ink3)}
+.next-cockpit-landed-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:700;letter-spacing:.09em}
+.next-cockpit-landed-value{font:500 var(--fs-sentence)/1.55 var(--sans);color:var(--ink-value);max-width:var(--measure)}
+.next-cockpit-landed-value--absent{color:var(--ink-absence)}
 .next-cockpit-landed-note{color:var(--ink3);font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-scope{display:flex;align-items:baseline;gap:12px;padding:7px 12px;font:var(--fs-xs) var(--mono);color:var(--ink3)}
 .next-cockpit-scope strong{font-size:var(--fs-2xs);letter-spacing:.08em;color:var(--ink)}
@@ -1104,8 +1204,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-menu>summary[aria-label="More"]:after{content:"▾";font:var(--fs-xs) var(--mono)}
 .next-menu[open]>.next-menu-items{top:100%}
 .next-cockpit-content{font:500 var(--fs-sentence)/1.55 var(--sans)}
-.next-cockpit-recovery>div>strong,.next-cockpit-content .next-project-detail-empty{color:var(--ink3)}
-.next-cockpit-recovery [data-next-cockpit-task-known]>strong,.next-cockpit-recovery .next-cockpit-recovery-evidence>strong{color:var(--ink)}
+.next-cockpit-recovery>div>strong,.next-cockpit-content .next-project-detail-empty{color:var(--ink-absence)}
+.next-cockpit-recovery [data-next-cockpit-task-known]>strong,.next-cockpit-recovery .next-cockpit-recovery-evidence>strong{color:var(--ink-value)}
 .next-cockpit-recovery>div{font:500 var(--fs-sentence)/1.55 var(--sans)}
 .next-cockpit-recovery span{font-family:var(--mono)}
 .next-cockpit-recovery strong,.next-cockpit-recovery small{font-size:var(--fs-xs)}
@@ -1115,14 +1215,27 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-course-episode p,.next-course-episode ul,.next-course-direction p{font-family:var(--mono)}
 .next-cockpit-content .next-cockpit-source,.next-cockpit-recovery [data-next-cockpit-task-known]>strong{font-family:var(--mono)}
 .next-cockpit-recovery span.next-cockpit-source{display:inline;margin:0;color:inherit;font-size:inherit;letter-spacing:0}
-.next-cockpit-scope-tree small[data-next-withheld],.next-cockpit-scope-options small[data-next-withheld]{font-family:var(--sans);color:var(--ink3)}
+/* Family only. The colour is the board-wide `[data-next-withheld]` rule, and
+   a second one here would be a second place to get it wrong; the size is the
+   title's own, so a withheld title can never render larger than a published
+   one. */
+.next-cockpit-scope-tree [data-next-withheld],.next-cockpit-scope-options [data-next-withheld]{font-family:var(--sans);color:var(--ink-absence)}
 .next-cockpit-authority>strong,.next-cockpit-authority>small{font-family:var(--sans)}
-.next-cockpit-authority>span{font:500 var(--fs-sentence)/1.55 var(--sans);letter-spacing:0;max-width:var(--measure)}
+/* The chip and the line it used to outrank. `FO INSPECTING` is a state name a
+   source published, so mono at the label tier is the register
+   [NUI-2](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
+   assigns it; 15px sans came from the sweep that raised the tier rather than
+   from that list's rule, and it made the loudest string on the page the one
+   piece of vocabulary the page never defines. Colour is NOT set here: the
+   per-state rules above are the same specificity and sit earlier, so a colour
+   in this block would silently retire the captain-needed ink step. */
+.next-cockpit-authority>span{font:700 var(--fs-label)/1.5 var(--mono);letter-spacing:.09em}
+.next-cockpit-authority>small{font:600 var(--fs-sentence)/1.55 var(--sans);color:var(--ink-value);max-width:var(--measure)}
 .next-cockpit-decision-summary,.next-cockpit-viewing-session,
 .next-cockpit-now-state small,.next-project-workflow-definition>small,
 .next-cockpit-system-details ul,.next-cockpit-memos label>small{font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-empty,.next-cockpit-evidence-missing{font:var(--fs-xs)/1.55 var(--sans)}
-.next-cockpit-content .next-cockpit-evidence-missing{margin:6px 0;color:var(--ink3);font:var(--fs-xs)/1.55 var(--sans)}
+.next-cockpit-content .next-cockpit-evidence-missing{margin:6px 0;color:var(--ink-caption);font:var(--fs-xs)/1.55 var(--sans)}
 .next-cockpit-content .next-course-evidence{font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-content .next-course-evidence .next-cockpit-source{display:inline;font:inherit;font-family:var(--mono)}
 .next-cockpit-recovery .next-project-goal{margin-top:12px;padding:10px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
@@ -1131,12 +1244,12 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-cockpit-recovery .next-project-goal-gap{font:var(--fs-xs)/1.55 var(--sans)}
 .next-cockpit-recovery .next-project-goal-source{font-size:var(--fs-2xs)}
 .next-cockpit-recovery details>summary,.next-course-evidence>summary,
-.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px;max-width:var(--measure)}
+.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,
+.next-cockpit-console-setup>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-sentence)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px;max-width:var(--measure)}
 .next-cockpit-recovery details>summary:hover,.next-course-evidence>summary:hover{color:var(--ink)}
 .next-cockpit-content summary:focus-visible,#app .next-cockpit-scope-tree a:focus-visible,
 #app .next-cockpit-scope-options a:focus-visible,.next-cockpit-scope-switcher>summary:focus-visible{outline:2px solid var(--ink2);outline-offset:3px}
 .next-cockpit-panel[data-next-cockpit-panel="now"]{gap:18px;padding:18px 12px}
-.next-cockpit-scope-tree .next-scope-cue--session,.next-cockpit-scope-options .next-scope-cue--session{margin-left:0}
 .next-cockpit-scope-switcher>summary{font:500 var(--fs-sentence)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-content .next-rail-meta--amber{color:var(--ink3)}
 @media(max-width:1279px){
@@ -1171,6 +1284,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .pc-terminal-open:focus-visible,.pc-terminal-bar button:focus-visible,.pc-semantic-timeline button:focus-visible,.pc-semantic-timeline summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p{color:var(--ink3);font:var(--fs-xs)/1.55 var(--sans);overflow-wrap:anywhere}
 .pc-substrate-empty{margin:8px 0}
+.pc-substrate-steps{margin:6px 0;padding-left:20px;color:var(--ink3);font:var(--fs-xs)/1.55 var(--sans)}
+.pc-substrate-steps li+li{margin-top:4px}
 .pc-terminal-absence{padding:4px 0 10px;max-width:70ch}
 .pc-terminal-absence .pc-substrate-empty:first-child{color:var(--ink2)}
 .pc-terminal-absence code,.pc-terminal-identity code,.pc-semantic-timeline code,.pc-semantic-timeline .pc-source{font-family:var(--mono);font-size:var(--fs-xs);overflow-wrap:anywhere}

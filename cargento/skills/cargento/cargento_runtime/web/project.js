@@ -20,7 +20,91 @@ const projectContextRequests = {};
 let projectContextRequestSequence = 0;
 const projectDisclosureOpenBySession = new Map();
 const projectDisclosurePendingBySession = new Set();
+const PROJECT_GRAPH_MODES = ["active", "all", "decisions"];
+/* The reader's timeline mode, per session key, surviving a reload the way the
+   workstream collapse does. One key holding a map rather than one key per
+   session: a reader who picked a mode on one session has not chosen one for
+   every other, and a per-session key would leave a row in browser storage for
+   every session the tab ever showed.
+
+   The lane is a reader-set one; `docs/design-reader-state.md` carries its row. */
+const NEXT_GRAPH_MODE_KEY = "cargento.next.graph.mode";
 const projectGraphModeBySession = new Map();
+
+function projectLoadGraphModes(){
+  try{
+    const stored = JSON.parse(localStorage.getItem(NEXT_GRAPH_MODE_KEY) || "null");
+    if(!stored || typeof stored !== "object") return;
+    for(const [key, value] of Object.entries(stored)){
+      /* Key SHAPE as well as value. A build already shipped that wrote every
+         project's choice under one empty key, so a browser that ran it holds
+         `{"": "all"}` under this name. Dropping anything that is not one
+         `\u0000`-joined pair retires that entry on the next load instead of
+         leaving every read site to defend against it -- and it is why the
+         separator matters: a scheme where the legacy empty key parses as a
+         real project would hand the old collision to a new key. */
+      if(!PROJECT_GRAPH_MODES.includes(value)) continue;
+      if(String(key).split("\u0000").length !== 2) continue;
+      projectGraphModeBySession.set(String(key), value);
+    }
+  }catch(_error){ /* storage off or unreadable: the tab keeps its own choice */ }
+}
+
+function projectStoreGraphModes(){
+  try{
+    localStorage.setItem(NEXT_GRAPH_MODE_KEY,
+      JSON.stringify(Object.fromEntries(projectGraphModeBySession)));
+  }catch(_error){ /* the choice still holds for the life of this tab */ }
+}
+
+/* The scope a reader's choice belongs to: the project ALWAYS, and the session
+   as well when one is focused. Both halves, because the resolver reads a
+   per-session distinction at session scope that a project-only key would
+   destroy, and a session-only key is what collided.
+
+   Joined on `\u0000`, which the scope rail already uses as a field joiner. A
+   composite with a separator no label can contain makes the key shape
+   decidable, and `projectLoadGraphModes` uses that to drop what it cannot
+   parse -- see the migration note there.
+
+   Keying on the session alone was the defect. `projectQuerySession` is "" at
+   project scope for EVERY project, so one entry held every project's choice --
+   and this branch newly mirrors the map to `localStorage`, which turned a
+   per-tab quirk into a persisted one. Measured on a live board: "All events"
+   pressed on one project drew a second project, never pressed, in `all`, with
+   the store reading {"":"all"}, which is the per-project criterion that
+   issue asks for, verbatim.
+
+   ONE function for the write and the read. A fix that namespaces the write and
+   resolves the fallback from the other scope passes only the first half of the
+   criterion, and the halves are checked separately. */
+function projectGraphModeScope(){
+  const project = typeof nextRoute !== "undefined" && nextRoute && nextRoute.view === "project"
+    ? String(nextRoute.project == null ? "" : nextRoute.project) : "";
+  return `${project}\u0000${String(projectQuerySession || "")}`;
+}
+
+function projectSetGraphMode(mode){
+  if(!PROJECT_GRAPH_MODES.includes(mode)) return false;
+  projectGraphModeBySession.set(projectGraphModeScope(), mode);
+  projectStoreGraphModes();
+  return true;
+}
+
+/* One resolver, because the cockpit's panel heading and the renderer's own
+   rows read the same answer. A caller that pins `mode` overrides the reader;
+   `defaultMode` is what an untouched panel falls back to before the shared
+   "active". */
+function projectResolveGraphMode(options){
+  const requested = options && options.mode;
+  if(PROJECT_GRAPH_MODES.includes(requested)) return requested;
+  const stored = projectGraphModeBySession.get(projectGraphModeScope());
+  if(PROJECT_GRAPH_MODES.includes(stored)) return stored;
+  const fallback = options && options.defaultMode;
+  return PROJECT_GRAPH_MODES.includes(fallback) ? fallback : "active";
+}
+
+projectLoadGraphModes();
 let projectUsageCounts = null;
 let projectTabOrder = null;
 let projectOpenedKey = null;
@@ -351,7 +435,7 @@ function projectGoalAction(act, label){
 
 function projectAction(act, arg){
   if(act === "project-graph-mode"){
-    projectGraphModeBySession.set(String(projectQuerySession || ""), arg === "all" ? "all" : "active");
+    projectSetGraphMode(arg === "all" ? "all" : "active");
     if(lastData) render(lastData);
     return true;
   }
@@ -634,9 +718,16 @@ function projectTerminalLookup(d, sess){
   const revision = Number(d.generated) || 0;
   const current = projectTerminalBySession[key];
   if(current && (current.loading || Number(current.revision) >= revision)) return;
-  projectTerminalBySession[key] = current && current.state === "registered"
-    ? {state:"registered", revision, data:current.data, loading:true}
-    : {state:"loading", revision, loading:true};
+  /* Both settled answers survive a re-check, not just the affirmative one.
+     Preserving `registered` alone and resetting `unavailable` to `loading`
+     made a default bridge-off console flip "terminal bridge off" to "not read
+     yet" on every poll, because the revision advances on every payload and
+     that is what releases the guard above. `loading` now means what it says:
+     nothing has come back for this session yet. */
+  projectTerminalBySession[key] =
+    current && (current.state === "registered" || current.state === "unavailable")
+      ? {state:current.state, revision, data:current.data, loading:true}
+      : {state:"loading", revision, loading:true};
   const path = "/api/interaction/origin?harness=" + encodeURIComponent(sess.harness) +
     "&sid=" + encodeURIComponent(sess.sid);
   fetch(path).then(response => {
@@ -792,10 +883,17 @@ function projectTerminalAbsence(entry){
   return `<div class="pc-terminal-absence"><p class="pc-substrate-empty">${esc(message)}</p>` +
     (reason && !explanations[reason] ? `<p class="pc-substrate-empty">Server reason: ` +
       `<code>${esc(reason)}</code></p>` : "") +
-    (registration ? `<p class="pc-substrate-empty">Registration requires starting the dashboard with ` +
-      `<code>--interaction-origin-session harness:sid</code> and ` +
-      `<code>--interaction-origin-registration-file PATH</code>, then running the registration client ` +
-      `inside the tmux pane for this exact session with that file. Output is read-only.</p>` : "") + `</div>`;
+    /* The recipe is two acts, and it rendered as one paragraph of running prose
+       in which both flags wrap. Behind `projectDisclosure` rather than a bare
+       `<details>`: this board redraws on live payload and a bare one snaps shut
+       on every redraw, losing the reader's place mid-command. */
+    (registration ? projectDisclosure("terminal-registration", "How to register a terminal",
+      `<ol class="pc-substrate-steps">` +
+      `<li>Start the dashboard with <code>--interaction-origin-session harness:sid</code> and ` +
+      `<code>--interaction-origin-registration-file PATH</code>.</li>` +
+      `<li>Run the registration client inside the tmux pane for this exact session with ` +
+      `that file.</li></ol>` +
+      `<p class="pc-substrate-empty">Output is read-only.</p>`) : "") + `</div>`;
 }
 
 function projectTerminalSurface(sess){
@@ -1762,9 +1860,7 @@ function projectUnboundContext(registry){
 
 function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins, options){
   const fullRegistry = projectLaneRegistry(model, workflowLanes, focus, sessionOrigins);
-  const requestedMode = options && options.mode;
-  const mode = ["active", "all", "decisions"].includes(requestedMode)
-    ? requestedMode : projectGraphModeBySession.get(String(projectQuerySession || "")) || "active";
+  const mode = projectResolveGraphMode(options);
   const visibleRegistry = projectVisibleRegistry(fullRegistry, mode);
   const registry = fullRegistry;
   const events = mode === "decisions" ? projectDecisionEvents(model, fullRegistry, focus) :
@@ -1790,7 +1886,7 @@ function projectSemanticTimeline(d, model, workflowLanes, focus, sessionOrigins,
     "pc-history-band", ` data-activity-band="earlier-meaningful"`) : "";
   const controls = options && options.controls === false ? "" :
     `<div class="pc-graph-filter" role="group" aria-label="Work activity filter">` +
-    ["active", "all", "decisions"].map(value => `<button type="button" data-calm="project-graph-mode"` +
+    PROJECT_GRAPH_MODES.map(value => `<button type="button" data-calm="project-graph-mode"` +
       ` data-arg="${value}" class="${mode === value ? "selected" : ""}"` +
       ` aria-pressed="${mode === value}">${value === "active" ? "Active" :
         (value === "all" ? "All events" : "Decisions")}</button>`).join("") +
