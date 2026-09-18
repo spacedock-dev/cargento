@@ -276,29 +276,50 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
     @staticmethod
     def _below_floor(
         css: str, tokens: dict[str, float], rules: list[tuple[str, str, int]]
-    ) -> dict[str, float]:
-        """Tier selectors whose ELEMENT resolves below the floor."""
+    ) -> tuple[dict[str, float], int]:
+        """Tier selectors whose ELEMENT resolves below the floor, and the skips.
+
+        The skip count comes back rather than being swallowed. A selector form
+        the resolver cannot express is silently not checked, and today there
+        are none -- 77 swept, 77 resolved, 0 skipped -- so nothing hides behind
+        it. The count is what turns "resolved clean" into "resolved clean, over
+        everything".
+
+        **It is a tripwire rather than a live guard, and that is measured.**
+        Putting a sibling combinator on a tier selector does not produce a
+        skip: `css_cascade.resolve` calls `matches` over every RULE and lets
+        `UnsupportedSelectorError` out, so the sweep raises before this branch
+        is reached. `_steps` is shared by both, so any selector `path_for`
+        refuses, `matches` refuses too. The branch becomes reachable only if
+        the resolver is later changed to skip rules it cannot express -- which
+        is exactly the change that would open the hole -- and the assertion is
+        here to red on that day rather than to catch anything today.
+        """
         found: dict[str, float] = {}
+        skipped = 0
         for selector in _tier_selectors(css):
             try:
                 path = css_cascade.path_for(selector)
             except css_cascade.UnsupportedSelectorError:
+                skipped += 1
                 continue
             size = css_cascade.resolve(path, tokens, rules)
             if size is not None and size < SENTENCE_FLOOR_PX:
                 found[selector] = size
-        return found
+        return found, skipped
 
     def test_every_sentence_tier_element_resolves_at_or_above_the_floor(self) -> None:
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         # A sweep that resolved nothing would pass the check below in silence.
         self.assertGreater(len(_tier_selectors(css)), 40, "the tier sweep found almost nothing")
+        below, skipped = self._below_floor(css, self.tokens, self.rules)
         self.assertEqual(
             {},
-            self._below_floor(css, self.tokens, self.rules),
+            below,
             "a rule declares these on the sentence tier and a later rule renders "
             "them below the floor",
         )
+        self.assertEqual(0, skipped, f"{skipped} tier selectors were skipped unresolved")
 
     def test_the_guard_reds_on_a_later_equal_specificity_rule_below_the_floor(self) -> None:
         """Mutation: re-create the defect exactly, and run the GUARD on it.
@@ -315,9 +336,9 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         mutant = css + "\n.next-steer-caveat{font-size:var(--fs-xs);line-height:1.5}\n"
         self.assertNotEqual(css, mutant)
         tokens, rules = css_cascade.load_text(mutant)
-        self.assertEqual({".next-steer-caveat": 12.5}, self._below_floor(mutant, tokens, rules))
+        self.assertEqual({".next-steer-caveat": 12.5}, self._below_floor(mutant, tokens, rules)[0])
         # And the clean sheet is not incidentally failing for some other reason.
-        self.assertEqual({}, self._below_floor(css, self.tokens, self.rules))
+        self.assertEqual({}, self._below_floor(css, self.tokens, self.rules)[0])
 
     def test_the_set_of_selectors_declared_on_both_sides_is_pinned(self) -> None:
         """The precondition, pinned as a census.
@@ -350,7 +371,8 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         self.assertIn(".next-guardrail-copy small", self._straddling(mutant))
         tokens, rules = css_cascade.load_text(mutant)
         self.assertEqual(
-            {".next-guardrail-copy small": 12.5}, self._below_floor(mutant, tokens, rules)
+            {".next-guardrail-copy small": 12.5},
+            self._below_floor(mutant, tokens, rules)[0],
         )
 
 

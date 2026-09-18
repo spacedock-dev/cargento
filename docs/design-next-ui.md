@@ -276,7 +276,13 @@ Before removing a colour anywhere in this sheet, resolve the element through the
 specificity and read the hex, rather than counting the rules that mention it.
 
 The palette has three inks and the roles need four, so `--ink-label` and `--ink-absence` both
-resolve to `--ink3`. That is a ruling, not an accident. `--ink3` on panel is 5.67:1, just above the
+resolve to `--ink3`. **So does `--ink-caption`**, which this paragraph did not say and should have:
+three of the four names land on one hex, and only `--ink-value` has an ink to itself. A caption is
+separated from a label the way an absence is -- by family, case and size -- which is why
+`TheBriefingsThreeRegistersStayApartTest` asserts the register NAMES and the (size, ink) pairs, and
+deliberately not three distinct hexes, an assertion that fails on the shipped sheet. Recording the
+doubling here is the point of the indirection: a role that shares an ink has to be re-readable from
+this file rather than rediscovered from a failing test. That is a ruling, not an accident. `--ink3` on panel is 5.67:1, just above the
 floor the asset test asserts, so labels cannot go dimmer, and brightening them makes them compete
 with values. Labels can afford the double-up because they also carry uppercase, tracking and mono,
 while an absence is a sans sentence, so family and case already separate the two. Brightening an

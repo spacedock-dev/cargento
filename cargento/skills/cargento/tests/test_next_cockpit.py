@@ -11218,6 +11218,21 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         self.assertIn("<p", body, "the disclosure hides no paragraph")
         prose = re.sub(r"<[^>]+>", "", body).strip()
         self.assertGreater(len(prose), 40, f"the disclosure hides no sentence, only {prose!r}")
+        # The other half of the same guard, and the one nothing reached: a
+        # caveat paragraph with nothing in it, anywhere on the tab. Removing
+        # `nextCockpitWhy`'s empty-body return leaves 3652 behavioural tests
+        # green and draws exactly one of these, in the re-entry block, on the
+        # default board -- a reachable arm emitting an empty sentence.
+        html = self.held()["html"]
+        assert isinstance(html, str)
+        self.assertNotIn(
+            '<p class="next-cockpit-reading-why"></p>',
+            html,
+            "a caveat paragraph rendered with nothing in it",
+        )
+        self.assertNotIn(
+            "</summary></details>", html, "a disclosure rendered with nothing behind it"
+        )
 
     def test_the_card_independence_claim_is_stated_exactly_once(self) -> None:
         """AC-4. Falsified by leaving both statements, or by deleting both."""
@@ -11507,20 +11522,31 @@ console.log(JSON.stringify({
         self.assertTrue(out["raise"])
 
     def test_the_action_leads_on_every_branch_this_block_can_draw(self) -> None:
-        """AC-5 across the combinations it names, rather than the one the
-        default fixture happens to draw.
+        """AC-5 across the combinations it names, and asserted to BE different.
 
-        The criterion promises six: the raise arm has three branches (focus
-        capability off, a focusable session, a session with no terminal) and
-        the re-entry arm two that change what renders (a harness with a resume
-        command, and one without). The check above exercises exactly one of
-        them -- capability off, no resume command -- and that is the arm where
-        the anchor is emitted first anyway.
+        The criterion promises six: three raise branches (focus capability off,
+        a focusable session, a session with no terminal) against two re-entry
+        arms (a harness with a resume command and one without). The check above
+        exercises one -- capability off, no resume command -- and that is the
+        arm where the anchor is emitted first anyway.
+
+        **This matrix has now collapsed twice.** First by exercising one arm.
+        Then by exercising six copies of one arm: the capability stub returned
+        `{content:"tmux"}`, and `nextFocusCapability` requires
+        `typeof meta.getAttribute === "function"`, so it resolved to "" and all
+        six drew the capability-off branch -- one raise sentence, no
+        disclosure. Every per-case guard passed, because the anchor and both
+        rows render on every branch. Guarding each case cannot see six
+        identical cases.
+
+        So the shapes are asserted to DIFFER as well as to be ordered: three
+        distinct raise claims, two distinct re-entry sentences, six distinct
+        pairs. The stub is `CockpitHeldReEntryTest.FOCUS_ON`'s, which answers
+        `getAttribute` as the page reads it.
 
         Measured before this was widened: moving the anchor to the END of the
         block survives all 3639 behavioural tests on the branch a
-        FOCUS-CAPABLE board draws. That is not a narrow-selection artifact; the
-        whole suite does not catch it.
+        FOCUS-CAPABLE board draws. That is not a narrow-selection artifact.
         """
         cases = {
             "capability-off/no-resume": ("", "pi"),
@@ -11530,6 +11556,7 @@ console.log(JSON.stringify({
             "no-terminal/no-resume": ("unfocusable", "pi"),
             "no-terminal/resume": ("unfocusable", "codex"),
         }
+        shapes: dict[str, tuple[str, str, bool]] = {}
         for name, (focus_mode, harness) in cases.items():
             with self.subTest(branch=name):
                 out = self._run_page_js(
@@ -11538,10 +11565,7 @@ console.log(JSON.stringify({
                     + self.ANNOTATED
                     + f"__dashboard.sessions[0].harness = {json.dumps(harness)};\n"
                     + (
-                        # A focus-capable board: the capability probe reads a
-                        # `<meta>`, so the stub answers one.
-                        'document.querySelector = () => ({content:"tmux"});\n'
-                        f"__dashboard.sessions[0].focusable = "
+                        CockpitHeldReEntryTest.FOCUS_ON + f"__dashboard.sessions[0].focusable = "
                         f"{'true' if focus_mode == 'focusable' else 'false'};\n"
                         if focus_mode
                         else ""
@@ -11551,22 +11575,46 @@ navigateNext({{view:"project", project:"cargento",
   focus:{json.dumps(harness + ":focus-1")}, tab:"held-to"}});
 await __settle();
 const html = __els.app.innerHTML;
+const block = (html.match(
+  /<div class="next-cockpit-held-reentry">[\\s\\S]*?<\\/div>\\s*<\\/section>/) || [""])[0];
+const rowText = label => {{
+  const at = block.indexOf(`>${{label}}<`);
+  if(at < 0) return "";
+  const from = block.indexOf('next-cockpit-held-reentry-text">', at);
+  return from < 0 ? "" : block.slice(from + 32, block.indexOf("<", from + 32));
+}};
 console.log(JSON.stringify({{
   anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
   reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
-  raiseLabelAt: html.indexOf('reentry-label">Raise<')}}));
+  raiseLabelAt: html.indexOf('reentry-label">Raise<'),
+  raise: rowText("Raise"), resume: rowText("Re-entry"),
+  disclosure: (block.match(/<summary>([^<]*)<\\/summary>/) || [])[1] || ""}}));
 """,
                     storage_prelude({}) + self.FIXTURE,
                 )
                 assert isinstance(out, dict)
                 anchor_at = out["anchorAt"]
-                # Every branch must actually draw the block, or this subTest is
-                # asserting over a tab that never rendered it.
                 self.assertNotEqual(-1, anchor_at, "the re-entry anchor did not render")
                 self.assertNotEqual(-1, out["reentryLabelAt"], "the Re-entry row did not render")
                 self.assertNotEqual(-1, out["raiseLabelAt"], "the Raise row did not render")
                 self.assertLess(anchor_at, out["reentryLabelAt"])
                 self.assertLess(anchor_at, out["raiseLabelAt"])
+                raise_text, resume_text = out["raise"], out["resume"]
+                assert isinstance(raise_text, str) and isinstance(resume_text, str)
+                self.assertNotEqual("", raise_text, "the Raise row rendered no sentence")
+                self.assertNotEqual("", resume_text, "the Re-entry row rendered no sentence")
+                shapes[name] = (raise_text, resume_text, bool(out["disclosure"]))
+
+        # The six are six. Without this, six copies of one branch pass every
+        # assertion above -- which is how this matrix collapsed the second time.
+        self.assertEqual(6, len(set(shapes.values())), shapes)
+        self.assertEqual(3, len({shape[0] for shape in shapes.values()}), "raise branches")
+        self.assertEqual(2, len({shape[1] for shape in shapes.values()}), "re-entry arms")
+        # And the capability-off branch is the one that draws no disclosure,
+        # which is the arm the broken stub made universal.
+        self.assertFalse(shapes["capability-off/resume"][2])
+        self.assertTrue(shapes["focusable/resume"][2])
+        self.assertTrue(shapes["no-terminal/resume"][2])
 
     def test_the_managed_focus_lane_survives_the_restructure(self) -> None:
         """AC-6. Falsified by a wrapper that takes the attribute, which keeps a
