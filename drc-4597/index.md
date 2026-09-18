@@ -51,6 +51,20 @@ gates:
                 id: briefing:drc-4597:review:attempt-1:revision-1
                 digest: sha256:cd51aa6a5748975311cb0a9ef1d8ba34bcac2d52dc303b763d6365cd4367fa5e
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4597:review:1
+                briefing: briefing:drc-4597:review:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-18T02:27:37.394027Z"
+                decision: approve
+                reason: 'Review returned GO on the criteria that could be settled, with one withdrawn by the reviewer itself after re-running against the full suite rather than a narrow selection. AC-6 is explicitly NOT settled and is filed as DRC-4615 rather than closed: two agents could not reach the specified viewport by two different routes, and neither reported a figure from the wrong one. Approving on that basis, with the unsettled criterion recorded rather than absorbed. PR #364 merged as f4561750.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
+              application:
+                target-stage: done
+                state: pending
 ---
 
 [DRC-4597](https://linear.app/recce/issue/DRC-4597/rebuild-the-scope-rail-card-around-the-session-title) — Rebuild the scope rail card around the session title
