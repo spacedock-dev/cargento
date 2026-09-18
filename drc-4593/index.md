@@ -51,6 +51,20 @@ gates:
                 id: briefing:drc-4593:review:attempt-1:revision-1
                 digest: sha256:e40ed998b2c60a65dac809130aaa9954b56f9ecb0b8a80b400a7f27d52e66e0c
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4593:review:1
+                briefing: briefing:drc-4593:review:attempt-1:revision-1
+                by: agent:first-officer
+                at: "2026-09-18T02:27:14.068433Z"
+                decision: approve
+                reason: 'Review returned GO with all three absence kinds verified apart in greyscale on a live board, and AC-4''s verifier widened after a mutation proved it measured the wrong property. Delivered in PR #364, merged as f4561750, twelve of twelve green.'
+                conn:
+                    quote: I pre-approve all the triage and merge gates, just automate this entire process and do it
+                    source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
+              application:
+                target-stage: done
+                state: pending
 ---
 
 [DRC-4593](https://linear.app/recce/issue/DRC-4593/invert-the-briefings-emphasis-and-let-its-all-absent-grid-collapse) — Invert the briefing's emphasis and let its all-absent grid collapse
