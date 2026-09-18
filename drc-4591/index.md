@@ -724,3 +724,20 @@ Measured at `ddd422bf`, driving the real reject writer over a settled entry: `en
 What I actually observed remains true and is the other half: the cue still reads `{state:"count", value:1}` and the panel still renders the rows, because `stale` and `ready` render identically at both call sites. **That is a ruling, not an oversight**, and the comment at `next-cockpit.js:3224` states it as one — keeping the last known rows is defensible, and a staleness sentence would be new copy nobody specified. The separation exists so DRC-4613 can act on it without a refactor. So "cue and panel agree" is right, "and are both wrong" is not: the agreement is deliberate and documented. Nothing further is owed here.
 
 The general lesson is the one this review has been applying outward and failed to apply inward: **a state claim is only as current as the head it was measured on.** Three heads moved under this re-check; the contracts survived because they are string-anchored and re-run, and this claim did not because it was neither.
+
+### AC-3 disambiguated — the conflation was inside this criterion, not between two issues
+
+Measured at `ddd422bf`, because a correction accepted on trust is worth no more than a finding accepted on trust.
+
+**The test that was grepped is this issue's own AC-3 test, not DRC-4592's.** `test_the_five_count_rows_and_their_absences_never_collapse` opens `"""AC-3. Only the explanatory paragraph may go behind a summary."""` and lives in `CaveatTieringTest`, which is DRC-4591's class. DRC-4592's AC-3 is a different subject entirely — `OBSERVED STATE CHANGES` unchanged at `next-project.js:350`. So the "two issues, same criterion number" account does not describe what happened, though the hazard it names is real and larger than two: **ten issues in this burndown each carry an `AC-3`**, so a bare criterion number is ambiguous ten ways and should never be the search key.
+
+**The real conflation is between two manifestations of one falsifier.** AC-3's second falsifying condition — "a helper with no empty-body branch that swallows a row when its text is empty" — bites `nextCockpitWhy` two different ways depending on the caller:
+
+| caller passes | missing guard produces | caught? |
+|---|---|---|
+| a summary **and** an empty body | `<details><summary>…</summary><p></p></details>` — a control opening onto emptiness | asserted at `:11217`, but **unfalsifiable in this fixture** |
+| **no** summary and an empty body | a bare `<p class="next-cockpit-reading-why"></p>` | **not caught at all** |
+
+Measured with the guard deleted: `test_the_five_count_rows_and_their_absences_never_collapse` **passes**, and the tab renders **1** empty `<p class="next-cockpit-reading-why"></p>` and **0** empty `<details>` bodies. The new `assertNotEqual("", body.strip(), "the disclosure opens onto an empty body")` is a genuine assertion, but COUNTS always passes a non-empty literal body, so the `!text` branch never fires there and no mutation of that guard can red it. The reachable arm is the other one — the re-entry raise branch at `{why:"", whyLabel:""}`, which takes the `!summary` path and emits the bare empty paragraph.
+
+**So the contract's AC-3 entry is restated to name the shape rather than the number.** Locate with `grep -n 'if(!text) return "";' next-cockpit.js`; delete that line; the fix is proven only when a behavioural test reds **on the no-summary arm** — an assertion that no `<p class="next-cockpit-reading-why">` is rendered empty, anywhere on the tab. An assertion aimed only at a disclosure's body cannot reach it, which is why the first repair did not.
