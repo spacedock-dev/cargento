@@ -741,3 +741,23 @@ Measured at `ddd422bf`, because a correction accepted on trust is worth no more 
 Measured with the guard deleted: `test_the_five_count_rows_and_their_absences_never_collapse` **passes**, and the tab renders **1** empty `<p class="next-cockpit-reading-why"></p>` and **0** empty `<details>` bodies. The new `assertNotEqual("", body.strip(), "the disclosure opens onto an empty body")` is a genuine assertion, but COUNTS always passes a non-empty literal body, so the `!text` branch never fires there and no mutation of that guard can red it. The reachable arm is the other one — the re-entry raise branch at `{why:"", whyLabel:""}`, which takes the `!summary` path and emits the bare empty paragraph.
 
 **So the contract's AC-3 entry is restated to name the shape rather than the number.** Locate with `grep -n 'if(!text) return "";' next-cockpit.js`; delete that line; the fix is proven only when a behavioural test reds **on the no-summary arm** — an assertion that no `<p class="next-cockpit-reading-why">` is rendered empty, anywhere on the tab. An assertion aimed only at a disclosure's body cannot reach it, which is why the first repair did not.
+
+### Final re-check at `c88cc110` — GO
+
+Head derived, not taken on trust: both tips of `spacedock-ensign/ui-integration` are `c88cc110`. Clean tree **3654 OK / 2 skipped** at load 5.17, below the contention threshold, so no red was owed a re-run. Byte pins re-derived independently from the assets and agree with the suite: `next-cockpit.js` 233_309/`b0e24842…`, `styles.css` 121_011/`f1d8a9bc…`, assembled 965_309/`e79d000c…`.
+
+**AC-3 — PASS, and it reds on the arm I specified.** With `if(!text) return "";` deleted, `test_the_five_count_rows_and_their_absences_never_collapse` fails at `:11228` on `assertNotIn('<p class="next-cockpit-reading-why"></p>', …)` — "a caveat paragraph rendered with nothing in it" — asserted over the **whole rendered tab**, not the disclosure body. The failure output shows the empty paragraph inside `<div class="next-cockpit-held-reentry">`, which is the no-summary arm that four heads of oracles could not see. The disclosure-body assertion from `26223372` is still there and still cannot be falsified by this mutation; what closes the criterion is the tab-wide one.
+
+**AC-7 — PASS, re-run rather than carried.** No runtime file moved in this commit, but the file holding the sweep's assertions did, so the dependency rule says re-run. Both halves red: a `docs/design-reading-a-session.md#dec-16` href in the rendered Console recipe fails `test_no_rendered_string_carries_a_docs_link_or_a_decision_token` and nothing else; a bare `DEC-16` in the same string fails it too.
+
+**The other six criteria re-run at this head rather than carried from `2fa5a2f4`**, because the runtime moved twice in between and a verdict is only as current as the head it was measured on:
+
+| criterion | falsifier | result |
+|---|---|---|
+| AC-1 | paraphrase a caveat sentence | red — 4 tests, incl. the merge-base-derived set |
+| AC-4 / AC-5 | restore the deleted `two axes` aside | red — 4 tests, incl. the whole-runtime walk |
+| AC-6 | put `--unasked-readings` behind a click | red — 1 test, the named one |
+| AC-8 | emit a `why` inside `next-cockpit-reading` | red — 1 test, the named one |
+| AC-2 | offline half in-suite; live half driven on a real board at `2fa5a2f4` | green / settled |
+
+**Verdict: GO.** All eight criteria reproduce from their own Verified-by clauses, and every Falsified-by condition reds at this head. The one standing class-(c) note is unchanged and non-blocking: AC-1's fourth named site (`project.js`) is covered by four hand-listed fragments rather than a derivation, and that site's sentence is not verbatim from the base — a disclosed, reasoned deviation whose wording should be reconciled in the criterion rather than the code.
