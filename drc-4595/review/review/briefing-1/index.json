@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4595:review:attempt-1:revision-1",
+  "question": "Approve DRC-4595 as delivered: Console's operations first and the steer box lifted out of TRIPWIRES?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4595:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4595/index.md",
+      "rev": "sha256:254919e1a31fca30dcb0599e567500d5d0a996686412541b5189902b6c89ec47",
+      "mediaType": "text/markdown",
+      "summary": "GO on the items reviewed. AC-1's own falsifier passed - hoisting the status block above the rail kept it green and all 319 cockpit tests green while moving the live rail offset 111.5px to 174.5px, breaking a sibling criterion by 55px - and its verifier was repaired. AC-8 was settled live at the criterion's own 1680x1057 over CDP. A second instance of the wrong-field map read was found and fixed in projectTerminalLookup, where a re-check reset a registered terminal to loading on every poll; its pinning test originally passed on the broken code by sampling after the reply had landed, and now samples on the render that starts the re-check. AC-9's verifier referenced a Linear item that did not exist; it is filed as DRC-4611 and the criterion now links it."
+    }
+  ]
+}

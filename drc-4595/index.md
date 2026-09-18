@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4595:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4595-review-1
+              briefing:
+                id: briefing:drc-4595:review:attempt-1:revision-1
+                digest: sha256:dd1eb2cedde7652bfe1fe60a5c0103fd1a9480e572fd43e991bf6472a5cb4fa0
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4595](https://linear.app/recce/issue/DRC-4595/put-consoles-operations-first-and-lift-the-steer-box-out-of-tripwires) — Put Console's operations first and lift the steer box out of TRIPWIRES
