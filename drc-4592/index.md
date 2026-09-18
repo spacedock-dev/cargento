@@ -812,3 +812,42 @@ Assembled is now **965_309 / e79d000c…** and the three pin sites agree. Harnes
 
 Nothing on this issue moved. Recorded so the gate does not have to infer it from a silence, and so
 the GO is anchored to a head that exists rather than to the one it was written against.
+
+## Stage Report: review (final — carry-forward check at c88cc110)
+
+Applied the carry-forward rule I pre-registered before this commit existed, rather than the diffstat.
+**Verdict: GO carries at c88cc110.**
+
+- DONE: Re-derive the runtime assets. All four byte-identical to `ddd422bf`: `next-cockpit.js`
+  **233_309 / b0e24842…**, `project.js` **111_842 / 0fcc61b6…**, `styles.css` **121_011 / f1d8a9bc…**,
+  assembled **965_309 / e79d000c…**. Every pin site in `test_next_page.py`, `test_next_flag.py` and
+  `test_focus.py` matches the derived values.
+- DONE: **Apply the dependency rule, not the diffstat.** Both test files this commit edits hold
+  classes my verdicts rest on, so "the runtime did not move" does not carry them on its own — that is
+  the same mistake as reading a stylesheet digest to clear a verdict whose assertions live elsewhere.
+  Byte-compared the eight classes by AST extraction at both heads. **All eight identical:**
+  `CockpitTimelineFilterTest` (399 lines, `661af82a3473`), `CockpitTabsNameTheirPanelTest` (289,
+  `d214c8a1eeb7`), `CockpitScopeRailCardTest` (220, `9b1f902ffeaf`), `WithheldTitleKeepsTheAbsenceInkTest`
+  (55, `84713913781e`), `ConsoleSetupNeverCallsAnUnreadCapabilityOffTest` (244, `df8b9cb7aa70`),
+  `NextCockpitCompositionTest` (4060, `451741e8e285`), `AnAbsenceNeverRendersLargerThanItsValueTest`
+  (62, `4f0b64348eee`), `NextPageAssetContractTest` (1182, `a89452f01b14`).
+- DONE: **Close the gap in my own rule.** A class-body hash misses a shared helper or module constant
+  those classes call, which would move behaviour without moving the class. Hashed the non-class
+  top-level of both test modules plus `next_harness.py`, `page_harness.py`, `css_cascade.py`,
+  `js_literals.py` and `page_worker.js`. All seven identical across the two heads.
+- DONE: Unconditional re-run. `ran=579 failures=0 errors=0`, the same count as `ddd422bf` — the +120
+  test lines went into classes none of my conditions touch, which is consistent with a commit whose
+  subject is another issue's branch matrix.
+- DONE: CI on this head, read rather than assumed. 10 of 12 pass; `Tests (macos-latest)` and
+  `Tests (windows-latest)` were still pending when I looked, and `mergeStateStatus` was `BLOCKED` on
+  their absence rather than on a failure. The merge gate is the first officer's; recording the state
+  I actually saw and the head it belonged to.
+
+### Summary
+
+Nothing my verdicts depend on moved: not the four runtime assets, not the eight test classes, not the
+shared harness. I did not re-run the live two-project drive, and the reason is stated rather than
+assumed — that drive measured runtime behaviour, and the runtime is byte-identical to the tree I
+measured it on.
+
+**GO carries at c88cc110**, subject to the two platform jobs finishing green.
