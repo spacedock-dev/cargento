@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4592:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4592-review-1
+              briefing:
+                id: briefing:drc-4592:review:attempt-1:revision-1
+                digest: sha256:dba4c741027552b32762dc5514dfa1a56d7d985af2afc7a49ab8bb0d8a68a2d8
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4592](https://linear.app/recce/issue/DRC-4592/make-each-tab-name-its-own-panel-and-carry-a-derived-state-cue) — Make each tab name its own panel and carry a derived state cue

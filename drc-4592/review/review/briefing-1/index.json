@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4592:review:attempt-1:revision-1",
+  "question": "Approve DRC-4592 as delivered: each tab naming its own panel and carrying a derived state cue?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4592:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4592/index.md",
+      "rev": "sha256:7fa04fd6bc063791a88920279c8b858fecb5b77bdb4c02680931b7a3982e9776",
+      "mediaType": "text/markdown",
+      "summary": "GO. Review found the milestone's worst defect on a live board: the graph-mode key resolved to an empty string for every project at project scope, and this PR newly persisted that map, so one project's press rewrote every other project's tab and survived a reload. Both of its oracles passed because both were single-project fixtures, and one seeded the collided key as its expected value. Fixed with a composite project-plus-session key on a separator no label can contain, verified in both directions on a live two-project board, with a project-only key redding its own test - the failure that passes the first direction alone. A legacy-key migration drops unparseable shapes at load, so a shipped browser's collided entry is retired rather than inherited."
+    }
+  ]
+}
