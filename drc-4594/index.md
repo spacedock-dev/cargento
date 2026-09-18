@@ -9,7 +9,7 @@ verdict: ""
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4591
 issue: ""
-pr: ""
+pr: "pr-merge:364"
 mod-block: ""
 linear-status: "Backlog"
 milestone: Clean and Cogent UI/UX
