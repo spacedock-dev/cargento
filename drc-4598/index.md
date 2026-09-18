@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4598:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4598-review-1
+              briefing:
+                id: briefing:drc-4598:review:attempt-1:revision-1
+                digest: sha256:40e8fb4646231c4f27c1d275f3b64282b345569b4231b7b2b69a1879db5e8ae8
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4598](https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its) — Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab

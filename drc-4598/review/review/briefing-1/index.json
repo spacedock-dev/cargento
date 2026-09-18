@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4598:review:attempt-1:revision-1",
+  "question": "Approve DRC-4598 as delivered: the timeline's own filter re-exposed rather than shipping a mode as dead?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4598:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4598/index.md",
+      "rev": "sha256:8f8358d3ddf4164e1123257a6a72c0fa57ebf3b5a33ff8d8c68ccac4e875b3d3",
+      "mediaType": "text/markdown",
+      "summary": "GO. Its AC-2 was the criterion the storage-key collision violated verbatim, and the fix was verified on a live board with two real projects in both directions, with four runtime falsifiers each carrying applied-proof: session-only reds four tests, project-only reds one, write-only namespacing reds five, and dropping the key-shape filter reds the migration test. The seeded expectation that encoded the defect as correct was rewritten on a multi-project fixture rather than patched, and seeding the collided key back still reds the oracle."
+    }
+  ]
+}
