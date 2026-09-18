@@ -1,11 +1,11 @@
 ---
 id:
 title: "Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its"
 started: 2026-09-17T11:07:58Z
-completed: ""
-verdict: ""
+completed: 2026-09-18T02:29:08Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4592
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-18T02:29:08Z
 ---
 
 [DRC-4598](https://linear.app/recce/issue/DRC-4598/re-expose-the-timelines-own-filter-instead-of-shipping-one-of-its) — Re-expose the timeline's own filter instead of shipping one of its modes as a dead-end tab
