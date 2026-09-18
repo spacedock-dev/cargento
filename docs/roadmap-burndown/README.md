@@ -1635,6 +1635,43 @@ Three things follow:
   attempts here were reasoned from reading; both were wrong; the reviewer measured each time and was
   right each time.
 
+## Know which facts entail which, because a contradiction is free to catch
+
+A relayed message said, in the same breath, "no runtime file moved" and "the pins moved again". Those
+cannot both be true: the assembled page cannot change when nothing it assembles has. **The reader
+caught it without measuring anything** — the message refuted itself.
+
+That is a cheaper class of error than a stale figure, and worth engineering for. Where a stale figure
+costs a re-derivation to catch, an internally inconsistent one costs a moment's thought. **If A
+entails B, then observing A tells you for free whether a claimed not-B is wrong.**
+
+Four pairs worth holding in mind here, each of which makes a class of relay error catchable without
+measurement:
+
+- no runtime file changed → the assembled pin is unchanged
+- the assembled digest changed → some part or `styles.css` changed
+- CI is green on head H → those checks belong to H
+- **a mutant was killed → the mutation applied**
+
+The fourth does quiet work throughout. It also **derives** the survivors-owe-a-proof rule recorded
+above rather than leaving it as a separate fact: "killed" entails "applied", because a no-op cannot
+change behaviour against a green baseline — so a red carries its own proof and only a survivor is
+ambiguous.
+
+## A per-case assertion cannot detect that the cases are the same case
+
+A six-case matrix collapsed twice. The first time it exercised one arm. The second time — in the
+repair — it exercised **six copies of one arm**, because a stub returned an object without the method
+the probe requires, so every case drew the same branch.
+
+Both times the per-case guards passed, and they were correctly written: they asserted that the anchor
+and both rows rendered, and those render on *every* branch. **Guarding each case cannot see that the
+cases are identical.** The cardinality is a separate property and needs a separate assertion — here,
+asserting the six shapes *differ*, which now reds with `6 != 2` when the broken stub is restored.
+
+This sits beside *a name is not a property* as the same kind of gap: something the test never asked
+about, because the thing it did ask about was true.
+
 ## Ask what a check would report if it were disconnected from the thing it tests
 
 This is the general form of most of what this milestone found, and the sections below it are
