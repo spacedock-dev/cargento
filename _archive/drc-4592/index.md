@@ -1,11 +1,11 @@
 ---
 id:
 title: "Make each tab name its own panel and carry a derived state cue"
-status: review
+status: done
 source: "https://linear.app/recce/issue/DRC-4592/make-each-tab-name-its-own-panel-and-carry-a-derived-state-cue"
 started: 2026-09-17T10:42:56Z
-completed: ""
-verdict: ""
+completed: 2026-09-18T02:28:32Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4592
 issue: ""
@@ -64,7 +64,8 @@ gates:
                     source: 'Captain''s answer to the burndown dispatch question at the start of this session, reaffirmed as: if you approve that the PRs are good and can be merged, than go ahead and merge the PRs. do not gate on me.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-18T02:28:32Z
 ---
 
 [DRC-4592](https://linear.app/recce/issue/DRC-4592/make-each-tab-name-its-own-panel-and-carry-a-derived-state-cue) — Make each tab name its own panel and carry a derived state cue
