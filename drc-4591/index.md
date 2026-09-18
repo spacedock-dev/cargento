@@ -43,6 +43,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4591:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4591-review-1
+              briefing:
+                id: briefing:drc-4591:review:attempt-1:revision-1
+                digest: sha256:fcdb0b09a88d58b873d8d38cbac2bc786b66fe72e4a3c0a65b688b25c7b1bf7b
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4591](https://linear.app/recce/issue/DRC-4591/adopt-a-three-tier-caveat-rule-and-put-the-long-form-behind-redraw) — Adopt a three-tier caveat rule and put the long form behind redraw-safe disclosures

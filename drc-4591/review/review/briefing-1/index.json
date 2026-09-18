@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4591:review:attempt-1:revision-1",
+  "question": "Approve DRC-4591 as delivered: the three-tier caveat rule with the long form behind redraw-safe disclosure?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4591:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/616f2bc0a16baa51174202242e62e0698d2863d9/drc-4591/index.md",
+      "rev": "sha256:be309dcdc05b5043098ccfd68c58ea5dc7caeec4108bcffeb558ee9325eb07d9",
+      "mediaType": "text/markdown",
+      "summary": "GO. All eight criteria have live verifiers passing at the merged head, and both interactive criteria were settled by a live drive rather than reported unattempted. Three test-side blockers were found and fixed, none with a shipped defect behind it: AC-7's verifier did not reach the Console surface this issue introduced and was replaced with a derived sweep over every web JS file, falsified by planting a docs href in three separate bundle files; AC-3's own empty-body falsifier passed, and the closing assertion had to be tab-wide rather than aimed at the disclosure body, because the reachable arm is the no-summary path; and the implementer's own audit found four universal-worded criteria on enumerated verifiers, of which this issue's AC-1 and AC-4 were widened and AC-7's wording narrowed to state which half is enumerated."
+    }
+  ]
+}
