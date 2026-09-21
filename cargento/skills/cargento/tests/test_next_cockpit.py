@@ -1699,8 +1699,10 @@ console.log(JSON.stringify({steer:nextProjectSteer("cargento",{steers:[]})}));
         ).read_text(encoding="utf-8")
         rule = re.search(r"\.next-steer-caveat\{([^}]*)\}", styles)
         assert rule is not None
-        self.assertIn("var(--fs-sentence)", rule.group(1))
-        self.assertRegex(rule.group(1), r"line-height:|var\(--fs-sentence\)/")
+        # `--fs-sentence` was renamed `--fs-body` at the same 15px.
+        self.assertIn("var(--fs-body)", rule.group(1))
+        self.assertNotIn("var(--fs-label)", rule.group(1))
+        self.assertRegex(rule.group(1), r"line-height:|var\(--fs-body\)/")
         self.assertNotIn("var(--mono)", rule.group(1))
 
     def test_the_setup_disclosure_survives_a_redraw(self) -> None:
@@ -5965,7 +5967,11 @@ console.log(JSON.stringify({
             with self.subTest(rule=cls):
                 rule = next(line for line in styles.split("\n") if line.startswith("." + cls + "{"))
                 self.assertIn("var(--sans)", rule)
-                self.assertIn("var(--fs-sentence)", rule)
+                # `--fs-sentence` was renamed `--fs-body` at the same 15px; the
+                # tier being asserted is the one a sentence is drawn in, and the
+                # label tier below it is `--fs-label`.
+                self.assertIn("var(--fs-body)", rule)
+                self.assertNotIn("var(--fs-label)", rule)
                 self.assertNotIn("var(--mono)", rule)
 
     # ---- DRC-4588 --------------------------------------------------------
@@ -9867,17 +9873,36 @@ class AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest(unittest.TestCase)
 
         It lives here rather than with the raised absences, which are scoped to
         the two DRC-4587 lifted to the sentence tier. This pair is not one of
-        them -- the withheld caption is still `--fs-xs` -- so widening that
+        them -- the withheld caption is still at the label tier -- so widening that
         class to reach it would contradict its own stated bound.
         """
 
-        def literal_px(head: str) -> float:
-            found = re.findall(r"font:(?:\d+ )?([0-9.]+)px", self.block_for(head))
-            self.assertTrue(found, f"{head} declares no literal size")
-            return float(found[-1])
+        sizes = {
+            name: float(value)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", self.css)
+        }
+        self.assertTrue(sizes, "the type scale declares no sizes to read")
 
-        figure = literal_px(".next-delegation-figure>strong")
-        withheld = literal_px(".next-delegation-withheld strong")
+        def declared_px(head: str) -> float:
+            """The size the rule draws at, through the type scale.
+
+            Both rules carried a literal `32px`/`16px` when this was written.
+            The scale replaced every literal `font-size` with a token, so the
+            number is resolved from the token table instead; the comparison
+            below is unchanged, and a rule that declares no size at all still
+            fails here rather than being read as zero.
+            """
+            body = self.block_for(head)
+            found = re.findall(r"font:(?:\d+ )?(?:var\(--(fs-[a-z0-9-]+)\)|([0-9.]+)px)", body)
+            self.assertTrue(found, f"{head} declares no size")
+            token, literal = found[-1]
+            if not token:
+                return float(literal)
+            self.assertIn(token, sizes, f"{head} names --{token}, which the scale does not define")
+            return sizes[token]
+
+        figure = declared_px(".next-delegation-figure>strong")
+        withheld = declared_px(".next-delegation-withheld strong")
 
         self.assertLessEqual(
             withheld,
@@ -10005,8 +10030,8 @@ class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
         each is the only guard against its own collapse.
 
         **What is deliberately NOT asserted is three distinct hexes.**
-        `--ink-label`, `--ink-caption` and `--ink-absence` all resolve to
-        `--ink3`, and `docs/design-next-ui.md` records that as a ruling rather
+        `--ink-label`, `--ink-caption` and `--ink-absence` all resolve to the
+        dim reading ink, and `docs/design-next-ui.md` records that as a ruling rather
         than an accident: the palette has three inks where the roles need four,
         and label, caption and absence are separated by family, case and size
         instead. A hex check here would contradict a shipped decision, which is
@@ -10042,7 +10067,11 @@ class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
 
         self.assertLess(chip, captain)
         self.assertEqual(self.resolved_ink(".next-cockpit-authority>small"), self.inks["ink"])
-        self.assertEqual(self.resolved_ink(".next-cockpit-authority>span"), self.inks["ink3"])
+        # The chip read `--ink3` until `--ink3` stopped being a reading ink and
+        # became the text of an inert control. The property is unchanged -- the
+        # chip is quieter than the line beside it -- so it is asserted against
+        # the dim reading ink that now carries that step.
+        self.assertEqual(self.resolved_ink(".next-cockpit-authority>span"), self.inks["ink2"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

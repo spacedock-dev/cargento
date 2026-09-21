@@ -111,8 +111,10 @@ Assign one owner to each region during parallel work. Keep media queries at the 
 region; a shared responsive block would make every view edit the same tail. Moving a rule between
 regions is an ownership change, not incidental cleanup.
 
-Board sentences have a 15px floor (`--fs-sentence`), at weight 500 and line-height 1.55. Labels
-identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 11px. Four
+Board sentences have a 15px floor (`--fs-body`), at weight 500 and line-height 1.55. Labels
+identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 13px. That
+tier was 11px until v3 raised it, and the five steps are now the whole scale: no literal px size
+and no unused step survives, which a test enforces. Four
 `:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
 and 9px was the smallest step in the file. **Counts here read "at or below 12px" inclusively**, so
 the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 10px,
@@ -145,7 +147,7 @@ stylesheet
 retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
 above 4.5:1 on the ground, panel and inset surfaces. Since DRC-4596 it also enforces size, and the
 census below is its output rather than a hand count: every `--fs-*` token resolves at or above 11px
-with `--fs-sentence` pinned to 15px, the px literals below the label floor are an exact registry, and
+with `--fs-body` pinned to 15px, the px literals below the label floor are an exact registry, and
 every rule passing the membership test resolves at or above a literal 15.0 except an exact recorded
 inventory. **What it still cannot see is a sentence composed across several rules.** Where one rule
 sets the size, a second the family and a third the line-height, no single-rule census can join them,
@@ -168,7 +170,7 @@ screen. Two of those are named below; how many exist, and what to do about them,
 **It can also overstate**, and that is a different mechanism rather than the same one inverted: one
 element matched by **two rules at equal specificity**, where the later one wins. Nothing is composed
 across three rules here and each rule is individually legible; the census simply reads the wrong one
-of the two. Measured: `.next-guardrail-copy small` was declared at `--fs-sentence` inside one grouped
+of the two. Measured: `.next-guardrail-copy small` was declared at `--fs-body` inside one grouped
 rule and at `--fs-xs` by the next, both `(0,1,1)`, so the element rendered at 12.5px while a per-rule
 reading counted it among the compliant. Neither selector string appears twice, so no comparison of
 selector text can find it. `TheCompliantSetIsResolvedOnElementsNotOnRulesTest` resolves the element
@@ -177,10 +179,10 @@ instead, and the sheet no longer declares a size it immediately overrides.
 That guard closes the equal-specificity case and **not** the general one: a rule reaching an element
 through ancestors the tier selector never names is still invisible to it, because the path is built
 from the selector rather than from the page. Widening it by hypothesising every DOM a rule could
-match was measured and abandoned at 8,873 false positives — the "built a DOM the application never
+match was measured and abandoned at 8,873 false positives: the "built a DOM the application never
 renders" failure this file already warns about, one layer up.
 
-**Sixty-one rules resolve to `var(--fs-sentence)`**, across sixty distinct selectors, and
+**Sixty-one rules resolve to `var(--fs-body)`**, across sixty distinct selectors, and
 `NextPageAssetContractTest` holds that as a set and not only as a count. The set is what matters:
 a count passes a swap where one rule leaves the tier and another joins it at 15px, and this
 milestone shipped exactly that swap when the authority chip left the tier and the captain line
@@ -322,7 +324,7 @@ no size of its own so it inherits the value's.
 `AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest` holds that form, and holds the delegation
 pair beside it, because a stamp that adds no size still says nothing about the base rule it sits on.
 
-Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
+Space Grotesk and IBM Plex Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
 no font route or browser request to a provider. Licenses and source hashes live under `web/fonts/`.
 
@@ -755,7 +757,8 @@ stalled notice. The server stream budget and revision rules do not change.
 
 ## NUI-14: the specified fonts travel inside the page
 
-The design names Space Grotesk at weights 400 through 700 and Space Mono at weights 400 and 700.
+The design names Space Grotesk at weights 400 through 700 and IBM Plex Mono at weights 400, 500
+and 600 upright plus 400 italic.
 The canonical bundle ships upstream Latin, Latin Extended, and Vietnamese WOFF2 subsets. `page.py`
 validates each packaged payload and embeds it as a data URL while assembling the one-page response.
 
@@ -958,18 +961,22 @@ six corner treatments**: none, 3px, 4px, 6px, 9px and 999px. Because every one w
 "faint outlined box" or "bare text", the whole range was spent on the secondary tier and nothing was
 left to mark the one control to press. `--accent` never appeared at rest on a control at all.
 
-`.next-action` is that primitive, with `--radius-control`, `--control-bd` and `--control-pad`. It is
+`.next-action` is that primitive, with `--r-control`, `--line` and `--control-pad`. It is
 a class a control opts into by writing it, **not** a selector group in the stylesheet. The group was
 tried on paper and rejected: it touches one file instead of seven and satisfies the same grep, but it
 means every new control must be appended to a growing list in the sheet, which is precisely the
-ad-hoc drift that produced the 24 recipes. The resting border is `--ink3` (5.67:1 on `--panel`)
+ad-hoc drift that produced the 24 recipes. The resting border is `--line` (3.24:1 on `--panel`)
 rather than `--line2` (1.61:1), because a box a reader is meant to see has to clear the 3:1
-non-text bar.
+non-text bar. `--ink3` held that job first, at 5.67:1, which cleared the bar by borrowing a text
+ink for a boundary; v3 gave boundaries their own tokens instead, so `--line` bounds a control and
+`--rule` divides rows and is out of the standard's scope rather than exempt from it.
 
 Seven rules collapse onto it. The criterion was stated universally and **is not**: it is accepted on
 an enumerated verifier, with five further action rules filed as their own issue and the exempt ones
 named with their reasons in the sheet: `--amber` state signals, a `role="switch"`, a selection, two
-disclosures, and the legacy project view. `.next-action--primary` reaches exactly one tab, because
+disclosures, and the legacy project view. `.next-action--primary` is a filled tier as of v3, accent on
+`#14140f` at 13.66:1, where it was previously an accent border on a transparent box and so still
+left nothing on the board reading as the act to take. It reaches exactly one tab, because
 four of the five have no action to mark at all; what each of those tabs' main action should *be* is
 a product question filed separately rather than answered in a restyle.
 
@@ -1012,7 +1019,7 @@ Cargento pays for its honesty in vertical space, and before this rule it paid th
 every sentence. Each caveat rendered as one `<p class="next-cockpit-reading-why">` in the reading
 flow, so COUNTS closed with sixty-nine words under five numbers and the one operational
 instruction in them was the third sentence. DRC-4587 made this worse rather than better: raising
-board sentences to `--fs-sentence` gave `.next-cockpit-count-label` and `.next-cockpit-reading-why`
+board sentences to `--fs-body` gave `.next-cockpit-count-label` and `.next-cockpit-reading-why`
 the identical font shorthand, so size stopped separating a caveat from the finding it qualifies.
 
 A caveat now goes in one of three tiers, and the rule is about placement rather than length:
@@ -1048,7 +1055,7 @@ rendered page carries neither the token nor the path.
 
 ### The control is never smaller than what it hides
 
-A tier-2 summary is set at `--fs-sentence`, the same tier as the body it reveals, because it
+A tier-2 summary is set at `--fs-body`, the same tier as the body it reveals, because it
 carries the only words a reader has for deciding whether to open it. A control set below the text
 it conceals is the same defect class as an absence set above the value it replaces, which
 DRC-4587 shipped in ten places across four review rounds: the two halves are chosen by a branch

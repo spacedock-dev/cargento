@@ -1088,7 +1088,10 @@ console.log(JSON.stringify(Object.assign(held, {
         # "Try again in a moment" is the warn line; the answered pair is the quiet
         # one, and a raise underway is the only state that says work is happening.
         self.assertIn("border-color:var(--amber)", throttled.group(1))
-        self.assertIn("border-color:var(--line2)", answered.group(1))
+        # v3 deleted `--line2`; `--line` is the quiet boundary it renamed to, and
+        # the property is unchanged -- the answered pair sits on the neutral
+        # boundary while the warn pair keeps `--amber`.
+        self.assertIn("border-color:var(--line)", answered.group(1))
         # `stale` shares that rule rather than bringing a fourth look, and appears
         # in no other: a second rule would win by order and quietly reclassify a
         # refusal the reader can act on as one they cannot. The announcement is
@@ -1114,7 +1117,7 @@ console.log(JSON.stringify(Object.assign(held, {
             NEXT_STYLES,
         )
         self.assertIn(
-            ".next-action:focus-visible{outline:2px solid var(--accent);outline-offset:3px}",
+            ".next-action:focus-visible{outline:2px solid var(--accent);outline-offset:1px}",
             NEXT_STYLES,
         )
         copy = re.search(r"\.next-session-copy\{([^}]*)\}", NEXT_STYLES)
