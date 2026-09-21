@@ -17,7 +17,7 @@ stages:
     - name: triage
       gate: true
       model: opus
-      concurrency: 6
+      concurrency: 8
     - name: implementation
       worktree: true
       model: opus
@@ -1348,6 +1348,606 @@ uncommitted work. They were recovered by moving them onto the in-flight PR's bra
 Branching from `origin/main` is the half that prevents recurrence on its own: a worktree cut from a
 local `main` that has drifted carries that drift into its pull request, where it reads as scope
 nobody asked for.
+
+
+### Do not run git inside another agent's worktree at all, even read-only
+
+The first officer detached a live worktree's HEAD **twice in one day** — once mid-implementation,
+recovered by the ensign with a tag, and once while verifying byte pins on a frozen integration
+branch. The second time was after writing this rule down and quoting it at someone else.
+
+So the rule is not "be careful in someone else's worktree". Care did not work. The rule is that a
+first officer has no reason to be in one:
+
+- To read a file at a commit: `git show <sha>:<path>` from the primary checkout. No worktree, no
+  checkout, nothing to detach.
+- To compute something over a tree: write the blob to a temporary file and work on that.
+- To need a real checkout: `git worktree add /tmp/<name> <sha>`, which is yours and disposable.
+
+`git checkout` inside a worktree another agent is working in is the one command that looks read-only
+and is not. Both incidents recovered without loss, and both times the recovery was luck rather than
+design: the first because the ensign read `[detached HEAD ...]` in output it had already skimmed
+four times, the second because the branch ref, HEAD and origin all happened to be the same commit.
+## Two branches implemented one ruling without coordination, and only one is safe
+
+A captain's ruling said exactly one rule may assign a colour to `[data-next-withheld]`. Two branches
+delivered it independently and neither knew the other had. DRC-4592 removed the competing
+`--ink2` rule; DRC-4589 removed the guard rule that was beating it. Resolved through
+`tests/css_cascade.py`'s `matches()` down a real element path, on four trees:
+
+| tree | renders | winning selector |
+|---|---|---|
+| `origin/main` | `--ink3` | `.next-cockpit-scope-tree small[data-next-withheld]` (0,2,1) |
+| DRC-4589 | **`--ink2`, the value ink** | `.next-cockpit-scope-tree small` (0,1,1) |
+| DRC-4592 | `--ink3` | the bare `[data-next-withheld]` (0,1,0) |
+| DRC-4595 | `--ink3` | the (0,2,1) guard |
+
+So the three correct trees are correct for three different reasons, and only DRC-4592's is correct
+on its own. DRC-4589's edit is not merely insufficient alone — once 4592 lands it is **redundant**,
+because 4592 deletes the whole rule. An absence rendering in the value ink, on the branch whose
+entire job is holding those inks apart.
+
+The merge hazard is precise and no hunk conflicts: **take 4589's deletion of the guard while keeping
+the `--ink2` rule from main, and the defect reappears on a tree where every side was green in
+isolation.** Resolve the element path on the consolidated sheet; never infer it from each branch.
+
+Four things this earned:
+
+- **Run the falsifier, not just the verifier.** DRC-4589's AC-3 already contained the property — its
+  *Falsified by* said "or the register resolving to anything other than `--ink3`". The implementer
+  built the *Verified by* oracle, encoded that oracle as the test, and never ran the falsifier. The
+  suite is green on a criterion whose own falsifier is tripped. This is sharper than an
+  under-specified criterion and the fix is procedural: every criterion here carries both halves, and
+  only one of them was being run.
+- **Count-shaped criteria invite this.** "Exactly one rule colours it" is satisfied by the broken
+  tree and the correct one alike. Write the criterion as the property a reader sees and verify it by
+  resolving.
+- **Verify a cascade property at the end of the integration**, not after the pick that raises it. The
+  tree is legitimately wrong in between.
+- **A cross-branch dependency that lives only in an agent's head is recorded nowhere.** Neither
+  entity said so. Ask the author which it was — a dependency to write down, or a misread of which
+  rule wins — because only one of those is a defect.
+
+## A second fixture cannot fail on the surface nobody thought to add
+
+A criterion's verifier was found not to reach a surface the same change had introduced. The obvious
+repair is to add that surface to the fixture. It is the weaker one, and the reason generalises:
+**the next surface is also not in the fixture.** Adding one closes the instance and leaves the class,
+which is how the gap was created in the first place.
+
+The stronger repair was already the house style and had simply not been applied here — one
+neighbouring test walks every `.py`, `.js`, `.css` and `.html` under the runtime rather than naming
+files, and the helper's own docstring makes the argument. The derived version of the failing check
+came to about ten lines: sweep the emitted literals across every file, reject the ones that match,
+**and assert the file count**, so a walk that reaches nothing cannot pass green.
+
+That last clause is the part people leave out. A sweep with no subjects and a sweep with no
+violations report the same thing, which is the vacuity failure recorded above in another costume.
+
+**Adding one arm moves the gap rather than closing it.** The same round had a criterion promising a
+cross-product of six branch combinations and exercising one. Adding a second arm would leave it
+claiming six and exercising two — better, and still a criterion implying coverage it does not have.
+The two honest answers are to assert across the whole cross-product, or to narrow the wording and say
+what it covers. Silently covering more than before and less than promised is not one of them.
+
+**Say the sweep's blind spot in its docstring.** The derived check above cannot see an href composed
+through a template hole, because the helper splits literals at `${...}`. A derived instrument with an
+unstated limit is how the next reader concludes it proves more than it does.
+
+## A verdict carries a head move when nothing it depends on moved — including the code that asserts it
+
+The crude question is *did the head move*. The useful one is **did it move anything my conditions
+depend on**, and the hard half is enumerating the dependency set.
+
+Measured here twice in one round. A guardrail verdict was carried forward on the reason "the
+stylesheet is unchanged" — true, and too narrow: **three of its four conditions were assertions in a
+test file the commit did touch**, not assertions about the stylesheet. The reviewer checked both
+halves rather than accepting the carry, extracted the asserting class from both blobs, and found it
+byte-identical. The verdict carried, now on a dependency set someone had actually enumerated.
+
+> A condition's dependencies include the code that asserts it, not only the code it asserts about.
+
+The other half of the same round: a verdict was correctly *not* carried, because the file its test
+lived in had moved by 218 lines — and the reviewer that wrote it observed that "re-run, don't
+re-derive" was right **only because the commit had not touched the classifier**, and would have been
+wrong if it had.
+
+Compare the thing, do not read the hunk headers. Byte-comparing an extracted class answers the
+question; a diffstat naming the file does not.
+
+## A baseline that errors invalidates every verdict in the round
+
+A reviewer's first pass named the wrong test class and everything came back `errors=1` — including
+the baseline. It discarded the entire round rather than read verdicts under it.
+
+That is the same trap as a mutation that never applied, one layer up: **the baseline is an instrument
+too**, and a broken one reports on nothing while producing output shaped exactly like results. Check
+the baseline is clean before reading any verdict measured against it, and throw away the whole pass
+if it is not — the individual results are not salvageable, because none of them measured what it
+claims.
+
+## A pre-registered contract cannot rest on line numbers
+
+A reviewer pinned its re-check conditions into the entity files so they would survive its own session
+ending — and the very next commit moved its anchors: an ordering test from 11119 to 11149, a fixture
+from 7681 to 7682, a guard from 35 to 36. **A contract meant to survive a fix round cannot rest on
+numbers that drift under it**, and the round it exists to check is precisely the round that moves
+them.
+
+Two repairs, both cheap:
+
+- **Anchor on greppable strings**, not offsets — a test class name, a selector, a literal.
+- **Mark measured offsets as re-measure-on-the-fix rather than compare-against-these.** An A/B
+  baseline is evidence the property was real, not a value the fix must reproduce.
+
+## Consolidating two blind readers makes one shared blindness, not a fix
+
+Two readers of the same map were independently blind to a state. The right repair was to give them
+one classifier to ask, and that repair is genuinely better: the remaining defect became one condition
+in one function instead of two readers to keep in step.
+
+But it converts two independent bugs into one shared bug, and the reviewer that spotted it drew the
+warning worth keeping: **"the two readers now agree" must not be written as "the state is handled".**
+The commit message framed the win as the two resolving one read, which a later reader can take as
+coverage. Say what agrees and what is still open.
+
+This is the same hazard as a comment asserting an invariant its own function violates — three of
+those shipped in this milestone — except a commit message has a longer half-life and no one greps it
+when the behaviour changes.
+
+## Pre-register the re-check conditions before the fix exists
+
+Two reviewers, waiting on a fix round, wrote down what they would accept **before** the fix was
+written, and committed it. One said why in a sentence worth keeping: written afterwards, the
+conditions can be shaped by the fix.
+
+It paid immediately. The conditions named the trap the obvious repair was about to fall into — a
+`.error` test placed inside a `!entry.data` branch, which is the natural place and does nothing,
+because `!data` is *false* in exactly the state that is invisible. That reached the implementer as a
+target rather than as a re-check failure, which is the difference between one CI round and two.
+
+It also produced the more unusual discipline: **one reviewer recorded what would make its own plan
+wrong.** If the fix dropped a storage mirror rather than keying it, two of its three conditions
+dissolved — and it said so explicitly, rather than leaving a plan standing that could be used to
+argue down a legitimate answer. A pre-registered condition that cannot be wrong is a preference
+wearing a measurement's clothes.
+
+Three properties make a pre-registered condition worth having:
+
+- **It is falsifiable by the fix**, not just by the defect.
+- **It names the shape that would pass it wrongly** — a fix that namespaces a write but resolves its
+  fallback from the wrong scope passes "press A, open B" and fails "press B, re-open A", so the
+  condition has to demand both directions.
+- **It says what the fixture must be able to do**, not only what it must contain. A multi-project
+  fixture is necessary and not sufficient while an existing test still seeds the collided value as
+  its expected result.
+
+## The fixture's shape hides what the assertion's strength cannot reach
+
+The worst defect this milestone shipped was a `localStorage` key that collapsed to the same value for
+every project, so one project's press rewrote every other project's tab and survived a reload. Both
+of its oracles passed, and **one of them seeded the collided key as the expected value.**
+
+The reviewer that found it drew the rule: **a defect needing two projects to be visible cannot be
+found by mutating a one-project fixture, at any width and with any assertion.** Strengthening the
+assertion would not have caught it. Only a second project does.
+
+So when a criterion quantifies over instances of a thing — projects, sessions, tabs, panels — ask
+whether the fixture contains **two** of that thing before asking whether the assertion is strong
+enough. A single-instance fixture cannot express a collision, an ordering, or an interference, and no
+amount of mutation testing over it will say so: every mutant dies or survives for reasons that have
+nothing to do with the property.
+
+An oracle that seeds the defect as its expected value is the end state of this. It is worse than
+having no oracle, because it converts the defect into a documented requirement.
+
+## A SURVIVED can also mean the run never loaded the test that kills it
+
+A second false-SURVIVED cause, found the same day as the no-op one and its exact mirror. Three
+mutations were reported as surviving; re-run against the full 564-test selection rather than a narrow
+one, all three died — two killed board-wide by a module the narrow run never loaded.
+
+So a survivor has three explanations, not two, and they need separating before it becomes a finding:
+
+1. The oracle genuinely does not catch it.
+2. **Nothing was mutated** — the substitution did not match the file.
+3. **Nothing that catches it was run** — the selection was too narrow.
+
+The reviewer withdrew all three findings and said plainly that the criticism narrowed to verifier
+hygiene rather than an unguarded property. Withdrawing a finding costs nothing here; a fix round
+spent closing a hole that was never open costs a CI cycle and a merge serialization.
+
+## A map written only on settle cannot carry an in-flight marker; one written at request time can
+
+Two shared maps in the same bundle produced opposite defects, and the difference is when they are
+written, not how carefully.
+
+`nextCockpitContexts` has every `.set` inside a `.then` or `.catch`, so an entry is only ever
+replaced **on settle** and no in-flight marker is written onto a live entry. `projectTerminalBySession`
+writes `{state:"registered", loading:true}` at **request** time, and that is the one that produced a
+re-check flipping a working capability to unknown on every poll.
+
+That is the property to state in the comment on any shared map: **which discipline it keeps.** It
+tells the next writer what they may not do, where a comment describing the current readers goes stale
+the first time a reader is added.
+
+The two defects those maps produced are worth naming as a pair, because they are the same family
+pointing opposite ways. **One called a working capability unknown. The other called a failed read
+fine.** The second is worse, because it is silent — the first at least shows a reader something has
+gone wrong, while the second renders a stale answer identically to a fresh one.
+
+Three reviewers found the second independently, by three different routes: a reader keying off the
+wrong field, a writer's merge semantics, and the writers disagreeing on their field sets. None had
+seen another's work. Where two agreeing can still be one layer short — as happened here on the merge
+semantics — three arriving separately is what makes a finding safe to act on without re-deriving it.
+
+## Asserting a class is emitted says nothing about whether the class is styled
+
+The obvious test for a new render variant is to assert its class name appears in the output. It is
+worthless, and worse than worthless here, because of what an unstyled variant inherits.
+
+Measured while fixing a cue that reported a failed read as still pending: **deleting the new
+variant's CSS rule entirely left the whole cockpit module green.** Only the byte pins reddened — and
+those fire on any stylesheet edit, so they are evidence of nothing. An unstyled variant falls back to
+its base rule's ink, which on this board is `--ink2`, the **value** ink. So a stated absence would
+render exactly as loudly as the figure it replaces: the milestone's central defect, reintroduced by
+the guard that was supposed to prevent it.
+
+The repair is the same shape as every other oracle repair here. **Derive the variants from the
+producer and resolve each through the cascade against the unstyled base**, rather than asserting a
+string appears. Doing it that way also caught a second, pre-existing variant that had been equally
+unguarded — which an assertion naming the new class by hand could not have reached.
+
+The general form: **a name is not a property.** A test that checks a class, an attribute or an id is
+present has checked that an emitter ran. Whether anything downstream honours it is a different
+question, and on a cascading medium the default answer is that it does not — it inherits something,
+and what it inherits is usually the thing the variant exists to differ from.
+
+## A criterion number is not a search key, and its falsifier may have more than one arm
+
+**Two rules, and the first officer got the second one wrong twice before measuring it.**
+
+**Ten issues in this burndown each carry an AC-3.** A bare criterion number is ambiguous ten ways, so
+it must never be the key you search on, and a criterion must be cited as `DRC-NNNN AC-N` in messages,
+test docstrings and commit messages alike.
+
+**But ambiguity was not what went wrong here.** The first officer grepped for a criterion number,
+found a matching assertion, declared the criterion closed, and overruled a reviewer that had executed
+the falsifier at four heads. Then, correcting that, diagnosed it as two issues sharing a number. The
+reviewer measured again: the test was the right issue's, in the right class, with the right criterion
+in its docstring. **The conflation was inside one criterion, between two manifestations of its own
+falsifier.**
+
+Deleting the guard produces an empty paragraph two ways: inside a disclosure when the caller passes a
+summary, and bare when it does not. The assertion aimed at the first. With the guard deleted the tab
+rendered **one bare empty paragraph and zero empty disclosure bodies** — so the assertion is genuine,
+and simply **unfalsifiable by that mutation**, because the caller it watches always passes a non-empty
+body and the guarded branch never fires there.
+
+Three things follow:
+
+- **A falsifier can have arms, and covering one is not covering the criterion.** Ask which callers
+  reach the guarded branch before deciding an assertion covers it.
+- **State an acceptance by shape, not by number.** "Add an empty-body assertion" would have landed on
+  the disclosure again and survived a fifth head. "A behavioural test must red on the no-summary arm"
+  cannot be satisfied the wrong way.
+- **A correction is a claim and owes the same proof as the finding.** Both of the first officer's
+  attempts here were reasoned from reading; both were wrong; the reviewer measured each time and was
+  right each time.
+
+## Know which facts entail which, because a contradiction is free to catch
+
+A relayed message said, in the same breath, "no runtime file moved" and "the pins moved again". Those
+cannot both be true: the assembled page cannot change when nothing it assembles has. **The reader
+caught it without measuring anything** — the message refuted itself.
+
+That is a cheaper class of error than a stale figure, and worth engineering for. Where a stale figure
+costs a re-derivation to catch, an internally inconsistent one costs a moment's thought. **If A
+entails B, then observing A tells you for free whether a claimed not-B is wrong.**
+
+Four pairs worth holding in mind here, each of which makes a class of relay error catchable without
+measurement:
+
+- no runtime file changed → the assembled pin is unchanged
+- the assembled digest changed → some part or `styles.css` changed
+- CI is green on head H → those checks belong to H
+- **a mutant was killed → the mutation applied**
+
+The fourth does quiet work throughout. It also **derives** the survivors-owe-a-proof rule recorded
+above rather than leaving it as a separate fact: "killed" entails "applied", because a no-op cannot
+change behaviour against a green baseline — so a red carries its own proof and only a survivor is
+ambiguous.
+
+## A per-case assertion cannot detect that the cases are the same case
+
+A six-case matrix collapsed twice. The first time it exercised one arm. The second time — in the
+repair — it exercised **six copies of one arm**, because a stub returned an object without the method
+the probe requires, so every case drew the same branch.
+
+Both times the per-case guards passed, and they were correctly written: they asserted that the anchor
+and both rows rendered, and those render on *every* branch. **Guarding each case cannot see that the
+cases are identical.** The cardinality is a separate property and needs a separate assertion — here,
+asserting the six shapes *differ*, which now reds with `6 != 2` when the broken stub is restored.
+
+This sits beside *a name is not a property* as the same kind of gap: something the test never asked
+about, because the thing it did ask about was true.
+
+## Ask what a check would report if it were disconnected from the thing it tests
+
+This is the general form of most of what this milestone found, and the sections below it are
+instances rather than separate rules. It is `AGENTS.md`'s first Measured Invariant — *ask what the
+figure reads when nothing happened, and whether that differs from the figure when something happened
+and found nothing* — aimed one layer out, at the instrument instead of the data:
+
+> **What would this check report if it were disconnected from the thing it tests?** If that answer is
+> identical to its passing output, the check proves nothing.
+
+It does not matter how the disconnection happened. A mutation whose pattern never matched the file. A
+mutation that matched the wrong thing — a pinned fragment's capitalisation rather than the prose. A
+test whose class lacked the fixtures it needed. A one-project fixture that cannot express a
+collision. A sample taken four microtasks after the reply had already landed. In every case the
+instrument reported on something other than the subject, **and said so in exactly the words it would
+have used if it had worked.**
+
+The framing earns its place by telling you what to *do*, where the taxonomy only says what to avoid.
+**Disconnect the check deliberately and confirm it still reports.**
+
+- For a mutation: that is the substitution proof — grep the token, or better, watch the rendered
+  property move.
+- For a timing-sensitive test: run it against unmutated code at the same sample point. If it passes
+  there too, the sample point is the subject, not the code.
+- For a fixture: ask what it would print with the defect made impossible. A one-project fixture
+  prints the same thing either way, which is why no assertion over it could have caught a
+  cross-project collision.
+
+It also explains cleanly why survivors and reds divide the way they do. **A red reports a
+*difference*, and a disconnected instrument cannot produce one.** Only a claim of *sameness* is
+ambiguous between "nothing differs" and "nothing was measured" — which is why a survivor owes a
+proof and a red does not.
+
+**The same failure appears at two scales, and a reviewer named the pair after committing one of
+them.** A six-case matrix collapsed because six cases silently became one. A reported measurement
+collapsed because one reading silently spanned three heads. Both are a claim covering more than was
+measured, and both read as evidence — the matrix because every case passed its own guard, the
+measurement because it was true when taken.
+
+What distinguished the things that survived the churn from the things that did not, in that
+reviewer's own words: the contracts held because they were **string-anchored and re-run on every
+head**; the claim did not, because it was **neither**. That is the test. Not how carefully something
+was written, but whether it is re-derived when the ground moves.
+
+## A mutation that does not match the file's text is a no-op, and reads as SURVIVED
+
+A falsifier survived a set-equality assertion it should have killed. The oracle was fine: the `perl`
+substitution had not matched the file's actual line wrapping, so nothing was mutated and the test
+passed because nothing had changed.
+
+It was caught only because the survival was **too convenient to believe**. That is the part worth
+recording, because it does not generalise: a mutant whose survival looked *reasonable* would have
+been written down as "not detected by this oracle", and a working oracle would have been rewritten
+or reported as toothless.
+
+So the check is mechanical rather than a matter of judgement. **Before trusting a SURVIVED result,
+grep for the mutated string and assert the count changed.** Confirm the substitution applied, then
+read the verdict.
+
+**The check applies to SURVIVED, not to RED**, and the asymmetry is worth stating as *why* rather
+than as a rule to remember. **A red is self-proving: it reports a behaviour change, and a no-op
+cannot produce one against a green baseline.** A survivor reports an *absence* of change — and
+"nothing changed because the oracle is blind" and "nothing changed because nothing was mutated" are
+the same observation until someone goes and looks. That is the entire rule, and it is why only a
+survivor owes a substitution proof. Bounding it this way matters, because a rule applied to every mutation doubles
+the cost of a pass that is mostly reds.
+
+**And a grep is not always sufficient proof.** The strongest version confirms the mutant reached the
+*thing under test*, not merely the file: one repair here proved old-string 1→0 and new-string 0→1
+**and** that the resolved ink moved `var(--ink-label)` → `var(--ink-caption)` down a real element
+path. The text changed, the rendered property changed, and 319 tests still passed — which is what
+makes the surviving oracle a genuine finding rather than a possible miss.
+
+This is the same family as a test that landed in a class without its fixtures and read green twice:
+in both, the thing under test was never reached, and the result says nothing about the oracle. A
+SURVIVED reported as a finding is a claim about an oracle, and if the mutation silently failed it is
+a defect report about code that has no defect — which will read convincingly, because a clean run
+with a plausible explanation always does.
+
+## A mutation check that includes the byte-pin oracles measures nothing
+
+DRC-4592 mutation-checked four assertions and reported all four killed. Re-running with the byte-pin
+tests excluded, the real answer was different: the pin test fires on **any** stylesheet edit, so it
+reports "killed" for every mutation and says nothing about whether the semantic oracle works.
+
+Exclude `test_next_page`, `test_next_flag` and `test_focus` from every mutation check on a stylesheet
+change, or "killed" means only that the file changed.
+
+The same run produced the other half of the rule. A surviving assertion can be stronger or weaker
+than the one it replaces, and only a mutation says which: three cue tuples were confirmed droppable
+because the surviving test killed all three planted mutations and is strictly stronger, while a
+title/meta tuple that looked equally redundant turned out to be the only thing catching `--fs-2xs`
+being redefined above `--fs-sm` in `:root` — the surviving assertions pin which *token* each half
+uses and cannot see the token move underneath them.
+
+## A count passes a compensating swap
+
+`assertEqual(70, len(above))` over a sentence-tier census reds when a rule leaves the tier, and reds
+when one leaves for a lower tier. It **passes** when one rule leaves and another joins at the same
+size. DRC-4589 moving `.next-cockpit-authority>span` off the tier while `>small` joins it is exactly
+that swap, so the integration carrying both is the case that walks through the hole, and the oracle
+would be green on the change that defeats it.
+
+Repairing an oracle that the merge itself defeats is not a promoted finding, and the no-promotion
+rule does not apply to it.
+
+**Assert the set and the count, not one of them.** "Compare the set rather than its length" was the
+first answer here and it is half of one: two selectors in this census are declared twice, so the
+collection held 61 entries across 60 distinct selectors, and a set alone silently loses that
+duplicate. The set catches the compensating swap; the count catches a duplicate appearing or
+vanishing. **Neither is a superset of the other** — that is the whole reason, and without it the
+next reader will reasonably simplify the pair back to one. A set cannot see a duplicate appear or
+vanish because it collapses them; a count cannot see a swap because the total does not move. Either
+alone is an oracle with a hole in it that nobody will look for again, because the first hole is
+closed and the assertion reads thorough.
+
+## Report the measurement you took, not the one you meant to take
+
+The divergence between two bases was reported here as 333 insertions across four test files. It is
+399 across seven paths, and the seven include `styles.css` and a whole file that exists on one side
+and not the other. The figure came from a `git diff --stat` scoped to one directory, read from a
+truncated tail, and then stated as the total. The integrator re-measured and corrected it.
+
+Nothing about the conclusion changed, which is why it survived being wrong: a scoped measurement
+that happens to support the right answer is the easiest kind to ship. State the scope in the same
+sentence as the figure, and read the summary line rather than the tail.
+
+## One pull request per conflict surface, not one per branch
+
+Four branches were queued to land one at a time, each rebased onto the previous merge. All four
+rewrite `cargento_runtime/web/styles.css` and all four move the same three byte-pin oracles, so that
+plan resolves the same conflict four times against a file moving underneath each resolution — the
+"each side is correct for a tree that no longer exists" failure `AGENTS.md` already names. They were
+consolidated into one integration instead: one resolution with all four intents visible, one pin
+regeneration, one CI cycle, one review.
+
+`AGENTS.md`'s **Calibrating Effort** already says the only constraint that genuinely forces a split
+is that exactly one pull request may touch `cargento_runtime/web/`. Read that as an instruction to
+**combine**, not merely as a limit to respect. Branches that share the forcing surface belong in one
+pull request; the split was costing four merge serializations to avoid one conflict resolution.
+
+Deriving the integration is where the work is, and it is not the same as merging the branches.
+Verify, do not assume:
+
+- **Which commits are actually unique.** Three of the four branches carried a dozen commits already
+  on main under different SHAs, from a squash merge. Merging them would have re-resolved all of it;
+  cherry-picking the six unique commits did not.
+- **That the shared base is the base that merged.** Three branches sat on `2a07380` and one on
+  `1d847b0`. The two carry the same commit message and are not the same tree — they differ by
+  roughly 333 insertions across four test files, and `1d847b0` is the one that merged. Every byte pin
+  on those three branches was therefore correct for a tree that never landed. Regenerate from the
+  assets; never resolve a pin textually.
+- **That a squash leaves no ancestry.** After a squash merge the branch tip is not an ancestor of
+  main, so an ancestry check reads as "not merged" on work that is fully landed. Verify by content.
+
+Order the picks largest-delta-first on the shared file, so the later ones resolve against the fuller
+sheet once instead of twice. Keep the implementers alive through the integration and ask them what a
+hunk was for: three sent unprompted dossiers of load-bearing constraints that no diff shows, and the
+one contradiction between them was the finding above.
+
+## A dead worker still holds its pane
+
+Five workers killed by a usage limit stayed on the roster and kept their tmux panes. The next
+dispatch failed with `fork failed: Device not configured` — read as a spawn problem, when the cause
+was five processes that had already stopped doing anything. `ListAgents` shows them as ordinary
+teammates; nothing distinguishes a dead one from a busy one.
+
+Reap before dispatching replacements. `TaskStop` takes the qualified `name@session` form, not the
+` [ref]` suffix a listing prints — passing the ref fails with "No task found" and lists the running
+teammates, which is the form to copy from.
+
+And check for durable output before re-dispatching: of four triages killed mid-flight, one had
+committed 25KB of work to its entity and another had committed nothing. A replacement told to start
+over discards the first; a replacement told to read the tree first does not.
+
+## The launcher's help cannot tell you whether a subcommand exists
+
+`spacedock state commit <slug> --workflow-dir <dir>` works, and has been run dozens of times here.
+`spacedock state --help` lists only `init`. An ensign checked the help, correctly concluded the
+command was not there, and hand-rolled the path-scoped `git add`/`git commit` substitute instead.
+
+Probing further makes it worse rather than better. `state commit --help` does not error: it falls
+through and prints the **top-level** help at exit 0. So does `state --help`. So does
+`state notarealsubcommand --help`. A real-but-undocumented subcommand and an invented one produce
+byte-identical output and the same exit code, so the help cannot distinguish them **in either
+direction** — an agent that does the right thing and reads it gets a confident, well-formed answer
+that is wrong.
+
+Two consequences for a dispatch:
+
+- **Name the launcher commands a stage needs, and say they are verified.** A worker that meets an
+  undocumented one will otherwise either hand-roll a substitute, which is fine, or skip the step,
+  which is not.
+- **Do not ask a worker to probe an unknown state subcommand to find out.** The state checkout is one
+  shared index with sibling writers mid-flight, and a command whose staging behaviour is unknown is
+  how somebody else's staged entity gets swept into your commit. The ensign here declined to probe
+  for exactly that reason and was right to.
+
+## Never pin a SHA or a figure table into a brief for a branch still moving
+
+Four reviewers were dispatched against an integration branch with its head SHA and its five
+regenerated byte pins written into their assignments. The integrator committed once more while they
+were starting, so all four were reviewing a superseded tree against pins that were ten bytes wrong,
+and would have reported a clean result about a tree nobody was going to merge.
+
+The same error had already been made twice that day in different clothes: a dispatch base derived
+before a pull request merged, which three triages caught and re-derived; and a divergence figure
+measured with a path scope and then stated as a total. All three are one mistake — **a figure
+handed on without the moment it was true**.
+
+The fix is to hand over the derivation rather than the answer. A brief says:
+
+- **Derive the head yourself when you start**, from the branch tip or the pull request's
+  `headRefOid`, whichever is later. Never take a SHA from a brief.
+- **Re-derive every byte pin from the assets**, and compare against no list at all — including a
+  corrected one, because a list in a message is a claim about a minute ago.
+- **Re-check the head immediately before writing a verdict, and state which SHA was reviewed.** If
+  it moved underneath, say so rather than quietly re-running.
+
+A worker reviewing an in-flight branch also needs somewhere to stand. An unpushed commit is still a
+valid object in the shared store, so `git worktree add /tmp/review-<slug> <sha>` works without
+touching the branch's own worktree — which stays off limits, along with every frozen branch, because
+those are the only copy of that work if any of it has to be redone.
+
+The general form: **holding a push to finish one small confirmation costs more than the confirmation
+is worth** once anyone else is reading the branch. Push, let the gate run, and land the answer as a
+follow-up commit.
+
+## A criterion's wording and its verifier are written at different moments
+
+An implementer audited its own fourteen criteria after a reviewer found one that was green over a
+defect, and reported the structural reason rather than an apology:
+
+> I wrote each criterion's wording and its verifier at different moments and never diffed one
+> against the other. The wording reaches for the property a user cares about, which is naturally
+> universal. The verifier reaches for what is cheap to assert, which is naturally a list. Nothing
+> forced me to reconcile them, and the gate reads the bullet rather than the test.
+
+The audit found **four** universal-worded criteria on enumerated verifiers, not the one the reviewer
+had found, and the widest was the criterion its whole issue turns on: "every caveat sentence that
+exists on the pre-change tree still exists verbatim", quantifying over roughly twenty-three emission
+sites with five strings in the test. "Nothing is deleted" verified over a fifth of the set.
+
+So: **ask of every criterion whether its wording is universal while its verifier is an enumeration**,
+and sort the answers into three, not two.
+
+1. Universal wording, universal verifier.
+2. **Enumerated wording, enumerated verifier** — fine, and the honest form. One criterion in that
+   set is the pattern: it states it is interactive, says it is deliberately not automated, and names
+   the condition under which it should become offline.
+3. Universal wording, enumerated verifier — the defect.
+
+Category 3 is not automatically a blocker. This milestone has knowingly accepted universal-sounding
+criteria on enumerated verifiers and filed the remainder as its own issue; two issues exist only
+because of that. What is not acceptable is the criterion implying coverage silently, so the fix is
+sometimes to widen the verifier and sometimes to narrow the wording, and which one is a judgement
+about cost.
+
+**A frozen list can be a derivation rather than an enumeration, and the difference is reproducibility.**
+Widening the worst of the four meant listing every string on a fixed pre-change tree, which looks
+like a longer enumeration. It is not, provided the test records the base revision and the exact
+command that extracted the set, and says the list is a derivation from that revision rather than a
+selection from it. A reader who re-runs the command gets the same set; that is what an enumeration
+cannot offer.
+
+**Two smaller shapes from the same audit.** A criterion can be half-covered — one whose two halves
+had different verifiers, genuinely universal on one and resting on a single fixture on the other,
+read as though both were covered; the fix was to say which half is which, not to build a second
+checker. And a list-shaped verifier can fail *twice* over the same gap: an omitted item was both
+absent from the list and invisible to the filter the list was passed through, which is why that form
+cannot be patched by adding an item.
+
+**Check which verifier a criterion declares, not which test you remember writing.** One criterion in
+the audit was expected to be a gap and was not: its declared verifier was a different class from the
+one its author had in mind, and that class covered the whole set. The author checked before claiming
+it.
 
 ## Workflow State
 

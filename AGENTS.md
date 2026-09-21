@@ -41,46 +41,8 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── statusline_hook.py      # posts Antigravity's status-line state
         ├── mcp_server.py           # stdio MCP server: the one tool a session calls to ask the reader
         ├── cargento_runtime/       # importable dashboard runtime package
-        │   ├── aggregate.py        # harness registry, failure boundary, and the application
-        │   ├── annotations.py      # the goal and expected output the reader typed, as revisions
-        │   ├── asks.py             # outstanding questions and their answer mailboxes, a leaf
-        │   ├── claude_data.py      # Claude transcript reads shared by the collector and hooks
-        │   ├── cli.py              # argument parsing, runtime assembly, and the serve branches
+        │                           # per-module map: docs/design-runtime-architecture.md
         │   ├── collectors/         # one harness collector per file, one per supported harness
-        │   ├── config.py           # immutable process configuration and store roots
-        │   ├── diagnostics.py      # store-path reporting for --diagnose
-        │   ├── deliveries.py       # what became of each raise, and what may not be said of one
-        │   ├── departures.py       # what an unasked reading raised, its baseline, and what came after
-        │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
-        │   ├── ends.py             # the session ends this board observed, kept across a restart
-        │   ├── events.py           # the untrusted event envelope and its overlay reducer
-        │   ├── focus.py            # the focus command: one socket case, or no raise
-        │   ├── git_status.py       # the end-of-session git probe: one command, two scalars
-        │   ├── history.py          # the local history of what was observed, a leaf over config and io
-        │   ├── http_api.py         # the loopback server, its handler, and network helpers
-        │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
-        │   ├── interaction_prototype.py # optional registered-session terminal output
-        │   ├── project_context.py  # prototype project evidence and semantic projections
-        │   ├── semantic_history.py # prototype semantic event history
-        │   ├── irreversible.py     # current-run command reports, bounded separately from hints
-        │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
-        │   ├── notifications.py    # hook state, popup policy, and the native notifier
-        │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown
-        │   ├── observer.py         # one session's goal, stage and open block, on demand
-        │   ├── probe.py            # the coarse store probe: a bounded stat sweep, a hint only
-        │   ├── quota.py            # quota: per-vendor fetches, pushed receipts, and the cache
-        │   ├── reading.py          # one reader-requested reading: the ledger, the rules, the refusals
-        │   ├── reach.py            # off-machine nudge delivery: webhook resolver, payload format, POST
-        │   ├── records.py          # untrusted-record parsing and normalization
-        │   ├── sessions.py         # session identity, shape, and deterministic aggregation
-        │   ├── snapshot.py         # the published response bytes and their restart-qualified revision
-        │   ├── spacedock.py        # Spacedock workflow and entity cartography
-        │   ├── state.py            # mutable process state, locks, and bounded caches
-        │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
-        │   ├── transcripts.py      # shared metadata, prompt titles, the Codex plan, non-Claude analyzers
-        │   ├── tripwires.py        # saved workflow stage conditions, baselines and durable one-shot latches
-        │   ├── turns.py            # generic incremental turn scanning and turn display
-        │   ├── unasked.py          # the unasked reading lane: the gate, the caps, the raise
         │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
@@ -166,7 +128,12 @@ git commit -s -m "feat(skill): add new capability to cargento"
 ## PR Workflow
 
 - Always invoke the `sync-docs` skill right before opening a PR. Every code change must reconcile repository documentation against the code and pass the Step 10 verification checks before pushing and opening a PR. Any resulting doc updates must ride in the PR that changes the code.
-- When opening PRs that close issues, always use explicit `Closes #NNNN` lines (one per issue), never comma-separated lists, so GitHub autoclose works.
+- **`Closes #NNNN` is for GitHub issues, and this repository has almost none.** Work here is
+  tracked in Linear as `DRC-NNNN`, which is not a GitHub issue number: `Closes #4589` points at
+  nothing, and will point at the wrong thing once the repository's own numbering reaches it. Link
+  Linear work as `Implements [DRC-NNNN](<issue url>)`, one per line, which is the form the merged
+  PRs use. Reserve `Closes #NNNN` for an actual GitHub issue, and then use explicit lines, one per
+  issue, never comma-separated, so autoclose works.
 - After requesting a PR review, always check for Copilot inline review comments in addition to top-level reviews.
 - Never commit or push to another author's PR branch without explicit confirmation from the user.
 
