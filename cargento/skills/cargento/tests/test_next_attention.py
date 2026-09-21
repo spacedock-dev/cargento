@@ -90,13 +90,16 @@ console.log(JSON.stringify(__els.app.innerHTML));
             r'class="next-attention-square" data-known="false"',
         )
         self.assertRegex(html, r'data-next-board-risk="collision" data-tone="unknown"')
+        # v3 deleted --line2. Both of these are neutral, non-interactive marks --
+        # an unknown-coverage swatch and the tone stripe that divides rows -- so
+        # they took --rule (the divider token) rather than --line (control edges).
         self.assertRegex(
             NEXT_STYLES,
-            r"\.next-attention-square\{[^}]*background:var\(--line2\)",
+            r"\.next-attention-square\{[^}]*background:var\(--rule\)",
         )
         self.assertRegex(
             NEXT_STYLES,
-            r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line2\)',
+            r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--rule\)',
         )
         self.assertIn("Not on this board yet", html)
         for code in ("F3", "E5", "E6"):

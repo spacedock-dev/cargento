@@ -271,7 +271,15 @@ function nextStageData(){
 }
 
 function nextStageButton(id, action, label, disabled){
-  return `<button type="button" data-stage-id="${esc(id)}" data-stage-action="${action}" ` +
+  // The tier follows the act, not the position in the row: save commits, remove
+  // destroys and takes the quiet destructive tier rather than a second fill,
+  // and anything else is an alternative. One filled primary per card, which is
+  // the usage half of the v3 control contract the primitives block declares.
+  const tier = action === "save" ? "next-btn--primary"
+    : action === "remove" ? "next-btn--quiet next-btn--danger"
+      : "next-btn--secondary";
+  return `<button type="button" class="next-btn ${tier}" data-stage-id="${esc(id)}" ` +
+    `data-stage-action="${action}" ` +
     `data-next-focus="stage:${esc(id)}:${action}"${disabled ? " disabled" : ""}>${label}</button>`;
 }
 

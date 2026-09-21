@@ -205,29 +205,53 @@ class NextPageAssetContractTest(unittest.TestCase):
                 22_320,
                 "a0d054c4af557de20afd6ca59f47ab353bcaec49c63ff04b6c9d39d0f8910557",
             ),
-            "fonts/space-mono-v17-regular-vietnamese.woff2.b64": (
+            "fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64": (
+                4_000,
+                "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c",
+            ),
+            "fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64": (
+                8_860,
+                "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d",
+            ),
+            "fonts/ibm-plex-mono-v20-regular-latin.woff2.b64": (
+                10_052,
+                "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac",
+            ),
+            "fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64": (
+                4_036,
+                "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4",
+            ),
+            "fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64": (
+                8_848,
+                "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5",
+            ),
+            "fonts/ibm-plex-mono-v20-medium-latin.woff2.b64": (
+                10_060,
+                "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0",
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64": (
                 4_116,
-                "1ab5cb4b90a56d6031db3618250a1f1bb52a275df5a0ec9ae8e62686550f1af4",
+                "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965",
             ),
-            "fonts/space-mono-v17-regular-latin-ext.woff2.b64": (
-                9_752,
-                "b4f90459adf4851575a46d9a492c17ee34c97fe40d56979521de67d1ee77d75a",
+            "fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64": (
+                8_960,
+                "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854",
             ),
-            "fonts/space-mono-v17-regular-latin.woff2.b64": (
-                9_464,
-                "e0c8e616bda27642f4c3cebaecff6525d901e73afc8a227cbbb0f2af4810f300",
+            "fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64": (
+                10_120,
+                "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c",
             ),
-            "fonts/space-mono-v17-bold-vietnamese.woff2.b64": (
-                4_168,
-                "e9c42e9aad5bf74da01a810f8777a1ce45d924c4f28faf3a19b046b8f813321c",
+            "fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64": (
+                4_416,
+                "fe88a1e1a9cdb5b50308f09aaf573987f4ba2177bc6faa5feeb82a47df277bbb",
             ),
-            "fonts/space-mono-v17-bold-latin-ext.woff2.b64": (
-                9_732,
-                "512458b32bf452ac0e4b33fd6277bf4f07821acefb59db2d1498aa107679a1a6",
+            "fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64": (
+                9_788,
+                "c590f625acd1a18021f23486445b03b8435879b406db1003d3fdd7804e9319fb",
             ),
-            "fonts/space-mono-v17-bold-latin.woff2.b64": (
-                9_552,
-                "af7cf6d2b897ec453acdcdacde4e9bcc8410718af5914de865b453e09f10eebc",
+            "fonts/ibm-plex-mono-v20-italic-latin.woff2.b64": (
+                11_568,
+                "2665f5fbbb334780fa135c7f1dc6e2459061a2d6d44c32b7c1fdbc34cde65ede",
             ),
         }
         vietnamese_range = (
@@ -258,28 +282,52 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "{{CARGENTO_FONT_SPACE_GROTESK_V22_LATIN}}",
                 latin_range,
             ),
-            "fonts/space-mono-v17-regular-vietnamese.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_VIETNAMESE}}",
+            "fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_VIETNAMESE}}",
                 vietnamese_range,
             ),
-            "fonts/space-mono-v17-regular-latin-ext.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN_EXT}}",
+            "fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_LATIN_EXT}}",
                 latin_ext_range,
             ),
-            "fonts/space-mono-v17-regular-latin.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN}}",
+            "fonts/ibm-plex-mono-v20-regular-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_LATIN}}",
                 latin_range,
             ),
-            "fonts/space-mono-v17-bold-vietnamese.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_VIETNAMESE}}",
+            "fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_VIETNAMESE}}",
                 vietnamese_range,
             ),
-            "fonts/space-mono-v17-bold-latin-ext.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN_EXT}}",
+            "fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_LATIN_EXT}}",
                 latin_ext_range,
             ),
-            "fonts/space-mono-v17-bold-latin.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN}}",
+            "fonts/ibm-plex-mono-v20-medium-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_LATIN}}",
+                latin_range,
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_LATIN}}",
+                latin_range,
+            ),
+            "fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/ibm-plex-mono-v20-italic-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_LATIN}}",
                 latin_range,
             ),
         }
@@ -309,24 +357,42 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertNotIn("fonts.googleapis.com", assembled)
         self.assertNotIn("fonts.gstatic.com", assembled)
         self.assertNotIn("{{CARGENTO_FONT_", assembled)
-        self.assertEqual(9, assembled.count("data:font/woff2;base64,"))
+        self.assertEqual(15, assembled.count("data:font/woff2;base64,"))
         assembled_faces = re.findall(r"@font-face\{([^}]*)\}", assembled)
         grotesk = [face for face in assembled_faces if "font-family:'Space Grotesk'" in face]
-        mono = [face for face in assembled_faces if "font-family:'Space Mono'" in face]
+        mono = [face for face in assembled_faces if "font-family:'IBM Plex Mono'" in face]
         self.assertEqual(3, len(grotesk))
         self.assertTrue(all("font-weight:400 700" in face for face in grotesk))
-        self.assertEqual(6, len(mono))
-        self.assertEqual(3, sum("font-weight:400;" in face for face in mono))
-        self.assertEqual(3, sum("font-weight:700;" in face for face in mono))
+        self.assertEqual(12, len(mono))
+
+        def face_axes(face: str) -> tuple[str, str]:
+            rules = dict(re.findall(r"([\w-]+):([^;]+)", face))
+            return rules.get("font-style", ""), rules.get("font-weight", "")
+
+        # Style and weight together. `font-weight:400;` alone counts the italic
+        # subsets as upright regulars, and a sheet that had dropped the italics
+        # and shipped six regulars would still total twelve faces.
+        split: dict[tuple[str, str], int] = {}
+        for face in mono:
+            split[face_axes(face)] = split.get(face_axes(face), 0) + 1
+        self.assertEqual(
+            {
+                ("normal", "400"): 3,
+                ("normal", "500"): 3,
+                ("normal", "600"): 3,
+                ("italic", "400"): 3,
+            },
+            split,
+        )
 
         expected_notices = {
             "fonts/SpaceGrotesk-OFL.txt": (
                 4_402,
                 "c6dec685825f73b18c20926fddc65e8315642e12986f15db0699170940a09efc",
             ),
-            "fonts/SpaceMono-OFL.txt": (
-                4_392,
-                "8e4ee42b2553e1e01504e61cb0d46d148cd8c9e5eacaa3622a7df2d4f2955b9f",
+            "fonts/IBMPlexMono-OFL.txt": (
+                4_456,
+                "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da",
             ),
         }
         for name, (size, digest) in expected_notices.items():
@@ -334,9 +400,13 @@ class NextPageAssetContractTest(unittest.TestCase):
                 notice = frontend_page.asset_path(name).read_bytes()
                 self.assertEqual(size, len(notice))
                 self.assertEqual(digest, hashlib.sha256(notice).hexdigest())
+        # The retired family's licence travelled with its subsets, so its absence
+        # is what says the deletion was complete rather than half done.
+        self.assertFalse(frontend_page.asset_path("fonts/SpaceMono-OFL.txt").exists())
         sources = frontend_page.asset_path("fonts/SOURCES.txt").read_text(encoding="utf-8")
         self.assertIn("Space Grotesk v22", sources)
-        self.assertIn("Space Mono v17", sources)
+        self.assertIn("IBM Plex Mono v20", sources)
+        self.assertNotIn("Space Mono v17", sources)
         for _size, digest in expected_fonts.values():
             self.assertIn(digest, sources)
 
@@ -400,21 +470,34 @@ class NextPageAssetContractTest(unittest.TestCase):
             with self.subTest(retired=retired):
                 self.assertNotIn(retired, styles)
         expected = {
+            "--sunk": "#0f0f0a",
             "--bg": "#14140f",
-            "--panel": "#1c1c16",
-            "--sunk": "#11110c",
-            "--line": "#2c2c23",
-            "--line2": "#403f33",
-            "--ink": "#f4f1e8",
-            "--ink2": "#c9c4b4",
-            "--ink3": "#9b9484",
-            "--accent": "#c6e07a",
-            "--accent-dim": "#8ea254",
-            "--amber": "#e8b45c",
-            "--clay": "#e08a6a",
+            "--panel": "#24231b",
+            "--raise": "#323025",
+            "--line": "#74725f",
+            "--line-hi": "#8a8874",
+            "--rule": "#35342a",
+            "--ink": "#f6f3ea",
+            "--ink2": "#cdc7b4",
+            "--ink3": "#a39c88",
+            "--accent": "#cfe884",
+            "--amber": "#f0b95e",
+            "--clay": "#e4886a",
         }
         tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", roots[0]))
         self.assertEqual(expected, {name: tokens.get(name) for name in expected})
+        # Derived, so the map above cannot quietly become a subset: a fourteenth
+        # colour added to :root fails here rather than going unmeasured. Only
+        # flat hex counts -- the elevation tokens carry a shadow colour inside a
+        # longer value and are not palette entries.
+        self.assertEqual(
+            set(expected),
+            {
+                name
+                for name, value in tokens.items()
+                if re.fullmatch(r"#[0-9a-f]{6}", value.strip())
+            },
+        )
 
         def luminance(value: str) -> float:
             channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
@@ -428,19 +511,155 @@ class NextPageAssetContractTest(unittest.TestCase):
             high, low = sorted((luminance(first), luminance(second)), reverse=True)
             return (high + 0.05) / (low + 0.05)
 
-        for surface in ("--bg", "--panel", "--sunk"):
+        # --raise joins the surfaces because v3 gives the reader a fourth one to
+        # read text off. --ink3 is inert-control text only and is the tightest
+        # pair in the grid at 4.84:1 on --raise, so it stays in the loop rather
+        # than being excused for the role it plays.
+        for surface in ("--bg", "--panel", "--sunk", "--raise"):
             for ink in (
                 "--ink",
                 "--ink2",
                 "--ink3",
                 "--accent",
-                "--accent-dim",
                 "--amber",
                 "--clay",
             ):
                 with self.subTest(surface=surface, ink=ink):
                     self.assertGreater(contrast(tokens[ink], tokens[surface]), 4.5)
         self.assertGreater(contrast(tokens["--ink"], tokens["--bg"]), 3.0)
+
+    def test_a_reader_can_see_the_edge_of_every_control_they_can_reach(self) -> None:
+        """WCAG 2.1 SC 1.4.11: a control's visual boundary needs 3:1.
+
+        Nothing in this repository had ever measured a border. The palette test
+        above loops every ink against every surface and stops there, so v2
+        shipped control boundaries at 1.22:1 with the suite green -- text
+        contrast and non-text contrast are different standards over different
+        token sets, and passing one says nothing about the other.
+
+        The floor applies to a boundary that bounds a *component*. `--rule`
+        divides rows and bounds nothing, so it is out of scope by the standard
+        rather than by exemption, which is the only reason it may sit at
+        1.26:1 on `--panel`.
+        """
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        roots = re.findall(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
+        self.assertEqual(1, len(roots))
+        tokens = dict(re.findall(r"(--[\w-]+):\s*([^;]+);", roots[0]))
+
+        def luminance(value: str) -> float:
+            channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [
+                channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in channels
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        def contrast(first: str, second: str) -> float:
+            high, low = sorted((luminance(first), luminance(second)), reverse=True)
+            return (high + 0.05) / (low + 0.05)
+
+        # Which surface each boundary is permitted to sit on. The adjacency
+        # rules are what make this a short list: --sunk only appears inside
+        # --panel, --panel only on --bg, --raise only above --bg, so these are
+        # the pairs a reader can actually meet.
+        permitted = {
+            "--line": ("--bg", "--panel", "--sunk"),
+            "--line-hi": ("--bg", "--panel", "--sunk", "--raise"),
+        }
+        for boundary, surfaces in permitted.items():
+            for surface in surfaces:
+                with self.subTest(boundary=boundary, surface=surface):
+                    self.assertGreaterEqual(
+                        contrast(tokens[boundary], tokens[surface]),
+                        3.0,
+                        f"{boundary} on {surface} must meet SC 1.4.11",
+                    )
+
+        # --line on --raise measures 2.72:1, which is why --line-hi exists and
+        # why that pairing is banned. Asserting the failure keeps the ban
+        # honest: brighten --line enough and this line tells you the second
+        # token has stopped earning its place.
+        self.assertLess(
+            contrast(tokens["--line"], tokens["--raise"]),
+            3.0,
+            "--line on --raise is the banned pairing --line-hi was added for",
+        )
+
+        # The floor has to be capable of failing, or it reports a fact about the
+        # schema rather than about the palette. A boundary the colour of its own
+        # surface must not pass.
+        self.assertLess(contrast(tokens["--panel"], tokens["--panel"]), 3.0)
+
+        # --rule is out of scope for SC 1.4.11 and must stay that way: if it
+        # ever bounds a control, the exemption it relies on is gone.
+        self.assertIn("--rule", tokens)
+        self.assertNotIn("--line2", styles)
+
+    def test_a_reader_never_meets_type_below_the_declared_floor(self) -> None:
+        """Every font-size is a declared step, and no step is under 13px.
+
+        The v2 audit measured colour and concluded there was no contrast left
+        to spend. The size half was never enforced: 78% of font-size
+        declarations resolved to 12.5px or smaller and two shipped at 9px.
+        """
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        roots = re.findall(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
+        tokens = dict(re.findall(r"(--[\w-]+):\s*([^;]+);", roots[0]))
+        steps = {
+            name: float(value.rstrip("px"))
+            for name, value in tokens.items()
+            if name.startswith("--fs-")
+        }
+        self.assertTrue(steps, "the sheet declares no type scale")
+
+        for name, size in steps.items():
+            with self.subTest(step=name):
+                self.assertGreaterEqual(size, 13.0, f"{name} is below the 13px floor")
+
+        body = styles[styles.index("}", styles.index(":root{")) :]
+        declarations = [raw.strip() for raw in re.findall(r"font-size:\s*([^;}\n]+)", body)]
+        self.assertTrue(declarations)
+
+        # Neither exemption is a type size: `inherit` defers to the step an
+        # ancestor already chose, and `0` closes the whitespace gap between
+        # inline-blocks. Counted rather than waved through, because exempting a
+        # literal by spelling it `inherit` everywhere is the cheap way out.
+        self.assertEqual(
+            {"inherit": 3, "0": 1},
+            {
+                value: declarations.count(value)
+                for value in set(declarations)
+                if not value.startswith("var(")
+            },
+        )
+
+        used: set[str] = set()
+        for value in declarations:
+            if value in ("inherit", "0"):
+                continue
+            with self.subTest(declaration=value):
+                match = re.fullmatch(r"var\((--fs-[\w-]+)\)", value)
+                self.assertIsNotNone(
+                    match,
+                    f"font-size:{value} is not a declared step -- no literal sizes",
+                )
+                assert match is not None
+                self.assertIn(match.group(1), steps)
+                used.add(match.group(1))
+
+        # A step nobody references is scale drift. v2 carried three of them and
+        # that is how a scale grows to twenty-four entries.
+        self.assertEqual(set(steps), used, "every declared step must be referenced")
+
+        # Sentences sit at or above 15px, so the floor and the sentence tier
+        # cannot silently collapse into one another.
+        self.assertGreaterEqual(steps["--fs-body"], 15.0)
+        self.assertEqual(13.0, steps["--fs-label"])
+
+        # The loop above has to be capable of failing. The predicate it applies
+        # must reject the literal this test exists to keep out of the sheet.
+        self.assertIsNone(re.fullmatch(r"var\((--fs-[\w-]+)\)", "11px"))
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
@@ -632,16 +851,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                106_941,
-                "8d404a66a0fe5a8a021854b64fc48c80aeed260628efadde80c64862d07ce63e",
+                107_252,
+                "3061d51ff0df43a953d156780f0d709f6f166322ffe476dc185cf34728b65a4b",
             ),
             "next-chrome.js": (
                 40_112,
                 "f7d3fc543edb9c9a52be47a7a297fca29ed8482e1f4af35be7a7ee5d7156ba26",
             ),
             "next-capacity.js": (
-                32_192,
-                "fccfae64553820ba7da58439694808fdae9275bba00f4d85119db58d36d0ef6b",
+                32_515,
+                "8ab8d4424a16dc74f76cf4c55be994b37c893eb9f0642eaa57f3e8990611520d",
             ),
             "next-sessions.js": (
                 19_745,
@@ -676,16 +895,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "36ecd098147995ae96b5ca7846c6a4366142da400a27a2dd5dfcef9ace01fdb6",
             ),
             "next-controls.js": (
-                18_071,
-                "ed2f27f3e1c9c13fbfecc64389af35744b2148a8f1e008ea9dd8720b31795c96",
+                18_571,
+                "f0161fcc4a258501b66eccecb5f2233e4ff110b9ad11ccd526fdf1adcdf04069",
             ),
             "next-cockpit.js": (
                 198_105,
                 "3c3fa0ebd4be8c51ad5b79d8f2919e090022f6832ae094b9bd28322be736853c",
             ),
             "next-render.js": (
-                8_960,
-                "16b2d560b446d47a1bd6d25864705ddce8563076dc26e9abb51f939b7b25860e",
+                9_280,
+                "cd8acef3dbba203adcae08a31df58e7d1fecbfc4a0ede483022622618e115341",
             ),
             "next-live.js": (
                 3_340,
@@ -700,16 +919,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(108_008, len(styles))
+        self.assertEqual(120_344, len(styles))
         self.assertEqual(
-            "ea8b79ed9addea2fefb6463c2ec563a891ce4282a1fd2f29a2f02719be8de195",
+            "4362cebacc5326932f55961be5adf613c5d95144a20542fac2d2b0ca568757a6",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(911_302, len(assembled))
+        self.assertEqual(988_962, len(assembled))
         self.assertEqual(
-            "7c0dbcb341cd1652e60821fde01b3c1080bc58022100bfa9ba25317fefb1c52a",
+            "f620305e0cf49107ca2534960fb8febd2ae2a7d335379ab63f30b1bec5076070",
             hashlib.sha256(assembled).hexdigest(),
         )
 

@@ -149,8 +149,13 @@ function nextUsageDisclosure(payload){
     'usage numbers and nothing else. The credential is never written, logged, or served, and no ' +
     'session content is sent.</p>' +
     '<div class="next-usage-consent-actions">' +
-    '<button type="button" data-next-usage-answer="granted">Read my quota</button>' +
-    '<button type="button" data-next-usage-answer="declined">No thanks</button>' +
+    // The affirmative on a consent strip is the one unambiguous primary on this
+    // view, so it carries the filled tier. Declining stays secondary: a filled
+    // refusal would compete for the same glance as the act it refuses.
+    '<button type="button" class="next-btn next-btn--primary" ' +
+    'data-next-usage-answer="granted">Read my quota</button>' +
+    '<button type="button" class="next-btn next-btn--secondary" ' +
+    'data-next-usage-answer="declined">No thanks</button>' +
     '</div>' +
     '<p class="next-usage-consent-note">Changeable later from this strip. ' +
     '<code>--no-usage</code> refuses it for a whole run whatever is stored here.</p>' +

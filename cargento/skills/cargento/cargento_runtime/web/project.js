@@ -749,8 +749,12 @@ function projectTerminalMount(key, originHint){
     if(!document.getElementById("pc-terminal-screen") || projectTerminalOpenKey !== key) return;
     if(projectTerminal && projectTerminalKey === key) return;
     const terminal = new window.Terminal({disableStdin:true, cursorBlink:false,
-      scrollback:500, fontSize:12.5, fontFamily:"'Space Mono', ui-monospace, monospace",
-      theme:{background:"#11110c", foreground:"#f4f1e8", cursor:"#11110c"}});
+      // xterm takes numbers, not tokens, so these four are the only place a v3
+      // value is repeated outside :root. They are --fs-label, --sunk and --ink;
+      // the cursor matches the background because stdin is disabled and a
+      // blinking block on read-only output reads as an input affordance.
+      scrollback:500, fontSize:13, fontFamily:"'IBM Plex Mono', ui-monospace, monospace",
+      theme:{background:"#0f0f0a", foreground:"#f6f3ea", cursor:"#0f0f0a"}});
     projectTerminal = terminal;
     projectTerminalKey = key;
     document.getElementById("pc-terminal-screen").textContent = "";

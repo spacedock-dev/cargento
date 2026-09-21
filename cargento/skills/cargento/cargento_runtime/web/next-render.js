@@ -26,8 +26,12 @@ function nextObserverModelControls(group, focus){
   const consent = nextObserverConsent();
   const key = nextCockpitContextKey(group, focus);
   const pending = nextObserverRequests.has(key);
+  // allow and request are the affirmative in their respective states and only
+  // one of them is ever rendered at a time, so the view keeps exactly one
+  // filled control. decline is the alternative, never a second fill.
   const button = (action, label, disabled = false) =>
-    `<button type="button" data-next-observer-action="${action}" ` +
+    `<button type="button" class="next-btn ${action === "decline" ? "next-btn--secondary" : "next-btn--primary"}" ` +
+    `data-next-observer-action="${action}" ` +
     `data-next-focus="observer:${action}"${disabled ? " disabled" : ""}>${label}</button>`;
   const disclosure = String(model.disclosure || "");
   if(!disclosure) return '<p class="next-cockpit-empty">Observer disclosure is unavailable; model requests are withheld.</p>';
