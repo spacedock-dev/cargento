@@ -278,6 +278,19 @@ Each of these produced a wrong conclusion here before it was understood:
   `failed` copy state there is the harness, not the product.
 - **Consent is per origin.** A different port is a different origin, so a consent-gated feature has
   to be answered again on the review port.
+- **`resize_window` does not shrink, and it succeeds while not shrinking.** Measured over two agents
+  and four attempts: 980 was requested three times and 1000 once, and `innerWidth` never moved below
+  its starting value. Only upward resizes took effect, and nothing reported a failure. A narrow
+  viewport measured this way is silently the viewport you started at.
+- **The board cannot be framed, so the iframe route is not available.** It sends
+  `Content-Security-Policy: frame-ancestors 'none'`, which is correct and was not worked around.
+  Worth knowing as a property rather than only as an obstacle.
+- **The route that does work is CDP `Emulation.setDeviceMetricsOverride`.** Launch Chrome with
+  `--headless=new --remote-debugging-port=<port>`, attach to the page target from `/json/list`, and
+  set the metrics before navigating. Two things that cost a cycle each: the override is **per CDP
+  connection**, so setting it in one script and measuring in another gives you the default viewport
+  back; and it must be set before `Page.navigate` or the first layout happens at the old width.
+  Verified 2026-09-21 at `innerWidth: 980`, the width `resize_window` could not reach.
 
 ## What this review cannot see
 
