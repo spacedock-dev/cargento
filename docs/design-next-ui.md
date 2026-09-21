@@ -52,7 +52,7 @@ would defeat its purpose as a way to choose a session. The Scope rail now has a 
 1280px and above, with separate readable space for harness names and session titles; below 1280px
 it becomes a scope switcher. Missing terminal registration, evidence, history
 or delegation renders the reason for the missing reading. Source strings use mono; sentences the
-board says use sans at 12.5px or larger. Evidence and More remain named disclosures.
+board says use sans at 15px or larger. Evidence and More remain named disclosures.
 
 The terminal bridge, semantic history and model-assisted goal analysis remain prototypes.
 Human context and tripwires stay browser-local and deliver no instruction to an agent. Semantic
@@ -109,16 +109,46 @@ Assign one owner to each region during parallel work. Keep media queries at the 
 region; a shared responsive block would make every view edit the same tail. Moving a rule between
 regions is an ownership change, not incidental cleanup.
 
-Board sentences have a 12.5px floor (`--fs-xs`). Labels, identifiers, timestamps, rates and
-compact controls retain their smaller design sizes, down to 9px column headers. The prototype
-placed some absence explanations at 10px; those are sentences the board asks a person to read, so
-the sentence floor wins. The stylesheet retains scale tokens and literal sizes. The asset test
-pins the dark palette and checks text inks above 4.5:1 on the ground, panel and inset surfaces; it
-does not enforce all font sizes or spacing between contrast steps.
+The type scale is five steps with a 13px floor and a 15px sentence tier, and every `font-size` in
+the stylesheet is one of them. Only `font-size:inherit` and `font-size:0` are exempt, and neither
+is a type size: one declines to set a size, the other kills the inline box on an icon-only control.
+`body` names a step too, so nothing inherits the user-agent default.
 
-Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
+This replaced a 12.5px sentence floor and twenty-four scale tokens, three of which nothing
+referenced. The reason was not contrast. Every v2 ink passed WCAG AA, and `--ink3`, the dimmest,
+sat at 5.67:1 on panel. It was size: 78% of `font-size` declarations resolved to 12.5px or smaller
+and two shipped at 9px, so there was no colour left to spend and the only move was to raise the
+type. Brightening the inks was proposed and rejected on those grounds.
+
+Two guards in `tests/test_next_page.py` hold it. One rejects a literal px size and any declared
+step nothing references, because an unreferenced step is how a scale grows to twenty-four. The
+other is the non-text contrast check described under NUI-15.
+
+Space Grotesk and IBM Plex Mono subsets travel inside the assembled page as data URLs. A missing or
 malformed font is a canonical asset failure and prevents startup before the socket binds. There is
 no font route or browser request to a provider. Licenses and source hashes live under `web/fonts/`.
+
+## NUI-15: a control boundary is measured, not assumed
+
+WCAG 2.1 SC 1.4.11 asks for 3:1 on the visual boundary of a user interface component. Nothing in
+this repository measured one until v3. The existing contrast test loops every text ink against
+every surface and stops there, and the audit that followed it measured text inks again with a
+second methodology, so v2 shipped boundaries at 1.22:1 and 1.61:1 with the suite green and every
+form control effectively invisible.
+
+Boundary tokens are therefore split by what they bound. `--line` bounds a control and clears 3:1 on
+every surface it is allowed to meet. `--rule` divides rows, bounds nothing, and is out of the
+standard's scope rather than exempt from it, which is the only reason it is allowed to be quiet at
+1.26:1 on panel.
+
+The split is what makes the floor reachable: `--line` measures 2.72:1 on `--raise`, so that pairing
+is banned and `--line-hi` exists for it. The test asserts the banned pair *fails*, which keeps the
+second token honest. Brighten `--line` enough and the test says `--line-hi` has stopped earning its
+place.
+
+Adjacency is what keeps the table short. `--sunk` only appears inside `--panel`, `--panel` only on
+`--bg`, and `--raise` only above `--bg`, so the pairs a reader can actually meet are the pairs the
+test checks. Asserting all of them would fail on combinations nothing renders.
 
 ## NUI-3: the released route and storage namespace remain stable
 
@@ -527,8 +557,9 @@ stalled notice. The server stream budget and revision rules do not change.
 
 ## NUI-14: the specified fonts travel inside the page
 
-The design names Space Grotesk at weights 400 through 700 and Space Mono at weights 400 and 700.
-The canonical bundle ships upstream Latin, Latin Extended, and Vietnamese WOFF2 subsets. `page.py`
+The design names Space Grotesk at weights 400 through 700 and IBM Plex Mono at weights 400, 500
+and 600 upright plus 400 italic. The canonical bundle ships upstream Latin, Latin Extended, and
+Vietnamese WOFF2 subsets: three faces for Space Grotesk and twelve for IBM Plex Mono. `page.py`
 validates each packaged payload and embeds it as a data URL while assembling the one-page response.
 
 There is no font route, provider request, or optional font failure boundary. Missing or malformed

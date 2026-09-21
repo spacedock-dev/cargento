@@ -135,7 +135,7 @@ mass rename; they do not indicate a second bundle.
 | `web/next-intent.js` | The Intent log joins every published board identity with retained annotation/discard records. Typed goal/output, cached deterministic evidence and each published workflow title keep distinct source labels. `GET /api/annotations` supplies retained words with revision invalidation; dashboard payloads supply board membership and independent sources. Session history never restores withdrawn words. |
 | `web/next-render.js` | View dispatch, payload fetch, refresh serialization, failure state, and the separately consented explicit observer-model request in Console. |
 | `web/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery, and fallback polling. It is last in `APP_PARTS` and starts refresh. |
-| `web/fonts/` | Embedded Space Grotesk and Space Mono subsets, licenses, and source hashes. |
+| `web/fonts/` | Embedded Space Grotesk and IBM Plex Mono subsets, licenses, and source hashes. |
 | `web/vendor/` | The vendored xterm build, its stylesheet, its license and its source record. Not in `APP_PARTS` and not embedded in the page: `project.js` loads it lazily from `/assets/xterm.js` and `/assets/xterm.css`, which `http_api` reads out of this directory and serves only while the interaction prototype is running. |
 
 The HTTP server serves this assembled byte string at `/`, including the supported `all=1` view.
