@@ -31,6 +31,7 @@ For where these files sit and which way their dependencies run, see
 | That draft's caret offset | Restored | `nextCaptureFocus` / `nextFocusNamed`, with `nextControlsApplyCaret` as the control-state fallback |
 | The `+ set a tripwire` box, once opened | Kept open | `nextControlsProjectState(project).adding` in `next-controls.js`, held per project for the life of the tab |
 | A workflow stage-condition choice, save cue and action focus | Kept across redraw in `nextStageDrafts` and `nextStageCues`; the pre-action focus target is restored after the final enabled render only if no later keyboard or pointer interaction displaced it | `next-controls.js`; saving the same stage preserves the server revision and latch |
+| An open `<select>` option list | **Not restored, and cannot be.** The poll defers its paint instead, for up to twelve consecutive refreshes, and repaints the moment the list closes | `nextChoiceIsOpen`, `nextDeferredRender` and the `change`/`blur` listeners in `next-render.js`; guarded by three tests in `test_next_live.py` |
 | The workstream panel's collapse | Kept collapsed | `nextWorkstreamCollapsed` in `next-workstream.js`, persisted to `localStorage` |
 | The timeline's activity filter | Kept per session key, across a redraw and across a reload | `projectGraphModeBySession` in `project.js`, written by `projectSetGraphMode` and mirrored to the single `cargento.next.graph.mode` key as one map rather than a key per session; read back by `projectLoadGraphModes` at load and resolved by `projectResolveGraphMode`, which prefers a caller's pinned `mode`, then the reader's stored choice, then the caller's `defaultMode` |
 | The prototype terminal viewport scroll offset | Restored, or follows live output | `projectTerminalScrollTop` and `projectTerminalFollowLive`, restored by `projectTerminalBindViewport` in `project.js` |
@@ -108,6 +109,35 @@ counts use retained annotations eligible to hold words, excluding board-only and
 
 Other tabs and dashboard instances learn about a discard through their normal data updates. An
 offline or browser-suspended tab cannot learn of a remote change until those updates resume.
+
+## An open option list
+
+Every other lane here is put back after the redraw from a key: focus by `data-next-focus`, carets
+by offset, drafts by project and kind, disclosures by name. A native `<select>` popup has no key,
+and no API reopens it. Restoring focus to the element is not the same thing and does not help: the
+list is shut by then.
+
+Measured on Projects, where the stage-condition dropdown sits. The poll runs every 5s
+uncoordinated, `renderNext` replaces the whole of `#app`, and the list closed before a selection
+could be made. The chosen value was never lost, which is why this reads as a redraw defect rather
+than a data one: `nextStageDrafts` had it the whole time.
+
+So this one lane inverts the rule. Instead of restoring the state after the paint, the poll
+withholds the paint while a `<select>` inside `#app` holds focus, and draws the moment the list
+closes. The fetch still runs and `nextData` is still assigned, so nothing is missed; only the paint
+waits. The catch-up fires on `change` as well as `blur`, because a keyboard selection commits
+without the element losing focus.
+
+Only the poll defers. Every other `renderNext` call follows a reader's own action, where nothing is
+mid-choice, and a manual refresh paints over an open list on purpose: the reader pressed the thing
+that redraws.
+
+**The bound is twelve consecutive deferrals**, after which the board paints again and keeps
+painting while the list stays focused. A board that never repaints is a worse failure than a list
+that closes, and twelve is far longer than choosing from a list takes. The count is not reset while
+the list still holds focus: resetting there re-arms the bound, which would repaint once every
+thirteen polls rather than resume. That was a real defect in the first version of this fix, caught
+by `test_a_list_left_focused_cannot_freeze_the_board`.
 
 ## Document scroll
 

@@ -80,6 +80,97 @@ __fetchImpl = async () => __nextShouldFail
 """
         return self._run_page_js(fixture + checks, prelude=self.prelude(**prelude))
 
+    def test_a_poll_does_not_close_the_list_the_reader_is_choosing_from(self) -> None:
+        """The one lane the redraw cannot rebuild from a key.
+
+        `renderNext` replaces the whole of `#app` and every other reader-state
+        lane is put back afterwards from a key: focus, carets, drafts,
+        disclosures. A native option popup has neither a key nor an API to
+        reopen it, so a poll landing mid-choice shuts the list. Measured on
+        Projects, where the stage-condition dropdown closed before a selection
+        could be made.
+        """
+        out = self._boot(
+            """
+await refreshNext();
+let renders = 0;
+const paint = renderNext;
+renderNext = (...args) => { renders += 1; return paint(...args); };
+
+const choice = {tagName: "SELECT"};
+__els.app.contains = node => node === choice;
+document.activeElement = choice;
+
+await refreshNext();
+await refreshNext();
+const whileOpen = renders;
+const pending = !!nextDeferredRender;
+
+document.activeElement = null;
+__fire("blur", {target: choice});
+const afterBlur = renders;
+
+document.activeElement = choice;
+await refreshNext(true);
+const afterManual = renders;
+
+console.log(JSON.stringify({whileOpen, pending, afterBlur, afterManual}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["whileOpen"], "a poll repainted under an open list")
+        self.assertTrue(out["pending"], "the deferred paint was dropped rather than held")
+        self.assertEqual(1, out["afterBlur"], "the board did not catch up when the list closed")
+        # A manual refresh is the reader asking for a redraw, so it paints even
+        # over an open list rather than being swallowed by the same guard.
+        self.assertGreater(out["afterManual"], out["afterBlur"])
+
+    def test_a_committed_choice_catches_the_board_up_without_waiting_for_blur(self) -> None:
+        """A keyboard selection commits while the list still holds focus."""
+        out = self._boot(
+            """
+await refreshNext();
+let renders = 0;
+const paint = renderNext;
+renderNext = (...args) => { renders += 1; return paint(...args); };
+
+const choice = {tagName: "SELECT"};
+__els.app.contains = node => node === choice;
+document.activeElement = choice;
+await refreshNext();
+const whileOpen = renders;
+
+__fire("change", {target: choice});
+console.log(JSON.stringify({whileOpen, afterChange: renders}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["whileOpen"])
+        self.assertEqual(1, out["afterChange"], "committing a choice left the board stale")
+
+    def test_a_list_left_focused_cannot_freeze_the_board(self) -> None:
+        """The bound, because a board that never repaints is the worse failure."""
+        out = self._boot(
+            """
+await refreshNext();
+let renders = 0;
+const paint = renderNext;
+renderNext = (...args) => { renders += 1; return paint(...args); };
+
+const choice = {tagName: "SELECT"};
+__els.app.contains = node => node === choice;
+document.activeElement = choice;
+
+for(let i = 0; i < NEXT_MAX_DEFERRED_RENDERS + 2; i += 1) await refreshNext();
+console.log(JSON.stringify({cap: NEXT_MAX_DEFERRED_RENDERS, renders}));
+"""
+        )
+        assert isinstance(out, dict)
+        # Deferrals stop at the cap and the board repaints from then on, so the
+        # count is the number of polls past it rather than zero.
+        self.assertEqual(2, out["renders"], "the cap did not release the board")
+        self.assertEqual(12, out["cap"])
+
     def test_polling_fallback_elects_and_renews_one_stage_notification_owner(self) -> None:
         for store, expected in (
             ({}, 1),
