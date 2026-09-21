@@ -8,6 +8,7 @@ import os
 import posixpath
 import re
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Final, TypeAlias
 
 if TYPE_CHECKING:
@@ -75,7 +76,63 @@ def bounded_project_label(config: RuntimeConfig, dirname: str) -> str:
     path in a fourteen-day store, which ``SECURITY.md``'s never-list calls a
     security bug.
     """
-    return "-".join(project_label(config, dirname).split("-")[-PROJECT_SEGMENT_CAP:])
+    label = project_label(config, dirname)
+    if label != "(home)":
+        walked = _walk_encoded(config.home, label, config.os_name == "nt")
+        if walked:
+            return "/".join(walked[-PROJECT_SEGMENT_CAP:])
+    return "-".join(label.split("-")[-PROJECT_SEGMENT_CAP:])
+
+
+# A directory name may itself contain the separator the encoding uses, so the
+# string cannot say which dashes were `/`. The machine that wrote the store is
+# the machine reading it, which `project_from_cwd` already relies on for its
+# path rules, so the directory tree settles it: walk the segments and keep the
+# longest candidate that is a real directory at each level. `work-my-repo`
+# matches whole at the first level; `repos-recce-cargento` matches three levels
+# down. Measured before this existed: 413 of 831 Claude transcripts for one
+# repository carried no `cwd`, and the board drew that repository twice
+# (DRC-4629).
+#
+# It fails closed. An unresolvable name keeps the dash form, because a wrong
+# join merges two projects that are genuinely different, which is worse than
+# the split it replaces.
+_MAX_ENCODED_SEGMENTS: Final = 24
+
+
+@lru_cache(maxsize=512)
+def _walk_encoded(home: str, relative: str, nt: bool) -> tuple[str, ...] | None:
+    """The real path segments behind a dash-encoded name, or nothing.
+
+    Cached per encoded directory rather than per session: one label serves
+    every transcript under it, and 413 rows resolving to one directory would
+    otherwise be 413 stat sweeps.
+    """
+    path = ntpath if nt else posixpath
+    segments = relative.split("-")
+    # A bound, so a pathological name cannot turn a quadratic candidate sweep
+    # into a visible pause. Ten segments was the longest real one on record.
+    if not segments or len(segments) > _MAX_ENCODED_SEGMENTS:
+        return None
+    found: list[str] = []
+    here = home
+    index = 0
+    while index < len(segments):
+        for end in range(len(segments), index, -1):
+            candidate = "-".join(segments[index:end])
+            nxt = path.join(here, candidate)
+            try:
+                matched = os.path.isdir(nxt)
+            except OSError:
+                return None  # an unreadable tree resolves nothing rather than guessing
+            if matched:
+                found.append(candidate)
+                here = nxt
+                index = end
+                break
+        else:
+            return None
+    return tuple(found)
 
 
 def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:

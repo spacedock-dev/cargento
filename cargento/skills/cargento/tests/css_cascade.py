@@ -69,11 +69,23 @@ def load(path: pathlib.Path | str) -> tuple[dict[str, float], list[Rule]]:
     return load_text(pathlib.Path(path).read_text(encoding="utf-8"))
 
 
+# Sizes resolve in rem, because the sheet declares its scale in rem so the board
+# follows the reader's own font-size setting. The reference below is what the
+# rem figures were computed against, and it is the browser default: a reader who
+# has not changed it renders exactly the px this module used to report.
+ROOT_PX: float = 16.0
+
+
+def rem(px: float) -> float:
+    """A px figure as rem at the reference root, for readable assertions."""
+    return px / ROOT_PX
+
+
 def load_text(source: str) -> tuple[dict[str, float], list[Rule]]:
     """The same, from a string, so a mutant sheet resolves without a temp file."""
     body = _strip_media(re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL))
     tokens = {
-        name: float(value) for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", body)
+        name: float(value) for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)rem", body)
     }
     rules: list[Rule] = []
     for order, block in enumerate(_BLOCK.finditer(body)):
@@ -195,12 +207,21 @@ def declared_size(body: str, tokens: dict[str, float]) -> float | None:
     )
     if token:
         return tokens.get(token.group(1))
-    # The lookbehind is load-bearing: without it `font:10.5px/1.5` matched the
-    # optional weight against `10` and the size resolved to 0.5px.
-    literal = re.search(r"font-size:\s*([0-9.]+)px", body) or re.search(
+    # The lookbehind is load-bearing: without it `font:0.65rem/1.5` matched the
+    # optional weight against `0` and the size resolved to `.65`.
+    literal = re.search(r"font-size:\s*([0-9.]+)rem", body) or re.search(
+        r"font:[^;{}]*?(?<![0-9.])([0-9.]+)rem", body
+    )
+    if literal:
+        return float(literal.group(1))
+    # A px literal is off the scale by definition, and the sheet carries none.
+    # It is still read, at the reference root, so a mutant written in px
+    # resolves to something comparable rather than to nothing: a census that
+    # silently answers None is the failure this whole module exists to avoid.
+    fallback = re.search(r"font-size:\s*([0-9.]+)px", body) or re.search(
         r"font:[^;{}]*?(?<![0-9.])([0-9.]+)px", body
     )
-    return float(literal.group(1)) if literal else None
+    return rem(float(fallback.group(1))) if fallback else None
 
 
 def resolve(path: list[Node], tokens: dict[str, float], rules: list[Rule]) -> float | None:

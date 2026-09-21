@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 # byte-pin oracle moves, and the falsifier is a committed test rather than a
 # procedure someone promises they ran.
 
-SENTENCE_FLOOR_PX = 15.0
+SENTENCE_FLOOR_REM = css_cascade.rem(15.0)
 """Written as a literal, never read from `--fs-sentence`.
 
 Reading the floor out of the token makes every assertion below vacuous:
@@ -53,7 +53,7 @@ retuning `--fs-sentence` to 12px in a scratch copy took the sub-floor census
 from 19 rules to 0 while the test stayed green.
 """
 
-LABEL_FLOOR_PX = 13.0
+LABEL_FLOOR_REM = css_cascade.rem(13.0)
 """The v3 label step, which is also the smallest of the five type tokens.
 
 v0.27.0 put this at 11px, where `--fs-label` and `--fs-machine` both sat. v3
@@ -73,7 +73,8 @@ def _type_tokens(css: str) -> dict[str, float]:
     if len(roots) != 1:
         raise AssertionError(f"expected exactly one :root block, found {len(roots)}")
     return {
-        name: float(value) for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", roots[0])
+        name: float(value)
+        for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)rem", roots[0])
     }
 
 
@@ -101,8 +102,8 @@ def _declared_size(decls: str, tokens: dict[str, float]) -> float | None:
         return tokens.get(token.group(1))
     # The lookbehind keeps `font:10.5px/1.5` from matching the weight slot; the
     # same defect in an earlier draft resolved that shorthand to 0.5px.
-    literal = re.search(r"font-size:\s*([0-9.]+)px", decls) or re.search(
-        r"font:[^;{}]*?(?<![0-9.])([0-9.]+)px", decls
+    literal = re.search(r"font-size:\s*([0-9.]+)rem", decls) or re.search(
+        r"font:[^;{}]*?(?<![0-9.])([0-9.]+)rem", decls
     )
     return float(literal.group(1)) if literal else None
 
@@ -118,7 +119,7 @@ def _declared_line_height(decls: str) -> float | None:
     longhand = re.search(r"line-height:\s*([0-9.]+)", decls)
     if longhand:
         return float(longhand.group(1))
-    shorthand = re.search(r"font:[^;{}]*?(?:[0-9.]+px|var\(--fs-[a-z0-9-]+\))/([0-9.]+)", decls)
+    shorthand = re.search(r"font:[^;{}]*?(?:[0-9.]+rem|var\(--fs-[a-z0-9-]+\))/([0-9.]+)", decls)
     return float(shorthand.group(1)) if shorthand else None
 
 
@@ -147,7 +148,7 @@ def _sentence_census(css: str) -> tuple[list[tuple[str, float]], list[tuple[str,
         size = _declared_size(decls, tokens)
         if size is None:
             continue
-        (above if size >= SENTENCE_FLOOR_PX else below).append((selector, size))
+        (above if size >= SENTENCE_FLOOR_REM else below).append((selector, size))
     return above, below
 
 
@@ -155,11 +156,11 @@ def _sub_label_floor_literals(css: str) -> set[tuple[str, float]]:
     """Every px literal below the label floor, written outside `:root`."""
     found: set[tuple[str, float]] = set()
     for selector, decls in _rules(css):
-        sizes = [float(value) for value in re.findall(r"font-size:\s*([0-9.]+)px", decls)]
+        sizes = [float(value) for value in re.findall(r"font-size:\s*([0-9.]+)rem", decls)]
         sizes += [
-            float(value) for value in re.findall(r"font:[^;{}]*?(?<![0-9.])([0-9.]+)px", decls)
+            float(value) for value in re.findall(r"font:[^;{}]*?(?<![0-9.])([0-9.]+)rem", decls)
         ]
-        found.update((selector, size) for size in sizes if size < LABEL_FLOOR_PX)
+        found.update((selector, size) for size in sizes if size < LABEL_FLOOR_REM)
     return found
 
 
@@ -212,7 +213,7 @@ def _tier_selectors(css: str) -> dict[str, float]:
             continue
         height = _declared_line_height(decls)
         size = _declared_size(decls, tokens)
-        if height is None or height < 1.3 or size is None or size < SENTENCE_FLOOR_PX:
+        if height is None or height < 1.3 or size is None or size < SENTENCE_FLOOR_REM:
             continue
         for raw in selector.split(","):
             part = raw.strip()
@@ -285,7 +286,7 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
             for part in selector.split(","):
                 cleaned = part.strip()
                 if cleaned:
-                    sides.setdefault(cleaned, set()).add(size >= SENTENCE_FLOOR_PX)
+                    sides.setdefault(cleaned, set()).add(size >= SENTENCE_FLOOR_REM)
         return {part for part, seen in sides.items() if len(seen) == 2}
 
     @staticmethod
@@ -319,7 +320,7 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
                 skipped += 1
                 continue
             size = css_cascade.resolve(path, tokens, rules)
-            if size is not None and size < SENTENCE_FLOOR_PX:
+            if size is not None and size < SENTENCE_FLOOR_REM:
                 found[selector] = size
         return found, skipped
 
@@ -357,7 +358,10 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         mutant = css + "\n.next-steer-caveat{font-size:var(--fs-label);line-height:1.5}\n"
         self.assertNotEqual(css, mutant)
         tokens, rules = css_cascade.load_text(mutant)
-        self.assertEqual({".next-steer-caveat": 13.0}, self._below_floor(mutant, tokens, rules)[0])
+        self.assertEqual(
+            {".next-steer-caveat": css_cascade.rem(13.0)},
+            self._below_floor(mutant, tokens, rules)[0],
+        )
         # And the clean sheet is not incidentally failing for some other reason.
         self.assertEqual({}, self._below_floor(css, self.tokens, self.rules)[0])
 
@@ -396,7 +400,7 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         self.assertIn(".next-guardrail-copy small", self._straddling(mutant))
         tokens, rules = css_cascade.load_text(mutant)
         self.assertEqual(
-            {".next-guardrail-copy small": 13.0},
+            {".next-guardrail-copy small": css_cascade.rem(13.0)},
             self._below_floor(mutant, tokens, rules)[0],
         )
 
@@ -1047,33 +1051,33 @@ class NextPageAssetContractTest(unittest.TestCase):
     }
 
     SUB_SENTENCE_FLOOR_INVENTORY: ClassVar[set[tuple[float, str]]] = {
-        (13.0, ".next-cockpit-conflict-text"),
-        (13.0, ".next-cockpit-empty,.next-cockpit-evidence-missing"),
-        (13.0, ".next-cockpit-held-absent"),
-        (13.0, ".next-cockpit-reading-clause,.next-session-departure-clause"),
-        (13.0, ".next-cockpit-reading-clause-absent"),
-        (13.0, ".next-cockpit-reading-stale,.next-session-departure-stale"),
-        (13.0, ".next-cockpit-recovery .next-project-goal-text"),
+        (css_cascade.rem(13.0), ".next-cockpit-conflict-text"),
+        (css_cascade.rem(13.0), ".next-cockpit-empty,.next-cockpit-evidence-missing"),
+        (css_cascade.rem(13.0), ".next-cockpit-held-absent"),
+        (css_cascade.rem(13.0), ".next-cockpit-reading-clause,.next-session-departure-clause"),
+        (css_cascade.rem(13.0), ".next-cockpit-reading-clause-absent"),
+        (css_cascade.rem(13.0), ".next-cockpit-reading-stale,.next-session-departure-stale"),
+        (css_cascade.rem(13.0), ".next-cockpit-recovery .next-project-goal-text"),
         (
-            13.0,
+            css_cascade.rem(13.0),
             ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ),
-        (13.0, ".next-cockpit-recovery .next-project-value--absent"),
-        (13.0, ".next-cockpit-work-absent,.next-cockpit-work-limit"),
-        (13.0, ".next-cockpit-work-dropped"),
-        (13.0, ".next-cockpit-work-summary"),
-        (13.0, ".next-delegation-withheld small"),
-        (13.0, ".next-guardrail-copy small,.next-guardrail-empty"),
-        (13.0, ".next-intent-words"),
-        (13.0, ".next-operation-fact em"),
-        (13.0, ".next-operation-unread,.next-operation-scan-only"),
-        (13.0, ".next-project-detail-rail .next-rail-reason"),
-        (13.0, ".next-project-goal-gap"),
-        (13.0, ".next-usage-consent p.next-usage-consent-note"),
-        (13.0, ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
-        (13.0, ".pc-substrate-steps"),
-        (13.0, ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
-        (13.0, ".pc-trail-top span"),
+        (css_cascade.rem(13.0), ".next-cockpit-recovery .next-project-value--absent"),
+        (css_cascade.rem(13.0), ".next-cockpit-work-absent,.next-cockpit-work-limit"),
+        (css_cascade.rem(13.0), ".next-cockpit-work-dropped"),
+        (css_cascade.rem(13.0), ".next-cockpit-work-summary"),
+        (css_cascade.rem(13.0), ".next-delegation-withheld small"),
+        (css_cascade.rem(13.0), ".next-guardrail-copy small,.next-guardrail-empty"),
+        (css_cascade.rem(13.0), ".next-intent-words"),
+        (css_cascade.rem(13.0), ".next-operation-fact em"),
+        (css_cascade.rem(13.0), ".next-operation-unread,.next-operation-scan-only"),
+        (css_cascade.rem(13.0), ".next-project-detail-rail .next-rail-reason"),
+        (css_cascade.rem(13.0), ".next-project-goal-gap"),
+        (css_cascade.rem(13.0), ".next-usage-consent p.next-usage-consent-note"),
+        (css_cascade.rem(13.0), ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
+        (css_cascade.rem(13.0), ".pc-substrate-steps"),
+        (css_cascade.rem(13.0), ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
+        (css_cascade.rem(13.0), ".pc-trail-top span"),
     }
     """The sentence-tier rules still below the floor, which DRC-4602 sizes.
 
@@ -1102,15 +1106,15 @@ class NextPageAssetContractTest(unittest.TestCase):
         # sixteenth token sitting between two of these reds here even when it
         # sits above the floor and so passes every other assertion in the class.
         self.assertEqual(5, len(tokens))
-        below = {name: size for name, size in tokens.items() if size < LABEL_FLOOR_PX}
+        below = {name: size for name, size in tokens.items() if size < LABEL_FLOOR_REM}
         self.assertEqual({}, below)
         # Zero margin is the useful state: --fs-label sits ON the floor, so any
         # new sub-13px step reds immediately.
-        self.assertEqual(LABEL_FLOOR_PX, min(tokens.values()))
+        self.assertEqual(LABEL_FLOOR_REM, min(tokens.values()))
         # `--fs-sentence` was renamed to `--fs-body` at the same 15px. The name
         # this reads is the one the sentence rules spell, so a rename that left
         # the rules behind would red rather than resolve to the old step.
-        self.assertEqual(SENTENCE_FLOOR_PX, tokens["fs-body"])
+        self.assertEqual(SENTENCE_FLOOR_REM, tokens["fs-body"])
 
     def test_a_retuned_label_token_is_caught(self) -> None:
         """Mutation: `--fs-label:13px` -> `12.5px`, applied to an in-process copy.
@@ -1124,12 +1128,12 @@ class NextPageAssetContractTest(unittest.TestCase):
         nothing proves nothing while still reporting a pass on the half below.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        self.assertEqual({}, {n: s for n, s in _type_tokens(css).items() if s < LABEL_FLOOR_PX})
-        mutant = css.replace("--fs-label:13px", "--fs-label:12.5px", 1)
+        self.assertEqual({}, {n: s for n, s in _type_tokens(css).items() if s < LABEL_FLOOR_REM})
+        mutant = css.replace("--fs-label:0.8125rem", "--fs-label:0.78125rem", 1)
         self.assertNotEqual(css, mutant)
         self.assertEqual(
-            {"fs-label": 12.5},
-            {n: s for n, s in _type_tokens(mutant).items() if s < LABEL_FLOOR_PX},
+            {"fs-label": css_cascade.rem(12.5)},
+            {n: s for n, s in _type_tokens(mutant).items() if s < LABEL_FLOOR_REM},
         )
 
     def test_sub_label_floor_literals_are_exactly_the_registry(self) -> None:
@@ -1202,7 +1206,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(len(clean_below) + 1, len(mutant_below))
 
     def test_a_retuned_sentence_token_cannot_silence_the_census(self) -> None:
-        """Why SENTENCE_FLOOR_PX is a literal and not read from the token.
+        """Why SENTENCE_FLOOR_REM is a literal and not read from the token.
 
         Retuning `--fs-body` to 12px would take the sub-floor inventory to 0
         against a token-derived floor, because every rule on the tier would then
@@ -1212,7 +1216,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         want to hear.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        mutant = css.replace("--fs-body:15px", "--fs-body:12px", 1)
+        mutant = css.replace("--fs-body:0.9375rem", "--fs-body:0.75rem", 1)
         self.assertNotEqual(css, mutant)
         _, clean_below = _sentence_census(css)
         _, mutant_below = _sentence_census(mutant)
@@ -1246,11 +1250,11 @@ class NextPageAssetContractTest(unittest.TestCase):
         field = sizes[".next-steer input,.next-guardrail-add-input input"]
         assert caveat is not None and field is not None
         self.assertEqual(field, caveat)
-        self.assertEqual(SENTENCE_FLOOR_PX, caveat)
+        self.assertEqual(SENTENCE_FLOOR_REM, caveat)
         # The submit sits in the same row as the field; DRC-4590's primitive
         # carries it, so this reds if the promoted control forks a local rule.
         self.assertEqual(field, sizes[".next-action"])
-        self.assertEqual(LABEL_FLOOR_PX, sizes[".next-steer-label"])
+        self.assertEqual(LABEL_FLOOR_REM, sizes[".next-steer-label"])
 
     def test_absence_rules_stay_sans_and_never_outrank_their_value(self) -> None:
         """DRC-4589's ruling, as far as one rule at a time can carry it.
@@ -1301,7 +1305,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             for selector, decls in absences
             if (size := _declared_size(decls, tokens)) is not None
         }
-        below = {sel: size for sel, size in sized.items() if size < SENTENCE_FLOOR_PX}
+        below = {sel: size for sel, size in sized.items() if size < SENTENCE_FLOOR_REM}
         # Seven rules sit below the floor. The four that have a paired value
         # were each measured against it rather than asserted alone -- the
         # discipline whose absence cost this milestone four review cycles. Three
@@ -1313,14 +1317,14 @@ class NextPageAssetContractTest(unittest.TestCase):
         #   .next-cockpit-recovery goal --absent   vs ... .next-project-goal-text        13.0
         self.assertEqual(
             {
-                ".next-project-value--absent": 13.0,
-                ".next-cockpit-recovery .next-project-value--absent": 13.0,
-                ".next-cockpit-reading-clause-absent": 13.0,
+                ".next-project-value--absent": css_cascade.rem(13.0),
+                ".next-cockpit-recovery .next-project-value--absent": css_cascade.rem(13.0),
+                ".next-cockpit-reading-clause-absent": css_cascade.rem(13.0),
                 ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n"
-                ".next-cockpit-recovery .next-project-goal-gap": 13.0,
-                ".next-capacity-absent": 13.0,
-                ".next-cockpit-held-absent": 13.0,
-                ".next-cockpit-work-absent,.next-cockpit-work-limit": 13.0,
+                ".next-cockpit-recovery .next-project-goal-gap": css_cascade.rem(13.0),
+                ".next-capacity-absent": css_cascade.rem(13.0),
+                ".next-cockpit-held-absent": css_cascade.rem(13.0),
+                ".next-cockpit-work-absent,.next-cockpit-work-limit": css_cascade.rem(13.0),
             },
             below,
         )
@@ -1598,7 +1602,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         # card is not.
         tokens = {
             name: float(value)
-            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", styles)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)rem", styles)
         }
         self.assertGreaterEqual(
             tokens["fs-body"],
@@ -1762,16 +1766,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(133_686, len(styles))
+        self.assertEqual(135_622, len(styles))
         self.assertEqual(
-            "20c54c203b2eefaa5a75b356e58df26fe9bcd1768127fb2cb4d7ed031bc00c04",
+            "e31fe51b792c78018a326dc39b95a37837807d0dadc3f0fd58d08ea631d4e591",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_045_416, len(assembled))
+        self.assertEqual(1_047_352, len(assembled))
         self.assertEqual(
-            "40cfeaa78a9c4358580bddb4339276472b71b97967a90db3688f4c3646e9e38e",
+            "0b2b7224e988e964f5ac5fb32d5cd99918f2ae30360510b65375b870c1cd7f1f",
             hashlib.sha256(assembled).hexdigest(),
         )
 

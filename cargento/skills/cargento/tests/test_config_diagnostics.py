@@ -1116,6 +1116,60 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                     runtime_sessions.project_from_cwd(windows_config, spelling),
                 )
 
+    def test_a_split_directory_resolves_to_its_path_form_when_it_exists_on_disk(self) -> None:
+        """DRC-4629. The encoding flattens ``/`` to ``-``, so the string alone
+        cannot tell ``recce/cargento`` from a directory named
+        ``recce-cargento``. The machine that wrote the store is the machine
+        reading it, so the directory settles it.
+        """
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "repos", "recce", "cargento"))
+            config = make_config(home=home)
+            encoded = runtime_sessions.encoded_home_prefix(home) + "-repos-recce-cargento"
+            self.assertEqual(
+                "recce/cargento",
+                runtime_sessions.bounded_project_label(config, encoded),
+            )
+
+    def test_a_directory_genuinely_named_with_a_dash_keeps_the_dash(self) -> None:
+        """The case the resolution must not break: one real directory whose own
+        name contains the separator the encoding uses.
+        """
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "work-my-repo"))
+            config = make_config(home=home)
+            encoded = runtime_sessions.encoded_home_prefix(home) + "-work-my-repo"
+            self.assertEqual(
+                "work-my-repo",
+                runtime_sessions.bounded_project_label(config, encoded),
+            )
+
+    def test_an_encoded_name_with_no_directory_behind_it_falls_back_closed(self) -> None:
+        """A wrong join merges two projects that are genuinely different, which
+        is worse than the split it replaces, so an unresolvable name keeps the
+        label it has today.
+        """
+        with tempfile.TemporaryDirectory() as home:
+            config = make_config(home=home)
+            encoded = runtime_sessions.encoded_home_prefix(home) + "-repos-recce-cargento"
+            self.assertEqual(
+                "recce-cargento",
+                runtime_sessions.bounded_project_label(config, encoded),
+            )
+
+    def test_a_resolved_path_is_still_capped_at_two_segments(self) -> None:
+        """Resolution must not become a way to write a home-relative path into a
+        fourteen-day store, which is the rule the cap exists to keep.
+        """
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "a", "b", "c", "d", "e"))
+            config = make_config(home=home)
+            encoded = runtime_sessions.encoded_home_prefix(home) + "-a-b-c-d-e"
+            self.assertEqual(
+                "d/e",
+                runtime_sessions.bounded_project_label(config, encoded),
+            )
+
     def test_project_from_cwd_agrees_with_project_label_under_home(self) -> None:
         # The whole point of DRC-3963 is that one directory reads the same on
         # every row. The cwd path and the encoded-name fallback are the two

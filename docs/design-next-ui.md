@@ -114,7 +114,25 @@ regions is an ownership change, not incidental cleanup.
 Board sentences have a 15px floor (`--fs-body`), at weight 500 and line-height 1.55. Labels
 identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 13px. That
 tier was 11px until v3 raised it, and the five steps are now the whole scale: no literal px size
-and no unused step survives, which a test enforces. Four
+and no unused step survives, which a test enforces.
+
+The steps are declared in rem against a `100%` root, so the board follows the reader's own
+font-size setting. The rem figures are computed against 16px, which is why a reader who has not
+changed their browser default renders exactly the pixels above, and a reader at 20px gets the whole
+board a quarter larger. Naming a px root would pin the scale and take that away again, which is the
+one thing the unit exists to prevent. Borders stay px: a 1px hairline in rem becomes 1.25px at a
+20px root and renders as a blurred two-pixel line, and 155 of the sheet's literals are that
+hairline.
+
+Three floors sit under the scale for the elements no rule reaches, each written with `:where()` so
+it stays a floor and never a ceiling. `body` names a step, so nothing inherits the user-agent
+default. `small` takes the label tier, because the user agent's `smaller` keyword lands it at
+10.83px inside a 13px parent, below the floor this scale exists to hold. And the Projects view's
+headings take declared steps, because they were the one surface whose `h1`, `h2` and `h3` had no
+rule at all and took em multiples. Measured in a browser at two root sizes across four viewports:
+every rendered size is one of the five, where 22 elements sat outside them before. None of the
+three is visible to the declaration census, because the rule that produces each one belongs to the
+user agent rather than to this sheet. Four
 `:root` steps used to sit below 11px, at 9px, 9.5px, 10px and 10.5px, a 3px band nobody can rank,
 and 9px was the smallest step in the file. **Counts here read "at or below 12px" inclusively**, so
 the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 10px,
