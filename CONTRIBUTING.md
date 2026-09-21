@@ -261,9 +261,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Keep stylesheet edits inside the region owned by the surface you are changing, including its
   media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
   names all nine regions, the dark-only palette and the type floor. Board sentences use
-  `--fs-sentence` (15px); compact labels and source metadata sit on one tier, `--fs-label` (11px).
-  The stylesheet contains both scale tokens and literal sizes; no test currently bans all raw
-  pixel sizes or unused scale steps. The earlier scale-only rule followed twenty ad-hoc values
+  `--fs-body` (15px); compact labels and source metadata sit on one tier, `--fs-label` (13px).
+  Every `font-size` is one of the five scale steps: a test bans raw pixel
+  sizes and unused steps, and a second one holds control boundaries to 3:1. The earlier scale-only rule followed twenty ad-hoc values
   between 8px and 15px; new sizes still need a named role.
 - Reach an ink through its role register, not through its hex. `--ink-label`, `--ink-value`,
   `--ink-absence` and `--ink-caption` are declared in the one `:root` block, and a label or absence

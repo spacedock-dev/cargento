@@ -90,13 +90,16 @@ console.log(JSON.stringify(__els.app.innerHTML));
             r'class="next-attention-square" data-known="false"',
         )
         self.assertRegex(html, r'data-next-board-risk="collision" data-tone="unknown"')
+        # v3 deleted `--line2`; `--line` is the neutral boundary that replaced it.
+        # The property is unchanged: an unknown square and an unknown tone stay
+        # neutral, and the known square keeps `--accent-dim` beside them.
         self.assertRegex(
             NEXT_STYLES,
-            r"\.next-attention-square\{[^}]*background:var\(--line2\)",
+            r"\.next-attention-square\{[^}]*background:var\(--line\)",
         )
         self.assertRegex(
             NEXT_STYLES,
-            r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line2\)',
+            r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line\)',
         )
         self.assertIn("Not on this board yet", html)
         for code in ("F3", "E5", "E6"):

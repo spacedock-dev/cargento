@@ -46,28 +46,52 @@ FONT_ASSETS: tuple[tuple[str, str], ...] = (
         "{{CARGENTO_FONT_SPACE_GROTESK_V22_LATIN}}",
     ),
     (
-        "fonts/space-mono-v17-regular-vietnamese.woff2.b64",
-        "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_VIETNAMESE}}",
+        "fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_VIETNAMESE}}",
     ),
     (
-        "fonts/space-mono-v17-regular-latin-ext.woff2.b64",
-        "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN_EXT}}",
+        "fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_LATIN_EXT}}",
     ),
     (
-        "fonts/space-mono-v17-regular-latin.woff2.b64",
-        "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN}}",
+        "fonts/ibm-plex-mono-v20-regular-latin.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_LATIN}}",
     ),
     (
-        "fonts/space-mono-v17-bold-vietnamese.woff2.b64",
-        "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_VIETNAMESE}}",
+        "fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_VIETNAMESE}}",
     ),
     (
-        "fonts/space-mono-v17-bold-latin-ext.woff2.b64",
-        "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN_EXT}}",
+        "fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_LATIN_EXT}}",
     ),
     (
-        "fonts/space-mono-v17-bold-latin.woff2.b64",
-        "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN}}",
+        "fonts/ibm-plex-mono-v20-medium-latin.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_LATIN}}",
+    ),
+    (
+        "fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_VIETNAMESE}}",
+    ),
+    (
+        "fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_LATIN_EXT}}",
+    ),
+    (
+        "fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_LATIN}}",
+    ),
+    (
+        "fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_VIETNAMESE}}",
+    ),
+    (
+        "fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_LATIN_EXT}}",
+    ),
+    (
+        "fonts/ibm-plex-mono-v20-italic-latin.woff2.b64",
+        "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_LATIN}}",
     ),
 )
 

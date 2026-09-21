@@ -53,7 +53,14 @@ retuning `--fs-sentence` to 12px in a scratch copy took the sub-floor census
 from 19 rules to 0 while the test stayed green.
 """
 
-LABEL_FLOOR_PX = 11.0
+LABEL_FLOOR_PX = 13.0
+"""The v3 label step, which is also the smallest of the five type tokens.
+
+v0.27.0 put this at 11px, where `--fs-label` and `--fs-machine` both sat. v3
+deleted every sub-13px step, so the floor and the smallest token moved
+together and the zero margin `test_the_root_type_tokens_hold_the_label_floor`
+asserts is preserved rather than restored.
+"""
 
 
 def _css_body(css: str) -> str:
@@ -252,10 +259,18 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
             ".next-cockpit-decision-summary",
             ".next-cockpit-memos label>small",
             ".next-cockpit-now-state small",
+            # v3 added this one: the recovery cell declares strong and small at
+            # the sentence tier together and then pulls small back to the label
+            # tier on the next line. Reviewed, and it is the intended shape -- a
+            # small there is a caption, and 13px is where a caption belongs.
+            ".next-cockpit-recovery small",
             ".next-cockpit-recovery>div",
+            # And this one, which straddles only across a media query: the tab
+            # sizes down at the narrow breakpoint. A tab is a control rather
+            # than a sentence, so neither side is a floor violation.
+            ".next-cockpit-tabs button",
             ".next-cockpit-viewing-session",
             ".next-project-workflow-definition>small",
-            ".next-session-current>strong",
         }
     )
 
@@ -328,15 +343,21 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         works. What has to be true is that the check above FAILS, so the mutant
         is put through the same function the real sheet goes through.
 
-        `.next-steer-caveat` declares `--fs-sentence` and a later rule at the
-        same (0,1,0) takes it to `--fs-xs`, which is the shape
+        `.next-steer-caveat` declares `--fs-body` and a later rule at the
+        same (0,1,0) takes it to `--fs-label`, which is the shape
         `.next-guardrail-copy small` shipped in.
+
+        The mutant used `--fs-xs` until v3 deleted that token. An undeclared
+        token makes `_declared_size` return None, so the mutant stopped
+        producing a violation and the guard asserted nothing while still
+        passing. The token has to be one the sheet actually declares, or this
+        test proves only that a typo is invisible.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        mutant = css + "\n.next-steer-caveat{font-size:var(--fs-xs);line-height:1.5}\n"
+        mutant = css + "\n.next-steer-caveat{font-size:var(--fs-label);line-height:1.5}\n"
         self.assertNotEqual(css, mutant)
         tokens, rules = css_cascade.load_text(mutant)
-        self.assertEqual({".next-steer-caveat": 12.5}, self._below_floor(mutant, tokens, rules)[0])
+        self.assertEqual({".next-steer-caveat": 13.0}, self._below_floor(mutant, tokens, rules)[0])
         # And the clean sheet is not incidentally failing for some other reason.
         self.assertEqual({}, self._below_floor(css, self.tokens, self.rules)[0])
 
@@ -362,16 +383,20 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         mutant = css.replace(
             ".next-guardrail-copy strong,.next-guardrail-copy small"
             "{display:block;overflow-wrap:anywhere;font-weight:500}\n"
-            ".next-guardrail-copy strong{font-size:var(--fs-sentence);line-height:1.55}",
+            ".next-guardrail-copy strong{font-size:var(--fs-body);line-height:1.55}",
             ".next-guardrail-copy strong,.next-guardrail-copy small"
-            "{display:block;overflow-wrap:anywhere;font-size:var(--fs-sentence);"
+            "{display:block;overflow-wrap:anywhere;font-size:var(--fs-body);"
             "font-weight:500;line-height:1.55}",
         )
+        # assertNotEqual is doing real work here: the two strings are quoted
+        # from the sheet, so a rename like --fs-sentence to --fs-body silently
+        # makes the replace a no-op and the mutation vacuous. It went that way
+        # once, in v3.
         self.assertNotEqual(css, mutant)
         self.assertIn(".next-guardrail-copy small", self._straddling(mutant))
         tokens, rules = css_cascade.load_text(mutant)
         self.assertEqual(
-            {".next-guardrail-copy small": 12.5},
+            {".next-guardrail-copy small": 13.0},
             self._below_floor(mutant, tokens, rules)[0],
         )
 
@@ -563,29 +588,53 @@ class NextPageAssetContractTest(unittest.TestCase):
                 22_320,
                 "a0d054c4af557de20afd6ca59f47ab353bcaec49c63ff04b6c9d39d0f8910557",
             ),
-            "fonts/space-mono-v17-regular-vietnamese.woff2.b64": (
+            "fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64": (
+                4_000,
+                "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c",
+            ),
+            "fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64": (
+                8_860,
+                "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d",
+            ),
+            "fonts/ibm-plex-mono-v20-regular-latin.woff2.b64": (
+                10_052,
+                "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac",
+            ),
+            "fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64": (
+                4_036,
+                "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4",
+            ),
+            "fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64": (
+                8_848,
+                "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5",
+            ),
+            "fonts/ibm-plex-mono-v20-medium-latin.woff2.b64": (
+                10_060,
+                "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0",
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64": (
                 4_116,
-                "1ab5cb4b90a56d6031db3618250a1f1bb52a275df5a0ec9ae8e62686550f1af4",
+                "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965",
             ),
-            "fonts/space-mono-v17-regular-latin-ext.woff2.b64": (
-                9_752,
-                "b4f90459adf4851575a46d9a492c17ee34c97fe40d56979521de67d1ee77d75a",
+            "fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64": (
+                8_960,
+                "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854",
             ),
-            "fonts/space-mono-v17-regular-latin.woff2.b64": (
-                9_464,
-                "e0c8e616bda27642f4c3cebaecff6525d901e73afc8a227cbbb0f2af4810f300",
+            "fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64": (
+                10_120,
+                "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c",
             ),
-            "fonts/space-mono-v17-bold-vietnamese.woff2.b64": (
-                4_168,
-                "e9c42e9aad5bf74da01a810f8777a1ce45d924c4f28faf3a19b046b8f813321c",
+            "fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64": (
+                4_416,
+                "fe88a1e1a9cdb5b50308f09aaf573987f4ba2177bc6faa5feeb82a47df277bbb",
             ),
-            "fonts/space-mono-v17-bold-latin-ext.woff2.b64": (
-                9_732,
-                "512458b32bf452ac0e4b33fd6277bf4f07821acefb59db2d1498aa107679a1a6",
+            "fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64": (
+                9_788,
+                "c590f625acd1a18021f23486445b03b8435879b406db1003d3fdd7804e9319fb",
             ),
-            "fonts/space-mono-v17-bold-latin.woff2.b64": (
-                9_552,
-                "af7cf6d2b897ec453acdcdacde4e9bcc8410718af5914de865b453e09f10eebc",
+            "fonts/ibm-plex-mono-v20-italic-latin.woff2.b64": (
+                11_568,
+                "2665f5fbbb334780fa135c7f1dc6e2459061a2d6d44c32b7c1fdbc34cde65ede",
             ),
         }
         vietnamese_range = (
@@ -616,28 +665,52 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "{{CARGENTO_FONT_SPACE_GROTESK_V22_LATIN}}",
                 latin_range,
             ),
-            "fonts/space-mono-v17-regular-vietnamese.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_VIETNAMESE}}",
+            "fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_VIETNAMESE}}",
                 vietnamese_range,
             ),
-            "fonts/space-mono-v17-regular-latin-ext.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN_EXT}}",
+            "fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_LATIN_EXT}}",
                 latin_ext_range,
             ),
-            "fonts/space-mono-v17-regular-latin.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN}}",
+            "fonts/ibm-plex-mono-v20-regular-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_REGULAR_LATIN}}",
                 latin_range,
             ),
-            "fonts/space-mono-v17-bold-vietnamese.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_VIETNAMESE}}",
+            "fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_VIETNAMESE}}",
                 vietnamese_range,
             ),
-            "fonts/space-mono-v17-bold-latin-ext.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN_EXT}}",
+            "fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_LATIN_EXT}}",
                 latin_ext_range,
             ),
-            "fonts/space-mono-v17-bold-latin.woff2.b64": (
-                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN}}",
+            "fonts/ibm-plex-mono-v20-medium-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_MEDIUM_LATIN}}",
+                latin_range,
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_SEMIBOLD_LATIN}}",
+                latin_range,
+            ),
+            "fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/ibm-plex-mono-v20-italic-latin.woff2.b64": (
+                "{{CARGENTO_FONT_IBM_PLEX_MONO_V20_ITALIC_LATIN}}",
                 latin_range,
             ),
         }
@@ -667,24 +740,43 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertNotIn("fonts.googleapis.com", assembled)
         self.assertNotIn("fonts.gstatic.com", assembled)
         self.assertNotIn("{{CARGENTO_FONT_", assembled)
-        self.assertEqual(9, assembled.count("data:font/woff2;base64,"))
+        self.assertEqual(15, assembled.count("data:font/woff2;base64,"))
         assembled_faces = re.findall(r"@font-face\{([^}]*)\}", assembled)
         grotesk = [face for face in assembled_faces if "font-family:'Space Grotesk'" in face]
-        mono = [face for face in assembled_faces if "font-family:'Space Mono'" in face]
+        mono = [face for face in assembled_faces if "font-family:'IBM Plex Mono'" in face]
         self.assertEqual(3, len(grotesk))
         self.assertTrue(all("font-weight:400 700" in face for face in grotesk))
-        self.assertEqual(6, len(mono))
-        self.assertEqual(3, sum("font-weight:400;" in face for face in mono))
-        self.assertEqual(3, sum("font-weight:700;" in face for face in mono))
+        self.assertEqual(12, len(mono))
+        # The pair, not the weight. IBM Plex Mono ships a 400 italic beside the
+        # 400 upright, so counting `font-weight:400` alone reports six where
+        # three of them are a different face, and an italic lost to the upright
+        # subsetting would still leave that count right.
+        cuts: dict[tuple[str, str], int] = {}
+        for face in mono:
+            style = re.search(r"font-style:([^;]+);", face)
+            weight = re.search(r"font-weight:([^;]+);", face)
+            self.assertIsNotNone(style)
+            self.assertIsNotNone(weight)
+            cut = (style.group(1) if style else "", weight.group(1) if weight else "")
+            cuts[cut] = cuts.get(cut, 0) + 1
+        self.assertEqual(
+            {
+                ("normal", "400"): 3,
+                ("normal", "500"): 3,
+                ("normal", "600"): 3,
+                ("italic", "400"): 3,
+            },
+            cuts,
+        )
 
         expected_notices = {
             "fonts/SpaceGrotesk-OFL.txt": (
                 4_402,
                 "c6dec685825f73b18c20926fddc65e8315642e12986f15db0699170940a09efc",
             ),
-            "fonts/SpaceMono-OFL.txt": (
-                4_392,
-                "8e4ee42b2553e1e01504e61cb0d46d148cd8c9e5eacaa3622a7df2d4f2955b9f",
+            "fonts/IBMPlexMono-OFL.txt": (
+                4_363,
+                "37784b44044a4ffd9256702b7c0982c37e5c8887ba90c6dca0479aea93dc898d",
             ),
         }
         for name, (size, digest) in expected_notices.items():
@@ -694,9 +786,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(notice).hexdigest())
         sources = frontend_page.asset_path("fonts/SOURCES.txt").read_text(encoding="utf-8")
         self.assertIn("Space Grotesk v22", sources)
-        self.assertIn("Space Mono v17", sources)
+        self.assertIn("IBM Plex Mono v20", sources)
         for _size, digest in expected_fonts.values():
             self.assertIn(digest, sources)
+        # The family name survives in SOURCES.txt as provenance -- the Space Grotesk
+        # subsets came from a combined request that also carried Space Mono -- so the
+        # retirement is asserted on the shipped filenames, which are what is gone.
+        self.assertNotIn("space-mono-v17", sources)
+        self.assertFalse((frontend_page.WEB_DIR / "fonts" / "SpaceMono-OFL.txt").exists())
+        self.assertEqual([], sorted(frontend_page.WEB_DIR.glob("fonts/space-mono-*")))
+        self.assertNotIn("SPACE_MONO", styles)
 
     def test_the_retired_preview_asset_directory_is_absent(self) -> None:
         self.assertFalse((frontend_page.WEB_DIR / "next").exists())
@@ -758,21 +857,54 @@ class NextPageAssetContractTest(unittest.TestCase):
             with self.subTest(retired=retired):
                 self.assertNotIn(retired, styles)
         expected = {
+            # surfaces
+            "--sunk": "#0f0f0a",
             "--bg": "#14140f",
-            "--panel": "#1c1c16",
-            "--sunk": "#11110c",
-            "--line": "#2c2c23",
-            "--line2": "#403f33",
-            "--ink": "#f4f1e8",
-            "--ink2": "#c9c4b4",
-            "--ink3": "#9b9484",
-            "--accent": "#c6e07a",
-            "--accent-dim": "#8ea254",
-            "--amber": "#e8b45c",
-            "--clay": "#e08a6a",
+            "--panel": "#24231b",
+            "--raise": "#323025",
+            # boundaries
+            "--line": "#74725f",
+            "--line-hi": "#8a8874",
+            "--rule": "#35342a",
+            # ink
+            "--ink": "#f6f3ea",
+            "--ink2": "#cdc7b4",
+            "--ink3": "#a39c88",
+            # tones
+            "--accent": "#cfe884",
+            "--accent-dim": "#93a757",
+            "--amber": "#f0b95e",
+            "--clay": "#e4886a",
         }
         tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", roots[0]))
-        self.assertEqual(expected, {name: tokens.get(name) for name in expected})
+        # The map is the whole palette, not a sample of it. Read back every
+        # :root token whose value IS a hex literal and require the two sets to
+        # match, so a fifteenth colour fails here instead of arriving unmeasured
+        # and unreachable by the contrast loop below. Composed values --
+        # `--e-card`'s shadow, `--hatch`'s gradient, the `color-mix` selection
+        # pair -- carry a colour without being one, and stay out by construction.
+        literal = {
+            name: value.strip()
+            for name, value in tokens.items()
+            if re.fullmatch(r"#[0-9a-f]{6}", value.strip())
+        }
+        self.assertEqual(expected, literal)
+
+        # The four --ink-* roles survive v3 as indirection, never as a colour of
+        # their own: the tier moves in one line because nothing repeats a hex.
+        for role, target in (
+            ("--ink-label", "var(--ink2)"),
+            ("--ink-value", "var(--ink)"),
+            ("--ink-absence", "var(--ink2)"),
+            ("--ink-caption", "var(--ink2)"),
+        ):
+            with self.subTest(role=role):
+                self.assertEqual(target, (tokens.get(role) or "").strip())
+
+        # Retired by v3 alongside the prototype palette above.
+        for gone in ("--line2", "--radius-control", "--control-bd"):
+            with self.subTest(retired=gone):
+                self.assertNotIn(gone, tokens)
 
         def luminance(value: str) -> float:
             channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
@@ -786,7 +918,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             high, low = sorted((luminance(first), luminance(second)), reverse=True)
             return (high + 0.05) / (low + 0.05)
 
-        for surface in ("--bg", "--panel", "--sunk"):
+        for surface in ("--sunk", "--bg", "--panel", "--raise"):
             for ink in (
                 "--ink",
                 "--ink2",
@@ -798,23 +930,32 @@ class NextPageAssetContractTest(unittest.TestCase):
             ):
                 with self.subTest(surface=surface, ink=ink):
                     self.assertGreater(contrast(tokens[ink], tokens[surface]), 4.5)
+
+        # SC 1.4.11. --line bounds a control and must clear 3:1 on the surfaces a
+        # control sits on; --raise is the one it cannot, which is the whole reason
+        # --line-hi exists. --rule divides rows and bounds nothing, so it is out
+        # of scope and is asserted to stay out by never being asked to clear it.
+        for surface in ("--sunk", "--bg", "--panel"):
+            with self.subTest(boundary="--line", surface=surface):
+                self.assertGreater(contrast(tokens["--line"], tokens[surface]), 3.0)
+        self.assertGreater(contrast(tokens["--line-hi"], tokens["--raise"]), 3.0)
         self.assertGreater(contrast(tokens["--ink"], tokens["--bg"]), 3.0)
 
     # --- DRC-4596: the size guard, and the three mutants that falsify it ------
 
-    SUB_LABEL_FLOOR_REGISTRY: ClassVar[set[tuple[float, str]]] = {
-        (10.0, ".next-rail-capacity-caption"),
-        (10.5, ".next-capacity-scope"),
-        (10.5, ".next-capacity-window i"),
-        (10.5, ".next-delegation-metrics"),
-        (10.5, ".next-operation-harness"),
-        (10.5, ".next-project-change time,.next-project-change-harness"),
-    }
-    """The px literals below the 11px label floor, recorded rather than raised.
+    SUB_LABEL_FLOOR_REGISTRY: ClassVar[set[tuple[float, str]]] = set()
+    """The px literals below the 13px label floor, recorded rather than raised.
 
-    A registry, not a floor: it does not demand these five be raised, only that
-    a sixth cannot arrive unnoticed. Triage recorded six against the pre-DRC-4590
-    tree; `.next-guardrail-add` left the set when DRC-4590 gave it `.next-action`.
+    Empty against the v3 sheet, which is this registry at its strongest rather
+    than a reason to delete it. v3 spells every size as a token, so the six
+    literals v0.27.0 recorded -- 10px on `.next-rail-capacity-caption` and
+    10.5px on the capacity scope, the capacity window, the delegation metrics,
+    the operation harness and the project-change stamp -- went with the steps
+    they named. The assertion is an equality over a DERIVED sweep, so a seventh
+    literal arriving below the floor, or any of the six coming back, reds on the
+    run that lands it. An empty expected set is only vacuous if the sweep cannot
+    produce a non-empty one, and `test_a_retuned_label_token_is_caught` is the
+    committed proof that it can.
     """
 
     SENTENCE_TIER_RULES: ClassVar[set[str]] = {
@@ -823,22 +964,29 @@ class NextPageAssetContractTest(unittest.TestCase):
         # pass unnoticed.
         ".next-action",
         ".next-activity-question",
+        ".next-attention-brief p",
         ".next-attention-caveats p",
         ".next-attention-heading p,.next-attention-section-heading p",
         ".next-attention-open p",
+        ".next-attention-part",
         ".next-attention-risk-assignment",
         ".next-attention-risk-detail",
+        ".next-attention-risk-identity h3",
+        ".next-attention-risk-observation p",
+        ".next-capacity-prospect",
         ".next-capacity-prospect small",
         ".next-cockpit-authority>small",
         ".next-cockpit-conflict-cue",
         ".next-cockpit-conflict-open",
         ".next-cockpit-conflict-why,.next-cockpit-conflict-settled",
         ".next-cockpit-content",
+        ".next-cockpit-content .next-cockpit-evidence-missing",
         ".next-cockpit-content .next-course-evidence",
         ".next-cockpit-count-label",
         ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
         ".next-cockpit-define",
         ".next-cockpit-departures-kept",
+        ".next-cockpit-held-field textarea",
         ".next-cockpit-held-lede",
         ".next-cockpit-held-reentry",
         ".next-cockpit-held-reentry-text",
@@ -847,29 +995,33 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-landed-value",
         ".next-cockpit-lede",
         ".next-cockpit-reading-limit",
+        ".next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading",
         ".next-cockpit-reading-why",
         ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
         ".next-cockpit-recovery>div",
         ".next-cockpit-scope-switcher>summary",
         ".next-cockpit-why>summary",
+        ".next-cockpit-work-derived",
         ".next-cockpit-work-mix",
+        ".next-course-episode p,.next-course-episode ul,.next-course-direction p",
         ".next-delegation-caption",
-        # Split from the grouped rule it shared: the group declared a size the
-        # very next rule overrode for `small`, so the sheet said one thing and
-        # painted another. `small` keeps every other declaration it had and
-        # now sits only on the sub-floor side, where it always rendered.
         ".next-guardrail-copy strong",
         ".next-intent-note",
         ".next-intent-revision,.next-intent-why",
         ".next-operation-assignment",
         ".next-operation-collision",
         ".next-operation-group>header p",
+        ".next-operation-identity strong,.next-operation-fact strong",
         ".next-operation-outcome",
         ".next-operations-fleet small",
+        ".next-operations-header p",
         ".next-project-collision,.next-project-detail-collision",
         ".next-project-ending-outcome",
+        ".next-project-goal-text",
         ".next-rail-question",
         ".next-rail-wait-heading a",
+        ".next-session-ask-question",
+        ".next-session-current>strong,.next-session-command-facts strong,.next-session-command-context",
         ".next-session-delivery-count",
         ".next-session-delivery-lane",
         ".next-session-delivery-note",
@@ -877,93 +1029,106 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-session-departure-next",
         ".next-session-departures-count",
         ".next-session-departures-why",
+        ".next-session-detail-instruction",
+        ".next-session-facts dd",
+        ".next-session-health",
         ".next-session-held-link",
         ".next-session-source-coverage p",
         ".next-stalled",
         ".next-steer input,.next-guardrail-add-input input",
         ".next-steer-caveat",
+        ".next-usage-consent",
         ".pc-entry-details",
         ".pc-history-band>summary,.pc-trail-history>summary,.pc-entry-suppressed>summary,.pc-event-evidence>summary",
+        ".pc-semantic-timeline,.pc-terminal",
         ".pc-terminal-screen",
+        ".pc-trail-result",
+        ".pc-trail-top .pc-lane-title",
     }
 
     SUB_SENTENCE_FLOOR_INVENTORY: ClassVar[set[tuple[float, str]]] = {
-        (12.5, ".next-cockpit-content .next-cockpit-evidence-missing"),
-        (12.5, ".next-cockpit-empty,.next-cockpit-evidence-missing"),
-        (12.5, ".next-cockpit-held-absent"),
-        (12.5, ".next-cockpit-reading-clause-absent"),
-        (12.5, ".next-cockpit-reading-stale,.next-session-departure-stale"),
+        (13.0, ".next-cockpit-conflict-text"),
+        (13.0, ".next-cockpit-empty,.next-cockpit-evidence-missing"),
+        (13.0, ".next-cockpit-held-absent"),
+        (13.0, ".next-cockpit-reading-clause,.next-session-departure-clause"),
+        (13.0, ".next-cockpit-reading-clause-absent"),
+        (13.0, ".next-cockpit-reading-stale,.next-session-departure-stale"),
+        (13.0, ".next-cockpit-recovery .next-project-goal-text"),
         (
-            12.5,
+            13.0,
             ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ),
-        (12.5, ".next-cockpit-recovery .next-project-value--absent"),
-        (12.5, ".next-cockpit-work-absent,.next-cockpit-work-limit"),
-        (12.5, ".next-cockpit-work-dropped"),
-        (12.5, ".next-delegation-withheld small"),
-        (12.5, ".next-guardrail-copy small,.next-guardrail-empty"),
-        (12.5, ".next-project-detail-rail .next-rail-reason"),
-        (12.5, ".next-project-goal-gap"),
-        (12.5, ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
-        (12.5, ".pc-substrate-steps"),
-        (12.5, ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
-        (13.0, ".next-attention-part"),
-        (13.0, ".next-attention-risk-observation p"),
-        (13.0, ".next-cockpit-work-derived"),
-        (13.0, ".pc-semantic-timeline,.pc-terminal"),
-        (13.0, ".pc-trail-result"),
-        (13.5, ".next-attention-brief p"),
-        (13.5, ".next-attention-risk-identity h3"),
-        (13.5, ".next-capacity-prospect"),
-        (
-            13.5,
-            ".next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading",
-        ),
-        (13.5, ".next-operations-header p"),
-        (14.0, ".next-cockpit-held-field textarea"),
-        (14.0, ".next-course-episode p,.next-course-episode ul,.next-course-direction p"),
-        (14.0, ".next-operation-identity strong,.next-operation-fact strong"),
-        (14.0, ".next-session-ask-question"),
-        (
-            14.0,
-            ".next-session-current>strong,.next-session-command-facts strong,.next-session-command-context",
-        ),
-        (14.0, ".next-session-detail-instruction"),
-        (14.0, ".next-session-health"),
-        (14.0, ".next-usage-consent"),
-        (14.5, ".next-project-goal-text"),
+        (13.0, ".next-cockpit-recovery .next-project-value--absent"),
+        (13.0, ".next-cockpit-work-absent,.next-cockpit-work-limit"),
+        (13.0, ".next-cockpit-work-dropped"),
+        (13.0, ".next-cockpit-work-summary"),
+        (13.0, ".next-delegation-withheld small"),
+        (13.0, ".next-guardrail-copy small,.next-guardrail-empty"),
+        (13.0, ".next-intent-words"),
+        (13.0, ".next-operation-fact em"),
+        (13.0, ".next-operation-unread,.next-operation-scan-only"),
+        (13.0, ".next-project-detail-rail .next-rail-reason"),
+        (13.0, ".next-project-goal-gap"),
+        (13.0, ".next-usage-consent p.next-usage-consent-note"),
+        (13.0, ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
+        (13.0, ".pc-substrate-steps"),
+        (13.0, ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
+        (13.0, ".pc-trail-top span"),
     }
     """The sentence-tier rules still below the floor, which DRC-4602 sizes.
 
     An exact set, so a rule LEAVING the sentence tier for a lower one reds here
-    just as a new sub-floor rule does. `docs/design-next-ui.md` reports the
-    single-rule census as seventeen; the two it does not count are the `.pc-*`
-    prototype rules, `.pc-semantic-timeline,.pc-terminal` and `.pc-trail-result`.
-    That gap was left open at triage and is settled here against the tree.
+    just as a new sub-floor rule does.
+
+    Recomputed against v3, where every entry reads 13.0px and nothing else. The
+    v0.27.0 inventory held 36 rules spread over five steps between 12.5px and
+    14.5px; v3 deleted every one of those steps, so a rule that was not raised
+    to `--fs-body` landed on `--fs-label` and the residual is now one figure
+    wide. Nineteen of the 36 were raised onto the tier outright.
+
+    The nine rules here that appear in neither v0.27.0 census did not fall --
+    they arrived. Each was mono at 12.5px or 11px in v0.27.0, which kept it out
+    of a census that skips mono, and v3 set it in sans at 13px. They enter this
+    inventory having got LARGER, which is the one reading of a growing registry
+    that is not a regression, and it is why the check below this one compares
+    the v0.27.0 above-set against this below-set: that intersection is empty, so
+    no rule crossed the floor downwards.
     """
 
     def test_the_root_type_tokens_hold_the_label_floor(self) -> None:
         tokens = _type_tokens((frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8"))
-        self.assertEqual(21, len(tokens))
+        # Five steps, not v0.27.0's twenty-one. A count and not only a floor,
+        # because the defect this half guards against is a REINSTATED step: a
+        # sixteenth token sitting between two of these reds here even when it
+        # sits above the floor and so passes every other assertion in the class.
+        self.assertEqual(5, len(tokens))
         below = {name: size for name, size in tokens.items() if size < LABEL_FLOOR_PX}
         self.assertEqual({}, below)
-        # Zero margin is the useful state: --fs-label and --fs-machine sit ON
-        # the floor, so any new sub-11px step reds immediately.
+        # Zero margin is the useful state: --fs-label sits ON the floor, so any
+        # new sub-13px step reds immediately.
         self.assertEqual(LABEL_FLOOR_PX, min(tokens.values()))
-        self.assertEqual(SENTENCE_FLOOR_PX, tokens["fs-sentence"])
+        # `--fs-sentence` was renamed to `--fs-body` at the same 15px. The name
+        # this reads is the one the sentence rules spell, so a rename that left
+        # the rules behind would red rather than resolve to the old step.
+        self.assertEqual(SENTENCE_FLOOR_PX, tokens["fs-body"])
 
     def test_a_retuned_label_token_is_caught(self) -> None:
-        """Mutation: `--fs-label:11px` -> `10.5px`, applied to an in-process copy.
+        """Mutation: `--fs-label:13px` -> `12.5px`, applied to an in-process copy.
 
         The tree is never touched, so no byte-pin oracle moves and this is a
         committed check rather than a procedure someone promises they ran.
+
+        `assertNotEqual` on the substitution is the load-bearing line, not
+        ceremony: the v0.27.0 spelling of this mutant was `--fs-label:11px`,
+        which matches nothing in the v3 sheet, and a mutation that substitutes
+        nothing proves nothing while still reporting a pass on the half below.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         self.assertEqual({}, {n: s for n, s in _type_tokens(css).items() if s < LABEL_FLOOR_PX})
-        mutant = css.replace("--fs-label:11px", "--fs-label:10.5px", 1)
+        mutant = css.replace("--fs-label:13px", "--fs-label:12.5px", 1)
         self.assertNotEqual(css, mutant)
         self.assertEqual(
-            {"fs-label": 10.5},
+            {"fs-label": 12.5},
             {n: s for n, s in _type_tokens(mutant).items() if s < LABEL_FLOOR_PX},
         )
 
@@ -975,43 +1140,59 @@ class NextPageAssetContractTest(unittest.TestCase):
     def test_sentence_tier_rules_resolve_at_or_above_the_floor(self) -> None:
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         above, below = _sentence_census(css)
-        # Recomputed on the merged tree. The branch this came from read 70 against
-        # a pre-squash DRC-4587 tree that raised thirteen rules the narrower #361
-        # did not; main resolves 55 and the four branches here add seven.
+        # Recomputed against the v3 sheet: 83 rules above the floor over 82
+        # distinct selectors, and 24 below. v0.27.0 read 61 and 36. Both halves
+        # of that move are raises -- 19 sub-floor rules went up to 15px, and 9
+        # rules that were mono below 13px are now 13px sans, which puts them in
+        # the sub-floor census for the first time at a size LARGER than they had.
+        # Nothing crossed downwards: the v0.27.0 above-set and this below-set do
+        # not intersect, which is the check that separates a retune from a
+        # regression and the reason this is a rewrite rather than a stylesheet fix.
+        #
         # A SET **and** a length, and each catches what the other cannot.
         #
         # The set is what a compensating swap needs: one rule leaving the tier
-        # while another joins at 15px keeps the length at 61, and this
-        # integration is exactly that swap -- DRC-4589 moved
+        # while another joins at 15px keeps the length where it was, and the
+        # v0.27.0 integration was exactly that swap -- DRC-4589 moved
         # `.next-cockpit-authority>span` off the tier and `>small` on to it, so
         # a length check alone would have been green on the change that defeats
         # it.
         #
         # The length is what a DUPLICATE needs, and this half went unexplained,
-        # which made it the one a reader would delete as redundant. Removing the
-        # `@media` copy of `.next-cockpit-scope-switcher>summary` takes the
-        # length 61 -> 60 and leaves the set the same size at 60, because a set
-        # cannot count a selector twice. Mutated both ways on the salvaged
-        # harness with each substitution proved before the verdict was read:
-        # neither half is decorative, and the length is the only guard this
-        # module has against duplicate drift.
-        self.assertEqual(61, len(above))
+        # which made it the one a reader would delete as redundant. The duplicate
+        # is still `.next-cockpit-scope-switcher>summary`, declared once at the
+        # default viewport and again in the `@media(max-width:1279px)` block;
+        # removing that copy takes the length 83 -> 82 and leaves the set the
+        # same size at 82, because a set cannot count a selector twice. Re-run
+        # on the v3 sheet with the substitution proved before the verdict was
+        # read: neither half is decorative, and the length is the only guard
+        # this module has against duplicate drift.
+        self.assertEqual(83, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
         )
 
     def test_a_sentence_rule_edited_below_the_floor_is_caught(self) -> None:
-        """Mutation: one `font:` shorthand's `var(--fs-sentence)` -> `var(--fs-xs)`.
+        """Mutation: one `font:` shorthand's `var(--fs-body)` -> `var(--fs-label)`.
 
         The shorthand form is the one that matters. Every sentence rule in this
-        sheet is written `font:500 var(--fs-sentence)/1.55 var(--sans)`, so a
-        parser that only read the `font-size` longhand would pass this mutant.
+        sheet is written `font:500 var(--fs-body)/1.55 var(--sans)`, so a parser
+        that only read the `font-size` longhand would pass this mutant.
+
+        Both halves of the substitution were repointed, and each for its own
+        reason. `--fs-sentence` was renamed to `--fs-body` at the same 15px, so
+        the pattern matched nothing. `--fs-xs` was DELETED, so the replacement
+        would have named an undefined token: `_declared_size` returns `None` for
+        one of those and the rule leaves the census entirely, which moves the
+        above-count and the below-count in the same direction and makes the two
+        assertions below disagree about a mutant that never landed a size at all.
+        `--fs-label` is the only surviving step beneath the floor.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         mutant = css.replace(
-            "font:500 var(--fs-sentence)/1.55 var(--sans)",
-            "font:500 var(--fs-xs)/1.55 var(--sans)",
+            "font:500 var(--fs-body)/1.55 var(--sans)",
+            "font:500 var(--fs-label)/1.55 var(--sans)",
             1,
         )
         self.assertNotEqual(css, mutant)
@@ -1023,12 +1204,15 @@ class NextPageAssetContractTest(unittest.TestCase):
     def test_a_retuned_sentence_token_cannot_silence_the_census(self) -> None:
         """Why SENTENCE_FLOOR_PX is a literal and not read from the token.
 
-        Retuning `--fs-sentence` to 12px would take the sub-floor inventory from
-        19 rules to 0 against a token-derived floor. Against the literal the
-        inventory grows instead, which is what a reader would want to hear.
+        Retuning `--fs-body` to 12px would take the sub-floor inventory to 0
+        against a token-derived floor, because every rule on the tier would then
+        sit at the floor by definition. Against the literal the inventory grows
+        instead -- measured on the v3 sheet, every rule the census resolves above
+        the floor joins the ones already below it -- which is what a reader would
+        want to hear.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        mutant = css.replace("--fs-sentence:15px", "--fs-sentence:12px", 1)
+        mutant = css.replace("--fs-body:15px", "--fs-body:12px", 1)
         self.assertNotEqual(css, mutant)
         _, clean_below = _sentence_census(css)
         _, mutant_below = _sentence_census(mutant)
@@ -1042,7 +1226,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         would draw the warning larger than the words it warns about, the same
         ordering defect as an absence outranking its value. Both sides are read
         here, and equality is the assertion. Drop the field back to
-        `var(--fs-xs)` and this reds on the comparison, not on a literal.
+        `var(--fs-label)` and this reds on the comparison, not on a literal.
+        (v0.27.0 named `--fs-xs` in that sentence; v3 deleted the step, and the
+        13px label token is what a regression would reach for now.)
 
         The label above them stays on the label tier on purpose -- `STEER ·
         LOCAL ONLY` is a caption, and DRC-4587's ruling is that a value is never
@@ -1074,13 +1260,14 @@ class NextPageAssetContractTest(unittest.TestCase):
         is checkable per rule, over every rule the derived sweep finds.
 
         The size half is not, quite. `.next-project-value--absent` declares
-        12.5px, which is CORRECT, because its paired value resolves to 12.5px
-        too in every context that rule reaches. Resolved through the cascade at
-        four call sites: session line 12.5/12.5, project scope 12.5/12.5,
-        activity title 14.0/14.0, cockpit recovery 15.0/15.0. Raising the
-        absence alone would make a stated absence render larger than the fact it
-        replaces, which is the defect this milestone has already shipped four
-        times.
+        13px, which is CORRECT, because no context that rule reaches resolves
+        its paired value BELOW 13px. Re-resolved through `css_cascade` against
+        the v3 sheet, absence/value: session line 13.0/inherited, project scope
+        13.0/13.0, activity title 13.0/inherited, cockpit recovery 13.0/15.0,
+        and the goal-text slot 15.0/15.0 where the absence shares the value's
+        own rule. Raising the absence alone would make a stated absence render
+        larger than the fact it replaces, which is the defect this milestone has
+        already shipped four times.
 
         So the size clause is bound to the pair rather than to a floor: the
         exception holds only while `.next-project-value--known` declares no size
@@ -1095,6 +1282,12 @@ class NextPageAssetContractTest(unittest.TestCase):
         them against. DRC-4602 owns that wider class. What this assertion holds
         is that the set and the count are both what was measured, so a rule
         arriving below the floor cannot do it quietly.
+
+        v3 moved every one of the seven sub-floor sizes from 12.5px to 13px --
+        the deleted `--fs-xs` step onto the surviving `--fs-label` one. Seven
+        rules, the same seven selectors: nothing joined the sub-floor set and
+        nothing left it, so the count below is unchanged and only the figure
+        moved.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         tokens = _type_tokens(css)
@@ -1111,22 +1304,23 @@ class NextPageAssetContractTest(unittest.TestCase):
         below = {sel: size for sel, size in sized.items() if size < SENTENCE_FLOOR_PX}
         # Seven rules sit below the floor. The four that have a paired value
         # were each measured against it rather than asserted alone -- the
-        # discipline whose absence cost this milestone four review cycles. All
-        # four pairs resolve 12.5/12.5, so none outranks its value:
+        # discipline whose absence cost this milestone four review cycles. Three
+        # pairs resolve 13.0/13.0 and the fourth resolves 13.0/15.0, so none
+        # outranks its value:
         #   .next-project-value--absent            vs .next-project-value--known (unsized)
-        #   .next-cockpit-recovery ...--absent     vs .next-cockpit-recovery strong      12.5
-        #   .next-cockpit-reading-clause-absent    vs .next-cockpit-reading-clause       12.5
-        #   .next-cockpit-recovery goal --absent   vs ... .next-project-goal-text        12.5
+        #   .next-cockpit-recovery ...--absent     vs .next-cockpit-recovery strong      13.0
+        #   .next-cockpit-reading-clause-absent    vs .next-cockpit-reading-clause       13.0
+        #   .next-cockpit-recovery goal --absent   vs ... .next-project-goal-text        13.0
         self.assertEqual(
             {
-                ".next-project-value--absent": 12.5,
-                ".next-cockpit-recovery .next-project-value--absent": 12.5,
-                ".next-cockpit-reading-clause-absent": 12.5,
+                ".next-project-value--absent": 13.0,
+                ".next-cockpit-recovery .next-project-value--absent": 13.0,
+                ".next-cockpit-reading-clause-absent": 13.0,
                 ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n"
-                ".next-cockpit-recovery .next-project-goal-gap": 12.5,
-                ".next-capacity-absent": 12.5,
-                ".next-cockpit-held-absent": 12.5,
-                ".next-cockpit-work-absent,.next-cockpit-work-limit": 12.5,
+                ".next-cockpit-recovery .next-project-goal-gap": 13.0,
+                ".next-capacity-absent": 13.0,
+                ".next-cockpit-held-absent": 13.0,
+                ".next-cockpit-work-absent,.next-cockpit-work-limit": 13.0,
             },
             below,
         )
@@ -1167,19 +1361,22 @@ class NextPageAssetContractTest(unittest.TestCase):
     def test_a_mono_absence_is_caught(self) -> None:
         """Mutation: the reading clause's `var(--sans)` -> `var(--mono)`.
 
-        Family is how an absence is told from a value here, because DRC-4589's
-        ruling keeps both on `--ink3`; an absence that took mono would read as a
-        string a source published.
+        Family is how an absence is told from a value here: v0.27.0 kept both
+        on `--ink3` and v3 puts both on `--ink2`, so in neither sheet does ink
+        separate them. An absence that took mono would read as a string a source
+        published.
         """
         css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
-        # The shorthand as this lineage spells it. The branch this test came
-        # from read `font:500 var(--fs-sentence)/1.55`, which is the pre-squash
-        # DRC-4587 tree; the narrower #361 that merged left this rule on
-        # `--fs-xs`, and a mutation string that matches nothing is a mutation
-        # test that proves nothing.
+        # The shorthand as this lineage spells it, repointed onto the token the
+        # rule actually carries. It has now been wrong twice for the same
+        # reason: the branch this test came from read
+        # `font:500 var(--fs-sentence)/1.55` against a pre-squash tree, #361
+        # left the rule on `--fs-xs`, and v3 deleted `--fs-xs` for
+        # `--fs-label`. A mutation string that matches nothing is a mutation
+        # test that proves nothing, which is what `assertNotEqual` below is for.
         mutant = css.replace(
-            ".next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--sans)",
-            ".next-cockpit-reading-clause-absent{font:var(--fs-xs)/1.5 var(--mono)",
+            ".next-cockpit-reading-clause-absent{font:var(--fs-label)/1.5 var(--sans)",
+            ".next-cockpit-reading-clause-absent{font:var(--fs-label)/1.5 var(--mono)",
             1,
         )
         self.assertNotEqual(css, mutant)
@@ -1356,8 +1553,17 @@ class NextPageAssetContractTest(unittest.TestCase):
 
     def test_the_rail_card_puts_the_title_above_its_meta_in_two_registers(self) -> None:
         """DRC-4597 AC-1 and AC-4. The title is the card's value and the meta is
-        the caption beneath it; a withheld title swaps the family and the ink
-        and never the size.
+        the caption beneath it; a withheld title swaps the ink and never the
+        size.
+
+        v0.27.0 set the title in mono and the withheld swap changed family as
+        well as ink. v3 sets the title in sans, and the withheld rule
+        (`.next-cockpit-scope-tree [data-next-withheld]`) now declares
+        `font-family:var(--sans)` and `color:var(--ink-absence)` and no size at
+        all -- so family is no longer the separator and the clause above says
+        only what the sheet still does. What the criterion is actually about
+        survives intact: the two halves are two registers, and the caption never
+        outgrows the value it captions.
         """
         styles = frontend_page.asset_path("styles.css").read_text(encoding="utf-8")
         title = re.search(r"\.next-cockpit-scope-title\{([^}]*)\}", styles)
@@ -1366,30 +1572,37 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIsNotNone(meta)
         title_body = title.group(1) if title else ""
         meta_body = meta.group(1) if meta else ""
-        self.assertIn("font:var(--fs-sm) var(--mono)", title_body)
+        self.assertIn("font:var(--fs-body) var(--sans)", title_body)
         self.assertIn("color:var(--ink)", title_body)
         # One clipped line. `white-space:normal` from the rail's own reset is
         # the rule this has to beat, and the reset no longer selects a bare
         # `span` inside the link, so nothing overrides it at equal specificity.
         self.assertIn("text-overflow:ellipsis", title_body)
         self.assertIn("white-space:nowrap", title_body)
-        self.assertIn("font:var(--fs-2xs) var(--mono)", meta_body)
-        self.assertIn("color:var(--ink3)", meta_body)
+        self.assertIn("font:var(--fs-label) var(--mono)", meta_body)
+        # `--ink3` in v0.27.0. v3 retired it from the reading inks -- it is now
+        # only the text of an inert control -- so a caption left on it would be
+        # the one piece of prose on the board painted in the disabled ink. The
+        # register separation is what the criterion wants and it is asserted as
+        # a difference below, not as two spellings that happen to differ today.
+        self.assertIn("color:var(--ink2)", meta_body)
+        self.assertNotIn("color:var(--ink);", meta_body)
         # Resolved, not just named. The two assertions above pin which TOKEN
         # each half uses; they cannot see a `:root` that redefines one of those
         # tokens so the caption outgrows the value it sits under. Measured by
-        # DRC-4592: a `--fs-2xs` raised above `--fs-sm` passes every other check
-        # in this file. This is the numeric half of the pair that
-        # `AnAbsenceNeverOutranksTheValueItReplacesTest` used to carry before
-        # that class narrowed to sentence-tier absences, which the rail card is
-        # not.
+        # DRC-4592 on the v0.27.0 pair: a `--fs-2xs` raised above `--fs-sm`
+        # passes every other check in this file, and the same hole is open on
+        # `--fs-label` against `--fs-body`. This is the numeric half of the pair
+        # that `AnAbsenceNeverOutranksTheValueItReplacesTest` used to carry
+        # before that class narrowed to sentence-tier absences, which the rail
+        # card is not.
         tokens = {
             name: float(value)
             for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", styles)
         }
         self.assertGreaterEqual(
-            tokens["fs-sm"],
-            tokens["fs-2xs"],
+            tokens["fs-body"],
+            tokens["fs-label"],
             "the rail card's meta outgrew the title it captions",
         )
         self.assertNotIn(
@@ -1411,6 +1624,11 @@ class NextPageAssetContractTest(unittest.TestCase):
             ".next-cockpit-tab-cue",
             ".next-cockpit-tab-cue--pending",
             ".next-cockpit-tab-cue--unobserved",
+            # The fourth branch of the same ternary. It was missing from this
+            # loop while the rule existed in v0.27.0 too, so the state a reader
+            # meets when the cue cannot be computed at all was the one state
+            # nothing held to the others' size.
+            ".next-cockpit-tab-cue--unavailable",
         ):
             block = re.search(re.escape(selector) + r"\{([^}]*)\}", styles)
             self.assertIsNotNone(block, f"{selector} declares no rule of its own")
@@ -1421,15 +1639,13 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(1, len(set(sizes.values())), f"the cue states disagree on size: {sizes}")
         lede = re.search(r"\.next-cockpit-lede\{([^}]*)\}", styles)
         self.assertIsNotNone(lede)
-        self.assertIn("font:var(--fs-sentence)/1.55 var(--sans)", lede.group(1) if lede else "")
+        self.assertIn("font:var(--fs-body)/1.55 var(--sans)", lede.group(1) if lede else "")
         self.assertIn("color:var(--ink2)", lede.group(1) if lede else "")
         define = re.search(r"\.next-cockpit-define\{([^}]*)\}", styles)
         self.assertIsNotNone(define)
         # 500 weight, matching `.next-cockpit-reading-why`: a definition sits in
         # the same register as the caveats it stands beside, not a fourth one.
-        self.assertIn(
-            "font:500 var(--fs-sentence)/1.55 var(--sans)", define.group(1) if define else ""
-        )
+        self.assertIn("font:500 var(--fs-body)/1.55 var(--sans)", define.group(1) if define else "")
 
     def test_four_cockpit_tabs_fit_the_smallest_phone_without_pills(self) -> None:
         styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
@@ -1478,8 +1694,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                111_842,
-                "0fcc61b60d78a7e3336122b9ebf369ae8818d055a8774b6359a999abc039e71e",
+                112_153,
+                "38a7b19780fbdff617ee11fb5dd1e0e2b71faa44368390083e2b80d34e21f63d",
             ),
             "next-chrome.js": (
                 40_141,
@@ -1546,16 +1762,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(121_011, len(styles))
+        self.assertEqual(129_682, len(styles))
         self.assertEqual(
-            "f1d8a9bc903ebdc2ec99ab1cf1c972fe10fa97e1e1f8adb5a891b8e314815fdd",
+            "5c457f03fa65efe1b763dc491b84f4b8eda214a24e9c3c0db9da00631008ceb6",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(965_309, len(assembled))
+        self.assertEqual(1_038_161, len(assembled))
         self.assertEqual(
-            "e79d000cef688361105ddb2dd471390651fc5964d5480398891527cb7175afaf",
+            "dfb5361e19f24063513d7b7cdbcf639458166891168c85baa198a4ffbe22df67",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1745,7 +1961,10 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
     def test_one_token_and_one_class_own_the_resting_box(self) -> None:
         """AC-1."""
         root = re.findall(r"(?:\A|\n):root\{([^}]*)\}", self.styles, re.DOTALL)
-        self.assertTrue(any("--radius-control:" in block for block in root))
+        # `--radius-control` in v0.27.0, `--r-control` in v3's four-step radius
+        # scale. The token was renamed, not dropped, so the criterion is intact
+        # and only its spelling moved.
+        self.assertTrue(any("--r-control:" in block for block in root))
         # Exactly one rule owns `.next-action` on its own, so the primitive has
         # a single definition rather than a definition per caller.
         owners = [
@@ -1755,7 +1974,7 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
         ]
         self.assertEqual(1, len(owners))
         body = self.rule(".next-action")
-        self.assertIn("border-radius:var(--radius-control)", body)
+        self.assertIn("border-radius:var(--r-control)", body)
 
     def test_no_collapsed_rule_keeps_its_own_recipe(self) -> None:
         """AC-1's falsifier: the collapse done by adding the class to a
@@ -1769,11 +1988,26 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
                 self.assertNotRegex(body, r"(?:^|;)border:1px")
 
     def test_a_disabled_control_survives_greyscale(self) -> None:
-        """AC-3. Ink alone cannot carry this: `--ink3` is the resting colour of
-        the prose around these controls, so a disabled one was drawn in the
-        body ink and vanished with colour removed."""
+        """AC-3. Ink alone cannot carry this, in either sheet, and the reason
+        inverted between them. In v0.27.0 `--ink3` WAS the resting prose colour,
+        so a disabled control drawn one step down vanished with colour removed.
+        v3 retired `--ink3` from the reading inks and spends it here, which
+        removes that particular collision and leaves the underlying point: a
+        tone is not a state, and greyscale keeps only shape.
+
+        So this reads the two things that survive the colour being taken away --
+        the dashed boundary and the hatched fill -- rather than the ink. The
+        hatch is new in v3 and is asserted rather than ignored: it is now the
+        louder of the two carriers, and a v4 that drops it would leave a single
+        1px dash doing all the work with this test still green.
+        """
         body = self.rule('.next-action[aria-disabled="true"]')
-        self.assertIn("border-style:dashed", body)
+        # The shorthand, because that is how v3 writes it; v0.27.0 used the
+        # `border-style` longhand. Anchored so `border-style:dashed` on some
+        # other edge cannot answer for the box, and the width is read too --
+        # `border:0 dashed` is dashed and invisible.
+        self.assertRegex(body, r"(?:^|;)border:1px dashed ")
+        self.assertIn("background:var(--hatch)", body)
         self.assertIn("cursor:not-allowed", body)
         # The stalled control is waiting, not refusing, and says so with its
         # own cursor. Collapsing the two loses a distinction a reader acts on.

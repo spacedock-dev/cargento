@@ -509,7 +509,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("#app .next-operation-row{grid-template-columns:minmax(0,1fr)", NEXT_STYLES)
         self.assertIn("@media(max-width:360px)", NEXT_STYLES)
         self.assertIn("#app{padding:18px 8px 40px}", NEXT_STYLES)
-        self.assertIn("border:1px solid var(--line2)", NEXT_STYLES)
+        self.assertIn("border:1px solid var(--line)", NEXT_STYLES)
         self.assertIn("overflow-wrap:anywhere", NEXT_STYLES)
 
     def test_320_fleet_keeps_the_four_facts_in_two_columns(self) -> None:
