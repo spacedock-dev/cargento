@@ -968,7 +968,6 @@ class NextPageAssetContractTest(unittest.TestCase):
         # pass unnoticed.
         # `.next-cockpit-stale-read` joined with DRC-4613: a sans sentence with
         # a prose line-height is on this tier by the sheet's own membership test.
-        ".next-cockpit-stale-read",
         ".next-action",
         ".next-activity-question",
         ".next-attention-brief p",
@@ -985,6 +984,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-authority>small",
         ".next-cockpit-conflict-cue",
         ".next-cockpit-conflict-open",
+        ".next-cockpit-conflict-text",
         ".next-cockpit-conflict-why,.next-cockpit-conflict-settled",
         ".next-cockpit-content",
         ".next-cockpit-content .next-cockpit-evidence-missing",
@@ -993,6 +993,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
         ".next-cockpit-define",
         ".next-cockpit-departures-kept",
+        ".next-cockpit-empty,.next-cockpit-evidence-missing",
+        ".next-cockpit-held-absent",
         ".next-cockpit-held-field textarea",
         ".next-cockpit-held-lede",
         ".next-cockpit-held-reentry",
@@ -1001,29 +1003,44 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-landed-note",
         ".next-cockpit-landed-value",
         ".next-cockpit-lede",
+        ".next-cockpit-reading-clause,.next-session-departure-clause",
+        ".next-cockpit-reading-clause-absent",
         ".next-cockpit-reading-limit",
         ".next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading",
+        ".next-cockpit-reading-stale,.next-session-departure-stale",
         ".next-cockpit-reading-why",
+        ".next-cockpit-recovery .next-project-goal-text",
+        ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
         ".next-cockpit-recovery>div",
         ".next-cockpit-scope-switcher>summary",
+        ".next-cockpit-stale-read",
         ".next-cockpit-why>summary",
+        ".next-cockpit-work-absent,.next-cockpit-work-limit",
         ".next-cockpit-work-derived",
+        ".next-cockpit-work-dropped",
         ".next-cockpit-work-mix",
+        ".next-cockpit-work-summary",
         ".next-course-episode p,.next-course-episode ul,.next-course-direction p",
         ".next-delegation-caption",
         ".next-guardrail-copy strong",
+        ".next-guardrail-empty",
         ".next-intent-note",
         ".next-intent-revision,.next-intent-why",
+        ".next-intent-words",
         ".next-operation-assignment",
         ".next-operation-collision",
+        ".next-operation-fact em",
         ".next-operation-group>header p",
         ".next-operation-identity strong,.next-operation-fact strong",
         ".next-operation-outcome",
+        ".next-operation-unread,.next-operation-scan-only",
         ".next-operations-fleet small",
         ".next-operations-header p",
         ".next-project-collision,.next-project-detail-collision",
+        ".next-project-detail-rail .next-rail-reason",
         ".next-project-ending-outcome",
+        ".next-project-goal-gap",
         ".next-project-goal-text",
         ".next-rail-question",
         ".next-rail-wait-heading a",
@@ -1045,6 +1062,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-steer input,.next-guardrail-add-input input",
         ".next-steer-caveat",
         ".next-usage-consent",
+        ".next-usage-consent p.next-usage-consent-note",
         ".pc-entry-details",
         ".pc-history-band>summary,.pc-trail-history>summary,.pc-entry-suppressed>summary,.pc-event-evidence>summary",
         ".pc-semantic-timeline,.pc-terminal",
@@ -1054,33 +1072,13 @@ class NextPageAssetContractTest(unittest.TestCase):
     }
 
     SUB_SENTENCE_FLOOR_INVENTORY: ClassVar[set[tuple[float, str]]] = {
-        (css_cascade.rem(13.0), ".next-cockpit-conflict-text"),
-        (css_cascade.rem(13.0), ".next-cockpit-empty,.next-cockpit-evidence-missing"),
-        (css_cascade.rem(13.0), ".next-cockpit-held-absent"),
-        (css_cascade.rem(13.0), ".next-cockpit-reading-clause,.next-session-departure-clause"),
-        (css_cascade.rem(13.0), ".next-cockpit-reading-clause-absent"),
-        (css_cascade.rem(13.0), ".next-cockpit-reading-stale,.next-session-departure-stale"),
-        (css_cascade.rem(13.0), ".next-cockpit-recovery .next-project-goal-text"),
-        (
-            css_cascade.rem(13.0),
-            ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
-        ),
-        (css_cascade.rem(13.0), ".next-cockpit-recovery .next-project-value--absent"),
-        (css_cascade.rem(13.0), ".next-cockpit-work-absent,.next-cockpit-work-limit"),
-        (css_cascade.rem(13.0), ".next-cockpit-work-dropped"),
-        (css_cascade.rem(13.0), ".next-cockpit-work-summary"),
-        (css_cascade.rem(13.0), ".next-delegation-withheld small"),
-        (css_cascade.rem(13.0), ".next-guardrail-copy small,.next-guardrail-empty"),
-        (css_cascade.rem(13.0), ".next-intent-words"),
-        (css_cascade.rem(13.0), ".next-operation-fact em"),
-        (css_cascade.rem(13.0), ".next-operation-unread,.next-operation-scan-only"),
-        (css_cascade.rem(13.0), ".next-project-detail-rail .next-rail-reason"),
-        (css_cascade.rem(13.0), ".next-project-goal-gap"),
-        (css_cascade.rem(13.0), ".next-usage-consent p.next-usage-consent-note"),
-        (css_cascade.rem(13.0), ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
-        (css_cascade.rem(13.0), ".pc-substrate-steps"),
-        (css_cascade.rem(13.0), ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
-        (css_cascade.rem(13.0), ".pc-trail-top span"),
+        (0.8125, ".next-cockpit-recovery .next-project-value--absent"),
+        (0.8125, ".next-delegation-withheld small"),
+        (0.8125, ".next-guardrail-copy small"),
+        (0.8125, ".pc-substrate-empty,.pc-substrate-reason,.pc-terminal-identity p"),
+        (0.8125, ".pc-substrate-steps"),
+        (0.8125, ".pc-trail-quiet,.pc-trail-history,.pc-event-evidence"),
+        (0.8125, ".pc-trail-top span"),
     }
     """The sentence-tier rules still below the floor, which DRC-4602 sizes.
 
@@ -1174,9 +1172,12 @@ class NextPageAssetContractTest(unittest.TestCase):
         # on the v3 sheet with the substitution proved before the verdict was
         # read: neither half is decorative, and the length is the only guard
         # this module has against duplicate drift.
-        # 84 since DRC-4613 added `.next-cockpit-stale-read`, a sans sentence
-        # with a prose line-height and so on this tier by the membership test.
-        self.assertEqual(84, len(above))
+        # 103 rules over 102 distinct selectors, against 84 over 83 before
+        # DRC-4602. Every one of the 19 that moved is a RAISE: the joining set
+        # is 19 and the leaving set is empty, which is the check that separates
+        # a retune from a regression. The one duplicate is unchanged, so the
+        # rule count still exceeds the selector count by exactly one.
+        self.assertEqual(102, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1311,25 +1312,39 @@ class NextPageAssetContractTest(unittest.TestCase):
             if (size := _declared_size(decls, tokens)) is not None
         }
         below = {sel: size for sel, size in sized.items() if size < SENTENCE_FLOOR_REM}
-        # Seven rules sit below the floor. The four that have a paired value
-        # were each measured against it rather than asserted alone -- the
-        # discipline whose absence cost this milestone four review cycles. Three
-        # pairs resolve 13.0/13.0 and the fourth resolves 13.0/15.0, so none
-        # outranks its value:
-        #   .next-project-value--absent            vs .next-project-value--known (unsized)
-        #   .next-cockpit-recovery ...--absent     vs .next-cockpit-recovery strong      13.0
-        #   .next-cockpit-reading-clause-absent    vs .next-cockpit-reading-clause       13.0
-        #   .next-cockpit-recovery goal --absent   vs ... .next-project-goal-text        13.0
+        # TWO rules sit below the floor, against seven before DRC-4602, which
+        # raised the other five to the sentence tier along with the rest of the
+        # sub-floor census. Both survivors are deliberate and neither has a
+        # paired value that outranks it:
+        #
+        #   `.next-project-value--absent` is the base rule, and the exception is
+        #   bound to the pair rather than to a floor: `.next-project-value--known`
+        #   declares no size at all, so raising the absence alone would make a
+        #   stated absence render larger than the fact it replaces. The
+        #   assertion below that `--known` stays unsized is what keeps that
+        #   reasoning honest -- give the value a size and this reds, which is
+        #   exactly when the pair must be re-measured.
+        #
+        #   `.next-capacity-absent` is an absence PARAGRAPH replacing a
+        #   collection, so there is no second selector to draw it against.
+        #
+        #   `.next-cockpit-recovery .next-project-value--absent` was RAISED by
+        #   DRC-4602 and put back the same day. DRC-4614's rendered-path guard
+        #   caught what the raise did: in `.next-cockpit-waiting` the --known
+        #   branch inherits 13px, so the raised absence resolved 15px against a
+        #   13px value -- an inversion created by the fix for the floor. The
+        #   goal-text slot inside the same briefing IS raised, by its own more
+        #   specific rule, because there both branches move together.
+        #
+        # The recovery pair moved together: its value and its absence both
+        # resolve to 15px now, measured on the element path the application
+        # builds, which is what cleared the one entry DRC-4614's rendered-path
+        # guard was carrying.
         self.assertEqual(
             {
                 ".next-project-value--absent": css_cascade.rem(13.0),
-                ".next-cockpit-recovery .next-project-value--absent": css_cascade.rem(13.0),
-                ".next-cockpit-reading-clause-absent": css_cascade.rem(13.0),
-                ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n"
-                ".next-cockpit-recovery .next-project-goal-gap": css_cascade.rem(13.0),
                 ".next-capacity-absent": css_cascade.rem(13.0),
-                ".next-cockpit-held-absent": css_cascade.rem(13.0),
-                ".next-cockpit-work-absent,.next-cockpit-work-limit": css_cascade.rem(13.0),
+                ".next-cockpit-recovery .next-project-value--absent": css_cascade.rem(13.0),
             },
             below,
         )
@@ -1383,9 +1398,18 @@ class NextPageAssetContractTest(unittest.TestCase):
         # left the rule on `--fs-xs`, and v3 deleted `--fs-xs` for
         # `--fs-label`. A mutation string that matches nothing is a mutation
         # test that proves nothing, which is what `assertNotEqual` below is for.
+        #
+        # **Third time, 2026-09-22.** DRC-4602 raised this rule to `--fs-body`
+        # with the rest of the sub-floor census, and the `--fs-label` spelling
+        # stopped matching. The `assertNotEqual` caught it, which is the whole
+        # reason it is there -- but three breakages from the same cause is the
+        # signal that the string is the fragile part. It is pinned to the rule's
+        # own text on purpose, because a mutant built by substitution would
+        # mutate whatever the rule happens to say and could no longer be read as
+        # a specific claim about a sans absence turning mono.
         mutant = css.replace(
-            ".next-cockpit-reading-clause-absent{font:var(--fs-label)/1.5 var(--sans)",
-            ".next-cockpit-reading-clause-absent{font:var(--fs-label)/1.5 var(--mono)",
+            ".next-cockpit-reading-clause-absent{font:var(--fs-body)/1.5 var(--sans)",
+            ".next-cockpit-reading-clause-absent{font:var(--fs-body)/1.5 var(--mono)",
             1,
         )
         self.assertNotEqual(css, mutant)
@@ -1711,8 +1735,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "fd944ba159be6655d8e0fa8097a22288f7f1042d74c2146bfe1e617a07c70982",
             ),
             "next-capacity.js": (
-                32_221,
-                "152eeff23367e7216a500593f07acee293c1bfa1b38401befd173a12d462d835",
+                32_261,
+                "986a0b0d74771bbb9f1d9df520dbb6c91d5916685fe365a64eff61c29acab7cc",
             ),
             "next-sessions.js": (
                 19_745,
@@ -1735,8 +1759,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "62f971c5e2a570068b7e2c3ee72b2499774d14a3b739f6f908962f91b98382f1",
             ),
             "next-session.js": (
-                36_504,
-                "4a338ab2c9ce6ae7c197e1361df807a54bbf17b05078541cdba26eeef9fc1c9c",
+                36_524,
+                "8b2eca9c577675bc2fffd9199adad20d86c080cb7caa6a2ed8d3726a6535b38a",
             ),
             "next-workstream.js": (
                 18_659,
@@ -1751,12 +1775,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                237_640,
-                "e67078f5e6036ff6b6cf329876968b5e3b3f829d2c6f5e29ea8f93faf6174097",
+                237_680,
+                "58516bd1c495fbec66612bb135f4d923521dd7748e49b0d6329d4597cd5735e4",
             ),
             "next-render.js": (
-                12_211,
-                "e416632b35c3b996a04d711114d2fe2b29874fbc04d198be81f3dc37e2fb3446",
+                12_231,
+                "aaa3804c38530dcde476e2306801e3849ff9cea3d6b16a3891abe215c6f98abb",
             ),
             "next-live.js": (
                 3_340,
@@ -1771,16 +1795,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(136_289, len(styles))
+        self.assertEqual(136_817, len(styles))
         self.assertEqual(
-            "41e78226b0e39ff275272303157cc1ecfdc6a405280eb4f0ef812c87e14872c3",
+            "c98bf038ff5505288c1f4295f7e700cc98dafb013c05508847116551193ef06d",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_050_555, len(assembled))
+        self.assertEqual(1_051_203, len(assembled))
         self.assertEqual(
-            "1a0e3a702e3676323026824fa59d755f365c763108b99f4902e9a32f1b482ea6",
+            "fbb1d15eb409f873f1fd7b1ef8189c117d2b674430795d6b9abd8b1c126f4f31",
             hashlib.sha256(assembled).hexdigest(),
         )
 

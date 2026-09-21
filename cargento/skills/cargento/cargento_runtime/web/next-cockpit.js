@@ -2492,11 +2492,11 @@ function nextCockpitConflict(session, annotation, source){
     `${count === 1 ? "direction" : "directions"} you gave after you saved the words above, ` +
     'in the part of the record read here.</p>' + rows +
     '<div class="next-cockpit-conflict-choices">' +
-    '<button type="button" data-next-cockpit-action="conflict-settle" ' +
+    '<button type="button" class="next-action" data-next-cockpit-action="conflict-settle" ' +
     `data-arg="${esc(String(pending[pending.length - 1].at || 0))}" ` +
     `data-next-focus="conflict-settle:${esc(sessKey(session))}">The baseline still applies` +
     '</button>' +
-    '<button type="button" data-next-cockpit-action="conflict-retype" ' +
+    '<button type="button" class="next-action" data-next-cockpit-action="conflict-retype" ' +
     `data-next-focus="conflict-retype:${esc(sessKey(session))}">Retype the baseline</button>` +
     '</div>' +
     /* Said plainly because the store mints no revision for unchanged text, so
