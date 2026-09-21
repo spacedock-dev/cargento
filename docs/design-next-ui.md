@@ -195,10 +195,26 @@ selector text can find it. `TheCompliantSetIsResolvedOnElementsNotOnRulesTest` r
 instead, and the sheet no longer declares a size it immediately overrides.
 
 That guard closes the equal-specificity case and **not** the general one: a rule reaching an element
-through ancestors the tier selector never names is still invisible to it, because the path is built
+through ancestors the tier selector never names is invisible to it, because the path is built
 from the selector rather than from the page. Widening it by hypothesising every DOM a rule could
 match was measured and abandoned at 8,873 false positives: the "built a DOM the application never
 renders" failure this file already warns about, one layer up.
+
+**A second guard takes the ancestor case from the other end, and reaches less than half the sheet.**
+`TheFloorHoldsOnElementsTheEmittersRenderTest` executes the page's own JS, parses the HTML it writes
+into `#app`, and resolves each element on the ancestor chain it really has. Nothing is hypothesised
+and nothing is hand-listed, so the 8,873 do not recur: measured on `58b1a81e`, ten routes render 939
+elements with **zero** false positives. The mutant that settles it is
+`.next-steer>header p{font-size:var(--fs-label)}`, which takes `.next-steer-caveat` from 0.9375rem
+to 0.8125rem; the selector-derived sweep reports zero below-floor selectors and zero skips on it,
+and the rendered-path guard reds.
+
+Its reach is the honest part. Of the 939 elements, **134 are covered by a tier selector, and those
+134 are reached by 32 of the sheet's 107 tier selectors**. The other 75 style surfaces the fixture
+never renders, and the guard is silent about them rather than clearing them. So the two guards are
+complementary rather than one superseding the other: the selector-derived sweep is wide and blind to
+ancestors, and this one sees ancestors over a population it can only widen by rendering more. A
+figure it produces is a floor on what renders, never a census of the sheet.
 
 **Sixty-one rules resolve to `var(--fs-body)`**, across sixty distinct selectors, and
 `NextPageAssetContractTest` holds that as a set and not only as a count. The set is what matters:
