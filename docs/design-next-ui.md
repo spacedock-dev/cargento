@@ -314,11 +314,31 @@ specificity and read the hex, rather than counting the rules that mention it.
 The palette has three inks and the roles need four, so `--ink-label` and `--ink-absence` both
 resolve to `--ink3`. **So does `--ink-caption`**, which this paragraph did not say and should have:
 three of the four names land on one hex, and only `--ink-value` has an ink to itself. A caption is
-separated from a label the way an absence is -- by family, case and size -- which is why
+separated from a label the way an absence is -- **by family and size**, which is why
 `TheBriefingsThreeRegistersStayApartTest` asserts the register NAMES and the (size, ink) pairs, and
 deliberately not three distinct hexes, an assertion that fails on the shipped sheet. Recording the
 doubling here is the point of the indirection: a role that shares an ink has to be re-readable from
-this file rather than rediscovered from a failing test. That is a ruling, not an accident. `--ink3` on panel is 5.67:1, just above the
+this file rather than rediscovered from a failing test. That is a ruling, not an accident.
+
+**Case is deliberately not in that list, and was removed from it on 2026-09-21.** The sentence read
+"by family, case and size" until DRC-4616 asked what enforced the third channel. Three rules do --
+`.next-attention-brief-label`/`.next-attention-label`, `.next-session-section>h2`/`.next-session-ask-callout>span`
+and `.next-instruction-label` all declare `text-transform:uppercase`, and three more declare
+`text-transform:none` to opt out. Everywhere else a label is uppercase because the emitter types it
+that way, which is a convention rather than a rule.
+
+Enforcing it was attempted and reverted the same day, and the measurement is why the claim is
+narrowed rather than the sheet changed. **Labels are not uniformly uppercase on a live board.**
+`.next-cockpit-scope-heading` renders `SCOPE · Claude`, where the harness name is a proper noun that
+should not be shouted, and adding the rule to the register's leaves also uppercased an entire
+sentence: `.next-steer-caveat` has no register rule of its own and inherits from `.next-control>header`,
+which does, because `text-transform` inherits. So "labels are uppercase" is not a property this board
+has, and a rule asserting it would change what a reader sees rather than tighten what is already
+true. The paragraph above on the tier's non-uniformity says the same thing one level up.
+
+What follows from that: family and size are the two channels a caption can be told from a label by
+in every case, and they are the two this document now claims. Case separates them **where a rule
+says so**, and the three rules that say so are named above rather than implied across the register. `--ink3` on panel is 5.67:1, just above the
 floor the asset test asserts, so labels cannot go dimmer, and brightening them makes them compete
 with values. Labels can afford the double-up because they also carry uppercase, tracking and mono,
 while an absence is a sans sentence, so family and case already separate the two. Brightening an
