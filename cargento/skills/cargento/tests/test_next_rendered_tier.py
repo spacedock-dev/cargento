@@ -60,19 +60,28 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
     per_route: ClassVar[dict[str, int]]
 
     # Elements the render resolves below the floor on the tree as it stands.
-    # This is an inventory of known, filed exceptions rather than a tolerance:
-    # the assertion is set equality, so a new one reds and a fixed one reds too.
+    # This is an inventory of known exceptions rather than a tolerance: the
+    # assertion is set equality, so a new one reds and a fixed one reds too.
     #
-    # The single entry is DRC-4607, which is filed and open: inside the recovery
-    # briefing the absence declares `--fs-label` while the value it replaces
-    # declares no size and inherits a larger one, so the gap outranks the
-    # figure. It is NOT fixed here, because the fix is a `styles.css` edit and
-    # this change is deliberately tests-only so it can land without taking the
-    # one pull request that may touch `cargento_runtime/web/`.
+    # The single entry belongs to DRC-4602, the sentence-floor remainder, and
+    # it is a floor violation rather than an ordering one. `.next-project-goal-text`
+    # declares `--fs-body` at (0,1,0) and `.next-cockpit-recovery
+    # .next-project-goal-text` takes it back to `--fs-label` at (0,2,0), so the
+    # element renders a tier below what its own rule declares. It is NOT fixed
+    # here, because the fix is a `styles.css` edit and this change is
+    # deliberately tests-only so it can land without taking the one pull request
+    # that may touch `cargento_runtime/web/`.
     #
-    # Found by this guard rather than carried over from the issue: DRC-4607's
-    # own figures were taken on the v2 palette at `84d27a53` and read 11.5px
-    # against 12.5px, which the rem merge in #369 replaced.
+    # It is deliberately NOT attributed to DRC-4607, which reads as the obvious
+    # owner and is not. That issue says the absence OUTRANKS the value it
+    # replaces. Measured here over every value/absence slot this fixture renders
+    # -- nine of them, each branch resolved on its own path because a ternary
+    # means the two never co-exist -- **zero are inverted**: seven resolve equal
+    # and two resolve with the absence smaller. The pair DRC-4607 names is among
+    # the seven, at 0.8125rem against 0.8125rem. Its own figures (11.5px against
+    # 12.5px) were taken on the v2 palette at `84d27a53` and the v3 and rem
+    # merges closed the gap. That is the second time the measurement has been
+    # overtaken; the issue body records the first.
     KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset(
         {
             (
@@ -180,6 +189,48 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
             self._below_floor(self.css),
             "the set of rendered elements below the sentence floor moved",
         )
+
+    def test_no_rendered_absence_outranks_the_value_it_replaces(self) -> None:
+        """DRC-4607, asked of every slot the render produces rather than two by name.
+
+        A value and its absence are picked by a ternary and never co-exist, so
+        each branch is resolved on its own copy of the same path. That is the
+        method `AnAbsenceNeverOutranksTheValueItReplacesTest` established; what
+        is new here is the population, which comes from the render instead of
+        from a list of pairs somebody remembered to add to.
+
+        Measured on `58b1a81e`: nine slots, **zero inverted** -- seven resolve
+        equal and two resolve with the absence smaller. DRC-4607 reports the
+        recovery briefing pair as inverted at 11.5px against 12.5px; on the v3
+        rem scale it is 0.8125rem against 0.8125rem and the issue is stale
+        rather than wrong, its figures having been taken at `84d27a53`.
+
+        This is a floor on the rendered population, as everything in this module
+        is: a slot no fixture renders is not checked here.
+        """
+        tokens, rules = css_cascade.load_text(self.css)
+        inverted: list[tuple[str, float, float]] = []
+        slots = 0
+        for path in self.paths:
+            leaf = cast("set[str]", path[-1]["classes"])
+            for variant in sorted(leaf):
+                if not variant.endswith(("--known", "--absent")):
+                    continue
+                stem, _, _kind = variant.rpartition("--")
+                twin_classes = (leaf - {variant}) | {
+                    f"{stem}--absent" if variant.endswith("--known") else f"{stem}--known"
+                }
+                twin = [*path[:-1], {**path[-1], "classes": twin_classes}]
+                here = css_cascade.resolve(path, tokens, rules)
+                there = css_cascade.resolve(twin, tokens, rules)
+                if here is None or there is None:
+                    continue
+                slots += 1
+                known, absent = (here, there) if variant.endswith("--known") else (there, here)
+                if absent > known:
+                    inverted.append((_shape(path), known, absent))
+        self.assertGreater(slots, 4, "no value/absence slot rendered, so nothing was compared")
+        self.assertEqual([], inverted, "an absence resolves larger than the value it replaces")
 
     def test_the_guard_sees_a_rule_that_reaches_an_element_through_unnamed_ancestors(
         self,
