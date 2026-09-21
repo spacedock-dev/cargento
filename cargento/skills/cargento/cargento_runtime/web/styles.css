@@ -986,9 +986,29 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-recovery>header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 12px;border-bottom:1px solid var(--rule);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-cockpit-recovery>header button{padding:4px 7px;border:1px solid var(--line);background:transparent;color:var(--ink2);font:inherit;letter-spacing:0;cursor:pointer}
 .next-cockpit-recovery>div{min-width:0;padding:10px 12px;border-right:1px solid var(--rule);font:var(--fs-label) var(--sans)}
-.next-cockpit-recovery>div:last-child{border-right:0}
-.next-cockpit-recovery-evidence{grid-column:span 2;border-top:1px solid var(--rule)}
-.next-cockpit-recovery-evidence+.next-cockpit-recovery-memos{border-top:1px solid var(--rule)}
+/* The dividers are internal only, so the cell in the last column draws none.
+   `:last-child` used to do this and is wrong here: it was written for a grid of
+   exactly three cells, and this one has a header first and an evidence row
+   after, so it cancelled the border on EVIDENCE and left COMMAND drawing the
+   grid's own right edge. There was no left edge to mirror it, which is what a
+   reader sees. The two positions that can hold the last column are named
+   instead, because a spanning row shifts the nth-child rhythm and no selector
+   expresses "starts in the last column". */
+.next-cockpit-recovery>div:nth-child(4),
+.next-cockpit-recovery>.next-cockpit-recovery-memos{border-right:0}
+/* The top row closes under all three cells. It used to be closed by the
+   evidence row's own border-top, which spans two columns, so nothing was drawn
+   under COMMAND. */
+.next-cockpit-recovery>div:nth-child(-n+4){border-bottom:1px solid var(--rule)}
+/* The evidence row spans two columns and usually has nothing beside it, so it
+   draws no divider of its own: a line with empty space on one side bounds a
+   cell that is not there. The divider moves to the memos block, which exists
+   only when there is something in the third column for it to separate. */
+.next-cockpit-recovery-evidence{grid-column:span 2}
+/* Written against the parent so it outranks `.next-cockpit-recovery>div`,
+   which is (0,1,1) and beats a lone class. */
+.next-cockpit-recovery>.next-cockpit-recovery-evidence{border-right:0}
+.next-cockpit-recovery-evidence+.next-cockpit-recovery-memos{border-left:1px solid var(--rule)}
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;padding-top:5px}
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]+[data-next-cockpit-memo-field]{margin-top:5px;border-top:1px solid var(--rule);padding-top:7px}
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]>span{grid-column:1/-1;margin:0;letter-spacing:.07em}
