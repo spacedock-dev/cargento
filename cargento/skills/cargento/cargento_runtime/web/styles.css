@@ -966,6 +966,14 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-scope-switcher{display:none}
 .next-cockpit-stale-session{margin:24px 0;padding:24px;border:1px solid var(--rule)}
 .next-cockpit-stale-session>span{color:var(--ink-label);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
+
+/* DRC-4613. The rows are real, so the notice is a caveat rather than a
+   warning: it takes the same register `.next-steer-caveat` uses -- a sans
+   sentence in --ink2 -- not --amber or --clay, which would read as something
+   to act on. It is a sentence tier rule because it is a sentence, which is
+   what the floor guard requires of anything sans with a prose line-height. */
+.next-cockpit-stale-read{margin:0 0 10px;max-width:var(--measure);color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
+.next-cockpit-tab-cue-stale{margin-left:5px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.06em;text-transform:uppercase}
 .next-cockpit-stale-session h1{margin:8px 0;font-size:var(--fs-value)}
 .next-cockpit-stale-session p{color:var(--ink2);font:var(--fs-label) var(--mono);overflow-wrap:anywhere}
 .next-cockpit-stale-session a{color:var(--ink2);font:var(--fs-label) var(--sans)}

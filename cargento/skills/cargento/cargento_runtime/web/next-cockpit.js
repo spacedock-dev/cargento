@@ -3372,7 +3372,26 @@ function nextCockpitTabCueCount(length){
    also why the semantic collection is reached through the context entry rather
    than through `nextCockpitSemantic`, whose `{facts:[]}` default would turn
    "no context at all" into a confident zero. */
+/* DRC-4613, the captain's 2026-09-21 ruling: a read that has since failed to
+   refresh keeps its rows, and the board must say so. Until this, `stale`
+   rendered exactly as `ready` at both call sites, so a reader could not tell a
+   current read from the last one that worked -- the board implying currency it
+   does not have, which is the same shape as an absence rendering as a value.
+
+   The staleness rides ON the cue rather than replacing it. The count is still
+   the real count; what is in doubt is its age, so the figure stays and the age
+   is what the cue adds. */
 function nextCockpitTabCue(tab, context, focus){
+  const cue = nextCockpitTabCueBase(tab, context, focus);
+  if(!cue || !context || !context.group) return cue;
+  const read = nextCockpitContextRead(context.group, focus);
+  if(read.state !== "stale") return cue;
+  return Object.assign({}, cue, {
+    stale: true, lastRead: read.entry && read.entry.revision
+  });
+}
+
+function nextCockpitTabCueBase(tab, context, focus){
   const group = context && context.group;
   if(tab === "course"){
     const changes = context && context.project && context.project.changes;
@@ -3440,9 +3459,24 @@ function nextCockpitTabCueHtml(tab, cue){
   const variant = cue.state === "pending" ? " next-cockpit-tab-cue--pending" :
     cue.state === "unobserved" ? " next-cockpit-tab-cue--unobserved" :
     cue.state === "unavailable" ? " next-cockpit-tab-cue--unavailable" : "";
-  return `<span class="next-cockpit-tab-cue${variant}" data-next-cockpit-tab-cue="${cue.state}">` +
-    `<span aria-hidden="true">${esc(mark)}</span>` +
-    `<span class="next-visually-hidden">${esc(gloss)}</span></span>`;
+  /* The two channels must agree. A visible suffix with no change to the gloss
+     would tell a sighted reader the rows are stale and a screen-reader user
+     they are current, which is the disagreement this repository has shipped
+     before. Both carry it or neither does. */
+  const clock = cue.stale && cue.lastRead ? nextSessionClock(cue.lastRead) : "";
+  const staleMark = cue.stale
+    ? '<span class="next-cockpit-tab-cue-stale" aria-hidden="true">stale</span>' : "";
+  const staleGloss = cue.stale
+    ? (clock ? `, last read ${clock}, refresh has failed since`
+             : ", refresh has failed since the last successful read") : "";
+  /* No `--stale` variant on the wrapper: the count is still the real count, so
+     its ink does not change, and a variant class with no rule is what
+     `EveryTabCueVariantIsColouredByItsOwnRuleTest` exists to reject. The
+     staleness is its own span, which has its own rule. */
+  return `<span class="next-cockpit-tab-cue${variant}" ` +
+    `data-next-cockpit-tab-cue="${cue.state}"${cue.stale ? ' data-next-cockpit-tab-stale' : ""}>` +
+    `<span aria-hidden="true">${esc(mark)}</span>${staleMark}` +
+    `<span class="next-visually-hidden">${esc(gloss + staleGloss)}</span></span>`;
 }
 
 function nextCockpitTabList(context, focus){
@@ -3761,9 +3795,41 @@ function nextCockpitTimeline(group, focus){
     return `<section class="next-cockpit-semantic" data-next-cockpit-semantic><h2>SEMANTIC TIMELINE</h2>` +
       `<p class="next-cockpit-empty">${label}</p></section>`;
   }
+  /* DRC-4613: the panel half of the staleness disclosure. The cue says it from
+     the tab strip, which is where a reader who has not opened the panel meets
+     it; this says it where the rows are, with the time they are from. Both are
+     driven by the same `read.state`, so the two surfaces cannot describe the
+     read differently -- the cue/panel disagreement this milestone has shipped
+     before.
+
+     It sits after the `!read.shows` return on purpose: a read with nothing to
+     show already says so, and saying "these are the rows from that read" over
+     no rows would be the louder wrong answer. */
+  const staleNotice = read.state === "stale"
+    ? '<p class="next-cockpit-stale-read" data-next-cockpit-stale-read>' +
+      (entry && entry.revision
+        ? `Last read ${esc(nextSessionClock(entry.revision))}. Refresh has failed since; ` +
+          "these are the rows from that read."
+        : "Refresh has failed since the last successful read; these are the rows from it.")
+      + "</p>"
+    : "";
   projectQuerySession = focus ? sessKey(focus) : "";
   const cacheKey = projectContextKey(nextCockpitStableKey(group));
-  projectContextByLabel[cacheKey] = {state:"ready", data:entry.data, generated:entry.revision};
+  /* The four writers in `project.js` all carry `dashboard_revision`, and both
+     readers key off what this one used to omit: `projectLoadContext` guards on
+     `(old.dashboard_revision || old.generated)` and `projectRefreshControl` on
+     `state === "loading"`. Writing `{state,data,generated}` here dropped the
+     revision the loader compares against AND moved an in-flight slot out of
+     `loading`, which re-enabled a refresh control that had not finished.
+     So this seeds the bridge without disturbing a fetch that owns the slot.
+     DRC-4612. */
+  const heldContext = projectContextByLabel[cacheKey];
+  if(!heldContext || heldContext.state !== "loading"){
+    projectContextByLabel[cacheKey] = {
+      state: "ready", data: entry.data, generated: entry.revision,
+      dashboard_revision: entry.revision
+    };
+  }
   const delegationGroup = {label: nextCockpitStableKey(group)};
   const lanes = focus ? projectDelegationLanes(focus, delegationGroup) :
     group.sessions.flatMap(session => projectDelegationLanes(session, delegationGroup));
@@ -3788,7 +3854,7 @@ function nextCockpitTimeline(group, focus){
   /* Resolved by the renderer's own function rather than from the argument, so
      the heading cannot say RECORDED DECISIONS over an all-events list. */
   const mode = projectResolveGraphMode(options);
-  return '<section class="next-cockpit-semantic" data-next-cockpit-semantic>' +
+  return '<section class="next-cockpit-semantic" data-next-cockpit-semantic>' + staleNotice +
     `<h2>${mode === "decisions" ? "RECORDED DECISIONS" : "SEMANTIC TIMELINE"}</h2>` +
     timeline + '</section>';
 }
