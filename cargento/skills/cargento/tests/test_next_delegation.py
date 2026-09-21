@@ -800,49 +800,29 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
-class BothWithheldFiguresCarryTheAbsenceStampTest(NextPageJsHarness):
-    """DRC-4589 AC-2 over both "no figure yet" paths.
+class TheWithheldFigureCarriesTheAbsenceStampTest(NextPageJsHarness):
+    """DRC-4589 AC-2, over the one "no figure yet" path a reader can reach.
 
     The issue as filed claimed this string rendered in the large bright figure
-    type; it does not, at either site. It is `--ink2` at `700 16px var(--mono)`
-    inside `.next-delegation-withheld`, and the 32px accent rule reaches
-    neither. So the ink stays exactly where it is and the cue is the stamp: a
-    family swap and a leading em dash, both of which survive greyscale.
+    type; it does not. It sits inside `.next-delegation-withheld`, and the
+    accent figure rule reaches it in neither branch. So the ink stays where it
+    is and the cue is the stamp: a family swap and a leading em dash, both of
+    which survive greyscale.
 
-    Both sites are asserted because they are different emitters -- the Console
-    card builds its own markup, the project rail renders `metric.pctText` --
-    and a stamp on one is not a stamp on the other.
+    **This class asserted two sites until DRC-4610, and one of them was dead.**
+    `nextProjectDelegation` built its own markup and had no caller anywhere in
+    the runtime since `8d2585c`; its test called it directly, so the test was
+    green, the criterion read as satisfied, and nothing established that a
+    reader ever met the markup. DRC-4610 traced what actually renders this
+    state -- `nextCockpitPanel` -> `nextProjectRail` -> `nextRailDelegation`,
+    which prints `metric.pctText` from `next-observed.js` rather than a literal
+    -- and the dead emitter, its test and its stamp were removed rather than
+    repointed. The correction is recorded on DRC-4589 rather than applied
+    silently, because a criterion verified against an unrendered path leaves no
+    trace once the path is gone.
     """
 
     FIXTURE = NextDelegationBehaviorTest.FIXTURE
-
-    def test_the_second_emitter_stamps_the_string_it_prints_instead_of_a_figure(self) -> None:
-        """`nextProjectDelegation` builds its own markup rather than rendering
-        `metric.pctText`, so a stamp on the rail is not a stamp here.
-
-        Called directly, because on this tree the function has **no caller**:
-        `grep -rn nextProjectDelegation cargento_runtime/` returns its own
-        definition and nothing else, and it has been that way since the commit
-        that promoted this interface. That is filed rather than fixed here. The
-        assertion below is worth keeping anyway — it is what stops the two
-        emitters disagreeing the moment one is wired back up — but it is stated
-        as a unit call and not as a rendered board, because rendering it is what
-        no route does.
-        """
-        out = self._run_page_js(
-            RAIL_FIXTURE
-            + """
-nextWorkstreamProjectWindow = () => ({seeded:false, samples:[]});
-console.log(JSON.stringify(
-  nextProjectDelegation({group:{label:"alpha/repo"}})));
-"""
-        )
-        assert isinstance(out, str)
-
-        self.assertIn("<strong data-next-absent>no figure yet</strong>", out)
-        # And the section is the withheld one, not the figure one.
-        self.assertIn("data-next-delegation-withheld", out)
-        self.assertNotIn("next-delegation-figure", out)
 
     def test_the_project_rail_stamps_its_withheld_figure_too(self) -> None:
         out = self._run_page_js(

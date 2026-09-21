@@ -12379,3 +12379,166 @@ class ATierTwoControlIsNeverSmallerThanWhatItHidesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EveryProjectContextWriterAgreesOnItsFieldsTest(NextPageJsHarness):
+    """DRC-4612: five writers, two shapes, and both readers keyed off the gap.
+
+    `projectContextByLabel` is written in four places in `project.js` and once
+    in `next-cockpit.js`. The four carry `dashboard_revision`; the fifth did
+    not, and both readers key off exactly what it omitted --
+    `projectLoadContext` guards on `(old.dashboard_revision || old.generated)`
+    and `projectRefreshControl` on `state === "loading"`.
+
+    The criterion's falsifier is "a sixth writer added later with a third
+    shape", so this is an enumeration over the source rather than a check of
+    the one that was wrong. A writer added tomorrow with a different key set
+    reds here without anyone remembering to extend a list.
+    """
+
+    # `state` is deliberately excluded from the compared set: it is the field
+    # whose VALUE differs per writer (loading / ready / error), where the other
+    # three must be present in all of them.
+    REQUIRED: ClassVar[frozenset[str]] = frozenset({"data", "generated", "dashboard_revision"})
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> Any:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    @staticmethod
+    def _writers() -> list[tuple[str, int, set[str]]]:
+        """Every `projectContextByLabel[...] = { ... }` literal, with its keys."""
+        found: list[tuple[str, int, set[str]]] = []
+        for name in ("project.js", "next-cockpit.js"):
+            text = (frontend_page.WEB_DIR / name).read_text(encoding="utf-8")
+            for match in re.finditer(r"projectContextByLabel\[[^\]]+\]\s*=\s*\{", text):
+                depth, i = 1, match.end()
+                while depth and i < len(text):
+                    depth += (text[i] == "{") - (text[i] == "}")
+                    i += 1
+                body = text[match.end() : i - 1]
+                keys = set(re.findall(r"(?:^|[{,\s])([A-Za-z_]\w*)\s*:", body))
+                line = text[: match.start()].count("\n") + 1
+                found.append((name, line, keys))
+        return found
+
+    def test_every_writer_declares_the_same_field_set(self) -> None:
+        writers = self._writers()
+        # A scan that found nothing would pass the check below in silence.
+        #
+        # Four, not the five DRC-4612 reports. That issue counted the
+        # `const projectContextByLabel = {}` declaration at `project.js:18` as a
+        # writer; it is the map's creation, and three object literals in
+        # `project.js` plus one in `next-cockpit.js` are the real set. Corrected
+        # on the issue rather than quietly written as four here.
+        self.assertEqual(4, len(writers), f"the writer set moved: {writers}")
+        short = {
+            f"{name}:{line}": sorted(self.REQUIRED - keys)
+            for name, line, keys in writers
+            if self.REQUIRED - keys
+        }
+        self.assertEqual({}, short, "these writers omit a field both readers key off")
+
+    def test_a_cockpit_render_cannot_move_an_in_flight_slot_out_of_loading(self) -> None:
+        """DRC-4612 AC-2, as the state's survival rather than a field's presence.
+
+        Asserting only that `dashboard_revision` is now written would pass while
+        the state is still clobbered, which the criterion names as its falsifier.
+        """
+        out = self.run_fixture(
+            """
+// Derive both the tab and the key from the runtime rather than naming them:
+// the writer only runs on the tab that renders the timeline, and its key comes
+// from `projectContextKey(nextCockpitStableKey(group))`, which is not the
+// route's project label. Guessing either made an earlier version of this test
+// pass while the guard it defends was removed.
+const group = nextProjectGroups()[0];
+const key = projectContextKey(nextCockpitStableKey(group));
+projectContextByLabel[key] = {
+  state: "loading", data: null, generated: 7, dashboard_revision: 7
+};
+nextRoute = {view:"project", project:group.label, focus:null, tab:"decisions"};
+renderNext();
+const after = projectContextByLabel[key];
+console.log(JSON.stringify({state: after && after.state,
+                            revision: after && after.dashboard_revision,
+                            wrote: !!after}));
+"""
+        )
+        # The slot must still exist at all: a test that asserted only the state
+        # would pass if the render never touched the key it seeded.
+        self.assertTrue(out["wrote"], "the seeded slot vanished, so nothing was tested")
+        self.assertEqual("loading", out["state"], "the cockpit clobbered an in-flight slot")
+        self.assertEqual(7, out["revision"], "the in-flight revision was dropped")
+
+
+class AStaleReadSaysSoOnBothSurfacesTest(NextPageJsHarness):
+    """DRC-4613, the captain's 2026-09-21 ruling: disclose, do not stay silent.
+
+    A semantic refresh that fails over data the board already had keeps the
+    previous rows and, until this, presented them exactly as a fresh read. The
+    rows are true; implying they are current is the board claiming more than it
+    knows, which is the defect class this milestone exists to remove.
+
+    Both surfaces are asserted together because the criterion's falsifier is a
+    fix that moves one and not the other, and because a disclosure only inside
+    the panel does not reach a reader looking at the tab strip.
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+
+    def run_fixture(self, checks: str) -> Any:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    # Drives the entry into each of the states `nextCockpitEntryState` produces,
+    # rather than only the one that was wrong. `stale` is data plus error.
+    DRIVE = """
+const group = nextProjectGroups()[0];
+const key = nextCockpitContextKey(group, null);
+const held = nextCockpitContexts.get(key);
+nextCockpitContexts.set(key, Object.assign({}, held, {error: %s, revision: 1755000000}));
+nextRoute = {view:"project", project:group.label, focus:null, tab:"decisions"};
+renderNext();
+console.log(JSON.stringify({
+  html: __els.app.innerHTML,
+  state: nextCockpitContextRead(group, null).state
+}));
+"""
+
+    def test_a_refresh_that_failed_over_existing_rows_says_so_in_the_panel(self) -> None:
+        out = self.run_fixture(self.DRIVE % "true")
+        self.assertEqual("stale", out["state"], "the fixture did not reach the stale state")
+        self.assertIn("data-next-cockpit-stale-read", out["html"])
+        self.assertIn("Refresh has failed since", out["html"])
+        self.assertIn("these are the rows from that read", out["html"])
+
+    def test_the_tab_cue_carries_it_too_so_an_unopened_panel_still_tells_you(self) -> None:
+        out = self.run_fixture(self.DRIVE % "true")
+        self.assertIn("data-next-cockpit-tab-stale", out["html"])
+        # The marker is its own span with its own rule, not a variant class on
+        # the wrapper: the count's ink does not change, only the word beside it.
+        self.assertIn('class="next-cockpit-tab-cue-stale"', out["html"])
+
+    def test_the_visible_cue_and_the_announced_one_agree(self) -> None:
+        """A visible 'stale' with an unchanged gloss would tell a sighted reader
+        one thing and a screen-reader user another, which this repository has
+        shipped before."""
+        out = self.run_fixture(self.DRIVE % "true")
+        self.assertIn(">stale</span>", out["html"])
+        self.assertIn("refresh has failed since", out["html"])
+
+    def test_a_read_that_did_not_fail_says_none_of_it(self) -> None:
+        """The other half of the claim: a clean resolve must be unchanged, or
+        the disclosure is noise on every board rather than a signal on one."""
+        out = self.run_fixture(self.DRIVE % "false")
+        self.assertEqual("ready", out["state"])
+        self.assertNotIn("data-next-cockpit-stale-read", out["html"])
+        self.assertNotIn("data-next-cockpit-tab-stale", out["html"])
+        self.assertNotIn("Refresh has failed since", out["html"])

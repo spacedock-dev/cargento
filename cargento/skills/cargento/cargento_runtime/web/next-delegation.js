@@ -165,35 +165,6 @@ function nextDelegationRateMarkup(metric){
   return `<span data-next-delegation-rate>${floor}${rate} tok/m while delegated</span>`;
 }
 
-function nextProjectDelegation(context){
-  const window = nextWorkstreamProjectWindow(context.group.label);
-  const metric = nextDelegationMetric(window);
-  const withheld = metric.observedSec < NEXT_DELEGATION_MIN_WINDOW_SEC || metric.delegatedPct == null;
-  // A withheld figure names the window it is short of, but only when the store
-  // seeded one. A tab that has watched five minutes of its own has nothing to
-  // report but its own lifetime, which is what the caption already said.
-  const label = withheld && !window.seeded
-    ? NEXT_WORKSTREAM_TAB_WINDOW.toUpperCase()
-    : nextWorkstreamWindowLabel(withheld ? window : metric).toUpperCase();
-  const header = `<header><span>DELEGATION · ${esc(label)}</span></header>`;
-  if(withheld){
-    return '<section class="next-delegation" data-next-delegation>' + header +
-      '<div class="next-delegation-withheld" data-next-delegation-withheld>' +
-      '<strong data-next-absent>no figure yet</strong>' +
-      '<small>Waiting for one complete token-rate window.</small></div></section>';
-  }
-  const rounded = Math.round(metric.delegatedPct);
-  const trend = nextDelegationTrendMarkup(nextDelegationTrend(window));
-  const turns = `${metric.humanTurns} human ${metric.humanTurns === 1 ? "turn" : "turns"}`;
-  return '<section class="next-delegation" data-next-delegation>' + header +
-    '<div class="next-delegation-figure">' +
-    `<strong data-next-delegation-percent>${rounded}%</strong>${trend}</div>` +
-    '<p class="next-delegation-caption">of the time ran without you</p>' +
-    `<progress max="100" value="${rounded}" aria-label="${rounded}% delegated"></progress>` +
-    '<div class="next-delegation-metrics">' + nextDelegationRateMarkup(metric) +
-    `<span data-next-delegation-turns>${esc(turns)}</span></div></section>`;
-}
-
 function nextRailHeader(label, note, tone = "", sentence = false){
   return `<header class="next-rail-header"><h2>${esc(label)}</h2>` +
     `<span class="next-rail-meta${sentence ? " next-rail-meta--sentence" : ""}${tone ? ` next-rail-meta--${tone}` : ""}">${esc(note)}</span></header>`;
