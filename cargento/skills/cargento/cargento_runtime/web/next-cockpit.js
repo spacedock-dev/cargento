@@ -3337,9 +3337,21 @@ const NEXT_COCKPIT_TAB_NOUNS = new Map([
   ["held-to", ["departure raised", "departures raised"]],
 ]);
 
-function nextCockpitTabLede(tab){
+function nextCockpitTabLede(tab, focus){
   const text = NEXT_COCKPIT_TAB_LEDES.get(tab);
-  return text ? `<p class="next-cockpit-lede">${esc(text)}</p>` : "";
+  if(!text) return "";
+  /* Now is the one tab whose scope does not narrow with the selection, so a
+     reader who has just picked a session is the only one who needs telling.
+     The sentence used to be its own <p class="next-cockpit-scope-note">, which
+     no rule in styles.css ever matched: it rendered in the browser default
+     face and size directly under this typeset line, reading as a fault rather
+     than as something somebody wrote. Folded in here rather than given a rule
+     of its own, because it is the same claim this lede already makes, narrowed
+     to the focused case. */
+  const scope = tab === "now" && focus
+    ? " It stays project-wide, including activity from other sessions."
+    : "";
+  return `<p class="next-cockpit-lede">${esc(text + scope)}</p>`;
 }
 
 function nextCockpitTabCueCount(length){
@@ -3890,9 +3902,7 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
     ? nextRoute.tab : "now";
   let body = "";
   if(tab === "now"){
-    body = (focus ? '<p class="next-cockpit-scope-note">Now remains project-wide, ' +
-      'including activity from other sessions.</p>' : "") +
-      nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
+    body = nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
       nextProjectPlanStatus(context) + nextCockpitPlanDisclosure(context);
   }else if(tab === "held-to"){
     body = nextCockpitHeldTo(context.group, observation);
@@ -3936,7 +3946,7 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
   }
   return `<section class="next-cockpit-panel" id="next-cockpit-panel-${tab}" role="tabpanel" ` +
     `data-next-cockpit-panel="${tab}" aria-label="${nextCockpitHumanLabel(tab)}">` +
-    nextCockpitTabLede(tab) + `${body}</section>`;
+    nextCockpitTabLede(tab, focus) + `${body}</section>`;
 }
 
 function nextProjectCockpit(context, observation, commandAttention){

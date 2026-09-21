@@ -132,7 +132,7 @@ function nextProjectSteer(project, state, layout = ""){
     `data-next-draft="steer" data-next-controls-project="${esc(project)}" ` +
     `data-next-focus="steer-draft:${esc(project)}" ` +
     `value="${esc(nextControlsDraft(project, "steer"))}"></label>` +
-    '<button type="submit" class="next-action">send ⏎</button></form>' + history + '</section>';
+    '<button type="submit" class="next-action">save draft ⏎</button></form>' + history + '</section>';
 }
 
 function nextProjectGuardrailRows(project, state){
