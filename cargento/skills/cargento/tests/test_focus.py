@@ -1021,7 +1021,7 @@ class CapabilityDeliveryTest(unittest.TestCase):
         # would fail on the reader rather than on an injected token.
         self.assertNotIn(b'<meta name="cargento-focus"', assembled)
         self.assertEqual(
-            "dfb5361e19f24063513d7b7cdbcf639458166891168c85baa198a4ffbe22df67",
+            "20b08c586a9a8209477d2c481717023a751c83fe96eb7463800346d198fdee38",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1081,7 +1081,7 @@ def _namespace(**overrides: object) -> argparse.Namespace:
         "no_focus": False,
         "no_history": False,
         "history_days": 14.0,
-        "history_max_bytes": 1_038_161,
+        "history_max_bytes": 1_042_551,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
