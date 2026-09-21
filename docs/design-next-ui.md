@@ -980,6 +980,24 @@ left nothing on the board reading as the act to take. It reaches exactly one tab
 four of the five have no action to mark at all; what each of those tabs' main action should *be* is
 a product question filed separately rather than answered in a restyle.
 
+A floor sits under the opt-in, for buttons nothing else styles. Without one a bare `<button>`
+keeps user-agent chrome, `rgb(239,239,239)` behind a black border, which is the brightest thing on
+a `#14140f` board. It is written `:where(#app) button:not([class])` and both halves are load
+bearing. `:not([class])` excludes a classed button from the match entirely, so no component rule
+has to undo it. `:where()` contributes no specificity, which keeps the rule at (0,1,1) so every
+component rule below wins the tie by source order. Writing it `#app button:not([class])` instead
+took it to (1,1,1) and it outranked `.next-cockpit-tabs button`, drawing five boxed buttons where
+the design has underlined tabs. A floor that outranks the thing it is a floor for is a ceiling.
+
+Quoted machine text has its own register. Sixteen `<code>` elements are emitted across the board
+and three had a rule, so the rest fell through to the user agent's monospace at its own default
+size and read as slightly odd prose rather than as something a reader might type back. `code`,
+`kbd` and `pre` now take the mono face, the label tier, a recessed `--sunk` fill and a `--rule`
+edge. The edge is `--rule` rather than `--line` because a quoted flag is not a user interface
+component, so SC 1.4.11 does not govern it and a control's boundary would make it look pressable.
+`pre` wraps rather than scrolls, because `.pc-terminal-viewport` is the one rule in this sheet
+permitted an auto overflow and a second scroll container is a second place to lose a reader.
+
 **Disabled is dashed, not dimmer.** `--ink3` is the resting colour of the prose these controls sit
 in, so a disabled control drawn one ink step down was being drawn in the body ink and disappeared
 entirely in greyscale. `border-style` carries it because no ink choice can. `.next-stalled
