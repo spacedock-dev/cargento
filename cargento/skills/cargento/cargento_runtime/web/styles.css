@@ -162,6 +162,23 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    own size, and gets no rule here at all. */
 .next-absence{border:1px dashed var(--line);background:var(--hatch)}
 .next-absence-reason{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-label)}
+/* Machine text the board quotes, which a reader may need to type back: a flag,
+   a path, a session id, a key. Sixteen <code> sites are emitted and only three
+   had a rule, so the rest fell through to the user agent's monospace at its own
+   default size and read as slightly odd prose rather than as something to copy.
+   Measured on Console, where `--no-usage` sat unmarked inside a sentence.
+
+   --rule, not --line, for the edge. A quoted flag is not a user interface
+   component, so SC 1.4.11 does not govern it and a control's boundary would
+   make it look pressable. */
+:where(#app) code,:where(#app) kbd{padding:0 var(--sp-1);border:1px solid var(--rule);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
+/* Captured output as a block. It wraps rather than scrolls, because
+   .pc-terminal-viewport is the one rule in this sheet allowed to own an auto
+   overflow and a second scroll container is a second place to lose a reader's
+   position. The literal declaration is deliberately not written in this
+   comment: ReaderStateInventoryTest scans the whole file, comments included,
+   and reads one there as a fourth overflow form. */
+:where(#app) pre{margin:0;padding:var(--sp-3);border:1px solid var(--rule);border-radius:var(--r-card);background:var(--sunk);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 /* ===== CHROME ===== */
 #app{max-width:1320px;margin:28px auto 44px;padding:0 26px 34px;border:1px solid var(--rule);border-radius:var(--r-shell);background:var(--bg)}
 .next-header,.next-header-right,.next-tabs-row{display:flex;align-items:center}
