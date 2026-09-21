@@ -157,6 +157,53 @@ function nextRefreshRetryMs(){
   return NEXT_LIVE_SUPPORTED ? NEXT_FALLBACK_POLL_MS : NEXT_UNCOORDINATED_POLL_MS;
 }
 
+/* An open <select> is the one piece of reader state the redraw cannot put back.
+   `renderNext` replaces the whole of `#app`, and every other lane in
+   docs/design-reader-state.md rebuilds from a key afterwards: focus, carets,
+   drafts, disclosures. A native option popup has no key and no API to reopen
+   it, so a refresh landing mid-choice shuts the list. Measured on the Projects
+   view, where the poll is 5s and the stage-condition dropdown closed before a
+   selection could be made.
+
+   So the poll defers its PAINT while a select holds focus. The data is still
+   taken: `nextData` is already assigned by the time this is consulted, and the
+   deferred render draws it the moment the list closes. Only the one
+   poll-driven call site defers; every other `renderNext` follows a reader's
+   own action, where nothing is mid-choice. */
+let nextDeferredRender = null;
+let nextDeferredRenderCount = 0;
+/* A bound, because a board that never repaints is a worse failure than a list
+   that closes. Twelve consecutive deferrals is a minute at the uncoordinated
+   poll and far longer than choosing from a list takes; past that the reader has
+   left the control focused rather than used it, and the board catches up. */
+const NEXT_MAX_DEFERRED_RENDERS = 12;
+
+function nextChoiceIsOpen(){
+  const active = document.activeElement;
+  if(!active || active.tagName !== "SELECT") return false;
+  const app = document.getElementById("app");
+  return !!(app && app.contains(active));
+}
+
+function nextRunDeferredRender(){
+  const pending = nextDeferredRender;
+  if(!pending) return;
+  nextDeferredRender = null;
+  nextDeferredRenderCount = 0;
+  renderNext(pending.focus);
+  nextAnnounceAttention(pending.announcement);
+}
+
+/* `change` as well as `blur`, because a keyboard selection commits without the
+   list losing focus, and the reader should see the board catch up then rather
+   than on the next poll. */
+document.addEventListener("change", event => {
+  if(event.target && event.target.tagName === "SELECT") nextRunDeferredRender();
+});
+document.addEventListener("blur", event => {
+  if(event.target && event.target.tagName === "SELECT") nextRunDeferredRender();
+}, true);
+
 async function refreshNext(manual = false){
   if(manual && nextRefreshInFlight) return;
   const request = ++nextRefreshRequest;
@@ -187,6 +234,27 @@ async function refreshNext(manual = false){
   }finally{
     if(manual) nextRefreshInFlight = false;
     if(request !== nextRefreshRequest) return;
+    // A manual refresh is the reader asking, so it paints even over an open
+    // list: they pressed the thing that redraws.
+    if(!manual && nextChoiceIsOpen()){
+      if(nextDeferredRenderCount < NEXT_MAX_DEFERRED_RENDERS){
+        nextDeferredRenderCount += 1;
+        // Keep the newest payload's focus and announcement, not the first
+        // deferral's: the render that eventually runs is drawing this data.
+        nextDeferredRender = {focus, announcement};
+        return;
+      }
+      /* Past the cap the board paints again, and the count is NOT reset while
+         the list still holds focus. Resetting here re-arms the cap, so the
+         board would repaint once every thirteen polls instead of resuming:
+         caught by test_a_list_left_focused_cannot_freeze_the_board, which saw
+         one paint where it expected two. The count is cleared only when the
+         interaction genuinely ends, in nextRunDeferredRender or below. */
+      nextDeferredRender = null;
+    }else{
+      nextDeferredRender = null;
+      nextDeferredRenderCount = 0;
+    }
     renderNext(focus);
     nextAnnounceAttention(announcement);
   }

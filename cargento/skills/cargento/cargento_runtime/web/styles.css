@@ -131,11 +131,17 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-action:disabled,.next-action[aria-disabled="true"]{border:1px dashed var(--line);background:var(--hatch);color:var(--ink3);cursor:not-allowed}
 /* The unmet precondition, said beside the control rather than in a tooltip. */
 .next-action-reason{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
-/* `:not([class])` rather than a specificity duel, so a classed button is
-   excluded from the match entirely and nothing here has to be un-done by a
-   component rule. Without it a bare button keeps user-agent chrome --
-   rgb(239,239,239) on a #14140f board, the brightest thing on the page. */
-#app button:not([class]){min-block-size:44px;padding:var(--control-pad);border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--sans);font-size:var(--fs-body);cursor:pointer}
+/* A bare button otherwise keeps user-agent chrome, rgb(239,239,239) on a
+   #14140f board and the brightest thing on the page.
+
+   `:where(#app)` rather than `#app`, because the id took this to (1,1,1) and
+   that outranks every component rule in the sheet. Measured on the cockpit tab
+   strip, whose buttons carry no class and are styled by the descendant rule
+   `.next-cockpit-tabs button` (0,1,1): this rule beat it and drew five boxed
+   buttons where the design has underlined tabs. `:where()` contributes no
+   specificity, so this lands at (0,1,1) and every component rule below wins the
+   tie by order. It is a floor for buttons nothing else styles, never a ceiling. */
+:where(#app) button:not([class]){min-block-size:44px;padding:var(--control-pad);border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--sans);font-size:var(--fs-body);cursor:pointer}
 
 /* ===== FIELDS ===== */
 /* Deliberately (0,0,1): a floor for a field nobody has styled, not a takeover.
@@ -156,6 +162,23 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    own size, and gets no rule here at all. */
 .next-absence{border:1px dashed var(--line);background:var(--hatch)}
 .next-absence-reason{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-label)}
+/* Machine text the board quotes, which a reader may need to type back: a flag,
+   a path, a session id, a key. Sixteen <code> sites are emitted and only three
+   had a rule, so the rest fell through to the user agent's monospace at its own
+   default size and read as slightly odd prose rather than as something to copy.
+   Measured on Console, where `--no-usage` sat unmarked inside a sentence.
+
+   --rule, not --line, for the edge. A quoted flag is not a user interface
+   component, so SC 1.4.11 does not govern it and a control's boundary would
+   make it look pressable. */
+:where(#app) code,:where(#app) kbd{padding:0 var(--sp-1);border:1px solid var(--rule);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
+/* Captured output as a block. It wraps rather than scrolls, because
+   .pc-terminal-viewport is the one rule in this sheet allowed to own an auto
+   overflow and a second scroll container is a second place to lose a reader's
+   position. The literal declaration is deliberately not written in this
+   comment: ReaderStateInventoryTest scans the whole file, comments included,
+   and reads one there as a fourth overflow form. */
+:where(#app) pre{margin:0;padding:var(--sp-3);border:1px solid var(--rule);border-radius:var(--r-card);background:var(--sunk);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 /* ===== CHROME ===== */
 #app{max-width:1320px;margin:28px auto 44px;padding:0 26px 34px;border:1px solid var(--rule);border-radius:var(--r-shell);background:var(--bg)}
 .next-header,.next-header-right,.next-tabs-row{display:flex;align-items:center}
@@ -902,6 +925,17 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-shell--single{grid-template-columns:minmax(0,1fr)}
 .next-cockpit-shell--single>.next-cockpit-content{border-left:0}
 .next-cockpit-content{min-width:0;border-left:1px solid var(--rule)}
+/* The column's inset lives on its children, not on the column, because the
+   dividers between them are full bleed: the tab strip's border-bottom and the
+   rule above STEER run edge to edge, and padding on .next-cockpit-content
+   would pull both in. .next-cockpit-tabs already insets its own buttons the
+   same 12px while keeping that border full width.
+   Measured on the project cockpit: of the four children only the `now` panel
+   had an inset, so STEER, the recovery block and the Course, Decisions and
+   Console panels all rendered against the border. */
+.next-cockpit-content>.next-cockpit-recovery,
+.next-cockpit-content>.next-steer,
+.next-cockpit-content>.next-cockpit-panel{padding-left:12px;padding-right:12px}
 .next-cockpit-scope-tree,.next-cockpit-scope-options{display:grid;gap:2px;padding:12px 12px 12px 0}
 .next-cockpit-scope-switcher{display:none}
 .next-cockpit-stale-session{margin:24px 0;padding:24px;border:1px solid var(--rule)}
@@ -952,9 +986,29 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-recovery>header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 12px;border-bottom:1px solid var(--rule);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-cockpit-recovery>header button{padding:4px 7px;border:1px solid var(--line);background:transparent;color:var(--ink2);font:inherit;letter-spacing:0;cursor:pointer}
 .next-cockpit-recovery>div{min-width:0;padding:10px 12px;border-right:1px solid var(--rule);font:var(--fs-label) var(--sans)}
-.next-cockpit-recovery>div:last-child{border-right:0}
-.next-cockpit-recovery-evidence{grid-column:span 2;border-top:1px solid var(--rule)}
-.next-cockpit-recovery-evidence+.next-cockpit-recovery-memos{border-top:1px solid var(--rule)}
+/* The dividers are internal only, so the cell in the last column draws none.
+   `:last-child` used to do this and is wrong here: it was written for a grid of
+   exactly three cells, and this one has a header first and an evidence row
+   after, so it cancelled the border on EVIDENCE and left COMMAND drawing the
+   grid's own right edge. There was no left edge to mirror it, which is what a
+   reader sees. The two positions that can hold the last column are named
+   instead, because a spanning row shifts the nth-child rhythm and no selector
+   expresses "starts in the last column". */
+.next-cockpit-recovery>div:nth-child(4),
+.next-cockpit-recovery>.next-cockpit-recovery-memos{border-right:0}
+/* The top row closes under all three cells. It used to be closed by the
+   evidence row's own border-top, which spans two columns, so nothing was drawn
+   under COMMAND. */
+.next-cockpit-recovery>div:nth-child(-n+4){border-bottom:1px solid var(--rule)}
+/* The evidence row spans two columns and usually has nothing beside it, so it
+   draws no divider of its own: a line with empty space on one side bounds a
+   cell that is not there. The divider moves to the memos block, which exists
+   only when there is something in the third column for it to separate. */
+.next-cockpit-recovery-evidence{grid-column:span 2}
+/* Written against the parent so it outranks `.next-cockpit-recovery>div`,
+   which is (0,1,1) and beats a lone class. */
+.next-cockpit-recovery>.next-cockpit-recovery-evidence{border-right:0}
+.next-cockpit-recovery-evidence+.next-cockpit-recovery-memos{border-left:1px solid var(--rule)}
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;padding-top:5px}
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]+[data-next-cockpit-memo-field]{margin-top:5px;border-top:1px solid var(--rule);padding-top:7px}
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]>span{grid-column:1/-1;margin:0;letter-spacing:.07em}
@@ -1306,7 +1360,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-recovery details>summary:hover,.next-course-evidence>summary:hover{color:var(--ink)}
 .next-cockpit-content summary:focus-visible,#app .next-cockpit-scope-tree a:focus-visible,
 #app .next-cockpit-scope-options a:focus-visible,.next-cockpit-scope-switcher>summary:focus-visible{outline:2px solid var(--ink2);outline-offset:3px}
-.next-cockpit-panel[data-next-cockpit-panel="now"]{gap:18px;padding:18px 12px}
+.next-cockpit-panel[data-next-cockpit-panel="now"]{gap:18px;padding-top:18px;padding-bottom:18px}
 .next-cockpit-scope-switcher>summary{font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-content .next-rail-meta--amber{color:var(--ink2)}
 @media(max-width:1279px){
