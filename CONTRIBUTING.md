@@ -261,7 +261,10 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Keep stylesheet edits inside the region owned by the surface you are changing, including its
   media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
   names all nine regions, the dark-only palette and the type floor. Board sentences use
-  `--fs-body` (15px); compact labels and source metadata sit on one tier, `--fs-label` (13px).
+  `--fs-body` (0.9375rem); compact labels and source metadata sit on one tier, `--fs-label`
+  (0.8125rem). The scale is rem against a `100%` root, so the board follows the reader's own
+  font-size setting; the rem figures are computed against 16px, which is what makes a default
+  browser render what it always did. Borders stay px on purpose: a hairline in rem blurs.
   Every `font-size` is one of the five scale steps: a test bans raw pixel
   sizes and unused steps, and a second one holds control boundaries to 3:1. The earlier scale-only rule followed twenty ad-hoc values
   between 8px and 15px; new sizes still need a named role.

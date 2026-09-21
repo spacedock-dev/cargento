@@ -9879,7 +9879,7 @@ class AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest(unittest.TestCase)
 
         sizes = {
             name: float(value)
-            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", self.css)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)rem", self.css)
         }
         self.assertTrue(sizes, "the type scale declares no sizes to read")
 
@@ -9893,7 +9893,7 @@ class AnAbsentVariantBorrowsItsSizeFromTheValueItReplacesTest(unittest.TestCase)
             fails here rather than being read as zero.
             """
             body = self.block_for(head)
-            found = re.findall(r"font:(?:\d+ )?(?:var\(--(fs-[a-z0-9-]+)\)|([0-9.]+)px)", body)
+            found = re.findall(r"font:(?:\d+ )?(?:var\(--(fs-[a-z0-9-]+)\)|([0-9.]+)rem)", body)
             self.assertTrue(found, f"{head} declares no size")
             token, literal = found[-1]
             if not token:
@@ -9967,7 +9967,7 @@ class TheBriefingsThreeRegistersStayApartTest(unittest.TestCase):
         cls.css = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
         cls.sizes = {
             name: float(value)
-            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)px", cls.css)
+            for name, value in re.findall(r"--(fs-[a-z0-9-]+):([0-9.]+)rem", cls.css)
         }
         cls.inks = dict(re.findall(r"--(ink[a-z0-9-]*):(#[0-9a-f]{6}|var\(--ink[0-9]?\))", cls.css))
 

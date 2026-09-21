@@ -38,23 +38,32 @@
      against v2's 0.483) on the v3 palette, and measures 5.94:1 on --panel. */
   --accent:#cfe884; --accent-dim:#93a757; --amber:#f0b95e; --clay:#e4886a;
   /* type - five steps, floor 13px, sentences 15px */
-  --fs-label:13px; --fs-body:15px; --fs-value:18px; --fs-head:24px; --fs-hero:34px;
-  --measure:540px;
+  --fs-label:0.8125rem; --fs-body:0.9375rem; --fs-value:1.125rem; --fs-head:1.5rem; --fs-hero:2.125rem;
+  --measure:33.75rem;
   --sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,monospace;
   /* radius - control / card / shell / pill */
-  --r-control:4px; --r-card:10px; --r-shell:16px; --r-pill:999px;
-  --control-pad:9px 14px;
+  --r-control:0.25rem; --r-card:0.625rem; --r-shell:1rem; --r-pill:999px;
+  --control-pad:0.5625rem 0.875rem;
   --e-card:0 1px 0 #0b0b07;
   --e-raise:0 18px 44px -22px #000, inset 0 1px 0 rgba(246,243,234,.07);
   --hatch:repeating-linear-gradient(135deg,transparent 0 5px,rgba(163,156,136,.26) 5px 6px);
-  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+  --sp-1:0.25rem; --sp-2:0.5rem; --sp-3:0.75rem; --sp-4:1rem; --sp-5:1.5rem; --sp-6:2rem; --sp-7:3rem;
   --sel-bg:color-mix(in oklab,var(--accent) 26%,transparent);
   --sel-bd:color-mix(in oklab,var(--accent) 52%,transparent);
 }
 *{box-sizing:border-box}
+/* 100%, deliberately not a pixel value. Naming a px root here would pin the
+   scale to 16px and take the reader's own font-size setting away again,
+   which is the thing this unit exists to honour. The rem figures above are
+   computed against 16px so a default browser renders exactly what it did
+   before, and a reader at 20px gets the whole board a quarter larger. */
+html{font-size:100%}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
-body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+/* The root has to name a step or everything inheriting from it renders at the
+   user-agent default, which is not one of the five. Measured before this
+   line existed: 20 elements on Projects rendered at 16px. */
+body{font-family:var(--sans);font-size:var(--fs-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 #app a,#app button,#app summary,#app [role="link"]{min-block-size:44px;min-inline-size:44px}
 #app a{display:inline-flex;align-items:center;max-inline-size:100%;overflow-wrap:anywhere}
 [data-next-body],[data-next-view-body]{min-height:360px}
@@ -171,6 +180,14 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    --rule, not --line, for the edge. A quoted flag is not a user interface
    component, so SC 1.4.11 does not govern it and a control's boundary would
    make it look pressable. */
+/* A floor for <small>, which the user agent renders with the `smaller` keyword:
+   0.8333 of its parent, so a small inside a 13px label lands at 10.83px, below
+   the floor this whole scale exists to hold. Nine of them in the capacity strip
+   alone, all uppercase field labels that the label tier already describes.
+   Measured in a browser: the declaration census cannot see it, because the rule
+   that produces it is the user agent's and not in this sheet.
+   :where() so it stays a floor at (0,0,1) and any component rule wins. */
+:where(#app) small{font-size:var(--fs-label)}
 :where(#app) code,:where(#app) kbd{padding:0 var(--sp-1);border:1px solid var(--rule);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
 /* Captured output as a block. It wraps rather than scrolls, because
    .pc-terminal-viewport is the one rule in this sheet allowed to own an auto
@@ -255,6 +272,15 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   #app{padding:18px 8px 40px}
 }
 /* ===== PROJECTS ===== */
+/* The Projects view was the one surface whose headings had no rule, so all
+   three took user-agent em multiples and rendered at 30px, 22.5px and 17.55px:
+   the only text on the board outside the five steps. Sessions and Attention
+   already style theirs, and their page titles are --fs-head, which is what h1
+   takes here. Measured in a browser; the declaration census cannot see an
+   inherited default or an unstyled element. */
+.next-projects h1{margin:0;font-size:var(--fs-head);font-weight:700;letter-spacing:-.02em}
+.next-projects h2{margin:0;font-size:var(--fs-value);font-weight:600}
+.next-projects h3{margin:0;font-size:var(--fs-body);font-weight:600}
 .next-projects-note{margin:0;color:var(--ink2);font-size:var(--fs-label)}
 .next-project-group{margin-top:26px}
 .next-project-group>header{display:flex;align-items:baseline;justify-content:space-between;gap:20px}
