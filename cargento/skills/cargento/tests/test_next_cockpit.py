@@ -570,7 +570,10 @@ console.log(JSON.stringify(__els.app.innerHTML.slice(
 
         # Then
         assert isinstance(out, str)
-        self.assertIn("Now remains project-wide", out)
+        # Folded into the tab lede by DRC-4608. It was its own paragraph with no
+        # rule in the sheet, so it rendered unstyled under this one.
+        self.assertIn("It stays project-wide, including activity from other sessions.", out)
+        self.assertNotIn("next-cockpit-scope-note", out)
         self.assertIn("Shape project cockpit", out)
 
     def test_empty_course_and_decisions_keep_history_window(self) -> None:

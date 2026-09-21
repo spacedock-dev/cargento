@@ -679,8 +679,16 @@ before the first keystroke the control promised delivery and said nothing about 
 A caveat now sits above the field in every render: one sentence on the sentence tier saying there is
 no write path and that anything typed is a note to yourself. Raising it alone would have drawn the
 warning larger than the words it warns about, so the field was raised with it and the pair is
-asserted as a pair. The `send ⏎` submit keeps its wording under this ruling, which retains the
-control specifically to demonstrate the interaction shape; renaming it is filed separately.
+asserted as a pair.
+
+**The submit reads `save draft ⏎`, and the demonstration does not rest on it.** It read `send ⏎`
+until DRC-4611, under an earlier form of this ruling that kept the wording specifically to carry the
+interaction shape. That was the wrong thing to hang it on: `send` names a transport, and nothing
+leaves the board. What actually demonstrates the shape is the enabled field, the caveat above it,
+and the escaped receipt that says both that nothing was delivered and that Cargento has no session
+write path -- all three of which a reader meets whatever the button says. The label naming the act
+strengthens the demonstration rather than weakening it, because the control now tells the truth
+before it is pressed as well as after.
 
 Tripwire rules are viewer preferences. They are stored under a project-label key in the next
 bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
