@@ -1025,6 +1025,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-delegation-caption",
         ".next-guardrail-copy strong",
         ".next-guardrail-empty",
+        ".next-instruction-text",
         ".next-intent-note",
         ".next-intent-revision,.next-intent-why",
         ".next-intent-words",
@@ -1042,6 +1043,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-project-ending-outcome",
         ".next-project-goal-gap",
         ".next-project-goal-text",
+        ".next-projects-empty",
+        ".next-projects-note",
         ".next-rail-question",
         ".next-rail-wait-heading a",
         ".next-session-ask-question",
@@ -1172,12 +1175,18 @@ class NextPageAssetContractTest(unittest.TestCase):
         # on the v3 sheet with the substitution proved before the verdict was
         # read: neither half is decorative, and the length is the only guard
         # this module has against duplicate drift.
-        # 103 rules over 102 distinct selectors, against 84 over 83 before
-        # DRC-4602. Every one of the 19 that moved is a RAISE: the joining set
-        # is 19 and the leaving set is empty, which is the check that separates
-        # a retune from a regression. The one duplicate is unchanged, so the
-        # rule count still exceeds the selector count by exactly one.
-        self.assertEqual(102, len(above))
+        # 105 rules over 104 distinct selectors, against 84 over 83 before
+        # DRC-4602 and 102 over 101 after it. Every one of the 19 DRC-4602 moved
+        # was a RAISE -- the joining set was 19 and the leaving set empty, which
+        # is the check that separates a retune from a regression -- and DRC-4631
+        # then added three, of which `.next-instruction-text` is worth its
+        # own line: it carries the words a person typed, and the membership test
+        # could not reach it because it had no rule of its own to be selected
+        # by. It took one until a live board showed it rendering at 13px.
+        #
+        # The one duplicate is unchanged, so the rule count still exceeds the
+        # selector count by exactly one.
+        self.assertEqual(105, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1795,16 +1804,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(136_817, len(styles))
+        self.assertEqual(137_688, len(styles))
         self.assertEqual(
-            "c98bf038ff5505288c1f4295f7e700cc98dafb013c05508847116551193ef06d",
+            "e58d63d11876a1dcd3eed24147c6986f68cb8c559d409552d0092ee3c21b0418",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_051_203, len(assembled))
+        self.assertEqual(1_052_074, len(assembled))
         self.assertEqual(
-            "fbb1d15eb409f873f1fd7b1ef8189c117d2b674430795d6b9abd8b1c126f4f31",
+            "4d956c3ffd2ed02248dc6f0e923b8d7c1340164605876ab805574a0a238c5820",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -2192,3 +2201,105 @@ class InkRoleRegistersAreDeclaredOnceAndSpelledNowhereElseTest(unittest.TestCase
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheDesignDocsLoadBearingClaimsAreBoundTest(unittest.TestCase):
+    """DRC-4606: claims `docs/design-next-ui.md` makes that nothing checked.
+
+    That issue listed six, in the reviewer's own order of risk, and two of them
+    were already spoken for. Of the remaining four, the tracking census had the
+    worst record: it had been wrong in production once, was corrected in prose,
+    then *expanded* in prose, and **zero tests mentioned `letter-spacing` at
+    all** -- the one occurrence in the suite was inside a comment.
+
+    It had drifted again by the time this ran, and the proof is that the drift
+    was one day old and mine: DRC-4613 added `.next-cockpit-tab-cue-stale` at
+    `.06em`, the label register's only exception, and nothing reddened. That is
+    the whole argument for binding a property rather than proof-reading a
+    paragraph.
+
+    The rejected alternative is a lint that greps the prose for stale figures.
+    Measured across four sweeps of this document, a single retracted count
+    survived as digits, then number-words, then a comparison, then a hedge. A
+    search built from enumerated forms is never finished. These bind the
+    property; the prose is then free to describe it.
+    """
+
+    # Every tracking the sheet uses, and what each one is for. A SET, because a
+    # count passes a swap where one value leaves and another arrives.
+    #
+    # Three registers and an opt-out, which is the structure the prose
+    # describes: labels are uppercase mono at `.07em`, display type is tightened
+    # negatively at the two head/value steps, and a rule that must not inherit
+    # tracking says so explicitly.
+    TRACKINGS: ClassVar[frozenset[str]] = frozenset({".07em", "-.02em", "-.015em", "0", "normal"})
+
+    @staticmethod
+    def _sheet() -> str:
+        return (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+
+    @classmethod
+    def _declarations(cls, css: str) -> list[tuple[str, str]]:
+        """(selector, tracking) for every rule that declares one."""
+        found = []
+        for selector, body in _rules(css):
+            match = re.search(r"letter-spacing:\s*([^;}]+)", body)
+            if match:
+                found.append((selector.strip(), match.group(1).strip()))
+        return found
+
+    def test_the_trackings_the_sheet_uses_are_exactly_the_recorded_set(self) -> None:
+        used = {tracking for _selector, tracking in self._declarations(self._sheet())}
+        self.assertEqual(self.TRACKINGS, used, "the set of trackings in the sheet moved")
+
+    def test_the_label_register_tracks_uniformly(self) -> None:
+        """The property the census was really about, and the one that drifted.
+
+        A label rule is mono at the label step. Every one of them tracks at
+        `.07em`; the negative values belong to display type at the head and
+        value steps, and they are excluded by the recipe rather than by name.
+
+        This is what `.06em` would have reddened, and did not, because nothing
+        asserted it until now.
+        """
+        odd = {
+            selector: tracking
+            for selector, tracking in self._declarations(self._sheet())
+            if tracking.startswith(".") and tracking != ".07em"
+        }
+        self.assertEqual({}, odd, "a label-register rule tracks at something other than .07em")
+
+    def test_a_label_rule_that_drifts_off_the_register_is_caught(self) -> None:
+        """Mutation: re-create yesterday's defect and watch this red."""
+        mutant = self._sheet().replace("letter-spacing:.07em", "letter-spacing:.06em", 1)
+        self.assertNotEqual(self._sheet(), mutant, "the mutant did not apply")
+        odd = {
+            selector: tracking
+            for selector, tracking in self._declarations(mutant)
+            if tracking.startswith(".") and tracking != ".07em"
+        }
+        self.assertEqual(1, len(odd), "a drifted label tracking went unnoticed")
+
+    def test_the_measure_token_is_the_width_the_document_states(self) -> None:
+        """`--measure` is named as 540px and about 72 characters; nothing held it.
+
+        The character figure is not asserted, deliberately: it depends on the
+        face and cannot be derived from the sheet. The width can, and it is the
+        number the document actually commits to.
+        """
+        match = re.search(r"--measure:\s*([0-9.]+)rem", self._sheet())
+        self.assertIsNotNone(match, "--measure is no longer declared in rem")
+        assert match is not None
+        self.assertEqual(540.0, float(match.group(1)) * css_cascade.ROOT_PX)
+
+    def test_the_label_step_is_bound_by_name_and_not_only_as_the_minimum(self) -> None:
+        """`--fs-label` at 13px, asserted as itself.
+
+        `test_the_root_type_tokens_hold_the_label_floor` already holds the
+        minimum of the scale, which is a different claim: it stays true if
+        `--fs-label` moves and some other token takes the floor. The document
+        names this token, so this names it too.
+        """
+        tokens = _type_tokens(self._sheet())
+        self.assertIn("fs-label", tokens)
+        self.assertEqual(css_cascade.rem(13.0), tokens["fs-label"])

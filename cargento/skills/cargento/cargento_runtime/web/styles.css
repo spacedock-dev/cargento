@@ -281,13 +281,17 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-projects h1{margin:0;font-size:var(--fs-head);font-weight:700;letter-spacing:-.02em}
 .next-projects h2{margin:0;font-size:var(--fs-value);font-weight:600}
 .next-projects h3{margin:0;font-size:var(--fs-body);font-weight:600}
-.next-projects-note{margin:0;color:var(--ink2);font-size:var(--fs-label)}
+/* A note, the same shape DRC-4602 raised at `.next-usage-consent-note`. */
+.next-projects-note{margin:0;color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
 .next-project-group{margin-top:26px}
 .next-project-group>header{display:flex;align-items:baseline;justify-content:space-between;gap:20px}
 .next-project-group>header h2{margin:0;font-size:var(--fs-body);font-weight:600}
 .next-project-group>header p{margin:0;color:var(--ink2);font-size:var(--fs-label)}
 .next-projects-brief{display:grid;gap:10px;margin-top:10px}
-.next-projects-empty{margin:0;padding:12px 0;color:var(--ink2);font-size:var(--fs-label)}
+/* An absence sentence, the same shape DRC-4602 raised at `.next-cockpit-empty`.
+   It sat outside that census only because it declares no line-height of its
+   own, which is the gap DRC-4631 named. */
+.next-projects-empty{margin:0;padding:12px 0;color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
 .next-project-tone--ok{--project-tone:var(--accent)}
 .next-project-tone--want{--project-tone:var(--amber)}
 .next-project-tone--bad{--project-tone:var(--clay)}
@@ -350,6 +354,14 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-activity-question{padding-top:7px;border-top:1px solid var(--rule);color:var(--ink);font-size:var(--fs-body);font-weight:500;line-height:1.55;white-space:pre-wrap;max-width:var(--measure)}
 .next-activity-metric{font-size:var(--fs-label)}
 .next-activity-instruction{font-size:var(--fs-label);color:var(--ink2)}
+/* DRC-4631. The instruction line is a label, a stamp and then the words a
+   person actually typed, and the container above set all three at the label
+   step. The words are the most literally prose thing the board carries, so
+   they take the sentence tier while the label keeps its own rule and the
+   stamp stays with it. The density objection the issue raised does not apply
+   here: measured on a live board, this renders once, on the cockpit, not in
+   the session list. */
+.next-instruction-text{font-family:var(--sans);font-size:var(--fs-body);line-height:1.55}
 .next-project-ending-glyph{color:var(--project-tone)}
 .next-project-ending-outcome.next-project-value--known{color:var(--ink2)}
 .next-project-ending-outcome{font-family:var(--sans);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
@@ -988,7 +1000,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    to act on. It is a sentence tier rule because it is a sentence, which is
    what the floor guard requires of anything sans with a prose line-height. */
 .next-cockpit-stale-read{margin:0 0 10px;max-width:var(--measure);color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
-.next-cockpit-tab-cue-stale{margin-left:5px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.06em;text-transform:uppercase}
+.next-cockpit-tab-cue-stale{margin-left:5px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);letter-spacing:.07em;text-transform:uppercase}
 .next-cockpit-stale-session h1{margin:8px 0;font-size:var(--fs-value)}
 .next-cockpit-stale-session p{color:var(--ink2);font:var(--fs-label) var(--mono);overflow-wrap:anywhere}
 .next-cockpit-stale-session a{color:var(--ink2);font:var(--fs-label) var(--sans)}
