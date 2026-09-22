@@ -63,71 +63,16 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
     # This is an inventory of known exceptions rather than a tolerance: the
     # assertion is set equality, so a new one reds and a fixed one reds too.
     #
-    # It was empty from DRC-4602 until DRC-4630, and **nothing about the board
-    # changed when it stopped being empty**. Until DRC-4630 `css_cascade` parsed
-    # a pseudo-class and then ignored it, so `:where(#app) button:not([class])`
-    # -- the bare-button floor at `styles.css:153`, which declares `--fs-body` --
-    # matched every button INCLUDING the classed ones, at (0,2,1), and outranked
-    # the rule that really wins. These five were being reported at the size that
-    # phantom declares.
+    # Empty, and it has now been emptied twice by the mechanism working. It held
+    # one entry for DRC-4602 and five for DRC-4632, and in both cases the fix
+    # could not land without removing the excuse, because set equality reds on a
+    # stale exception exactly as it reds on a new violation. That is the whole
+    # argument for pinning a set rather than tolerating a count.
     #
-    # All five are one control and one declaration: `styles.css:235` re-declares
-    # `--fs-label` on `.next-session-copy` after `.next-action` at the same
-    # (0,1,0), so the later rule takes the control to 13px. DRC-4604 named this
-    # exact control at this exact fault and did not fix it -- "one of the seven
-    # rules DRC-4590 collapsed onto it overrides that back down:
-    # `.next-session-copy` resolves to 11.5px", and "not a regression --
-    # `.next-session-copy` reads 11.5px on `main` too". So this is the defect
-    # arriving in the guard written to catch it, which was green on the phantom.
-    #
-    # Pinned rather than fixed, as DRC-4632. The fix is a `styles.css` edit on a
-    # surface this change does not own, and it is a size change a reader would
-    # see, so it is filed rather than folded in here. That issue empties this
-    # set, which is what the set-equality assertion is for: the fix cannot land
-    # without removing the excuse.
-    #
-    # It is deliberately NOT attributed to DRC-4607, which reads as the obvious
-    # owner and is not. That issue says the absence OUTRANKS the value it
-    # replaces. Measured here over every value/absence slot this fixture renders
-    # -- nine of them, each branch resolved on its own path because a ternary
-    # means the two never co-exist -- **zero are inverted**: seven resolve equal
-    # and two resolve with the absence smaller.
-    KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset(
-        {
-            (shape, css_cascade.rem(13.0))
-            for shape in (
-                (
-                    "section.next-operations/section.next-operation-group."
-                    "next-operation-group--active/div.next-operation-rows/"
-                    "article.next-operation-row.next-operation-row--unknown/"
-                    "span.next-operation-identity/button.next-action.next-session-copy"
-                ),
-                (
-                    "section.next-operations/section.next-operation-group."
-                    "next-operation-group--active/div.next-operation-rows/"
-                    "article.next-operation-row.next-operation-row--want/"
-                    "span.next-operation-identity/button.next-action.next-session-copy"
-                ),
-                (
-                    "section.next-operations/section.next-operation-group."
-                    "next-operation-group--history/div.next-operation-rows/"
-                    "article.next-operation-row.next-operation-row--unknown/"
-                    "span.next-operation-identity/button.next-action.next-session-copy"
-                ),
-                (
-                    "section/article.next-project-detail/div.next-cockpit-shell/"
-                    "div.next-cockpit-content/section.next-cockpit-recovery/div/"
-                    "div.next-cockpit-waiting/div.next-rail-wait-controls/"
-                    "button.next-action.next-session-copy"
-                ),
-                (
-                    "section/article.next-session-detail/div.next-session-command-surface/"
-                    "header.next-session-detail-header/div.next-session-controls/"
-                    "button.next-action.next-session-copy"
-                ),
-            )
-        }
-    )
+    # Kept as an empty frozenset rather than deleted so the next element to fall
+    # below the floor reds against something that exists, with somewhere obvious
+    # to record why if it is deliberate.
+    KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset()
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -345,6 +290,65 @@ class ControlsResolveToOneRecipeTest(NextPageJsHarness):
             path for path in self.paths if "next-action" in cast("set[str]", path[-1]["classes"])
         ]
 
+    def test_the_two_controls_that_share_the_waiting_strip_resolve_to_one_size(self) -> None:
+        """DRC-4632. RAISE and COPY touch each other, so they may not disagree.
+
+        `.next-rail-wait-controls` renders `nextSessionRaiseControl` immediately
+        followed by the copy control (`next-cockpit.js:3042`,
+        `next-delegation.js:209`). RAISE is exempt from the primitive on purpose:
+        it carries `--amber` at rest as a state signal and keeps its own brighter
+        focus ring, which DRC-4590 recorded and `test_next_chrome` pins. That
+        exemption is about colour and boundary, not about type.
+
+        So raising the copy control on its own would have relocated this issue
+        rather than closed it: two adjacent controls, two tiers apart, which is
+        the same defect one strip along. Only `font-size` moves on RAISE; every
+        other declaration that makes it distinct stays where it is.
+
+        Asserted on the resolved size of both paths rather than on either rule,
+        because the copy control reaches its size through three rules and the
+        point is what a reader sees when the two sit side by side.
+        """
+        tokens, rules = css_cascade.load_text(self.css)
+        strip: list[css_cascade.Node] = [
+            {"tag": "div", "classes": {"next-rail-wait-controls"}, "attrs": set()}
+        ]
+        sizes = {
+            name: css_cascade.resolve(
+                [*strip, {"tag": "button", "classes": classes, "attrs": {"type"}}], tokens, rules
+            )
+            for name, classes in (
+                ("raise", {"next-session-raise", "next-attention-raise"}),
+                ("copy", {"next-action", "next-session-copy"}),
+            )
+        }
+        self.assertEqual({"raise": SENTENCE_FLOOR_REM, "copy": SENTENCE_FLOOR_REM}, sizes)
+
+    def test_the_strip_guard_reds_when_only_one_of_the_pair_is_raised(self) -> None:
+        """Mutation: the half-fix DRC-4632 was originally filed as.
+
+        Putting `--fs-label` back on `.next-session-raise` alone is exactly the
+        state the issue body proposed before the strip was noticed. It leaves
+        every `.next-action` at the tier, so the guard above it stays green, and
+        this one has to be what catches it.
+        """
+        tokens, rules = css_cascade.load_text(
+            self.css + "\n.next-session-raise{font-size:var(--fs-label)}\n"
+        )
+        strip: list[css_cascade.Node] = [
+            {"tag": "div", "classes": {"next-rail-wait-controls"}, "attrs": set()}
+        ]
+        sizes = [
+            css_cascade.resolve(
+                [*strip, {"tag": "button", "classes": classes, "attrs": {"type"}}], tokens, rules
+            )
+            for classes in (
+                {"next-session-raise", "next-attention-raise"},
+                {"next-action", "next-session-copy"},
+            )
+        ]
+        self.assertNotEqual(sizes[0], sizes[1], "the mutant did not split the pair")
+
     def test_every_rendered_control_resolves_to_the_tier_the_primitive_promises(self) -> None:
         """`.next-action` declares `--fs-body`; nothing may quietly pull it back.
 
@@ -354,41 +358,26 @@ class ControlsResolveToOneRecipeTest(NextPageJsHarness):
         reports of `.next-session-copy` at 11.5px, and what DRC-4590's
         two-declaration verifier could not see -- reds here.
 
-        **It was reporting clean and it was not.** This criterion is the one
+        **It reported clean for a while and was not.** This criterion is the one
         DRC-4604 added because "the verifier must resolve what a control actually
         computes", and it resolved through a resolver that never evaluated a
         pseudo-class: `:where(#app) button:not([class])` matched every classed
         button at (0,2,1) and handed back the tier it declares rather than the
-        one the control renders at. DRC-4630 fixed the resolver, and the very
-        control DRC-4604 named came out below the tier. The five paths are one
-        control and one declaration; `KNOWN_BELOW_FLOOR` above carries the
-        reasoning and the citation, and this reads the same set so the two
-        guards cannot disagree about which elements are excused.
+        one the control renders at. DRC-4630 fixed the resolver and the very
+        control DRC-4604 named came out below the tier, on five paths that were
+        one control and one declaration. DRC-4632 raised it, so this asserts the
+        empty set again rather than an excused one.
         """
         tokens, rules = css_cascade.load_text(self.css)
         actions = self._actions()
         self.assertGreater(len(actions), 0, f"no control rendered: {self.per_route}")
-        excused = {
-            shape for shape, _size in TheFloorHoldsOnElementsTheEmittersRenderTest.KNOWN_BELOW_FLOOR
-        }
         below = {
             _shape(path): size
             for path in actions
             if (size := css_cascade.resolve(path, tokens, rules)) is not None
             and size < SENTENCE_FLOOR_REM
-            and _shape(path) not in excused
         }
         self.assertEqual({}, below, "these controls resolve below the tier `.next-action` promises")
-        # And the excuse is spent on exactly the controls it was written for: a
-        # shape listed there that stopped being below the tier would otherwise
-        # sit in the set forever, excusing a control nobody is excusing.
-        still_below = {
-            _shape(path)
-            for path in actions
-            if (size := css_cascade.resolve(path, tokens, rules)) is not None
-            and size < SENTENCE_FLOOR_REM
-        }
-        self.assertEqual(excused, still_below, "the excused set no longer matches what is below")
 
     def test_the_guard_reds_when_a_control_is_pulled_back_below_the_tier(self) -> None:
         """Mutation, because a guard over an empty set passes in silence.
@@ -403,14 +392,10 @@ class ControlsResolveToOneRecipeTest(NextPageJsHarness):
         tokens, rules = css_cascade.load_text(
             self.css + "\n.next-action{font-size:var(--fs-label)}\n"
         )
-        excused = {
-            shape for shape, _size in TheFloorHoldsOnElementsTheEmittersRenderTest.KNOWN_BELOW_FLOOR
-        }
         pulled = [
             path
             for path in self._actions()
             if (size := css_cascade.resolve(path, tokens, rules)) is not None
             and size < SENTENCE_FLOOR_REM
-            and _shape(path) not in excused
         ]
         self.assertTrue(pulled, "the mutant did not pull any control below the tier")

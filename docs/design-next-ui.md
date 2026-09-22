@@ -222,9 +222,24 @@ It surfaced from the outside rather than from reading the module. DRC-4604's con
 mutant that pulls a control below its tier, the natural single-class mutant would not red, and the
 reason turned out to be the instrument: the mutant was losing to a phantom. DRC-4630 taught the
 resolver to evaluate a pseudo-class or refuse it, on the `UnsupportedSelectorError` precedent the
-module already set for sibling combinators, and five rendered elements moved. All five are one
-control and one declaration, and they are the defect DRC-4604 recorded and did not fix, so they are
-pinned in `KNOWN_BELOW_FLOOR` with the citation rather than quietly re-derived.
+module already set for sibling combinators, and five rendered elements moved. All five were one
+control and one declaration, and they were the defect DRC-4604 recorded and did not fix, so they
+were pinned in `KNOWN_BELOW_FLOOR` with the citation rather than quietly re-derived. DRC-4632 then
+raised them and the pin is empty again.
+
+**Raising the copy control moved a third rule that nothing in the issue named.** `.next-session-copy`
+sits in `.next-rail-wait-controls` directly beside `.next-session-raise`, which is exempt from the
+primitive because it carries `--amber` at rest as a state signal. Raising the copy control alone
+would have left two controls that touch each other two tiers apart, which is this same defect one
+strip along. So the raise moved to `--fs-body` as well, on type only: its amber border, its fill,
+its padding and its own brighter focus ring are all untouched, because the exemption is about colour
+and boundary rather than about type. The distinction is now written at the rule, since a sweep that
+reads the exemption as covering everything would take the pair apart again.
+
+The cost was measured on a live board rather than argued: the control goes from 85px wide to 93px,
+its height does not move at all because `min-block-size:44px` already exceeds the line box at both
+sizes, and it neither clips nor overflows down to a 110px container. "Deliberately compact" was a
+property of the hit band, not of the type.
 
 The rule this leaves is worth stating on its own, because it is not about CSS: **a guard is only as
 true as the instrument it resolves through, and a green guard says nothing about its own
