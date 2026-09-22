@@ -27,7 +27,7 @@ function nextObserverModelControls(group, focus){
   const key = nextCockpitContextKey(group, focus);
   const pending = nextObserverRequests.has(key);
   const button = (action, label, disabled = false) =>
-    `<button type="button" data-next-observer-action="${action}" ` +
+    `<button type="button" class="next-action" data-next-observer-action="${action}" ` +
     `data-next-focus="observer:${action}"${disabled ? " disabled" : ""}>${label}</button>`;
   const disclosure = String(model.disclosure || "");
   if(!disclosure) return '<p class="next-cockpit-empty">Observer disclosure is unavailable; model requests are withheld.</p>';

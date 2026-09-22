@@ -152,7 +152,7 @@ function nextSessionAskBlock(session, asks, observed){
     const id = String(ask && ask.id || "");
     const options = Array.isArray(ask && ask.options) ? ask.options : [];
     const buttons = options.map((option, index) =>
-      `<button type="button" data-next-answer="${esc(id)}" ` +
+      `<button type="button" class="next-action" data-next-answer="${esc(id)}" ` +
       `data-next-answer-index="${index}">${esc(option)}</button>`
     ).join("");
     const choices = buttons

@@ -82,19 +82,17 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
     # 12.5px) were taken on the v2 palette at `84d27a53` and the v3 and rem
     # merges closed the gap. That is the second time the measurement has been
     # overtaken; the issue body records the first.
-    KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset(
-        {
-            (
-                (
-                    "section/article.next-project-detail/div.next-cockpit-shell/"
-                    "div.next-cockpit-content/section.next-cockpit-recovery/div/"
-                    "section.next-project-goal/"
-                    "span.next-project-goal-text.next-project-value.next-project-value--absent"
-                ),
-                0.8125,
-            ),
-        }
-    )
+    # Empty since DRC-4602, and deliberately still here. It held one entry: a
+    # recovery-briefing element whose own rule declared `--fs-body` while a more
+    # specific rule took it back to `--fs-label`. DRC-4602 raised that pair, and
+    # because the assertion is set equality the fix could not land without
+    # emptying this -- which is the point of pinning it as a set rather than
+    # tolerating a count.
+    #
+    # Kept as an empty frozenset rather than deleted so the next element to fall
+    # below the floor reds against something that exists, with somewhere obvious
+    # to record why if it is deliberate.
+    KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset()
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -262,3 +260,95 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
             self.css,
             "the sheet now declares the mutant's own selector; pick another shape",
         )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ControlsResolveToOneRecipeTest(NextPageJsHarness):
+    """DRC-4604's other half: check what a control computes, not what it declares.
+
+    DRC-4590's criterion read "no control rule declares its own radius or
+    resting border" and its verifier grepped for exactly those two
+    declarations. That passed while the primitive it established was not
+    uniform in the property a reader actually sees: one of the seven rules it
+    collapsed overrode the tier back down, and a check of two declarations
+    cannot see a third drifting.
+
+    So this resolves the control's SIZE through the cascade, on the paths the
+    emitters render, and holds every `.next-action` to the tier the primitive
+    promises. The declaration-level guards stay where they are; this is the
+    half they structurally cannot cover.
+    """
+
+    paths: ClassVar[list[list[css_cascade.Node]]]
+    css: ClassVar[str]
+    per_route: ClassVar[dict[str, int]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        cls.paths = []
+        cls.per_route = {}
+
+    def setUp(self) -> None:
+        super().setUp()
+        if not type(self).paths:
+            collected: list[list[css_cascade.Node]] = []
+            per_route: dict[str, int] = {}
+            for route in rendered_paths.FIXTURE_ROUTES:
+                html = self._run_page_js(
+                    rendered_paths.render_script(route),
+                    prelude=storage_prelude({}, location_hash=route),
+                )
+                found = rendered_paths.paths_in(html)
+                per_route[route] = len(found)
+                collected.extend(found)
+            type(self).paths, type(self).per_route = collected, per_route
+
+    def _actions(self) -> list[list[css_cascade.Node]]:
+        return [
+            path for path in self.paths if "next-action" in cast("set[str]", path[-1]["classes"])
+        ]
+
+    def test_every_rendered_control_resolves_to_the_tier_the_primitive_promises(self) -> None:
+        """`.next-action` declares `--fs-body`; nothing may quietly pull it back.
+
+        Measured on the tree this landed against: the fixture renders controls
+        carrying the class, and every one resolves at the sentence tier. A rule
+        that overrides a control's size downward -- which is what DRC-4604
+        reports of `.next-session-copy` at 11.5px, and what DRC-4590's
+        two-declaration verifier could not see -- reds here.
+        """
+        tokens, rules = css_cascade.load_text(self.css)
+        actions = self._actions()
+        self.assertGreater(len(actions), 0, f"no control rendered: {self.per_route}")
+        below = {
+            _shape(path): size
+            for path in actions
+            if (size := css_cascade.resolve(path, tokens, rules)) is not None
+            and size < SENTENCE_FLOOR_REM
+        }
+        self.assertEqual({}, below, "these controls resolve below the tier `.next-action` promises")
+
+    def test_the_guard_reds_when_a_control_is_pulled_back_below_the_tier(self) -> None:
+        """Mutation, because a guard over an empty set passes in silence.
+
+        The mutant carries an id, which is heavier than a regression would
+        realistically be, and that is a limitation of the resolver rather than
+        a choice. `css_cascade._node_matches` compares tag, classes and
+        attributes and never evaluates a pseudo-class, so
+        `:where(#app) button:not([class])` matches a button that HAS a class and
+        contributes (0,2,1) while doing it. A same-specificity mutant therefore
+        loses to a rule the browser would not even apply here. Filed; until it
+        is fixed the mutant has to outrank that phantom.
+        """
+        tokens, rules = css_cascade.load_text(
+            self.css + "\n#app .next-action{font-size:var(--fs-label)}\n"
+        )
+        pulled = [
+            path
+            for path in self._actions()
+            if (size := css_cascade.resolve(path, tokens, rules)) is not None
+            and size < SENTENCE_FLOOR_REM
+        ]
+        self.assertTrue(pulled, "the mutant did not pull any control below the tier")

@@ -244,28 +244,42 @@ now a mono chip at `--fs-label`, glossed once beside the briefing heading. The `
 its place is the line saying whether the captain is needed: prose the board wrote, and the string
 a reader opening a project is actually looking for.
 
-**The floor is not yet universal, and this is the gap DRC-4602 sizes.** Thirty-five rules *that
-this census can see* resolve between 12.5px and 14.5px, and DRC-4596 records them as an exact set,
-so a rule leaving the sentence tier for a lower one reds the same way a new sub-floor rule does.
-That scope matters: it is a count of what a per-rule reading reaches, not a count of the sub-floor
-sentences on the page. Beyond them sit **two that no single-rule census can see**, because their
-size, family and line-height are composed across three rules each. Those two are
-`.next-operation-fact--unknown strong`, which takes 12.5px and mono from one rule, a flip back to
-sans from a second and its line-height from a third, and `.next-cockpit-recovery small`, which takes
-12.5px from its own rule and inherits sans and the line-height from the cell. **No offline guard in
-this repository sees either**, and DRC-4596's must not be read as establishing a universal floor;
-only a computed style reaches them.
+**The floor is universal over every rule this census can see, and the two it cannot are now
+reachable.** DRC-4602 re-derived the census against the v3 rem scale, because every figure in
+circulation was taken on tokens that no longer exist: `--fs-sentence`, `--fs-xs`, `--fs-2xs`,
+`--fs-sm` and `--fs-summary` all have zero uses in the sheet. Five figures had been quoted for this
+gap over four review cycles (seventeen, fifteen, nineteen, twenty-one, thirty-five) and none of them
+survives; the measured set was **24**, and the reason the number moved so much is that each earlier
+one was a floor on what a different instrument could see.
 
-They were left alone: raising them is another thirty-five rules of review surface, and some of
-them are not sentences at all (a textarea and two prototype rules), so the set needs reading one
-selector at a time rather than a sweep.
+Nineteen of the 24 were sentences and were raised. **Nothing crossed downwards**: the set joining
+the tier is nineteen and the set leaving it is empty, which is the check that separates a retune
+from a regression, and it is asserted as a set rather than a count so a compensating swap cannot
+pass.
 
-**How many sub-floor sentences the page actually has is not stated here, in any form**, including
-by comparison with the tier this milestone did move. The set above is bounded by the instrument,
-not by the page: a sentence whose family, size and line-height are assembled across three rules is
-invisible to it, two such sentences are named above, and nothing offline reaches either. A figure
-that counts what the tool can see, reported as though it counted what exists, is the same error as
-a stale number and reads more convincingly.
+Five were not raised, each for a stated reason:
+
+- `.next-delegation-withheld small` and `.next-guardrail-copy small` are **captions**. A `small`
+  under a figure is a caption by the sheet's own ruling, already recorded for
+  `.next-cockpit-recovery small`, and 13px is where a caption belongs. One grouped rule was split so
+  the caption could stay while `.next-guardrail-empty` beside it was raised as the sentence it is.
+- The four `.pc-*` substrate rules belong to the legacy project view, the same exemption DRC-4604's
+  triage applies to its own `.pc-` controls.
+- `.next-cockpit-recovery .next-project-value--absent` was raised and **put back the same day**.
+  The rendered-path guard caught what the raise did: inside `.next-cockpit-waiting` the paired
+  `--known` branch inherits 13px, so the raised absence resolved 15px against a 13px value. That is
+  an absence outranking the fact it replaces, created by the fix for the floor. The goal-text slot
+  in the same briefing is raised, by its own more specific rule, because there both branches move
+  together and the pair resolves 15/15.
+
+That last one is the whole argument for the rendered-path guard in one example: the raise was
+correct per-rule, correct against every declaration-level check, and wrong on the element.
+
+**How many sub-floor sentences the page has is now a measured set rather than an unstated one**, and
+it is still bounded by the instrument. A sentence assembled across three rules is invisible to a
+per-rule census; the rendered-path guard reaches those, over the ten routes its fixture renders and
+the 32 of 107 tier selectors they reach. A figure that counts what the tool can see, reported as
+though it counted what exists, is the same error as a stale number and reads more convincingly.
 
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
