@@ -6431,6 +6431,27 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
     # genuine act reds and the ruling is re-made rather than inherited.
     NO_PRIMARY_TABS: ClassVar[tuple[str, ...]] = ("now", "course", "decisions", "console")
 
+    # Each kind is a reason a control is not a candidate for its tab's main
+    # action, keyed by the attribute that carries the behaviour rather than by
+    # the label, because a label is the part that gets rewritten. The last two
+    # are excused by a ruling rather than by their kind, and say whose.
+    CONTROL_KINDS: ClassVar[dict[str, str]] = {
+        "navigation": "data-next-route",
+        "disclosure": "aria-expanded",
+        "selection": "aria-pressed",
+        # DRC-4590's AC-2 forbids marking this one by name.
+        "forbidden-by-4590": "next-guardrail-add",
+        # An answer about what Cargento may read, given once. Not a thing a
+        # reader comes back to a tab to do.
+        "consent": "data-next-usage-answer",
+        # Consent plus one gated act. See DRC-4603's ruling in the test below.
+        "gated-act": "data-next-observer-action",
+    }
+
+    @classmethod
+    def _kind(cls, markup: str) -> str | None:
+        return next((name for name, mark in cls.CONTROL_KINDS.items() if mark in markup), None)
+
     def test_one_tab_of_five_carries_a_primary_and_the_rest_carry_none(self) -> None:
         """DRC-4590 AC-2, narrowed at triage to the one target that exists.
 
@@ -6522,29 +6543,89 @@ console.log(JSON.stringify(perTab));
         )
 
         assert isinstance(out, dict)
-        kinds = {
-            "navigation": "data-next-route",
-            "disclosure": "aria-expanded",
-            "selection": "aria-pressed",
-            # Named rather than folded into "act": DRC-4590's AC-2 forbids this
-            # one by name, so it is excused by a ruling rather than by its kind.
-            "forbidden-by-4590": "next-guardrail-add",
-        }
         seen: dict[str, set[str]] = {}
         for tab in self.NO_PRIMARY_TABS:
             rendered = cast("list[str]", out[tab])
             self.assertTrue(rendered, f"the {tab} panel rendered no controls at all")
             for markup in rendered:
-                kind = next((name for name, mark in kinds.items() if mark in markup), None)
+                kind = self._kind(markup)
                 self.assertIsNotNone(
                     kind,
-                    f"{tab} renders a control that is none of {sorted(kinds)}, so it may be "
-                    f"this tab's main action and DRC-4603's ruling needs re-making: {markup}",
+                    f"{tab} renders a control that is none of {sorted(self.CONTROL_KINDS)}, so it "
+                    f"may be this tab's main action and DRC-4603's ruling needs re-making: {markup}",
                 )
                 seen.setdefault(tab, set()).add(cast("str", kind))
         # And the classifier is discriminating rather than matching everything:
         # three different kinds are in play across the four tabs.
         self.assertGreaterEqual(len({kind for kinds_ in seen.values() for kind in kinds_}), 3)
+
+    def test_the_console_controls_the_fixture_does_not_reach_are_ruled_on_too(self) -> None:
+        """The same ruling, over the Console controls that need an answered board.
+
+        **Found on a live board, not here.** The walk before this landed showed
+        `Console` rendering `Read my quota` and `No thanks`, two controls the
+        composition fixture does not reach because it publishes no
+        `usage_fetch`. The sweep above classified them as nothing at all, which
+        is a universal claim over a set nobody enumerated -- the regression class
+        this repository has shipped before.
+
+        So they are read from their own emitters, which is the method DRC-4590's
+        own criterion already used for the steer submit and the tripwire add:
+        a control's kind is a fact about the control, not about whether one
+        fixture happens to render it.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + r"""
+const payload = {...__dashboard, usage_fetch: true};
+const group = {label: "cargento", sessions: __dashboard.sessions};
+const focus = {harness: "codex", sid: "focus-1"};
+// The controls read the FETCHED project context, not the group, so the entry is
+// seeded rather than passed: an emitter reached through the wrong door renders
+// its unavailable branch and the assertions below pass over nothing.
+nextCockpitContexts.set(nextCockpitContextKey(group, focus), {
+  revision: __dashboard.generated,
+  data: {observers: [],
+    observer_model: {enabled: true, disclosure: "A model reads this session."}},
+});
+localStorage.removeItem(NEXT_OBSERVER_CONSENT_KEY);
+const emitted = {
+  consentUnanswered: nextUsageDisclosure(payload),
+  observerUnanswered: nextObserverModelControls(group, focus),
+};
+// The granted branch is where the one recurring act lives, so it has to be
+// rendered rather than reasoned about.
+localStorage.setItem(NEXT_OBSERVER_CONSENT_KEY, "granted");
+emitted.observerGranted = nextObserverModelControls(group, focus);
+localStorage.setItem(NEXT_USAGE_CONSENT_KEY, "granted");
+emitted.usageSwitch = nextUsageSwitch(payload);
+console.log(JSON.stringify(emitted));
+"""
+        )
+
+        assert isinstance(out, dict)
+        markup = "".join(str(value) for value in out.values())
+        self.assertIn("data-next-usage-answer", markup, "the quota consent controls did not render")
+        self.assertIn("data-next-observer-action", markup, "the observer controls did not render")
+        # The granted branch specifically, because that is the one carrying the
+        # recurring act. Without this the classifier is only ever shown consent
+        # controls and the `gated-act` ruling below asserts nothing.
+        self.assertIn("Summarize this session", str(out["observerGranted"]))
+        self.assertIn("Turn off", str(out["usageSwitch"]))
+        # No primary reaches Console through any of them, which is the ruling.
+        self.assertNotIn("next-action--primary", markup)
+        # And each one classifies, so none is an unruled candidate for the tab's
+        # main action. `Summarize this session` is the interesting one: it is a
+        # real recurring act rather than a consent, and it is excused as
+        # `gated-act` because it exists only where the operator started the
+        # server with --observer-model, focused exactly one session, and granted
+        # consent. An action most readers never see is not the tab's main one.
+        for one in re.findall(r"<button\b[^>]*>", markup):
+            self.assertIsNotNone(
+                self._kind(one),
+                f"a Console control is unruled, so DRC-4603 needs re-making: {one}",
+            )
 
 
 class AnAbsenceNeverRendersLargerThanItsValueTest(unittest.TestCase):

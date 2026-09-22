@@ -1118,15 +1118,27 @@ session, and a selection is not an act on the same reasoning that excludes the t
 renders a disclosure, plus the tripwire `Save`, `Rearm` and `Remove` controls, which are real acts
 and are per-row rather than per-tab: three per card and a card per tripwire, so marking one would
 promise a singular the markup cannot keep. `Decisions` renders the three-button graph filter, which
-chooses what to show rather than changing anything. `Console`'s only act in the panel is the tripwire
-add, and the criterion above forbids marking it or the steer submit.
+chooses what to show rather than changing anything. `Console` carries the most, and none of it
+qualifies: the criterion above forbids marking the tripwire add or the steer submit, the quota and
+model-summary controls are consent answered once rather than something a reader comes back to do,
+and `Summarize this session` exists only where the operator started the server with
+`--observer-model`, focused exactly one session and granted consent, so it is an act most readers
+never meet.
 
 Those rulings are bound rather than written down and left. A zero is what a tab with no controls
 scores and also what a tab whose controls were deleted scores, so the per-tab count cannot tell a
 deliberate none from an empty panel. A second test classifies what each of the four actually renders
-as navigation, disclosure, selection or the one forbidden act, and an unclassified control reds: the
-tab has gained something that could be its main action, and the ruling is made again rather than
-inherited.
+as navigation, disclosure, selection, consent, a gated act, or the one control the criterion forbids
+by name, and an unclassified control reds: the tab has gained something that could be its main
+action, and the ruling is made again rather than inherited.
+
+The Console half of that list came from the browser and not from the fixture. The composition
+fixture publishes no `usage_fetch`, so it never renders the quota consent pair, and a walk of a live
+board found `Read my quota` and `No thanks` sitting outside every category the test knew. That is
+the universal-claim-over-an-unenumerated-set failure this file warns about, caught in the review
+rather than after it, and the fix was to read those controls from their own emitters the way
+DRC-4590's criterion already reads the steer submit and the tripwire add. A control's kind is a fact
+about the control, not about whether one fixture happens to reach it.
 
 A floor sits under the opt-in, for buttons nothing else styles. Without one a bare `<button>`
 keeps user-agent chrome, `rgb(239,239,239)` behind a black border, which is the brightest thing on

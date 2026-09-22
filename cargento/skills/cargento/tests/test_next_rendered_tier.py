@@ -80,9 +80,11 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
     # `.next-session-copy` reads 11.5px on `main` too". So this is the defect
     # arriving in the guard written to catch it, which was green on the phantom.
     #
-    # Pinned rather than fixed. The fix is a `styles.css` edit on a surface this
-    # change does not own, and it is a size change a reader would see, so it is
-    # filed as its own issue rather than folded in here.
+    # Pinned rather than fixed, as DRC-4632. The fix is a `styles.css` edit on a
+    # surface this change does not own, and it is a size change a reader would
+    # see, so it is filed rather than folded in here. That issue empties this
+    # set, which is what the set-equality assertion is for: the fix cannot land
+    # without removing the excuse.
     #
     # It is deliberately NOT attributed to DRC-4607, which reads as the obvious
     # owner and is not. That issue says the absence OUTRANKS the value it
