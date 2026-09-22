@@ -281,6 +281,33 @@ per-rule census; the rendered-path guard reaches those, over the ten routes its 
 the 32 of 107 tier selectors they reach. A figure that counts what the tool can see, reported as
 though it counted what exists, is the same error as a stale number and reads more convincingly.
 
+**Prose the membership test cannot reach, enumerated.** The sentence-tier test selects a rule when
+it sets its text in sans and declares its own prose line-height. A rule that is prose by CONTENT but
+declares no line-height is invisible to it, and no census over the stylesheet can find that class --
+only a live board can, because the question is what an element renders rather than what a rule says.
+
+Measured 2026-09-22 at 1440px over seven routes, leaves owning their own text, sans, four or more
+words, below the floor: **17 distinct shapes**. They are not one kind of thing:
+
+- **Three were sentences and were raised.** `.next-instruction-text`, which carries the words a
+  person typed and is the most literally prose thing the board has; `.next-projects-empty`, an
+  absence sentence; and `.next-projects-note`. The second and third took the ruling DRC-4602 had
+  already made for the identical shapes at `.next-cockpit-empty` and `.next-usage-consent-note`.
+- **Six are values and absences** on `.next-project-value`. They belong to the value register, and
+  raising one alone is what created an inversion during DRC-4602, so they move as pairs or not at
+  all.
+- **Three are dot-separated fact lists**, not sentences: `.next-menu-status`,
+  `.next-project-detail-count` and `.next-project-summary`. A run of facts separated by middots is
+  a summary line, and the label step is where it belongs.
+- **Three are captions**: a `small`, a bare `span` of coverage names, and
+  `.next-cockpit-recovery-gloss`, which is a caption by its own role token.
+- **One is a bare `p`** carrying a rank explanation, and **one is the legacy substrate view**, which
+  every pass in this milestone has excluded on the same grounds.
+
+The instrument is named because the number depends on it: a different fixture, a busier board or a
+different word threshold gives a different set. It is a floor on what that board rendered, not a
+census of the stylesheet, and it is the only way this class can be counted at all.
+
 **Element counts carry the date and the commit they were taken at, or they do not belong here.**
 The board renders whatever sessions exist, so one shape counted 163 elements and then 183 forty
 minutes later, at `3cc7ef49` and `4fb5ee6d` on 2026-09-17, both reported by the reviewer rather
@@ -295,15 +322,22 @@ eleven in the `.1em` and `.08em` groups. The other three of those eleven keep th
 because their content is not uppercase. `.next-cockpit-work-type` prints a fact type such as
 `gate_decision`, `.next-intent-key` a session key, and `.next-cockpit-scope strong` a scope name.
 
-**The uppercase label tier is not uniform, and this change did not make it so.** Six further rules
-print capitals on some other value: `.next-capacity-head span` (`WINDOW`, `USED`),
-`.next-capacity-models small` (`WITHIN THIS WEEKLY BUDGET`) and `.next-capacity-row small` (`USED`,
-`PACE`, `BUDGET ENDS`, `RESETS`) at `.06em`; the course and direction header badges
-(`EXACT DIRECTION`, `EXACT DECISION`) and `.next-scope-cue` (`PROJECT`, `SESSION`, `SCOPE UNKNOWN`)
-at `.07em`; and the recovery memo field labels (`OUTCOME`, `FOCUS`) at `.04em`. They survived
-because the issue inventoried four tracking values and the stylesheet had seven, so sweeping the
-four named groups never reached the other six declarations. Count the values in the tree, not in
-the issue.
+**The label tier now tracks uniformly, and the census that said otherwise was stale.** This
+paragraph used to name six rules printing capitals at three different trackings, `.06em`, `.07em`
+and `.04em`, and explain that they survived because the sweeping issue inventoried four values when
+the stylesheet had seven. v3 collapsed them: measured on 2026-09-22, every rule it named now tracks
+at `.07em` and **`.04em` has no occurrences at all**.
+
+The sheet uses four trackings and they are three registers plus an opt-out. Labels are uppercase
+mono at `.07em`. Display type is tightened at the head and value steps, `-.02em` and `-.015em`. A
+rule that must not inherit tracking says so with `0` or `normal`.
+
+That set is now asserted, which is the point of rewriting this rather than correcting the numbers.
+**Nothing in the suite mentioned `letter-spacing` before 2026-09-22** -- the single occurrence was
+inside a comment -- and the register had already drifted again by the time anyone looked: DRC-4613
+had added `.next-cockpit-tab-cue-stale` at `.06em` the previous day, the only exception in the
+register, and no test reddened. Count the values in the tree, not in the issue, and now a test
+counts them for you.
 
 Four ink registers sit in the one `:root` block and name what an ink is for rather than which ink
 it is: `--ink-label`, `--ink-value`, `--ink-absence` and `--ink-caption`. They exist because a
