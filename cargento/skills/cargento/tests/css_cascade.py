@@ -7,11 +7,31 @@ compare them is to resolve each branch on its own. That is what this module is
 for, and `AnAbsenceNeverOutranksTheValueItReplacesTest` is its caller.
 
 Restricted deliberately. It handles the selector forms this stylesheet uses,
-descendant and child combinators over tags, classes and attribute presence, and
-refuses sibling combinators rather than guessing. Every number it returns for
-that test's census was checked against `getComputedStyle` in a real browser
-before it was committed; a form it cannot express belongs here and gets checked
-the same way, never approximated.
+descendant and child combinators over tags, classes, attribute presence and
+pseudo-classes, and refuses sibling combinators rather than guessing. Every
+number it returns for that test's census was checked against `getComputedStyle`
+in a real browser before it was committed; a form it cannot express belongs here
+and gets checked the same way, never approximated.
+
+**A pseudo-class is evaluated or refused, never skipped.** It used to be neither:
+`_SIMPLE` parsed `:not([class])` into the compound and `_node_matches` then
+compared only tag, classes and attributes, so the pseudo-class contributed
+specificity while imposing no condition -- it always matched. Measured on
+`de1550fa`: `:where(#app) button:not([class])` matched `<button class="next-action
+next-notify-button">`, a button that plainly has a class, and contributed (0,2,1)
+of specificity doing it. That is both halves of a wrong answer at once -- a rule
+applied to elements the browser excludes, at a weight that outranks the real
+winner -- and it reached a test, where a mutant had to carry an `#app` prefix to
+beat a phantom. An unknown pseudo-class now raises `UnsupportedSelectorError`,
+for the reason that exception already gives: a rule that leaves the cascade in
+silence produces plausible numbers.
+
+Two approximations remain, named rather than left to be discovered. An id is
+counted for specificity and never matched, because a `Node` carries no id -- so
+`#app` behaves as it did before this change. And a pseudo-ELEMENT still matches
+the element it hangs off: it selects a generated box rather than the element, but
+`path_for` is asked for paths whose leaf selector names one, and answering None
+there would resolve the parent's size instead of the rule's own.
 
 `@media` blocks are dropped on purpose: the census is the default viewport, and
 a rule applying at one width only would otherwise outrank the base rule and
@@ -30,6 +50,150 @@ Compound = dict[str, object]
 
 _SIMPLE = re.compile(r"[.#][\w-]+|\[[^\]]+\]|::?[\w-]+(?:\([^)]*\))?")
 _BLOCK = re.compile(r"([^{}]+)\{([^{}]*)\}")
+
+Specificity = tuple[int, int, int]
+_NO_SPECIFICITY: Specificity = (0, 0, 0)
+
+# A pseudo-class the element is in only while the reader is doing something to
+# it, or while the document says so. The census reads a board at rest, so these
+# match only a node that declares the state -- `rendered_paths` sets `disabled`
+# from the attribute, and `path_for` sets whatever its own selector names.
+_STATE_PSEUDO = frozenset(
+    {
+        "active",
+        "checked",
+        "disabled",
+        "enabled",
+        "focus",
+        "focus-visible",
+        "focus-within",
+        "hover",
+        "indeterminate",
+        "open",
+        "target",
+        "visited",
+    }
+)
+
+# Position in the parent, which needs a real tree. `rendered_paths` has one and
+# fills `index`/`count` from it; a node built from a selector alone has neither,
+# and a structural pseudo-class then does not match. Not matching is the safe
+# direction here: the defect this module was carrying is a rule applied where
+# the browser would not apply it.
+_STRUCTURAL_PSEUDO = frozenset({"first-child", "last-child", "only-child", "root"})
+
+# Selects a generated box rather than the element. Matched anyway -- see the
+# module docstring for why -- and counted as an element, which is its real
+# specificity. The legacy one-colon spellings are in the sheet and mean the same.
+_PSEUDO_ELEMENTS = frozenset(
+    {
+        "after",
+        "backdrop",
+        "before",
+        "file-selector-button",
+        "first-letter",
+        "first-line",
+        "marker",
+        "placeholder",
+        "selection",
+    }
+)
+
+
+def _split_list(text: str) -> list[str]:
+    """A comma-separated selector list, split at the top level only.
+
+    `str.split(",")` cuts `:is(a, input):focus-visible` in half and hands the
+    resolver two selectors that parse into nonsense, one of which silently
+    matched nothing while the other matched an element nobody renders.
+    """
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    parts.append("".join(current))
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _split_steps(selector: str) -> list[str]:
+    """Compounds and bare combinators, split outside parentheses only.
+
+    Two selector forms in this sheet break a plain `re.split`: `:is(a, input)`
+    carries a space that belongs to one compound, and `:nth-child(-n+4)` carries
+    a `+` that is arithmetic rather than a sibling combinator. Both were being
+    cut in half, the first into two selectors that are not selectors and the
+    second into a refusal for a sibling combinator that is not there.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in selector:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if depth == 0 and (char.isspace() or char in "+~>"):
+            if current:
+                parts.append("".join(current))
+                current = []
+            if char in "+~>":
+                parts.append(char)
+        else:
+            current.append(char)
+    if current:
+        parts.append("".join(current))
+    return parts
+
+
+def _max_specificity(compounds: list[Compound]) -> Specificity:
+    """The specificity `:is()` and `:not()` take: their most specific argument."""
+    best = _NO_SPECIFICITY
+    for compound in compounds:
+        best = max(best, cast("Specificity", compound["spec"]))
+    return best
+
+
+def _argument_compounds(name: str, argument: str) -> list[Compound]:
+    """The compounds inside a functional pseudo-class, one per listed selector.
+
+    A combinator inside the argument is refused rather than flattened. `:not(a b)`
+    is legal CSS and this sheet has none; accepting it by ignoring the descendant
+    step would match elements the browser does not, which is the whole defect.
+    """
+    listed = _split_list(argument)
+    for part in listed:
+        if re.search(r"[\s>+~]", part):
+            raise UnsupportedSelectorError(f":{name}({part}) uses a combinator")
+    compounds = [_compound(part) for part in listed]
+    if not compounds:
+        raise UnsupportedSelectorError(f":{name}() is empty")
+    return compounds
+
+
+def _nth_terms(argument: str) -> tuple[int, int]:
+    """`An+B` as (A, B). `odd` and `even` are their An+B spellings."""
+    text = argument.replace(" ", "").lower()
+    if text == "odd":
+        return (2, 1)
+    if text == "even":
+        return (2, 0)
+    match = re.fullmatch(r"([+-]?\d*)n([+-]\d+)?", text)
+    if match:
+        coefficient = match.group(1)
+        step = 1 if coefficient in ("", "+") else -1 if coefficient == "-" else int(coefficient)
+        return (step, int(match.group(2) or 0))
+    if re.fullmatch(r"[+-]?\d+", text):
+        return (0, int(text))
+    raise UnsupportedSelectorError(f":nth-child({argument})")
 
 
 def _strip_media(css: str) -> str:
@@ -89,40 +253,123 @@ def load_text(source: str) -> tuple[dict[str, float], list[Rule]]:
     }
     rules: list[Rule] = []
     for order, block in enumerate(_BLOCK.finditer(body)):
-        for selector in block.group(1).split(","):
-            cleaned = selector.strip()
-            if cleaned and not cleaned.startswith("@"):
-                rules.append((cleaned, block.group(2), order))
+        rules.extend(
+            (cleaned, block.group(2), order)
+            for cleaned in _split_list(block.group(1))
+            if not cleaned.startswith("@")
+        )
     return tokens, rules
 
 
+class _Parts:
+    """The pieces of one compound, accumulated as its simple selectors are read.
+
+    A small mutable carrier rather than locals, so the pseudo-class reader below
+    can be its own function. That split is not cosmetic: the pseudo-class branch
+    is where the defect was, and it is the part that grows each time the sheet
+    takes up a new form.
+    """
+
+    def __init__(self) -> None:
+        self.tag: str | None = None
+        self.classes: set[str] = set()
+        self.attrs: set[str] = set()
+        self.states: set[str] = set()
+        self.structural: set[str] = set()
+        self.nth: list[tuple[int, int]] = []
+        self.any_of: list[list[Compound]] = []
+        self.nots: list[Compound] = []
+        self.ids = 0
+        self.pseudo = 0
+        self.elements = 0
+        self.nested: Specificity = _NO_SPECIFICITY
+
+
+_FUNCTIONAL_PSEUDO = frozenset({"is", "not", "where"})
+
+
+def _absorb_functional(part: str, name: str, argument: str | None, parts: _Parts) -> None:
+    """`:is()`, `:where()` and `:not()`: a selector list, matched and weighted."""
+    if argument is None:
+        raise UnsupportedSelectorError(part)
+    arguments = _argument_compounds(name, argument)
+    if name == "not":
+        parts.nots.extend(arguments)
+    else:
+        parts.any_of.append(arguments)
+    # `:where()` is the one functional pseudo-class that adds nothing, which is
+    # what it is for. `:is()` and `:not()` both take the specificity of their
+    # most specific argument.
+    if name != "where":
+        parts.nested = cast(
+            "Specificity",
+            tuple(a + b for a, b in zip(parts.nested, _max_specificity(arguments), strict=True)),
+        )
+
+
+def _absorb_pseudo(part: str, parts: _Parts) -> None:
+    """One `:pseudo` or `::pseudo` token, evaluated or refused. Never skipped."""
+    token = re.fullmatch(r"(::?)([\w-]+)(?:\((.*)\))?", part)
+    if token is None:
+        raise UnsupportedSelectorError(part)
+    colons, name, argument = token.group(1), token.group(2), token.group(3)
+    if colons == "::" or name.startswith("-") or name in _PSEUDO_ELEMENTS:
+        parts.elements += 1
+        return
+    if name in _FUNCTIONAL_PSEUDO:
+        _absorb_functional(part, name, argument, parts)
+        return
+    if name == "nth-child":
+        if argument is None:
+            raise UnsupportedSelectorError(part)
+        parts.nth.append(_nth_terms(argument))
+    elif argument is not None:
+        raise UnsupportedSelectorError(part)
+    elif name in _STATE_PSEUDO:
+        parts.states.add(name)
+    elif name in _STRUCTURAL_PSEUDO:
+        parts.structural.add(name)
+    else:
+        raise UnsupportedSelectorError(part)
+    parts.pseudo += 1
+
+
 def _compound(text: str) -> Compound:
-    tag: str | None = None
-    classes: set[str] = set()
-    attrs: set[str] = set()
-    ids = 0
-    pseudo = 0
+    parts = _Parts()
     name = re.match(r"^([a-zA-Z*][\w-]*)", text)
     if name:
-        tag = name.group(1)
+        parts.tag = name.group(1)
         text = text[name.end() :]
     for part in _SIMPLE.findall(text):
         if part.startswith("."):
-            classes.add(part[1:])
+            parts.classes.add(part[1:])
         elif part.startswith("#"):
-            ids += 1
+            parts.ids += 1
         elif part.startswith("["):
             attr = re.match(r"\[([\w-]+)", part)
             if attr:
-                attrs.add(attr.group(1))
-        elif not part.startswith("::"):
-            pseudo += 1
+                parts.attrs.add(attr.group(1))
+        else:
+            _absorb_pseudo(part, parts)
+    tag, classes, attrs = parts.tag, parts.classes, parts.attrs
+    nested, pseudo, ids, elements = parts.nested, parts.pseudo, parts.ids, parts.elements
+    states, structural, nth = parts.states, parts.structural, parts.nth
+    any_of, nots = parts.any_of, parts.nots
+    spec: Specificity = (
+        ids + nested[0],
+        len(classes) + len(attrs) + pseudo + nested[1],
+        (1 if tag and tag != "*" else 0) + elements + nested[2],
+    )
     return {
         "tag": None if tag == "*" else tag,
         "classes": classes,
         "attrs": attrs,
-        "ids": ids,
-        "weight": len(classes) + len(attrs) + pseudo,
+        "states": states,
+        "structural": structural,
+        "nth": nth,
+        "any_of": any_of,
+        "nots": nots,
+        "spec": spec,
     }
 
 
@@ -138,7 +385,7 @@ class UnsupportedSelectorError(Exception):
 
 def _steps(selector: str) -> list[tuple[str, Compound]]:
     """Selector as [(combinator, compound)], the first combinator ignored."""
-    parts = [p for p in re.split(r"\s*(>|\+|~)\s*|\s+", selector.strip()) if p]
+    parts = _split_steps(selector.strip())
     if any(part in ("+", "~") for part in parts):
         raise UnsupportedSelectorError(selector)
     steps: list[tuple[str, Compound]] = []
@@ -152,7 +399,47 @@ def _steps(selector: str) -> list[tuple[str, Compound]]:
     return steps
 
 
-def _node_matches(node: Node, compound: Compound) -> bool:
+def _structural_matches(node: Node, name: str) -> bool:
+    """A position pseudo-class against what the node knows of its own position.
+
+    A node built from a selector rather than from a tree knows nothing, and every
+    structural pseudo-class is then false. That is a decision, not a gap: the
+    alternative -- matching when the position is unknown -- is the shape of the
+    defect this module was carrying, a rule applied where the browser would not.
+    """
+    if name == "root":
+        return node.get("root") is True
+    index = node.get("index")
+    count = node.get("count")
+    if not isinstance(index, int):
+        return False
+    if name == "first-child":
+        return index == 1
+    if name == "last-child":
+        return isinstance(count, int) and index == count
+    return index == 1 and count == 1
+
+
+def _nth_matches(node: Node, terms: list[tuple[int, int]]) -> bool:
+    """`:nth-child(An+B)`, against the node's own 1-based position.
+
+    An unknown position is false, for the reason `_structural_matches` gives.
+    """
+    index = node.get("index")
+    if not isinstance(index, int):
+        return not terms
+    for step, offset in terms:
+        remainder = index - offset
+        if step == 0:
+            if remainder != 0:
+                return False
+        elif remainder % step != 0 or remainder // step < 0:
+            return False
+    return True
+
+
+def _simple_matches(node: Node, compound: Compound) -> bool:
+    """Tag, classes and attribute presence: the part that never needed a tree."""
     tag = compound["tag"]
     if tag is not None and tag != node["tag"]:
         return False
@@ -162,7 +449,35 @@ def _node_matches(node: Node, compound: Compound) -> bool:
     node_classes = node["classes"]
     node_attrs = node["attrs"]
     assert isinstance(node_classes, set) and isinstance(node_attrs, set)
-    return classes <= node_classes and attrs <= node_attrs
+    if not classes <= node_classes:
+        return False
+    # `class` is carried as the node's class set, not among its attribute names,
+    # so `[class]` has to be answered from there. Without this the sheet's one
+    # `button:not([class])` reads every classed button as unclassed -- the same
+    # always-true the pseudo-class fix is here to remove, one layer down.
+    if not {name for name in attrs if name != "class"} <= node_attrs:
+        return False
+    return not ("class" in attrs and not node_classes)
+
+
+def _node_matches(node: Node, compound: Compound) -> bool:
+    if not _simple_matches(node, compound):
+        return False
+    states = cast("set[str]", compound["states"])
+    if states and not states <= cast("set[str]", node.get("states") or set()):
+        return False
+    if any(
+        not _structural_matches(node, name) for name in cast("set[str]", compound["structural"])
+    ):
+        return False
+    if not _nth_matches(node, cast("list[tuple[int, int]]", compound["nth"])):
+        return False
+    if any(
+        not any(_node_matches(node, one) for one in group)
+        for group in cast("list[list[Compound]]", compound["any_of"])
+    ):
+        return False
+    return all(not _node_matches(node, one) for one in cast("list[Compound]", compound["nots"]))
 
 
 def _walk(path: list[Node], ancestors: list[tuple[str, Compound]]) -> bool:
@@ -195,10 +510,13 @@ def matches(path: list[Node], selector: str) -> tuple[int, int, int] | None:
     ancestors = [(steps[i + 1][0], steps[i][1]) for i in range(len(steps) - 1)]
     if not _walk(path, ancestors):
         return None
-    ids = sum(int(step[1]["ids"]) for step in steps)  # type: ignore[call-overload]
-    weight = sum(int(step[1]["weight"]) for step in steps)  # type: ignore[call-overload]
-    tags = sum(1 for step in steps if step[1]["tag"])
-    return (ids, weight, tags)
+    total = _NO_SPECIFICITY
+    for _combinator, compound in steps:
+        total = cast(
+            "Specificity",
+            tuple(a + b for a, b in zip(total, cast("Specificity", compound["spec"]), strict=True)),
+        )
+    return total
 
 
 def declared_size(body: str, tokens: dict[str, float]) -> float | None:
@@ -264,7 +582,56 @@ def path_for(selector: str) -> list[Node]:
     """
     path: list[Node] = []
     for _combinator, compound in _steps(selector):
-        classes = cast("set[str]", compound["classes"])
-        attrs = cast("set[str]", compound["attrs"])
-        path.append({"tag": compound["tag"] or "div", "classes": set(classes), "attrs": set(attrs)})
+        path.append(_node_for(compound))
     return path
+
+
+def _node_for(compound: Compound) -> Node:
+    """One node the compound matches, including the states its pseudo-classes name.
+
+    The states and the child position are set from the compound for the same
+    reason the classes are: this builds the element the selector describes. A
+    compound that names no position leaves `index` and `count` unset, and every
+    OTHER rule's structural pseudo-class then correctly fails against it.
+    """
+    classes = cast("set[str]", compound["classes"])
+    attrs = cast("set[str]", compound["attrs"])
+    states = cast("set[str]", compound["states"])
+    structural = cast("set[str]", compound["structural"])
+    node: Node = {
+        "tag": compound["tag"] or "div",
+        "classes": set(classes),
+        "attrs": set(attrs),
+    }
+    if states:
+        node["states"] = set(states)
+    if "root" in structural:
+        node["root"] = True
+    index: int | None = None
+    count: int | None = None
+    if "only-child" in structural:
+        index, count = 1, 1
+    elif "first-child" in structural:
+        index, count = 1, 2
+    elif "last-child" in structural:
+        index, count = 2, 2
+    for step, offset in cast("list[tuple[int, int]]", compound["nth"]):
+        index = (
+            offset
+            if step == 0
+            else next((offset + step * n for n in range(64) if offset + step * n >= 1), None)
+        )
+        count = max(count or 0, index or 0)
+    if index is not None:
+        node["index"] = index
+        node["count"] = count if count is not None else index
+    # An `:is()`/`:not()` argument can also carry conditions, and the one this
+    # sheet uses is a negation: nothing is added for it, because the node is
+    # already free of what the negation excludes.
+    for group in cast("list[list[Compound]]", compound["any_of"]):
+        merged = _node_for(group[0])
+        cast("set[str]", node["classes"]).update(cast("set[str]", merged["classes"]))
+        cast("set[str]", node["attrs"]).update(cast("set[str]", merged["attrs"]))
+        if merged["tag"] != "div":
+            node["tag"] = merged["tag"]
+    return node

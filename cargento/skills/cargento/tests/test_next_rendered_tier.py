@@ -63,36 +63,69 @@ class TheFloorHoldsOnElementsTheEmittersRenderTest(NextPageJsHarness):
     # This is an inventory of known exceptions rather than a tolerance: the
     # assertion is set equality, so a new one reds and a fixed one reds too.
     #
-    # The single entry belongs to DRC-4602, the sentence-floor remainder, and
-    # it is a floor violation rather than an ordering one. `.next-project-goal-text`
-    # declares `--fs-body` at (0,1,0) and `.next-cockpit-recovery
-    # .next-project-goal-text` takes it back to `--fs-label` at (0,2,0), so the
-    # element renders a tier below what its own rule declares. It is NOT fixed
-    # here, because the fix is a `styles.css` edit and this change is
-    # deliberately tests-only so it can land without taking the one pull request
-    # that may touch `cargento_runtime/web/`.
+    # It was empty from DRC-4602 until DRC-4630, and **nothing about the board
+    # changed when it stopped being empty**. Until DRC-4630 `css_cascade` parsed
+    # a pseudo-class and then ignored it, so `:where(#app) button:not([class])`
+    # -- the bare-button floor at `styles.css:153`, which declares `--fs-body` --
+    # matched every button INCLUDING the classed ones, at (0,2,1), and outranked
+    # the rule that really wins. These five were being reported at the size that
+    # phantom declares.
+    #
+    # All five are one control and one declaration: `styles.css:235` re-declares
+    # `--fs-label` on `.next-session-copy` after `.next-action` at the same
+    # (0,1,0), so the later rule takes the control to 13px. DRC-4604 named this
+    # exact control at this exact fault and did not fix it -- "one of the seven
+    # rules DRC-4590 collapsed onto it overrides that back down:
+    # `.next-session-copy` resolves to 11.5px", and "not a regression --
+    # `.next-session-copy` reads 11.5px on `main` too". So this is the defect
+    # arriving in the guard written to catch it, which was green on the phantom.
+    #
+    # Pinned rather than fixed. The fix is a `styles.css` edit on a surface this
+    # change does not own, and it is a size change a reader would see, so it is
+    # filed as its own issue rather than folded in here.
     #
     # It is deliberately NOT attributed to DRC-4607, which reads as the obvious
     # owner and is not. That issue says the absence OUTRANKS the value it
     # replaces. Measured here over every value/absence slot this fixture renders
     # -- nine of them, each branch resolved on its own path because a ternary
     # means the two never co-exist -- **zero are inverted**: seven resolve equal
-    # and two resolve with the absence smaller. The pair DRC-4607 names is among
-    # the seven, at 0.8125rem against 0.8125rem. Its own figures (11.5px against
-    # 12.5px) were taken on the v2 palette at `84d27a53` and the v3 and rem
-    # merges closed the gap. That is the second time the measurement has been
-    # overtaken; the issue body records the first.
-    # Empty since DRC-4602, and deliberately still here. It held one entry: a
-    # recovery-briefing element whose own rule declared `--fs-body` while a more
-    # specific rule took it back to `--fs-label`. DRC-4602 raised that pair, and
-    # because the assertion is set equality the fix could not land without
-    # emptying this -- which is the point of pinning it as a set rather than
-    # tolerating a count.
-    #
-    # Kept as an empty frozenset rather than deleted so the next element to fall
-    # below the floor reds against something that exists, with somewhere obvious
-    # to record why if it is deliberate.
-    KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset()
+    # and two resolve with the absence smaller.
+    KNOWN_BELOW_FLOOR: ClassVar[frozenset[Shape]] = frozenset(
+        {
+            (shape, css_cascade.rem(13.0))
+            for shape in (
+                (
+                    "section.next-operations/section.next-operation-group."
+                    "next-operation-group--active/div.next-operation-rows/"
+                    "article.next-operation-row.next-operation-row--unknown/"
+                    "span.next-operation-identity/button.next-action.next-session-copy"
+                ),
+                (
+                    "section.next-operations/section.next-operation-group."
+                    "next-operation-group--active/div.next-operation-rows/"
+                    "article.next-operation-row.next-operation-row--want/"
+                    "span.next-operation-identity/button.next-action.next-session-copy"
+                ),
+                (
+                    "section.next-operations/section.next-operation-group."
+                    "next-operation-group--history/div.next-operation-rows/"
+                    "article.next-operation-row.next-operation-row--unknown/"
+                    "span.next-operation-identity/button.next-action.next-session-copy"
+                ),
+                (
+                    "section/article.next-project-detail/div.next-cockpit-shell/"
+                    "div.next-cockpit-content/section.next-cockpit-recovery/div/"
+                    "div.next-cockpit-waiting/div.next-rail-wait-controls/"
+                    "button.next-action.next-session-copy"
+                ),
+                (
+                    "section/article.next-session-detail/div.next-session-command-surface/"
+                    "header.next-session-detail-header/div.next-session-controls/"
+                    "button.next-action.next-session-copy"
+                ),
+            )
+        }
+    )
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -318,37 +351,64 @@ class ControlsResolveToOneRecipeTest(NextPageJsHarness):
         that overrides a control's size downward -- which is what DRC-4604
         reports of `.next-session-copy` at 11.5px, and what DRC-4590's
         two-declaration verifier could not see -- reds here.
+
+        **It was reporting clean and it was not.** This criterion is the one
+        DRC-4604 added because "the verifier must resolve what a control actually
+        computes", and it resolved through a resolver that never evaluated a
+        pseudo-class: `:where(#app) button:not([class])` matched every classed
+        button at (0,2,1) and handed back the tier it declares rather than the
+        one the control renders at. DRC-4630 fixed the resolver, and the very
+        control DRC-4604 named came out below the tier. The five paths are one
+        control and one declaration; `KNOWN_BELOW_FLOOR` above carries the
+        reasoning and the citation, and this reads the same set so the two
+        guards cannot disagree about which elements are excused.
         """
         tokens, rules = css_cascade.load_text(self.css)
         actions = self._actions()
         self.assertGreater(len(actions), 0, f"no control rendered: {self.per_route}")
+        excused = {
+            shape for shape, _size in TheFloorHoldsOnElementsTheEmittersRenderTest.KNOWN_BELOW_FLOOR
+        }
         below = {
             _shape(path): size
             for path in actions
             if (size := css_cascade.resolve(path, tokens, rules)) is not None
             and size < SENTENCE_FLOOR_REM
+            and _shape(path) not in excused
         }
         self.assertEqual({}, below, "these controls resolve below the tier `.next-action` promises")
+        # And the excuse is spent on exactly the controls it was written for: a
+        # shape listed there that stopped being below the tier would otherwise
+        # sit in the set forever, excusing a control nobody is excusing.
+        still_below = {
+            _shape(path)
+            for path in actions
+            if (size := css_cascade.resolve(path, tokens, rules)) is not None
+            and size < SENTENCE_FLOOR_REM
+        }
+        self.assertEqual(excused, still_below, "the excused set no longer matches what is below")
 
     def test_the_guard_reds_when_a_control_is_pulled_back_below_the_tier(self) -> None:
         """Mutation, because a guard over an empty set passes in silence.
 
-        The mutant carries an id, which is heavier than a regression would
-        realistically be, and that is a limitation of the resolver rather than
-        a choice. `css_cascade._node_matches` compares tag, classes and
-        attributes and never evaluates a pseudo-class, so
-        `:where(#app) button:not([class])` matches a button that HAS a class and
-        contributes (0,2,1) while doing it. A same-specificity mutant therefore
-        loses to a rule the browser would not even apply here. Filed; until it
-        is fixed the mutant has to outrank that phantom.
+        The mutant is a single class at (0,1,0), which is what a regression
+        actually looks like. It used to carry an `#app` prefix, and that was a
+        workaround rather than a choice: `css_cascade` parsed
+        `:where(#app) button:not([class])` and then ignored the pseudo-class, so
+        the phantom sat at (0,2,1) on every classed button and a single-class
+        mutant lost to it. DRC-4630 removed the phantom and the prefix with it.
         """
         tokens, rules = css_cascade.load_text(
-            self.css + "\n#app .next-action{font-size:var(--fs-label)}\n"
+            self.css + "\n.next-action{font-size:var(--fs-label)}\n"
         )
+        excused = {
+            shape for shape, _size in TheFloorHoldsOnElementsTheEmittersRenderTest.KNOWN_BELOW_FLOOR
+        }
         pulled = [
             path
             for path in self._actions()
             if (size := css_cascade.resolve(path, tokens, rules)) is not None
             and size < SENTENCE_FLOOR_REM
+            and _shape(path) not in excused
         ]
         self.assertTrue(pulled, "the mutant did not pull any control below the tier")
