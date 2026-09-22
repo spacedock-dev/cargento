@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 import unittest
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import departures
@@ -4092,6 +4092,106 @@ console.log(JSON.stringify({
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class LegacyProjectGraphFilterTest(NextPageJsHarness):
+    """DRC-4609. The legacy view's own `Decisions` button selected `Active`.
+
+    `projectSemanticTimeline` builds its filter over all of
+    `PROJECT_GRAPH_MODES`, so the legacy view has always rendered three buttons.
+    `projectAction` collapsed everything that was not `"all"` to `"active"`, so
+    the third mode was unreachable from the surface that offers it and the only
+    feedback a reader got was the wrong button lighting up.
+
+    The cockpit's own `graph-mode` arm accepts all three and always has, which
+    is why this never showed there. Both now go through `projectSetGraphMode`,
+    the one place that validates.
+    """
+
+    # The composition fixture by reference rather than by inheritance: a
+    # subclass would re-run all 126 of that class's tests for three of its own.
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + NextCockpitCompositionTest.FIXTURE,
+        )
+
+    def test_pressing_decisions_on_the_legacy_view_selects_decisions(self) -> None:
+        out = self.run_fixture(
+            """
+// Given: the legacy project view, on its default mode.
+const before = projectResolveGraphMode({});
+
+// When: the Decisions button of the timeline filter is pressed.
+projectAction("project-graph-mode", "decisions");
+const after = projectResolveGraphMode({});
+const html = projectSemanticTimeline(__dashboard, __semantic, [], null, [],
+  {mode: after});
+console.log(JSON.stringify({before, after, html}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual("active", out["before"])
+        self.assertEqual("decisions", out["after"])
+        html = str(out["html"])
+        # The mode reaches the rendered timeline, not just the stored value.
+        self.assertIn('data-graph-mode="decisions"', html)
+        # And the button a reader pressed is the one that lights up. Asserted on
+        # the pair rather than on `aria-pressed="true"` alone, which would pass
+        # with Active still pressed somewhere else in the same strip.
+        self.assertIn('data-arg="decisions" class="selected" aria-pressed="true"', html)
+        self.assertIn('data-arg="active" class="" aria-pressed="false"', html)
+
+    def test_an_argument_outside_the_three_modes_changes_nothing_and_redraws_nothing(
+        self,
+    ) -> None:
+        """The falsifier for the fix as well as for the defect.
+
+        A dispatcher that simply passed `arg` through would satisfy the test
+        above and substitute silently on anything else. `projectSetGraphMode`
+        returns false on a value it will not take, and this asserts the return
+        is actually read: a redraw on a press that changed nothing is the same
+        wrong answer one step quieter.
+        """
+        out = self.run_fixture(
+            """
+// Given: a mode deliberately chosen, and a counter on every redraw.
+projectAction("project-graph-mode", "decisions");
+let draws = 0;
+const __app = __els.app;
+__els.app = {get innerHTML(){ return __app.innerHTML; },
+  set innerHTML(html){ draws++; __app.innerHTML = html; }};
+
+// When: the dispatcher is handed an argument outside the three modes.
+const handled = projectAction("project-graph-mode", "everything");
+console.log(JSON.stringify({handled, draws, mode: projectResolveGraphMode({})}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        # Still handled -- the action is ours, the argument is not a mode.
+        self.assertTrue(out["handled"])
+        self.assertEqual("decisions", out["mode"])
+        self.assertEqual(0, out["draws"])
+
+    def test_the_cockpits_own_filter_still_takes_all_three(self) -> None:
+        """The third acceptance line: the arm that was already correct stays so."""
+        out = self.run_fixture(
+            """
+// When: each of the three modes is set through the shared guarded setter.
+const taken = {};
+for(const mode of PROJECT_GRAPH_MODES){
+  taken[mode] = projectSetGraphMode(mode) && projectResolveGraphMode({});
+}
+console.log(JSON.stringify({taken, refused: projectSetGraphMode("decision")}));
+"""
+        )
+
+        assert isinstance(out, dict)
+        self.assertEqual({"active": "active", "all": "all", "decisions": "decisions"}, out["taken"])
+        self.assertFalse(out["refused"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class CockpitHeldToTabTest(NextPageJsHarness):
     """DRC-4508's input surface: two fields, at session scope, in the cockpit.
 
@@ -6298,7 +6398,60 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
         # And the entry is gone from the lane, not merely unrendered.
         self.assertFalse(out["lingering"])
 
-    # ---- DRC-4590 --------------------------------------------------------
+    # ---- DRC-4590, extended by DRC-4603 -----------------------------------
+    #
+    # DRC-4603 is the product question DRC-4590 filed rather than answered:
+    # what IS the main action of `Now`, `Course`, `Decisions` and `Console`?
+    # Ruled 2026-09-22: **all four deliberately have none**, and the reason is
+    # per tab rather than one reason four times. Each is the kind of control the
+    # tab renders, which is why this is checked rather than written down:
+    #
+    #   now        navigation only. Every control is a card that routes to a
+    #              session view. A selection is not an act, on the same
+    #              reasoning that excludes the tab strip itself.
+    #   course     disclosure only. The panel's own control opens and closes
+    #              the change list. The tripwire Save/Rearm/Remove buttons are
+    #              real acts, but they are per-tripwire ROW controls -- there
+    #              are three per card and N cards -- so none of them is "the
+    #              main action of this tab", and marking one would promise a
+    #              singular the markup cannot keep.
+    #   decisions  selection only. The three-button graph filter chooses which
+    #              events to show; it changes the view, not the session.
+    #   console    the only act in the panel is the tripwire add, and DRC-4590's
+    #              own acceptance forbids marking either it or the steer submit.
+    #              Everything else on the tab is consent or navigation.
+    #
+    # `held-to` keeps its one primary, "Ask for a reading".
+    #
+    # The ruling is BOUND rather than narrated. A zero is what a tab with no
+    # controls at all scores and what a tab whose controls were all deleted
+    # scores, so the count below cannot tell a deliberate none from an empty
+    # panel. `test_the_four_tabs_without_a_primary_render_no_act_to_mark`
+    # classifies what each of the four actually renders, so a tab that gains a
+    # genuine act reds and the ruling is re-made rather than inherited.
+    NO_PRIMARY_TABS: ClassVar[tuple[str, ...]] = ("now", "course", "decisions", "console")
+
+    # Each kind is a reason a control is not a candidate for its tab's main
+    # action, keyed by the attribute that carries the behaviour rather than by
+    # the label, because a label is the part that gets rewritten. The last two
+    # are excused by a ruling rather than by their kind, and say whose.
+    CONTROL_KINDS: ClassVar[dict[str, str]] = {
+        "navigation": "data-next-route",
+        "disclosure": "aria-expanded",
+        "selection": "aria-pressed",
+        # DRC-4590's AC-2 forbids marking this one by name.
+        "forbidden-by-4590": "next-guardrail-add",
+        # An answer about what Cargento may read, given once. Not a thing a
+        # reader comes back to a tab to do.
+        "consent": "data-next-usage-answer",
+        # Consent plus one gated act. See DRC-4603's ruling in the test below.
+        "gated-act": "data-next-observer-action",
+    }
+
+    @classmethod
+    def _kind(cls, markup: str) -> str | None:
+        return next((name for name, mark in cls.CONTROL_KINDS.items() if mark in markup), None)
+
     def test_one_tab_of_five_carries_a_primary_and_the_rest_carry_none(self) -> None:
         """DRC-4590 AC-2, narrowed at triage to the one target that exists.
 
@@ -6310,6 +6463,11 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
         and the tripwire add, which this criterion forbids marking. So four tabs
         have nothing to mark, and what each tab's main action should BE is a
         product question filed as its own issue rather than answered here.
+
+        DRC-4603 answered it: none of the four, each for its own reason. The
+        expectation is unchanged and this test is extended rather than replaced,
+        which is that issue's own acceptance. The comment above carries the
+        ruling and the test below carries the part of it that can go stale.
         """
         out = self.run_fixture(
             self.FOCUS_DOM
@@ -6340,6 +6498,134 @@ console.log(JSON.stringify({counts, steer, tripwire}));
         )
         self.assertNotIn("next-action--primary", out["steer"])
         self.assertNotIn("next-action--primary", out["tripwire"])
+        # The four zeros above are the ruling, so name them from the one place
+        # that holds it. A tab quietly dropped from either list would otherwise
+        # stop being asserted about.
+        self.assertEqual(
+            set(self.NO_PRIMARY_TABS),
+            {tab for tab, count in cast("dict[str, int]", out["counts"]).items() if count == 0},
+        )
+
+    def test_the_four_tabs_without_a_primary_render_no_act_to_mark(self) -> None:
+        """DRC-4603 AC-1: the reason each of the four has none, checked.
+
+        Every control these four panels render is a navigation, a disclosure, a
+        selection, or the one act DRC-4590's acceptance explicitly forbids
+        marking. That is the ruling; an unclassified control means the tab has
+        gained something that could BE its main action, and the ruling has to be
+        made again rather than inherited.
+
+        Classified on the attribute that carries the behaviour rather than on
+        the label, because a label is the part that gets rewritten. Measured on
+        the tree this landed against: `now` 1 control, `course` 1,
+        `decisions` 3, `console` 1 -- and `held-to`, excluded here, 8.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + r"""
+__dashboard.reading_check = "accepted";
+const perTab = {};
+for(const tab of """
+            + repr(list(self.NO_PRIMARY_TABS)).replace("'", '"')
+            + r"""){
+  navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab});
+  await __settle();
+  const html = __els.app.innerHTML;
+  // The panel only. The tab strip, the steer composer and the recovery strip
+  // are cockpit chrome drawn above every tab, so counting them would attribute
+  // one surface's controls to all five.
+  const panel = (html.match(/<section class="next-cockpit-panel"[\s\S]*$/) || [""])[0];
+  perTab[tab] = [...panel.matchAll(/<(?:button|form)\b([^>]*)>/g)].map(one => one[1]);
+}
+console.log(JSON.stringify(perTab));
+"""
+        )
+
+        assert isinstance(out, dict)
+        seen: dict[str, set[str]] = {}
+        for tab in self.NO_PRIMARY_TABS:
+            rendered = cast("list[str]", out[tab])
+            self.assertTrue(rendered, f"the {tab} panel rendered no controls at all")
+            for markup in rendered:
+                kind = self._kind(markup)
+                self.assertIsNotNone(
+                    kind,
+                    f"{tab} renders a control that is none of {sorted(self.CONTROL_KINDS)}, so it "
+                    f"may be this tab's main action and DRC-4603's ruling needs re-making: {markup}",
+                )
+                seen.setdefault(tab, set()).add(cast("str", kind))
+        # And the classifier is discriminating rather than matching everything:
+        # three different kinds are in play across the four tabs.
+        self.assertGreaterEqual(len({kind for kinds_ in seen.values() for kind in kinds_}), 3)
+
+    def test_the_console_controls_the_fixture_does_not_reach_are_ruled_on_too(self) -> None:
+        """The same ruling, over the Console controls that need an answered board.
+
+        **Found on a live board, not here.** The walk before this landed showed
+        `Console` rendering `Read my quota` and `No thanks`, two controls the
+        composition fixture does not reach because it publishes no
+        `usage_fetch`. The sweep above classified them as nothing at all, which
+        is a universal claim over a set nobody enumerated -- the regression class
+        this repository has shipped before.
+
+        So they are read from their own emitters, which is the method DRC-4590's
+        own criterion already used for the steer submit and the tripwire add:
+        a control's kind is a fact about the control, not about whether one
+        fixture happens to render it.
+        """
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + self.ANNOTATED
+            + r"""
+const payload = {...__dashboard, usage_fetch: true};
+const group = {label: "cargento", sessions: __dashboard.sessions};
+const focus = {harness: "codex", sid: "focus-1"};
+// The controls read the FETCHED project context, not the group, so the entry is
+// seeded rather than passed: an emitter reached through the wrong door renders
+// its unavailable branch and the assertions below pass over nothing.
+nextCockpitContexts.set(nextCockpitContextKey(group, focus), {
+  revision: __dashboard.generated,
+  data: {observers: [],
+    observer_model: {enabled: true, disclosure: "A model reads this session."}},
+});
+localStorage.removeItem(NEXT_OBSERVER_CONSENT_KEY);
+const emitted = {
+  consentUnanswered: nextUsageDisclosure(payload),
+  observerUnanswered: nextObserverModelControls(group, focus),
+};
+// The granted branch is where the one recurring act lives, so it has to be
+// rendered rather than reasoned about.
+localStorage.setItem(NEXT_OBSERVER_CONSENT_KEY, "granted");
+emitted.observerGranted = nextObserverModelControls(group, focus);
+localStorage.setItem(NEXT_USAGE_CONSENT_KEY, "granted");
+emitted.usageSwitch = nextUsageSwitch(payload);
+console.log(JSON.stringify(emitted));
+"""
+        )
+
+        assert isinstance(out, dict)
+        markup = "".join(str(value) for value in out.values())
+        self.assertIn("data-next-usage-answer", markup, "the quota consent controls did not render")
+        self.assertIn("data-next-observer-action", markup, "the observer controls did not render")
+        # The granted branch specifically, because that is the one carrying the
+        # recurring act. Without this the classifier is only ever shown consent
+        # controls and the `gated-act` ruling below asserts nothing.
+        self.assertIn("Summarize this session", str(out["observerGranted"]))
+        self.assertIn("Turn off", str(out["usageSwitch"]))
+        # No primary reaches Console through any of them, which is the ruling.
+        self.assertNotIn("next-action--primary", markup)
+        # And each one classifies, so none is an unruled candidate for the tab's
+        # main action. `Summarize this session` is the interesting one: it is a
+        # real recurring act rather than a consent, and it is excused as
+        # `gated-act` because it exists only where the operator started the
+        # server with --observer-model, focused exactly one session, and granted
+        # consent. An action most readers never see is not the tab's main one.
+        for one in re.findall(r"<button\b[^>]*>", markup):
+            self.assertIsNotNone(
+                self._kind(one),
+                f"a Console control is unruled, so DRC-4603 needs re-making: {one}",
+            )
 
 
 class AnAbsenceNeverRendersLargerThanItsValueTest(unittest.TestCase):

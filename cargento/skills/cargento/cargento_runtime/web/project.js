@@ -434,9 +434,15 @@ function projectGoalAction(act, label){
 }
 
 function projectAction(act, arg){
+  /* The guarded setter rather than a ternary. The filter is built over all of
+     PROJECT_GRAPH_MODES, so this dispatcher was offered three buttons and
+     collapsed everything that was not "all" to "active" -- pressing Decisions
+     selected Active, and the only feedback was the wrong button lighting up.
+     projectSetGraphMode validates and returns false, so an argument outside the
+     three is now a no-op instead of a silent substitution, and nothing redraws
+     on a press that changed nothing. */
   if(act === "project-graph-mode"){
-    projectSetGraphMode(arg === "all" ? "all" : "active");
-    if(lastData) render(lastData);
+    if(projectSetGraphMode(String(arg == null ? "" : arg)) && lastData) render(lastData);
     return true;
   }
   if(act === "project-terminal-open"){

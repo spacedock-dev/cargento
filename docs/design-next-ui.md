@@ -209,6 +209,28 @@ elements with **zero** false positives. The mutant that settles it is
 to 0.8125rem; the selector-derived sweep reports zero below-floor selectors and zero skips on it,
 and the rendered-path guard reds.
 
+**A third way to overstate is the instrument rather than the sheet, and it outlived both guards.**
+The two mechanisms above are properties of the stylesheet. This one is a property of
+`tests/css_cascade.py`, the resolver both guards ask: it parsed a pseudo-class into the compound and
+then never evaluated it, so a pseudo-class always matched and carried specificity while doing it.
+`:where(#app) button:not([class])` therefore matched `button.next-action.next-session-copy`, a button
+that plainly has a class, at `(0,2,1)`, and reported the size that rule declares in place of the one
+the control renders at. A guard that resolves the wrong rule is the confident wrong answer this
+project is built against, arriving in the thing built to prevent it.
+
+It surfaced from the outside rather than from reading the module. DRC-4604's control guard needed a
+mutant that pulls a control below its tier, the natural single-class mutant would not red, and the
+reason turned out to be the instrument: the mutant was losing to a phantom. DRC-4630 taught the
+resolver to evaluate a pseudo-class or refuse it, on the `UnsupportedSelectorError` precedent the
+module already set for sibling combinators, and five rendered elements moved. All five are one
+control and one declaration, and they are the defect DRC-4604 recorded and did not fix, so they are
+pinned in `KNOWN_BELOW_FLOOR` with the citation rather than quietly re-derived.
+
+The rule this leaves is worth stating on its own, because it is not about CSS: **a guard is only as
+true as the instrument it resolves through, and a green guard says nothing about its own
+instrument.** Both guards above were green for as long as the phantom existed. What found it was a
+mutation that would not red, which is the only signal either of them could have given.
+
 Its reach is the honest part. Of the 939 elements, **134 are covered by a tier selector, and those
 134 are reached by 32 of the sheet's 107 tier selectors**. The other 75 style surfaces the fixture
 never renders, and the guard is silent about them rather than clearing them. So the two guards are
@@ -1087,8 +1109,36 @@ named with their reasons in the sheet: `--amber` state signals, a `role="switch"
 disclosures, and the legacy project view. `.next-action--primary` is a filled tier as of v3, accent on
 `#14140f` at 13.66:1, where it was previously an accent border on a transparent box and so still
 left nothing on the board reading as the act to take. It reaches exactly one tab, because
-four of the five have no action to mark at all; what each of those tabs' main action should *be* is
-a product question filed separately rather than answered in a restyle.
+four of the five have no action to mark at all.
+
+What each of those four tabs' main action should *be* was filed separately rather than answered in a
+restyle, and the answer is that none of them has one. The reason differs per tab, which is why it is
+four rulings and not one. `Now` renders navigation only: every control is a card that routes to a
+session, and a selection is not an act on the same reasoning that excludes the tab strip. `Course`
+renders a disclosure, plus the tripwire `Save`, `Rearm` and `Remove` controls, which are real acts
+and are per-row rather than per-tab: three per card and a card per tripwire, so marking one would
+promise a singular the markup cannot keep. `Decisions` renders the three-button graph filter, which
+chooses what to show rather than changing anything. `Console` carries the most, and none of it
+qualifies: the criterion above forbids marking the tripwire add or the steer submit, the quota and
+model-summary controls are consent answered once rather than something a reader comes back to do,
+and `Summarize this session` exists only where the operator started the server with
+`--observer-model`, focused exactly one session and granted consent, so it is an act most readers
+never meet.
+
+Those rulings are bound rather than written down and left. A zero is what a tab with no controls
+scores and also what a tab whose controls were deleted scores, so the per-tab count cannot tell a
+deliberate none from an empty panel. A second test classifies what each of the four actually renders
+as navigation, disclosure, selection, consent, a gated act, or the one control the criterion forbids
+by name, and an unclassified control reds: the tab has gained something that could be its main
+action, and the ruling is made again rather than inherited.
+
+The Console half of that list came from the browser and not from the fixture. The composition
+fixture publishes no `usage_fetch`, so it never renders the quota consent pair, and a walk of a live
+board found `Read my quota` and `No thanks` sitting outside every category the test knew. That is
+the universal-claim-over-an-unenumerated-set failure this file warns about, caught in the review
+rather than after it, and the fix was to read those controls from their own emitters the way
+DRC-4590's criterion already reads the steer submit and the tripwire add. A control's kind is a fact
+about the control, not about whether one fixture happens to reach it.
 
 A floor sits under the opt-in, for buttons nothing else styles. Without one a bare `<button>`
 keeps user-agent chrome, `rgb(239,239,239)` behind a black border, which is the brightest thing on

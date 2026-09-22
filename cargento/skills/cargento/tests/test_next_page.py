@@ -405,6 +405,164 @@ class TheCompliantSetIsResolvedOnElementsNotOnRulesTest(unittest.TestCase):
         )
 
 
+_ROOT_NODE: css_cascade.Node = {"tag": "div", "classes": set(), "attrs": set()}
+
+
+class APseudoClassIsEvaluatedOrRefusedTest(unittest.TestCase):
+    """DRC-4630. The resolver parsed pseudo-classes and then ignored them.
+
+    `_SIMPLE` absorbed `:not([class])` into the compound, `_node_matches`
+    compared tag, classes and attributes only, and the condition was never
+    asked -- so the pseudo-class always matched AND carried specificity while
+    doing it. Both halves of a wrong answer: the rule reached elements the
+    browser excludes, at a weight that beat the rule that really wins.
+
+    It was found from the outside, which is the part worth keeping. DRC-4604's
+    control guard needed a mutant that pulls a control below its tier, the
+    natural single-class mutant would not red, and the reason turned out to be
+    the instrument rather than the mutant.
+    """
+
+    tokens: ClassVar[dict[str, float]]
+    rules: ClassVar[list[tuple[str, str, int]]]
+    css: ClassVar[str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.css = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        cls.tokens, cls.rules = css_cascade.load_text(cls.css)
+
+    # The floor the sheet declares for a button nobody has classed, and the
+    # selector that produced the defect. Quoted from `styles.css` rather than
+    # written out, so a rewrite of that rule fails the assertions below loudly
+    # instead of leaving them testing a selector the sheet no longer has.
+    BARE_BUTTON_FLOOR: ClassVar[str] = ":where(#app) button:not([class])"
+
+    def test_the_sheet_still_carries_the_selector_these_assertions_are_about(self) -> None:
+        self.assertIn(self.BARE_BUTTON_FLOOR + "{", self.css)
+
+    def test_a_negation_does_not_match_the_element_it_excludes(self) -> None:
+        """AC-1. A classed button is not a button without a class."""
+        classed: list[css_cascade.Node] = [
+            {"tag": "div", "classes": set(), "attrs": set()},
+            {"tag": "button", "classes": {"next-action", "next-notify-button"}, "attrs": {"type"}},
+        ]
+        self.assertIsNone(css_cascade.matches(classed, self.BARE_BUTTON_FLOOR))
+
+    def test_the_negation_still_matches_the_element_it_is_for(self) -> None:
+        """The other half, because "matches nothing" would also pass the above.
+
+        The specificity is asserted as well as the match. It used to come back
+        (0,2,1): the `#app` inside `:where()` counted as a pseudo-class rather
+        than as nothing, and `:not([class])` counted a second time. `:where()`
+        adds nothing by definition and `:not()` takes its argument's weight, so
+        an attribute and a tag is the whole of it.
+        """
+        bare: list[css_cascade.Node] = [
+            {"tag": "div", "classes": set(), "attrs": set()},
+            {"tag": "button", "classes": set(), "attrs": {"type"}},
+        ]
+        self.assertEqual((0, 1, 1), css_cascade.matches(bare, self.BARE_BUTTON_FLOOR))
+
+    def test_special_casing_the_one_selector_would_not_satisfy_this(self) -> None:
+        """AC-1's falsifier, asked of pseudo-classes the sheet does not use.
+
+        Matching `:not([class])` by string leaves every other pseudo-class
+        matching unconditionally, so the check is a form the sheet has never
+        carried: a state the node is not in, and a negation of a class.
+        """
+        node: list[css_cascade.Node] = [
+            {"tag": "button", "classes": {"next-action"}, "attrs": set()}
+        ]
+        self.assertIsNone(css_cascade.matches(node, "button:hover"))
+        self.assertIsNone(css_cascade.matches(node, ".next-action:not(.next-action)"))
+        self.assertIsNone(css_cascade.matches(node, "button:first-child"))
+        # And a state the node IS in resolves, so the above is not "nothing
+        # matches any more".
+        hovered: list[css_cascade.Node] = [
+            {"tag": "button", "classes": {"next-action"}, "attrs": set(), "states": {"hover"}}
+        ]
+        self.assertEqual((0, 2, 0), css_cascade.matches(hovered, ".next-action:hover"))
+
+    def test_every_pseudo_class_the_sheet_uses_is_one_the_resolver_evaluates(self) -> None:
+        """AC-2. The enumeration, taken from the sheet rather than remembered."""
+        used = {
+            match.group(1)
+            for selector, _body, _order in self.rules
+            for match in re.finditer(r"(?<!:):([\w-]+)", selector)
+        }
+        handled = (
+            css_cascade._STATE_PSEUDO
+            | css_cascade._STRUCTURAL_PSEUDO
+            | css_cascade._PSEUDO_ELEMENTS
+            | {"is", "where", "not", "nth-child"}
+        )
+        self.assertEqual(set(), used - handled, "the sheet uses a pseudo-class nothing evaluates")
+        # The sweep is aimed at something: an empty `used` would pass the line
+        # above while asserting nothing at all.
+        self.assertGreater(len(used), 8, f"the pseudo-class sweep found only {sorted(used)}")
+
+    def test_a_pseudo_class_the_resolver_does_not_know_is_refused(self) -> None:
+        """AC-2's falsifier: the remainder raises rather than being skipped.
+
+        `:has()` is the realistic next arrival and the sheet has none. It is
+        refused the way a sibling combinator is, and for the reason
+        `UnsupportedSelectorError` already gives -- a rule that leaves the
+        cascade in silence produces plausible numbers.
+        """
+        node: list[css_cascade.Node] = [
+            {"tag": "button", "classes": {"next-action"}, "attrs": set()}
+        ]
+        for selector in (
+            ".next-action:has(span)",
+            ".next-action:nth-of-type(2)",
+            "button:lang(en)",
+        ):
+            with (
+                self.subTest(selector=selector),
+                self.assertRaises(css_cascade.UnsupportedSelectorError),
+            ):
+                css_cascade.matches(node, selector)
+
+    def test_a_selector_list_inside_a_functional_pseudo_class_survives_parsing(self) -> None:
+        """The sheet's one `:is()` was being cut in half at its own comma.
+
+        `load_text` split every rule's selector on `,`, which turned
+        `:is(a, input):focus-visible` into `:is(a` and `input):focus-visible` --
+        two strings that are not selectors. `:nth-child(-n+4)` went the same way
+        one layer down, where the `+` read as a sibling combinator and the whole
+        rule was refused.
+        """
+        selectors = [selector for selector, _body, _order in self.rules]
+        self.assertIn(".next-project-detail-rail :is(a,button,input):focus-visible", selectors)
+        self.assertIn(".next-cockpit-recovery>div:nth-child(-n+4)", selectors)
+        focused: list[css_cascade.Node] = [
+            {"tag": "div", "classes": {"next-project-detail-rail"}, "attrs": set()},
+            {"tag": "input", "classes": set(), "attrs": set(), "states": {"focus-visible"}},
+        ]
+        self.assertIsNotNone(
+            css_cascade.matches(
+                focused, ".next-project-detail-rail :is(a,button,input):focus-visible"
+            )
+        )
+
+    def test_no_rule_in_the_sheet_is_refused_for_a_reason_other_than_a_sibling(self) -> None:
+        """AC-2 over the whole sheet, so a new selector form cannot land quietly.
+
+        Sibling combinators are the one refusal this module has always made and
+        still makes; every other rule has to resolve. Measured on the tree this
+        landed against: 1110 rules, 18 refused, all 18 carrying `+` or `~`.
+        """
+        refused = []
+        for selector, _body, _order in self.rules:
+            try:
+                css_cascade.matches([_ROOT_NODE], selector)
+            except css_cascade.UnsupportedSelectorError:
+                refused.append(selector)
+        self.assertEqual([], [one for one in refused if "+" not in one and "~" not in one])
+        self.assertGreater(len(refused), 10, "the sibling refusals stopped happening")
+
+
 class NextPageAssetContractTest(unittest.TestCase):
     @staticmethod
     def _loader() -> Callable[[], bytes]:
@@ -1736,8 +1894,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ebc70801be79cd5805a85a281dd0566a08a97bab72d0356ae923d20f60310db4",
             ),
             "project.js": (
-                112_153,
-                "38a7b19780fbdff617ee11fb5dd1e0e2b71faa44368390083e2b80d34e21f63d",
+                112_662,
+                "81e7f6490f9d6c2e128549aff8bb54c2f6bebaec15b03bfebe3e057b4ef8f587",
             ),
             "next-chrome.js": (
                 40_141,
@@ -1811,9 +1969,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_052_074, len(assembled))
+        self.assertEqual(1_052_583, len(assembled))
         self.assertEqual(
-            "4d956c3ffd2ed02248dc6f0e923b8d7c1340164605876ab805574a0a238c5820",
+            "9b00742477a6e4c53854183ac6aca8529cee0f6e407190429f9bbf3eccd7474f",
             hashlib.sha256(assembled).hexdigest(),
         )
 

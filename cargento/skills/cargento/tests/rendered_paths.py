@@ -70,24 +70,47 @@ class _PathCollector(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.paths: list[list[Node]] = []
         self._stack: list[Node] = []
+        # Siblings opened so far under each open element, plus one bucket for
+        # the fragment's own top level. `count` is settled on the way out, so
+        # `:last-child` is answered rather than guessed -- the path entries hold
+        # the same dicts, so filling it late fills it everywhere.
+        self._children: list[list[Node]] = [[]]
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         pairs = dict(attrs)
+        names = {name for name, _value in attrs if name != "class"}
         node: Node = {
             "tag": tag,
             "classes": set((pairs.get("class") or "").split()),
             # Attribute PRESENCE only, which is what `css_cascade` matches on.
-            "attrs": {name for name, _value in attrs if name != "class"},
+            "attrs": names,
         }
+        # The one state a rendered element declares about itself. Every other
+        # state pseudo-class needs a reader doing something, and this census
+        # reads a board at rest.
+        if "disabled" in names:
+            node["states"] = {"disabled"}
+        siblings = self._children[-1]
+        siblings.append(node)
+        node["index"] = len(siblings)
         self._stack.append(node)
+        self._children.append([])
         self.paths.append([*self._stack])
         if tag in _VOID:
+            self._close(len(self._stack) - 1)
+
+    def _close(self, depth: int) -> None:
+        """Pop back to `depth`, settling `count` on each scope left behind."""
+        while len(self._stack) > depth:
             self._stack.pop()
+            siblings = self._children.pop()
+            for child in siblings:
+                child["count"] = len(siblings)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
         if tag not in _VOID:
-            self._stack.pop()
+            self._close(len(self._stack) - 1)
 
     def handle_endtag(self, tag: str) -> None:
         # Walk back to the nearest matching open tag rather than popping blind.
@@ -95,8 +118,14 @@ class _PathCollector(HTMLParser):
         # one level and invent ancestors, silently.
         for depth in range(len(self._stack) - 1, -1, -1):
             if self._stack[depth]["tag"] == tag:
-                del self._stack[depth:]
+                self._close(depth)
                 return
+
+    def close(self) -> None:
+        super().close()
+        self._close(0)
+        for child in self._children[0]:
+            child["count"] = len(self._children[0])
 
 
 def paths_in(html: str) -> list[list[Node]]:
