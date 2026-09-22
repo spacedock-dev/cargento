@@ -232,7 +232,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-tabs-row{justify-content:space-between;gap:20px}
 .next-population{font-family:var(--mono);font-size:var(--fs-label);color:var(--ink2)}
 .next-population span{color:var(--ink2)}
-.next-session-copy{position:relative;z-index:1;margin-top:8px;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+.next-session-copy{position:relative;z-index:1;margin-top:8px;color:var(--ink2);font-family:var(--mono)}
 .next-session-copy:hover{border-color:var(--accent);color:var(--ink)}
 .next-session-copy[data-next-copy-state="copied"]{border-color:var(--accent);color:var(--ink)}
 .next-session-copy[data-next-copy-state="failed"]{border-color:var(--amber);color:var(--ink2)}
@@ -241,8 +241,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    copy can simply be ignored. So it rests filled and on the warn line rather than
    flat and on the quiet one. It keeps its own brighter :focus-visible ring
    rather than the primitive's: both controls have one now, since
-   .next-session-copy carries .next-action, which closed the gap DRC-4381 left. */
-.next-session-raise{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--amber);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:var(--fs-label);cursor:pointer}
+   .next-session-copy carries .next-action, which closed the gap DRC-4381 left.
+   The exemption is about colour and boundary and NOT about type. It sits
+   directly beside the copy control in .next-rail-wait-controls, so a tier it
+   did not share would be the same disagreement one strip along; DRC-4632 moved
+   it to --fs-body for that reason and changed nothing else about it. */
+.next-session-raise{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--amber);border-radius:var(--r-control);background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:var(--fs-body);cursor:pointer}
 .next-session-raise:hover{border-color:var(--ink);color:var(--ink)}
 .next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-session-raise[data-next-raise-state="sent"]{border-color:var(--accent);color:var(--ink)}
@@ -479,7 +483,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    state signal the neutral primitive would erase. Collapsing the wrapper would
    reach through to an exempt control. It keeps its radius for the same reason
    it keeps its padding: it is adjusting a box the primitive already drew. */
-.next-rail-wait-controls button{margin-top:0;padding:5px 10px;border-radius:var(--r-control);font-size:var(--fs-label)}
+.next-rail-wait-controls button{margin-top:0;padding:5px 10px;border-radius:var(--r-control)}
 .next-rail-capacity-window{display:flex;flex-direction:column;gap:6px}
 .next-rail-capacity-heading{display:flex;align-items:baseline;gap:8px;color:var(--ink2);font:var(--fs-label) var(--mono)}
 .next-rail-capacity-heading b,.next-rail-capacity-heading strong{color:var(--ink)}
