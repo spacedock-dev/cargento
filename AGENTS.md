@@ -251,10 +251,22 @@ before believing it. Report both results rather than the convenient one. A load 
 and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
 holds the assembled length and digest in separate tests, and `tests/test_focus.py` holds a digest
 of the assembled page too. Across those three files, two assertions pin the assembled length and
-three pin its digest. Recompute all three. Recomputing only the first leaves CI red on the other two. Two branches that both change a web asset produce a conflict where
+three pin its digest. Two branches that both change a web asset produce a conflict where
 **each side is correct for a tree that no longer exists**, so a textual resolution ships a number
-wrong for both. Recompute from the assets. If only one side changed the page the existing figures
-may still be right, but prove that by running the oracles rather than reasoning about it.
+wrong for both.
+
+**Run `python3 scripts/regen_byte_pins.py` rather than recomputing by hand**, and
+`--check` to ask whether anything is stale without writing. It derives every figure from the assets
+and rewrites all three files, which is the part that used to go wrong: recomputing only the first
+leaves CI red on the other two. A single asset edit moves **seven** figures, not one pair.
+
+The script exists because the procedure was hand-reasoned every time and five throwaway versions
+were written in one milestone. Three things it knows that a fresh one usually does not:
+`expected_fonts` pins the base64-DECODED payload rather than the file, so a raw read writes wrong
+figures for fifteen fonts; `styles.css` is two bare assertions rather than a table row, so a
+row-walker skips it; and `expected_faces` has the shape of a pin table without being one, which has
+now produced two wrong counts. It raises rather than continuing if it meets a pin row it cannot
+account for.
 
 **Three files are conflict hotspots** because every branch wants a line in them:
 
