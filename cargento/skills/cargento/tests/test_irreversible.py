@@ -246,7 +246,39 @@ class CommandSocketTest(unittest.TestCase):
     def timed_hook(
         self, driver: str, *, after_main: str = "", timeout: float | None = None
     ) -> subprocess.CompletedProcess[bytes]:
-        limit = (1.0 if os.name == "nt" else 0.25) if timeout is None else timeout
+        # 2 seconds, and the number is chosen by what it has to DISTINGUISH
+        # rather than by how prompt the hook ought to be.
+        #
+        # The callers that must not time out inject a hang of 10 seconds or an
+        # unbounded spin, so every limit under 10 seconds has identical
+        # detection power and the only thing a tighter one buys is a flake. The
+        # old value was 0.25 (1.0 on Windows), and that split is itself the
+        # tell: it was tracking machine speed, not the property. It failed on a
+        # loaded macOS runner on 2026-09-21.
+        #
+        # What makes a tight limit actively harmful here is that the failure is
+        # **indistinguishable from the defect**. A hook that hung and a runner
+        # that was busy both surface as `TimeoutExpired`, so a flake reads as a
+        # regression in the one guard that would catch a real one.
+        #
+        # The hook's own watchdog is `MATCH_WAIT_SEC = 0.005`, and
+        # `irreversible_report` says in as many words that a 5 ms join is "best
+        # effort, not a hard deadline for scheduling". A test asserting a hard
+        # deadline over a documented best-effort one is asserting more than the
+        # code promises.
+        #
+        # Measured 2026-09-22 on an idle M-series desk, three samples: the value
+        # the budget actually bounds, `main_to_exit_ms`, ran 23 to 37 ms. So the
+        # old limit carried **6.8x** headroom over the worst sample and the new
+        # one carries **54x**. A hosted runner is several times slower than this
+        # desk before any parallel job load, which is the gap 6.8x does not
+        # cover. The figures are from this test's own C6_PHASE diagnostics and
+        # can be retaken the same way.
+        #
+        # The negative control goes the other way and passes its own short
+        # timeout: it EXPECTS `TimeoutExpired`, so a shorter limit makes it more
+        # certain rather than less.
+        limit = 2.0 if timeout is None else timeout
         ready = Path(self.tmp.name, "hook-ready.json")
         phases = Path(self.tmp.name, "hook-phases.json")
         ready.unlink(missing_ok=True)
@@ -477,8 +509,11 @@ raise SystemExit(status)
             "import os, re; event_hook.command_shape = lambda _: ("
             "os.write(2, b'regex-entered'), re.fullmatch('(a+)+$', 'a'*30+'!'))[1]"
         )
+        # Its own short limit, deliberately. This is the one caller that wants
+        # the timeout, so a small budget makes the expectation more certain and
+        # keeps the suite from paying the generous default to prove a hang.
         with self.assertRaises(subprocess.TimeoutExpired) as caught:
-            self.timed_hook(driver)
+            self.timed_hook(driver, timeout=0.25)
         self.assertEqual(b"", caught.exception.output)
         self.assertEqual(b"regex-entered", caught.exception.stderr)
         self.assertEqual([], self.received)

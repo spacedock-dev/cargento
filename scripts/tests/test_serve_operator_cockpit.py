@@ -268,13 +268,31 @@ class StableProxyTest(unittest.TestCase):
             self.assertTrue(self.proxy_thread.is_alive())
 
     def test_backend_deadline_is_configurable_for_bounded_project_analysis(self) -> None:
+        """The deadline is configurable: a small one refuses, a large one admits.
+
+        The two budgets are deliberately asymmetric, because the two halves fail
+        in opposite directions.
+
+        The REFUSE half wants its deadline comfortably under the backend's
+        delay, and a smaller deadline can only fire sooner, so load makes it
+        more certain rather than less. 10 ms against a 50 ms sleep.
+
+        The ADMIT half wants a deadline it cannot miss, and this is where the
+        test used to flake: it gave a 50 ms backend sleep a 200 ms budget, which
+        a loaded runner spends on thread scheduling and two loopback round trips
+        before the sleep even starts. It failed that way on macOS on 2026-09-21
+        while Ubuntu and Windows passed. Nothing about the property needs the
+        admit budget to be tight -- it only has to be larger than the one that
+        refused -- so it is now 40x the delay, and still well inside the 5 s
+        timeout `read` puts on the opener.
+        """
         FakeBackend.project_delay_sec = 0.05
         cockpit.StableProxyHandler.backend_request_timeout_sec = 0.01
         with self.assertRaises(urllib.error.HTTPError) as refused:
             self.read("/api/project-context")
         self.assertEqual(502, refused.exception.code)
 
-        cockpit.StableProxyHandler.backend_request_timeout_sec = 0.2
+        cockpit.StableProxyHandler.backend_request_timeout_sec = 2.0
         payload, content_type = self.read("/api/project-context")
         self.assertEqual("application/json", content_type)
         self.assertEqual({"observers": []}, json.loads(payload))
