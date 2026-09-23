@@ -172,7 +172,7 @@ function nextObservedSession(source, asks, harness, generated, shared){
     // collector's "awaiting your message": P1 says a recent observation cannot
     // prove the harness is still open, so a day-old idle row cannot claim to
     // be waiting (DRC-4646). Scanned and hook-read idle rows get the same
-    // words, which docs/design-scan-only-rows.md requires. A session holding
+    // words, as docs/design-scan-only-rows.md records them rendering alike. A session holding
     // an exact request is not quiet, and with no timestamp the old reading
     // stands, minus the waiting claim.
     ...nextObservedPair("now", ended ? "Session reported its own end" :
