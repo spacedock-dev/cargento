@@ -103,12 +103,14 @@ and accepts no input. Its xterm assets are vendored and served from loopback.
 
 Exact session detail is reachable from Sessions, cockpit session links and the Intent log. Under
 the session's name it leads with a **DRIFT** block: the goal and expected output you typed, the
-agent's current activity beside them, any direction you gave after you saved those words (labelled
-"Conflict to settle", which asks a question and records no finding), the reading, and every
-departure on record, asked for or not. A session waiting on you shows its question first. Below
-the block come the recorded request, tasks, subagents, token measurements, how the session landed
-and the observed record. The page has one primary control, `Check for drift`; a session blocked on
-you gives it up to the control that answers, and the check sits below it.
+agent's current activity beside them, the `Check for drift` control with what a check sends beside
+it, the reading, any direction you gave after you saved those words (labelled "Conflict to settle",
+which asks a question and records no finding), and every departure on record, asked for or not. A
+session waiting on you shows its question first. Below the block come the recorded request, tasks,
+subagents, token measurements, how the session landed and the observed record. The page has at most
+one primary control, `Check for drift`. No answer option is ever emphasised: a session blocked on
+you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
+while its question is open.
 
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
 `#n=project:<encoded-project>` with the selected session and then the open tab appended when either
@@ -301,8 +303,10 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields the drift block runs in reading order: the agent's current activity, a later
-direction, the reading, and the departures on record. How it landed and the observed record follow
+Below the two fields the drift block runs in reading order: the agent's current activity, the
+check, the reading, a later direction and the notes about your saved words, and the departures on
+record. The departures section appears only with `--unasked-readings` on, or once a reading or a
+departure is on record. How it landed and the observed record follow
 the session's own facts further down. The record is last because it is the longest block here and
 its absence sentence is one of four that used to arrive before you reached the reading. It lists every observed entry naming that session with its own type and the source that
 published it, and states the limit under it: demonstrated work results are read on Pi alone, so on
@@ -547,7 +551,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run, unasked checks included (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits above the `Check for drift` button on the session page, the press itself stands in for consent rather than a stored answer, and the button is enabled by the accepted case review. Quota consent authorizes neither. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run, unasked checks included (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits beside the `Check for drift` button on the session page, the press itself stands in for consent rather than a stored answer, and the button is enabled by the accepted case review. Quota consent authorizes neither. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
@@ -564,7 +568,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The session-end store is neither read nor written, since the coordinator is its only writer, so a session that ended before this run reads as quiet. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
-| `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the session page's drift block offers no field and says why. The rollback switch for the one store holding prose you composed. |
+| `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the session page's drift block offers no field; its `Check for drift` control stays on the page, inert, and says why. The rollback switch for the one store holding prose you composed. |
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |

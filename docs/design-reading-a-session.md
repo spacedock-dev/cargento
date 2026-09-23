@@ -656,7 +656,12 @@ own sentence renders only where no disclosure was published.
 
 The way back beside a departure is the header's own resume and raise controls, drawn per departure
 whatever the session's state; what is missing is said once per departures section, because a limit
-repeated under every row is furniture.
+repeated under every row is furniture. The raise's own caveat follows the rows it qualifies.
+
+The departures section draws only with the unasked lane on, a departure on record, or a reading the
+reader asked for, whose cutoff is printed there and nowhere else. That restores DRC-4543 on this
+page: a panel on every session of a board whose switch is off is noise. Under `--no-annotations`
+the check stays on the page, inert, with the annotations-off sentence as its one refusal.
 
 ### Where a drift row sorts, and why that makes no count
 

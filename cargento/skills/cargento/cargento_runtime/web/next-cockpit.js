@@ -2308,7 +2308,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
   /* The page's one primary, unless the session is blocked on the reader: then
-     the answer control holds it and this sits below as an ordinary control
+     the raise holds it when offered, nothing does otherwise, and this sits
+     below as an ordinary control
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
      The four cockpit tabs have no action to mark at all (DRC-4590, DRC-4603). */
   /* The disclosure and the button share a row, the disclosure still first in
@@ -2661,9 +2662,8 @@ function nextCockpitHeldDiscardBlock(session, annotation){
    nothing above the reading is a model's.
 
    `direction` is the caller's CURRENT ACTIVITY card, handed in rather than
-   rebuilt, so the NOW line has one renderer. `primary` is false when the
-   session is blocked on the reader and an answer control holds the page's one
-   primary. The word drift names the block and the control and nothing else: no
+   rebuilt, so the NOW line has one renderer. `primary` is false while the
+   session waits on the reader, whose question the check never outranks. The word drift names the block and the control and nothing else: no
    sentence here may say a session has none. */
 function nextCockpitDriftBlock(group, session, direction, primary){
   const head = '<section class="next-session-drift" data-next-session-drift ' +

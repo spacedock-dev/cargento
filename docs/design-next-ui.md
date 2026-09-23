@@ -1168,8 +1168,8 @@ disclosures, and the legacy project view. `.next-action--primary` is a filled ti
 `#14140f` at 13.66:1, where it was previously an accent border on a transparent box and so still
 left nothing on the board reading as the act to take. It reached exactly one tab, Held to, because
 four of the five have no action to mark at all. Since DRC-4639 merged Held to into the session page,
-the primary lives there instead, as `Check for drift`, and a session blocked on the reader gives it
-to the answer control
+the primary lives there instead, as `Check for drift`. A session blocked on the reader gives it to
+the raise when one is offered and otherwise has none, because no answer option is ever emphasised
 ([DEC-20](design-reading-a-session.md#what-the-session-page-build-had-to-decide)). The four
 cockpit tabs still carry none.
 
