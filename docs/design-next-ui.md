@@ -1003,6 +1003,21 @@ and counts but omit member activity lines. Project detail then owns workflow and
 session detail owns the exact session's current activity and progressive command facts. No level
 repeats a broader summary merely because it can.
 
+Amended 2026-09-23 (DRC-4647, DRC-4646): an active row lists its members in a fixed order, blocked
+on you, then working, then any member carrying a risk, then quiet by most recent activity, then any
+other state, then ended, and caps them at five. Blocked, working and risky members render even past
+the cap, because hiding one would bury what the row exists to show and what turned its rail colour;
+the rest fill the remaining lines, and one count line ("31 other sessions") opens the project page,
+which lists every member. Measured before the cap: one project rendered 34 lines, about 50px each.
+Each line's dot carries the lifecycle in its shape so it survives greyscale: working and blocked are
+filled whatever the tone, quiet is a ring, ended is square in its git tone. The ring drops only the
+working `ok` accent, so a quiet member whose stop left uncommitted work keeps its clay colour. Tone
+alone used to decide, an idle session's `ok` wore the working accent, and a working row on a harness
+that reports no block state drew an empty dot. A quiet row says how long ago it was last active in place of the
+collector's "awaiting your message", on scanned and hook-read rows alike; a member line never draws
+or words a session holding an exact request as quiet, though the project's counts still tally it
+there.
+
 The same order governs inside a panel, and Console is where it was breached. Measured at 1680x1057,
 its first operational heading began 341px into a 968px panel: 309px of that was an exact-session
 terminal, an observer-model notice and a raw status line, three blocks describing capabilities a

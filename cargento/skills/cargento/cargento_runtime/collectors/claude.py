@@ -502,6 +502,8 @@ def collect(
                         }
                     )
                 continue
+        if not claude_data.has_conversation(config, state, fp):
+            continue  # a harness metadata file, not a session (DRC-4645)
         prefix = base[:8]
         # `mtime` is this file's, measured a few lines up in this same pass. The
         # newest-wins test used to re-stat the incumbent for a number the loop

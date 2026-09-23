@@ -87,10 +87,27 @@ function nextObservedOwnGoal(source){
   };
 }
 
+/* One dot per member line. Its SHAPE carries the lifecycle, so the three read
+   apart in greyscale and without the pulse: working and blocked are filled
+   whatever their tone, quiet is a ring, ended is square. A quiet ring drops
+   only the `ok` accent; a quiet session carrying a risk keeps its colour, and
+   one holding an exact request is blocked rather than quiet. Tone alone used
+   to decide, and an idle session's `ok` wore the working accent (DRC-4646). */
+function nextSessionDot(session){
+  const shape = session.isEnded ? " next-project-dot--ended" :
+    (session.isQuiet && !session.askKnown ? " next-project-dot--quiet" : " next-project-dot--filled");
+  const pulse = session.isLive ? " next-project-dot--working" : "";
+  return `<span class="next-project-dot next-project-tone--${esc(session.tone)}${shape}${pulse}" ` +
+    `role="img" aria-label="${esc(session.state)}"></span>`;
+}
+
 function nextObservedSession(source, asks, harness, generated, shared){
   const ended = nextSessionEndedAt(source) != null;
   const working = !ended && source.state === "working";
   const needs = !ended && source.state === "needs_input";
+  const quiet = !ended && source.state === "idle";
+  const lastActivityAt = nextNumber(source.last_activity);
+  const quietFor = quiet ? nextFormatDuration(nextPayloadAgeSeconds({generated}, lastActivityAt)) : null;
   const stateKnown = ["working", "needs_input", "idle"].includes(source.state);
   const question = asks.map(ask => nextObservedString(ask.question)).filter(Boolean).join("\n");
   const tasks = nextObservedRecords(source.tasks);
@@ -151,8 +168,18 @@ function nextObservedSession(source, asks, harness, generated, shared){
     resume_id: source.resume_id == null ? null : source.resume_id,
     ...nextObservedPair("title", source.title, "Title not published"),
     ...nextObservedPair("prompt", source.last_prompt, "Last prompt not published"),
+    // A quiet row states how long ago it was last active in place of the
+    // collector's "awaiting your message": P1 says a recent observation cannot
+    // prove the harness is still open, so a day-old idle row cannot claim to
+    // be waiting (DRC-4646). Scanned and hook-read idle rows get the same
+    // words, as docs/design-scan-only-rows.md records them rendering alike. A session holding
+    // an exact request is not quiet, and with no timestamp the old reading
+    // stands, minus the waiting claim.
     ...nextObservedPair("now", ended ? "Session reported its own end" :
-      (stateKnown ? (doing ? doing.subject : source.state_detail) : ""),
+      (stateKnown ? (doing ? doing.subject :
+        (quiet && !question ? (quietFor ? `last active ${quietFor} ago` :
+          (nextObservedString(source.state_detail) ? "quiet" : "")) :
+          source.state_detail)) : ""),
     stateKnown ? "Activity not published" : "No state published"),
     ...nextObservedPair("next", pending && pending.subject, "No pending step published"),
     ...nextObservedPair("where", "", "Exact location not published"),
@@ -178,7 +205,8 @@ function nextObservedSession(source, asks, harness, generated, shared){
     isWorking: working, isNeeds: needs, isEnded: ended,
     isActive: working || needs || Boolean(question),
     isLive: working && source.active === true,
-    isQuiet: !ended && source.state === "idle",
+    isQuiet: quiet,
+    lastActivityAt,
     tone: outcomeKnown ? (gitKnown ? (source.dirty ? "bad" : "ok") : "unknown") :
       (blocked || errors || (working && turn.long === true) ? "want" :
       (blockKnown && ["working", "idle"].includes(source.state) ? "ok" : "unknown")),

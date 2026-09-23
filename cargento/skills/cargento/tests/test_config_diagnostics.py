@@ -492,6 +492,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "pi_scan",
             "turn_scan",
             "agent_class_cache",
+            "conversation_cache",
             "spacedock_role_cache",
             "spacedock_boot_cache",
             "spacedock_workflow_cache",

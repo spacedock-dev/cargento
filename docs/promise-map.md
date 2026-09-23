@@ -261,7 +261,8 @@ the harnesses with no adapter, a session that predates this server process, and 
 the harness, so a Claude row under `--no-events` carries no mark and no note either. The
 session-end mark also lapses one row window after the row it belongs to.
 A quiet session is published as idle with nothing elapsed behind it: there is no duration threshold,
-so going quiet is a state here and not a reading. The git probe runs one bounded command as a
+so going quiet is a state here and not a reading. The row says how long ago the session was last
+active, which is a timestamp and never a verdict that it is still open or has closed. The git probe runs one bounded command as a
 session ends and publishes two numbers, whether the tree is dirty and how many porcelain entries
 changed. Cargento runs no program of its own there, though a repository can carry a committed
 attribute that makes git invoke a filter driver you already have installed, git-lfs being the common

@@ -502,6 +502,67 @@ def hook_user_event(
     return (True, last_user_event(config, state, real_path))
 
 
+# Record types that carry no conversation and never open a live session. A
+# transcript made only of these is a harness artifact: measured 2026-09-23,
+# 438 of 765 files in one project directory were a single `ai-title` record
+# (DRC-4645), and `ai-title`, `agent-name` and `pr-link` covered 471 of the 488
+# conversation-free files across every project. Session-start records (`mode`,
+# `permission-mode`, `attachment`, `last-prompt`, `system`, `progress`,
+# `file-history-snapshot`) are deliberately absent: a session opened and not
+# yet prompted writes exactly those, for up to 85 minutes in the same sweep,
+# and it must keep its row. Any record outside this set, or with no string
+# type, keeps the file a session.
+METADATA_RECORD_TYPES = frozenset({"ai-title", "agent-name", "pr-link"})
+
+
+def has_conversation(config: RuntimeConfig, state: RuntimeState, path: str) -> bool:
+    """Whether a top-level transcript is a session rather than harness metadata.
+
+    Only a file that fits inside the bounded prefix is ever classified as
+    metadata, because a longer one cannot be judged without reading it all.
+    A True answer read from a complete file is final (transcripts only
+    append); an empty or mid-write file is re-read next pass, and a False
+    answer is keyed on the file's stat.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return True
+    key = (stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.conversation_cache.get(path)
+    if cached is not None and (cached[1] or cached[0] == key):
+        return cached[1]
+    try:
+        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
+    except OSError:
+        return True
+    if stat.st_size > len(data):
+        result, settled = True, True
+    else:
+        types: set[str | None] = set()
+        for line in data.split(b"\n"):
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                types.add(None)
+                continue
+            kind = rec.get("type") if isinstance(rec, dict) else None
+            types.add(kind if isinstance(kind, str) else None)
+        result = not types or not types <= METADATA_RECORD_TYPES
+        # A True read from an empty or torn file may only mean the harness had
+        # not finished writing; it is not cached, so the next pass decides.
+        settled = not result or (bool(data) and data.endswith(b"\n"))
+    if settled:
+        with state.cache_lock:
+            runtime_state.bounded_put(
+                state.conversation_cache, path, (key, result), limit=config.max_cache_entries
+            )
+    return result
+
+
 def agent_identity(
     config: RuntimeConfig,
     state: RuntimeState,
