@@ -1512,6 +1512,12 @@ const NEXT_READING_MODEL_OFF =
 const NEXT_READING_UNAUTHORIZED =
   "Checking for drift is not enabled in this build, because the abstention check that " +
   "gates it has not been recorded. It waits on a later release; nothing on this page lifts it.";
+/* `--no-annotations`: the check stays on the page, inert, and this is its one
+   refusal ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)).
+   It replaces the field section's own sentence rather than repeating it. */
+const NEXT_READING_ANNOTATIONS_OFF =
+  "Annotations are off for this run. Start without --no-annotations to type a goal and an " +
+  "expected output here.";
 /* Which kind of absence each refusal is, held beside the sentences rather than
    recovered from them at render. One paragraph class prints all four and a
    regex over the prose would re-derive what the producer already knows. The
@@ -1523,6 +1529,7 @@ const NEXT_READING_REFUSAL_ABSENCE = new Map([
   [NEXT_READING_MODEL_UNREAD, "not-observed"],
   [NEXT_READING_MODEL_OFF, "run-config"],
   [NEXT_READING_UNAUTHORIZED, "run-config"],
+  [NEXT_READING_ANNOTATIONS_OFF, "run-config"],
 ]);
 /* Never on a paragraph that is not an absence. `.next-cockpit-reading-why`
    also carries rules, offers and results, and tagging all of its emissions
@@ -2247,6 +2254,9 @@ function nextCockpitReadingDepartures(shape, source, session = null){
    button offered, or take one it refused
    ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)). */
 function nextCockpitReadingRefusal(annotation, model){
+  /* First, because with the store off there are no words to read and the
+     route answers 503 whatever else is true. */
+  if(!(nextData && nextData.annotate === true)) return NEXT_READING_ANNOTATIONS_OFF;
   const authorized = nextData && ["passed", "accepted"].includes(nextData.reading_check);
   /* A stored reading outlives the model option. Only the new request is
      gated here; retaining the old account never establishes availability. */
@@ -2308,7 +2318,9 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
       ? '<p class="next-cockpit-reading-why" role="status"' +
         `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
         `${esc(request.message)}</p>` : "") +
-    `<span class="next-cockpit-reading-count">${esc(spent)}</span>` +
+    /* Only from a published annotation: with the store off there is no count
+       to read, and "0 requests" would be a default standing in for one. */
+    (annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "") +
     /* The announcement and the description are one node while a refusal
        stands. Printing the stored message and the reason separately rendered
        the same sentence twice, adjacent and identical, where the contract is
@@ -2655,11 +2667,12 @@ function nextCockpitDriftBlock(group, session, direction, primary){
      reason is on screen rather than left to the reader. The direction and any
      standing raise still render: the departure store is read whichever way. */
   if(!(nextData && nextData.annotate === true)){
-    const off = '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
-      '<p class="next-cockpit-held-absent">Annotations are off for this run. Start without ' +
-      '--no-annotations to type a goal and an expected output here.</p></section>';
+    /* The check stays, inert, and its refusal is the one place the store's
+       state is said: no field section above it repeating the sentence. */
     const source = nextCockpitWorkSource(group, session);
-    return {drift: head + off + direction + nextCockpitDepartures(null, source, session) +
+    const check = '<div class="next-session-drift-check">' +
+      nextCockpitReadingControl(session, null, null, primary) + '</div>';
+    return {drift: head + direction + check + nextCockpitDepartures(null, source, session) +
       '</section>', record: ""};
   }
   const annotation = nextCockpitAnnotation(session);

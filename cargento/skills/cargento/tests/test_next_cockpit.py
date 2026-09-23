@@ -5549,6 +5549,7 @@ console.log(JSON.stringify({posts,
     def test_a_reading_press_shows_progress_and_survives_redraws(self) -> None:
         out = self.run_fixture(r"""
 __dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
 const session = __dashboard.sessions[0];
 // The gate reads the published annotation, which is where the renderer
 // gets its copy too, so the fixture has to carry the same words as the
@@ -5583,6 +5584,7 @@ console.log(JSON.stringify({during, other, after:control(), calls}));
     def test_a_reading_press_reports_refusal_and_failure_without_retrying(self) -> None:
         out = self.run_fixture(r"""
 __dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
 const session = __dashboard.sessions[0];
 session.annotation_goal = "ship it";
 const annotation = {goal:"ship it", reading_count:0, reading_withheld:"No end was observed."};
@@ -6229,6 +6231,7 @@ console.log(JSON.stringify({none, three}));
             self.FOCUS_DOM
             + r"""
 __dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
 const session = __dashboard.sessions[0];
 const annotation = {goal:"", output:"", reading_count:0};
 const model = {enabled:true};
@@ -9207,6 +9210,7 @@ console.log(JSON.stringify({
         control = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             '__dashboard.reading_check = "not-run";\n'
+            '__dashboard.annotate = true;\n'
             "console.log(JSON.stringify(nextCockpitReadingControl("
             '{harness:"codex", sid:"focus-1"}, {goal:"ship it", reading_count:0}, '
             "{enabled:true})));",

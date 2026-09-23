@@ -481,6 +481,56 @@ console.log(JSON.stringify(nextCockpitConflict(session, nextCockpitAnnotation(se
         self.assertIn("<h2>A LATER DIRECTION</h2>", out)
         self.assertNotIn("CONFLICT TO SETTLE", out)
 
+    def test_with_annotations_off_the_check_stays_inert_with_one_refusal(self) -> None:
+        """`--no-annotations`: an inert control stays on the page (NUI-18).
+
+        The check renders `aria-disabled`, described by the annotations-off sentence, which is
+        said once on the page; no field is offered, and no request count is invented for a store
+        that is not read.
+        """
+        html = self.page(
+            "delete __dashboard.annotate;\n"
+            f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
+        )
+        control = re.search(
+            r'<button\b[^>]*data-next-cockpit-action="reading-ask"[^>]*>([\s\S]*?)</button>', html
+        )
+        self.assertIsNotNone(control, "the check left the page")
+        assert control is not None
+        self.assertIn("Check for drift", control.group(1))
+        self.assertIn('aria-disabled="true"', control.group(0))
+        described = re.search(r'aria-describedby="([^"]+)"', control.group(0))
+        assert described is not None
+        reason = re.search(rf'<p\b[^>]*id="{described.group(1)}"[^>]*>([^<]*)</p>', html)
+        assert reason is not None
+        self.assertEqual(
+            "Annotations are off for this run. Start without --no-annotations to type a goal "
+            "and an expected output here.",
+            reason.group(1),
+        )
+        self.assertEqual(1, html.count("Annotations are off for this run"))
+        self.assertNotIn("data-next-cockpit-held-key", html)
+        self.assertNotIn("model requests recorded", html)
+        # A press is refused on the same sentence, and spends nothing.
+        out = self.run_fixture(
+            ANNOTATED
+            + "delete __dashboard.annotate;\n"
+            + SESSION_ROUTE
+            + """
+await __settle();
+const posts = [];
+const upstream = __fetchImpl;
+__fetchImpl = async (url, init) => { if(String(url) === "/api/reading") posts.push(url);
+  return upstream(url, init); };
+await nextCockpitAskForReading(__dashboard.sessions[0], {enabled: true});
+console.log(JSON.stringify({posts: posts.length,
+  said: (nextCockpitReadingRequests.get("codex:focus-1") || {}).message || ""}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["posts"])
+        self.assertIn("Annotations are off for this run", out["said"])
+
     def test_the_pending_check_says_how_long_it_can_take(self) -> None:
         out = self.run_fixture(
             ANNOTATED
