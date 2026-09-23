@@ -226,8 +226,8 @@ and is not vendored here. Its canonical body lives at `.claude/skills/sync-docs/
 
 ## Parallel Work
 
-Burning down the roadmap means several agents in several git worktrees at once, because the
-`burndown` skill's one-issue-per-branch rule and any useful throughput are otherwise in conflict.
+Burning down a milestone means several agents in several git worktrees at once: a stack of layers
+built serially in one worktree, and independent groups built beside it.
 That is the normal shape of work here, not an exception. Everything below was measured while doing
 it, and each item is a thing that produced a wrong answer rather than a thing that might.
 
@@ -288,7 +288,11 @@ account for.
 **Merges serialize even when builds do not.** A ruleset requires branches be up to date, so landing
 one PR puts every sibling `BEHIND` and each needs `gh pr update-branch` plus a full CI re-run. Plan
 for one cycle per PR and pick the order deliberately: merge the branch that changes the shared file
-first, so the others resolve against it once instead of twice.
+first, so the others resolve against it once instead of twice. A native GitHub stack (`gh stack`)
+avoids most of that: when `main` moves, `gh stack sync` rebases every layer and they re-run in
+parallel, one cycle for the stack, and `gh stack merge --squash` lands the layers atomically. Never
+run `gh pr update-branch` or `gh pr merge` on a stacked branch; the `burndown` skill owns the
+procedure.
 
 **A stale green will mislead you.** A CI run that finished before a branch update is still reported
 green. Check `mergeStateStatus` is `CLEAN` and that the checks belong to the current head before
@@ -336,8 +340,8 @@ Without that pass the lens count would have to rise to compensate.
 
 **One PR per conflict surface, not one per issue.** Issues are units of reasoning; PRs are units of
 merge risk. Five issues became five PRs on that run where three would have done. The only
-constraint that genuinely forces a split is that exactly one PR may touch `cargento_runtime/web/`
-(see Parallel Work). Every extra PR costs a review, a fix round, a CI cycle, and — because a
+constraint that genuinely forces a split is that exactly one line of history may touch
+`cargento_runtime/web/`: one PR, or one stack whose layers build on each other (see Parallel Work). Every extra PR costs a review, a fix round, a CI cycle, and — because a
 ruleset requires branches be up to date — a merge serialization that puts every sibling behind.
 
 **Review the diff in the worktree before opening the PR.** Reviewing after means every PR runs CI

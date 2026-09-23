@@ -1,313 +1,367 @@
 ---
 name: burndown
-description: Use when working the Cargento Actions Front and Center roadmap, choosing what to build next, or closing out a DRC issue.
+description: Use when burning down a milestone of the Cargento Actions Front and Center project to completion, planning how to group and stack its issues, or closing out a single DRC issue.
 ---
 
 # burndown
 
-One roadmap issue, start to finish, with the records left true afterwards.
+Take one milestone, group its issues by the functionality they change, build each group as a layer
+of a GitHub stack, land the stack, reconcile every issue, and repeat until the milestone is closed.
 
 The project is **Cargento: Actions Front and Center** in Linear (team `DRC`):
 <https://linear.app/recce/project/cargento-actions-front-and-center-eed1852b11e6/overview>.
-Its predecessor, the Visibility 2x2 Roadmap, is closed. This skill owns picking and reconciling.
-Invoke the required supporting skills inside the current workflow;
-delegating work to another agent is a separate choice and requires its own authorization.
+Invoke the required supporting skills inside the current workflow. Delegating work to a subagent is
+normal here and is covered by the parallelism rules below.
 
-Invoke the `burndown` skill with no argument to pick and work the next issue, with a `DRC-####`
-identifier to work that issue, or with `--pick` to print the pick and its reasoning and then stop.
+## Invocation
+
+- `burndown "<milestone name>"`: plan the milestone, wait for approval of the plan, then build,
+  land and reconcile group by group until the milestone is complete or blocked.
+- `burndown "<milestone name>" --plan`: print the plan and stop.
+- `burndown "<milestone name>" --merge`: the caller pre-approves the plan and its merges. Still
+  print the plan before the first mutation.
+- `burndown DRC-####`: work that one issue, inside its milestone's plan, as a group of one if it
+  groups with nothing.
+
+The milestone name is resolved against the project with the Linear milestone lookup. Do not hand a
+milestone name to `recce-dev:linear-deep-dive`: its parser treats a string without a team prefix as
+a project search.
+
+Merging to `main` is what closes an issue, and this skill merges. The caller's approval of the plan
+block in step 2 is the authorization for every merge in that plan, and for nothing outside it.
+Approval, and `--merge`, still cover the plan as recomputed when the only changes are discoveries
+filed under step 7's **Discoveries**, a small fix riding an open layer, and issues moving later
+because of `blockedBy`. A new issue in product scope, a changed review tier or a reordered `web/`
+stack needs a fresh yes. The trunk is
+always `main`: never stack on, target or promote a long-lived branch such as `feat/future-ui`.
 
 ## Prerequisites
 
-Picking requires an authenticated Linear capability with read access to the `DRC` team, its
-projects, issues, relations, labels and milestones. A full run also requires:
-
-- Linear write access to update issues, relations, milestones and the project overview after merge.
+- Linear read and write access to the `DRC` team: issues, relations, labels, milestones and the
+  project overview.
 - The `recce-dev:linear-deep-dive`, `superpowers:test-driven-development`, `sync-docs`,
   `sync-project` and `visual-review-and-fix` skills.
-- A browser automation capability, for the two `visual-review-and-fix` passes. This is the one
-  required capability whose absence degrades the run rather than stopping it: say so in the report
-  and name the stages that went unwalked, rather than treating the issue as reviewed.
-- A design-project read capability, whenever the picked issue carries a `## Design reference`
-  section. That section names the tool and the project id. Authorization is typically a slash
-  command, which a dispatched agent cannot run, so an agent that hits a refusal hands it back to
-  the operator rather than proceeding.
-- A Git checkout that can create one branch per issue, run the canonical pre-PR suite, make
-  DCO-signed commits and push to `origin`.
-- GitHub access that can inspect mirrored issues, open a pull request and confirm its merge.
+- `gh` with the `github/gh-stack` extension (`gh extension list`; `gh extension upgrade gh-stack`
+  when it lags upstream), able to push to `origin`, open and merge pull requests.
+- A Git checkout that can create worktrees, run the canonical pre-PR suite and make DCO-signed
+  commits (`git commit -s`).
+- A browser automation capability for the `visual-review-and-fix` walks. Its absence degrades the
+  run rather than stopping it: say so, and name the walks that did not happen.
+- A design-project read capability whenever an issue carries a `## Design reference` section. See
+  [the design reference rules](references/design-reference.md).
 
-If a required capability is unavailable, stop before the affected read or mutation and report the
-missing prerequisite. Do not substitute the stale board export for Linear or reconcile records
-before a merge can be confirmed.
+If a required capability is missing, stop before the read or mutation that needs it.
 
-Stop, everywhere in this skill, means: make no further mutation, say what has already been written
-to Linear and to git, name the branch, the worktree and any server or session you started, then
-wait. It does not mean pick a different issue unless the step says so. The word can fire after the
-issue is `In Progress` with a branch open and a review server up, so leaving that state unnamed is
-how the next agent inherits it.
+## Stop, and when
 
-## 1. Pick
+Stop means: make no further mutation, say what has already been written to Linear and to git, name
+every branch, worktree, stack, pull request, server and subagent this run started, then wait. It
+does not mean switch to other work unless the step says so.
 
-If the design-project read is unavailable, skip issues carrying a `## Design reference` at this
-point and say so in the pick line. Discovering the refusal in step 2 wastes a deep dive, and
-discovering it in step 3 wastes a branch.
+Stop and ask, in one block (what is waiting, the recommended answer, what yes does), when:
 
-Before picking anything, check that the issues closed since your last run carry a step 4 receipt
-comment. One without a receipt is an interrupted reconcile: finish it at step 4 first. This check
-belongs here because the filter below drops everything `Done`, so an unreconciled issue is invisible
-from that point on.
+- an issue needs a decision nobody filed. File the decision issue in this milestone and link it as
+  a blocker. This stops only that issue and its dependents: put the ruling request and the re-plan
+  in one block, and once the re-plan is approved, continue the groups that do not depend on it;
+- a design-project read is refused;
+- a full-adversarial review returns NO-GO;
+- a second correction round is wanted on a layer without a named user-visible regression it closes;
+- CI is red twice on the same head after the suite was green locally;
+- the plan must change;
+- the run passes its estimate by half.
 
-Fetch the project's issues, and page until `hasNextPage` is false. The default page is 50, and the
-predecessor project reached roughly 290 issues, so one page is the recently touched slice rather
-than the backlog. Order by `createdAt`, or filter by state: the default `updatedAt` order shifts under your own cursor while you
-write to Linear, which is how a page-two fetch can disagree with a page-one fetch in the same session.
+Between groups, report measured state only: each pull request with its head SHA and check
+conclusions, the Linear state of each issue read back, the receipts posted, and every worktree,
+server and subagent still alive. Check background work in the same turn you report on it.
 
-Drop on the state **type**, never on a remembered list of names. Drop `completed`, `canceled`,
-`duplicate` and `triage`. The DRC team has eleven states and has gained them over time, so a name
-list in this file goes stale silently: an earlier version of this line said there is no `In Review`,
-and there is one. As of 2026-09-09 the completed types are `Done` and `Ready for Release`, so
-sorting on names alone leaves a merged, unreleased issue as a live pick.
+## 1. Load the milestone
 
-Then, in this order:
+1. Resolve the milestone. Fetch the project's issues ordered by `createdAt`, page until
+   `hasNextPage` is false, and keep those whose `projectMilestone` is this one. The default
+   `updatedAt` order shifts under your own writes.
+2. Classify by state **type**, never by name: `completed`, `canceled` and `duplicate` are finished,
+   `triage` is not yet a candidate, everything else is open. The team's state names change over
+   time.
+3. For every `completed` issue closed by a merge or a ruling, check for a step 6 receipt comment.
+   One without a receipt is an interrupted reconcile: finish it before planning anything new. A
+   `canceled` or `duplicate` issue needs none.
+4. Read the milestone description. `Read before building` carries contract notes keyed by issue ID,
+   `Waits on` names outside blockers, and `Decide before building` names an open question.
+5. Scope is the milestone. An issue in the project with no milestone, or in another milestone, is
+   out of scope even when it is unblocked.
+6. An open issue already `In Progress`, `In Review` or `Ready for Review` has work in flight. Find
+   its branch (`gitBranchName`, `gh pr list --search DRC-####`, `git worktree list`) and its pull
+   request, and plan it as that existing pull request or layer (`gh stack checkout <pr>`); never
+   open a second one. If a live worktree this run did not start holds it, leave it out of the plan
+   and name it.
+7. An issue in the `Blocked` state whose `blockedBy` holds no open issue is a reconcile that never
+   ran: move it out of `Blocked` and plan it.
 
-1. Drop anything with an open blocker. A decision issue that is not `Done` is still a blocker, even when its body records the call. Check `blockedBy`, not prose. Drop the `Blocked` state itself only when `blockedBy` still holds an open issue. A `Blocked` issue with no open blocker is a step 4.4 that never ran, and dropping it here is what keeps it invisible.
-2. Release row: `release:r1`, then `r2`, `r3`, `later`. An issue with no `release:*` label ranks after `later` and is never dropped for lacking one. The current project uses no `release:*` label at all, so this rung ties every issue in it and rule 4 does the separating. An unlabelled issue is never "not real work".
-3. Within that row, prefer an issue whose `move:*` label is not `none`. An issue with no move label ranks as `none` until triage labels it, so this rung only separates issues triage has already reached. Step 2 is what sets the label, which means a fresh issue cannot be discriminated here and falls through to rules 4 to 7. The labels and what they mean are in [the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise).
-4. Then prefer what other open issues are waiting on.
-5. Then risk-adjusted impact from the issue's own score table, highest first. Skip this rung for an issue that has no panel score rather than ranking it last: whole milestones here were filed outside the workshop, and their issues say so in their own Provenance.
-6. Then the smaller estimate.
-7. Tie-break on state: `In Progress`, then `In Review`, then `Ready for Review`, then `Todo`, then `Backlog`.
+## 2. Plan: group, order, estimate
 
-An `In Progress`, `In Review` or `Ready for Review` pick already has work in flight, and the first three rungs of that tie-break are all of that shape. Do not re-run step 2 or open a second pull request. Find its branch from Linear's `gitBranchName` and its PR, read what has landed, and enter at step 3's landing block instead.
+Read each open issue's `blockedBy`, labels, estimate and Scope (the files and views it names). Set
+the `Verification`-labelled issue aside; it runs last.
 
-Move the issue to `In Progress` yourself when you start one. Nothing else does: `linear-deep-dive` owns issue lifecycle, but those rules are in its step 7 and this skill stops it at step 6. An issue left in `Backlog` while you work it is what lets a sibling agent pick the same one.
+**Tag each issue:**
 
-Probes and captures carry no `release:*` label and no score. Give one the earliest release row among the issues it settles, and rank it on what it unblocks rather than on a number it does not have. A probe that settles nothing in an open row is not a candidate.
+- Surface: `cargento_runtime/web/`, the shipped `SKILL.md`, `SECURITY.md` or `HOW_TO_USE.md`,
+  `config.py`, or Python only.
+- Review tier, from **AGENTS.md, "Calibrating Effort"**: full adversarial for the `Security` label,
+  credential handling, data loss, or a change to a boundary `SECURITY.md` names (such as the history
+  prompt-text allowlist); two lenses plus an arbiter otherwise.
 
-Promotion, the one exception to rule 2: pull a foundation or a probe out of a later row only when something it gates sits in the row you are working. A foundation whose dependents are all `r3` and `later` does not promote yet.
+**Group.** Two issues share one pull request when all of these hold: they change the same view or
+the same contract (the same NUI amendment, the same drift block, the same route), one blocks the
+other or neither does, they share a review tier, and their estimates sum to no more than 7 points (L 5 plus S 2).
+A tier is the merge-risk unit; an issue stays the reconcile unit. Keep a full-adversarial issue out
+of a group that would inflate its review with unrelated UI diff.
 
-Print the pick and why in one line before touching anything.
+**Arrange.**
 
-Read state from Linear only. `docs/visibility-2x2/items.json` holds the panel's scores and its `state` fields are deliberately stale, kept as the dated record of what was scored. Use it for scores, never for what is shipped. Where it and the issue's own score table disagree, the issue wins and the drift is worth a line in the pick, because the board file is a dated record and the issue is the live one.
+- Every group that touches `web/` becomes one layer of a single stack, in topological order of
+  `blockedBy`. Exactly one stack whose layers touch `web/` may be in flight; a second web group
+  becomes a higher layer or waits. Layers are linear by construction, so each carries correct byte
+  pins for its own tree.
+- A group that touches none of `web/`, `SKILL.md`, `config.py` or another in-flight group's files
+  is an independent pull request on `main`, built in parallel.
+- A group that touches `SKILL.md` or `config.py` but not `web/` is either a layer of the stack
+  (when a `web/` layer depends on it) or a single pull request that waits until no other in-flight
+  group touches that file. It is never built in parallel with one that does.
+- Order by: an unblocked `Security` or Urgent or High priority group that no `web/` layer depends on
+  lands first, on its own; then the longest estimate-weighted path to the Verification issue; then
+  the smaller estimate. A full-adversarial group goes into the stack only when a `web/` layer
+  depends on it, and then as high as its dependents allow, so the layers below can land without
+  it.
 
-## 2. Understand
+**Estimate.** Give wall clock and tokens at full rigor and at calibrated rigor, from the measured
+run in **AGENTS.md, "Calibrating Effort"**. Review dominates CI here: a CI cycle is about three
+minutes since the parallel runner.
 
-**REQUIRED SUB-SKILL:** Invoke `recce-dev:linear-deep-dive` for the issue and stop it at step 6,
-Propose Approach. This skill owns step 7 onward, so use the analysis and do not continue that
-skill's own workflow.
+**Print the plan** as one block: a table of groups (issues, surface, tier, stack position or
+independent, base), the order, and the estimate. With `--plan`, stop here. Otherwise wait for the
+caller's yes unless they passed `--merge`.
 
-Two carve-outs, because that skill is written for a different repository shape:
+## 3. Understand each issue in the group
 
-- Its step 6 ends by waiting for user confirmation. Stop **at** the proposal and carry it into the
-  next step. Do not wait on an approval nobody is going to give, and do not invent one.
-- Its step 5 offers to add `docs/plans` to `.git/info/exclude` if it is not already ignored. Here
-  `docs/plans` is tracked and `AGENTS.md` owns it. Do not add that exclude. Write scratch analysis
-  to the session scratchpad instead. The exclude is local and invisible in the repository, so the
-  damage surfaces later as a plan document that silently will not stage.
+**REQUIRED SUB-SKILL:** invoke `recce-dev:linear-deep-dive` for the issue and stop it at step 6,
+Propose Approach. This skill owns everything after: issue lifecycle, branches and merging. Its step
+6 waits for confirmation; stop at the proposal instead. Its branch handling creates branches from
+`main`, which is wrong for a stack layer. Write its analysis to the session scratchpad and decline
+its offer to exclude `docs/plans/`: a plan written there is not for this run, and a local exclude is
+invisible to everyone else.
 
-Use what it returns: classification, key files, acceptance criteria, risks. Do not repeat its exploration, and do not restate its rules here; issue lifecycle, branch handling and the read-skeptically discipline are all its.
+If the issue has a `## Design reference`, load
+[the design reference rules](references/design-reference.md) now, before the Mode 1 walk, and
+never write its markup without having read what the section names.
 
-Read the owning milestone as well as the issue. Three of its sections bear on this step and nothing
-else in this skill reads them. `Read before building` carries contract notes left by earlier merges,
-keyed by issue ID, and sometimes a whole brief written at triage: read the bullets naming your issue
-and leave the rest. `Decide before building` can hold an unanswered question your User value brief
-depends on, such as which promise the work extends. `Waits on` says what the group still waits for.
+Move the issue to `In Progress` when you start it. Nothing else does, and an issue left in
+`Backlog` is what lets a sibling agent pick it.
 
-If the issue carries no `journey:*` label yet, draft the stage of your User value brief before the
-walk and hand it over. The walk names the promise from that label, and with none it concludes the
-issue has nothing user-visible and applies the skip row of its own calibration table. The criteria
-below are then sourced from a walk that did not happen.
+Read the milestone's `Read before building` bullets that name the issue, and any ruling the issue
+cites (the `DEC-*` sections of `docs/design-reading-a-session.md`, the `NUI-*` sections of
+`docs/design-next-ui.md`).
 
-If the issue carries a `## Design reference`, read what that section names before the walk as well.
-The criteria the walk produces govern markup that step 3 then checks against the design's own copy,
-so writing them before the design has been opened sources the criteria and the check differently.
-The subsection below says how to read it.
+**REQUIRED SUB-SKILL:** invoke `visual-review-and-fix` in `Mode 1: before development` for every
+issue and let its own calibration table decide how deep to go. The acceptance criteria come out of
+that walk rather than out of the issue text, because a criterion written from source can state the
+wrong thing about what the reader is told. Anything it finds that predates the issue is filed. If
+the walk contradicts the issue's plan, correct the issue before writing code.
 
-**REQUIRED SUB-SKILL:** Invoke the `visual-review-and-fix` skill in its `Mode 1: before development`. Open the
-surface this issue touches and use it as the reader does, before any code is written. Its own
-calibration table decides how deep the walk goes and says plainly when the answer is to skip it, so
-invoke it for every issue and let it choose; do not pre-judge that an issue has nothing visible.
+If the issue carries no `journey:*` label, draft its User value brief before the walk: two
+sentences, who notices and when, then the promise ID and the move from
+[the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise). Set `journey:*` and
+`move:*` to match. At least one acceptance criterion is a property a user can see, with its own
+`Verified by:` clause; when the move is `none`, the brief says instead why no user sees the
+change.
 
-It returns two things this step needs. The acceptance criteria below come out of that walk rather
-than out of the issue text, because a criterion written from source can state the wrong thing about
-what the reader is told. One recorded case produced a criterion no implementation could satisfy: it
-named two files as the things to test and both had been deleted from the tree. A second was a
-delegated verification that was right about the code and wrong about what the reader is told. And anything it finds that predates this issue is filed, never folded
-into the branch you are about to open.
+**A decision issue** has no build. Make the question answerable, recommend one answer, and stop for
+the ruling. It closes when the ruling is written into the documents its acceptance criteria name,
+and that docs change is its layer.
 
-If the walk contradicts the issue's plan, that is not a defect to file. Correct the issue before any
-code is written. A plan has been overturned that way here by one cheap
-observation, and the observation was worth more than the feature. The `visual-review-and-fix` skill
-records the same experience. Neither of us kept the issue reference, so take it as a rule rather
-than as a citation.
+## 4. Build a layer
 
-Then write the issue's **User value** brief, two sentences as its first section: who notices this and when in their day, then the promise ID and the move, in the vocabulary of [the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise). Set the `journey:*` and `move:*` labels to match. At least one acceptance criterion must be a property a user can see, with its own `Verified by:` clause; when the move is `none`, the brief says instead why no user sees this change. Inside the roadmap-burndown workflow these are triage outputs and the gate approves them before Linear is written.
+**REQUIRED SUB-SKILL:** invoke `superpowers:test-driven-development`. Write the failing test first
+and watch it fail.
 
-### If the issue carries a Design reference
+Then, in the layer's worktree:
 
-Some issues carry a `## Design reference` section, and inside it a `### Prompt to use` heading with
-a fenced block beneath it. That fence is an instruction, not an illustration. Both are part of the
-issue's plan.
+1. Run the canonical pre-PR suite from **AGENTS.md, "Pre-PR Checks"**, from there rather than from
+   a copy. Give `scripts/run_tests.py` a `-j` share of the cores when another suite is running.
+2. Invoke `sync-docs` in the layer that ships the behaviour, never once for the whole stack. The
+   shipped `SKILL.md` and `HOW_TO_USE.md` change in the layer that ships what they describe. Never
+   advance `COMPATIBILITY.md`'s `docs-synced-through` marker in a layer.
+3. **REQUIRED SUB-SKILL:** invoke `visual-review-and-fix` in `Mode 2: after development`. Fix what
+   this layer introduced; file what predates it with the base comparison that proves so.
+4. Review the layer at the depth its tier sets, before it is submitted. Reviewing an open pull
+   request costs a second CI cycle. Freeze the stack while a reviewer is reading: a restack rewrites
+   the layers above under them and turns correct findings into false refutations. One correction
+   round per layer is the default; after a round with several fixes, re-check against a live board,
+   because fix rounds here produce about one new defect per four fixes. File what a review defers.
+5. If `sync-docs`, the walk or a review changed a file, run the suite again. `test_documentation`
+   asserts `SKILL.md`, `SECURITY.md` and `README.md`.
+6. Make regenerated byte pins the last commit of any layer that touches `web/`:
+   `python3 scripts/regen_byte_pins.py`, then `--check`. Never compute or resolve a pin by hand.
 
-- Read the files that section names before any markup is written. It names the tool, the project
-  and the exact files, and it carries a dated staleness check because the design lives outside this
-  repository and is editable. Run that check rather than trusting the paths.
-- Hand the fenced prompt verbatim to whatever writes the code, including yourself. It is written to
-  stand alone in a session with no other context, which is why it repeats things the issue already
-  says. Summarizing it defeats the point.
-- The section carries its own precedence rule for the issue, the design and the repository. That
-  rule governs. Do not invent one, and do not assume the design wins because it is more specific.
-- A difference between the surface today and the design is the work. It is not a defect for either
-  walk to file, and Mode 1 is the one that will try: that skill's hard rule is never to promote a
-  Mode 1 finding into the branch, and this is the single exception, because here the gap is the
-  issue's scope. Tell it so when you invoke it. Filing the gap is how one issue turns into a
-  backlog of its own scope. The
-  exemption reaches only what the design deliberately changes: something the design does not
-  address is still a defect, and calling it a design difference is how a real one gets waved
-  through.
-- A design defect the issue does not take up is out of scope. File it. Where the issue does take
-  one up, it is the work, and both current examples do exactly that: one says to match a known
-  compromise or overturn it deliberately, the other says the route the design gives is not good
-  enough. Read the issue before filing anything the design confesses to.
-- An issue with no Design reference has none. Do not go hunting, and do not borrow a sibling's.
-- A section missing its file list, its precedence rule or its staleness check is incomplete, not an
-  invitation. Name the missing part and hand it back. The ban on inventing a precedence rule is
-  exactly a ban on filling that gap yourself.
+Keep CI waiting productive: once a layer is submitted, build the next layer on top of it while its
+checks run.
 
-### Decisions
+## 5. Stack, submit and land
 
-When the picked issue is itself a decision, there is no build and step 3 does not apply. Make the
-question answerable, recommend one answer, and stop for the ruling. The ruling recorded on the issue
-is what step 4.1 treats in place of a merge, the receipt says so instead of naming a merge commit,
-and the `blocks` sweep at 4.4 is the whole of the remaining work. The stop below concerns a decision
-nobody filed, and does not apply to a decision issue you picked deliberately.
+**Build the stack from one worktree.** `gh stack` keeps its tracking data per git directory, and a
+linked worktree has its own, so a stack built across several worktrees does not exist as one. A
+branch checked out in another worktree also cannot be rebased. Builders may work in their own
+worktrees; remove them, or detach them, before adopting their branches.
 
-If it finds the issue needs a decision nobody filed, stop. File the decision issue, link it as a blocker, and pick again. Guessing a product-identity call is how this project ended up with two issues reading as ready to build behind an unwritten policy.
+- Layer by layer in the stack's worktree: `gh stack init --base main <branch-1>`, commit, then
+  `gh stack add <branch-2>` for the next layer, and so on.
+- Adopting existing branches: `gh stack init --base main <b1> <b2> <b3>`, then `gh stack rebase`
+  so each layer contains the one below, resolving pins as below. `init` adopts without rebasing.
 
-## 3. Build
+Name a layer's branch without an issue key unless the layer finishes that issue: Linear links a
+branch named from `gitBranchName` to its issue, and a merge of that branch can close it.
 
-**REQUIRED SUB-SKILL:** Invoke `superpowers:test-driven-development`. Write the failing test first
-and watch it fail. If a test passes the moment you write it, you are testing what already works.
+**Submit.** Submit only layers that have been reviewed: `gh stack submit --auto --open` opens a pull
+request for every unsubmitted layer. After the first submit, update existing layers with
+`gh stack push`. Without `--open` new pull requests are drafts, and a
+draft blocks the stack merge. `submit` writes the title and body only when it creates a pull
+request, so then run `gh pr edit <n> --title "<type>(<scope>): <description>" --body-file <file>`
+for each layer, with scratch files named per branch. Each body carries:
 
-Then run the canonical pre-PR suite from **AGENTS.md, "Pre-PR Checks"**. Run it from there rather than from a copy. A short local copy of that list is how someone passes locally and then fails the required check.
+- `Implements [DRC-####](<issue url>)`, one line per issue, **only on the layer that finishes the
+  issue**. A layer that delivers part of an issue says `Part of [DRC-####](<issue url>)`, because
+  Linear moves an issue to Done the moment any merged pull request says it implements it.
+- A `## Verification` section naming what ran and what it said.
+- `Closes #NNNN` only for a real GitHub issue, one line each.
 
-Then invoke the `sync-docs` skill, which is a step of that gate and not optional.
+An independent group is an ordinary pull request on `main`: `gh pr create`, then land it as below.
 
-**REQUIRED SUB-SKILL:** Invoke the `visual-review-and-fix` skill in its `Mode 2: after development`, in the
-worktree, **before you push**. It re-walks what it walked in step 2 and checks the regression
-classes this repository has actually shipped, including the ones a green suite cannot see. Anything
-your change introduced is fixed here; anything that predates it is filed with the base comparison
-that proves so.
+**Fix a lower layer.** `gh stack checkout <branch-k>`, commit with `-s`, then
+`gh stack rebase --upstack`. When a rebase stops on one of the three byte-pin test files, take
+either side, run `python3 scripts/regen_byte_pins.py`, `git add` the result, and
+`gh stack rebase --continue`. Resolve a conflict in a `web/` asset itself by hand, then regenerate.
+Then check out each layer above from the bottom up and run `regen_byte_pins.py --check` and the
+suite; where `--check` fails with no textual conflict, regenerate, amend that layer's pin commit and
+`gh stack rebase --upstack` from it. Then `gh stack push`. Only layer k and the layers above
+it re-run CI. A clean rebase can still break at runtime: grep the renamed symbols across every
+layer.
 
-When the issue carried a Design reference, carry the design's copy and its states into that walk
-yourself and check them there. `visual-review-and-fix` has no design step and is never handed the
-reference, so an instruction addressed to it is one both sides skip. A string the design specifies
-and the build paraphrases is a finding, because the copy on these surfaces is what says how far the
-evidence goes.
+**Main moved** (an independent pull request landed, or a sibling): once no review is reading the
+stack, `gh stack sync`. It pushes every layer, and in a non-interactive shell it aborts on a
+diverged branch rather than guessing. On a conflict,
+`gh stack rebase` and resolve as above, then `gh stack push`. All layers re-run in parallel, which
+costs one CI cycle, not one per layer.
 
-Before the push rather than after, because reviewing an open PR costs a second full CI cycle:
-green, blocked, fixed, green again, measured at about fifteen minutes of waiting per PR.
+**Merge only when every layer is ready:** `gh stack view --json` shows no rebase needed; every
+layer's checks are green on its **current** head SHA (a run that finished before a push still
+reports green); `mergeStateStatus` is `CLEAN`; and every review thread on every layer is resolved,
+because the ruleset requires thread resolution and one open thread fails the whole atomic merge.
+Read Copilot's inline comments, not only top-level reviews. Disposition each thread (fix it with
+the lower-layer procedure, or reply and file it), then resolve it; a `BLOCKED` state with no failing
+check means an open thread. Then:
 
-PR body: open with the Linear link, `Implements [DRC-####](url) — <issue title>`, one such line per issue when the PR carries more than one, and include a `## Verification` section naming what you ran and what it said. Add `Closes #NNNN` only if a mirrored GitHub issue actually exists, one line per issue, never comma separated.
+```bash
+gh stack merge --squash --yes
+gh stack sync --prune
+```
 
-Then land it.
+Always pass `--squash`. Without it `gh stack merge` uses your last-used method, and the ruleset
+allows only squash and rebase. Squash is the repository's method: six native stacks, the largest
+fifteen layers, landed this way with verified signatures and one push run on `main` per stack.
 
-If `sync-docs` or the Mode 2 walk changed any file, run the suite again before you push. `SKILL.md`,
-`SECURITY.md` and `README.md` are all asserted by `test_documentation`, so a docs pass can turn a
-branch red after the gate you already ran on it.
+**Land part of a stack** when a higher layer is failing and its fix will take a while:
+`gh stack merge <highest-green-pr> --squash --yes`. GitHub rebases and retargets the rest, which
+changes their heads: `gh stack sync`, then wait for CI on the new heads before merging again.
 
-Pick the review depth from **AGENTS.md, "Calibrating Effort"** rather than giving every PR the same
-treatment. File what a review defers; never promote it into the PR in flight.
+**Never, on a stacked branch:** `gh pr merge` (it merges a layer into its parent branch, which
+Linear reads as done while the code is off `main`: measured, PR #178 into a feature branch moved
+DRC-4219 to Done in three seconds), `gh pr update-branch`, a plain `git rebase origin/main`,
+`--delete-branch`, or the server-side "Rebase stack" button, whose commits are unsigned. A pull
+request whose base is another feature branch but is not in a native stack gets closed when its base
+is deleted (#251 and #252); link it with `gh stack link` or do not create it.
 
-Before merging, confirm `mergeStateStatus` is `CLEAN` and that the green checks belong to the
-current head. A run that finished before a branch update still reports green. If the branch is
-behind, run `gh pr update-branch` and wait for the new run rather than reading the old one.
+For an independent pull request: confirm `CLEAN` and current-head checks, then
+`gh pr merge <n> --squash --delete-branch`, after removing any worktree that holds the branch. If
+it is behind, `gh pr update-branch` and wait for the new run.
 
-## 4. Reconcile, after the merge
+## 6. Reconcile every issue that landed
 
-This is why the skill exists. Roadmap work here has repeatedly desynced: a milestone claiming nothing had shipped after two of its items did, an issue held behind a decision it no longer depended on, a decision issue still blocking work after it closed. All six steps, in order, and only once the merge is confirmed.
+Only once the merge is confirmed on `origin/main`, and once per issue, in `blockedBy` order:
 
-1. Move the issue to `Done`. Not before the merge.
-2. **REQUIRED SUB-SKILL:** invoke `sync-project` for the milestone and the project overview. It owns
-   what those surfaces say and, more to the point, what they stop saying. Do not write a dated
-   "what shipped" section into either one: the pull request is where that lives, and appending one
-   per merge is how the overview reached 25,000 characters before the 2026-09-08 cleanup cut it by
-   about 86 percent. The 88 percent figure in `sync-project` is the overview and the milestones
-   together; do not requote it of the overview alone. Take the milestone's `What is left` line for this issue out, and correct
-   anything the merge made false.
-3. If the merge changed a contract a *remaining* item builds on, say so in one line under a
-   `## Read before building` section, on the milestone of the item that must read it. That is not
-   always the milestone of the issue you just closed. One bullet per item, keyed by its ID, as
-   `- DRC-1234: the note`, so the reader in step 2 can tell which bullets are addressed to them.
-   Delete a bullet once its ID reaches `Done`: nothing else prunes them, and a milestone that
-   accretes them is the 25,000-character failure in miniature. This is the only build history a
-   milestone keeps, and it earns its place by changing what the next builder does.
+1. Confirm the issue is `Done` and its change is on `origin/main`. Linear's automation usually got
+   there first. An issue a `Part of` layer delivered only partly stays `In Progress`; move it back
+   if the automation flipped it anyway, and reconcile it only when its finishing layer lands.
+2. **REQUIRED SUB-SKILL:** invoke `sync-project` for the milestone and the project overview. Take
+   the issue's `What is left` line out and correct anything the merge made false. Never write a
+   dated "what shipped" section; the pull request holds that.
+3. If the merge changed a contract a remaining item builds on, add one bullet under the milestone's
+   `## Read before building`, as `- DRC-1234: the note`, on the milestone of the item that must
+   read it. Delete a bullet once every issue it names reached `Done`. `sync-project` preserves this section, but
+   it rewrites from its template, so confirm the section survived step 2.
+4. Check the issue's `blocks`. Move anything newly free to `Todo`, including out of `Blocked`.
+5. Where the closed issue still blocks an open issue, replace the edge with `relatedTo`. Leave an
+   edge between two closed issues alone: it records what waited on what.
+6. If the move was `extend` or `new`, draft the promise wording change for `sync-docs` (the two
+   repository copies) and `sync-project` (the Linear copy). For `keep` or `sharpen`, say no wording
+   changes.
 
-   `sync-project`'s milestone template carries this section and names it as content to preserve,
-   which is what stops item 2 above from deleting it on the way past. That skill still rewrites from
-   the template rather than trimming in place, and item 2 runs immediately before this one, so
-   confirm the section survived before adding to it and put it back if it did not.
-4. Check the closed issue's `blocks`. Move anything newly free to `Todo`.
-5. If the closed issue still blocks something that no longer depends on it, remove the relation, and add
-   `relatedTo` in its place so the closed evidence stays reachable from the item it unblocked. A closed
-   issue holding a live gate reads as a real blocker to everyone.
+Post the receipt as a comment on the issue: all six items in order, "not applicable, because ..."
+for any that did not apply, the pull request and the merge commit. A receipt names only its own
+issue, because a comment naming another issue adds a `relatedTo` edge. Read the relations back
+after each write; Linear can echo a stale save and lag on the next read.
 
-   **Only when the blocked side is still open.** An edge between two closed issues gates nothing and is
-   part of the record of what waited on what, so leave it. Removing those turns a satisfied dependency
-   into no dependency, which is a different and less true statement. The rule exists because an audit
-   found six such edges and the honest question was whether to sweep them or say why not; this is the
-   why not.
-6. If the issue's move was `extend` or `new`, draft the change to the promise wording. `sync-docs`
-   owns the two in-repository copies and `sync-project` owns the Linear one, so hand it to both and
-   land the repository half in the next docs PR. A `keep` or `sharpen` merge changes no promise
-   wording; say so rather than leaving it implied.
+## 7. Next group, or close the milestone
 
-Then report on all six, in order, and say "not applicable, because ..." for any of items 3, 5 and 6
-that did not apply. Four no-ops and six no-ops are indistinguishable otherwise, and items 3 and 5 are
-the two whose omission produced the evidence at the end of this file.
+Tear down what the group started, scoped to what this run started: its review servers, worktrees
+(before their branches), and subagents. Never bind, stop or kill a dashboard the run did not start.
 
-Post that report as a comment on the Linear issue before reporting the issue closed. It is the
-receipt: it lives in the system the reconcile is about, it outlives this session, and it is what
-step 1 looks for. An issue that is `Done` with no receipt is an interrupted reconcile, so resume it
-at step 4 before picking anything new. The roadmap-burndown workflow requires the same receipt and
-learned the ordering the hard way; see [its README](../../../docs/roadmap-burndown/README.md).
+Then refetch the milestone (issues move outside this session), recompute the plan, and continue. A
+changed plan needs approval as in step 2.
 
-## 5. Continue or stop
+**Discoveries.** A defect this milestone's work created, or a gap a review deferred, is filed in
+this milestone with a `blocks` edge to the Verification issue, and burned in this run. A small fix
+may ride the next open layer instead. A pre-existing defect is filed in the project with no
+milestone and labelled `discovered-by-agent`, and the report names it.
 
-Stop after one issue unless the caller asked to keep going.
+**The Verification issue runs last,** once every other milestone issue is finished, on a live board
+built from `origin/main`. It closes on its verdict comment, since a clean walk has no pull request.
+Each defect it finds is fixed or filed as above.
 
-Either way, tear down what this issue started first: the review server, the worktree, and any
-session you delegated to. `AGENTS.md` measured thirteen surviving daemons driving the load average
-to 18, and that load is what produces the loopback-port and socket-timeout failures a later run
-reads as regressions. Scope the teardown to what you started.
+**The milestone is complete** when every issue's state type is `completed`, `canceled` or
+`duplicate`, every `completed` issue closed by a merge or a ruling has its receipt, and the
+Verification issue closed last. Then invoke `sync-project` to rewrite the
+milestone to its three-line complete form and clear its `Read before building` bullets, and report
+the issue count, pull request count and date range.
 
-If the caller asked to keep going, then go back to step 1 with a fresh fetch, because issues move outside this session.
+**The milestone is blocked** when no open issue can start: name each blocker and stop.
+
+## Parallel work
+
+Read **AGENTS.md, "Parallel Work"** before starting a second builder, and hand its contention list
+to every one.
+
+- The `web/` stack is built serially in one worktree. Its layers depend on each other's trees.
+- An independent group may run in its own worktree with its own subagent, its own review-server
+  port, and a `-j` share of the cores.
+- Dispatch subagents from the repository root and confirm each produced work before calling it
+  running.
+- A loopback-port failure under concurrent suites is contention, not a regression: rerun that module
+  alone before believing it.
 
 ## Hard rules
 
-Never edit a version field. The tag-driven Release workflow owns them and `version-guard` fails any PR that changes one.
+- Never edit a version field. The Release workflow owns them.
+- Never report an issue closed before its change is on `origin/main`, except a decision issue
+  (closed by its ruling's docs change) and a Verification issue (closed by its verdict).
+- Never merge a stack layer on its own with `gh pr merge`; land stacks with `gh stack merge --squash`.
+- Never resolve a byte pin textually; regenerate from the assets.
+- Never trust one page of Linear issues, or a state name instead of a state type.
+- Never widen an issue's scope to make it feel complete. File the rest.
+- Never promote a deferred review finding into the layer in flight when it costs another CI round.
 
-Never mark an issue `Done` before its PR is merged to `main`. A decision issue is the one exception, because it never has a PR: the ruling recorded on the issue is what closes it.
+## Why step 6 is written the way it is
 
-One branch per issue. One PR per conflict surface. These are not in tension, because two branches may land as one pull request, and **AGENTS.md, "Calibrating Effort"** owns why they often should: an extra PR costs a review, a fix round, a CI cycle, and a merge serialization that puts every sibling behind.
-
-The one constraint that forces a split runs the other way. Exactly one PR may touch `cargento_runtime/web/`. Before opening a PR that touches it, check whether one is already in flight; if so the second issue rides that PR or waits for it. Most of this project's remaining UI work touches that directory, so this is the common case rather than the exception. Never resolve the frontend byte pins textually: recompute all three from the assets, because in a conflict each side is correct for a tree that no longer exists.
-
-If a second problem turns up mid-issue, file it and carry on. Several issues at once means several worktrees, which is normal here and has its own failure modes: read **Parallel Work** in `AGENTS.md` before starting the second one, and hand its contention list to every builder. An agent that has not been told will report a loopback-port collision as a regression.
-
-Never write markup for an issue carrying a `## Design reference` without having read what it names.
-The section exists because the design is not in this repository and can move without warning. An
-implementer who skips it ships a surface that looks finished and matches nothing.
-
-Never trust one page of Linear issues. The default page is 50, and a project here outgrows it.
-
-Never widen scope to make an issue feel complete. The board's estimates assume the narrow reading.
-
-## Why step 4 is written the way it is
-
-Evidence, as of 2026-08-21, for anyone tempted to skip it:
-
-C6 sat behind DEC-2 after a rewrite removed its need for one, so a 56 risk-adjusted item read as blocked. E4 and E5 read as ready to build while needing a security amendment nobody had filed. *Don't be the bottleneck* said no item had shipped after B3 and B7 both had. DEC-1 closed and kept a `blocks` edge on E7, so a closed decision was still gating live work.
-
-Each of those was one edit away from being right and nobody made it, because closing an issue felt like finishing.
-
-That account was written from the reconcile that produced it, in PR #128, and the six closed-to-closed edges at step 4.5 come from the audit recorded in PR #147. Linear keeps no description history, so the milestone wording described here cannot be re-read now. Treat this section as the reason for the rule rather than as figures to requote.
+Roadmap work here has repeatedly desynced when closing an issue felt like finishing: a milestone
+claiming nothing had shipped after two of its items had, an item held behind a decision it no longer
+needed, and a closed decision still holding a `blocks` edge on live work (PR #128's reconcile). Six
+closed-to-closed edges found by the audit in PR #147 are why item 5 leaves those alone. Each was one
+edit away from right. The receipt exists so an interrupted reconcile is visible to the next run.

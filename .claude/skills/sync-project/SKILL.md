@@ -128,7 +128,7 @@ Nothing. [Or the gate, linked.]
 - [ID]: the one line that changes what that item's builder does.
 ```
 
-`Read before building` is written by the `burndown` skill at its step 4.3 and read at its step 2.
+`Read before building` is written by the `burndown` skill at its step 6.3 and read at its step 3.
 Preserve it through a rewrite, keyed by ID, and drop a bullet whose ID has reached `Done`. It is the
 one exception to the no-build-history rule, and it earns it by changing what the next builder does
 rather than by recording what the last one did.
