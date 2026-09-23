@@ -1215,6 +1215,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-session-departures-count",
         ".next-session-departures-why",
         ".next-departure-reentry-why",
+        ".next-operation-goal-link",
         ".next-session-detail-instruction",
         ".next-session-facts dd",
         ".next-session-health",
@@ -1346,7 +1347,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # The one duplicate is unchanged, so the rule count still exceeds the
         # selector count by exactly one. DRC-4642 then added one:
         # `.next-departure-reentry-why`, the limit sentence beside a departure.
-        self.assertEqual(106, len(above))
+        # DRC-4637 adds the goal link at the body floor; no selector moved down.
+        self.assertEqual(107, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1900,16 +1902,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "81e7f6490f9d6c2e128549aff8bb54c2f6bebaec15b03bfebe3e057b4ef8f587",
             ),
             "next-chrome.js": (
-                41_042,
-                "5ff3112576b953b194715a474b87a205e52dfa4cfbc547da7d5638afe00a39bc",
+                41_434,
+                "7af1dd2cfe9b3e3274de234fbb19e4c918a7b7eb12fe9580a5468b15527c6557",
             ),
             "next-capacity.js": (
                 32_261,
                 "986a0b0d74771bbb9f1d9df520dbb6c91d5916685fe365a64eff61c29acab7cc",
             ),
             "next-sessions.js": (
-                22_456,
-                "88758b83d86618efd56fccea31d04c6c3e74017cadc3826e86c9dbe5948293b9",
+                27_155,
+                "6389a5fa59532065cf5b610633adcb8f21ce22894235406c2a11c899ca63e960",
             ),
             "next-projects.js": (
                 5_829,
@@ -1944,8 +1946,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                240_133,
-                "618e4a1b4864110c91ec49823a43c40752af0165680e6f9505ef1305bdaf76df",
+                240_144,
+                "dbffd7458788944f72ca5954ca28d09946a8996c94f3cb903689a785a7271840",
             ),
             "next-render.js": (
                 12_231,
@@ -1964,16 +1966,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(141_204, len(styles))
+        self.assertEqual(142_047, len(styles))
         self.assertEqual(
-            "646bc424f104f59b52a26654c9d04d1d019dbd4efa905bdba8fe9eec41cbb397",
+            "3b74058f27a333a267cf6f8b0377e5608df08ca11bb5bb6679da425fb0d01fcf",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_072_474, len(assembled))
+        self.assertEqual(1_078_419, len(assembled))
         self.assertEqual(
-            "de2e94967c3d6c0efb47eeefb9ae1dee854dd04bcb404499ae5b4243a364d4d1",
+            "ad54fa4e2abadd6ae9864a54554f87c6eb70bb6fac6158e1750532da16b5c18c",
             hashlib.sha256(assembled).hexdigest(),
         )
 
