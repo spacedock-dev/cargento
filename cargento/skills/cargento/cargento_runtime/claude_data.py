@@ -502,27 +502,17 @@ def hook_user_event(
     return (True, last_user_event(config, state, real_path))
 
 
-# Record types that carry no conversation. A transcript made only of these is a
-# harness artifact rather than a session: measured 2026-09-23, 438 of 765 files
-# in one project directory were a single `ai-title` record (DRC-4645), and every
-# other conversation-free file in the same sweep was one of the rest. A record
-# of any type not named here, including one with no type, keeps the file a
-# session, so a new harness record type fails toward showing a row.
-METADATA_RECORD_TYPES = frozenset(
-    {
-        "ai-title",
-        "agent-name",
-        "attachment",
-        "file-history-snapshot",
-        "last-prompt",
-        "mode",
-        "permission-mode",
-        "pr-link",
-        "progress",
-        "saved_hook_context",
-        "system",
-    }
-)
+# Record types that carry no conversation and never open a live session. A
+# transcript made only of these is a harness artifact: measured 2026-09-23,
+# 438 of 765 files in one project directory were a single `ai-title` record
+# (DRC-4645), and `ai-title`, `agent-name` and `pr-link` covered 471 of the 488
+# conversation-free files across every project. Session-start records (`mode`,
+# `permission-mode`, `attachment`, `last-prompt`, `system`, `progress`,
+# `file-history-snapshot`) are deliberately absent: a session opened and not
+# yet prompted writes exactly those, for up to 85 minutes in the same sweep,
+# and it must keep its row. Any record outside this set, or with no string
+# type, keeps the file a session.
+METADATA_RECORD_TYPES = frozenset({"ai-title", "agent-name", "pr-link"})
 
 
 def has_conversation(config: RuntimeConfig, state: RuntimeState, path: str) -> bool:
@@ -530,8 +520,9 @@ def has_conversation(config: RuntimeConfig, state: RuntimeState, path: str) -> b
 
     Only a file that fits inside the bounded prefix is ever classified as
     metadata, because a longer one cannot be judged without reading it all.
-    A True answer is final (transcripts only append); a False answer is keyed
-    on the file's stat and recomputed when it changes.
+    A True answer read from a complete file is final (transcripts only
+    append); an empty or mid-write file is re-read next pass, and a False
+    answer is keyed on the file's stat.
     """
     try:
         stat = os.stat(path)
@@ -542,13 +533,14 @@ def has_conversation(config: RuntimeConfig, state: RuntimeState, path: str) -> b
         cached = state.conversation_cache.get(path)
     if cached is not None and (cached[1] or cached[0] == key):
         return cached[1]
-    result = True
     try:
         data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
     except OSError:
         return True
-    if stat.st_size <= len(data):
-        types: set[object] = set()
+    if stat.st_size > len(data):
+        result, settled = True, True
+    else:
+        types: set[str | None] = set()
         for line in data.split(b"\n"):
             if not line.strip():
                 continue
@@ -556,13 +548,18 @@ def has_conversation(config: RuntimeConfig, state: RuntimeState, path: str) -> b
                 rec = json.loads(line)
             except ValueError:
                 types.add(None)
-                break
-            types.add(rec.get("type") if isinstance(rec, dict) else None)
+                continue
+            kind = rec.get("type") if isinstance(rec, dict) else None
+            types.add(kind if isinstance(kind, str) else None)
         result = not types or not types <= METADATA_RECORD_TYPES
-    with state.cache_lock:
-        runtime_state.bounded_put(
-            state.conversation_cache, path, (key, result), limit=config.max_cache_entries
-        )
+        # A True read from an empty or torn file may only mean the harness had
+        # not finished writing; it is not cached, so the next pass decides.
+        settled = not result or (bool(data) and data.endswith(b"\n"))
+    if settled:
+        with state.cache_lock:
+            runtime_state.bounded_put(
+                state.conversation_cache, path, (key, result), limit=config.max_cache_entries
+            )
     return result
 
 

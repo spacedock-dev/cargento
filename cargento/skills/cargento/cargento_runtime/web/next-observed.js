@@ -88,14 +88,16 @@ function nextObservedOwnGoal(source){
 }
 
 /* One dot per member line. Its SHAPE carries the lifecycle, so the three read
-   apart in greyscale and without the pulse: working is filled, quiet is a
-   neutral ring whatever its tone, ended is square in its git tone. Tone alone
-   used to decide, and an idle session's `ok` wore the working accent
-   (DRC-4646). */
+   apart in greyscale and without the pulse: working and blocked are filled
+   whatever their tone, quiet is a ring, ended is square. A quiet ring drops
+   only the `ok` accent; a quiet session carrying a risk keeps its colour, and
+   one holding an exact request is blocked rather than quiet. Tone alone used
+   to decide, and an idle session's `ok` wore the working accent (DRC-4646). */
 function nextSessionDot(session){
-  const life = session.isEnded ? " next-project-dot--ended" :
-    (session.isQuiet ? " next-project-dot--quiet" : (session.isLive ? " next-project-dot--working" : ""));
-  return `<span class="next-project-dot next-project-tone--${esc(session.tone)}${life}" ` +
+  const shape = session.isEnded ? " next-project-dot--ended" :
+    (session.isQuiet && !session.askKnown ? " next-project-dot--quiet" : " next-project-dot--filled");
+  const pulse = session.isLive ? " next-project-dot--working" : "";
+  return `<span class="next-project-dot next-project-tone--${esc(session.tone)}${shape}${pulse}" ` +
     `role="img" aria-label="${esc(session.state)}"></span>`;
 }
 
@@ -166,14 +168,17 @@ function nextObservedSession(source, asks, harness, generated, shared){
     resume_id: source.resume_id == null ? null : source.resume_id,
     ...nextObservedPair("title", source.title, "Title not published"),
     ...nextObservedPair("prompt", source.last_prompt, "Last prompt not published"),
-    // A quiet row replaces the collector's idle detail ("awaiting your
-    // message") with its quiet age: P1 says a recent observation cannot prove
-    // the harness is still open, so a day-old idle row cannot claim to be
-    // waiting (DRC-4646). With no detail published, the absence stands, which
-    // is what the scan-only rows ruling needs (docs/design-scan-only-rows.md).
+    // A quiet row states how long ago it was last active in place of the
+    // collector's "awaiting your message": P1 says a recent observation cannot
+    // prove the harness is still open, so a day-old idle row cannot claim to
+    // be waiting (DRC-4646). Scanned and hook-read idle rows get the same
+    // words, which docs/design-scan-only-rows.md requires. A session holding
+    // an exact request is not quiet, and with no timestamp the old reading
+    // stands, minus the waiting claim.
     ...nextObservedPair("now", ended ? "Session reported its own end" :
       (stateKnown ? (doing ? doing.subject :
-        (quiet && nextObservedString(source.state_detail) ? (quietFor ? `quiet · ${quietFor}` : "quiet") :
+        (quiet && !question ? (quietFor ? `last active ${quietFor} ago` :
+          (nextObservedString(source.state_detail) ? "quiet" : "")) :
           source.state_detail)) : ""),
     stateKnown ? "Activity not published" : "No state published"),
     ...nextObservedPair("next", pending && pending.subject, "No pending step published"),

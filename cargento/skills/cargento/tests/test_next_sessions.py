@@ -473,7 +473,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("idle/mid", row)
         self.assertNotIn("Historical assignment", row)
         self.assertNotIn("next-operation-assignment", row)
-        self.assertIn("Activity not published", self.fact(row, "now"))
+        self.assertIn("last active 20m ago", self.fact(row, "now"))  # DRC-4646
         self.assertIn(">QUIET</span>", row)
         for fact in ("next", "blocked"):
             self.assertNotIn(f'data-next-operation-fact="{fact}"', row)
@@ -776,7 +776,7 @@ class NextSessionsUnreadSourceTest(NextPageJsHarness):
 
         # DRC-4646: a quiet row states its quiet age, not the collector's
         # "awaiting your message", which no hour-old observation can back.
-        self.assertIn("quiet · 1h 0m", row)
+        self.assertIn("last active 1h 0m ago", row)
         self.assertNotIn("awaiting your message", row)
         self.assertNotIn("Source not fully read", row)
 
@@ -894,7 +894,7 @@ class NextSessionsScanOnlyTest(NextPageJsHarness):
         # on every idle row, which is Idle restated rather than qualified.
         row = self.row(self.view(self.EVENTED), "claude-1")
 
-        self.assertIn("Activity not published", row)
+        self.assertIn("last active 6m ago", row)  # DRC-4646
         self.assertNotIn("Read by scanning", row)
 
     def test_the_sentence_is_the_only_thing_the_two_idle_rows_differ_by(self) -> None:
@@ -906,7 +906,7 @@ class NextSessionsScanOnlyTest(NextPageJsHarness):
         assert evented is not None
 
         self.assertEqual(scanned.group(0), evented.group(0))
-        self.assertIn("Activity not published", scanned.group(0))
+        self.assertIn("last active 6m ago", scanned.group(0))  # DRC-4646
         self.assertNotIn("<strong>—</strong>", scanned.group(0))
 
     def test_the_sentence_explains_itself_without_leaving_the_row(self) -> None:

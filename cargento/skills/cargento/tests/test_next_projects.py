@@ -808,7 +808,7 @@ console.log(JSON.stringify(lines(html)));
         self.assertNotIn("next-project-dot--quiet", dot["gone"])
         self.assertIn("next-project-tone--want", dot["gate"])
         self.assertNotIn("next-project-dot--quiet", dot["gate"])
-        self.assertIn("quiet · 23h 0m", by["quiet"])
+        self.assertIn("last active 23h 0m ago", by["quiet"])
         self.assertNotIn("awaiting your message", by["quiet"])
         self.assertIn("waiting for your input", by["gate"])
 
@@ -817,7 +817,73 @@ console.log(JSON.stringify(lines(html)));
         # ended is square. Colour alone must not be what tells them apart.
         styles = NEXT_STYLES
         self.assertRegex(styles, r"\.next-project-dot--quiet\{[^}]*background:transparent")
+        self.assertRegex(
+            styles,
+            r"\.next-project-dot\.next-project-dot--filled\{[^}]*background:var\(--project-tone\)",
+        )
+        # The fill must outrank the unknown-tone rule, which empties the dot.
+        self.assertLess(
+            styles.index(".next-project-dot.next-project-tone--unknown{"),
+            styles.index(".next-project-dot.next-project-dot--filled{"),
+        )
         self.assertRegex(styles, r"\.next-project-dot--ended\{[^}]*border-radius:1px")
+
+    def test_working_on_a_harness_without_block_reporting_is_still_filled(self) -> None:
+        # Goose, Gemini and Droid publish no block state, so a working row's
+        # tone is unknown; before the fix that drew the same ring as quiet.
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+const html = renderProjects([{sid: "g", harness: "goose", state: "working", last_activity: 99990}]);
+console.log(JSON.stringify(lines(html)[0].body));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("next-project-tone--unknown", out)
+        self.assertIn("next-project-dot--filled", out)
+        self.assertNotIn("next-project-dot--quiet", out)
+
+    def test_an_idle_session_holding_a_request_is_blocked_not_quiet(self) -> None:
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+nextData = null;
+const sessions = [{sid: "asker", state: "idle", last_activity: 99000}, {sid: "w", state: "working"}]
+  .map(s => ({...base, ...s}));
+nextData = {generated: 100000, sessions, ask: true,
+  asks: [{id: "q", session_id: "asker", project: "repo/main", question: "Ship it?"}]};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "projects", project: null, session: null};
+renderNext();
+console.log(JSON.stringify(lines(__els.app.innerHTML)));
+"""
+        )
+        assert isinstance(out, list)
+        asker = next(row["body"] for row in out if row["sid"] == "asker")
+        self.assertEqual("asker", out[0]["sid"])
+        self.assertIn("next-project-dot--filled", asker)
+        self.assertNotIn("next-project-dot--quiet", asker)
+        self.assertNotIn("last active", asker)
+
+    def test_a_risky_quiet_member_is_pinned_past_the_cap_and_keeps_its_colour(self) -> None:
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+const sessions = [{sid: "w", state: "working", last_activity: 99999}];
+for(let i = 0; i < 6; i++) sessions.push({sid: "q" + i, state: "idle", last_activity: 99900 + i});
+sessions.push({sid: "dirty", state: "idle", last_activity: 90000, finished_at: 90000,
+  dirty: true, changed: 3});
+const html = renderProjects(sessions);
+console.log(JSON.stringify(lines(html)));
+"""
+        )
+        assert isinstance(out, list)
+        sids = [row["sid"] for row in out]
+        self.assertIn("dirty", sids)
+        self.assertEqual(["w", "dirty"], sids[:2])
+        dirty = out[1]["body"]
+        self.assertIn("next-project-dot--quiet", dirty)
+        self.assertIn("next-project-tone--bad", dirty)
 
     def test_a_long_project_shows_five_lines_and_names_the_rest(self) -> None:
         out = self._run_page_js(

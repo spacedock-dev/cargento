@@ -25,21 +25,23 @@ function nextProjectSessionLine(session){
 }
 
 /* The member lines an Active project row renders (DRC-4647). Blocked on you,
-   then working, then quiet by most recent activity, then everything else, then
-   ended. Every blocked and working member renders even past the cap, because
-   hiding one would bury the thing the row exists to show; the rest fill up to
+   then working, then any member carrying a risk, then quiet by most recent
+   activity, then everything else, then ended. Blocked, working and risky
+   members render even past the cap, because hiding one would bury what the
+   row exists to show and what turned its rail colour; the rest fill up to
    NEXT_PROJECT_MEMBER_CAP and one count line names what is left. */
 const NEXT_PROJECT_MEMBER_CAP = 5;
 
-function nextProjectMembers(sessions){
+function nextProjectMembers(sessions, risky = []){
+  const risks = new Set(risky.map(nextSessionKey));
   const rank = session => session.isNeeds || session.askKnown ? 0 : (session.isWorking ? 1 :
-    (session.isEnded ? 4 : (session.isQuiet ? 2 : 3)));
+    (risks.has(nextSessionKey(session)) ? 1.5 : (session.isEnded ? 4 : (session.isQuiet ? 2 : 3))));
   const ordered = sessions.map((session, index) => ({session, index})).sort((a, b) =>
     rank(a.session) - rank(b.session) ||
     (rank(a.session) >= 2 ? (b.session.lastActivityAt || 0) - (a.session.lastActivityAt || 0) : 0) ||
     a.index - b.index).map(row => row.session);
-  const pinned = ordered.filter(session => rank(session) <= 1);
-  const rest = ordered.filter(session => rank(session) > 1);
+  const pinned = ordered.filter(session => rank(session) < 2);
+  const rest = ordered.filter(session => rank(session) >= 2);
   const shown = [...pinned, ...rest.slice(0, Math.max(0, NEXT_PROJECT_MEMBER_CAP - pinned.length))];
   return {shown, hidden: ordered.length - shown.length};
 }
@@ -59,7 +61,7 @@ function nextProjectRow(project, history = false){
   const count = `<div class="next-project-summary">${esc(project.countLine)}</div>`;
   const shared = project.sharedLabelKnown
     ? `<div class="next-project-collision">${esc(project.sharedLabelText)}</div>` : "";
-  const members = history ? null : nextProjectMembers(project.sessions);
+  const members = history ? null : nextProjectMembers(project.sessions, project.risky || []);
   const content = history ? identity + count :
     '<div class="next-project-project">' + identity +
     nextProjectValue(project.scopeText, project.scopeKnown, "next-project-scope") + count + shared +
