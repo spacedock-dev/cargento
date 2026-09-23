@@ -22,6 +22,18 @@ from .next_harness import NextPageJsHarness, storage_prelude
 # invisible byte, and so an editor cannot silently eat it.
 NUL_CHAR = "\u0000"
 
+# One standing raise from the unasked lane, for a test that needs the lane-off
+# departures section drawn. With the lane off and nothing on record the section
+# is absent (DRC-4543); a raise on record keeps it, whichever way the switch is
+# set (DRC-4559).
+STANDING_RAISE = (
+    '__dashboard.sessions[0].departures = [{constraint:"TYPED GOAL",'
+    ' clause:"do not change the board while capturing",'
+    ' reading:"Two turns edited the running board.", evidence:"e1", revision:2,'
+    ' cutoff:100, at:101, follow_up:""}];\n'
+    '__dashboard.sessions[0].departure_why = "";\n'
+)
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextCockpitCompositionTest(NextPageJsHarness):
@@ -5747,12 +5759,11 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         self.assertTrue(out["accepted"]["control"])
         self.assertFalse(out["accepted"]["disabled"])
         self.assertTrue(out["unknown"]["disabled"])
-        # The departures block renders whether or not a reading exists. It
-        # carried the DEC-16 sentence and the fact that nothing was raised,
-        # and both were reachable only through a reading nothing produces, so
-        # journey step 4 had no surface at all.
-        self.assertTrue(out["offered"]["departures"])
-        self.assertTrue(out["empty"]["departures"])
+        # No reading, the unasked lane off and nothing on record: no departures
+        # section at all, which is the DRC-4543 ruling restored on the session
+        # page. A panel about a check nobody turned on is noise.
+        self.assertFalse(out["offered"]["departures"])
+        self.assertFalse(out["empty"]["departures"])
         # And no state uses the bare attribute, in either direction: it would
         # take the control out of the tab order and silence the description
         # that carries the reason.
@@ -8347,6 +8358,8 @@ const entries = [{id:"u1", type:"user_message", by:"", source:"root transcript Â
 const withheld = {goal:"do not change the board", revision:1, reading_count:1,
   reading_withheld:"A turn stop was observed and no session end was, so there is no end " +
     "for a reading to rest on. Nothing partial is offered instead."};
+// The lane on, so the departures section draws and says no reading was made.
+nextData.unasked = true;
 const html = nextCockpitReading(session, withheld, entries, model, null, false,
   {state:"read", entries:entries});
 console.log(JSON.stringify({
@@ -8847,7 +8860,12 @@ console.log(JSON.stringify({
             f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
             '__dashboard.sessions[0].departure_why = "";\n'
         )
-        off = self.review("delete __dashboard.unasked;\n")
+        # Off, with a raise standing: the one lane-off state that draws the section.
+        off = self.review(
+            "delete __dashboard.unasked;\n"
+            f"__dashboard.sessions[0].departures = [{self.DEPARTURE}];\n"
+            '__dashboard.sessions[0].departure_why = "";\n'
+        )
 
         self.assertIn("Nothing watches for a departure on its own", off["visible"])
         self.assertNotIn("Nothing watches for a departure on its own", on["visible"])
@@ -9081,10 +9099,11 @@ console.log(JSON.stringify({
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
         )
 
-        values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])
-        self.assertEqual(["not published", "not published", "3", "3", "2"], values)
-        self.assertIn("Nothing watches for a departure on its own", out["visible"])
-        self.assertNotIn("Departures the checks run while you were away raised 0", out["visible"])
+        # Since the DRC-4543 ruling was restored on the session page, nothing on record with
+        # the switch off draws no section at all, so no figure of any kind can stand in for one.
+        self.assertEqual("", out["block"])
+        self.assertNotIn("next-cockpit-count-value", out["html"])
+        self.assertNotIn("raised 0", out["html"])
 
     def test_a_session_the_lane_never_read_gets_no_departure_figure(self) -> None:
         """The same rule as the lane-off case, one layer in.
@@ -9269,16 +9288,20 @@ console.log(JSON.stringify({
         session" under HOW IT WAS RAISED, four lines below the heading saying
         nothing watches for a departure.
         """
-        out = self.review(
-            "delete __dashboard.unasked;\n"
+        delivery = (
             "__dashboard.sessions[0].delivery_departure = {delivery_raises: 1,"
             ' delivery_outcome: "handed-over", delivery_why: "Handed to this machine\'s '
             'notification service, which accepted it."};\n'
         )
+        # The lane on, so the section draws and the gate inside it is what is measured.
+        out = self.review("__dashboard.unasked = true;\n" + delivery)
 
-        self.assertIn("Nothing watches for a departure on its own", out["visible"])
+        self.assertIn("DEPARTURES RAISED TO YOU", out["block"])
         self.assertNotIn("HOW IT WAS RAISED", out["block"])
         self.assertNotIn("which accepted it.", out["block"])
+        # And with it off there is no section to carry the sentence at all.
+        off = self.review("delete __dashboard.unasked;\n" + delivery)
+        self.assertNotIn("which accepted it.", off["html"])
 
     def test_the_outcome_beside_a_departure_is_that_lane_s_and_not_the_board_s(self) -> None:
         """Four lanes write the delivery store and one sentence is published.
@@ -9986,7 +10009,7 @@ console.log(JSON.stringify({rows}));
 
     def test_the_run_config_sentence_names_the_flag_and_the_kind(self) -> None:
         """The `--unasked-readings` paragraph, which AC-5 also holds in place."""
-        rows = self.whys("delete __dashboard.unasked;\n")
+        rows = self.whys("delete __dashboard.unasked;\n" + STANDING_RAISE)
 
         self.assertEqual(
             "run-config", self.kind_of(rows, "Nothing watches for a departure on its own")
@@ -10041,6 +10064,7 @@ renderNext();
         rows = self.whys(
             "delete __dashboard.unasked;\n"
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            + STANDING_RAISE
         )
 
         self.assertEqual("", self.kind_of(rows, "Five figures, and no arithmetic between them"))
@@ -10514,6 +10538,8 @@ console.log(JSON.stringify(seen));
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             + CockpitHeldToTabTest.ANNOTATED
+            # The lane on, so the departures section that defines its noun renders.
+            + "__dashboard.unasked = true;\n"
             + """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
@@ -11402,6 +11428,9 @@ class CaveatTieringTest(NextPageJsHarness):
             "await __settle();\nawait __settle();\n"
             "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            # The lane on, so the departures section these caveats live in renders: with it off
+            # and nothing on record the section is absent (DRC-4543). A setup may delete it.
+            "__dashboard.unasked = true;\n"
             + setup
             + """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
@@ -11519,9 +11548,12 @@ console.log(JSON.stringify({
             with self.subTest(sentence=sentence[:40]):
                 self.assertIn(sentence, emitted)
 
-        out = self.held()
-        html = out["html"]
-        assert isinstance(html, str)
+        # Two boards: the lane on, and the lane off with a raise standing, which is the one
+        # state the lane-off instruction renders in now that an empty off board draws no
+        # departures section.
+        html = str(self.held()["html"]) + str(
+            self.held("delete __dashboard.unasked;\n" + STANDING_RAISE)["html"]
+        )
         rendered = [s for s in self.BASE_CAVEAT_SENTENCES if s in html]
         self.assertEqual(
             sorted(set(self.BASE_CAVEAT_SENTENCES) - self.UNRENDERED_CAVEATS),
@@ -11563,6 +11595,7 @@ console.log(JSON.stringify({
             "await __settle();\nawait __settle();\n"
             "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            "__dashboard.unasked = true;\n"
             """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
@@ -11652,7 +11685,7 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
 
     def test_the_unasked_instruction_needs_no_click(self) -> None:
         """AC-6. Falsified by wrapping the unasked part's first paragraph."""
-        out = self.held("delete __dashboard.unasked;\n")
+        out = self.held("delete __dashboard.unasked;\n" + STANDING_RAISE)
         html = out["html"]
         assert isinstance(html, str)
         part = re.search(
@@ -11775,6 +11808,8 @@ class HeldToOrderingTest(NextPageJsHarness):
             "await __settle();\nawait __settle();\n"
             "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
+            # The lane on, so the departures section renders; a setup may delete it.
+            "__dashboard.unasked = true;\n"
             + self.ANNOTATED
             + setup
             + """
@@ -11889,7 +11924,9 @@ console.log(JSON.stringify({
     def test_the_count_labels_drop_the_repeated_quantity_noun(self) -> None:
         """AC-7. Falsified by rewording any `line()` value argument or collapsing
         the null-to-"not published" branch while relabelling."""
-        out = self.tab("delete __dashboard.unasked;\n__dashboard.sessions[0].departures = [];\n")
+        # The lane on and this session never checked, so both departure figures are unpublished
+        # and the section still draws (with the lane off and nothing on record it does not).
+        out = self.tab("__dashboard.sessions[0].departures = [];\n")
         counts = out["counts"]
         assert isinstance(counts, str)
         labels = re.findall(r'class="next-cockpit-count-label">([^<]*)<', counts)

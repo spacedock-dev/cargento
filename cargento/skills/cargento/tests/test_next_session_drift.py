@@ -147,6 +147,8 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
             f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
             '__dashboard.sessions[0].annotation_binding_why = "Bound to codex:focus-1 by its id.";\n'
+            # The lane on, so the departures section draws and its place can be measured.
+            "__dashboard.unasked = true;\n"
         )
         drift = html[
             html.index("data-next-session-drift") : html.index('class="next-session-facts"')
@@ -304,6 +306,28 @@ await refreshNext();
                 self.assertIn(text, section)
                 self.assertEqual(html.count(text), drift.count(text))
         self.assertEqual(1, html.count("Two turns edited the running board."))
+
+    def test_the_departures_section_draws_only_with_the_lane_on_or_a_departure_on_record(
+        self,
+    ) -> None:
+        """DRC-4543, restored: a panel on every session of a board whose switch is off is noise.
+
+        A raise on record keeps the section whichever way the switch is set (DRC-4559).
+        """
+        states = {
+            "lane off, nothing on record": ("delete __dashboard.unasked;\n", False),
+            "lane on, nothing on record": (
+                "__dashboard.unasked = true;\n__dashboard.sessions[0].departure_checked = true;\n",
+                True,
+            ),
+            "lane off, a raise standing": (UNASKED + "delete __dashboard.unasked;\n", True),
+            "lane off, a reading's departure": ("delete __dashboard.unasked;\n" + READING, True),
+        }
+        for name, (setup, drawn) in states.items():
+            with self.subTest(state=name):
+                html = self.page(setup)
+                self.assertEqual(drawn, "DEPARTURES RAISED TO YOU" in html, name)
+                self.assertEqual(drawn, 'class="next-cockpit-departures"' in html, name)
 
     def test_a_consistent_result_is_shown_only_with_its_evidence_line(self) -> None:
         html = self.page(CONSISTENT)

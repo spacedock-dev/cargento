@@ -1993,7 +1993,15 @@ function nextCockpitDepartures(shape, source, session){
   const laneRows = Array.isArray(session && session.departures) ? session.departures.length : 0;
   /* Once for the section, and only where a departure is drawn: a missing way
      back is worth saying beside the thing it would act on (DRC-4642). */
-  const limit = (reading.count || 0) + laneRows > 0 ? nextDepartureReentryLimit(session) : "";
+  /* Drawn only with the unasked lane on or a departure on record. A panel on
+     every session of a board whose switch is off, saying nothing was raised by
+     a check nobody turned on, is noise (DRC-4543); a raise on record is not,
+     whichever way the switch is set (DRC-4559). A reading the reader asked for
+     keeps it too, even one that raised nothing: its cutoff is printed here and
+     nowhere else, and "raised nothing" is only worth the evidence it read. */
+  const onRecord = (reading.count || 0) + laneRows > 0;
+  if(!onRecord && !shape && !(nextData && nextData.unasked === true)) return "";
+  const limit = onRecord ? nextDepartureReentryLimit(session) : "";
   return '<section class="next-cockpit-departures"><header>' +
     '<h2>DEPARTURES RAISED TO YOU</h2>' +
     `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p></header>` +
