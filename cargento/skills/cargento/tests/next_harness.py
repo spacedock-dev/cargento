@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from cargento_runtime import reading_route
 from cargento_runtime.web import page as frontend_page
 
 from .page_harness import PageJsHarness
@@ -15,6 +16,20 @@ NEXT_PAGE_TEXT = (
     .replace("{{CARGENTO_STYLES}}", NEXT_STYLES)
     .replace("{{CARGENTO_APP}}", NEXT_APP_JS)
 )
+
+
+def published_routes(*harnesses: str, installed: tuple[str, ...] = ("codex",)) -> str:
+    """The server's own `reading_routes` for these harnesses, as a JS literal.
+
+    Resolved by `reading_route` on a machine with `installed` on PATH and the
+    shipped gates, so a fixture carries the sentence a reader would see rather
+    than one written for the test.
+    """
+    routes = reading_route.resolve_all(
+        harnesses,
+        binary_resolver=lambda name: f"/usr/local/bin/{name}" if name in installed else None,
+    )
+    return json.dumps(routes)
 
 
 def storage_prelude(seed: dict[str, str], *, location_hash: str = "") -> str:

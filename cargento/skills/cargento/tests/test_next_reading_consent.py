@@ -16,7 +16,6 @@ class ReadingConsentPageTest(NextPageJsHarness):
         out = self.render("""
 nextData.annotate = true;
 nextData.reading_check = "accepted";
-nextData.reading_disclosure = "Sends your goal and evidence to OpenAI and spends Codex capacity.";
 nextData.reading = {consent:false,reason:"consent-required",used:0,limit:12};
 nextData.sessions[0].annotation_goal = "Ship the parser";
 nextData.sessions[0].annotation_revision = 1;
@@ -41,7 +40,8 @@ console.log(JSON.stringify({first,second,posts,policy:nextData.reading}));
         assert isinstance(out, dict)
         self.assertEqual(0, out["first"]["posts"])
         self.assertLess(
-            out["first"]["html"].index("Sends your goal"),
+            # The server's route for this Claude Code row names its receiver.
+            out["first"]["html"].index("so Codex reads this session"),
             out["first"]["html"].index("Allow and check"),
         )
         self.assertEqual(1, len(out["second"]))

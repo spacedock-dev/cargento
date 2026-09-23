@@ -23,6 +23,13 @@ if TYPE_CHECKING:
 
 DAY_SEC = 86_400.0
 DAILY_CAP = 12
+# One answer per receiver (DRC-4650): allowing Codex to send a reader's words
+# to OpenAI is not allowing Claude Code to send them to Anthropic. Codex keeps
+# the original single-row table, so an answer saved before there were two
+# providers reads as the Codex answer it was, and an older build reading this
+# store still sees it. Every other provider has a row in its own table.
+PROVIDERS = ("codex", "claude")
+LEGACY_PROVIDER = "codex"
 _SQL_ERROR = getattr(runtime_io.sqlite_module, "Error", RuntimeError)
 
 
@@ -32,13 +39,22 @@ class Status(TypedDict):
     limit: int
     retry_at: float | None
     reason: str
+    # Which receivers the reader has allowed, so the page can tell whether the
+    # provider its route names still needs an Allow. `consent` answers for the
+    # one provider the call asked about.
+    providers: dict[str, bool]
 
 
 def store_path(config: RuntimeConfig) -> Path:
     return config.state_dir / "cargento-reading-permission.sqlite3"
 
 
-def _answer(consent: bool = False, dates: tuple[float, ...] = (), reason: str = "") -> Status:
+def _answer(
+    consent: bool = False,
+    dates: tuple[float, ...] = (),
+    reason: str = "",
+    providers: dict[str, bool] | None = None,
+) -> Status:
     full = len(dates) >= DAILY_CAP
     return {
         "consent": consent,
@@ -46,6 +62,7 @@ def _answer(consent: bool = False, dates: tuple[float, ...] = (), reason: str = 
         "limit": DAILY_CAP,
         "retry_at": min(dates) + DAY_SEC if full else None,
         "reason": reason or ("consent-required" if not consent else "daily-cap" if full else ""),
+        "providers": dict(providers) if providers else dict.fromkeys(PROVIDERS, False),
     }
 
 
@@ -62,7 +79,26 @@ def _connect(config: RuntimeConfig) -> Any:
     return runtime_io.sqlite_module.connect(path, timeout=2.0, isolation_level=None)
 
 
-def _transaction(config: RuntimeConfig, now: float, operation: str) -> Status:
+def _allowed(db: Any) -> dict[str, bool]:
+    row = db.execute("SELECT allowed FROM permission WHERE id=1").fetchone()
+    allowed = dict.fromkeys(PROVIDERS, False)
+    allowed[LEGACY_PROVIDER] = row is not None and row[0] == 1
+    for name, value in db.execute("SELECT provider, allowed FROM provider_permission"):
+        if name in allowed and name != LEGACY_PROVIDER:
+            allowed[name] = value == 1
+    return allowed
+
+
+def _write(db: Any, provider: str, allowed: bool) -> None:
+    if provider == LEGACY_PROVIDER:
+        db.execute("INSERT OR REPLACE INTO permission VALUES (1, ?)", (int(allowed),))
+    else:
+        db.execute(
+            "INSERT OR REPLACE INTO provider_permission VALUES (?, ?)", (provider, int(allowed))
+        )
+
+
+def _transaction(config: RuntimeConfig, now: float, operation: str, provider: str) -> Status:
     if not math.isfinite(now) or now <= 0:
         return _answer(reason="store-unavailable")
     with contextlib.closing(_connect(config)) as db:
@@ -71,17 +107,27 @@ def _transaction(config: RuntimeConfig, now: float, operation: str) -> Status:
             "CREATE TABLE IF NOT EXISTS permission (id INTEGER PRIMARY KEY CHECK(id=1), "
             "allowed INTEGER NOT NULL CHECK(allowed IN (0,1)))"
         )
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS provider_permission (provider TEXT PRIMARY KEY, "
+            "allowed INTEGER NOT NULL CHECK(allowed IN (0,1)))"
+        )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
-        row = db.execute("SELECT allowed FROM permission WHERE id=1").fetchone()
-        consent = row is not None and row[0] == 1
+        allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
         dates = tuple(float(row[0]) for row in db.execute("SELECT at FROM spends ORDER BY at"))
         if any(not math.isfinite(at) or at <= 0 for at in dates):
             raise ValueError("Invalid spend timestamp")
-        if operation in {"allow", "off"}:
-            consent = operation == "allow"
-            db.execute("INSERT OR REPLACE INTO permission VALUES (1, ?)", (int(consent),))
-        answer = _answer(consent, dates)
+        if operation == "allow" and provider in allowed:
+            _write(db, provider, True)
+            allowed[provider] = True
+        elif operation == "off":
+            # Every receiver at once: "Turn off readings" and `--forget` name
+            # no provider, and a revocation that left one allowed would not be
+            # the answer the reader gave.
+            for name in PROVIDERS:
+                _write(db, name, False)
+            allowed = dict.fromkeys(PROVIDERS, False)
+        answer = _answer(allowed.get(provider, False), dates, providers=allowed)
         if operation == "reserve" and not answer["reason"]:
             db.execute("INSERT INTO spends VALUES (?)", (now,))
             answer = {**answer, "used": len(dates) + 1}
@@ -89,28 +135,37 @@ def _transaction(config: RuntimeConfig, now: float, operation: str) -> Status:
         return answer
 
 
-def _run(config: RuntimeConfig, now: float, operation: str) -> Status:
+def _run(config: RuntimeConfig, now: float, operation: str, provider: str) -> Status:
     try:
-        return _transaction(config, now, operation)
+        return _transaction(config, now, operation, provider)
     except (OSError, ValueError, RuntimeError, _SQL_ERROR):
         return _answer(reason="store-unavailable")
 
 
-def status(config: RuntimeConfig, *, now: float) -> Status:
+def status(config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER) -> Status:
     if config.model_calls_disabled:
         return _answer(reason="run-disabled")
     if not store_path(config).exists():
         return _answer()
-    return _run(config, now, "read")
+    return _run(config, now, "read", provider)
 
 
-def set_consent(config: RuntimeConfig, allowed: bool, *, now: float) -> Status:
-    return _run(config, now, "allow" if allowed else "off")
+def set_consent(
+    config: RuntimeConfig, allowed: bool, *, now: float, provider: str = LEGACY_PROVIDER
+) -> Status:
+    """Allow one provider, or revoke every provider: off never names one."""
+    return _run(config, now, "allow" if allowed else "off", provider)
 
 
-def reserve(config: RuntimeConfig, *, now: float) -> Status:
-    """Commit a charge before launch; uncertainty about spend never refunds it."""
-    return status(config, now=now) if config.model_calls_disabled else _run(config, now, "reserve")
+def reserve(config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER) -> Status:
+    """Commit a charge before launch; uncertainty about spend never refunds it.
+
+    One rolling budget whichever provider is admitted: two providers must not
+    be a way to double a reader's daily readings.
+    """
+    if config.model_calls_disabled:
+        return status(config, now=now, provider=provider)
+    return _run(config, now, "reserve", provider)
 
 
 class RefusedError(Exception):
@@ -127,16 +182,21 @@ class GuardedModel:
         config: RuntimeConfig,
         model: Callable[..., tuple[str, str]],
         clock: Callable[[], float],
+        *,
+        provider: str = LEGACY_PROVIDER,
     ) -> None:
         self.config = config
         self.model = model
         self.clock = clock
+        self.provider = provider
+        # Passed through, so the refusal names the CLI this press would have used.
+        self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
         available = getattr(self.model, "available", None)
         if available is not None and not available():
             return "", "unavailable"
-        answer = reserve(self.config, now=self.clock())
+        answer = reserve(self.config, now=self.clock(), provider=self.provider)
         if answer["reason"]:
             raise RefusedError(answer)
         return self.model(prompt, output_cap_bytes=output_cap_bytes)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -162,15 +163,21 @@ class AdoptionRouteTest(unittest.TestCase):
             "adopt": "latest-prompt",
             "expected_prompt": "Build the parser",
             "expected_prompt_at": 1700000000.0,
+            # What the page names for a Claude Code session on this build.
+            "provider": "codex",
         }
         body = json.dumps(payload).encode()
         handler.headers = {"Host": "127.0.0.1:4580", "Content-Length": str(len(body))}
         handler.client_address = ("127.0.0.1", 10000)
         handler.server.server_port = 4580
         handler.rfile = io.BytesIO(body)
-        with mock.patch.object(
-            handler, "_compose_reading", return_value=(None, "test", False)
-        ) as compose:
+        codex_on_path = mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}")
+        with (
+            codex_on_path,
+            mock.patch.object(
+                handler, "_compose_reading", return_value=(None, "test", False)
+            ) as compose,
+        ):
             handler._reading()
         self.assertEqual(1, compose.call_count)
         self.assertEqual("Build the parser", compose.call_args.args[1]["revisions"][-1]["goal"])
@@ -186,6 +193,7 @@ class AdoptionRouteTest(unittest.TestCase):
             original_send(*args, **kwargs)
 
         with (
+            codex_on_path,
             mock.patch.object(handler, "_send_reading", side_effect=changed_before_send),
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)

@@ -1216,3 +1216,94 @@ class TheBannerNamesWhatTheBoardNamesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheUnaskedLaneNeverReachesClaudeCodeTest(unittest.TestCase):
+    """DRC-4650, owner ruling 3: the unasked lane stays Codex-backed.
+
+    Even with the Claude Code gate forced open and a Claude Code row, the lane
+    hands `produce` a Codex model and no Claude Code call is ever made. The
+    reader is not at the desk while this runs, so a second receiver here would
+    be one nobody named before the words were sent.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def test_a_claude_code_session_is_checked_unasked_only_by_codex(self) -> None:
+        from cargento_runtime import annotations as annotation_store  # noqa: PLC0415
+        from cargento_runtime import observer  # noqa: PLC0415
+
+        models: list[Any] = []
+        harness = _Harness(_config(self.root), _assessment(reading.RESULT_CONSISTENT))
+
+        def produce(_config: Any, _row: Any, *_args: Any, **kwargs: Any) -> Any:
+            models.append(kwargs["model"])
+            return (harness.assessment, "", True)
+
+        harness.lane.produce = produce
+        with (
+            mock.patch.object(
+                annotation_store,
+                "CLAUDE_ABSTENTION_CHECK",
+                annotation_store.ABSTENTION_CHECK_PASSED,
+            ),
+            mock.patch.object(observer, "claude_exec", side_effect=AssertionError("claude ran")),
+            mock.patch.object(
+                reading, "ClaudeReadingModel", side_effect=AssertionError("claude built")
+            ),
+        ):
+            harness.consider([_row(state="working")])
+            harness.consider([_row(state="idle")])
+        self.assertEqual(1, len(models), "the lane did not read, so this proves nothing")
+        self.assertIsInstance(models[0], reading.CodexReadingModel)
+
+
+class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCase):
+    """Structural half of ruling 3: no summary, lane or context module names it.
+
+    The behavioural test above covers the lane as it runs today; this covers
+    the next caller someone adds, which must come through `http_api` and so
+    through the route resolver and the gate.
+    """
+
+    SKILL = Path(__file__).resolve().parents[1]
+    RUNTIME = SKILL / "cargento_runtime"
+    # The scorer (`scripts/`, DRC-4666's future `--producer`) and the MCP server
+    # sit outside the runtime package, and either would be a caller that never
+    # passes through the route resolver or the gate.
+    SCRIPTS = SKILL.parents[2] / "scripts"
+
+    def _users(self, name: str) -> set[str]:
+        sources = [
+            *self.RUNTIME.rglob("*.py"),
+            *self.SCRIPTS.rglob("*.py"),
+            *self.SKILL.glob("*.py"),
+        ]
+        self.assertIn(self.SKILL / "mcp_server.py", sources)
+        self.assertTrue(any(path.name == "score_abstention.py" for path in sources))
+        return {
+            path.relative_to(self.SKILL.parents[2]).as_posix()
+            for path in sources
+            if name in path.read_text(encoding="utf-8")
+        }
+
+    def test_only_the_reading_route_builds_a_claude_code_model(self) -> None:
+        self.assertEqual(
+            {
+                "cargento/skills/cargento/cargento_runtime/reading.py",
+                "cargento/skills/cargento/cargento_runtime/http_api.py",
+            },
+            self._users("ClaudeReadingModel"),
+        )
+
+    def test_only_the_claude_code_model_calls_the_claude_code_subprocess(self) -> None:
+        self.assertEqual(
+            {
+                "cargento/skills/cargento/cargento_runtime/observer.py",
+                "cargento/skills/cargento/cargento_runtime/reading.py",
+            },
+            self._users("claude_exec"),
+        )

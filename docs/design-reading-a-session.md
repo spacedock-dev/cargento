@@ -696,7 +696,7 @@ amended when DRC-4641 ships the mark, not before, because it describes the shipp
 ## DEC-21: a reading works the first time you ask
 
 Decided 2026-09-23 (DRC-4634). Items 1 and 2 are built by DRC-4640; item 3 by DRC-4649.
-Item 4 remains unbuilt (DRC-4650). [The light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
+Item 4 is built and gated by DRC-4650; the amendment below records what that means. [The light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
 record the current permission and producer boundaries.
 
 On a default run the reading control tells the reader to restart the server with a flag. The press
@@ -728,6 +728,37 @@ request. The press, remembered answer and daily cap now supply that opt-in. The 
 actual or reserved attempts per rolling twenty-four hours, admitted atomically before launch.
 Off/on and `--forget` revoke consent without erasing unexpired spend; otherwise either would be
 a way to refill the budget. A known missing Codex CLI is refused before admission.
+
+### Amended 2026-09-23: Claude Code is built and gated
+
+DRC-4650 builds item 4 and does not offer it. The owner ruled three things on 2026-09-23.
+
+1. The Claude Code producer has its own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, recorded
+   `not-run` because no eligible recorded case exists for it. While it stays there, no route,
+   fallback, unasked lane, goal summary, page or forged request can offer, select or invoke it.
+   Codex's 2026-09-14 `accepted` status was a review of Codex readings, so it does not open this
+   gate.
+2. While Claude Code is gated, Codex keeps reading a Claude Code session on a machine that has
+   Codex, and the disclosure before the press names Codex and OpenAI and says Claude Code checks
+   are built but not yet qualified. On a machine without Codex, "not yet qualified" is a state of
+   its own, worded apart from "not installed". Once the gate passes, item 4 applies as written:
+   the session's own harness first, then the other provider, disclosed before the press, and
+   nothing else.
+3. Qualifying the producer is DRC-4666's work, scorer included. The unasked lane and goal
+   summaries stay on Codex.
+
+One resolver, `reading_route.resolve`, decides the provider from the session's harness and this
+machine. It reads each provider's gate before it looks for that provider's CLI, so a gated
+provider is never even looked up. The page renders the route published for that session's
+harness. The reading route resolves the route again from the payload's harness and refuses a
+press that named a different provider, before it writes consent or reserves an attempt.
+Permission is kept per provider, because allowing Codex to send a reader's words to OpenAI is not
+allowing Claude Code to send them to Anthropic. An answer saved before the split reads as Codex's.
+Turning readings off and `--forget` revoke every provider, and the twelve-attempt rolling cap is
+shared, so a second provider cannot double it. If the CLI is missing at launch, or a call fails,
+nothing else is tried: a fresh press is the only retry. The flags the Claude Code call runs with,
+and the fact that they are CLI restrictions rather than an OS sandbox, are in
+[the light harness usage bounds](../SECURITY.md#claude-code-reading-calls).
 
 ### Where the unasked default stands
 

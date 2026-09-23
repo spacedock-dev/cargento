@@ -19,7 +19,6 @@ import unittest
 from typing import Any
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import reading
 
 from . import test_next_cockpit as cockpit_tests
 from .next_harness import NextPageJsHarness, storage_prelude
@@ -27,6 +26,9 @@ from .next_harness import NextPageJsHarness, storage_prelude
 FIXTURE = cockpit_tests.NextCockpitCompositionTest.FIXTURE
 FOCUS_DOM = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
 ANNOTATED = cockpit_tests.CockpitHeldToTabTest.ANNOTATED
+
+# The first words of the server's own disclosure for this Codex row.
+CODEX_ROUTE_NOTE = "Codex reads this Codex session."
 
 SESSION_ROUTE = (
     'navigateNext({view:"session", project:"cargento", harness:"codex", session:"focus-1"});'
@@ -143,7 +145,6 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         all render below the reading: above the control they pushed it off a 1440x900 screen.
         """
         html = self.page(
-            f"__dashboard.reading_disclosure = {json.dumps(reading.DISCLOSURE)};\n"
             f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
             f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
             '__dashboard.sessions[0].annotation_binding_why = "Bound to codex:focus-1 by its id.";\n'
@@ -156,7 +157,7 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         fields = drift.index('class="next-cockpit-held-fields"')
         direction = drift.index("CURRENT ACTIVITY")
         check = drift.index('data-next-cockpit-action="reading-ask"')
-        disclosure = drift.index(reading.DISCLOSURE.split(".")[0])
+        disclosure = drift.index(CODEX_ROUTE_NOTE)
         the_reading = drift.index("<h2>READING</h2>")
         self.assertLess(fields, direction)
         self.assertLess(direction, check)
@@ -165,7 +166,7 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         # reading starts.
         container = drift[drift.index('class="next-session-drift-check"') : the_reading]
         self.assertIn('data-next-cockpit-action="reading-ask"', container)
-        self.assertIn(reading.DISCLOSURE.split(".")[0], container)
+        self.assertIn(CODEX_ROUTE_NOTE, container)
         for below in (
             "Bound to codex:focus-1 by its id.",
             annotation_store.DISCARD_WHY,

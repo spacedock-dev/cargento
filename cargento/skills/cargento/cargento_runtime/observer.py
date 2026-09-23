@@ -31,7 +31,7 @@ from . import io as runtime_io
 from . import records, spacedock, transcripts
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from .config import RuntimeConfig
     from .state import RuntimeState
@@ -247,6 +247,146 @@ def codex_exec(
         if output_path:
             with contextlib.suppress(OSError):
                 os.unlink(output_path)
+
+
+# The Claude Code reading producer (DRC-4650). A fixed, explicit model id
+# rather than the CLI's default, so a stamp names what read the session and a
+# CLI update cannot silently change it. Unmeasured: whether every signed-in
+# account may use this id. A refusal is an ordinary nonzero exit, `failed`.
+CLAUDE_READING_MODEL = "claude-sonnet-5"
+# Bounded below the CLI's top levels so one reading fits the shared 60-second
+# timeout that `OBSERVER_MODEL_TIMEOUT_SEC` already gives the Codex lane.
+CLAUDE_READING_EFFORT = "high"
+# Passed as a JSON string, which `claude --help` (2.1.280) documents for
+# `--mcp-config` beside files, so no temp file exists to leak or race.
+CLAUDE_EMPTY_MCP_CONFIG = '{"mcpServers":{}}'
+# The markers of the Claude Code session a daemon may have been started from.
+# The 2.1.280 CLI deletes these itself before it spawns a fresh session, so
+# inheriting them is what the vendor treats as wrong: they make a reading the
+# opener's child and hand it the opener's peer-messaging socket and token.
+# Auth and provider variables (`ANTHROPIC_*`, `CLAUDE_CODE_USE_*`) are kept on
+# purpose, because they are how the operator chose an endpoint and account.
+_CLAUDE_SESSION_MARKERS = frozenset(
+    {
+        "CLAUDECODE",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+    }
+)
+
+
+def claude_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """The reading call's environment: the daemon's, minus the opener's session.
+
+    Public and pure, as `git_status.probe_environment` is, so a test asserts
+    the scrub without spawning anything.
+    """
+    return {
+        key: value
+        for key, value in environ.items()
+        if key not in _CLAUDE_SESSION_MARKERS
+        and not key.startswith("CLAUDE_CODE_MESSAGING_")
+        and not (key.startswith("CLAUDE_CODE_") and "SESSION" in key)
+    }
+
+
+def claude_exec(
+    config: RuntimeConfig,
+    prompt: str,
+    *,
+    output_cap_bytes: int,
+    runner: Any = subprocess.run,
+    binary_resolver: Any = shutil.which,
+) -> tuple[str, str]:
+    """One bounded, non-persistent Claude Code call. Returns the output and a status.
+
+    The same contract as `codex_exec`: `unavailable` when no absolute `claude`
+    resolves, before anything is created or spent; `failed` on a non-zero exit,
+    a timeout or an OS error; `ok` otherwise.
+
+    These flags are CLI restrictions, not an OS sandbox. Claude Code has no
+    equivalent of Codex `--sandbox read-only`: what stands between the model
+    and this machine is `--tools ""` (no built-in tools), `--restricted` (no
+    code-running tools, no user/project/local settings), `--safe-mode` (no
+    CLAUDE.md, skills, plugins, hooks or MCP servers -- and so none of
+    Cargento's own hooks, which would otherwise post this call to the board as
+    a session), an empty MCP set held strict, and `dontAsk` with nobody to
+    answer a permission prompt. The installed CLI still owns authentication,
+    caches and its own logs; `--no-session-persistence` keeps the conversation
+    off disk and does not govern those. `--bare` is deliberately absent: it
+    refuses OAuth sign-in, which is how most operators are signed in.
+    Every flag was checked against `claude --help` on 2.1.280.
+
+    The working directory is a fresh owner-only directory, empty, so even a
+    tool the flags failed to remove would find nothing of Cargento's there.
+    """
+    binary = binary_resolver("claude")
+    if not binary or not os.path.isabs(binary):
+        return "", "unavailable"
+    os.makedirs(config.state_dir, mode=0o700, exist_ok=True)
+    workdir = ""
+    output_path = ""
+    try:
+        workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-", dir=config.state_dir)
+        descriptor, output_path = tempfile.mkstemp(
+            prefix="reading-claude-", suffix=".txt", dir=config.state_dir
+        )
+        command = [
+            binary,
+            "--print",
+            "--safe-mode",
+            "--restricted",
+            "--tools",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            CLAUDE_EMPTY_MCP_CONFIG,
+            "--disable-slash-commands",
+            "--no-chrome",
+            "--no-session-persistence",
+            "--permission-mode",
+            "dontAsk",
+            "--permission-prompts",
+            "none",
+            "--output-format",
+            "text",
+            "--model",
+            CLAUDE_READING_MODEL,
+            "--effort",
+            CLAUDE_READING_EFFORT,
+        ]
+        # A file rather than a pipe, so the reply is bounded on read rather
+        # than buffered whole into this process.
+        with os.fdopen(descriptor, "wb") as output:
+            result = runner(
+                command,
+                input=prompt,
+                cwd=workdir,
+                stdout=output,
+                stderr=subprocess.DEVNULL,
+                env=claude_environment(os.environ),
+                text=True,
+                encoding="utf-8",
+                timeout=OBSERVER_MODEL_TIMEOUT_SEC,
+                check=False,
+            )
+        if result.returncode != 0:
+            return "", "failed"
+        return (
+            runtime_io.read_prefix_bytes(output_path, max_bytes=output_cap_bytes)
+            .decode("utf-8", "replace")
+            .strip()
+        ), "ok"
+    except (OSError, subprocess.SubprocessError):
+        return "", "failed"
+    finally:
+        if output_path:
+            with contextlib.suppress(OSError):
+                os.unlink(output_path)
+        if workdir:
+            shutil.rmtree(workdir, ignore_errors=True)
 
 
 class CodexGoalModel:

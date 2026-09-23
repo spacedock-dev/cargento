@@ -34,8 +34,10 @@ from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
+from cargento_runtime import observer as runtime_observer
 from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
+from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
@@ -2984,7 +2986,7 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(1_700_086_500.0, json.loads(body)["reading"]["retry_at"])
 
     @staticmethod
-    def _one_session_harness() -> Any:
+    def _one_session_harness(harness: str = "pi") -> Any:
         """A harness publishing exactly the row the route looks for.
 
         Without it the application collects nothing, `_send_reading` returns at
@@ -3002,23 +3004,23 @@ class ReadingRouteTest(unittest.TestCase):
             # which swallows it and yields no rows -- and no rows is exactly
             # the state that made this class unfalsifiable.
             del config, state, now, window_hours, show_all
-            row = runtime_sessions.base_session("pi", "s1", "proj")
+            row = runtime_sessions.base_session(harness, "s1", "proj")
             row.update({"state": "working", "active": True, "last_activity": 1_700_000_000.0})
             return [row]
 
         return aggregate.HarnessSpec(
-            key="pi", label="Pi", discover=lambda *_: True, collect=collect
+            key=harness, label=harness.title(), discover=lambda *_: True, collect=collect
         )
 
-    def _app(self, config: Any, state: Any) -> Any:
+    def _app(self, config: Any, state: Any, harness: str = "pi") -> Any:
         """An application over that one session, with an annotation on it."""
         annotation_store.annotate(
-            config, state, "pi", "s1", goal="ship the parser", output="", now=10.0
+            config, state, harness, "s1", goal="ship the parser", output="", now=10.0
         )
         return aggregate.Application(
             config,
             state,
-            (self._one_session_harness(),),
+            (self._one_session_harness(harness),),
             native_notifier=lambda _p: "",
             popup_notifier=lambda _t, _b: None,
             diagnostic_sink=lambda _m: None,
@@ -3066,34 +3068,78 @@ class ReadingRouteTest(unittest.TestCase):
     }
 
     @contextlib.contextmanager
-    def _counting_model(self) -> Any:
-        """A model that records every invocation and runs no subprocess.
+    def _counting_model(
+        self,
+        installed: tuple[str, ...] = ("codex",),
+        *,
+        status: str = "ok",
+        launch_finds: tuple[str, ...] | None = None,
+        harness: str = "pi",
+    ) -> Any:
+        """A model per provider that records every invocation and runs no subprocess.
 
         Also supplies the observed record, because a gate is only proven by a
-        non-invocation when an invocation was otherwise going to happen.
+        non-invocation when an invocation was otherwise going to happen, and
+        the machine: `installed` is what the route resolver finds on PATH, and
+        `launch_finds` what each model finds at launch (the same, by default).
+        Every call lands in `calls`; `self.providers` says whose each one was.
         """
         calls: list[str] = []
+        self.providers: list[str] = []
+        found = installed if launch_finds is None else launch_finds
 
-        class _Model:
-            def __init__(self, _config: Any, **_kw: Any) -> None:
-                pass
+        def model(provider: str) -> Any:
+            class _Model:
+                def __init__(self, _config: Any, **_kw: Any) -> None:
+                    pass
 
-            def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
-                calls.append(prompt)
-                return "{}", "ok"
+                def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+                    calls.append(prompt)
+                    outer.providers.append(provider)
+                    return "{}", status
 
+                def available(self) -> bool:
+                    return provider in found
+
+                unavailable_reason = (
+                    runtime_reading.WITHHELD_CLAUDE_UNAVAILABLE
+                    if provider == "claude"
+                    else runtime_reading.WITHHELD_MODEL_UNAVAILABLE
+                )
+
+            return _Model
+
+        outer = self
         with (
-            mock.patch.object(runtime_reading, "CodexReadingModel", _Model),
+            mock.patch.object(runtime_reading, "CodexReadingModel", model("codex")),
+            mock.patch.object(runtime_reading, "ClaudeReadingModel", model("claude")),
+            mock.patch.object(
+                shutil,
+                "which",
+                lambda name: f"/usr/local/bin/{name}" if name in installed else None,
+            ),
             mock.patch.object(
                 runtime_project_context,
                 "collect",
-                lambda *_a, **_k: {"semantic": {"facts": [self.FACT]}},
+                lambda *_a, **_k: {
+                    "semantic": {
+                        "facts": [
+                            {**self.FACT, "source_session": {"harness": harness, "sid": "s1"}}
+                        ]
+                    }
+                },
             ),
         ):
             yield calls
 
     def _press(self, **over: Any) -> dict[str, Any]:
-        body = {"harness": "pi", "sid": "s1", "press": True, "observer_model": 1}
+        body = {
+            "harness": "pi",
+            "sid": "s1",
+            "press": True,
+            "observer_model": 1,
+            "provider": "codex",
+        }
         body.update(over)
         return body
 
@@ -3281,6 +3327,7 @@ class ReadingRouteTest(unittest.TestCase):
                 annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
             ),
             mock.patch.object(runtime_reading, "CodexReadingModel", _Blocking),
+            mock.patch.object(shutil, "which", lambda n: f"/bin/{n}"),
             mock.patch.object(
                 runtime_project_context,
                 "collect",
@@ -3313,6 +3360,180 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(200, status)
         answer = json.loads(body)
         self.assertFalse(answer["produced"])
+        self.assertEqual([], calls)
+
+    # DRC-4650: which provider reads a session, and what a press may spend.
+
+    def _claude_press(self, **over: Any) -> dict[str, Any]:
+        return self._press(harness="claude", **over)
+
+    def _consents(self, config: Any) -> dict[str, bool]:
+        return reading_policy.status(config, now=1_700_000_100.0)["providers"]
+
+    def _stamp(self, config: Any, harness: str) -> str:
+        entry = annotation_store.find(annotation_store.load(config), harness, "s1")
+        assert entry is not None
+        return str(entry.get("assessment", {}).get("stamp", ""))
+
+    def test_a_claude_code_session_on_this_build_is_read_by_codex(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press())
+        self.assertEqual(200, status, body)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["codex"], self.providers, "a gated Claude Code producer ran")
+        self.assertIn(runtime_observer.OBSERVER_MODEL, self._stamp(config, "claude"))
+
+    def test_a_forged_claude_press_on_this_build_spends_nothing_and_saves_nothing(self) -> None:
+        config, state = self._runtime()
+        before = self._consents(config)
+        with (
+            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press(provider="claude", allow=True))
+        self.assertEqual(409, status)
+        answer = json.loads(body)
+        self.assertEqual("provider-changed", answer["reason"])
+        self.assertFalse(answer["produced"])
+        self.assertEqual("codex", answer["route"]["provider"])
+        self.assertEqual([], calls)
+        self.assertEqual(before, self._consents(config))
+        self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
+    def test_a_press_that_names_no_provider_is_not_taken_as_consent_to_one(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            body = self._press()
+            del body["provider"]
+            status, _ = self._post(port, body)
+        self.assertEqual(409, status)
+        self.assertEqual([], calls)
+
+    def test_with_no_reader_for_this_harness_a_press_is_refused_before_anything(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        for provider in ("", "codex", "claude"):
+            with (
+                self.subTest(provider=provider),
+                self._counting_model(("claude",), harness="claude") as calls,
+                self._serving(self._app(config, state, "claude")) as port,
+            ):
+                status, body = self._post(port, self._claude_press(provider=provider, allow=True))
+                self.assertEqual(503, status)
+                answer = json.loads(body)
+                self.assertEqual(
+                    runtime_reading_route.REASON_UNQUALIFIED_OTHER_MISSING, answer["reason"]
+                )
+                self.assertEqual("", answer["route"]["provider"])
+                self.assertEqual([], calls)
+                self.assertEqual({"codex": False, "claude": False}, self._consents(config))
+                self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
+    def _open_claude(self) -> Any:
+        return mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+        )
+
+    def test_a_codex_answer_does_not_let_claude_code_read_a_session(self) -> None:
+        config, state = self._runtime()
+        self.assertEqual({"codex": True, "claude": False}, self._consents(config))
+        with (
+            self._open_claude(),
+            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press(provider="claude"))
+            self.assertEqual(403, status)
+            self.assertEqual("consent-required", json.loads(body)["reading"]["reason"])
+            self.assertEqual([], calls)
+            status, _ = self._post(port, self._claude_press(provider="claude", allow=True))
+        self.assertEqual(200, status)
+        self.assertEqual(["claude"], self.providers)
+        self.assertEqual({"codex": True, "claude": True}, self._consents(config))
+        self.assertIn(runtime_observer.CLAUDE_READING_MODEL, self._stamp(config, "claude"))
+
+    def test_a_reader_who_allowed_only_claude_code_is_charged_against_that_answer(self) -> None:
+        """The reservation reads the route's provider, not Codex's answer."""
+        config, state = self._runtime()
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+        with (
+            self._open_claude(),
+            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press(provider="claude"))
+        self.assertEqual(200, status, body)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["claude"], self.providers)
+        self.assertEqual({"codex": False, "claude": True}, self._consents(config))
+
+    def test_a_reader_shown_codex_whose_route_became_claude_must_press_again(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._open_claude(),
+            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press(provider="codex", allow=True))
+        self.assertEqual(409, status)
+        answer = json.loads(body)
+        self.assertEqual("provider-changed", answer["reason"])
+        self.assertEqual("claude", answer["route"]["provider"])
+        self.assertIn("Anthropic", answer["route"]["disclosure"])
+        self.assertEqual([], calls)
+        self.assertEqual({"codex": True, "claude": False}, self._consents(config))
+
+    def test_a_claude_code_cli_gone_at_launch_is_unavailable_and_nothing_else_runs(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+        with (
+            self._open_claude(),
+            self._counting_model(
+                ("codex", "claude"), launch_finds=("codex",), harness="claude"
+            ) as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press(provider="claude"))
+        self.assertEqual(200, status)
+        answer = json.loads(body)
+        self.assertFalse(answer["produced"])
+        self.assertEqual(runtime_reading.WITHHELD_CLAUDE_UNAVAILABLE, answer["reason"])
+        self.assertEqual([], calls, "a second provider was asked after the first was missing")
+        self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
+    def test_a_failed_claude_code_reading_is_not_retried_on_codex(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+        with (
+            self._open_claude(),
+            self._counting_model(("codex", "claude"), status="failed", harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press(provider="claude"))
+        self.assertEqual(200, status)
+        self.assertEqual(runtime_reading.WITHHELD_MODEL_FAILED, json.loads(body)["reason"])
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["claude"], self.providers)
+        self.assertEqual(1, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
+    def test_turning_readings_off_revokes_claude_code_too(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+        with (
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, _ = self._post(port, {"consent": "off", "press": True, "observer_model": 1})
+        self.assertEqual(200, status)
+        self.assertEqual({"codex": False, "claude": False}, self._consents(config))
         self.assertEqual([], calls)
 
     def test_an_oversized_body_is_refused_before_it_is_read(self) -> None:

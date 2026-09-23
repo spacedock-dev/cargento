@@ -1534,7 +1534,17 @@ const NEXT_READING_ANNOTATIONS_OFF =
    discard sentence is deliberately not in here: it comes from the server, so
    this page cannot classify it, and an unmapped sentence renders with no
    attribute rather than with a guessed one. */
+/* Who reads a session is the server's route for its harness (DRC-4650). A
+   payload without one names no receiver, and a press under no named receiver
+   is the one this disclosure exists to prevent, so the page offers none. */
+const NEXT_READING_ROUTE_UNREAD =
+  "Who would read this session is not published, so no check is offered. " +
+  "Cargento asks again with the next update.";
+const NEXT_READING_PROVIDER_CHANGED =
+  "The reader for this session changed since this page was drawn, so nothing was sent; " +
+  "read who reads it now and press again.";
 const NEXT_READING_REFUSAL_ABSENCE = new Map([
+  [NEXT_READING_ROUTE_UNREAD, "not-observed"],
   [NEXT_READING_NO_WORDS, "waiting-on-you"],
   [NEXT_READING_MODEL_UNREAD, "not-observed"],
   [NEXT_READING_MODEL_OFF, "run-config"],
@@ -2282,6 +2292,36 @@ function nextCockpitReadingRefusal(annotation, model){
 // already does two hundred lines below.
 const NEXT_READING_REFUSED_ID = "next-cockpit-reading-refused";
 
+function nextReadingRoute(session){
+  const routes = nextData && nextData.reading_routes;
+  const route = routes && session ? routes[String(session.harness || "")] : null;
+  return route && typeof route === "object" ? route : null;
+}
+
+/* Permission is per receiver: a Codex answer never stands in for Claude
+   Code's. A payload without the per-provider map predates the second
+   provider, and its one answer was Codex's. */
+function nextReadingConsent(provider){
+  const policy = nextData && nextData.reading;
+  if(!policy || !provider) return false;
+  const map = policy.providers;
+  return map && typeof map === "object"
+    ? map[provider] === true : provider === "codex" && policy.consent === true;
+}
+
+function nextReadingAnyConsent(){
+  const policy = nextData && nextData.reading;
+  const map = policy && policy.providers;
+  return map && typeof map === "object"
+    ? Object.values(map).some(value => value === true) : Boolean(policy && policy.consent);
+}
+
+function nextReadingRouteRefusal(session){
+  const route = nextReadingRoute(session);
+  if(!route) return NEXT_READING_ROUTE_UNREAD;
+  return route.provider ? "" : String(route.note || NEXT_READING_ROUTE_UNREAD);
+}
+
 function nextReadingPolicyReason(policy){
   if(!policy) return NEXT_READING_MODEL_UNREAD;
   if(policy.reason === "run-disabled") return NEXT_READING_MODEL_OFF;
@@ -2309,20 +2349,23 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     request = undefined;
   }
   const pending = request && request.pending;
-  const confirming = request && request.consent && !(nextData && nextData.reading && nextData.reading.consent);
+  const route = nextReadingRoute(session);
+  const provider = route && route.provider ? String(route.provider) : "";
+  const confirming = Boolean(provider && request && request.consent && !nextReadingConsent(provider));
   /* `authorized` is no longer a second term here: an unauthorized check is
      one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
      already carries it. */
   const enabled = !reason && !pending;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
   const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
-  /* Before the button, not after the press. The reading spends the reader's
-     own Codex capacity and sends their goal and a slice of the observed
-     record off this machine; the offer paragraph in the reading scopes WHAT is sent
-     and says nothing about where it goes or who pays. A reader who has not
-     read this has not been warned. */
-  const disclosure = nextData && nextData.reading_disclosure
-    ? `<p class="next-cockpit-reading-why">${esc(nextData.reading_disclosure)}</p>` : "";
+  /* Before the button, not after the press: the route's disclosure, naming
+     this session's own receiver, whose capacity is spent and where the words
+     go. The offer paragraph in the reading scopes WHAT is sent and says
+     nothing about where it goes or who pays. With no provider there is no
+     disclosure and no offer: the route's sentence says why, as the refusal
+     below. */
+  const disclosure = provider && route.disclosure
+    ? `<p class="next-cockpit-reading-why">${esc(route.disclosure)}</p>` : "";
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
@@ -2335,13 +2378,13 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      reading order: stacked, the disclosure's five sentences pushed the button
      under a 900px first screen, measured on a live board at 1440 wide. */
   return '<div class="next-cockpit-reading-ask">' + disclosure +
-    `<button type="button" class="next-action${primary ? " next-action--primary" : ""}" ` +
+    `<button type="button" class="next-action${primary && provider ? " next-action--primary" : ""}" ` +
     `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
     `${pending ? "Checking for drift…" : confirming ? "Allow and check" : "Check for drift"}</button>` +
-    (nextData && nextData.reading && nextData.reading.consent
+    (nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
     '</div>' +
     (request && request.message && !request.refusal
@@ -2463,7 +2506,8 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     /* Said once. The send disclosure beside the control already ends on the
        server's "never a verification that the work was done", so the page's
        own wording rides here only where no disclosure was published. */
-    const verification = nextData && nextData.reading_disclosure
+    const routed = nextReadingRoute(session);
+    const verification = routed && routed.provider && routed.disclosure
       ? "" : ` ${NEXT_READING_NOT_A_VERIFICATION}`;
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER}${verification}</p>`;
     return close(refused + offer + why, null, true);
@@ -2802,7 +2846,11 @@ async function nextCockpitAskForReading(session, model, allow = false){
     renderNext();
     return;
   }
-  if(!(nextData && nextData.reading && nextData.reading.consent) && !allow){
+  /* The provider the page named, sent with the press so the server can
+     refuse one whose receiver changed since. A refusal above already covers
+     a route with no provider. */
+  const provider = String(nextReadingRoute(session).provider);
+  if(!nextReadingConsent(provider) && !allow){
     nextCockpitReadingRequests.set(key, {consent:true, adoption:nextImplicitAdoption(session)});
     renderNext();
     return;
@@ -2822,15 +2870,35 @@ async function nextCockpitAskForReading(session, model, allow = false){
     const response = await fetch("/api/reading", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({harness: session.harness, sid: session.sid,
+      body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
         press: true, observer_model: 1, ...adoption, ...(allow ? {allow:true} : {})}),
     });
+    const answer = response && typeof response.json === "function"
+      ? await response.json().catch(() => null) : null;
+    if(answer && answer.route && typeof answer.route === "object"){
+      /* The server's route for this harness now. Kept before the refresh so
+         the sentence below and the disclosure it points at agree at once. */
+      nextData.reading_routes = {...(nextData.reading_routes || {}),
+        [String(session.harness || "")]: answer.route};
+    }
+    if(response && response.status === 409 && answer && answer.reason === "provider-changed"){
+      /* Nothing was sent or saved. The next press starts again, and asks for
+         the new receiver's own Allow if it has none. */
+      request.message = NEXT_READING_PROVIDER_CHANGED;
+      request.consent = false;
+      await refreshNext();
+      return;
+    }
     if(response && response.status === 409){
       request.message = "A reading is already in progress for this session. " +
         "Wait for it to finish; this press did not start another.";
       return;
     }
-    const answer = response ? await response.json() : null;
+    if(answer && answer.route && !answer.route.provider){
+      request.message = nextReadingRouteRefusal(session);
+      request.refusal = true;
+      return;
+    }
     if(answer && answer.adoption_refused){
       request.message = "The prompt or saved goal changed. Review the current goal before checking again.";
       await refreshNext();
@@ -2847,7 +2915,10 @@ async function nextCockpitAskForReading(session, model, allow = false){
     if(!answer || answer.ok !== true || typeof answer.produced !== "boolean"){
       throw new Error("reading not confirmed");
     }
-    if(allow && nextData.reading) nextData.reading.consent = true;
+    if(allow && nextData.reading){
+      nextData.reading.consent = true;
+      nextData.reading.providers = {...(nextData.reading.providers || {}), [provider]: true};
+    }
     request.message = answer.produced ? "Reading received." : "No new reading was produced.";
     await refreshNext();
   }catch(_error){
@@ -4426,6 +4497,10 @@ function nextImplicitAdoption(session){
 
 function nextPromptReadingRefusal(session, annotation, model){
   if(!(nextData && nextData.annotate === true)) return NEXT_READING_ANNOTATIONS_OFF;
+  /* A route with no reader is a fact about this machine, and it outranks any
+     step the page could name: saving a goal here would not let a check run. */
+  const route = nextReadingRoute(session);
+  if(route && !route.provider) return nextReadingRouteRefusal(session);
   if(!String(annotation && annotation.goal || "").trim()){
     const candidate = nextPromptCandidate(session);
     if(candidate && candidate.at == null){
@@ -4433,7 +4508,7 @@ function nextPromptReadingRefusal(session, annotation, model){
     }
     if(candidate){ annotation = {...annotation,goal:candidate.text,discarded_at:null,discarded_why:""}; }
   }
-  return nextCockpitReadingRefusal(annotation, model);
+  return nextCockpitReadingRefusal(annotation, model) || nextReadingRouteRefusal(session);
 }
 
 function nextPromptSourceLine(annotation){

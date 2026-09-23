@@ -923,6 +923,7 @@ question and consume a little of the operator's own capacity doing it.
 
 The observer model is the first implementation of this pathway, deriving a session's goal line, and
 the reading lane is the second, reading a session against the words the reader saved against it.
+The Claude Code reading producer is the third: built, and gated off until its own check has run.
 Each has its own entry below naming what it sends, what it asks, and what it caps. Future harness
 callers need their own entry.
 
@@ -960,7 +961,9 @@ The bounds, all of which hold together:
   computer tools, image generation, web search, and automatic project/skill instructions.
   These flags are not a proof of an empty tool set across Codex versions. The installed CLI and
   its provider remain a trust boundary; live tool suppression and provider retention are not
-  verified by the dashboard's tests.
+  verified by the dashboard's tests. Claude Code has no read-only sandbox to invoke, so its
+  reading call is bounded by CLI flags alone; [its own entry](#claude-code-reading-calls) lists
+  them.
 - Visible spend. Model metadata records whether a call ran or was refused. Provider token usage
   is not measured by this prototype; it must not present a zero cost as if it had measured one.
 - Off switch. `--no-observer-model` disables calls for a run regardless of consent and overrides
@@ -999,9 +1002,19 @@ The store is created owner-only; SQLite is required for this permission path. De
 manually can reset its budget, as can any other modification by the owning local user. The cap
 bounds requests through the HTTP route, not a hostile owner editing their own files.
 
-The second producer in DEC-21 remains unbuilt (DRC-4650). Readings still use Codex/OpenAI for every
-session harness. A Claude Code producer needs its own caller entry and fresh abstention check
-before it is offered.
+The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
+not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and check".
+An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
+`--forget` revoke every provider at once. The twelve-attempt cap is shared between providers, so a
+second provider cannot double it.
+
+Which provider a press reaches is decided before the press, by `reading_route.resolve`, from the
+session's harness and this machine. The page shows that route's disclosure, naming the receiver,
+its vendor and whose capacity is spent. The route resolves the provider again from the payload's
+harness. If the provider the page named is no longer the one that would run, it answers 409 and
+writes no consent and reserves nothing; if no provider can read the session, it answers 503 with
+the reason. One model runs per press. If its CLI is missing at launch, or the call fails, no other
+provider is tried.
 
 ### Observer model calls
 
@@ -1010,9 +1023,9 @@ Goal summaries are off unless `--observer-model` was supplied and their disclosu
 own authentication to reach OpenAI. `reading.CodexReadingModel` is the second caller and goes
 through the same `observer.codex_exec`, so the two share one set of sandbox flags rather than two
 that could drift. These are the paths that can send session content off the
-machine. A reading is produced by a codex subprocess whatever harness the session runs on, so a
-reading of a Claude session spends the operator's Codex capacity and sends that session's evidence
-to OpenAI. A reader-requested reading requires the remembered answer and rolling budget above; an
+machine. On this build a reading of a Claude Code session is still made by Codex, because the Claude
+Code producer is gated: it spends the operator's Codex capacity and sends that session's evidence
+to OpenAI, and the disclosure before the press says so. A reader-requested reading requires the remembered answer and rolling budget above; an
 unasked reading requires `--unasked-readings`. `--no-observer-model` always wins over both.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
@@ -1045,6 +1058,60 @@ A failed call falls back to local analysis. No raw model stdout or stderr is ser
 
 An absent or relative `shutil.which("codex")` result is refused. An absolute installed executable
 is still trusted code; replacing it as the owning user is outside this boundary.
+
+### Claude Code reading calls
+
+`reading.ClaudeReadingModel` calls `observer.claude_exec`, one bounded `claude --print` call
+through the Claude Code CLI the operator has already signed in to. It reaches Anthropic on the
+operator's own authentication and spends their Claude Code capacity. **It is gated.**
+`annotations.CLAUDE_ABSTENTION_CHECK` is `not-run`, because no eligible recorded case exists
+([DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated)).
+While it stays there, `reading_route` never selects the provider or even looks for its CLI, and no
+route, fallback, unasked lane, goal summary or forged request can invoke it. Codex's `accepted`
+review does not open it.
+
+The argv, every flag checked against `claude --help` on 2.1.280, run without a shell:
+
+- `--print`, with the prompt on stdin and never as an argument.
+- `--safe-mode`: no CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands or agents. This
+  also keeps Cargento's own hooks from posting the call to the board as a session.
+- `--restricted`: no code-running built-in tools and no WebFetch, and user, project and local
+  settings files are ignored.
+- Both leave admin-managed (policy) settings in force, as `claude --help` says, so a managed hook or
+  other managed setting still applies. `--strict-mcp-config` below does cover managed MCP servers.
+- `--tools ""`: the built-in tool set is empty.
+- `--strict-mcp-config --mcp-config '{"mcpServers":{}}'`: no MCP server from anywhere.
+- `--disable-slash-commands`, `--no-chrome`, and `--no-session-persistence`, so no session is saved
+  to disk.
+- `--permission-mode dontAsk --permission-prompts none`: anything that would prompt is denied, and
+  nobody is asked. `bypassPermissions` and the `--dangerously-*` flags never appear.
+- `--output-format text`, `--model claude-sonnet-5` (fixed, never the CLI default) and
+  `--effort high`.
+
+`--bare` is not used, because it refuses OAuth sign-in. `--json-schema` is not used either.
+
+The process runs with the daemon's environment minus the markers of any Claude Code session the
+daemon was started from (`observer.claude_environment`: `CLAUDECODE`, `CLAUDE_CODE_*SESSION*`,
+`CLAUDE_CODE_MESSAGING_*`, `CLAUDE_PID`, `CLAUDE_EFFORT`, `CLAUDE_CODE_ENTRYPOINT` and
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`), the set the CLI drops itself when it starts a fresh
+session. Authentication and provider variables are kept, so configuration in the daemon's
+environment, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK` and
+`CLAUDE_CODE_USE_VERTEX`, decides which endpoint and which account receive the reading.
+
+The process runs in a fresh owner-only (0700) empty directory under the state directory. Stdout
+goes to an owner-only temp file, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
+it are read. Stderr is discarded. The timeout is the shared **60 seconds**. The directory and the
+file are removed on every path, including a timeout or an OS error. An absent or relative
+`shutil.which("claude")` spends nothing and creates nothing. The prompt is the reading prompt Codex
+receives: redacted, then clipped to 16 KiB. The same remembered answer, now per provider, and the
+same rolling cap apply.
+
+These flags are CLI restrictions, not an OS sandbox. There is no Claude Code equivalent of Codex
+`--sandbox read-only`. The installed CLI still owns its authentication, caches and logs, and
+`--no-session-persistence` does not govern those. That the flags suppress every tool at run time
+is not verified by this repository's tests, and neither is whether a given account may use the
+pinned model id. Both were unmeasured when this entry was written, because the build is gated and
+no Claude Code reading was run.
 
 ### The abstention check
 

@@ -6,6 +6,7 @@ import dataclasses
 import http.client
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -1715,6 +1716,274 @@ class CodexExecArgvTest(unittest.TestCase):
         self.assertIn("a transcript tail", kwargs["input"])
         self.assertTrue(kwargs["text"])
         self.assertEqual("utf-8", kwargs["encoding"])
+
+
+class ClaudeExecTest(unittest.TestCase):
+    """The Claude Code reading call, pinned flag by flag (DRC-4650).
+
+    Claude Code has no `--sandbox read-only`. What removes its capabilities is
+    a set of CLI flags, so each one is asserted on its own: a change that drops
+    any single flag must turn one subtest red rather than leave the call
+    looking exactly like a restricted one.
+    """
+
+    PROMPT = "read this session against: ship the parser"
+
+    def _config(self) -> Any:
+        state_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, state_dir, True)
+        return dataclasses.replace(make_config(), state_dir=state_dir)
+
+    def _run(
+        self,
+        *,
+        reply: bytes = b"{}",
+        returncode: int = 0,
+        raises: BaseException | None = None,
+        binary: str | None = "/usr/local/bin/claude",
+        cap: int = 1920,
+    ) -> tuple[list[tuple[list[str], dict[str, Any], dict[str, Any]]], str, str, Any]:
+        config = self._config()
+        seen: list[tuple[list[str], dict[str, Any], dict[str, Any]]] = []
+
+        def runner(command: list[str], **kwargs: Any) -> Any:
+            cwd = Path(kwargs["cwd"])
+            observed = {
+                "cwd_exists": cwd.is_dir(),
+                "cwd_mode": cwd.stat().st_mode & 0o777 if cwd.is_dir() else None,
+                "cwd_entries": sorted(os.listdir(cwd)) if cwd.is_dir() else None,
+            }
+            seen.append((list(command), kwargs, observed))
+            if raises is not None:
+                raise raises
+            kwargs["stdout"].write(reply)
+            return subprocess.CompletedProcess(command, returncode)
+
+        text, status = observer.claude_exec(
+            config,
+            self.PROMPT,
+            output_cap_bytes=cap,
+            runner=runner,
+            binary_resolver=mock.Mock(return_value=binary),
+        )
+        return seen, text, status, config
+
+    @staticmethod
+    def _values(command: list[str], flag: str) -> list[str]:
+        return [command[i + 1] for i, tok in enumerate(command[:-1]) if tok == flag]
+
+    def test_a_reading_by_claude_code_runs_with_every_capability_removing_flag(self) -> None:
+        seen, _text, status, _config = self._run()
+        self.assertEqual("ok", status)
+        self.assertEqual(1, len(seen), "the model was not invoked exactly once")
+        command = seen[0][0]
+        self.assertEqual("/usr/local/bin/claude", command[0])
+        for flag in (
+            "--print",
+            "--safe-mode",
+            "--restricted",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--no-chrome",
+            "--no-session-persistence",
+        ):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, command)
+        for flag, value in (
+            ("--tools", ""),
+            ("--mcp-config", observer.CLAUDE_EMPTY_MCP_CONFIG),
+            ("--permission-mode", "dontAsk"),
+            ("--permission-prompts", "none"),
+            ("--output-format", "text"),
+            ("--model", observer.CLAUDE_READING_MODEL),
+            ("--effort", observer.CLAUDE_READING_EFFORT),
+        ):
+            with self.subTest(flag=flag):
+                # The value after the flag, not the flag's presence: an empty
+                # tool set and a default one differ only in that token.
+                self.assertEqual([value], self._values(command, flag))
+
+    def test_the_empty_mcp_config_names_no_server(self) -> None:
+        self.assertEqual({"mcpServers": {}}, json.loads(observer.CLAUDE_EMPTY_MCP_CONFIG))
+
+    def test_the_reading_model_is_a_fixed_explicit_id_and_the_effort_is_bounded(self) -> None:
+        self.assertTrue(observer.CLAUDE_READING_MODEL.startswith("claude-"))
+        self.assertIn(observer.CLAUDE_READING_EFFORT, ("low", "medium", "high"))
+
+    def test_nothing_that_widens_the_call_is_ever_on_the_command(self) -> None:
+        seen, _text, _status, _config = self._run()
+        command = seen[0][0]
+        for token in (
+            "--bare",
+            "--dangerously-skip-permissions",
+            "--allow-dangerously-skip-permissions",
+            "bypassPermissions",
+            "--json-schema",
+            "--add-dir",
+            "--chrome",
+            "--continue",
+            "-c",
+            "--resume",
+            "-r",
+            "--allowedTools",
+            "--allowed-tools",
+            "--plugin-dir",
+            "--settings",
+        ):
+            with self.subTest(token=token):
+                self.assertNotIn(token, command)
+
+    def test_the_prompt_arrives_on_stdin_and_never_as_an_argument(self) -> None:
+        seen, _text, _status, _config = self._run()
+        command, kwargs, _ = seen[0]
+        self.assertEqual(self.PROMPT, kwargs["input"])
+        self.assertTrue(kwargs["text"])
+        self.assertEqual("utf-8", kwargs["encoding"])
+        self.assertNotIn(self.PROMPT, command)
+        # Every token after the binary is a flag or the value of the flag
+        # before it, so no positional prompt can ride along. Each value-taking
+        # flag here is followed by exactly one value.
+        valued = {
+            "--tools",
+            "--mcp-config",
+            "--permission-mode",
+            "--permission-prompts",
+            "--output-format",
+            "--model",
+            "--effort",
+        }
+        index = 1
+        while index < len(command):
+            token = command[index]
+            self.assertTrue(token.startswith("--"), f"positional token {token!r}")
+            index += 2 if token in valued else 1
+
+    def test_the_call_is_never_a_shell_and_is_timed_and_unchecked(self) -> None:
+        seen, _text, _status, _config = self._run()
+        command, kwargs, _ = seen[0]
+        self.assertIsInstance(command, list)
+        self.assertNotIn("shell", kwargs)
+        self.assertNotIn("capture_output", kwargs)
+        self.assertEqual(subprocess.DEVNULL, kwargs["stderr"])
+        self.assertEqual(observer.OBSERVER_MODEL_TIMEOUT_SEC, kwargs["timeout"])
+        self.assertFalse(kwargs["check"])
+
+    def test_the_model_runs_in_a_fresh_owner_only_empty_directory(self) -> None:
+        seen, _text, _status, config = self._run()
+        _command, kwargs, observed = seen[0]
+        cwd = Path(kwargs["cwd"])
+        self.assertNotEqual(config.state_dir, cwd, "the store directory is not a scratch cwd")
+        self.assertEqual(config.state_dir, cwd.parent)
+        self.assertTrue(observed["cwd_exists"])
+        if os.name != "nt":  # POSIX permission bits; Windows uses ACLs
+            self.assertEqual(0o700, observed["cwd_mode"])
+        self.assertEqual([], observed["cwd_entries"])
+
+    def test_stdout_goes_to_an_owner_only_file_outside_the_working_directory(self) -> None:
+        seen: list[tuple[str, int]] = []
+
+        def runner(command: list[str], **kwargs: Any) -> Any:
+            out = kwargs["stdout"]
+            seen.append((out.name if hasattr(out, "name") else "", os.fstat(out.fileno()).st_mode))
+            self.assertNotEqual(subprocess.PIPE, out)
+            self.assertNotEqual(subprocess.DEVNULL, out)
+            out.write(b"{}")
+            return subprocess.CompletedProcess(command, 0)
+
+        config = self._config()
+        observer.claude_exec(
+            config,
+            "p",
+            output_cap_bytes=10,
+            runner=runner,
+            binary_resolver=lambda _n: "/bin/claude",
+        )
+        self.assertEqual(1, len(seen))
+        if os.name != "nt":  # POSIX permission bits; Windows uses ACLs
+            self.assertEqual(0o600, seen[0][1] & 0o777)
+
+    def test_the_reply_is_read_only_up_to_its_byte_cap(self) -> None:
+        _seen, text, status, _config = self._run(reply=b"x" * 10_000, cap=64)
+        self.assertEqual("ok", status)
+        self.assertEqual("x" * 64, text)
+
+    def test_nothing_is_left_behind_on_any_path(self) -> None:
+        cases: tuple[tuple[str, dict[str, Any], str], ...] = (
+            ("ok", {}, "ok"),
+            ("nonzero exit", {"returncode": 1}, "failed"),
+            ("timeout", {"raises": subprocess.TimeoutExpired("claude", 60)}, "failed"),
+            ("os error", {"raises": OSError("gone")}, "failed"),
+        )
+        for label, kwargs, expected in cases:
+            with self.subTest(path=label):
+                seen, text, status, config = self._run(**kwargs)
+                self.assertEqual(expected, status)
+                if expected == "failed":
+                    self.assertEqual("", text)
+                self.assertEqual(1, len(seen))
+                self.assertEqual([], os.listdir(config.state_dir), f"{label} left files")
+
+    def test_no_absolute_claude_spends_nothing_and_creates_nothing(self) -> None:
+        for binary in (None, "", "claude", "./claude", "bin/claude"):
+            with self.subTest(binary=binary):
+                seen, text, status, config = self._run(binary=binary)
+                self.assertEqual(("", "unavailable"), (text, status))
+                self.assertEqual([], seen)
+                self.assertEqual([], os.listdir(config.state_dir))
+
+    MARKERS = (
+        "CLAUDECODE",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+    )
+    KEPT = (
+        "PATH",
+        "HOME",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+    )
+
+    def test_a_reading_started_from_inside_a_claude_session_is_not_that_session(self) -> None:
+        """A daemon opened from a Claude Code session carries its markers.
+
+        The CLI drops these itself when it spawns a fresh session; a reading
+        that kept them would register as the opener's child and could reach
+        its peer-messaging socket.
+        """
+        environ = dict.fromkeys((*self.MARKERS, *self.KEPT), "x")
+        scrubbed = observer.claude_environment(environ)
+        for name in self.MARKERS:
+            with self.subTest(dropped=name):
+                self.assertNotIn(name, scrubbed)
+        for name in self.KEPT:
+            with self.subTest(kept=name):
+                self.assertEqual("x", scrubbed.get(name))
+        self.assertIn("CLAUDECODE", environ, "the caller's mapping was modified")
+
+    def test_the_call_runs_with_the_scrubbed_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "s"}):
+            seen, _text, _status, _config = self._run()
+            expected = observer.claude_environment(os.environ)
+        env = seen[0][1]["env"]
+        self.assertEqual(expected, env)
+        self.assertNotIn("CLAUDECODE", env)
+        self.assertNotIn("CLAUDE_CODE_SESSION_ID", env)
+
+    def test_the_resolver_is_asked_for_claude_and_never_for_codex(self) -> None:
+        resolver = mock.Mock(return_value=None)
+        observer.claude_exec(
+            self._config(), "p", output_cap_bytes=1, runner=mock.Mock(), binary_resolver=resolver
+        )
+        resolver.assert_called_once_with("claude")
 
 
 class ObserverModelSecurityTest(unittest.TestCase):
