@@ -2822,8 +2822,9 @@ async function nextCockpitAskForReading(session, model, allow = false){
     const answer = response ? await response.json() : null;
     if(answer && answer.reading){
       nextData.reading = answer.reading;
-      request.message = nextReadingPolicyReason(answer.reading) ||
-        "Readings are off. Press Check for drift to allow them again.";
+      request.message = nextReadingPolicyReason(answer.reading);
+      request.refusal = Boolean(request.message);
+      request.consent = answer.reading.reason === "consent-required";
       return;
     }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
