@@ -21,9 +21,17 @@ fixtures and verdict, and spreads the work:
   ``coverage combine`` afterwards. Coverage is imported only when asked for,
   because the runtime floor installs no coverage.
 
-``setUpModule`` runs once per worker that receives a class from that module,
+Every class is its own top-level run, so ``setUpModule`` runs once per class
 rather than once per module. One module defines it, to start and stop a log
-patch, which is indifferent to that.
+patch, which is indifferent to that. And two classes that land in different
+workers cannot see each other's leftovers, so an order-dependent failure that
+serial ``unittest`` would show every time can pass here; the serial command
+still exists for chasing one.
+
+Each worker also reports what its own discovery found, and any difference from
+the parent's is an error. Without that, a class a worker failed to import ran
+as an empty suite and passed, and a class only a worker found was never run:
+three crafted suites went green here and red under ``unittest``.
 
 Usage mirrors ``python -m unittest discover``::
 
@@ -64,9 +72,15 @@ def iter_tests(suite: unittest.TestSuite) -> Iterator[unittest.TestCase]:
 
 
 def unit_of(test: unittest.TestCase) -> str:
-    """Name the class a test belongs to: the runner's unit of work."""
+    """Name the class a test belongs to: the runner's unit of work.
+
+    An import failure is keyed by its own id, which names the module, because
+    every one of them shares the class `unittest.loader._FailedTest` and a
+    report that says only that cannot say what broke.
+    """
     kind = type(test)
-    return f"{kind.__module__}.{kind.__qualname__}"
+    name = f"{kind.__module__}.{kind.__qualname__}"
+    return test.id() if name == "unittest.loader._FailedTest" else name
 
 
 def discover(start: str, top: str | None, pattern: str) -> dict[str, list[unittest.TestCase]]:
@@ -78,10 +92,11 @@ def discover(start: str, top: str | None, pattern: str) -> dict[str, list[unitte
     return units
 
 
-def summarise(unit: str, result: unittest.TestResult) -> dict[str, Any]:
+def summarise(unit: str, result: unittest.TestResult, seconds: float) -> dict[str, Any]:
     """Reduce a result to picklable strings the parent can merge and print."""
     return {
         "unit": unit,
+        "seconds": seconds,
         "run": result.testsRun,
         "failures": [(str(test), text) for test, text in result.failures],
         "errors": [(str(test), text) for test, text in result.errors],
@@ -103,17 +118,23 @@ def worker(
         cov.start()
     try:
         units = discover(config["start"], config["top"], config["pattern"])
+        results.put(("inventory", index, {unit: len(tests) for unit, tests in units.items()}))
         while (unit := tasks.get()) is not None:
             result = unittest.TestResult()
-            try:
-                # A fresh result makes this a top-level run, so TestSuite opens
-                # and closes the class and module fixtures itself.
-                unittest.TestSuite(units.get(unit, []))(result)
-            except BaseException:  # noqa: BLE001 - report a unit, never lose it
-                result.errors.append(
-                    (unittest.FunctionTestCase(lambda: None), traceback.format_exc())
-                )
-            results.put(("unit", index, summarise(unit, result)))
+            problems: list[tuple[str, str]] = []
+            started = time.perf_counter()
+            if unit not in units:
+                problems.append((unit, "this worker's discovery did not find the class"))
+            else:
+                try:
+                    # A fresh result makes this a top-level run, so TestSuite opens
+                    # and closes the class and module fixtures itself.
+                    unittest.TestSuite(units[unit])(result)
+                except BaseException:  # noqa: BLE001 - report a unit, never lose it
+                    problems.append((unit, traceback.format_exc()))
+            summary = summarise(unit, result, time.perf_counter() - started)
+            summary["errors"] += problems
+            results.put(("unit", index, summary))
     except BaseException:  # noqa: BLE001 - a crashed worker is a reported error
         results.put(("crash", index, traceback.format_exc()))
     finally:
@@ -152,7 +173,40 @@ def report(total: dict[str, Any], elapsed: float, jobs: int) -> bool:
     return ok
 
 
-def collect(results: Queue[tuple[Any, ...]], procs: list[Any]) -> tuple[dict[str, Any], set[str]]:
+def absorb(
+    message: tuple[Any, ...], total: dict[str, Any], expected: dict[str, int], seen: set[str]
+) -> bool:
+    """Fold one worker message into the totals; True when it says the worker is done."""
+    kind = message[0]
+    if kind == "unit":
+        summary = message[2]
+        seen.add(summary["unit"])
+        total["durations"].append((summary["seconds"], summary["unit"]))
+        for key in ("run", "failures", "errors", "skipped", "expected", "unexpected"):
+            total[key] += summary[key]
+        sys.stderr.write("F" if summary["failures"] or summary["errors"] else ".")
+        sys.stderr.flush()
+    elif kind == "inventory":
+        found: dict[str, int] = message[2]
+        for unit in sorted(set(expected) | set(found)):
+            if expected.get(unit) != found.get(unit):
+                total["errors"].append(
+                    (
+                        f"worker {message[1]} discovery",
+                        (
+                            f"{unit}: the parent found {expected.get(unit, 0)} tests and this "
+                            f"worker found {found.get(unit, 0)}"
+                        ),
+                    )
+                )
+    elif kind == "crash":
+        total["errors"].append((f"worker {message[1]}", message[2]))
+    return bool(kind == "done")
+
+
+def collect(
+    results: Queue[tuple[Any, ...]], procs: list[Any], expected: dict[str, int]
+) -> tuple[dict[str, Any], set[str]]:
     """Merge worker reports until every worker is done, or every worker is gone."""
     total: dict[str, Any] = {
         "run": 0,
@@ -161,6 +215,7 @@ def collect(results: Queue[tuple[Any, ...]], procs: list[Any]) -> tuple[dict[str
         "skipped": [],
         "expected": [],
         "unexpected": [],
+        "durations": [],
     }
     seen: set[str] = set()
     done = 0
@@ -171,21 +226,20 @@ def collect(results: Queue[tuple[Any, ...]], procs: list[Any]) -> tuple[dict[str
             if not any(proc.is_alive() for proc in procs):
                 break
             continue
-        if message[0] == "unit":
-            summary = message[2]
-            seen.add(summary["unit"])
-            for key in total:
-                total[key] += summary[key]
-            sys.stderr.write("F" if summary["failures"] or summary["errors"] else ".")
-            sys.stderr.flush()
-        elif message[0] == "crash":
-            total["errors"].append((f"worker {message[1]}", message[2]))
-        else:
-            done += 1
+        done += absorb(message, total, expected, seen)
+    # A worker can finish between the last timeout and the liveness check;
+    # whatever it sent is still on the queue, and is read rather than lost.
+    while True:
+        try:
+            absorb(results.get_nowait(), total, expected, seen)
+        except queue.Empty:
+            break
     return total, seen
 
 
-def run(start: str, top: str | None, pattern: str, jobs: int, *, coverage: bool) -> bool:
+def run(
+    start: str, top: str | None, pattern: str, jobs: int, *, coverage: bool, slowest: int = 0
+) -> bool:
     """Discover, fan out across ``jobs`` workers, merge, report, return the verdict."""
     started = time.perf_counter()
     units = discover(start, top, pattern)
@@ -206,7 +260,10 @@ def run(start: str, top: str | None, pattern: str, jobs: int, *, coverage: bool)
     for proc in procs:
         proc.start()
 
-    total, seen = collect(results, procs)
+    total, seen = collect(results, procs, {unit: len(tests) for unit, tests in units.items()})
+    # Workers that died early leave tasks unread; without this the parent's
+    # feeder thread waits at exit to flush them into a pipe nobody reads.
+    tasks.cancel_join_thread()
     for proc in procs:
         proc.join(timeout=JOIN_SECONDS)
     total["errors"].extend(
@@ -219,6 +276,10 @@ def run(start: str, top: str | None, pattern: str, jobs: int, *, coverage: bool)
         for proc in procs
         if proc.exitcode not in (0, None)
     )
+    if slowest:
+        sys.stderr.write(f"\nSlowest {slowest} classes:\n")
+        for seconds, unit in sorted(total["durations"], reverse=True)[:slowest]:
+            sys.stderr.write(f"  {seconds:7.2f}s  {unit}\n")
     return report(total, time.perf_counter() - started, jobs)
 
 
@@ -232,10 +293,20 @@ def main(argv: list[str] | None = None) -> int:
         "-j", "--jobs", type=int, default=os.cpu_count() or 2, help="worker processes"
     )
     parser.add_argument("--coverage", action="store_true", help="record coverage in each worker")
+    parser.add_argument(
+        "--slowest", type=int, default=0, metavar="N", help="list the N slowest classes"
+    )
     args = parser.parse_args(argv)
     if args.top:
         sys.path.insert(0, os.path.abspath(args.top))
-    ok = run(args.start, args.top, args.pattern, args.jobs, coverage=args.coverage)
+    ok = run(
+        args.start,
+        args.top,
+        args.pattern,
+        args.jobs,
+        coverage=args.coverage,
+        slowest=args.slowest,
+    )
     return 0 if ok else 1
 
 

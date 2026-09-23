@@ -206,7 +206,7 @@ jobs:
       # cores (131s serial against 34s on four workers, measured 2026-09-23).
       - name: Run the full suite on the floor
         run: |
-          python scripts/run_tests.py -s cargento/skills/cargento/tests -t .
+          python scripts/run_tests.py --slowest 10 -s cargento/skills/cargento/tests -t .
           python scripts/run_tests.py -s scripts/tests -t scripts/tests
 
   test:
@@ -237,7 +237,7 @@ jobs:
       - name: Run full unittest suite under coverage
         run: |
           coverage erase
-          python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
+          python3 scripts/run_tests.py --coverage --slowest 10 -s cargento/skills/cargento/tests -t .
           python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
           coverage combine
 
@@ -375,9 +375,9 @@ jobs:
       - name: Confirm sqlite3 is present on this runner
         run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
       - name: Run dashboard test discovery
-        run: python scripts/run_tests.py -s cargento/skills/cargento/tests -t .
+        run: python scripts/run_tests.py --slowest 10 -s cargento/skills/cargento/tests -t .
       - name: Run script unit tests
-        run: python scripts/run_tests.py -s scripts/tests -t scripts/tests
+        run: python scripts/run_tests.py --slowest 10 -s scripts/tests -t scripts/tests
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

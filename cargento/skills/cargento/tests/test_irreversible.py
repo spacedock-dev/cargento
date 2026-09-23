@@ -456,6 +456,10 @@ raise SystemExit(status)
                 self.assertEqual((0, "", ""), outcome)
         self.assertEqual([], self.received)
         self.assertEqual([], self.coordinator.command_reports())
+        # A canary through the same in-process path: `main` swallows every
+        # exception, so a broken path would pass every negative above vacuously.
+        self.run_hook_inprocess(native(POSITIVES[0][0]))
+        self.assertEqual(1, len(self.received))
 
     def test_recorded_harness_shapes_admit_only_the_measured_after_tool_field(self) -> None:
         for harness, filename in (

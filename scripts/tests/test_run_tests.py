@@ -90,7 +90,9 @@ class RunnerVerdictTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.log = self.root / "pids.log"
         self.addCleanup(self.tmp.cleanup)
-        env = mock_env({"RUNNER_PID_LOG": str(self.log)})
+        # The pid, not multiprocessing.parent_process(): under the runner this
+        # test itself runs in a worker, so "has a parent" is true everywhere.
+        env = mock_env({"RUNNER_PID_LOG": str(self.log), "RUNNER_PARENT_PID": str(os.getpid())})
         env.__enter__()
         self.addCleanup(env.__exit__, None, None, None)
 
@@ -120,6 +122,56 @@ class RunnerVerdictTest(unittest.TestCase):
         self.assertIn("ERROR: test_errors", out)
         self.assertIn("a_module_that_does_not_exist", out)
         self.assertIn("FAILED (failures=1, errors=2, skipped=1)", out)
+
+    def test_a_class_only_the_parent_could_import_is_an_error_not_an_empty_pass(self) -> None:
+        # The false green the review reproduced: the worker's discovery lacked
+        # the class, ran an empty suite for it, and the verdict was OK.
+        write_suite(
+            self.root,
+            {
+                "test_worker_only_fails.py": """
+                import os
+                import unittest
+
+                if str(os.getpid()) != os.environ["RUNNER_PARENT_PID"]:
+                    raise ImportError("only a worker fails to import this")
+
+
+                class Hidden(unittest.TestCase):
+                    def test_fails(self):
+                        self.fail("serial unittest reports this")
+                """
+            },
+        )
+
+        code, out = run(self.root)
+
+        self.assertEqual(1, code, out)
+        self.assertIn("discovery", out)
+
+    def test_a_class_only_a_worker_could_import_is_an_error_not_skipped(self) -> None:
+        write_suite(
+            self.root,
+            {
+                "test_parent_only_fails.py": """
+                import os
+                import unittest
+
+                if str(os.getpid()) == os.environ["RUNNER_PARENT_PID"]:
+                    raise ImportError("only the parent fails to import this")
+
+
+                class Seen(unittest.TestCase):
+                    def test_passes(self):
+                        pass
+                """
+            },
+        )
+
+        code, out = run(self.root)
+
+        self.assertEqual(1, code, out)
+        self.assertIn("test_parent_only_fails", out)
 
     def test_discovering_nothing_is_a_failure_not_a_pass(self) -> None:
         # A mistyped -s would otherwise turn a CI job green having run nothing.
