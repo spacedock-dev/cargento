@@ -6,9 +6,9 @@ compare, is a product question rather than an engineering one, and it was settle
 rather than by code.
 
 This file is where those rulings live for the code to cite. They were made on the Cargento
-Visibility 2x2 roadmap and their full arguments stay there, but a runtime comment cannot cite a
-tracker, and the shape contract below is not background: three of its rules are built into the
-producer rather than checked after it.
+Visibility 2x2 roadmap, now closed, and their full arguments stay on its issues, but a runtime
+comment cannot cite a tracker, and the shape contract below is not background: three of its rules
+are built into the producer rather than checked after it.
 
 For what each runtime file owns, see [the module map](design-runtime-architecture.md). For what
 survives a redraw, including the unsent drafts in these fields, see
