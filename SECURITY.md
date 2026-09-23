@@ -967,6 +967,8 @@ The bounds, all of which hold together:
   `--observer-model`. `--no-harness-usage` is an alias for that rollback. Both default to disabled
   without the opt-in flag. Windows daemon respawn currently omits the opt-in flag, so the model
   remains disabled there.
+  Measured 2026-09-23, a violation of this bound: the unasked lane never reads the flag, so
+  `--unasked-readings --no-harness-usage` still starts Codex readings. DRC-4649 fixes it.
 
 A violation of any of those is a security bug: an invocation with the setting off or unanswered, an
 invocation carrying unredacted text, a credential read that this section does not name, tool access
@@ -977,6 +979,28 @@ its own retention, and what it does with a prompt is outside Cargento's control.
 trust the operator already extends to that harness by running it, but it is a real transfer and it is
 stated here rather than implied.
 
+### Ruled 2026-09-23 and not yet built: a reading without the startup flag
+
+[DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask) changes two
+of the bounds above for reader-requested readings and adds a caller. The first two take effect with
+DRC-4640 and the caller with DRC-4650; until then the bounds above describe the build. The off switch
+is already a bound above, and DRC-4649 repairs the violation of it recorded there.
+
+- Opt-in becomes the first press. The first "Check for drift" shows the reading disclosure with an
+  explicit allow, and that answer is DEC-14's opt-in. It is kept in `~/.cargento` so every tab and a
+  respawned daemon agree, `--forget` clears it, and the session page carries the off switch. Goal
+  summaries keep `--observer-model` and their own consent.
+- A daily cap replaces the flag as the bound on a local process. The flag was one of three things
+  keeping `POST /api/reading` narrow (see [the reading paragraph](#known-and-accepted-1)), and a
+  remembered answer can be granted by any local process that reaches the port, so a rolling
+  twenty-four hour cap on reader-requested readings takes its place.
+- The off switch covers everything, as it already should. `--no-observer-model` and
+  `--no-harness-usage` refuse every model call, the unasked lane included.
+- A second caller. A reading runs on the session's own harness, so a Claude Code session is read by
+  Claude Code and its evidence goes to Anthropic, not OpenAI. The fallback to the other harness is
+  named before the press. The Claude Code producer needs its own entry beside Observer model calls
+  below before it ships.
+
 ### Observer model calls
 
 `observer.CodexGoalModel` sends a generated prompt to the installed Codex CLI, which uses its
@@ -986,6 +1010,8 @@ that could drift. These are the paths that can send session content off the
 machine. A reading is produced by a codex subprocess whatever harness the session runs on, so a
 reading of a Claude session spends the operator's Codex capacity and sends that session's evidence
 to OpenAI. It is off unless `--observer-model` was supplied. `--no-observer-model` always wins.
+DEC-21 changes the first two of those sentences when DRC-4650 and DRC-4640 ship; see the ruled
+section above.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
 focused session and up to three active children whose assignment is unavailable.
@@ -1440,6 +1466,13 @@ The allowlist, one line per field:
   against reopen after a restart and after the live row leaves the board.
 - `annotation_output`, the same field's other half: what the reader typed the session should
   produce. Same bound, same redaction, same reason.
+
+Ruled 2026-09-23 by [DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal) and not yet built (DRC-4643): `annotation_goal` may also hold the
+reader's own latest or first prompt, adopted in one press and marked as adopted. That makes "what the
+reader typed" an inference for adopted rows, since authorship rests on the harness recording a user
+message and on an injected-prompt filter that fails open. The adopted words go through the same
+`annotations.annotate` write, redaction and bounds. The first prompt is a new published field and
+needs its own line here when it ships.
 
 The revision number beside them, `annotation_revision`, is in the record and not on this list. It
 is an integer the board derives, not text anybody typed.
@@ -2013,7 +2046,9 @@ event ingress: the harm is a side effect on the operator's Codex balance rather 
 about a session, and what holds it is the same-origin check and the refusal of a document
 navigation, neither of which a local process sends headers for. Three things keep it narrow. The
 route answers 503 unless `--observer-model` was supplied, so a default run spends nothing. One
-reading per session may be in flight, so a loop cannot multiply a single session's cost. And the
+reading per session may be in flight, so a loop cannot multiply a single session's cost. When
+DEC-21 ships, a remembered first-press answer replaces the flag and a daily cap takes over its part
+here, as Light harness usage records. And the
 route reads nothing back to the caller beyond whether a reading was produced: an unknown session is
 the same 200 as any other, never a 404, so it is not an oracle for which sessions the board holds.
 
