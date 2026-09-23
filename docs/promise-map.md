@@ -291,7 +291,7 @@ covering it.
 Telling a session that died from one that finished is scoped and unstarted.
 
 Everything else, including where each of these sits in the build order and what it is waiting on,
-is on the [Cargento: Visibility 2x2 Roadmap](https://linear.app/recce/project/cargento-visibility-2x2-roadmap-c43e013de860/overview)
+is on the [Cargento: Actions Front and Center](https://linear.app/recce/project/cargento-actions-front-and-center-eed1852b11e6/overview)
 project in Linear. Its description leads with this same map, and each milestone leads with the user
 value it is there to deliver.
 

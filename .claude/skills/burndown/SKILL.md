@@ -1,14 +1,16 @@
 ---
 name: burndown
-description: Use when working the Cargento Visibility 2x2 Roadmap, choosing what to build next, or closing out a DRC issue.
+description: Use when working the Cargento Actions Front and Center roadmap, choosing what to build next, or closing out a DRC issue.
 ---
 
 # burndown
 
 One roadmap issue, start to finish, with the records left true afterwards.
 
-The project is **Cargento: Visibility 2x2 Roadmap** in Linear (team `DRC`). This skill owns
-picking and reconciling. Invoke the required supporting skills inside the current workflow;
+The project is **Cargento: Actions Front and Center** in Linear (team `DRC`):
+<https://linear.app/recce/project/cargento-actions-front-and-center-eed1852b11e6/overview>.
+Its predecessor, the Visibility 2x2 Roadmap, is closed. This skill owns picking and reconciling.
+Invoke the required supporting skills inside the current workflow;
 delegating work to another agent is a separate choice and requires its own authorization.
 
 Invoke the `burndown` skill with no argument to pick and work the next issue, with a `DRC-####`
@@ -54,9 +56,9 @@ comment. One without a receipt is an interrupted reconcile: finish it at step 4 
 belongs here because the filter below drops everything `Done`, so an unreconciled issue is invisible
 from that point on.
 
-Fetch the project's issues, and page until `hasNextPage` is false. The default page is 50 against
-roughly 290 issues here, so one page is the recently touched slice rather than the backlog. Order by
-`createdAt`, or filter by state: the default `updatedAt` order shifts under your own cursor while you
+Fetch the project's issues, and page until `hasNextPage` is false. The default page is 50, and the
+predecessor project reached roughly 290 issues, so one page is the recently touched slice rather
+than the backlog. Order by `createdAt`, or filter by state: the default `updatedAt` order shifts under your own cursor while you
 write to Linear, which is how a page-two fetch can disagree with a page-one fetch in the same session.
 
 Drop on the state **type**, never on a remembered list of names. Drop `completed`, `canceled`,
@@ -68,7 +70,7 @@ sorting on names alone leaves a merged, unreleased issue as a live pick.
 Then, in this order:
 
 1. Drop anything with an open blocker. A decision issue that is not `Done` is still a blocker, even when its body records the call. Check `blockedBy`, not prose. Drop the `Blocked` state itself only when `blockedBy` still holds an open issue. A `Blocked` issue with no open blocker is a step 4.4 that never ran, and dropping it here is what keeps it invisible.
-2. Release row: `release:r1`, then `r2`, `r3`, `later`. An issue with no `release:*` label ranks after `later` and is never dropped for lacking one. Measured 2026-09-09: 21 of 46 open issues carry no release label, and one of them, DRC-4328, is named in a milestone's `What is left`, so treating the gap as "not real work" is wrong. When a milestone names it, say so in the pick line as a triage gap rather than burying it.
+2. Release row: `release:r1`, then `r2`, `r3`, `later`. An issue with no `release:*` label ranks after `later` and is never dropped for lacking one. The current project uses no `release:*` label at all, so this rung ties every issue in it and rule 4 does the separating. An unlabelled issue is never "not real work".
 3. Within that row, prefer an issue whose `move:*` label is not `none`. An issue with no move label ranks as `none` until triage labels it, so this rung only separates issues triage has already reached. Step 2 is what sets the label, which means a fresh issue cannot be discriminated here and falls through to rules 4 to 7. The labels and what they mean are in [the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise).
 4. Then prefer what other open issues are waiting on.
 5. Then risk-adjusted impact from the issue's own score table, highest first. Skip this rung for an issue that has no panel score rather than ranking it last: whole milestones here were filed outside the workshop, and their issues say so in their own Provenance.
@@ -296,7 +298,7 @@ Never write markup for an issue carrying a `## Design reference` without having 
 The section exists because the design is not in this repository and can move without warning. An
 implementer who skips it ships a surface that looks finished and matches nothing.
 
-Never trust one page of Linear issues. The default page is 50 and the project holds roughly 290.
+Never trust one page of Linear issues. The default page is 50, and a project here outgrows it.
 
 Never widen scope to make an issue feel complete. The board's estimates assume the narrow reading.
 

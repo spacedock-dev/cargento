@@ -52,12 +52,12 @@ stages:
       label: merged
 ---
 
-# Burn down the Cargento Visibility 2x2 Roadmap
+# Burn down the Cargento Actions Front and Center roadmap
 
 One roadmap issue at a time, from picked to merged, with the Linear records left true afterwards.
 
-The project is **Cargento: Visibility 2x2 Roadmap** in Linear (team `DRC`):
-<https://linear.app/recce/project/cargento-visibility-2x2-roadmap-c43e013de860/overview>. Each
+The project is **Cargento: Actions Front and Center** in Linear (team `DRC`):
+<https://linear.app/recce/project/cargento-actions-front-and-center-eed1852b11e6/overview>. Each
 issue on that board is one entity here. The workflow runs until the board is empty.
 
 This workflow does not invent its own picking rules, its own build discipline, or its own
