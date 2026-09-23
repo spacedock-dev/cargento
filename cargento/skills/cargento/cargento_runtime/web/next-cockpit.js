@@ -2358,14 +2358,12 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   const enabled = !reason && !pending;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
   const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
-  /* Before the button, not after the press. The reading spends the reader's
-     own Codex capacity and sends their goal and a slice of the observed
-     record off this machine; the offer paragraph in the reading scopes WHAT is sent
-     and says nothing about where it goes or who pays. A reader who has not
-     read this has not been warned. */
-  /* The route's disclosure, naming this session's own receiver. With no
-     provider there is no disclosure and no offer: the route's sentence says
-     why, as the refusal below. */
+  /* Before the button, not after the press: the route's disclosure, naming
+     this session's own receiver, whose capacity is spent and where the words
+     go. The offer paragraph in the reading scopes WHAT is sent and says
+     nothing about where it goes or who pays. With no provider there is no
+     disclosure and no offer: the route's sentence says why, as the refusal
+     below. */
   const disclosure = provider && route.disclosure
     ? `<p class="next-cockpit-reading-why">${esc(route.disclosure)}</p>` : "";
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
@@ -4499,6 +4497,10 @@ function nextImplicitAdoption(session){
 
 function nextPromptReadingRefusal(session, annotation, model){
   if(!(nextData && nextData.annotate === true)) return NEXT_READING_ANNOTATIONS_OFF;
+  /* A route with no reader is a fact about this machine, and it outranks any
+     step the page could name: saving a goal here would not let a check run. */
+  const route = nextReadingRoute(session);
+  if(route && !route.provider) return nextReadingRouteRefusal(session);
   if(!String(annotation && annotation.goal || "").trim()){
     const candidate = nextPromptCandidate(session);
     if(candidate && candidate.at == null){

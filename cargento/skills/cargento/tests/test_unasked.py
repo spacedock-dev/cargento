@@ -1269,17 +1269,41 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
     through the route resolver and the gate.
     """
 
-    RUNTIME = Path(__file__).resolve().parents[1] / "cargento_runtime"
+    SKILL = Path(__file__).resolve().parents[1]
+    RUNTIME = SKILL / "cargento_runtime"
+    # The scorer (`scripts/`, DRC-4666's future `--producer`) and the MCP server
+    # sit outside the runtime package, and either would be a caller that never
+    # passes through the route resolver or the gate.
+    SCRIPTS = SKILL.parents[2] / "scripts"
 
     def _users(self, name: str) -> set[str]:
+        sources = [
+            *self.RUNTIME.rglob("*.py"),
+            *self.SCRIPTS.rglob("*.py"),
+            *self.SKILL.glob("*.py"),
+        ]
+        self.assertIn(self.SKILL / "mcp_server.py", sources)
+        self.assertTrue(any(path.name == "score_abstention.py" for path in sources))
         return {
-            path.relative_to(self.RUNTIME).as_posix()
-            for path in self.RUNTIME.rglob("*.py")
+            path.relative_to(self.SKILL.parents[2]).as_posix()
+            for path in sources
             if name in path.read_text(encoding="utf-8")
         }
 
     def test_only_the_reading_route_builds_a_claude_code_model(self) -> None:
-        self.assertEqual({"reading.py", "http_api.py"}, self._users("ClaudeReadingModel"))
+        self.assertEqual(
+            {
+                "cargento/skills/cargento/cargento_runtime/reading.py",
+                "cargento/skills/cargento/cargento_runtime/http_api.py",
+            },
+            self._users("ClaudeReadingModel"),
+        )
 
     def test_only_the_claude_code_model_calls_the_claude_code_subprocess(self) -> None:
-        self.assertEqual({"observer.py", "reading.py"}, self._users("claude_exec"))
+        self.assertEqual(
+            {
+                "cargento/skills/cargento/cargento_runtime/observer.py",
+                "cargento/skills/cargento/cargento_runtime/reading.py",
+            },
+            self._users("claude_exec"),
+        )

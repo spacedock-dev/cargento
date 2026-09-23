@@ -1929,6 +1929,53 @@ class ClaudeExecTest(unittest.TestCase):
                 self.assertEqual([], seen)
                 self.assertEqual([], os.listdir(config.state_dir))
 
+    MARKERS = (
+        "CLAUDECODE",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+    )
+    KEPT = (
+        "PATH",
+        "HOME",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+    )
+
+    def test_a_reading_started_from_inside_a_claude_session_is_not_that_session(self) -> None:
+        """A daemon opened from a Claude Code session carries its markers.
+
+        The CLI drops these itself when it spawns a fresh session; a reading
+        that kept them would register as the opener's child and could reach
+        its peer-messaging socket.
+        """
+        environ = dict.fromkeys((*self.MARKERS, *self.KEPT), "x")
+        scrubbed = observer.claude_environment(environ)
+        for name in self.MARKERS:
+            with self.subTest(dropped=name):
+                self.assertNotIn(name, scrubbed)
+        for name in self.KEPT:
+            with self.subTest(kept=name):
+                self.assertEqual("x", scrubbed.get(name))
+        self.assertIn("CLAUDECODE", environ, "the caller's mapping was modified")
+
+    def test_the_call_runs_with_the_scrubbed_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "s"}):
+            seen, _text, _status, _config = self._run()
+            expected = observer.claude_environment(os.environ)
+        env = seen[0][1]["env"]
+        self.assertEqual(expected, env)
+        self.assertNotIn("CLAUDECODE", env)
+        self.assertNotIn("CLAUDE_CODE_SESSION_ID", env)
+
     def test_the_resolver_is_asked_for_claude_and_never_for_codex(self) -> None:
         resolver = mock.Mock(return_value=None)
         observer.claude_exec(

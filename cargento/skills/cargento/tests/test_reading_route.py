@@ -280,10 +280,6 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
         self.assertGreaterEqual(len(seen), 8)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ThePagePublishesARoutePerHarnessNotOneDisclosure(unittest.TestCase):
     """The page renders the route for THAT session's harness, so the payload
     carries one per harness on the board and no board-wide sentence."""
@@ -386,3 +382,17 @@ class TheBuildGateThePageReadsIsEitherProvider(unittest.TestCase):
                 cast("Any", self), ("claude",), {"claude", "codex"}
             )
         self.assertEqual(annotation_store.ABSTENTION_CHECK_NOT_RUN, data["reading_check"])
+
+
+class TheSentencesReadAsSentences(unittest.TestCase):
+    def test_no_reason_chains_three_clauses_with_and(self) -> None:
+        for harness, claude, codex in itertools.product(HARNESSES, STATES, STATES):
+            gate, which = _world(claude, codex)
+            with gate:
+                note = reading_route.resolve(harness, binary_resolver=which)["note"]
+            with self.subTest(harness=harness, claude=claude, codex=codex):
+                self.assertLessEqual(note.count(", and "), 1, note)
+
+
+if __name__ == "__main__":
+    unittest.main()

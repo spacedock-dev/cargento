@@ -31,7 +31,7 @@ from . import io as runtime_io
 from . import records, spacedock, transcripts
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from .config import RuntimeConfig
     from .state import RuntimeState
@@ -260,6 +260,36 @@ CLAUDE_READING_EFFORT = "high"
 # Passed as a JSON string, which `claude --help` (2.1.280) documents for
 # `--mcp-config` beside files, so no temp file exists to leak or race.
 CLAUDE_EMPTY_MCP_CONFIG = '{"mcpServers":{}}'
+# The markers of the Claude Code session a daemon may have been started from.
+# The 2.1.280 CLI deletes these itself before it spawns a fresh session, so
+# inheriting them is what the vendor treats as wrong: they make a reading the
+# opener's child and hand it the opener's peer-messaging socket and token.
+# Auth and provider variables (`ANTHROPIC_*`, `CLAUDE_CODE_USE_*`) are kept on
+# purpose, because they are how the operator chose an endpoint and account.
+_CLAUDE_SESSION_MARKERS = frozenset(
+    {
+        "CLAUDECODE",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+    }
+)
+
+
+def claude_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """The reading call's environment: the daemon's, minus the opener's session.
+
+    Public and pure, as `git_status.probe_environment` is, so a test asserts
+    the scrub without spawning anything.
+    """
+    return {
+        key: value
+        for key, value in environ.items()
+        if key not in _CLAUDE_SESSION_MARKERS
+        and not key.startswith("CLAUDE_CODE_MESSAGING_")
+        and not (key.startswith("CLAUDE_CODE_") and "SESSION" in key)
+    }
 
 
 def claude_exec(
@@ -336,6 +366,7 @@ def claude_exec(
                 cwd=workdir,
                 stdout=output,
                 stderr=subprocess.DEVNULL,
+                env=claude_environment(os.environ),
                 text=True,
                 encoding="utf-8",
                 timeout=OBSERVER_MODEL_TIMEOUT_SEC,

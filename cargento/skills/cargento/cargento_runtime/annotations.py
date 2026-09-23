@@ -588,10 +588,21 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     readings = value.get("readings")
     if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
         entry["readings"] = readings
-    withheld = value.get("withheld")
-    if isinstance(withheld, str) and withheld in reading.WITHHELD.values():
+    withheld = _withheld(value.get("withheld"))
+    if withheld:
         entry["withheld"] = withheld
     return entry
+
+
+def _withheld(value: Any) -> str:
+    """A stored reason for no reading, in today's words, or nothing.
+
+    A sentence this build no longer writes is mapped through
+    `reading.LEGACY_WITHHELD` rather than dropped, for that table's reason.
+    """
+    if isinstance(value, str) and value in reading.LEGACY_WITHHELD:
+        return reading.WITHHELD[reading.LEGACY_WITHHELD[value]]
+    return value if isinstance(value, str) and value in reading.WITHHELD.values() else ""
 
 
 def _eviction_rank(entry: Annotation) -> tuple[int, float]:

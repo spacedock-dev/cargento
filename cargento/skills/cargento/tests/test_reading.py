@@ -1663,6 +1663,25 @@ class WhatAClaudeCodeReadingCostsAndProduces(unittest.TestCase):
         self.assertEqual(reading.WITHHELD_MODEL_FAILED, why)
         self.assertTrue(spent)
 
+    def test_a_relative_claude_code_is_not_available_so_nothing_is_reserved(self) -> None:
+        for relative in ("claude", "./claude", "bin/claude"):
+            with self.subTest(path=relative):
+                model = reading.ClaudeReadingModel(
+                    cast("Any", self.config),
+                    runner=self._runner(),
+                    binary_resolver=mock.Mock(return_value=relative),
+                )
+                self.assertFalse(model.available())
+
+    def test_the_claude_code_model_forwards_the_callers_byte_cap(self) -> None:
+        model = reading.ClaudeReadingModel(
+            cast("Any", self.config),
+            runner=self._runner(reply=b"y" * 500),
+            binary_resolver=lambda _name: "/bin/claude",
+        )
+        text, status = model("p", output_cap_bytes=17)
+        self.assertEqual(("y" * 17, "ok"), (text, status))
+
     def test_the_claude_code_model_never_looks_for_codex(self) -> None:
         asked: list[str] = []
 
@@ -1676,6 +1695,29 @@ class WhatAClaudeCodeReadingCostsAndProduces(unittest.TestCase):
         model.available()
         model("p", output_cap_bytes=10)
         self.assertEqual({"claude"}, set(asked))
+
+    def test_a_reading_withheld_under_the_old_codex_sentence_reads_back_as_missing_codex(
+        self,
+    ) -> None:
+        """Stored before DRC-4650, and true when it was: it must not read back as a
+        press with nothing to show, and its false second sentence must not render."""
+        old = (
+            "The Codex CLI was not found on this machine, so no reading was made. A reading "
+            "is produced by a codex subprocess whatever harness the session runs on."
+        )
+        stored = {
+            "harness": "claude",
+            "sid": "s1",
+            "revisions": [{"n": 1, "at": 100.0, "goal": "ship it", "output": ""}],
+            "readings": 1,
+            "withheld": old,
+        }
+        entry = annotation_store._entry(stored, text_cap=240, revision_cap=8)
+        assert entry is not None
+        self.assertEqual(
+            reading.WITHHELD[reading.WITHHELD_MODEL_UNAVAILABLE], entry.get("withheld")
+        )
+        self.assertNotIn("whatever harness", str(entry.get("withheld")))
 
     def test_neither_missing_cli_sentence_claims_one_provider_reads_every_harness(self) -> None:
         for token in (reading.WITHHELD_MODEL_UNAVAILABLE, reading.WITHHELD_CLAUDE_UNAVAILABLE):

@@ -174,12 +174,16 @@ def resolve(harness: str, *, binary_resolver: Callable[[str], Any] | None = None
             ),
             fallback=True,
         )
+    # The harness's own lack stands as a sentence of its own, so the two
+    # machine facts after it join with one "and" rather than a chain of them.
+    lack = "".join(f"{clause}. " for clause in lead)
     return _route(
         harness,
         "",
         _NONE_REASONS[(first, second)],
-        _sentence(
-            [*lead, _clause(preferred, first), _clause(other, second)],
+        lack
+        + _sentence(
+            [_clause(preferred, first), _clause(other, second)],
             ", so no check can run for this session.",
         ),
         fallback=False,

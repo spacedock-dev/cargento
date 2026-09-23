@@ -266,6 +266,18 @@ WITHHELD = {
     ),
 }
 
+# What a stored reason read as before DRC-4650, and the token it means now.
+# The old Codex sentence was true when stored, but its second half ("whatever
+# harness the session runs on") is not true of this build, so it is mapped to
+# the current sentence on read rather than kept or dropped: kept, it renders a
+# false claim; dropped, the row reads as a press with nothing to show.
+LEGACY_WITHHELD = {
+    (
+        "The Codex CLI was not found on this machine, so no reading was made. A reading "
+        "is produced by a codex subprocess whatever harness the session runs on."
+    ): WITHHELD_MODEL_UNAVAILABLE,
+}
+
 # Two sentences that must never read alike, and the reason they are constants
 # rather than inline strings is that the assertion comparing them needs
 # something to name. "Nothing was checked" is not "nothing departed".

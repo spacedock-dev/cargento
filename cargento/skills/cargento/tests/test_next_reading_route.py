@@ -212,3 +212,41 @@ console.log(JSON.stringify({html: control(), posts: posts.length}));
         )
         assert isinstance(out, str)
         self.assertIn("Turn off readings", out)
+
+    def test_with_no_reader_and_no_goal_the_page_does_not_send_them_to_type_one(self) -> None:
+        """Saving a goal would not let a check run here, so the machine's
+        reason wins over the step the page would otherwise name."""
+        out = self.render(
+            {"claude": NO_READER},
+            """
+session.annotation_goal = "";
+session.annotation_output = "";
+session.annotation_revision = null;
+session.instruction = null;
+session.instructions = [];
+session.first_prompt = "";
+console.log(JSON.stringify({html: control(), candidate: nextPromptCandidate(session)}));
+""",
+        )
+        assert isinstance(out, dict)
+        self.assertIsNone(out["candidate"], "a prompt candidate would hide the nothing-typed arm")
+        self.assertEqual(1, out["html"].count(NO_READER["note"]))
+        self.assertNotIn("Save a goal above", out["html"])
+        self.assertNotIn("next-action--primary", out["html"])
+
+    def test_a_session_whose_harness_has_no_route_never_borrows_another_harness_route(
+        self,
+    ) -> None:
+        out = self.render(
+            {"codex": CODEX, "pi": _route("pi", {"codex"})},
+            """
+__fetchImpl = async (url, init) => { if(init && init.method === "POST") posts.push(init); return {ok:true,json:async()=>nextData}; };
+await nextCockpitAskForReading(session, null);
+console.log(JSON.stringify({html: control(), posts: posts.length}));
+""",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["posts"])
+        self.assertNotIn("OpenAI", out["html"])
+        self.assertNotIn("A reading sends", out["html"])
+        self.assertIn("Who would read this session is not published", out["html"])
