@@ -1077,6 +1077,8 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
   also keeps Cargento's own hooks from posting the call to the board as a session.
 - `--restricted`: no code-running built-in tools and no WebFetch, and user, project and local
   settings files are ignored.
+- Both leave admin-managed (policy) settings in force, as `claude --help` says, so a managed hook or
+  other managed setting still applies. `--strict-mcp-config` below does cover managed MCP servers.
 - `--tools ""`: the built-in tool set is empty.
 - `--strict-mcp-config --mcp-config '{"mcpServers":{}}'`: no MCP server from anywhere.
 - `--disable-slash-commands`, `--no-chrome`, and `--no-session-persistence`, so no session is saved
@@ -1087,6 +1089,14 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
   `--effort high`.
 
 `--bare` is not used, because it refuses OAuth sign-in. `--json-schema` is not used either.
+
+The process runs with the daemon's environment minus the markers of any Claude Code session the
+daemon was started from (`observer.claude_environment`: `CLAUDECODE`, `CLAUDE_CODE_*SESSION*`,
+`CLAUDE_CODE_MESSAGING_*`, `CLAUDE_PID`, `CLAUDE_EFFORT`, `CLAUDE_CODE_ENTRYPOINT` and
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`), the set the CLI drops itself when it starts a fresh
+session. Authentication and provider variables are kept, so configuration in the daemon's
+environment, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK` and
+`CLAUDE_CODE_USE_VERTEX`, decides which endpoint and which account receive the reading.
 
 The process runs in a fresh owner-only (0700) empty directory under the state directory. Stdout
 goes to an owner-only temp file, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
