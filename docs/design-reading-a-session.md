@@ -30,6 +30,10 @@ too, which is why the shape contract below governs something narrower than "was 
 The ruling also asked for an evaluation rubric before automatic assessments are enabled. That
 sentence is the one DEC-17 had to read carefully.
 
+Amended 2026-09-23: a Drift mark read from a stored record is not the indicator this section
+refuses, because it evaluates nothing on a cadence. [DEC-20](#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)
+says why and what may show it.
+
 ## DEC-15b: an assessment may be stored
 
 An outcome assessment and the annotation revision it read persist in session history, so both
@@ -150,6 +154,12 @@ is a reading of two prose strings, which DEC-15 refused and DEC-18 permits only 
 preconditions that are not met. So the block asks and the reader answers. A block that claimed to
 have found a conflict would be the false claim this whole tab exists to avoid, and the word
 conflict does not appear in anything a reader sees.
+
+Amended 2026-09-23: [DEC-20](#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)
+labels this block "Conflict to settle", decided knowing it breaks the sentence above. The label puts
+a question to the reader and records no finding: what raises it is still any unsettled later
+direction, the detected superset, and nothing reads whether the two strings disagree. A block that
+claimed a contradiction was found remains refused.
 
 **The suppression keys on the detected superset**, not on a declared conflict. Any unsettled later
 direction demotes a departure to `not verifiable from available evidence`, inside
@@ -334,6 +344,10 @@ a scoring result. The local answer key is bound to the frozen packet, and the co
 The producer's evidence and lifecycle rules, the explicit press and disclosure, and the
 `--observer-model` opt-in still apply to each request. The evaluator retains its existing verdicts
 and coverage rules for future scoring. This amendment concerns the reader-requested control.
+
+Amended again 2026-09-23: [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask) replaces the
+`--observer-model` opt-in for reader-requested readings with a remembered first-press answer and a
+daily cap, once DRC-4640 ships. The press and the disclosure still apply to each request.
 
 #### How the check is run, 2026-09-12
 
@@ -573,3 +587,154 @@ did not throw while the server can say what a subprocess returned. That asymmetr
 `osascript` exits zero under Do Not Disturb and with the hosting application's notifications
 switched off, so a zero return means the scripting bridge accepted the call and nothing more. The
 two lanes are the same strength, and a shared value name would have been defensible.
+
+## DEC-20: the first screen shows goal beside direction, and drift has one home
+
+Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. None of it is built yet:
+DRC-4636 to DRC-4642 build it, and until they ship the board behaves as the sections above and
+[NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describe.
+
+The question was what a person sees about drift when they open Cargento. Measured on a default run
+the day it was decided, the honest answer was nothing: four of four sessions had no typed goal, none
+had been read, and a departure comes only from a model reading, which a default run does not make.
+A first screen built from drift results would have been an empty state. So the ruling puts DEC-15's
+floor on the first screen and lets a result add to it, rather than the other way round.
+
+1. Cargento opens on Sessions. Drift belongs to a session, the journey never asks for grouping, and
+   Projects caps each row's members and draws no member lines for a project whose sessions are all
+   idle. NUI-3, NUI-5 and NUI-16 are amended to match.
+2. Every row puts your goal beside the NOW line and leaves the comparison to you, which needs no
+   model and no permission. With no typed goal, the goal slot shows the prompt DEC-22 permits,
+   labelled "your latest prompt". Expected Output stays on the session page, because on Claude and
+   Codex it reads not verifiable under DEC-17 rule 7 and a first screen of those would say nothing.
+3. The word drift may name a mark, a section and a control. It never names a result: no surface says
+   a session has no drift, because DEC-17 rule 4 forbids rendering `consistent with the evidence
+   read` as met. An unsettled later instruction of yours is DEC-16's baseline question and reads
+   "Conflict to settle", never Drift. The label asks; it does not say a contradiction was found.
+4. Held to merges into the session view and the `held-to` slug aliases to it, which also removes
+   the dead end a session with no project reaches today.
+
+| State | Words on the row | Source record | Surfaces |
+| -- | -- | -- | -- |
+| A departure is on record, asked or unasked | Drift | the reading or the unasked check that raised it | first screen row, session page |
+| A later instruction of yours is unsettled | Conflict to settle | DEC-16's later-direction floor | session page |
+| A reading found the work consistent | none on the row | the stored reading, with its evidence line | session page only |
+| Not checked | none on the row; the control offers "Check for drift" | absence of a stored reading | session page; one screen-level sentence on a default run |
+| No goal typed | none on the row; the goal slot shows your latest prompt or is empty | absence of an annotation revision | first screen goal slot, session page |
+
+The one primary control on the session page reads "Check for drift", replacing "Ask for a reading"
+and the DRC-4603 ruling that held that label. A session blocked on you, by needs input or an exact
+request, keeps its answer control as the primary, and the check sits below it.
+
+### Where a drift row sorts, and why that makes no count
+
+A session with drift on record joins the active group whatever its state, after sessions blocked on
+you and before working ones. It is not counted in the `Active now` figure, which keeps NUI-16's
+definition of that number. A `consistent` reading sorts exactly where not checked does.
+
+DEC-17 bounds its surviving failure class, a false `consistent` on Goal, partly by a reading never
+being "aggregated into a count". Ordering rows by whether a departure is on record produces no count,
+and because `consistent` neither shows on a row nor moves one, a false `consistent` gains no reach it
+lacked. So the ranking is not the aggregation that would make a full rubric owed. A drift total on any
+screen would be, and none is permitted.
+
+### What DEC-15's indicator sentence now means
+
+DEC-15 says there is no always on drift indicator. That sentence refused evaluation on a cadence, and
+it still does: nothing here reads a session in the background. A Drift mark is a stored record shown
+where it applies, the same kind of thing as an ended label, and it appears only after a reading the
+reader asked for or the unasked lane DEC-18 permits. The skill body carries the same sentence and is
+amended when DRC-4641 ships the mark, not before, because it describes the shipped product.
+
+## DEC-21: a reading works the first time you ask
+
+Decided 2026-09-23 (DRC-4634). Built by DRC-4640, DRC-4649 and DRC-4650; until they ship, readings
+need `--observer-model` exactly as [the light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
+say today.
+
+On a default run the reading control tells the reader to restart the server with a flag. The press
+already carries a disclosure and is already the consent a browser can give, so the startup flag was
+doing a different job: it was one of the three things that stop a local process, which sends no
+fetch metadata, from spending readings through a route with no capability token. Removing it is
+allowed only with something that does that job instead.
+
+1. The first press of "Check for drift" shows the reading disclosure with "Allow and check". The
+   answer is kept in `~/.cargento`, so every tab and a respawned daemon agree; `--forget` clears it,
+   and the session page carries the off switch. The startup flag is no longer needed for
+   reader-requested readings. It still governs goal summaries, which keep their own consent.
+2. A daily cap on reader-requested readings replaces the flag as the bound on a local process. It
+   counts over a rolling twenty-four hours, as the unasked lane's cap does, because this runtime
+   carries no timezone for a calendar day.
+3. `--no-observer-model` and its alias `--no-harness-usage` refuse every model call, the unasked
+   lane included. Measured the day this was decided, the unasked lane did not read the flag at all,
+   so `--unasked-readings --no-harness-usage` still started Codex readings. DRC-4649 fixes that and
+   is a security bug under the bounds, not a feature.
+4. A reading runs on the session's own harness: a Claude Code session is read by Claude Code, a
+   Codex session by Codex. When that harness is not installed the check falls back to the other and
+   says so before the press, so session text reaches a second provider only after the page has named
+   it. The Claude Code producer needs its own caller entry under the bounds and a fresh abstention
+   check before it is offered (DRC-4650).
+5. The unasked check stays off by default for this milestone.
+
+This amends DEC-17's 2026-09-14 amendment, which keeps the `--observer-model` opt-in on each
+request. When DRC-4640 ships, the press, the remembered answer and the daily cap together are that
+opt-in.
+
+### Where the unasked default stands
+
+The unasked check is the only route that finds drift nobody went looking for. DEC-18 gates its
+default on four preconditions and on the rubric's acceptance thresholds. Measured 2026-09-23:
+
+| Precondition | State | Settled by |
+| -- | -- | -- |
+| Native delivery on Linux and Windows | not met | `notifications.native_notifier` returns a backend on darwin only; DRC-4328 |
+| The off machine lane | built | #356, DRC-4034 |
+| A delivery outcome recorded per raise | built | #320, DRC-4540 |
+| A producer exists | met | `unasked.Lane` and `reading.CodexReadingModel`, DRC-4511 |
+| DEC-17's abstention check has run and passed | not met | the check is `accepted` (2026-09-14), not `passed`; [docs/abstention](abstention/README.md) holds the acceptance record and no scorer result |
+| Quiet hours exist | met | #357, DRC-4032 |
+| The rubric's acceptance thresholds | not written | DRC-4542 owns the case set; no threshold exists to meet |
+
+Two rows are not met and one cannot be met until someone writes it. That is the list this ruling
+leaves open.
+
+## DEC-22: your own prompt may become your goal
+
+Decided 2026-09-23 (DRC-4635). Built by DRC-4643; until it ships, the annotation store holds only
+words the reader typed into Cargento.
+
+Most sessions have no goal from the reader, so there is nothing to check drift against. The fastest
+goal is the one the reader already gave the agent. Existing rulings settle what may not be adopted:
+text the agent wrote is DEC-17's surviving failure class by construction, and an observer goal is
+derived the way the observer snapshot is, which the rule 7 amendment calls "a paraphrase of the
+session, not evidence about it", and a paraphrase is no better as a baseline. Workflow goals are refused too, because who wrote one is mixed and they
+join on newlines where the typed fields are one line each.
+
+1. The reader's latest prompt or first prompt may be adopted. The latest is what the board already
+   shows: on Claude the `asked` instruction, the first line of the newest prompt clipped to 140
+   characters; on Codex the published title, only when `states_work` accepts it, because Codex titles
+   a bare continuation too. The first prompt is a new published field on both harnesses, admitted to
+   the history prompt-text allowlist with its own reason.
+2. On a session with no goal, "Check for drift" adopts the prompt the goal slot shows and checks
+   against it, so the path is one press. Choosing the first prompt, or adopting without checking, is
+   in the goal field.
+3. An adopted revision stores its source prompt's time beside the save time, and DEC-16's
+   later-instruction floor and reading eligibility key on the source time. Both keyed on the save
+   time when this was decided, so adopting a first prompt would have settled every later instruction
+   silently, and adopting on an ended session would have withheld the reading with a false reason.
+   Codex publishes no time for its prompts today. Until it does, Codex adoption is refused with a
+   sentence saying why.
+4. The mark, "from your prompt", shows in the goal's source line, in the reading's evidence line and
+   in one sentence of the board-wide disclosure. Editing adopted words makes an ordinary typed
+   revision, because the reader has then typed them.
+5. Adopted words do not make a session eligible for the unasked lane, so one press on many rows
+   cannot quietly widen what that lane spends.
+
+Authorship is inferred, not proven. A prompt counts as the reader's because the harness recorded it
+as a user message and the injected-prompt filter did not recognise it, and that filter fails open. A
+dispatch prompt from an orchestrator or a headless run also arrives as a user message. The mark
+exists so a reading against adopted words says where they came from.
+
+A source token and a source time are new published fields and take the three hand declarations
+AGENTS.md's Measured Invariants names. They need a DEC-15b admission only if the history copy keeps
+provenance. The first prompt needs the allowlist admission above whatever else is decided.

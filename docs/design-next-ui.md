@@ -487,6 +487,11 @@ session focus id, landing the reader on a session filter that matches nothing. A
 merges or drops a tab therefore owes an alias for the retired slug and an amendment to this
 section, and cannot be priced as a change to the strip alone.
 
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home), not yet built: the bare URL, invalid fragments and retired fragments
+will normalize to Sessions instead of Projects (DRC-4636). Held to merges into the session view, so
+its `held-to` slug is retired and owes the alias this section requires: a `held-to` fragment opens
+that session's view (DRC-4639). Until those ship, this section describes the board.
+
 ## NUI-4: the canonical bundle fails before bind
 
 `cli.main` assembles one required page before creating a daemon log, binding, forking, or spawning a
@@ -514,6 +519,10 @@ Meta, Control, or Alt is held. `Escape` follows the same restrictions and return
 detail to its project, and from any other view to Projects. In a tripwire draft it cancels the
 draft first. The preview's `dashboard mode` button and `d` shortcut were removed during promotion
 because `/` now serves this same interface.
+
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home), not yet built: `Escape` from any view other than session detail will
+return to Sessions, the new landing view, instead of Projects (DRC-4636). DEC-20 does not change
+`Escape` from session detail, which still returns to its project.
 
 Projects groups the current payload by display label and splits active evidence from recently
 observed groups. Sessions separates Active now from Recent history. The active group retains gate
@@ -972,7 +981,8 @@ request. It is not the number of rows in the payload. That distinction prevents 
 observation window from reading as a list of open harness processes.
 
 The body makes the time boundary visible. Active now contains only exact sessions with active
-evidence and gives each one stable WHERE, NOW, NEXT, and BLOCKED columns. WHERE is the project
+evidence (DEC-20 adds rows with drift on record; see the 2026-09-23 amendment at the end of this
+section) and gives each one stable WHERE, NOW, NEXT, and BLOCKED columns. WHERE is the project
 display label and explicitly withholds exact location. NOW prefers an in-progress source task,
 then bounded state detail. NEXT uses a pending source task or names that no pending step was
 published. BLOCKED distinguishes a reported block, a source-backed no-block reading, and a harness
@@ -1031,6 +1041,15 @@ bodies: the terminal section returns empty with no focus and the status line ret
 sessions, so a summary derived from what came back would report an enabled bridge as off. And a
 capability that is on is operational content, so its section renders expanded and outside the
 disclosure rather than collapsed with the rest.
+
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home), not yet built: the entry point moves back to Sessions, the reverse of
+the v2 move above. The v2 reason was that a reader first finds the project and then its sessions. The
+drift journey reverses it, because drift belongs to one session, and the project level caps members
+and draws none for an idle-only project, which is where unattended drift lands. Each active row puts
+the reader's goal beside NOW (DRC-4637). A session with drift on record joins Active now whatever its
+state, after blocked and before working, and is not counted in the `Active now` figure, which keeps
+the definition above (DRC-4641). Projects stays one click away with the member order the 2026-09-23
+amendment above gave it.
 
 ## NUI-17: the gate queue hands over a command, and only where one was measured
 
