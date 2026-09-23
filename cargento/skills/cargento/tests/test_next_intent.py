@@ -289,7 +289,7 @@ console.log(JSON.stringify({
             board=[self._board(), self._board("board-only")],
         )
         self.assertEqual(4, out["rows"])
-        self.assertIn("2 sessions you have typed words against", out["visible"])
+        self.assertIn("2 sessions you have saved words against", out["visible"])
         self.assertIn("1 whose words you discarded", out["visible"])
         self.assertIn("1 of the 2 that still hold words carries a reading", out["visible"])
         self.assertIn("annotation store", out["visible"])
@@ -413,9 +413,9 @@ console.log(JSON.stringify({
 
         visible = out["visible"]
         assert isinstance(visible, str)
-        self.assertIn("1 session you have typed words against", visible)
+        self.assertIn("1 session you have saved words against", visible)
         self.assertIn("1 whose words you discarded", visible)
-        self.assertNotIn("2 sessions you have typed words against", visible)
+        self.assertNotIn("2 sessions you have saved words against", visible)
 
     def test_the_count_is_unchanged_where_nothing_was_discarded(self) -> None:
         """The boring outcome, so the clause is not added to every board."""
@@ -423,7 +423,7 @@ console.log(JSON.stringify({
 
         visible = out["visible"]
         assert isinstance(visible, str)
-        self.assertIn("2 sessions you have typed words against", visible)
+        self.assertIn("2 sessions you have saved words against", visible)
         self.assertNotIn("discarded", visible)
 
     def test_the_reading_denominator_does_not_count_a_record(self) -> None:
@@ -625,7 +625,7 @@ console.log(JSON.stringify({
     def test_nothing_typed_anywhere_is_not_the_same_as_the_store_being_off(self) -> None:
         empty = self.render([])
 
-        self.assertIn("Nothing has been typed against any session yet", empty["visible"])
+        self.assertIn("No goal or expected output has been saved yet", empty["visible"])
         self.assertEqual(1, empty["rows"])
 
         # The half this test was named for and did not check. Measured while
@@ -637,7 +637,7 @@ console.log(JSON.stringify({
 
         self.assertIn("Annotations are off for this run", off["visible"])
         self.assertIn("--no-annotations", off["visible"])
-        self.assertNotIn("Nothing has been typed against any session yet", off["visible"])
+        self.assertNotIn("No goal or expected output has been saved yet", off["visible"])
         self.assertEqual(1, off["rows"])
 
     DEPARTURE: ClassVar[dict[str, Any]] = {

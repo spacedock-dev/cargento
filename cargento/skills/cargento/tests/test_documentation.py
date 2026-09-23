@@ -1384,15 +1384,17 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
             with self.subTest(field=carrier):
                 self.assertNotIn(carrier, history.OBSERVATION_FIELDS)
 
-    def test_the_allowlist_holds_the_two_fields_the_baseline_needs(self) -> None:
+    def test_the_allowlist_holds_baseline_fields_and_the_first_prompt(self) -> None:
         # The two have to agree about the count as well as about the contents.
         # This replaces an emptiness assertion: "nothing yet" was the claim a
         # reader of this contract acted on until DEC-15b earned the first two
         # entries, and a list that grew without this line moving would leave
         # the contract claiming an exposure it no longer has.
-        self.assertEqual(("annotation_goal", "annotation_output"), history.PROMPT_TEXT_ALLOWLIST)
+        self.assertEqual(
+            ("first_prompt", "annotation_goal", "annotation_output"), history.PROMPT_TEXT_ALLOWLIST
+        )
         entries = self.bullets(self.SECURITY, "The allowlist, one line per field:\n\n")
-        self.assertEqual(2, len(entries))
+        self.assertEqual(3, len(entries))
 
     def test_a_reserved_name_is_not_an_admitted_one(self) -> None:
         # The contract names five assessment fields it has NOT admitted, so a

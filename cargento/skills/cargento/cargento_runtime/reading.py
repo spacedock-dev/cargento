@@ -87,7 +87,11 @@ CONSTRAINTS = (CONSTRAINT_GOAL, CONSTRAINT_OUTPUT)
 # `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
 # failure here is a producer and a renderer disagreeing about a key name and
 # neither one noticing.
+PROMPT_SOURCES = ("latest-prompt", "first-prompt")
+
 ASSESSMENT_KEYS = (
+    "goal_source",
+    "goal_source_at",
     "revision_read",
     "revision_read_at",
     "read_at",
@@ -277,7 +281,7 @@ HISTORY_OFF_NOTE = (
 # consent string is the worst possible place for the reassuring half to be the
 # false half.
 DISCLOSURE = (
-    "A reading sends the goal you typed, and a bounded list of entries from the "
+    "A reading sends the goal you chose, and a bounded list of entries from the "
     "observed record, to a codex subprocess. Codex uses its own authentication to "
     "reach OpenAI, so this is one of the paths that sends session content off this "
     "machine and spends your Codex capacity. Your expected output is sent only on a "
@@ -458,6 +462,8 @@ class Assessment(TypedDict):
     captioned with today's typed words under a reading of an older revision.
     """
 
+    goal_source: NotRequired[str]
+    goal_source_at: NotRequired[float]
     revision_read: int
     # When that revision was typed, carried on the reading rather than derived
     # from the store. Past the revision cap the read revision is evicted and
@@ -1162,7 +1168,7 @@ def _readable(
         return "", "", "", WITHHELD_NOTHING_TYPED
     scope, withheld = eligibility(
         row,
-        latest_revision_at=records.norm_epoch(latest.get("at")),
+        latest_revision_at=baseline_at(latest),
         now=now,
         settle_sec=config.reading_settle_sec,
     )
@@ -1231,6 +1237,9 @@ def produce(
         "revision_read_at": records.norm_epoch(latest.get("at")) or None,
         "criteria": criteria,
     }
+    if latest.get("goal_source") in PROMPT_SOURCES:
+        assessment["goal_source"] = str(latest["goal_source"])
+        assessment["goal_source_at"] = baseline_at(latest)
     return assessment, "", True
 
 
@@ -1267,3 +1276,20 @@ class CodexReadingModel:
         """A missing executable is known before reserving a reading attempt."""
         binary = self.binary_resolver("codex")
         return bool(binary and os.path.isabs(binary))
+
+
+def valid_prompt_time(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        at = float(value)
+    except OverflowError:
+        return None
+    return at if math.isfinite(at) and at > 0 else None
+
+
+def baseline_at(revision: Mapping[str, Any]) -> float:
+    # Adoption happens later than the instruction it preserves. Save time would
+    # silently settle later directions and refuse an already-ended session.
+    field = "goal_source_at" if revision.get("goal_source") in PROMPT_SOURCES else "at"
+    return valid_prompt_time(revision.get(field)) or 0.0

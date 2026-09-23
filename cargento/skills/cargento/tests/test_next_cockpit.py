@@ -10551,7 +10551,7 @@ await __settle();
 const html = __els.app.innerHTML;
 const count = needle => html.split(needle).length - 1;
 console.log(JSON.stringify({
-  departure:count("A departure is a place the record does not match what you typed"),
+  departure:count("A departure is a place the record does not match the words you chose"),
   revision:count("Each save is a revision"),
   readingShort:count("A reading is one model pass over the record"),
   readingOffer:count("A reading is a model\\u2019s account of the evidence on this page"),
@@ -12008,7 +12008,7 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "already been dropped and the question below still stands": "next-cockpit-conflict-open",
         "so nothing above is an inspected file": "OBSERVED RECORD",
         "Save a goal above to check for drift": 'class="next-cockpit-held-fields"',
-        "the observed record below and the words you typed": "OBSERVED RECORD",
+        "the observed record below and the goal and output you saved": "OBSERVED RECORD",
         "after you saved the words above": 'class="next-cockpit-held-fields"',
     }
 

@@ -94,7 +94,7 @@ function nextIntentSources(row, session, retained){
   const line = (label, text) => `<span class="next-intent-words">${esc(label)}: ${esc(text)}</span>`;
   let html = discarded ? line("Typed words", row.discarded_why || "") : "";
   if(typed){
-    html += line("Typed goal", row.goal || row.goal_why || "No goal typed for this session.") +
+    html += line(["latest-prompt", "first-prompt"].includes(row.goal_source) ? "Goal from your prompt" : "Typed goal", row.goal || row.goal_why || "No goal typed for this session.") +
       line("Typed expected output", row.output || row.output_why || "No expected output typed.");
   }else if(!discarded){
     html += line("Typed words", nextData && nextData.annotate === true && nextIntentState === "read"
@@ -325,7 +325,7 @@ function nextIntentView(){
     : nextIntentState === "error"
       ? "The annotation store could not be read, so its evidence is unread rather than empty."
       : !available ? "Reading the annotation store."
-        : !(nextIntentRows || []).length ? "Nothing has been typed against any session yet." : "";
+        : !(nextIntentRows || []).length ? "No goal or expected output has been saved yet." : "";
   const rows = available ? [...new Map((nextIntentRows || []).map(row => [sessKey(row), row])).values()] : [];
   const live = nextIntentLiveProjects();
   /* Newest save first, which is also eviction order read backwards: the store
@@ -348,7 +348,7 @@ function nextIntentView(){
      existed, falling from two sessions to one the moment a discard landed. */
   const typed = ordered.filter(row => !nextAnnotationDiscarded(row));
   const records = ordered.length - typed.length;
-  const lead = `${typed.length} ${typed.length === 1 ? "session" : "sessions"} you have typed ` +
+  const lead = `${typed.length} ${typed.length === 1 ? "session" : "sessions"} you have saved ` +
     "words against" +
     (records ? `, and ${records} whose words you discarded` : "") + ". ";
   /* The stated rule and not just the order (DRC-4565). The sort above was
@@ -381,7 +381,7 @@ function nextIntentView(){
     (available && rows.length ? `<p class="next-intent-note">${lead}The annotation store ` +
       `keeps the newest 256 and sixteen revisions each. ${evicts} ` +
       "These limits apply only to retained annotation records. Session history keeps a " +
-      "fourteen-day copy of the same two fields; this list does not recover typed words from " +
+      "fourteen-day copy of the same two fields; this list does not recover saved words from " +
       "that copy. Removal by the annotation store is an eviction and not an expiry.</p>" : "") +
     group("On the board", board) + group("Retained after leaving the board", departed) +
     (available ? nextIntentClose(ordered, total)

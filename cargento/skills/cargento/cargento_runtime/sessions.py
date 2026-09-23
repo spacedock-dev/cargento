@@ -532,6 +532,9 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "title": None,
         "last_prompt": "",
         "prompt_states_work": False,
+        "prompt_at": None,
+        "first_prompt": "",
+        "first_prompt_at": None,
         "last_output": None,
         # The second line beneath the title. A mapping of label, text and at, or
         # None. The label is one of "asked", "agent" or "earlier", and the page
@@ -617,6 +620,8 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_revision": None,
         "annotation_revision_count": 0,
         "annotation_at": None,
+        "annotation_goal_source": None,
+        "annotation_goal_source_at": None,
         "annotation_binding_why": "",
         # The third answer a discard made possible (DRC-4565). None on every
         # row nothing was discarded on, which is what the two states above

@@ -1465,6 +1465,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # lives, so the two collectors that had no reason to import `records`
         # now do. It is a leaf, so both edges stay inward.
         "cargento_runtime.collectors.claude": {
+            "cargento_runtime.transcripts",
             "cargento_runtime.claude_data",
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -1796,6 +1797,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # helper; DRC-4345), which is narrower than `dismissals` beside it
         # (that one reaches `records` and `state`).
         "cargento_runtime.history": {
+            "cargento_runtime.records",
             "cargento_runtime.config",
             "cargento_runtime.io",
         },

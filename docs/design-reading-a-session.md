@@ -749,8 +749,8 @@ leaves open.
 
 ## DEC-22: your own prompt may become your goal
 
-Decided 2026-09-23 (DRC-4635). Built by DRC-4643; until it ships, the annotation store holds only
-words the reader typed into Cargento.
+Decided 2026-09-23 (DRC-4635). Built by DRC-4643: the annotation store keeps typed and explicitly
+adopted words with their source.
 
 Most sessions have no goal from the reader, so there is nothing to check drift against. The fastest
 goal is the one the reader already gave the agent. Existing rulings settle what may not be adopted:
@@ -771,8 +771,8 @@ join on newlines where the typed fields are one line each.
    later-instruction floor and reading eligibility key on the source time. Both keyed on the save
    time when this was decided, so adopting a first prompt would have settled every later instruction
    silently, and adopting on an ended session would have withheld the reading with a false reason.
-   Codex publishes no time for its prompts today. Until it does, Codex adoption is refused with a
-   sentence saying why.
+   Codex now publishes the timestamp paired with its latest and first prompts. A missing or
+   invalid source time still refuses adoption with a sentence saying why.
 4. The mark, "from your prompt", shows in the goal's source line, in the reading's evidence line and
    in one sentence of the board-wide disclosure. Editing adopted words makes an ordinary typed
    revision, because the reader has then typed them.
@@ -787,3 +787,19 @@ exists so a reading against adopted words says where they came from.
 A source token and a source time are new published fields and take the three hand declarations
 AGENTS.md's Measured Invariants names. They need a DEC-15b admission only if the history copy keeps
 provenance. The first prompt needs the allowlist admission above whatever else is decided.
+
+### What prompt adoption preserves
+
+The server accepts a closed latest/first choice and the displayed text/time pair, then resolves
+that pair from its own row. A changed pair refuses rather than choosing new words silently.
+Implicit adoption refuses an existing goal; an explicit first/latest choice also compares the
+saved revision. Save time remains the time of the reader's act. Source time controls the later
+direction floor and final-reading eligibility. The assessment carries its own source even after
+its revision is evicted. Output-only edits preserve goal provenance; explicitly saving a goal
+makes a typed revision even when the letters match. No adopted current goal enters the unasked
+lane, including one with typed output or older typed revisions.
+
+First prompts are bounded published excerpts, not full transcripts. The first-record scan reads
+at most two MiB, refuses an unread prefix, and never calls a later record the first. Both source
+controls show the excerpt before adoption; clipped sources are named as excerpts. The same
+annotation scrub and 240-character bound apply on save.

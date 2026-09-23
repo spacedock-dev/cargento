@@ -12,6 +12,7 @@ from cargento_runtime import quota as runtime_quota
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import spacedock as runtime_spacedock
 from cargento_runtime import state as runtime_state
+from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 
 if TYPE_CHECKING:
@@ -933,6 +934,11 @@ def collect(
                     else None
                 ),
                 "title": (info or {}).get("title"),
+                **(
+                    runtime_transcripts.first_prompt(config, state, transcript, "claude")
+                    if info and transcript
+                    else {}
+                ),
                 # Line 1 above is the session's identity — the `ai-title`, fixed
                 # before the second prompt on 200 of 204 long sessions — and this
                 # is the line that says what it is doing now. Behind the same

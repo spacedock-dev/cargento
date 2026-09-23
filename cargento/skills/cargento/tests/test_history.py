@@ -376,8 +376,8 @@ class TheAnnotationBaselineIsAdmittedAndBoundedTest(HistoryStoreTestCase):
         # The migration, exercised for real now that a bump has happened. A v1
         # record is a v2 record with these three absent, and discarding one
         # would cost a reader fourteen days of history on an upgrade.
-        self.assertEqual(2, history.SCHEMA_VERSION)
-        self.assertEqual((1, 2), history.READABLE_VERSIONS)
+        self.assertEqual(3, history.SCHEMA_VERSION)
+        self.assertEqual((1, 2, 3), history.READABLE_VERSIONS)
         path = os.path.join(self.state_home, history.STORE_FILENAME)
         with open(path, "w") as handle:
             json.dump(
@@ -1700,17 +1700,17 @@ class BothBoundsAreConfigurableTest(HistoryStoreTestCase):
         self.assertEqual(["idle"], [e["state"] for e in history.load(config)[0]])
 
     def test_a_narrowed_cap_is_the_cap_the_lane_evicts_by(self) -> None:
-        # 220 bytes holds one of these records and not two: re-measured after
-        # DEC-15b's three fields joined the record at 187 bytes each against a
-        # 24-byte envelope, so one store is 211 and two are 398. It was 140
-        # against a 111-byte record before. Four transitions therefore have to
-        # leave the newest alone.
-        config = self.built(["--history-max-bytes", "220"])
+        # DEC-22 adds four fields. Measure the actual single-row payload so
+        # the test still asks whether the configured bound evicts, not whether
+        # an obsolete hand-calculated size survives a schema admission.
+        one = history.observation(loaded_row("working", last_activity=1_000.0))
+        cap = len(json.dumps({"v": history.SCHEMA_VERSION, "entries": [one]}).encode()) + 8
+        config = self.built(["--history-max-bytes", str(cap)])
         lane = history.Lane(config, diagnostic_sink=self.diagnostics.append)
         for tick, state in enumerate(("working", "idle", "working", "idle")):
             lane.record([loaded_row(state, last_activity=1_000.0 + tick)], now=1_000.0 + tick)
         kept, _reset = history.load(config)
-        self.assertLessEqual(len(self.store_bytes(config)), 220)
+        self.assertLessEqual(len(self.store_bytes(config)), cap)
         self.assertEqual(["idle"], [e["state"] for e in kept])
         self.assertEqual([1_003.0], [e["last_activity"] for e in kept])
 

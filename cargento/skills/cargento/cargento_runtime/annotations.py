@@ -41,7 +41,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import reading, records
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
@@ -245,6 +245,11 @@ BINDING_BY_PREFIX = (
 )
 
 
+class Provenance(TypedDict, total=False):
+    goal_source: str
+    goal_source_at: float
+
+
 class Revision(TypedDict):
     """One save. Immutable once written.
 
@@ -254,6 +259,8 @@ class Revision(TypedDict):
     by the bound reads as dropped rather than as one that never existed.
     """
 
+    goal_source: NotRequired[str]
+    goal_source_at: NotRequired[float]
     n: int
     at: float
     goal: str
@@ -358,7 +365,11 @@ def _revision(value: Any, cap: int) -> Revision | None:
     if isinstance(number, bool) or not isinstance(number, int) or number < 1:
         return None
     raw_goal, raw_output = value.get("goal"), value.get("output")
+    provenance = _provenance(value)
+    if provenance is None:
+        return None
     return {
+        **provenance,
         "n": number,
         "at": records.norm_epoch(value.get("at")),
         # Type-checked here as well as on the way in. Any local process can
@@ -420,10 +431,13 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
     if not isinstance(value, dict) or set(value) - set(reading.ASSESSMENT_KEYS):
         return None
     revision = value.get("revision_read")
-    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
-        return None
     scope = value.get("scope")
-    if scope not in reading.SCOPE_TEXT:
+    if (
+        isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision < 1
+        or scope not in reading.SCOPE_TEXT
+    ):
         return None
     raw_criteria = value.get("criteria")
     if not isinstance(raw_criteria, dict) or set(raw_criteria) != set(reading.CONSTRAINTS):
@@ -435,7 +449,11 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
             return None
         criteria[name] = criterion
     ended = value.get("ended_at_read")
+    provenance = _provenance({**value, "at": value.get("revision_read_at")})
+    if provenance is None:
+        return None
     return {
+        **provenance,
         "revision_read": revision,
         "read_at": records.norm_epoch(value.get("read_at")) or None,
         "stamp": records.safe_text(value.get("stamp"), cap),
@@ -506,7 +524,11 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     if not harness or not sid:
         return None
     raw = value.get("revisions")
-    if not isinstance(raw, list):
+    if not isinstance(raw, list) or any(
+        isinstance(item, dict) and _provenance(item) is None for item in raw
+    ):
+        # Dropping just this revision could restore older typed words and
+        # authorize the unasked lane against a baseline we no longer know.
         return None
     parsed = [rev for rev in (_revision(item, text_cap) for item in raw) if rev is not None]
     kept = tuple(sorted(parsed, key=lambda rev: rev["n"])[-revision_cap:]) if revision_cap else ()
@@ -842,6 +864,8 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "revision": latest["n"] if latest else None,
         "revision_count": len(entry["revisions"]) if entry else 0,
         "at": latest["at"] if latest else None,
+        "goal_source": latest.get("goal_source", "typed") if latest else None,
+        "goal_source_at": latest.get("goal_source_at") if latest else None,
         "binding_why": binding_why,
         "reading_refused": bool(entry.get("refused")) if entry else False,
         # Three scalars and no prose, which is what keeps this out of DEC-15b's
@@ -1019,6 +1043,28 @@ def annotate(
     now: float | None = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
+    return _annotate(
+        config,
+        state,
+        (harness, sid),
+        goal=goal,
+        output=output,
+        now=now,
+        diagnostic_sink=diagnostic_sink,
+    )
+
+
+def _annotate(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    identity: tuple[Any, Any],
+    *,
+    goal: Any = None,
+    output: Any = None,
+    now: float | None = None,
+    adoption: dict[str, Any] | None = None,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> str:
     """Append a revision to one session's annotation. Returns an `OUTCOMES` token.
 
     Both fields are optional and independent, and a save that repeats the last
@@ -1028,10 +1074,8 @@ def annotate(
     `OUTCOME_STORED`: the words are on disk either way, and only the second
     minted anything, which is the difference the page's cue states.
     """
-    if not config.annotations_enabled:
-        return OUTCOME_REFUSED
-    key = _key(harness, sid)
-    if not key[0] or not key[1]:
+    key = _key(*identity)
+    if not config.annotations_enabled or not key[0] or not key[1]:
         return OUTCOME_REFUSED
     cap = config.annotation_text_cap_chars
     # Type-checked before redaction, not after. `records.safe_text` does
@@ -1050,6 +1094,10 @@ def annotate(
     if new_goal is None and new_output is None:
         return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
+    options = adoption or {}
+    source_fields = _provenance({**options, "at": stamp})
+    if source_fields is None:
+        return OUTCOME_REFUSED
 
     with state.annotation_lock:
         # From disk under the lock rather than from the cached copy, so a save
@@ -1057,11 +1105,26 @@ def annotate(
         # forward instead of being written away.
         current = load(config)
         existing = find(current, *key)
+        actual_revision = (
+            existing["revisions"][-1]["n"] if existing and existing["revisions"] else 0
+        )
+        expected_revision = options.get("expected_revision")
+        if (expected_revision is not None and expected_revision != actual_revision) or (
+            options.get("empty_goal_only")
+            and existing
+            and existing["revisions"]
+            and existing["revisions"][-1]["goal"]
+        ):
+            return OUTCOME_REFUSED
         if existing is not None and not is_discarded(existing):
             last = existing["revisions"][-1]
+            if new_goal is None:
+                source_fields = _provenance(last) or {}
             text_goal = last["goal"] if new_goal is None else new_goal
             text_output = last["output"] if new_output is None else new_output
-            if (last["goal"], last["output"]) == (text_goal, text_output):
+            if (last["goal"], last["output"]) == (text_goal, text_output) and (
+                _provenance(last) or {}
+            ) == source_fields:
                 # Unchanged text is not a new request, so it mints no revision.
                 # The cache is still refreshed from the load above: two
                 # dashboards share this file, and returning early with a stale
@@ -1070,6 +1133,7 @@ def annotate(
                 state.annotations = _stored(_bounded(current, config.annotation_max_sessions))
                 return OUTCOME_UNCHANGED
             revision: Revision = {
+                **source_fields,
                 "n": last["n"] + 1,
                 "at": stamp,
                 "goal": text_goal,
@@ -1098,6 +1162,7 @@ def annotate(
                 "sid": key[1],
                 "revisions": (
                     {
+                        **source_fields,
                         "n": discarded_revision(existing) + 1,
                         "at": stamp,
                         "goal": new_goal or "",
@@ -1280,3 +1345,68 @@ def forget(config: RuntimeConfig) -> str:
     if _write(config, kept, diagnostic_sink=lambda _line: None):
         return FORGET_SWEPT
     return FORGET_UNWRITABLE
+
+
+def _provenance(value: Mapping[str, Any]) -> Provenance | None:
+    source = value.get("goal_source", "typed")
+    if source == "typed":
+        return {}
+    at = reading.valid_prompt_time(value.get("goal_source_at"))
+    saved = reading.valid_prompt_time(value.get("at"))
+    if source not in reading.PROMPT_SOURCES or at is None or saved is None or at > saved:
+        return None
+    return {"goal_source": source, "goal_source_at": at}
+
+
+def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | None]:
+    """Resolve the producer's source, never a client-authored goal or observer text."""
+    harness = row.get("harness")
+    if harness not in {"claude", "codex"}:
+        return "", None
+    if source == "first-prompt":
+        text, at = row.get("first_prompt"), row.get("first_prompt_at")
+    elif source == "latest-prompt" and harness == "claude":
+        instruction = records.as_dict(row.get("instruction"))
+        if instruction.get("label") != "asked":
+            return "", None
+        text, at = instruction.get("text"), instruction.get("at")
+    elif source == "latest-prompt" and row.get("prompt_states_work") is True:
+        text, at = row.get("title"), row.get("prompt_at")
+    else:
+        return "", None
+    return (text if isinstance(text, str) else "", reading.valid_prompt_time(at))
+
+
+def adopt(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    row: dict[str, Any],
+    *,
+    source: str,
+    expected_text: Any,
+    expected_at: Any,
+    now: float,
+    expected_revision: int | None = None,
+) -> str:
+    text, at = prompt_candidate(row, source)
+    if (
+        not text
+        or at is None
+        or at > now
+        or expected_text != text
+        or reading.valid_prompt_time(expected_at) != at
+    ):
+        return OUTCOME_REFUSED
+    return _annotate(
+        config,
+        state,
+        (row.get("harness"), row.get("sid")),
+        goal=text,
+        now=now,
+        adoption={
+            "goal_source": source,
+            "goal_source_at": at,
+            "empty_goal_only": expected_revision is None,
+            "expected_revision": expected_revision,
+        },
+    )

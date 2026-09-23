@@ -531,7 +531,13 @@ def codex_instruction(config: RuntimeConfig, state: RuntimeState, path: str) -> 
     try:
         stat = os.stat(path)
     except OSError:
-        return {"title": None, "last_prompt": "", "instruction": None, "prompt_states_work": False}
+        return {
+            "title": None,
+            "last_prompt": "",
+            "instruction": None,
+            "prompt_states_work": False,
+            "prompt_at": None,
+        }
     cache_key = (stat.st_mtime_ns, stat.st_size)
     with state.cache_lock:
         cached = state.codex_instruction_cache.get(path)
@@ -555,6 +561,7 @@ def codex_instruction(config: RuntimeConfig, state: RuntimeState, path: str) -> 
         "title": title,
         # A title also exists for a bare continuation; the row must not adopt that as work.
         "prompt_states_work": bool(prompt and states_work(config, prompt[0])),
+        "prompt_at": prompt[1] if prompt and prompt[1] > 0 else None,
         "last_prompt": records.safe_text(
             prompt[0] if prompt else "", records.LAST_PROMPT_CAP_CHARS
         ),
@@ -1216,3 +1223,80 @@ def codex_plan(config: RuntimeConfig, state: RuntimeState, path: str) -> list[di
             limit=config.max_cache_entries,
         )
     return tasks
+
+
+def first_prompt(
+    config: RuntimeConfig, state: RuntimeState, path: str, harness: str
+) -> dict[str, Any]:
+    """The first genuine user record, never a generated title or compacted summary.
+
+    A bounded prefix scan fails absent if a huge initial record hides the first
+    prompt; it must not call a later prompt first. The cache follows file identity
+    as well as size/mtime, so replacing a transcript cannot preserve an old source.
+    """
+    empty: dict[str, Any] = {"first_prompt": "", "first_prompt_at": None}
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return empty
+    key = f"first-prompt:{harness}:{path}"
+    stamp = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.metadata_cache.get(key)
+    if cached is not None and cached.get("stamp") == stamp:
+        return dict(cached["result"])
+    result = empty
+    try:
+        with open(path, "rb") as source:
+            remaining = 2 * 1024 * 1024
+            while remaining > 0:
+                raw = source.readline(remaining + 1)
+                if not raw or len(raw) > remaining:
+                    break
+                remaining -= len(raw)
+                try:
+                    record = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                candidate = _first_prompt_record(record, harness)
+                if candidate is None:
+                    continue
+                body, at = candidate
+                rendered = prompt_title(
+                    config, records.redact_secrets(body), records.INSTRUCTION_CAP_CHARS
+                )
+                result = {
+                    "first_prompt": records.safe_text(rendered, records.INSTRUCTION_CAP_CHARS + 1),
+                    "first_prompt_at": at if at > 0 else None,
+                }
+                break
+    except OSError:
+        return empty
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.metadata_cache,
+            key,
+            {"stamp": stamp, "result": result},
+            limit=config.max_cache_entries,
+        )
+    return result
+
+
+def _first_prompt_record(record: dict[str, Any], harness: str) -> tuple[str, float] | None:
+    if harness == "codex":
+        kind, body, at = _codex_scan_record(record)
+        if kind != "prompt":
+            return None
+    elif harness == "claude":
+        if record.get("isCompactSummary") is True or record.get("isSidechain") is True:
+            return None
+        signal = records._turn_signal(record, "claude")  # noqa: SLF001
+        if not signal or signal[0] != "prompt":
+            return None
+        body = records.extract_text(records.message_dict(record).get("content"))
+        at = records.parse_ts(record.get("timestamp") or "") or 0.0
+    else:
+        return None
+    return (body, at) if body.strip() and not records.injected_prompt(body, harness) else None
