@@ -822,6 +822,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift{margin:18px 0 0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
 .next-session-drift-heading{margin:0;padding:14px 16px 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-drift>.next-session-command-surface{margin:0 16px 14px}
+.next-session-drift>.next-cockpit-conflict{margin:0 16px 14px}
 .next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
 .next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
 .next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}
@@ -1191,7 +1192,11 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    revisions rather than part of the reading. */
 .next-cockpit-reading,.next-cockpit-departures{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
 .next-cockpit-reading>header,.next-cockpit-departures>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.next-cockpit-reading h2,.next-cockpit-departures h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+/* The conflict block had no heading rule of its own, so on the Held to tab its
+   h2 fell to the user agent's size and read louder than every section around
+   it. Harmless there, glaring once the block moved into the session page's
+   first card (DRC-4639), so it joins its neighbours' label rule. */
+.next-cockpit-reading h2,.next-cockpit-departures h2,.next-cockpit-conflict h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-reading-stamp{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 /* The review section holds two collections and two more parts, so each is
    fenced and named. The label takes the mono uppercase every other source label
@@ -1466,6 +1471,9 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   .next-cockpit-recovery>div,.next-cockpit-now-state>div{border-right:0;border-bottom:1px solid var(--rule)}
   .next-cockpit-recovery>div:last-child,.next-cockpit-now-state>div:last-child{border-bottom:0}
   .next-cockpit-recovery-evidence{grid-column:1}
+  /* The two word fields stack: side by side at 320px the character count ran
+     into the field's own clear control (walked, DRC-4639). */
+  .next-cockpit-held-fields{grid-template-columns:1fr}
 }
 @media(max-width:420px){
   .next-cockpit-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:0 6px}
