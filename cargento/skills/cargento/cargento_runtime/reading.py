@@ -200,6 +200,7 @@ WITHHELD_LEDGER_EMPTY = "ledger-empty"
 WITHHELD_RECORD_UNREAD = "record-unread"
 WITHHELD_RECORD_ERROR = "record-error"
 WITHHELD_MODEL_UNAVAILABLE = "model-unavailable"
+WITHHELD_CLAUDE_UNAVAILABLE = "claude-unavailable"
 WITHHELD_MODEL_FAILED = "model-failed"
 WITHHELD_NOTHING_TYPED = "nothing-typed"
 WITHHELD_DISCARDED = "discarded"
@@ -236,9 +237,17 @@ WITHHELD = {
         "The observed record could not be read, so nothing here says what this session "
         "has been doing and no reading can rest on it."
     ),
+    # One per provider, because the page named that provider before the
+    # press and a missing-CLI sentence naming the other would contradict it.
+    # Neither offers the other provider instead: a fallback is chosen and
+    # disclosed before the press, never after a launch found nothing.
     WITHHELD_MODEL_UNAVAILABLE: (
-        "The Codex CLI was not found on this machine, so no reading was made. A reading "
-        "is produced by a codex subprocess whatever harness the session runs on."
+        "The Codex CLI was not found on this machine when the check started, so no reading "
+        "was made and nothing was spent."
+    ),
+    WITHHELD_CLAUDE_UNAVAILABLE: (
+        "The Claude Code CLI was not found on this machine when the check started, so no "
+        "reading was made and nothing was spent."
     ),
     WITHHELD_MODEL_FAILED: (
         "The reading did not complete. Nothing was produced, and a fresh press is the only retry."
@@ -270,29 +279,10 @@ HISTORY_OFF_NOTE = (
     "those words stay in the annotation store."
 )
 
-# What the reader is told before the first press. Separate from the observer
-# model's own disclosure, and deliberately: that one names transcript excerpts
-# and a goal summary, and a reading additionally sends the reader's own
-# composed prose to the same subprocess.
-# What the reader consents to. An earlier draft said "Nothing leaves it", which
-# SECURITY.md flatly contradicts: the codex path uses its own authentication to
-# reach OpenAI and is the one path that can send session content off this
-# machine. `--sandbox read-only` sandboxes the filesystem, not egress. A
-# consent string is the worst possible place for the reassuring half to be the
-# false half.
-DISCLOSURE = (
-    "A reading sends the goal you chose, and a bounded list of entries from the "
-    "observed record, to a codex subprocess. Codex uses its own authentication to "
-    "reach OpenAI, so this is one of the paths that sends session content off this "
-    "machine and spends your Codex capacity. Your expected output is sent only on a "
-    "harness that publishes work "
-    "evidence, and on no other. The reading is a model's account of the evidence it "
-    "was given, never a verification that the work was done."
-)
-PROVIDER_NOTE = (
-    "Readings are produced by a codex subprocess whatever harness the session runs on, "
-    "and they spend your own Codex capacity."
-)
+# What the reader is told before the first press lives in `reading_route`,
+# composed per provider, because the receiver it names depends on the
+# session's harness and on this machine (DRC-4650). One board-wide sentence
+# naming Codex was true only while Codex read every harness.
 
 # Rule 4's backstop, in two halves, because one flat list demoted six of
 # eight natural departure sentences: "the tests failed", "not done",
@@ -1214,7 +1204,9 @@ def produce(
         return None, WITHHELD_LEDGER_EMPTY, False
     raw, status = model(prompt, output_cap_bytes=config.annotation_text_cap_chars * 8)
     if status == "unavailable":
-        return None, WITHHELD_MODEL_UNAVAILABLE, False
+        # Named for the CLI the page promised, never the other one: each model
+        # says which sentence its own absence gets.
+        return None, getattr(model, "unavailable_reason", None) or WITHHELD_MODEL_UNAVAILABLE, False
     if status != "ok":
         return None, WITHHELD_MODEL_FAILED, True
     criteria = resolve(
@@ -1251,6 +1243,8 @@ class CodexReadingModel:
     sandboxing, and `CodexExecArgvTest` pins it for both.
     """
 
+    unavailable_reason = WITHHELD_MODEL_UNAVAILABLE
+
     def __init__(
         self,
         config: RuntimeConfig,
@@ -1275,6 +1269,44 @@ class CodexReadingModel:
     def available(self) -> bool:
         """A missing executable is known before reserving a reading attempt."""
         binary = self.binary_resolver("codex")
+        return bool(binary and os.path.isabs(binary))
+
+
+class ClaudeReadingModel:
+    """One bounded Claude Code call for a reading (DRC-4650).
+
+    As thin as `CodexReadingModel`, for its reason: everything that restricts
+    the subprocess lives in `observer.claude_exec`, where `ClaudeExecTest`
+    pins it. Whether this model may be offered at all is not its question;
+    `reading_route` answers that from the gate before one is built.
+    """
+
+    unavailable_reason = WITHHELD_CLAUDE_UNAVAILABLE
+
+    def __init__(
+        self,
+        config: RuntimeConfig,
+        *,
+        runner: Any = subprocess.run,
+        binary_resolver: Any = shutil.which,
+    ) -> None:
+        self.config = config
+        self.runner = runner
+        self.binary_resolver = binary_resolver
+
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        """The model's reply and a status of `ok`, `unavailable` or `failed`."""
+        return observer.claude_exec(
+            self.config,
+            prompt,
+            output_cap_bytes=output_cap_bytes,
+            runner=self.runner,
+            binary_resolver=self.binary_resolver,
+        )
+
+    def available(self) -> bool:
+        """A missing executable is known before reserving a reading attempt."""
+        binary = self.binary_resolver("claude")
         return bool(binary and os.path.isabs(binary))
 
 

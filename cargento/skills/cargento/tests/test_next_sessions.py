@@ -4,15 +4,19 @@ import re
 import shutil
 import unittest
 
-from .next_harness import NEXT_STYLES, NextPageJsHarness
+from .next_harness import NEXT_STYLES, NextPageJsHarness, published_routes
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextSessionsBehaviorTest(NextPageJsHarness):
-    FIXTURE = """
+    FIXTURE = (
+        """
 location.search = "";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
+  reading_routes: """
+        + published_routes("claude", "codex", "cursor", "antigravity")
+        + """,
   generated: 10000,
   window_hours: 24,
   ask: true,
@@ -70,6 +74,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
   ]
 })});
 """
+    )
 
     def render(self, checks: str = "console.log(JSON.stringify(__els.app.innerHTML));") -> object:
         return self._run_page_js(

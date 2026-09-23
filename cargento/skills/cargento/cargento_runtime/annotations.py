@@ -69,9 +69,39 @@ ABSTENTION_CHECK_ACCEPTED = "accepted"
 ABSTENTION_CHECK = ABSTENTION_CHECK_ACCEPTED
 
 
+# The Claude Code producer's own check, and it has not run: no eligible
+# recorded Claude case exists for it. The 2026-09-14 acceptance above was a
+# review of Codex readings and opens nothing here. While this is `not-run` the
+# producer is never offered, selected or invoked by any route
+# ([DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated)).
+CLAUDE_ABSTENTION_CHECK = ABSTENTION_CHECK_NOT_RUN
+_OPEN = (ABSTENTION_CHECK_PASSED, ABSTENTION_CHECK_ACCEPTED)
+
+
 def reading_enabled() -> bool:
-    """Either recorded authorization opens the control and its route."""
-    return ABSTENTION_CHECK in (ABSTENTION_CHECK_PASSED, ABSTENTION_CHECK_ACCEPTED)
+    """Either recorded authorization opens the Codex producer and its route."""
+    return ABSTENTION_CHECK in _OPEN
+
+
+def provider_enabled(provider: str) -> bool:
+    """Whether this provider's own recorded check lets it be offered at all."""
+    if provider == "codex":
+        return reading_enabled()
+    if provider == "claude":
+        return CLAUDE_ABSTENTION_CHECK in _OPEN
+    return False
+
+
+def any_reading_enabled() -> bool:
+    """Whether some provider could be offered, which is what opens the route."""
+    return provider_enabled("codex") or provider_enabled("claude")
+
+
+def published_check() -> str:
+    """The check the page's build-wide gate reads: Codex's, unless only Claude Code's opens."""
+    if not reading_enabled() and provider_enabled("claude"):
+        return CLAUDE_ABSTENTION_CHECK
+    return ABSTENTION_CHECK
 
 
 NO_GOAL_TYPED = "No goal typed for this session."
@@ -84,7 +114,7 @@ NO_OUTPUT_TYPED = "No expected output typed."
 # `clear` drops the entry and `http_api._withdraw_raises` blanks the rows that
 # quoted it, and the page never reads that store. A sentence about it cannot be
 # checked where it is written, so it is written where it can be. The precedent
-# is `reading.DISCLOSURE`, published for the same reason.
+# is the reading route's disclosure, published for the same reason.
 #
 # The first is the disclosure the walk measured the need for: a reader presses
 # the `clear` beside the box, saves, and believes the words are gone while a

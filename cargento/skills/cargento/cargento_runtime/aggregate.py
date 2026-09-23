@@ -20,6 +20,7 @@ from . import (
     reach,
     reading,
     reading_policy,
+    reading_route,
     records,
     sessions,
     tripwires,
@@ -903,17 +904,20 @@ class Application:
                     {
                         "annotate": True,
                         "annotate_cap": config.annotation_text_cap_chars,
-                        "reading_check": annotation_store.ABSTENTION_CHECK,
-                        # Published so the page can show it BEFORE the press.
-                        # It was written, tested and rendered nowhere, so the
-                        # only scoping a reader got was "and nothing else",
-                        # which reads as a promise about locality under a
-                        # button that sends their words to OpenAI on their own
-                        # Codex capacity.
-                        "reading_disclosure": reading.DISCLOSURE,
+                        "reading_check": annotation_store.published_check(),
+                        # Who reads each harness's sessions, and the words to
+                        # show BEFORE the press, one route per harness on the
+                        # board (DRC-4650). Not one board-wide disclosure: a
+                        # Claude Code row and a Codex row may have different
+                        # receivers, and a sentence naming the wrong one under
+                        # a button that sends a reader's words is the failure
+                        # the disclosure exists to prevent.
+                        "reading_routes": reading_route.resolve_all(
+                            str(row.get("harness") or "") for row in out_sessions
+                        ),
                         "reading": reading_policy.status(config, now=now),
                         # The discard control's sentences, published for
-                        # `reading_disclosure`'s reason and one more: the
+                        # `reading_routes`' reason and one more: the
                         # success sentence claims something about the
                         # departure store, which the page never reads, so
                         # the page must not compose it (DRC-4561).

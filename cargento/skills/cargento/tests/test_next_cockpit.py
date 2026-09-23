@@ -15,7 +15,7 @@ from cargento_runtime.web import page as frontend_page
 
 from . import css_cascade
 from .js_literals import emitted_strings, reading_why_sentences
-from .next_harness import NextPageJsHarness, storage_prelude
+from .next_harness import NextPageJsHarness, published_routes, storage_prelude
 
 # The joiner `projectGraphModeScope` builds its storage key with. Written as
 # an escape rather than inline, so a reader sees a separator rather than an
@@ -37,10 +37,14 @@ STANDING_RAISE = (
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextCockpitCompositionTest(NextPageJsHarness):
-    FIXTURE = """
+    FIXTURE = (
+        """
 location.hash = "#n=project:cargento";
 __els.app = {innerHTML: ""};
 const __dashboard = {
+  reading_routes: """
+        + published_routes("codex", "pi", "claude")
+        + """,
   reading:{consent:true, reason:"", used:0, limit:12},
   generated: 105, rate_window_sec: 600, window_hours: 24,
   summary: {working: 1, needs_input: 0},
@@ -100,6 +104,7 @@ __fetchImpl = async url => ({ok: true, json: async () =>
     ? {semantic: __semantic, child_assignments: [], observers: []}
     : __dashboard});
 """
+    )
 
     def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
         return self._run_page_js(
@@ -5683,6 +5688,7 @@ const read = () => {
     // witness which of the two shipped.
     bare: /data-next-cockpit-action="reading-ask"[^>]*\\sdisabled[=>\\s]/.test(block),
     departures: html.includes("DEPARTURES RAISED TO YOU"),
+    said: block.includes("never a verification that the work was done"),
   };
 };
 
@@ -5753,9 +5759,11 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         self.assertIn("Reading availability has not been read", out["unread"]["reason"])
         self.assertTrue(out["unread"]["control"])
         self.assertTrue(out["unread"]["disabled"])
-        # The offer states what a reading may and may not read, before the
-        # control rather than after it.
-        self.assertIn("never a verification that the work was done", out["offered"]["text"])
+        # The offer states what a reading may and may not read. That it is
+        # never a verification is said once, by the route's disclosure beside
+        # the control (DRC-4650), rather than again in the offer.
+        self.assertIn("account of the evidence on this page", out["offered"]["text"])
+        self.assertTrue(out["offered"]["said"])
         self.assertTrue(out["offered"]["control"])
         self.assertTrue(out["offered"]["disabled"])
         # Enablement reads the recorded result, not a constant.
@@ -6111,7 +6119,6 @@ console.log(JSON.stringify({
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.reading_check = "accepted";
-__dashboard.reading_disclosure = "This spends your own model capacity.";
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
 __dashboard.sessions[0].annotation_output = "";
@@ -6148,7 +6155,7 @@ const block = (__els.app.innerHTML.match(
 console.log(JSON.stringify({
   ask: (block.match(/data-next-cockpit-action="reading-ask"/g) || []).length,
   offer: block.includes("account of the evidence on this page"),
-  disclosure: block.includes("This spends your own model capacity."),
+  disclosure: block.includes("Codex reads this Codex session.") && block.includes("OpenAI"),
   counter: /\d+ model requests? recorded for this session\./.test(block),
 }));
 """

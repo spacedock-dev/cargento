@@ -1350,6 +1350,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # this stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.reading_policy",
+            # Publishes who reads each harness's sessions (DRC-4650).
+            "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",
             "cargento_runtime.annotations",
             "cargento_runtime.collectors",
@@ -1645,6 +1647,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.observer",
             "cargento_runtime.records",
         },
+        # Who reads a session: each provider's gate, then its CLI on PATH. It
+        # reaches the model ids in `observer` and never a producer.
+        "cargento_runtime.reading_route": {
+            "cargento_runtime.annotations",
+            "cargento_runtime.observer",
+        },
         "cargento_runtime.observer": {
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -1712,6 +1720,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
             "cargento_runtime.reading_policy",
+            # Resolves the one provider a press may reach (DRC-4650).
+            "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",
             "cargento_runtime.annotations",
             "cargento_runtime.aggregate",

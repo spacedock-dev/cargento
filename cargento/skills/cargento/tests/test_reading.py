@@ -16,16 +16,20 @@ import json
 import math
 import pathlib
 import random
+import shutil
+import subprocess
+import tempfile
 import time
 import unicodedata
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar, cast
+from unittest import mock
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import events, reading, records
+from cargento_runtime import events, reading, reading_route, records
 
 SESSION = {"harness": "claude", "sid": "S1"}
 NOW = 1_700_100_000.0
@@ -1282,13 +1286,28 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
         self.assertIn("Cargento", sentence)
 
 
+def _disclosures() -> dict[str, str]:
+    """The pre-press text for each provider, as a route composes it."""
+    with mock.patch.object(
+        annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+    ):
+        return {
+            harness: reading_route.resolve(
+                harness, binary_resolver=lambda name: f"/usr/local/bin/{name}"
+            )["disclosure"]
+            for harness in ("codex", "claude")
+        }
+
+
 class WhatTheReaderIsToldBeforeTheyPress(unittest.TestCase):
     """The consent and provider sentences, which are the reader's only warning."""
 
-    def test_a_reader_deciding_whether_to_press_is_told_the_prompt_reaches_openai(self) -> None:
-        disclosure = reading.DISCLOSURE.casefold()
-        self.assertIn("openai", disclosure)
-        self.assertNotIn("nothing leaves", disclosure)
+    def test_a_reader_deciding_whether_to_press_is_told_where_the_prompt_goes(self) -> None:
+        for harness, vendor in (("codex", "openai"), ("claude", "anthropic")):
+            with self.subTest(harness=harness):
+                disclosure = _disclosures()[harness].casefold()
+                self.assertIn(vendor, disclosure)
+                self.assertNotIn("nothing leaves", disclosure)
 
     def test_a_reader_is_not_told_her_expected_output_was_sent_when_it_was_not(self) -> None:
         prompt, _ = reading.build_prompt(
@@ -1299,12 +1318,13 @@ class WhatTheReaderIsToldBeforeTheyPress(unittest.TestCase):
             max_bytes=8000,
         )
         self.assertNotIn("SENTINEL_DELIVERABLE", prompt)
-        disclosure = reading.DISCLOSURE.casefold()
-        if "expected output" in disclosure:
-            self.assertIn("work evidence", disclosure)
+        for disclosure in _disclosures().values():
+            if "expected output" in disclosure.casefold():
+                self.assertIn("work evidence", disclosure.casefold())
 
     def test_a_reader_is_told_a_reading_is_an_account_and_not_a_verification(self) -> None:
-        self.assertIn("never a verification", reading.DISCLOSURE)
+        for disclosure in _disclosures().values():
+            self.assertIn("never a verification", disclosure)
 
     def test_a_reader_told_her_reading_is_kept_is_not_promised_more_than_the_store_gives(
         self,
@@ -1321,7 +1341,7 @@ class WhatTheReaderIsToldBeforeTheyPress(unittest.TestCase):
 
 
 class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
-    """`DISCLOSURE` was written, tested, and rendered nowhere.
+    """The disclosure was once written, tested, and rendered nowhere.
 
     A test class named for what a reader is told, asserting a constant no
     reader ever sees, is a test that does not prove what its name claims.
@@ -1336,22 +1356,21 @@ class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
         source = (
             pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "aggregate.py"
         ).read_text(encoding="utf-8")
-        self.assertIn('"reading_disclosure": reading.DISCLOSURE', source)
+        self.assertIn('"reading_routes": reading_route.resolve_all(', source)
         # Beside the check, because a reader who cannot press still needs to
         # know what pressing would do.
         self.assertIn('"reading_check"', source)
 
     def test_the_page_shows_the_warning_before_the_button_and_not_after(self) -> None:
         source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
-        self.assertIn("reading_disclosure", source)
         control = source[
             source.index("function nextCockpitReadingControl(") : source.index(
                 "const NEXT_READING_OFFER"
             )
         ]
-        self.assertIn("reading_disclosure", control, "the warning is not on the control")
+        self.assertIn("route.disclosure", control, "the warning is not on the control")
         self.assertLess(
-            control.index("reading_disclosure"),
+            control.index("route.disclosure"),
             control.index('<button type="button"'),
             "the warning renders after the button the reader has already pressed",
         )
@@ -1360,9 +1379,15 @@ class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
         # The offer paragraph scopes WHAT is sent; only this says where it
         # goes. "and nothing else" reads as a promise about locality without
         # it.
-        self.assertIn("OpenAI", reading.DISCLOSURE)
-        self.assertIn("off this", reading.DISCLOSURE)
-        self.assertIn("codex", reading.DISCLOSURE)
+        for harness, label, vendor in (
+            ("codex", "Codex", "OpenAI"),
+            ("claude", "Claude Code", "Anthropic"),
+        ):
+            with self.subTest(harness=harness):
+                disclosure = _disclosures()[harness]
+                self.assertIn(vendor, disclosure)
+                self.assertIn("off this", disclosure)
+                self.assertIn(f"your {label} capacity", disclosure)
 
 
 class OneReadingAtATimePerSession(unittest.TestCase):
@@ -1555,6 +1580,112 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         prompt = self.calls[0]
         self.assertIn("add a CSV export", prompt)
         self.assertIn("please add a CSV export", prompt)
+
+
+class WhatAClaudeCodeReadingCostsAndProduces(unittest.TestCase):
+    """The second producer, through the same `produce` the Codex one uses (DRC-4650).
+
+    Only the subprocess differs, so these drive `produce` with a
+    `ClaudeReadingModel` over a fake runner: a reading made this way must
+    carry the same shape, and a missing CLI must cost the same nothing.
+    """
+
+    FACT = WhatOnePressActuallyCostsAndProduces.FACT
+
+    def setUp(self) -> None:
+        state_dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, state_dir, True)
+
+        class _Config:
+            reading_settle_sec = 8.0
+            annotation_text_cap_chars = 240
+
+        self.config = _Config()
+        self.config.state_dir = state_dir  # type: ignore[attr-defined]
+        self.commands: list[list[str]] = []
+
+    def _runner(self, reply: bytes = b"{}", returncode: int = 0) -> Any:
+        def run(command: list[str], **kwargs: Any) -> Any:
+            self.commands.append(list(command))
+            kwargs["stdout"].write(reply)
+            return subprocess.CompletedProcess(command, returncode)
+
+        return run
+
+    def _produce(self, model: Any) -> Any:
+        return reading.produce(
+            cast("Any", self.config),
+            {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None},
+            [{"n": 1, "at": 50.0, "goal": "add a CSV export", "output": ""}],
+            [self.FACT],
+            now=200.0,
+            stamp_text="claude-sonnet-5 · read at 10:00",
+            model=model,
+        )
+
+    def test_a_claude_code_reading_has_the_same_shape_as_a_codex_one(self) -> None:
+        model = reading.ClaudeReadingModel(
+            cast("Any", self.config),
+            runner=self._runner(),
+            binary_resolver=lambda _name: "/usr/local/bin/claude",
+        )
+        assessment, why, spent = self._produce(model)
+        self.assertEqual("", why)
+        self.assertTrue(spent)
+        assert assessment is not None
+        self.assertEqual(set(reading.CONSTRAINTS), set(assessment["criteria"]))
+        self.assertTrue(set(assessment) <= set(reading.ASSESSMENT_KEYS))
+        self.assertEqual(1, len(self.commands))
+        self.assertEqual("/usr/local/bin/claude", self.commands[0][0])
+        self.assertIn("--safe-mode", self.commands[0])
+
+    def test_a_missing_claude_code_costs_nothing_and_says_which_cli_was_missing(self) -> None:
+        model = reading.ClaudeReadingModel(
+            cast("Any", self.config), runner=self._runner(), binary_resolver=lambda _name: None
+        )
+        self.assertFalse(model.available())
+        assessment, why, spent = self._produce(model)
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_CLAUDE_UNAVAILABLE, why)
+        self.assertFalse(spent)
+        self.assertEqual([], self.commands)
+        self.assertIn("Claude Code", reading.WITHHELD[why])
+        self.assertNotIn("Codex", reading.WITHHELD[why])
+
+    def test_a_failed_claude_code_call_costs_a_press(self) -> None:
+        model = reading.ClaudeReadingModel(
+            cast("Any", self.config),
+            runner=self._runner(returncode=1),
+            binary_resolver=lambda _name: "/bin/claude",
+        )
+        assessment, why, spent = self._produce(model)
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_MODEL_FAILED, why)
+        self.assertTrue(spent)
+
+    def test_the_claude_code_model_never_looks_for_codex(self) -> None:
+        asked: list[str] = []
+
+        def which(name: str) -> str:
+            asked.append(name)
+            return "/bin/claude"
+
+        model = reading.ClaudeReadingModel(
+            cast("Any", self.config), runner=self._runner(), binary_resolver=which
+        )
+        model.available()
+        model("p", output_cap_bytes=10)
+        self.assertEqual({"claude"}, set(asked))
+
+    def test_neither_missing_cli_sentence_claims_one_provider_reads_every_harness(self) -> None:
+        for token in (reading.WITHHELD_MODEL_UNAVAILABLE, reading.WITHHELD_CLAUDE_UNAVAILABLE):
+            with self.subTest(token=token):
+                self.assertNotIn("whatever harness", reading.WITHHELD[token])
+        self.assertIn("Codex", reading.WITHHELD[reading.WITHHELD_MODEL_UNAVAILABLE])
+        self.assertNotEqual(
+            reading.WITHHELD[reading.WITHHELD_MODEL_UNAVAILABLE],
+            reading.WITHHELD[reading.WITHHELD_CLAUDE_UNAVAILABLE],
+        )
 
 
 if __name__ == "__main__":

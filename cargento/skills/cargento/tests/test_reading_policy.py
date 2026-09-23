@@ -99,3 +99,132 @@ class ReadingPolicyTest(unittest.TestCase):
             results = list(pool.map(_reserve_in_process, [self.home.name] * 24))
         self.assertEqual(12, results.count(""))
         self.assertEqual(12, results.count("daily-cap"))
+
+
+class PermissionIsPerProviderTest(unittest.TestCase):
+    """DRC-4650: allowing Codex to read a session is not allowing Anthropic to.
+
+    The answer a reader gave named one receiver. A second provider receives a
+    reader's words only after the page named it and the reader allowed it.
+    """
+
+    def setUp(self) -> None:
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+
+    def _consent(self, provider: str) -> bool:
+        return reading_policy.status(self.config, now=100.0, provider=provider)["consent"]
+
+    def test_a_reader_who_allowed_codex_has_not_allowed_claude_code(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="codex")
+        self.assertTrue(self._consent("codex"))
+        self.assertFalse(self._consent("claude"))
+        refused = reading_policy.reserve(self.config, now=100.0, provider="claude")
+        self.assertEqual("consent-required", refused["reason"])
+        self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+
+    def test_allowing_claude_code_allows_only_claude_code(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="claude")
+        self.assertTrue(self._consent("claude"))
+        self.assertFalse(self._consent("codex"))
+        self.assertEqual(
+            "", reading_policy.reserve(self.config, now=100.0, provider="claude")["reason"]
+        )
+
+    def test_an_answer_saved_before_there_were_two_providers_reads_as_codex(self) -> None:
+        path = reading_policy.store_path(self.config)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(path)
+        db.execute(
+            "CREATE TABLE permission (id INTEGER PRIMARY KEY CHECK(id=1), "
+            "allowed INTEGER NOT NULL CHECK(allowed IN (0,1)))"
+        )
+        db.execute("CREATE TABLE spends (at REAL NOT NULL)")
+        db.execute("INSERT INTO permission VALUES (1, 1)")
+        db.execute("INSERT INTO spends VALUES (99.0)")
+        db.commit()
+        db.close()
+        self.assertTrue(self._consent("codex"))
+        self.assertFalse(self._consent("claude"))
+        self.assertEqual(1, reading_policy.status(self.config, now=100.0)["used"])
+
+    def test_turning_readings_off_or_forgetting_revokes_every_provider(self) -> None:
+        for revoke in ("off", "forget"):
+            with self.subTest(revoke=revoke):
+                for provider in ("codex", "claude"):
+                    reading_policy.set_consent(self.config, True, now=100.0, provider=provider)
+                    reading_policy.reserve(self.config, now=100.0, provider=provider)
+                used = reading_policy.status(self.config, now=100.0)["used"]
+                if revoke == "off":
+                    reading_policy.set_consent(self.config, False, now=100.0)
+                else:
+                    self.assertTrue(reading_policy.forget(self.config, now=100.0))
+                self.assertFalse(self._consent("codex"))
+                self.assertFalse(self._consent("claude"))
+                self.assertEqual(used, reading_policy.status(self.config, now=100.0)["used"])
+
+    def test_the_rolling_cap_is_shared_across_providers(self) -> None:
+        for provider in ("codex", "claude"):
+            reading_policy.set_consent(self.config, True, now=100.0, provider=provider)
+        for index in range(12):
+            provider = ("codex", "claude")[index % 2]
+            self.assertEqual(
+                "", reading_policy.reserve(self.config, now=100.0, provider=provider)["reason"]
+            )
+        for provider in ("codex", "claude"):
+            with self.subTest(provider=provider):
+                self.assertEqual(
+                    "daily-cap",
+                    reading_policy.reserve(self.config, now=100.0, provider=provider)["reason"],
+                )
+
+    def test_the_published_status_says_which_providers_are_allowed(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="claude")
+        published = reading_policy.status(self.config, now=100.0)
+        self.assertEqual({"codex": False, "claude": True}, published["providers"])
+
+    def test_no_other_name_can_be_allowed(self) -> None:
+        for name in ("", "gemini", "openai"):
+            with self.subTest(name=name):
+                answer = reading_policy.set_consent(self.config, True, now=100.0, provider=name)
+                self.assertFalse(answer["consent"])
+                self.assertEqual(
+                    "consent-required",
+                    reading_policy.reserve(self.config, now=100.0, provider=name)["reason"],
+                )
+        self.assertEqual(
+            {"codex": False, "claude": False},
+            reading_policy.status(self.config, now=100.0)["providers"],
+        )
+
+    def test_the_run_off_switch_outranks_a_claude_code_answer(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="claude")
+        config, _ = make_runtime(
+            state_dir=Path(self.home.name), state_home=self.home.name, model_calls_disabled=True
+        )
+        self.assertEqual(
+            "run-disabled", reading_policy.status(config, now=100.0, provider="claude")["reason"]
+        )
+        self.assertEqual(
+            "run-disabled", reading_policy.reserve(config, now=100.0, provider="claude")["reason"]
+        )
+
+    def test_a_guarded_claude_code_model_needs_claude_code_permission(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="codex")
+        model = mock.Mock(return_value=("{}", "ok"))
+        guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0, provider="claude")
+        with self.assertRaises(reading_policy.RefusedError) as caught:
+            guarded("prompt", output_cap_bytes=100)
+        self.assertEqual("consent-required", caught.exception.answer["reason"])
+        model.assert_not_called()
+
+    def test_a_known_missing_claude_code_reserves_nothing(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="claude")
+        model = reading.ClaudeReadingModel(
+            self.config, binary_resolver=mock.Mock(return_value=None)
+        )
+        guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0, provider="claude")
+        self.assertEqual(("", "unavailable"), guarded("prompt", output_cap_bytes=100))
+        self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])

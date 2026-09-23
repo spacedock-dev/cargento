@@ -35,6 +35,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
+from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
@@ -1467,9 +1468,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # `--no-annotations` the route exists and the store does not.
             (not config.annotations_enabled, 503),
             (config.model_calls_disabled, 503),
-            # The button and this route read the same constant, so they agree
-            # by construction and a local `curl` cannot outrun the check.
-            (not annotation_store.reading_enabled(), 503),
+            # The button and this route read the same constants, so they agree
+            # by construction and a local `curl` cannot outrun the check. Any
+            # provider opens the route; which one may run is the route's
+            # question, answered below from the harness.
+            (not annotation_store.any_reading_enabled(), 503),
             # A lured navigation reads nothing back, but it would still spend
             # the reader's capacity, which is the harm this route carries.
             (self._is_document_navigation() or not self._loopback_resource_ok(), 403),
@@ -1523,17 +1526,59 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if not isinstance(harness, str) or not isinstance(sid, str) or not harness or not sid:
             self._reject(400)
             return
+        route = self._reading_route(harness, payload)
+        if route is None:
+            return
+        provider = route["provider"]
         permission = (
-            reading_policy.set_consent(config, True, now=application.clock())
+            reading_policy.set_consent(config, True, now=application.clock(), provider=provider)
             if payload.get("allow") is True
-            else reading_policy.status(config, now=application.clock())
+            else reading_policy.status(config, now=application.clock(), provider=provider)
         )
         if permission["reason"]:
             self._reading_permission_reply(permission)
             return
-        self._reading_adoption(harness, sid, payload)
+        self._reading_adoption(harness, sid, payload, route)
 
-    def _reading_adoption(self, harness: str, sid: str, payload: dict[str, Any]) -> None:
+    def _reading_route(
+        self, harness: str, payload: dict[str, Any]
+    ) -> runtime_reading_route.Route | None:
+        """The one provider this press may reach, or None once refused.
+
+        From the payload's harness alone, so the answer says nothing about
+        whether the session exists. Both refusals come before any consent
+        write or reservation: "Allow and check" allowed the provider the page
+        named, and when that is not the provider that would run, the answer
+        was given about a different receiver and records nothing.
+        """
+        route = runtime_reading_route.resolve(harness)
+        refusal = (
+            (503, route["reason"])
+            if not route["provider"]
+            else (409, "provider-changed")
+            if payload.get("provider") != route["provider"]
+            else None
+        )
+        if refusal is None:
+            return route
+        code, reason = refusal
+        self._send(
+            json.dumps(
+                {"ok": False, "produced": False, "reason": reason, "route": route},
+                separators=(",", ":"),
+            ).encode(),
+            "application/json",
+            code,
+        )
+        return None
+
+    def _reading_adoption(
+        self,
+        harness: str,
+        sid: str,
+        payload: dict[str, Any],
+        route: runtime_reading_route.Route,
+    ) -> None:
         if "adopt" in payload:
             outcome = self._adopt_prompt(harness, sid, payload)
             if outcome not in {annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED}:
@@ -1543,7 +1588,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     422,
                 )
                 return
-        self._send_reading(harness, sid, adoption=payload if "adopt" in payload else None)
+        self._send_reading(harness, sid, route, adoption=payload if "adopt" in payload else None)
 
     def _adopt_prompt(
         self, harness: str, sid: str, payload: dict[str, Any], *, standalone: bool = False
@@ -1594,7 +1639,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
 
     def _send_reading(
-        self, harness: str, sid: str, *, adoption: dict[str, Any] | None = None
+        self,
+        harness: str,
+        sid: str,
+        route: runtime_reading_route.Route,
+        *,
+        adoption: dict[str, Any] | None = None,
     ) -> None:
         """Produce, store and answer. Split for the complexity cap alone."""
         application = self.server.application
@@ -1630,7 +1680,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(409)
             return
         try:
-            assessment, why, spent = self._compose_reading(rows[0], entry)
+            assessment, why, spent = self._compose_reading(rows[0], entry, route)
         except reading_policy.RefusedError as exc:
             self._reading_permission_reply(exc.answer)
             return
@@ -1682,9 +1732,17 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
 
     def _compose_reading(
-        self, row: dict[str, Any], entry: annotation_store.Annotation
+        self,
+        row: dict[str, Any],
+        entry: annotation_store.Annotation,
+        route: runtime_reading_route.Route,
     ) -> tuple[runtime_reading.Assessment | None, str, bool]:
-        """The model lane, with the observed record it reads."""
+        """The model lane, with the observed record it reads.
+
+        The route resolved before consent is the route that runs: one model,
+        built here from it, and no second provider if that one is missing at
+        launch or fails. A fresh press is the only retry.
+        """
         application = self.server.application
         context = runtime_project_context.collect(
             application.config,
@@ -1709,19 +1767,23 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # cannot tell them apart, so the caller that holds the entry says
             # which (DRC-4565).
             discarded=annotation_store.is_discarded(entry),
-            # A stamp: what read it and when. It carried `PROVIDER_NOTE`, a
-            # policy sentence, rendered in the position and micro-type where
-            # the design says a stamp names the model and the moment. The
-            # policy belongs in the disclosure above the button, where the
-            # reader sees it BEFORE pressing rather than after.
+            # A stamp: what read it and when, from the route that ran. It once
+            # carried a policy sentence, rendered where the design says a
+            # stamp names the model and the moment. The policy belongs in the
+            # route's disclosure above the button, seen BEFORE pressing.
             stamp_text=(
-                f"{runtime_observer.OBSERVER_MODEL} · read at "
+                f"{route['model']} · read at "
                 f"{time.strftime('%H:%M', time.localtime(application.clock()))}"
             ),
             model=reading_policy.GuardedModel(
                 application.config,
-                runtime_reading.CodexReadingModel(application.config),
+                (
+                    runtime_reading.ClaudeReadingModel
+                    if route["provider"] == runtime_reading_route.CLAUDE
+                    else runtime_reading.CodexReadingModel
+                )(application.config),
                 application.clock,
+                provider=route["provider"],
             ),
         )
 
