@@ -531,6 +531,22 @@ console.log(JSON.stringify({posts: posts.length,
         self.assertEqual(0, out["posts"])
         self.assertIn("Annotations are off for this run", out["said"])
 
+    def test_two_sessions_of_one_project_do_not_share_a_disclosure_key(self) -> None:
+        out = self.run_fixture(
+            """
+const keys = [];
+for(const session of ["focus-1", "focus-2"]){
+  nextRoute = {view:"session", project:"cargento", harness:"codex", session};
+  keys.push(nextCockpitDisclosureAttr("steer-why"));
+}
+console.log(JSON.stringify(keys));
+"""
+        )
+        assert isinstance(out, list)
+        self.assertNotEqual(out[0], out[1])
+        self.assertIn("codex:focus-1", out[0])
+        self.assertIn("codex:focus-2", out[1])
+
     def test_the_pending_check_says_how_long_it_can_take(self) -> None:
         out = self.run_fixture(
             ANNOTATED

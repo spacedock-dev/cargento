@@ -13,7 +13,14 @@ let nextCockpitMemoEditingKey = null;
 let nextCockpitMemoOriginal = "";
 
 function nextCockpitDisclosureAttr(control){
-  const key = [nextRoute && nextRoute.project || "", nextRoute && nextRoute.focus || "", control].join("\n");
+  /* The session route has no `focus`, so without its own identity every
+     session of one project shared a key and opening a caveat on one opened it
+     on the next. `harness:session` is `sessKey`'s shape, as the cockpit's
+     focus is. */
+  const focus = nextRoute && nextRoute.view === "session"
+    ? `${nextRoute.harness || ""}:${nextRoute.session || ""}`
+    : nextRoute && nextRoute.focus || "";
+  const key = [nextRoute && nextRoute.project || "", focus, control].join("\n");
   return ` data-next-cockpit-disclosure="${esc(key)}"`;
 }
 
