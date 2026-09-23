@@ -871,7 +871,7 @@ Token handling is read-only, one way, and never expands:
 Consent and the off switch: the feature is disclosed before it acts, and it does not act until the
 disclosure is answered. The first time the dashboard opens with the feature available, a banner explains the token read and
 the request above, and carries the switch that turns the feature off. The setting can be changed
-later from that same switch, which sits in the capacity strip beneath the fleet counts, and
+later from that same switch, which sits in the capacity strip below the session groups on Session operations, and
 `--no-usage` disables the feature for a run regardless of the stored setting. With the feature off, Cargento's network surface is exactly the
 three loopback-bound kinds of component described above, and nothing is fetched.
 

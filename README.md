@@ -142,11 +142,12 @@ Dashboard assets, including the optional terminal's vendored xterm files, need n
 A third outbound pathway, counts-only nudges to an operator-supplied endpoint, remains documented
 and unimplemented. See [SECURITY.md](SECURITY.md) for all three, and before you use `--host`.
 
-The dashboard opens on Projects, grouping sessions by the label their harness publishes. Each
-project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
+The dashboard opens on Sessions. Projects, one click away, groups sessions by the label their
+harness publishes, and each project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
 type the goal and the expected output you are holding that session to, check it for drift with one
-press, and read back what has been raised about that session and what became of the raise.
+press, and read back what has been raised about that session and what became of the raise. Its
+`COPY LINK` control copies a link that reopens that page.
 Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
@@ -155,7 +156,7 @@ is, what it is doing now, what it does next, and whether it is blocked.
 Attention collects what needs a human, and the Intent log lists every board session plus retained
 annotations, with typed, cached deterministic and workflow goals labeled by source. Keyboard shortcuts `s`, `p` and `a` reach
 Sessions, Projects and Attention; the Intent log is a nav link with no shortcut.
-`Escape` returns from a session to its project and otherwise to Projects. The route lives in the
+`Escape` returns from a session to its project and otherwise to Sessions. The route lives in the
 URL fragment so a reload or a pasted link comes back to the same view.
 
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.

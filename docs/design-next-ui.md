@@ -101,7 +101,7 @@ contracts. Nine banner-delimited regions divide ownership instead:
 | `CHROME` | Navigation, breadcrumbs, live summary, notices and shared row controls |
 | `PROJECTS` | Projects overview, project detail and its main column |
 | `RAIL` | The v2 operations panels now composed in Console |
-| `SESSIONS` | Session operations and its capacity strip |
+| `SESSIONS` | Session operations, and the capacity strip below its session groups |
 | `ATTENTION` | Attention |
 | `SESSION` | Session detail |
 | `COCKPIT` | Scope rail, briefing, tab bar and cockpit panels |
@@ -469,9 +469,9 @@ no font route or browser request to a provider. Licenses and source hashes live 
 
 ## NUI-3: the released route and storage namespace remain stable
 
-The fragment grammar is `#n=sessions`, `#n=projects`, `#n=attention`,
+The fragment grammar is `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
 `#n=project:<encoded-project>`, or a session route carrying encoded project, harness, and complete
-session id. The bare URL, invalid fragments and retired fragments normalize to Projects. Hash
+session id. The bare URL, invalid fragments and retired fragments normalize to Sessions. Hash
 changes are both navigation output and browser-history input, so reload, pasted links, and back or
 forward preserve the view.
 
@@ -487,9 +487,12 @@ session focus id, landing the reader on a session filter that matches nothing. A
 merges or drops a tab therefore owes an alias for the retired slug and an amendment to this
 section, and cannot be priced as a change to the strip alone.
 
-Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home). Not yet built: the bare URL, invalid fragments and
-retired fragments will normalize to Sessions instead of Projects (DRC-4636), and until that ships
-the Projects sentence above describes the board. Built by DRC-4639: Held to merged into the session
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home). Built by DRC-4636: the bare URL, invalid fragments and retired
+fragments normalize to Sessions instead of Projects. Built by DRC-4638: the project part of a
+session route may be empty, because a harness that publishes no project label groups its session
+under "" and a route that required a label left that session with no page and no link that could
+open it; the part count, not the label, tells the three-part and four-part forms apart. Built by
+DRC-4639: Held to merged into the session
 view, so its `held-to` slug is retired and carries the alias this section requires. A four-part
 project fragment ending in `held-to` parses as that session's route (the focus `harness:sid` split at
 its first colon), and a route object naming the tab emits the session fragment, so a bookmark, a
@@ -519,13 +522,14 @@ including quiet subagents. Running requires working state, no observed end, and 
 model. Projects, Sessions, Attention and Intent log all have primary navigation links; the fourth arrived with the annotation work, which needed a surface whose rows outlive the board. Shortcuts `p`, `s`, and
 `a` are case-insensitive and do not run while a form control or editable content owns focus or
 Meta, Control, or Alt is held. `Escape` follows the same restrictions and returns from session
-detail to its project, and from any other view to Projects. In a tripwire draft it cancels the
+detail to its project, and from any other view to Sessions. In a tripwire draft it cancels the
 draft first. The preview's `dashboard mode` button and `d` shortcut were removed during promotion
 because `/` now serves this same interface.
 
-Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home), not yet built: `Escape` from any view other than session detail will
-return to Sessions, the new landing view, instead of Projects (DRC-4636). DEC-20 does not change
-`Escape` from session detail, which still returns to its project.
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home): `Escape` from any view other than session detail returns to
+Sessions, the landing view, instead of Projects (DRC-4636). DEC-20 does not change `Escape` from
+session detail, which still returns to its project. A session with no project label has no project
+page, so `Escape` and its breadcrumb return to Sessions (DRC-4638).
 
 Projects groups the current payload by display label and splits active evidence from recently
 observed groups. Sessions separates Active now from Recent history. The active group retains gate
@@ -636,7 +640,11 @@ that the work succeeded.
 A session route carries the project display label, harness and full session ID. The detail lookup
 requires all three. Older routes without a harness resolve only when there is exactly one match. A
 stale route, including the right ID under the wrong project label, gets an explicit
-outside-payload state instead of a guessed row. The flat session table now emits the same route as
+outside-payload state instead of a guessed row. That state names the harness and session the link
+asked for and states the board's observation window as a fact about the board, never as the cause,
+since a session from another machine is absent for a different reason. Before the first payload
+arrives the page says so rather than claiming the session is absent. The header's `COPY LINK`,
+beside `COPY ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
 Since DRC-4639 the page leads, after its identity header, with the drift block that was the cockpit's
@@ -1051,7 +1059,8 @@ sessions, so a summary derived from what came back would report an enabled bridg
 capability that is on is operational content, so its section renders expanded and outside the
 disclosure rather than collapsed with the rest.
 
-Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home), not yet built: the entry point moves back to Sessions, the reverse of
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home). The entry point is built (DRC-4636); the goal slot and the drift
+sort are not yet built. The entry point moves back to Sessions, the reverse of
 the v2 move above. The v2 reason was that a reader first finds the project and then its sessions. The
 drift journey reverses it, because drift belongs to one session, and the project level caps members
 and draws none for an idle-only project, which is where unattended drift lands. Each active row puts
@@ -1059,6 +1068,18 @@ the reader's goal beside NOW (DRC-4637). A session with drift on record joins Ac
 state, after blocked and before working, and is not counted in the `Active now` figure, which keeps
 the definition above (DRC-4641). Projects stays one click away with the member order the 2026-09-23
 amendment above gave it.
+
+The first screen carries values before prose (DRC-4636). The first thing read is the fleet strip,
+four values that answer whether anything needs the reader, and Active now follows it in the gate-first
+order `nextObservedLaneOrder` gives it. Above the rows there is at most one sentence: while the
+annotation store is on and no session in the payload carries a stored reading, a counted reading or a
+departure, it is DEC-20's "not checked" line, with no count; otherwise there is none, because with the
+store off "none checked" would be a claim about a field the page cannot see. The two sentences that
+used to sit under the heading, and the Recent history caveat, went behind tier-2 disclosures. The
+capacity strip moved below both session groups, so its consent question and budget sentences no longer
+sit above the first row. Measured on a four-session board at 1825x1146: 147 words in twelve sentences
+above the fold before, 21 words in one sentence and one label after. Every absence on the screen wears
+`.next-absence`.
 
 ## NUI-17: the gate queue hands over a command, and only where one was measured
 
