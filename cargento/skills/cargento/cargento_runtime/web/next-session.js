@@ -641,9 +641,10 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
       nextInstructionLine(session, "", "next-session-command-context")) : "";
   const coverage = nextSessionSourceCoverage(nextSessionSourceOwner(session),
     observed.nextKnown, asks, openDisclosures);
-  /* The group the session belongs to, under its own label: a session with no
-     project groups under "", so it gets the same block as any other rather
-     than the dead end the old tab link left it. */
+  /* The group the session belongs to, under its own label. A session with no
+     project groups under "", so once this page is routed it renders the same
+     block as any other. Whether such a session can reach this page at all is
+     a routing question this does not settle. */
   const label = String(session.project == null ? "" : session.project);
   const group = nextProjectGroups().find(candidate => candidate.label === label) ||
     {label, sessions: [session]};

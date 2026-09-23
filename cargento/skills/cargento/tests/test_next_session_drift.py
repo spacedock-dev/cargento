@@ -178,7 +178,12 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         # Said once on the page, by the disclosure beside the control.
         self.assertEqual(1, visible_text(html).count("never a verification that the work was done"))
 
-    def test_a_session_with_no_project_still_gets_its_drift_block(self) -> None:
+    def test_a_routed_session_with_no_project_renders_the_same_drift_block(self) -> None:
+        """Rendering only: the route is set by hand here.
+
+        Whether a session with no project can reach its page from the board is a routing
+        question this test does not answer, so it claims no reachability.
+        """
         out = self.run_fixture(
             ANNOTATED
             + """
