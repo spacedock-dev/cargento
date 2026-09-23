@@ -21,7 +21,15 @@ from urllib.parse import ParseResult, parse_qs, urlparse
 
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
-from cargento_runtime import departures, dismissals, notifications, quota, records, tripwires
+from cargento_runtime import (
+    departures,
+    dismissals,
+    notifications,
+    quota,
+    reading_policy,
+    records,
+    tripwires,
+)
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
@@ -1446,7 +1454,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # 503 rather than 404, for `_annotate`'s reason: under
             # `--no-annotations` the route exists and the store does not.
             (not config.annotations_enabled, 503),
-            (not config.observer_model_enabled, 503),
+            (config.model_calls_disabled, 503),
             # The button and this route read the same constant, so they agree
             # by construction and a local `curl` cannot outrun the check.
             (not annotation_store.reading_enabled(), 503),
@@ -1494,11 +1502,44 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if refusal is not None:
             self._reject(refusal)
             return
+        if payload.get("consent") == "off":
+            self._reading_permission_reply(
+                reading_policy.set_consent(config, False, now=application.clock()), off=True
+            )
+            return
         harness, sid = payload.get("harness"), payload.get("sid")
         if not isinstance(harness, str) or not isinstance(sid, str) or not harness or not sid:
             self._reject(400)
             return
+        permission = (
+            reading_policy.set_consent(config, True, now=application.clock())
+            if payload.get("allow") is True
+            else reading_policy.status(config, now=application.clock())
+        )
+        if permission["reason"]:
+            self._reading_permission_reply(permission)
+            return
         self._send_reading(harness, sid)
+
+    def _reading_permission_reply(
+        self, answer: reading_policy.Status, *, off: bool = False
+    ) -> None:
+        self.server.application.state.snapshot.clear()
+        reason = answer["reason"]
+        code = (
+            200
+            if off and reason != "store-unavailable"
+            else 429
+            if reason == "daily-cap"
+            else 503
+            if reason in {"store-unavailable", "run-disabled"}
+            else 403
+        )
+        self._send(
+            json.dumps({"ok": code == 200, "produced": False, "reading": answer}).encode(),
+            "application/json",
+            code,
+        )
 
     def _send_reading(self, harness: str, sid: str) -> None:
         """Produce, store and answer. Split for the complexity cap alone."""
@@ -1529,6 +1570,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         try:
             assessment, why, spent = self._compose_reading(rows[0], entry)
+        except reading_policy.RefusedError as exc:
+            self._reading_permission_reply(exc.answer)
+            return
         finally:
             runtime_reading.release(config, key)
         if assessment is not None:
@@ -1598,7 +1642,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 f"{runtime_observer.OBSERVER_MODEL} · read at "
                 f"{time.strftime('%H:%M', time.localtime(application.clock()))}"
             ),
-            model=runtime_reading.CodexReadingModel(application.config),
+            model=reading_policy.GuardedModel(
+                application.config,
+                runtime_reading.CodexReadingModel(application.config),
+                application.clock,
+            ),
         )
 
     def _events(self, harness: str) -> None:

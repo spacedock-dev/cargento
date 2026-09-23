@@ -28,6 +28,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
 from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
+from cargento_runtime import reading_policy
 from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
@@ -2920,7 +2921,39 @@ class ReadingRouteTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         changes.setdefault("annotations_enabled", True)
         changes.setdefault("observer_model_enabled", True)
-        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+        config, state = make_runtime(state_home=home, state_dir=Path(home), **changes)
+        reading_policy.set_consent(config, True, now=1_700_000_100.0)
+        return config, state
+
+    def test_default_run_requires_an_answer_then_checks_without_startup_opt_in(self) -> None:
+        config, state = self._runtime(observer_model_enabled=False)
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
+            status, _ = self._post(port, self._press())
+            self.assertEqual(403, status)
+            self.assertEqual([], calls)
+            status, _ = self._post(port, self._press(allow=True))
+            self.assertEqual(200, status)
+            self.assertEqual(1, len(calls))
+            status, _ = self._post(port, self._press())
+            self.assertEqual(200, status)
+            self.assertEqual(2, len(calls))
+            status, _ = self._post(port, {"consent": "off", "press": True, "observer_model": 1})
+            self.assertEqual(200, status)
+            status, _ = self._post(port, self._press())
+            self.assertEqual(403, status)
+            self.assertEqual(2, len(calls))
+
+    def test_daily_limit_refuses_before_call_and_reports_the_release_time(self) -> None:
+        config, state = self._runtime()
+        with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
+            for _ in range(12):
+                status, _ = self._post(port, self._press(allow=True))
+                self.assertEqual(200, status)
+            status, body = self._post(port, self._press(allow=True))
+        self.assertEqual(429, status)
+        self.assertEqual(12, len(calls))
+        self.assertEqual(1_700_086_500.0, json.loads(body)["reading"]["retry_at"])
 
     @staticmethod
     def _one_session_harness() -> Any:
@@ -3062,7 +3095,7 @@ class ReadingRouteTest(unittest.TestCase):
     def test_every_closed_gate_refuses_before_the_model_is_reached(self) -> None:
         cases: tuple[tuple[str, dict[str, Any], dict[str, Any], int], ...] = (
             ("annotations off", {"annotations_enabled": False}, {}, 503),
-            ("model off", {"observer_model_enabled": False}, {}, 503),
+            ("model off", {"model_calls_disabled": True}, {}, 503),
             ("no disclosure echo", {}, {"observer_model": 0}, 400),
             ("no press", {}, {"press": False}, 400),
             ("press absent", {}, {"press": None}, 400),

@@ -432,6 +432,7 @@ def build_runtime(
         tripwires_enabled=not args.no_tripwires,
         usage_fetch_enabled=not args.no_usage,
         observer_model_enabled=args.observer_model and not args.no_observer_model,
+        model_calls_disabled=args.no_observer_model,
         git_probe_enabled=not args.no_git,
         focus_enabled=not args.no_focus,
         irreversible_enabled=not args.no_irreversible and not args.no_events,
