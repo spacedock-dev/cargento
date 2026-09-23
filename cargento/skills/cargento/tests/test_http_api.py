@@ -21,14 +21,21 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, departures, http_api, lifecycle, notifications
+from cargento_runtime import (
+    aggregate,
+    cli,
+    departures,
+    http_api,
+    lifecycle,
+    notifications,
+    reading_policy,
+)
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observation as observation_module
 from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
-from cargento_runtime import reading_policy
 from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
@@ -2943,6 +2950,27 @@ class ReadingRouteTest(unittest.TestCase):
             status, _ = self._post(port, self._press())
             self.assertEqual(403, status)
             self.assertEqual(2, len(calls))
+
+    def test_lured_requests_cannot_change_remembered_permission(self) -> None:
+        config, state = self._runtime()
+        for granted in (False, True):
+            reading_policy.set_consent(config, granted, now=1_700_000_100.0)
+            body = (
+                {"consent": "off", "press": True, "observer_model": 1}
+                if granted
+                else self._press(allow=True)
+            )
+            with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
+                for headers in (
+                    {"Sec-Fetch-Site": "same-site"},
+                    {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"},
+                ):
+                    status, _ = self._post(port, body, **headers)
+                    self.assertEqual(403, status)
+                    self.assertEqual(
+                        granted, reading_policy.status(config, now=1_700_000_100.0)["consent"]
+                    )
+                self.assertEqual([], calls)
 
     def test_daily_limit_refuses_before_call_and_reports_the_release_time(self) -> None:
         config, state = self._runtime()

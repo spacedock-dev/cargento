@@ -911,9 +911,11 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
         import sys  # noqa: PLC0415
         from unittest import mock  # noqa: PLC0415
 
-        from cargento_runtime import cli, http_api  # noqa: PLC0415
+        from cargento_runtime import cli, http_api, reading_policy  # noqa: PLC0415
 
         config = self.config()
+        reading_policy.set_consent(config, True, now=1_000.0)
+        reading_policy.reserve(config, now=1_000.0)
         history.record(config, [loaded_row()], now=1_000.0)
         path = history.store_path(config)
         self.assertTrue(os.path.exists(path))
@@ -924,6 +926,7 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
             # answers, and whether one does is a property of the machine
             # running the suite rather than of the code (M-2).
             no_instance(),
+            mock.patch("time.time", return_value=1_001.0),
             # Binding a socket here would be the defect: a one-shot command must
             # exit without ever standing a server up.
             mock.patch.object(http_api, "CargentoHTTPServer") as served,
@@ -932,6 +935,9 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
         self.assertEqual(0, code)
         self.assertFalse(os.path.exists(path))
         served.assert_not_called()
+        answer = reading_policy.status(config, now=1_001.0)
+        self.assertFalse(answer["consent"])
+        self.assertEqual(1, answer["used"])
 
     def test_forget_reports_when_there_was_nothing_to_delete(self) -> None:
         import sys  # noqa: PLC0415

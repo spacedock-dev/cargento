@@ -1352,7 +1352,7 @@ class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
         self.assertIn("reading_disclosure", control, "the warning is not on the control")
         self.assertLess(
             control.index("reading_disclosure"),
-            control.index('data-next-cockpit-action="reading-ask"'),
+            control.index('<button type="button"'),
             "the warning renders after the button the reader has already pressed",
         )
 

@@ -41,6 +41,7 @@ class NextCockpitCompositionTest(NextPageJsHarness):
 location.hash = "#n=project:cargento";
 __els.app = {innerHTML: ""};
 const __dashboard = {
+  reading:{consent:true, reason:"", used:0, limit:12},
   generated: 105, rate_window_sec: 600, window_hours: 24,
   summary: {working: 1, needs_input: 0},
   harnesses: [{key: "codex", label: "Codex"}, {key:"pi", label:"Pi"},
@@ -5636,15 +5637,15 @@ await __settle();
 const group = nextProjectGroups().find(g => g.label === "cargento");
 const key = nextCockpitContextKey(group, nextCockpitFocusedSession(group));
 const entry = nextCockpitContexts.get(key);
-const states = [null, {enabled:false}, {enabled:true}].map(model => {
-  entry.data = Object.assign({}, entry.data, {observer_model:model});
+const states = [null, {consent:true,reason:"run-disabled"}, {consent:true,reason:""}].map(policy => {
+  __dashboard.reading = policy;
   renderNext();
   const html = __els.app.innerHTML;
   return {
     retained:html.includes("This covers only the work so far."),
     disabled:/data-next-cockpit-action="reading-ask"[^>]*disabled/.test(html),
-    unread:html.includes("Observer model availability has not been read"),
-    off:html.includes("Observer model is disabled for this run"),
+    unread:html.includes("Reading availability has not been read"),
+    off:html.includes("Model calls are off for this run"),
   };
 });
 console.log(JSON.stringify(states));
@@ -5699,7 +5700,8 @@ navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"he
 await __settle();
 const empty = read();
 
-// And: words typed, with the observer model unread for this project.
+// And: words typed, with reading permission unread.
+__dashboard.reading = null;
 __dashboard.sessions[0].annotation_goal = "Ship the cockpit";
 __dashboard.sessions[0].annotation_goal_why = "";
 __dashboard.sessions[0].annotation_output = "";
@@ -5712,7 +5714,8 @@ __dashboard.sessions[0].annotation_binding_why = "";
 renderNext();
 const unread = read();
 
-// And: the model enabled, which is the offer.
+// And: reading permission available, which is the offer.
+__dashboard.reading = {consent:true,reason:""};
 const key = nextCockpitContextKey(nextProjectGroups().find(g => g.label === "cargento"),
   nextCockpitFocusedSession(nextProjectGroups().find(g => g.label === "cargento")));
 const entry = nextCockpitContexts.get(key);
@@ -5747,7 +5750,7 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         # newcomer is most likely to arrive in.
         self.assertTrue(out["empty"]["control"])
         self.assertTrue(out["empty"]["disabled"])
-        self.assertIn("Observer model availability has not been read", out["unread"]["reason"])
+        self.assertIn("Reading availability has not been read", out["unread"]["reason"])
         self.assertTrue(out["unread"]["control"])
         self.assertTrue(out["unread"]["disabled"])
         # The offer states what a reading may and may not read, before the
@@ -8099,7 +8102,7 @@ const html = __els.app.innerHTML;
 const section = (html.match(
   /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
 console.log(JSON.stringify({
-  note: [...section.matchAll(/class="next-departure-reentry-why"[^>]*>([^<]*)</g)]
+  note: [...html.matchAll(/class="next-departure-reentry-why"[^>]*>([^<]*)</g)]
     .map(match => match[1]).join(" "),
   rows: (section.match(/data-next-departure-reentry/g) || []).length,
   section,
@@ -8197,10 +8200,10 @@ console.log(JSON.stringify({
                 self.assertEqual(name.endswith("/resume"), shape[0])
                 self.assertEqual(name.startswith("focusable/"), shape[1])
 
-    def test_a_session_with_no_departure_says_nothing_about_a_way_back(self) -> None:
+    def test_a_session_with_no_departure_still_states_reentry_limits(self) -> None:
         out = self.render("__dashboard.sessions[0].departures = [];\n")
-        # The limit belongs beside a departure; with none drawn it is noise.
-        self.assertEqual("", out["note"])
+        # A missing departure must not hide the session's re-entry limits.
+        self.assertIn("Terminal raise: off for this run", out["note"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -10043,7 +10046,7 @@ console.log(JSON.stringify({rows}));
             "waiting-on-you", self.kind_of(rows, "Nothing has been typed for this session")
         )
 
-    def test_a_disabled_observer_model_is_a_choice_about_the_run(self) -> None:
+    def test_an_explicit_model_off_switch_is_a_choice_about_the_run(self) -> None:
         # The model lands on the context entry the cockpit fetches, so it is set
         # after navigation and re-rendered rather than seeded on the payload.
         rows = self.whys(
@@ -10053,14 +10056,12 @@ console.log(JSON.stringify({rows}));
 const group = nextProjectGroups().find(g => g.label === "cargento");
 const entry = nextCockpitContexts.get(
   nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
-entry.data = Object.assign({}, entry.data, {observer_model:{enabled:false}});
+__dashboard.reading = {consent:true,reason:"run-disabled"};
 renderNext();
 """,
         )
 
-        self.assertEqual(
-            "run-config", self.kind_of(rows, "Observer model is disabled for this run")
-        )
+        self.assertEqual("run-config", self.kind_of(rows, "Model calls are off for this run"))
 
     def test_a_statement_that_is_not_an_absence_carries_no_attribute(self) -> None:
         """Two paragraphs the criterion names by hand. Both are the board

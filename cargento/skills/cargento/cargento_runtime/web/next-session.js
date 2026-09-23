@@ -485,7 +485,8 @@ function nextDepartureReentry(session){
 }
 
 /* Why a way back is missing, or what the one offered cannot do, once per
-   departures section and only where a departure is drawn. Two limits, split by cause: a harness outside `NEXT_RESUME_COMMANDS` has
+   session page even before a departure exists (DRC-4658). The positive raise
+   caveat still belongs after departure rows. Two limits, split by cause: a harness outside `NEXT_RESUME_COMMANDS` has
    no re-entry command and never will, while one inside it with no usable id
    has none THIS RUN. `nextResumeCommand` collapses both to "", so the cause is
    read here rather than off its answer. The raise's limit is the standing one
@@ -649,6 +650,8 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
      control. */
   const waiting = observed.isNeeds || observed.askKnown;
   const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
+  const reentryLimit = nextDepartureReentryLimit(session);
+  const missingReentry = reentryLimit.resume + (nextSessionRaiseControl(session) ? "" : reentryLimit.raise);
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;
   const identity = `<header class="next-session-detail-header">${stateLabel}` +
@@ -681,7 +684,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
-    nextCommandReports(session) + nextSessionDelivery(session) + drift.record +
+    nextCommandReports(session) + nextSessionDelivery(session) + missingReentry + drift.record +
     nextSessionFooter(session) + "</article>";
 }
 

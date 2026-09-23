@@ -22,6 +22,7 @@ from cargento_runtime import (
     lifecycle,
     notifications,
     observation,
+    reading_policy,
     unasked,
 )
 from cargento_runtime import annotations as annotation_store
@@ -690,7 +691,14 @@ def run_one_shot(
             }[swept],
             print,
         )
-        return 0
+        permission_forgotten = reading_policy.forget(config)
+        runtime_io.diag(
+            "Cargento: forgot reading permission; unexpired spend timestamps remain"
+            if permission_forgotten
+            else "Cargento: could not forget reading permission; the store is unavailable",
+            print,
+        )
+        return 0 if permission_forgotten else 1
     if args.stop:
         message, code = lifecycle.stop_instance(config, args.port)
         runtime_io.diag(message, print)

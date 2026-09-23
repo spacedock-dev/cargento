@@ -133,6 +133,9 @@ class GuardedModel:
         self.clock = clock
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        available = getattr(self.model, "available", None)
+        if available is not None and not available():
+            return "", "unavailable"
         answer = reserve(self.config, now=self.clock())
         if answer["reason"]:
             raise RefusedError(answer)

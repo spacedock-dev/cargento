@@ -6,10 +6,17 @@ import concurrent.futures
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from cargento_runtime import reading_policy
+from cargento_runtime import io as runtime_io
+from cargento_runtime import reading, reading_policy
 
 from .support import make_runtime
+
+
+def _reserve_in_process(home: str) -> str:
+    config, _ = make_runtime(state_dir=Path(home), state_home=home)
+    return reading_policy.reserve(config, now=100.0)["reason"]
 
 
 class ReadingPolicyTest(unittest.TestCase):
@@ -48,6 +55,17 @@ class ReadingPolicyTest(unittest.TestCase):
         self.assertEqual(12, sum(result["reason"] == "" for result in results))
         self.assertEqual(12, reading_policy.status(self.config, now=100.0)["used"])
 
+    def test_known_missing_cli_reserves_nothing(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0)
+        for binary in (None, "relative/codex"):
+            with self.subTest(binary=binary):
+                model = reading.CodexReadingModel(
+                    self.config, binary_resolver=mock.Mock(return_value=binary)
+                )
+                guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0)
+                self.assertEqual(("", "unavailable"), guarded("prompt", output_cap_bytes=100))
+                self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+
     def test_corrupt_store_never_resets_permission_or_budget(self) -> None:
         reading_policy.store_path(self.config).write_bytes(b"not a database")
         self.assertEqual(
@@ -56,3 +74,28 @@ class ReadingPolicyTest(unittest.TestCase):
         self.assertEqual(
             "store-unavailable", reading_policy.set_consent(self.config, True, now=100.0)["reason"]
         )
+
+    def test_failed_model_attempt_is_charged_without_a_refund(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0)
+        model = mock.Mock(side_effect=TimeoutError)
+        guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0)
+        with self.assertRaises(TimeoutError):
+            guarded("prompt", output_cap_bytes=100)
+        self.assertEqual(1, reading_policy.status(self.config, now=100.0)["used"])
+
+    def test_missing_sqlite_refuses_permission_and_launch(self) -> None:
+        with mock.patch.object(runtime_io, "sqlite_module", None):
+            self.assertEqual(
+                "store-unavailable",
+                reading_policy.set_consent(self.config, True, now=100.0)["reason"],
+            )
+            self.assertEqual(
+                "store-unavailable", reading_policy.reserve(self.config, now=100.0)["reason"]
+            )
+
+    def test_separate_processes_share_the_same_admission_bound(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(_reserve_in_process, [self.home.name] * 24))
+        self.assertEqual(12, results.count(""))
+        self.assertEqual(12, results.count("daily-cap"))
