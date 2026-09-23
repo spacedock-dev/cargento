@@ -9190,8 +9190,8 @@ console.log(JSON.stringify({
         assert isinstance(control, str)
 
         self.assertIn(
-            "The abstention check this ruling requires has not been run, so a reading cannot "
-            "be asked for yet. The evidence below stays readable without one.",
+            "Checking for drift is not enabled in this build, because the abstention check that "
+            "gates it has not been recorded.",
             control,
         )
         self.assertIn("Check for drift</button>", control)
@@ -11956,7 +11956,6 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "already been dropped and the question below still stands": "next-cockpit-conflict-open",
         "so nothing above is an inspected file": "OBSERVED RECORD",
         "Save a goal above to check for drift": 'class="next-cockpit-held-fields"',
-        "The evidence below stays readable without one": "OBSERVED RECORD",
         "the observed record below and the words you typed": "OBSERVED RECORD",
         "after you saved the words above": 'class="next-cockpit-held-fields"',
     }

@@ -1489,9 +1489,12 @@ const NEXT_READING_UNKNOWN_KEY =
 const NEXT_COCKPIT_AUTHORITY_GLOSS =
   "FO is the first officer, the agent driving this workflow; Captain is you.";
 
+/* The one step that lifts both refusals about missing words: nothing typed,
+   and everything typed discarded. Page-owned, so it is spelled once. */
+const NEXT_READING_SAVE_STEP = "Save a goal above to check for drift.";
 const NEXT_READING_NO_WORDS =
   "Nothing has been typed for this session, so there is nothing to read it against. " +
-  "Save a goal above to check for drift.";
+  NEXT_READING_SAVE_STEP;
 /* One next step per refusal, as the inert-control rule asks: every other state names what would
    lift it, and this one named nothing. The page asks for the model state with
    each project-context read, so a refresh is what reads it again. */
@@ -1503,9 +1506,11 @@ const NEXT_READING_PENDING =
 const NEXT_READING_MODEL_OFF =
   "Observer model is disabled for this run, so no reading can be offered. " +
   "Start with --observer-model to allow one; --no-observer-model refuses it.";
+/* A build constant, not a run setting, so no flag or press on this page lifts
+   it and the sentence names none: it says what it waits on. */
 const NEXT_READING_UNAUTHORIZED =
-  "The abstention check this ruling requires has not been run, so a reading cannot be " +
-  "asked for yet. The evidence below stays readable without one.";
+  "Checking for drift is not enabled in this build, because the abstention check that " +
+  "gates it has not been recorded. It waits on a later release; nothing on this page lifts it.";
 /* Which kind of absence each refusal is, held beside the sentences rather than
    recovered from them at render. One paragraph class prints all four and a
    regex over the prose would re-derive what the producer already knows. The
@@ -1871,8 +1876,12 @@ function nextCockpitReadingStates(annotation, model){
      the same string `/api/reading` refuses with -- so the block and the route
      behind its button cannot word one state two ways. */
   if(nextAnnotationDiscarded(annotation)){
+    /* The server's sentence says why and names no step, so the page adds the
+       one that lifts it, as every other refusal here names one
+       ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)). */
     const said = (nextData && nextData.annotate_discard) || {};
-    return String(said.unreadable || "");
+    const why = String(said.unreadable || "").trim();
+    return why ? `${why} ${NEXT_READING_SAVE_STEP}` : NEXT_READING_SAVE_STEP;
   }
   if(!String(annotation && annotation.goal || "").trim() &&
       !String(annotation && annotation.output || "").trim()){

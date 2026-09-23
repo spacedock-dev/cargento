@@ -12,10 +12,13 @@ name, so the loader does not collect that class a second time here.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import unittest
 from typing import Any
+
+from cargento_runtime import annotations as annotation_store
 
 from . import test_next_cockpit as cockpit_tests
 from .next_harness import NextPageJsHarness, storage_prelude
@@ -307,23 +310,45 @@ __fetchImpl = async url => ({ok: true, json: async () =>
        observer_model: {enabled: false}}
     : __dashboard});
 """,
-                "Start with --observer-model to allow one",
+                "Start with --observer-model to allow one; --no-observer-model refuses it.",
             ),
+            # The server's own sentences, as the payload publishes them: the discard refusal is
+            # `annotations.DISCARD_SENTENCES["unreadable"]`, which says why and names no step, so
+            # the page adds the one that lifts it.
             "discarded": (
+                f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
                 """
-__dashboard.annotate_discard = {unreadable: "These words were discarded. Type a goal to check again."};
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_discarded_at = 90;
 __dashboard.sessions[0].annotation_discarded_why = "Discarded";
 """,
-                "These words were discarded. Type a goal to check again.",
+                annotation_store.DISCARD_SENTENCES["unreadable"]
+                + " Save a goal above to check for drift.",
+            ),
+            # A build constant no press lifts: the sentence says what it waits on, and no longer
+            # points at "this ruling", which named the retired tab's paragraph.
+            "unauthorized": (
+                f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK_NOT_RUN)};\n"
+                """
+__fetchImpl = async url => ({ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {semantic: __semantic, child_assignments: [], observers: [],
+       observer_model: {enabled: true}}
+    : __dashboard});
+""",
+                "It waits on a later release; nothing on this page lifts it.",
             ),
         }
         for name, (setup, step) in cases.items():
             with self.subTest(state=name):
-                html = self.page(setup + "__dashboard.reading_check = 'accepted';\n")
+                check = (
+                    ""
+                    if name == "unauthorized"
+                    else f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
+                )
+                html = self.page(check + setup)
                 control = re.search(
                     r'<button\b[^>]*data-next-cockpit-action="reading-ask"[^>]*>([\s\S]*?)</button>',
                     html,
@@ -338,7 +363,11 @@ __dashboard.sessions[0].annotation_discarded_why = "Discarded";
                 reason = re.search(rf'<p\b[^>]*id="{described.group(1)}"[^>]*>([^<]*)</p>', html)
                 self.assertIsNotNone(reason)
                 assert reason is not None
-                self.assertIn(step, reason.group(1).replace("&#39;", "'"))
+                said = reason.group(1).replace("&#39;", "'").replace("&quot;", '"')
+                self.assertIn(step, said)
+                self.assertNotIn("this ruling", said)
+                # One next step, not two: the refusal ends on the step it names.
+                self.assertTrue(said.endswith(step), said)
 
     def test_conflict_to_settle_names_only_an_unsettled_later_direction(self) -> None:
         """DEC-20 item 3: "Conflict to settle" is the label for an unsettled later direction.
