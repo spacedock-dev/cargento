@@ -50,7 +50,7 @@ its observation time or says that time is unknown. Opening the log never derives
 
 Annotation off/loading/error withholds typed evidence while board sessions and other sources stay
 visible. Retained words, revisions and readings remain reachable after the session leaves the
-board. Discard removes typed words and readings without removing independently labeled sources.
+board. Discard removes your saved words, typed or adopted, and readings without removing independently labeled sources.
 An open log invalidates withdrawn words before loading their replacement, including a discard
 made in another tab. The annotation store keeps at most 256 records and sixteen revisions each;
 discard records are evicted before retained words, then oldest first. These limits do not apply
