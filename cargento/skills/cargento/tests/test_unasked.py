@@ -62,6 +62,7 @@ def _assessment(*results: str) -> reading.Assessment:
     return {
         "revision_read": 4,
         "revision_read_at": 10.0,
+        "read_at": None,
         "stamp": "a stamp",
         # Prose, which is what the producer actually writes: `cutoff_text`
         # composes a sentence about what was read, by count and by author.

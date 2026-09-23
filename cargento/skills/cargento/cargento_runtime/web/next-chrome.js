@@ -778,7 +778,12 @@ document.addEventListener("click", event => {
     : null;
   if(routeTarget && routeTarget.dataset.nextRoute){
     event.preventDefault();
+    const goalFocus = routeTarget.hasAttribute && routeTarget.hasAttribute("data-next-goal-focus");
     navigateNext(nextRouteFromFragment(`#n=${routeTarget.dataset.nextRoute}`));
+    if(goalFocus && nextData && nextData.annotate === true && nextRoute.view === "session"){
+      const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
+      if(session) nextRestoreFocus({named: nextCockpitHeldKey(session, "goal")}, nextAttention);
+    }
     return;
   }
   const disclosureTarget = event.target && event.target.closest

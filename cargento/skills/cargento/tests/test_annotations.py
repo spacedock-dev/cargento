@@ -1632,6 +1632,16 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
         base.update(over)
         return base
 
+    def test_reading_time_survives_a_restart_and_legacy_age_is_unknown(self) -> None:
+        for supplied, expected in (({}, None), ({"read_at": 90.0}, 90.0)):
+            with self.subTest(supplied=supplied):
+                annotation_store.record_reading(
+                    self.config, self.state, "claude", "s1", assessment=self._assessment(**supplied)
+                )
+                entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+                assert entry is not None
+                self.assertEqual(expected, entry["assessment"]["read_at"])
+
     def test_a_reader_who_restarts_still_has_the_reading_they_asked_for(self) -> None:
         self.assertTrue(
             annotation_store.record_reading(

@@ -593,9 +593,9 @@ two lanes are the same strength, and a shared value name would have been defensi
 Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. DRC-4636 to DRC-4642 build
 it. The session page (item 4, the session page half of item 3, and the primary control) is built by
 DRC-4639 and DRC-4642. The landing view and its one screen-level sentence are built by DRC-4636,
-and every session's page is one click away by DRC-4638; the row's goal slot and the mark are not
-yet, and until they ship the rows behave as the sections above and
-[NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describe.
+and every session's page is one click away by DRC-4638. The row's goal slot and recorded Drift mark
+are built by DRC-4637 and DRC-4641, as the amendment to
+[NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describes.
 
 The question was what a person sees about drift when they open Cargento. Measured on a default run
 the day it was decided, the honest answer was nothing: four of four sessions had no typed goal, none
@@ -671,6 +671,13 @@ the check stays on the page, inert, with the annotations-off sentence as its one
 A session with drift on record joins the active group whatever its state, after sessions blocked on
 you and before working ones. It is not counted in the `Active now` figure, which keeps NUI-16's
 definition of that number. A `consistent` reading sorts exactly where not checked does.
+
+The Sessions projection changes membership without changing the shared active-evidence model.
+The mark reads stored departures only; it performs no fresh comparison. Its age comes from the
+raise timestamp or the reading's `read_at`, not the time the goal was typed. Older readings carry
+only an hour-and-minute stamp, so their age stays unknown. Both the store and page admit the new
+optional timestamp while keeping those older records readable. A superseded revision uses the
+session page's existing sentence. With annotations off, no mark or promotion is offered.
 
 DEC-17 bounds its surviving failure class, a false `consistent` on Goal, partly by a reading never
 being "aggregated into a count". Ordering rows by whether a departure is on record produces no count,

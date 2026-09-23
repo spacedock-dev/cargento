@@ -437,6 +437,7 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
     ended = value.get("ended_at_read")
     return {
         "revision_read": revision,
+        "read_at": records.norm_epoch(value.get("read_at")) or None,
         "stamp": records.safe_text(value.get("stamp"), cap),
         "cutoff": records.safe_text(value.get("cutoff"), cap),
         "scope": scope,

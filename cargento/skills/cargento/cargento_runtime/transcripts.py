@@ -531,7 +531,7 @@ def codex_instruction(config: RuntimeConfig, state: RuntimeState, path: str) -> 
     try:
         stat = os.stat(path)
     except OSError:
-        return {"title": None, "last_prompt": "", "instruction": None}
+        return {"title": None, "last_prompt": "", "instruction": None, "prompt_states_work": False}
     cache_key = (stat.st_mtime_ns, stat.st_size)
     with state.cache_lock:
         cached = state.codex_instruction_cache.get(path)
@@ -553,6 +553,8 @@ def codex_instruction(config: RuntimeConfig, state: RuntimeState, path: str) -> 
     )
     result = {
         "title": title,
+        # A title also exists for a bare continuation; the row must not adopt that as work.
+        "prompt_states_work": bool(prompt and states_work(config, prompt[0])),
         "last_prompt": records.safe_text(
             prompt[0] if prompt else "", records.LAST_PROMPT_CAP_CHARS
         ),

@@ -248,9 +248,9 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
 """
         )
         assert isinstance(out, dict)
-        self.assertEqual(2, len(out["keys"]))
-        self.assertEqual([True, True], out["kept"])
-        self.assertEqual([False, False], out["closed"])
+        self.assertEqual(3, len(out["keys"]))
+        self.assertEqual([True, True, True], out["kept"])
+        self.assertEqual([False, False, False], out["closed"])
 
     def test_every_absence_on_the_first_screen_takes_the_absence_class(self) -> None:
         html = self.render(
@@ -295,7 +295,7 @@ console.log(JSON.stringify({full, empty: __els.app.innerHTML}));
         self.assertIn("<h1>Session operations</h1>", html)
         # Tier 2 now, and still on the page (NUI-19 deletes nothing).
         self.assertIn(
-            "Active evidence leads. Every recently observed session remains reachable.",
+            "Blocked sessions lead, followed by recorded departures, then working sessions.",
             self.disclosure(html, "How rows are split"),
         )
         expected = {
@@ -371,7 +371,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         history = self.operation_group(html, "history")
 
         self.assertIn("Active now", active)
-        self.assertIn("working, waiting on you, or an exact request", active)
+        self.assertIn("working, waiting on you, an exact request, or recorded drift", active)
         for sid in ("gate-z", "gate-a", "work-a", "work-z"):
             self.assertIn(f'data-next-session="{sid}"', active)
             self.assertNotIn(f'data-next-session="{sid}"', history)

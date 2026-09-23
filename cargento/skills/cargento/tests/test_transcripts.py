@@ -1055,6 +1055,17 @@ class CodexInstructionTest(unittest.TestCase):
             path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
             return runtime_transcripts.codex_instruction(config, state, str(path))
 
+    def test_prompt_eligibility_uses_the_source_body_not_the_clipped_title(self) -> None:
+        for prompt, accepted in (
+            ("continue", False),
+            ("/clear", False),
+            ("/release", True),
+            ("Fix this:\nThe goal is to repair the broken export and verify the results", True),
+        ):
+            with self.subTest(prompt=prompt):
+                result = self.scan(self._user_old(1, prompt))
+                self.assertIs(accepted, result.get("prompt_states_work"))
+
     def test_the_prompt_is_found_where_a_tail_read_cannot_reach_it(self) -> None:
         # The reported bug, as a fixture. 171 of the 276 local rollouts holding a
         # genuine prompt (62.0%) have the newest one outside `tail_bytes`.
@@ -1226,7 +1237,15 @@ class CodexInstructionTest(unittest.TestCase):
             self._commentary_old(2, "I'll read the plugin list first"),
         )
 
-        self.assertEqual({"title": None, "last_prompt": "", "instruction": None}, result)
+        self.assertEqual(
+            {
+                "title": None,
+                "last_prompt": "",
+                "instruction": None,
+                "prompt_states_work": False,
+            },
+            result,
+        )
 
     def test_a_compaction_boundary_stops_an_older_prompt_being_quoted(self) -> None:
         # Behind a boundary is context the turn no longer holds. Codex crosses one
@@ -1316,6 +1335,11 @@ class CodexInstructionTest(unittest.TestCase):
         config, state = make_runtime()
 
         self.assertEqual(
-            {"title": None, "last_prompt": "", "instruction": None},
+            {
+                "title": None,
+                "last_prompt": "",
+                "instruction": None,
+                "prompt_states_work": False,
+            },
             runtime_transcripts.codex_instruction(config, state, "/nonexistent/rollout.jsonl"),
         )

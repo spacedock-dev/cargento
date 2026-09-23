@@ -1447,6 +1447,13 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
             model=over.pop("model", self._model()),
         )
 
+    def test_reading_age_uses_the_check_time_not_the_goal_time(self) -> None:
+        assessment, why, _spent = self._produce(now=9000.0)
+        self.assertEqual("", why)
+        assert assessment is not None
+        self.assertEqual(9000.0, assessment.get("read_at"))
+        self.assertNotEqual(assessment["revision_read_at"], assessment.get("read_at"))
+
     def test_the_reading_carries_when_its_own_revision_was_typed(self) -> None:
         """A mutation of `revision_read_at` survived the whole suite before this.
 
