@@ -408,30 +408,53 @@ raise SystemExit(status)
                     proc.kill()
                     proc.communicate()
 
-    def test_every_literal_and_wrapper_reaches_only_fixed_reports_over_a_socket(self) -> None:
-        for harness in ("claude", "codex"):
-            for wrapper in ("", "rtk ", "rtk proxy "):
-                for index, (command, pattern) in enumerate(POSITIVES):
-                    with self.subTest(harness=harness, wrapper=wrapper, command=command):
-                        before = len(self.received)
-                        # The first case per harness runs the shipped script as a
-                        # real process; the rest run the same `main` in-process.
-                        if index == 0 and not wrapper:
-                            proc = self.run_hook(
-                                native(wrapper + command), harness, driver=deterministic_driver()
-                            )
-                            outcome = (proc.returncode, proc.stdout.decode(), proc.stderr.decode())
-                        else:
-                            outcome = self.run_hook_inprocess(native(wrapper + command), harness)
-                        self.assertEqual((0, "", ""), outcome)
-                        self.assertEqual(before + 1, len(self.received))
-                        report = self.received[-1]
-                        self.assertEqual(set(wire()), set(report))
-                        self.assertEqual(pattern, report["pattern_id"])
-                        self.assertNotIn("private", json.dumps(report))
+    def assert_literals_report_over_the_socket(self, harness: str, wrapper: str) -> None:
+        """Every positive literal, under one harness and wrapper, reaches one fixed report.
+
+        One method per harness and wrapper rather than one loop over all six, so
+        the parallel runner can spread them: on the Windows runner each loopback
+        request cost about 0.47s, and the single loop was a 42s unit on its own
+        (measured 2026-09-23). The assertions are the loop's, unchanged.
+        """
+        for index, (command, pattern) in enumerate(POSITIVES):
+            with self.subTest(harness=harness, wrapper=wrapper, command=command):
+                before = len(self.received)
+                # The first case per harness runs the shipped script as a real
+                # process; the rest run the same `main` in-process.
+                if index == 0 and not wrapper:
+                    proc = self.run_hook(
+                        native(wrapper + command), harness, driver=deterministic_driver()
+                    )
+                    outcome = (proc.returncode, proc.stdout.decode(), proc.stderr.decode())
+                else:
+                    outcome = self.run_hook_inprocess(native(wrapper + command), harness)
+                self.assertEqual((0, "", ""), outcome)
+                self.assertEqual(before + 1, len(self.received))
+                report = self.received[-1]
+                self.assertEqual(set(wire()), set(report))
+                self.assertEqual(pattern, report["pattern_id"])
+                self.assertNotIn("private", json.dumps(report))
         served = json.loads(self.app.collect_json(show_all=False)[1])
         self.assertNotIn("private", json.dumps(served["command_reports"]))
         self.assertNotIn("private", str(self.coordinator._command_reports.__dict__))
+
+    def test_every_literal_reaches_only_fixed_reports_over_a_socket_claude(self) -> None:
+        self.assert_literals_report_over_the_socket("claude", "")
+
+    def test_every_literal_under_rtk_reaches_only_fixed_reports_claude(self) -> None:
+        self.assert_literals_report_over_the_socket("claude", "rtk ")
+
+    def test_every_literal_under_rtk_proxy_reaches_only_fixed_reports_claude(self) -> None:
+        self.assert_literals_report_over_the_socket("claude", "rtk proxy ")
+
+    def test_every_literal_reaches_only_fixed_reports_over_a_socket_codex(self) -> None:
+        self.assert_literals_report_over_the_socket("codex", "")
+
+    def test_every_literal_under_rtk_reaches_only_fixed_reports_codex(self) -> None:
+        self.assert_literals_report_over_the_socket("codex", "rtk ")
+
+    def test_every_literal_under_rtk_proxy_reaches_only_fixed_reports_codex(self) -> None:
+        self.assert_literals_report_over_the_socket("codex", "rtk proxy ")
 
     def test_ambiguous_malformed_and_oversized_calls_produce_no_report(self) -> None:
         malformed: tuple[Any, ...] = (*NEGATIVES, None, 2, [], {})
