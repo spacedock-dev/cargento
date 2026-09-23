@@ -495,24 +495,25 @@ function nextDepartureReentry(session){
 function nextDepartureReentryLimit(session){
   const harness = String(session && session.harness || "");
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
-  const lines = [];
-  if(!nextResumeCommand(session)){
-    lines.push(!NEXT_RESUME_COMMANDS.has(harness)
+  const line = text => text
+    ? `<p class="next-departure-reentry-why" data-absence="not-observed">${esc(text)}</p>` : "";
+  const resume = nextResumeCommand(session) ? ""
+    : !NEXT_RESUME_COMMANDS.has(harness)
       ? `${label} publishes no re-entry command, so there is none to copy.`
       : "This session published no usable id this run, so there is no re-entry command to " +
-        "copy.");
-  }
+        "copy.";
   /* The raise's own limit rides with it when it is offered: it selects the
      pane and does not bring the window forward, which is the hedge the status
-     line uses after a raise is sent. */
-  lines.push(nextSessionRaiseControl(session)
+     line uses after a raise is sent. Returned apart from the resume limit
+     because it qualifies a control the rows carry, so the caller prints it
+     after them rather than above them. */
+  const raise = nextSessionRaiseControl(session)
     ? "A raise switches what the terminal displays; its window may still be behind others."
     : !nextFocusCapability() ? NEXT_FOCUS_OFF_LINE
       : "No terminal was reported for this session, so it cannot be raised. That is the " +
         "ordinary answer outside tmux, for a session older than this server run, and on Linux " +
-        "and Windows.");
-  return lines.map(line =>
-    `<p class="next-departure-reentry-why" data-absence="not-observed">${esc(line)}</p>`).join("");
+        "and Windows.";
+  return {resume: line(resume), raise: line(raise)};
 }
 
 /* What became of the notifications Cargento raised about this session.

@@ -2015,12 +2015,12 @@ function nextCockpitDepartures(shape, source, session){
      nowhere else, and "raised nothing" is only worth the evidence it read. */
   const onRecord = (reading.count || 0) + laneRows > 0;
   if(!onRecord && !shape && !(nextData && nextData.unasked === true)) return "";
-  const limit = onRecord ? nextDepartureReentryLimit(session) : "";
+  const limit = onRecord ? nextDepartureReentryLimit(session) : {resume: "", raise: ""};
   return '<section class="next-cockpit-departures"><header>' +
     '<h2>DEPARTURES RAISED TO YOU</h2>' +
     `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p></header>` +
-    limit + reading.html +
-    nextCockpitUnaskedPart(session) +
+    limit.resume + reading.html +
+    nextCockpitUnaskedPart(session) + limit.raise +
     nextCockpitDeliveryPart(session, Boolean(lane)) +
     nextCockpitDepartureCounts(reading.count, lane) +
     `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p>` +

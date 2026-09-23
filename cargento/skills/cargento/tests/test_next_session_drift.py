@@ -626,6 +626,24 @@ const __h = "codex", __s = "focus-1";
             self.assertIn('data-next-copy-command="codex resume focus-1"', row)
             self.assertIn("data-next-raise-session=", row)
 
+    def test_the_raise_caveat_follows_the_rows_it_qualifies(self) -> None:
+        html = self.page("""
+const query = document.querySelector;
+document.querySelector = selector => selector === NEXT_FOCUS_META
+  ? {getAttribute(){return "test-focus";}} : query(selector);
+__dashboard.sessions[0].resume_id = "focus-1";
+__dashboard.sessions[0].focusable = true;
+const __h = "codex", __s = "focus-1";
+""")
+        caveat = "A raise switches what the terminal displays; its window may still be behind others."
+        section = html[html.index('class="next-cockpit-departures"') :]
+        self.assertEqual(1, section.count(caveat))
+        # After both departures: the reading's and the unasked lane's.
+        for row in ("It changed the board.", "Two turns edited the running board."):
+            with self.subTest(row=row):
+                self.assertLess(section.index(row), section.index(caveat))
+        self.assertLess(section.rindex("data-next-departure-reentry"), section.index(caveat))
+
     def test_a_harness_with_no_resume_command_says_why_once(self) -> None:
         html = self.page("""
 for(const session of __dashboard.sessions){
