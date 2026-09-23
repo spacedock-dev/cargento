@@ -233,6 +233,23 @@ console.log(JSON.stringify({parsed, emitted, route: nextRoute, hash: location.ha
         # The tab is retired rather than duplicated: the strip no longer offers it.
         self.assertNotIn("held-to", out["tabs"])
 
+    def test_a_held_to_link_with_no_session_id_falls_through(self) -> None:
+        out = self.run_fixture(
+            r"""
+console.log(JSON.stringify({
+  parsed: nextRouteFromFragment("#n=project:cargento:codex%3A:held-to"),
+  emitted: nextFragmentForRoute(
+    {view:"project", project:"cargento", focus:"codex:", tab:"held-to"}),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        parsed = out["parsed"]
+        assert isinstance(parsed, dict)
+        # Never a session route with an empty id, which no session can match.
+        self.assertNotEqual("session", parsed.get("view"))
+        self.assertNotIn("#n=session:", str(out["emitted"]))
+
     def test_the_one_primary_reads_check_for_drift(self) -> None:
         html = self.page("__dashboard.reading_check = 'accepted';\n")
 

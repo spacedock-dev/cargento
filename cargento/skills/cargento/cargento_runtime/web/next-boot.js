@@ -60,11 +60,14 @@ const NEXT_SESSION_TABS = [];
 const NEXT_RETIRED_SESSION_TAB = "held-to";
 
 /* The session route a retired Held to link meant. The focus is `sessKey`'s
-   `harness:sid`; a sid may itself carry a colon, so only the first one splits. */
+   `harness:sid`; a sid may itself carry a colon, so only the first one splits.
+   Null when that leaves no session id (`codex:`), so the caller falls through
+   rather than building a session route no session can match. */
 function nextHeldToSessionRoute(project, focus){
   const at = focus.indexOf(":");
-  if(at <= 0) return {view: "session", project, session: focus};
-  return {view: "session", project, harness: focus.slice(0, at), session: focus.slice(at + 1)};
+  const route = at <= 0 ? {view: "session", project, session: focus}
+    : {view: "session", project, harness: focus.slice(0, at), session: focus.slice(at + 1)};
+  return route.session ? route : null;
 }
 const NEXT_OBSERVER_CONSENT_KEY = "cargento.observer-model-consent.v1";
 let nextObserverConsentMemo = null;
@@ -120,9 +123,9 @@ function nextRouteFromFragment(fragment){
     const project = nextDecodeRoutePart(parts[1]);
     const focus = nextDecodeRoutePart(parts[2]);
     const tab = nextDecodeRoutePart(parts[3]);
-    if(project && focus && tab === NEXT_RETIRED_SESSION_TAB){
-      return nextHeldToSessionRoute(project, focus);
-    }
+    const held = project && focus && tab === NEXT_RETIRED_SESSION_TAB
+      ? nextHeldToSessionRoute(project, focus) : null;
+    if(held) return held;
     if(project && focus && nextCockpitTabs(focus).includes(tab)){
       return {view:"project",project,session:null,focus,tab};
     }
@@ -149,10 +152,10 @@ function nextFragmentForRoute(route){
       ? `${prefix}${encodeURIComponent(harness)}:${encodeURIComponent(route.session)}`
       : `${prefix}${encodeURIComponent(route.session)}`;
   }
-  if(route && route.view === "project" && route.project && route.focus &&
-      route.tab === NEXT_RETIRED_SESSION_TAB){
-    return nextFragmentForRoute(nextHeldToSessionRoute(route.project, String(route.focus)));
-  }
+  const held = route && route.view === "project" && route.project && route.focus &&
+    route.tab === NEXT_RETIRED_SESSION_TAB
+    ? nextHeldToSessionRoute(route.project, String(route.focus)) : null;
+  if(held) return nextFragmentForRoute(held);
   if(route && route.view === "project" && route.project){
     const focus = route.focus ? `:${encodeURIComponent(route.focus)}` : "";
     const tab = nextCockpitTabs(route.focus).includes(route.tab) && route.tab !== "now"
