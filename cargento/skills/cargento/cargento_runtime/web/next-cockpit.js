@@ -1500,7 +1500,7 @@ const NEXT_COCKPIT_AUTHORITY_GLOSS =
   "FO is the first officer, the agent driving this workflow; Captain is you.";
 
 /* The one step that lifts both refusals about missing words: nothing typed,
-   and everything typed discarded. Page-owned, so it is spelled once. */
+   and what was asked discarded. Page-owned, so it is spelled once. */
 const NEXT_READING_SAVE_STEP = "Save a goal above to check for drift.";
 const NEXT_READING_NO_WORDS =
   "Nothing has been typed for this session, so there is nothing to read it against. " +
@@ -2050,7 +2050,7 @@ function nextCockpitDepartures(shape, source, session){
    put it above HOW IT LANDED at every measured offset. */
 function nextCockpitDeparturesKept(){
   return '<p class="next-cockpit-departures-kept"><a href="#n=intent">The Intent log</a> keeps ' +
-    'what you typed and what was raised against it after the session leaves the board.</p>';
+    'what you saved and what was raised against it after the session leaves the board.</p>';
 }
 
 /* What the unasked lane raised, in the section named for it.
@@ -2723,8 +2723,8 @@ function nextCockpitHeldDiscardBlock(session, annotation){
 
    The order inside the block is load bearing: what you asked for, then the
    agent's direction beside it, then the one control, so it is on the first
-   screen; then the reading, then any later direction of yours and the caveats
-   on what you typed, then every departure on record. Your words come first, so
+   screen; then the reading, then any later direction of yours and the caveats,
+   then every departure on record. Your words come first, so
    nothing above the reading is a model's.
 
    `direction` is the caller's CURRENT ACTIVITY card, handed in rather than
@@ -2782,9 +2782,8 @@ function nextCockpitDriftBlock(group, session, direction, primary){
      fields and the control it pushed Check for drift under a 1440x900 fold
      on every ended session. */
   const ended = nextSessionEndedAt(session) != null
-    ? '<p class="next-cockpit-held-absent">This session has ended. Annotating a finished ' +
-      'session is an open proposal: your words are kept, and nothing is promised to read ' +
-      'them.</p>' : "";
+    ? '<p class="next-cockpit-held-absent">This session has ended. Anything you save ' +
+      'against it is kept, and nothing is promised to read it.</p>' : "";
   /* What typing buys, before anything that qualifies it, worded to the default
      board: the unasked lane is off unless the reader started with
      `--unasked-readings`, so a check happens because the reader pressed. */

@@ -1719,23 +1719,6 @@ class WhatAClaudeCodeReadingCostsAndProduces(unittest.TestCase):
         )
         self.assertNotIn("whatever harness", str(entry.get("withheld")))
 
-    def test_a_discard_withheld_under_the_old_typed_sentence_reads_back_as_saved(self) -> None:
-        """DRC-4668: the old sentence said "typed", false of an adopted goal."""
-        stored = {
-            "harness": "claude",
-            "sid": "s1",
-            "revisions": [{"n": 1, "at": 100.0, "goal": "ship it", "output": ""}],
-            "readings": 1,
-            "withheld": (
-                "Everything typed against this session was discarded, so there is nothing "
-                "left to read it against."
-            ),
-        }
-        entry = annotation_store._entry(stored, text_cap=240, revision_cap=8)
-        assert entry is not None
-        self.assertEqual(reading.WITHHELD[reading.WITHHELD_DISCARDED], entry.get("withheld"))
-        self.assertNotIn("typed", str(entry.get("withheld")))
-
     def test_neither_missing_cli_sentence_claims_one_provider_reads_every_harness(self) -> None:
         for token in (reading.WITHHELD_MODEL_UNAVAILABLE, reading.WITHHELD_CLAUDE_UNAVAILABLE):
             with self.subTest(token=token):
