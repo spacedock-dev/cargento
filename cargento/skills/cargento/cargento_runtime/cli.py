@@ -286,7 +286,8 @@ def build_parser() -> argparse.ArgumentParser:
             "asked, and raise a departure through the notification lane. OFF by "
             "default and the only feature here that spends your model capacity "
             "with nobody watching: each check is a codex subprocess, bounded per "
-            "session and per day, and only a departure is ever raised"
+            "session and per day, and only a departure is ever raised. "
+            "--no-observer-model refuses it for the run"
         ),
     )
     parser.add_argument(
@@ -433,7 +434,11 @@ def build_runtime(
         irreversible_enabled=not args.no_irreversible and not args.no_events,
         dismissals_enabled=not args.no_dismiss,
         annotations_enabled=not args.no_annotations,
-        unasked_enabled=bool(args.unasked_readings),
+        # The off switch refuses every model call, and an unasked reading is a
+        # codex subprocess (SECURITY.md, Light harness usage). Gated here rather
+        # than on `observer_model_enabled`, which is also False when nobody
+        # passed `--observer-model`, and the lane does not need that flag.
+        unasked_enabled=args.unasked_readings and not args.no_observer_model,
         ask_enabled=not args.no_ask,
         reach_enabled=not args.no_reach,
         reach_url=args.reach_url,
