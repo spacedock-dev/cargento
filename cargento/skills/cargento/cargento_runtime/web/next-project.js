@@ -218,7 +218,7 @@ function nextProjectRevisionLine(annotation){
    surface says about when (DRC-4565).
 
    Here beside `nextProjectRevisionLine` and not in either caller, because the
-   Intent log and the Held to tab both need the same two answers and the store
+   Intent log and the drift block both need the same two answers and the store
    already learned this lesson: one wording in one place, or the two surfaces
    word one state two ways. The sentences themselves are never composed here --
    they ride the payload as `annotate_discard`, because they claim things about

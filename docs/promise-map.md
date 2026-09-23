@@ -78,7 +78,7 @@ notification request does not prove a banner appeared.
 Backed by the current-turn elapsed and ETA estimate with its progress bar, the warning that fires
 when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its
 measured elapsed, its own model and its own liveness, with a teammate that has finished or gone
-quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
+quiet still listed rather than dropped, session detail that leads with a drift block setting your goal beside the agent's current activity, the recent token output rate, the model each
 session is running on, desktop notifications on a state change, and a goal and an expected output
 you can type against one session and read back beside the goal its harness published, each on its
 own row with its own source, alongside every observed entry naming that session. Course also saves
@@ -163,9 +163,10 @@ now. And turning the switch off stops new checks without retracting the old ones
 raised still shows on the session, in the review and in the Intent log, under a line saying nothing
 new is being checked.
 
-What was raised is reviewable rather than only raised. The Held to tab collects, in one place,
-the departures a reading you asked for produced, the departures the checks run while you were away
-produced, what became of the raise, and the figures; the Intent log carries a line per session
+What was raised is reviewable rather than only raised. The session page's drift block collects, in
+one place, the departures a reading you asked for produced, the departures the checks run while you
+were away produced, what became of the raise, and the figures, with the resume command and the
+tmux raise beside each departure where those exist; the Intent log carries a line per session
 saying what was raised against the words on it, and keeps that after the row leaves the board.
 Where it stops is the follow-up. What came after a raise is derived from later checks in the same
 store, so the common answer is that no later check has read the session, and the board says that

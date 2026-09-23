@@ -11,17 +11,17 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextSessionBehaviorTest(NextPageJsHarness):
-    def test_the_session_page_points_at_the_words_you_typed_for_it(self) -> None:
-        """Finding P, raised by a Claude lens.
+    def test_the_session_page_holds_the_words_you_typed_for_it(self) -> None:
+        """Finding P, raised by a Claude lens, and closed for good by DRC-4639.
 
         Every session link on the board lands on this page, and the surface
-        holding what the reader typed for this session sits on a route it
-        never named. The input surface existed on exactly one route and
-        nothing pointed at it.
+        holding what the reader typed sat on a route this page only linked to.
+        Held to merged into the session view, so the words are here: no link to
+        a tab, and the fields themselves in the drift block.
         """
         out = self._run_page_js("""
 __els.app = {innerHTML: ""};
-const base = {generated: 10000, annotate: true, sessions: [
+const base = {generated: 10000, annotate: true, annotate_cap: 240, sessions: [
   {harness: "claude", sid: "a1b2c3d4", project: "recce/cargento", state: "working",
    annotation_goal: "", annotation_output: ""}
 ]};
@@ -30,30 +30,29 @@ nextRoute = {view: "session", project: "recce/cargento", harness: "claude", sess
 renderNext();
 const untyped = __els.app.innerHTML;
 
-// With words already typed the invitation becomes a way back to them.
 nextData = JSON.parse(JSON.stringify(base));
 nextData.sessions[0].annotation_goal = "Ship the cockpit";
+nextData.sessions[0].annotation_revision = 1;
+nextData.sessions[0].annotation_revision_count = 1;
 renderNext();
 const typed = __els.app.innerHTML;
 
-// With the store off there is nothing to point at.
+// With the store off there is no field, and the block says why.
 nextData = JSON.parse(JSON.stringify(base));
 delete nextData.annotate;
 renderNext();
-console.log(JSON.stringify({
-  untypedLabel: (untyped.match(/class="next-session-held-link"><a href="([^"]*)">([^<]*)</) || [])
-    .slice(1),
-  typedLabel: (typed.match(/class="next-session-held-link"><a href="[^"]*">([^<]*)</) || [])[1],
-  offHasLink: __els.app.innerHTML.includes("next-session-held-link"),
-}));
+console.log(JSON.stringify({untyped, typed, off: __els.app.innerHTML}));
 """)
         assert isinstance(out, dict)
-        href, label = out["untypedLabel"]
-        self.assertEqual("#n=project:recce%2Fcargento:claude%3Aa1b2c3d4:held-to", href)
-        self.assertEqual("Record what you asked of this session", label)
-        self.assertEqual("What you asked of this session", out["typedLabel"])
-        # `--no-annotations` promises no field, so it gets no invitation either.
-        self.assertFalse(out["offHasLink"])
+        for state in ("untyped", "typed", "off"):
+            with self.subTest(state=state):
+                self.assertNotIn(":held-to", out[state])
+                self.assertIn("data-next-session-drift", out[state])
+        self.assertIn('data-next-cockpit-held-key="held:claude:a1b2c3d4:goal"', out["untyped"])
+        self.assertIn("Ship the cockpit", out["typed"])
+        # `--no-annotations` promises no field, and says so rather than going quiet.
+        self.assertNotIn("data-next-cockpit-held-key", out["off"])
+        self.assertIn("Annotations are off for this run", out["off"])
 
     def test_absent_facts_are_reasons_and_never_placeholder_values(self) -> None:
         out = self._run_page_js("""
@@ -304,28 +303,37 @@ console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived})
             self.assertIn("SOURCE COVERAGE", html)
         self.assertEqual(out["closed"], out["reclosed"])
 
-    def test_current_activity_leads_identity_without_a_redundant_session_label(self) -> None:
+    def test_identity_leads_and_current_activity_sits_in_the_drift_block(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
-        activity = html.index('data-next-session-command="activity"')
+        # The page's name first; the agent's direction is the drift block's second
+        # part, set beside the reader's words (DRC-4639), not a card above the name.
         identity = html.index("<h1>Resolve the gate</h1>")
-        self.assertLess(activity, identity)
+        drift = html.index("data-next-session-drift")
+        activity = html.index('data-next-session-command="activity"')
+        self.assertLess(identity, drift)
+        self.assertLess(drift, activity)
         self.assertIn('<span class="next-session-current-label">CURRENT ACTIVITY</span>', html)
         self.assertNotIn("<h2>CURRENT ACTIVITY</h2>", html)
         self.assertNotIn('<span class="next-session-detail-label">SESSION</span>', html)
 
-    def test_running_subagents_are_integrated_into_the_current_activity_lede(self) -> None:
+    def test_running_subagents_remain_visible_below_the_drift_block(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         current = re.search(r'<section class="next-session-current"[^>]*>[\s\S]*?</section>', html)
         self.assertIsNotNone(current)
         lede = current.group(0) if current else ""
 
-        self.assertIn("2 RUNNING SUBAGENTS", lede)
-        self.assertIn("worker-a", lede)
-        self.assertIn("worker-b", lede)
-        self.assertIn("5m", lede)
+        self.assertNotIn("worker-a", lede)
+        self.assertIn("2 RUNNING SUBAGENTS", html)
+        self.assertIn("worker-a", html)
+        self.assertIn("worker-b", html)
+        self.assertIn("5m", html)
+        self.assertLess(
+            html.index('data-next-cockpit-action="reading-ask"'),
+            html.index("data-next-session-subagents"),
+        )
         self.assertNotIn('data-next-session-section="subagents"', html)
 
     def test_plain_exact_ask_is_one_needs_you_fact_and_not_a_next_action(self) -> None:

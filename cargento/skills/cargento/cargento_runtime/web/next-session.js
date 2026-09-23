@@ -71,7 +71,11 @@ function nextSessionCommandFact(kind, label, body){
   return `<section data-next-session-command-fact="${kind}"><h2>${label}</h2>${body}</section>`;
 }
 
-function nextSessionCommandSurface(session, observed, identity){
+/* The agent's direction, which the drift block sets beside the reader's words
+   (the drift ruling names the NOW line as the direction). It used to lead the page with
+   the identity header inside it; the drift block now leads, and this card is
+   its second part rather than a copy of it, so the NOW line has one renderer. */
+function nextSessionCommandSurface(session, observed){
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
   const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
   const state = observed.isNeeds ? "waiting on you" : (observed.isEnded ? "session ended" : observed.state);
@@ -79,8 +83,7 @@ function nextSessionCommandSurface(session, observed, identity){
     '<section class="next-session-current" data-next-session-command="activity">' +
     '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
     `<strong${observed.nowKnown ? "" : ' class="next-session-absent"'}>` +
-    `${esc(state)} · ${esc(observed.nowText)}</strong>${contextLine}` +
-    nextSessionSubagents(observed) + `</section>${identity}</div>`;
+    `${esc(state)} · ${esc(observed.nowText)}</strong>${contextLine}</section></div>`;
 }
 
 function nextSessionFacts(observed, asks){
@@ -330,44 +333,13 @@ function nextSessionFooter(session){
     `${nextCompactTokens(value)} output tokens this ${source}</footer>`;
 }
 
-/* What the unasked reading lane raised about this session, and why there is
-   nothing.
-
-   Both halves are printed, and the second is the one that matters. The reader
-   is by construction not at the desk while this lane runs, so "nothing
-   departed" and "nothing was checked" must never render alike: a spent cap
-   wearing the first sentence's clothes is a session reported as on track by a
-   check that never ran. The server owns all four sentences in `departures`, so
-   this chooses whether to print and never what.
-
-   With the switch off the panel is drawn only where a raise is on record, and
-   that qualification is the whole of DRC-4559. The empty case keeps the
-   original ruling: a panel on every row of an installed board is noise about a
-   feature nobody turned on. The other case is not noise -- the server reads the
-   departure store whether or not the lane is attached, so this page was handed
-   every standing raise and dropped the entire section from the document, and
-   the only way back to the record was to restart the server with a flag. */
-function nextSessionDepartures(session){
-  const laneOn = Boolean(nextData && nextData.unasked === true);
-  const rows = Array.isArray(session && session.departures) ? session.departures : [];
-  if(!laneOn && !rows.length) return "";
-  const body = nextUnaskedDepartureBody(session);
-  if(!body) return "";
-  /* The switch sentence above the rows rather than instead of them: a sentence
-     alone tells the reader something exists that they cannot see. */
-  const off = laneOn ? ""
-    : `<p class="next-session-departures-why">${esc(NEXT_UNASKED_LANE_OFF_RECORD)}</p>`;
-  return '<section class="next-session-departures">' +
-    "<h2>UNASKED CHECKS</h2>" + off + body + "</section>";
-}
-
 /* The rows and the absence sentence, in one wording for every surface that
    shows them (DRC-4514).
 
-   Extracted so the departure review on the Held to tab prints the same
-   characters as this page rather than a second rendering of the same fields.
-   The section heading is the caller's, because the two surfaces sit in
-   different frames; everything inside it is here. */
+   One caller now, the drift block's departures section: the session page's
+   own UNASKED CHECKS section was absorbed into it (DRC-4639), because a raise
+   printed in two sections of one page reads as two raises. The section heading
+   is the caller's; everything inside it is here. */
 function nextUnaskedDepartureBody(session){
   const rows = Array.isArray(session && session.departures) ? session.departures : [];
   const why = String((session && session.departure_why) == null ? "" : session.departure_why);
@@ -385,7 +357,8 @@ function nextUnaskedDepartureBody(session){
      which is the one thing this shared body exists to prevent. */
   const current = nextNumber(session && session.annotation_revision);
   return (rows.length ? `<p class="next-session-departures-count">${esc(heading)}</p>` : "") +
-    rows.map(row => nextSessionDepartureRow(row, current)).join("") +
+    rows.map(row => nextSessionDepartureRow(row, current, nextDepartureReentry(session)))
+      .join("") +
     (why ? `<p class="next-session-departures-why">${esc(why)}</p>` : "") +
     nextDeliveryAbsence(session, rows.length > 0);
 }
@@ -443,7 +416,7 @@ function nextSessionClock(stamp){
    printed and the comparison was not, so a reader had the number and no second
    source to check it against -- on the session page the baseline line is the
    only mention of a revision anywhere. */
-function nextSessionDepartureRow(row, current){
+function nextSessionDepartureRow(row, current, reentry = ""){
   const text = key => String(row[key] == null ? "" : row[key]);
   const revision = Number(row.revision);
   const read = Number.isFinite(revision) && revision > 0 ? revision : null;
@@ -488,7 +461,58 @@ function nextSessionDepartureRow(row, current){
        came to nothing bad, which is the one thing this axis must not say. */
     (text("follow_up")
       ? `<p class="next-session-departure-next">${esc(text("follow_up"))}</p>` : "") +
-    "</div>";
+    reentry + "</div>";
+}
+
+/* The way back into the session, beside a departure (DRC-4642).
+
+   Cargento never writes into a session
+   ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)),
+   so acting on drift means putting the reader back in it: the command that
+   harness's CLI takes to resume it, and the tmux raise where one was measured.
+   Both are the header's own controls, copied rather than re-drawn, so a cue
+   written by one is swept onto the other, as the gate queue's are. The raise renders here
+   whatever the session's state, which is the difference from the header,
+   where it is offered only while the session waits on the reader.
+
+   Only what exists is drawn per row. What does not is said once for the whole
+   section by `nextDepartureReentryLimit`, because a limit repeated under every
+   departure is furniture rather than information. */
+function nextDepartureReentry(session){
+  const controls = nextSessionResumeControl(session) + nextSessionRaiseControl(session);
+  return controls
+    ? `<div class="next-departure-reentry" data-next-departure-reentry>${controls}</div>` : "";
+}
+
+/* Why a way back is missing, or what the one offered cannot do, once per
+   departures section and only where a departure is drawn. Two limits, split by cause: a harness outside `NEXT_RESUME_COMMANDS` has
+   no re-entry command and never will, while one inside it with no usable id
+   has none THIS RUN. `nextResumeCommand` collapses both to "", so the cause is
+   read here rather than off its answer. The raise's limit is the standing one
+   recorded beside `nextSessionRaiseControl`, said here because one session is
+   the whole subject and silence would read as "no limit". */
+function nextDepartureReentryLimit(session){
+  const harness = String(session && session.harness || "");
+  const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
+  const line = text => text
+    ? `<p class="next-departure-reentry-why" data-absence="not-observed">${esc(text)}</p>` : "";
+  const resume = nextResumeCommand(session) ? ""
+    : !NEXT_RESUME_COMMANDS.has(harness)
+      ? `${label} publishes no re-entry command, so there is none to copy.`
+      : "This session published no usable id this run, so there is no re-entry command to " +
+        "copy.";
+  /* The raise's own limit rides with it when it is offered: it selects the
+     pane and does not bring the window forward, which is the hedge the status
+     line uses after a raise is sent. Returned apart from the resume limit
+     because it qualifies a control the rows carry, so the caller prints it
+     after them rather than above them. */
+  const raise = nextSessionRaiseControl(session)
+    ? "A raise switches what the terminal displays; its window may still be behind others."
+    : !nextFocusCapability() ? NEXT_FOCUS_OFF_LINE
+      : "No terminal was reported for this session, so it cannot be raised. That is the " +
+        "ordinary answer outside tmux, for a session older than this server run, and on Linux " +
+        "and Windows.";
+  return {resume: line(resume), raise: line(raise)};
 }
 
 /* What became of the notifications Cargento raised about this session.
@@ -542,30 +566,6 @@ function nextDeliveryBody(session){
        ([DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery)). */
     (text("browser_lane_why")
       ? `<p class="next-session-delivery-lane">${esc(text("browser_lane_why"))}</p>` : "") + "";
-}
-
-/* The way back to the reader's own words. Every session link on the board
-   lands here, and the surface that holds what they typed for this session
-   sits on a route this page never named, so the input surface existed on
-   exactly one route nothing pointed at. */
-function nextSessionHeldLink(session){
-  /* Dropped without a sentence under `--no-annotations`, and deliberately so
-     (decisions.md, DRC-4543): `nextSessionDepartures` above applies the same
-     rule to the unasked switch and records why -- an operator switch that is
-     off leaves no claim to make on the session view, and a line saying so on
-     every row is noise about a feature nobody turned on. The two surfaces this
-     link would reach, the cockpit's Held to tab and the intent log, each say
-     the store is off and how to turn it on. `test_next_session` pins the
-     absence. */
-  if(!(nextData && nextData.annotate === true)) return "";
-  const project = String(session.project == null ? "" : session.project);
-  if(!project) return "";
-  const href = nextFragmentForRoute({view: "project", project,
-    focus: sessKey(session), tab: "held-to"});
-  const typed = String(session.annotation_goal || session.annotation_output || "");
-  return `<p class="next-session-held-link"><a href="${esc(href)}">` +
-    `${typed ? "What you asked of this session" : "Record what you asked of this session"}` +
-    '</a></p>';
 }
 
 function nextSessionDetailState(state){
@@ -622,8 +622,16 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
   const rate = observed.rateKnown ? ` · ${esc(observed.rateText)}` : "";
-  const controls = nextSessionCopyControl(session) + nextSessionResumeControl(session) +
-    (observed.isNeeds ? nextSessionRaiseControl(session) : "");
+  /* At most one primary, and none while a question is open without a raise
+     ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+     No answer option is ever emphasised: a filled first option reads as advice
+     to approve, so every option stays a plain control. A session waiting on
+     the reader gives the primary to the raise when one is offered; without
+     one nothing is primary, and "Check for drift" renders as an ordinary
+     control. */
+  const waiting = observed.isNeeds || observed.askKnown;
+  const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
+  const controls = nextSessionCopyControl(session) + nextSessionResumeControl(session) + raise;
   const identity = `<header class="next-session-detail-header">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
     `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
@@ -633,15 +641,29 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
       nextInstructionLine(session, "", "next-session-command-context")) : "";
   const coverage = nextSessionSourceCoverage(nextSessionSourceOwner(session),
     observed.nextKnown, asks, openDisclosures);
+  /* The group the session belongs to, under its own label. A session with no
+     project groups under "", so once this page is routed it renders the same
+     block as any other. Whether such a session can reach this page at all is
+     a routing question this does not settle. */
+  const label = String(session.project == null ? "" : session.project);
+  const group = nextProjectGroups().find(candidate => candidate.label === label) ||
+    {label, sessions: [session]};
+  const drift = nextCockpitDriftBlock(group, session,
+    nextSessionCommandSurface(session, observed), !waiting);
+  /* Identity, then what is waiting on the reader, then drift. The answer sits
+     above the check because it outranks it; for every other session the drift
+     block is the first thing after the page's name. */
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
-    `${stateAttr} data-tone="${esc(observed.tone)}">` +
-    nextSessionCommandSurface(session, observed, identity) +
-    nextSessionAskBlock(session, asks, observed) + nextSessionFacts(observed, asks) +
+    `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
+    nextSessionAskBlock(session, asks, observed) + drift.drift +
+    /* Worker history has no height bound: 31 old workers put the check at
+       2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
+    nextSessionSubagents(observed) +
+    nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
-    nextCommandReports(session) +
-    nextSessionDepartures(session) + nextSessionDelivery(session) +
-    nextSessionHeldLink(session) + nextSessionFooter(session) + "</article>";
+    nextCommandReports(session) + nextSessionDelivery(session) + drift.record +
+    nextSessionFooter(session) + "</article>";
 }
 
 async function nextAnswerAsk(id, index){

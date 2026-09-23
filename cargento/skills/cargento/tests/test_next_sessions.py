@@ -1127,7 +1127,11 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
             head=self.OFF,
         )
 
-        self.assertNotIn("next-session-departures", html)
+        # The section's own class, not the rows' prefix: the session page's departures render
+        # as `next-cockpit-departures` since the drift block absorbed them, and an assertion on
+        # a class that no longer exists passes whatever renders. The heading is checked too.
+        self.assertNotIn("next-cockpit-departures", html)
+        self.assertNotIn("DEPARTURES RAISED TO YOU", html)
 
     def test_a_standing_raise_survives_the_switch_that_stops_new_checks(self) -> None:
         """DRC-4559. The section was dropped from the document, not reworded.
@@ -1145,7 +1149,7 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
             head=self.OFF,
         )
 
-        self.assertIn("next-session-departures", html)
+        self.assertIn("next-cockpit-departures", html)
         self.assertIn(
             "The checks that run while you were away are off for this run, so nothing new "
             "is being checked. What was already raised is still on record.",
@@ -1204,7 +1208,12 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
     def test_the_panel_carries_the_same_label_shape_as_its_neighbours(self) -> None:
         html = self.detail('departures: [], departure_why: "Cargento has checked this session."')
 
-        self.assertIn("<h2>UNASKED CHECKS</h2>", html)
+        # Absorbed into the drift block's departures section (DRC-4639), under
+        # that section's labelled part rather than a section of its own.
+        self.assertIn("<h2>DEPARTURES RAISED TO YOU</h2>", html)
+        self.assertIn("FROM THE CHECKS RUN WHILE YOU WERE AWAY", html)
+        self.assertIn("Cargento has checked this session.", html)
+        self.assertNotIn("UNASKED CHECKS", html)
 
     def test_a_departure_says_what_later_evidence_showed(self) -> None:
         """DRC-4514. The follow-up axis, printed verbatim from the server.

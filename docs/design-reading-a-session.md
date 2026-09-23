@@ -302,7 +302,7 @@ suite stays green, because the fixtures bypass the rebuild.
 The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
 recorded case review to enable the control.
 
-The reading is built now. The `Ask for a reading` control is not enabled until an abstention check
+The reading is built now. The `Ask for a reading` control (`Check for drift` since DRC-4639) is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
 Codex, with a person other than whoever writes the reading prompt marking each constraint in advance
 with one binary expectation. Should this abstain, or not. No severity, no expected judgement text,
@@ -590,8 +590,10 @@ two lanes are the same strength, and a shared value name would have been defensi
 
 ## DEC-20: the first screen shows goal beside direction, and drift has one home
 
-Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. None of it is built yet:
-DRC-4636 to DRC-4642 build it, and until they ship the board behaves as the sections above and
+Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. DRC-4636 to DRC-4642 build
+it. The session page (item 4, the session page half of item 3, and the primary control) is built by
+DRC-4639 and DRC-4642; the first screen, its row and its mark are not yet, and until they ship the
+landing view behaves as the sections above and
 [NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describe.
 
 The question was what a person sees about drift when they open Cargento. Measured on a default run
@@ -611,8 +613,10 @@ floor on the first screen and lets a result add to it, rather than the other way
    a session has no drift, because DEC-17 rule 4 forbids rendering `consistent with the evidence
    read` as met. An unsettled later instruction of yours is DEC-16's baseline question and reads
    "Conflict to settle", never Drift. The label asks; it does not say a contradiction was found.
-4. Held to merges into the session view and the `held-to` slug aliases to it, which also removes
-   the dead end a session with no project reaches today.
+4. Held to merges into the session view and the `held-to` slug aliases to it. A session with no
+   project gets the same drift block once its page is routed, but reaching that page is a routing
+   question this merge does not settle, so the dead end such a session reaches is not claimed
+   removed here.
 
 | State | Words on the row | Source record | Surfaces |
 | -- | -- | -- | -- |
@@ -622,9 +626,44 @@ floor on the first screen and lets a result add to it, rather than the other way
 | Not checked | none on the row; the control offers "Check for drift" | absence of a stored reading | session page; one screen-level sentence on a default run |
 | No goal typed | none on the row; the goal slot shows your latest prompt or is empty | absence of an annotation revision | first screen goal slot, session page |
 
-The one primary control on the session page reads "Check for drift", replacing "Ask for a reading"
-and the DRC-4603 ruling that held that label. A session blocked on you, by needs input or an exact
-request, keeps its answer control as the primary, and the check sits below it.
+The session page has at most one primary control, and it reads "Check for drift", replacing "Ask
+for a reading" and the DRC-4603 ruling that held that label. A session blocked on you, by needs
+input or an exact request, gives the primary to the raise when one is offered; without one nothing
+is primary while the question is open, and the check sits below it as an ordinary control. The rule
+is at most one primary, and none while a question is open without a raise.
+
+### What the session page build had to decide
+
+Built 2026-09-23 (DRC-4639, DRC-4642). The ruling as first written said a blocked session "keeps
+its answer control as the primary", and the first build read that as the first option of the first
+exact request. The owner overruled that reading on 2026-09-23: no answer option is ever emphasised,
+because a filled first option reads as advice to approve, and every option stays a plain control.
+The primary goes to the raise that selects the waiting terminal's pane when one is offered, and
+otherwise nothing on the page is primary while the question is open.
+
+The block sits after the session's identity header rather than above it, and a blocked session's
+question sits between the two, because the question outranks the check. The CURRENT ACTIVITY card is
+the agent's direction beside the reader's words, moved into the block rather than copied, so the
+NOW line has one renderer. The subagent rows follow the drift block, rather than sharing the
+CURRENT ACTIVITY card: on a live session with 31 historical workers, those rows pushed the check
+to 2019px on a 900px screen. All worker rows remain on the page.
+
+Inside the block the check is on the first screen: the two goal fields, then the direction, then
+`Check for drift` with its send disclosure beside it, then the reading, then the later-direction
+block and the caveats on the typed words (the binding sentence, the discard explanation and its
+button), then the departures. Measured on a live board at 1440 by 900 with a goal saved, the
+button's top sat at 1010px while the disclosure stacked above it, and at 840px once the two shared a
+row. The reading says it is never a verification once, in the server's disclosure, and the page's
+own sentence renders only where no disclosure was published.
+
+The way back beside a departure is the header's own resume and raise controls, drawn per departure
+whatever the session's state; what is missing is said once per departures section, because a limit
+repeated under every row is furniture. The raise's own caveat follows the rows it qualifies.
+
+The departures section draws only with the unasked lane on, a departure on record, or a reading the
+reader asked for, whose cutoff is printed there and nowhere else. That restores DRC-4543 on this
+page: a panel on every session of a board whose switch is off is noise. Under `--no-annotations`
+the check stays on the page, inert, with the annotations-off sentence as its one refusal.
 
 ### Where a drift row sorts, and why that makes no count
 

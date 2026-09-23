@@ -487,10 +487,13 @@ session focus id, landing the reader on a session filter that matches nothing. A
 merges or drops a tab therefore owes an alias for the retired slug and an amendment to this
 section, and cannot be priced as a change to the strip alone.
 
-Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home), not yet built: the bare URL, invalid fragments and retired fragments
-will normalize to Sessions instead of Projects (DRC-4636). Held to merges into the session view, so
-its `held-to` slug is retired and owes the alias this section requires: a `held-to` fragment opens
-that session's view (DRC-4639). Until those ship, this section describes the board.
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home). Not yet built: the bare URL, invalid fragments and
+retired fragments will normalize to Sessions instead of Projects (DRC-4636), and until that ships
+the Projects sentence above describes the board. Built by DRC-4639: Held to merged into the session
+view, so its `held-to` slug is retired and carries the alias this section requires. A four-part
+project fragment ending in `held-to` parses as that session's route (the focus `harness:sid` split at
+its first colon), and a route object naming the tab emits the session fragment, so a bookmark, a
+pasted link and `navigateNext` all land on the session page. `NEXT_SESSION_TABS` is empty.
 
 ## NUI-4: the canonical bundle fails before bind
 
@@ -635,6 +638,12 @@ requires all three. Older routes without a harness resolve only when there is ex
 stale route, including the right ID under the wrong project label, gets an explicit
 outside-payload state instead of a guessed row. The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
+
+Since DRC-4639 the page leads, after its identity header, with the drift block that was the cockpit's
+Held to tab, and the CURRENT ACTIVITY card sits inside it beside the reader's words. A blocked
+session's question comes between the header and the block.
+[DEC-20](design-reading-a-session.md#what-the-session-page-build-had-to-decide) owns the order and
+the one primary.
 
 The header uses the published `title`, or `Title not published`. A last prompt may appear under
 its own label; it never becomes a fallback title. The row's `instruction` supplies attributed
@@ -1157,8 +1166,12 @@ an enumerated verifier, with five further action rules filed as their own issue 
 named with their reasons in the sheet: `--amber` state signals, a `role="switch"`, a selection, two
 disclosures, and the legacy project view. `.next-action--primary` is a filled tier as of v3, accent on
 `#14140f` at 13.66:1, where it was previously an accent border on a transparent box and so still
-left nothing on the board reading as the act to take. It reaches exactly one tab, because
-four of the five have no action to mark at all.
+left nothing on the board reading as the act to take. It reached exactly one tab, Held to, because
+four of the five have no action to mark at all. Since DRC-4639 merged Held to into the session page,
+the primary lives there instead, as `Check for drift`. A session blocked on the reader gives it to
+the raise when one is offered and otherwise has none, because no answer option is ever emphasised
+([DEC-20](design-reading-a-session.md#what-the-session-page-build-had-to-decide)). The four
+cockpit tabs still carry none.
 
 What each of those four tabs' main action should *be* was filed separately rather than answered in a
 restyle, and the answer is that none of them has one. The reason differs per tab, which is why it is

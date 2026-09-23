@@ -135,7 +135,7 @@ The posture rests on two invariants:
    not; the reply carries that answer as `withdrew` and the board prints a sentence saying the
    raises still quote those words, rather than the one saying nothing does. That is the `clear`
    field of a `POST /api/annotate`
-   body, sent by the `discard everything` control under the two boxes on the `Held to` tab, and it
+   body, sent by the `discard everything` control under the two boxes on the session page, and it
    is not the `clear` control beside each box: that one empties the box, and the save after it
    writes a revision with an empty string while every earlier revision, and every raise quoting
    one, stays. Nothing else removes a departure row's words. It is not on the
@@ -1046,7 +1046,7 @@ is still trusted code; replacing it as the owning user is outside this boundary.
 
 ### The abstention check
 
-The `Ask for a reading` control is enabled by the captain's acceptance of the recorded case review
+The `Check for drift` control (named `Ask for a reading` until DRC-4639) is enabled by the captain's acceptance of the recorded case review
 on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
 [DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
 The acceptance record under `docs/abstention/` carries only marks, hashes and decision metadata.
@@ -1292,7 +1292,7 @@ row is what the two caps above count and deleting it would refund the subprocess
 
 Discarding here means the `clear` field of a `POST /api/annotate` body, which deletes every
 revision. It is reachable from the board as `discard everything`, a control under the two boxes on
-the `Held to` tab, offered only where a revision is stored and armed by one press before a second
+the session page's drift block, offered only where a revision is stored and armed by one press before a second
 performs it. The board's own `clear` control is a different act with the same word on it: it empties
 one box, and the save that follows appends a revision holding an empty string. The words you typed
 are still in the earlier revisions and a raise quoting them is still quoting them, so nothing is

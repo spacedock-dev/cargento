@@ -18,14 +18,13 @@ const NEXT_UNASKED_LANE_OFF_RECORD =
   "The checks that run while you were away are off for this run, so nothing new is being " +
   "checked. What was already raised is still on record.";
 /* One reading, or one raise, against words that have moved on. Owned here for
-   NEXT_READING_NOT_A_VERIFICATION's reason: the Held to tab states it about the
-   reading it is offering and about every raise standing under it, the session
-   page states it about the same raises, and a second wording would be a second
-   promise -- which is the divergence the Intent log's own revision line already
-   refuses.
+   NEXT_READING_NOT_A_VERIFICATION's reason: the session page's drift block
+   states it about the reading it is offering and about every raise standing
+   under it, and a second wording would be a second promise -- which is the
+   divergence the Intent log's own revision line already refuses.
 
-   The subject is a parameter because the two rows sit inches apart on the Held
-   to tab, the reading block directly above the departures, so "This reading"
+   The subject is a parameter because the two rows sit inches apart in the
+   drift block, the reading directly above the departures, so "This reading"
    inside a raised row has two possible referents there.
 
    Composed here rather than by the producer, which could: `unasked.published`
@@ -46,17 +45,30 @@ function nextRevisionSuperseded(subject, read, current){
 
 const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions", "intent"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
-/* Tabs that exist only while one session is in focus. Empty at project scope
-   rather than disabled there, because a tab about one session's words has
-   nothing to show when no session is selected, and an always-empty tab
-   teaches a reader not to click the one that will matter.
+/* Tabs that exist only while one session is in focus. Empty since the one
+   member merged into the session view: Held to was the reader's words, the
+   reading and the departures, and drift now has one home, the session page
+   ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+   Kept as a list rather than deleted, because `nextCockpitTabs` is the one
+   reader every tab-set question goes through. */
+const NEXT_SESSION_TABS = [];
+/* A retired slug owes an alias, not a fall-through
+   ([NUI-3](docs/design-next-ui.md#nui-3-the-released-route-and-storage-namespace-remain-stable)).
+   Without one a bookmarked `:held-to` link parses as a session focus id and
+   lands on a filter that matches nothing. Read at boot, before any payload, so
+   it cannot depend on whether the annotation store is on. */
+const NEXT_RETIRED_SESSION_TAB = "held-to";
 
-   Not gated on the annotation store being live. This list is read by
-   `nextRouteFromFragment` at boot, before any payload has arrived, and a
-   capability-gated list would refuse to parse a bookmarked `:held-to` link on
-   first load and drop the reader on the projects index. The panel says the
-   store is off; the route stays readable either way. */
-const NEXT_SESSION_TABS = ["held-to"];
+/* The session route a retired Held to link meant. The focus is `sessKey`'s
+   `harness:sid`; a sid may itself carry a colon, so only the first one splits.
+   Null when that leaves no session id (`codex:`), so the caller falls through
+   rather than building a session route no session can match. */
+function nextHeldToSessionRoute(project, focus){
+  const at = focus.indexOf(":");
+  const route = at <= 0 ? {view: "session", project, session: focus}
+    : {view: "session", project, harness: focus.slice(0, at), session: focus.slice(at + 1)};
+  return route.session ? route : null;
+}
 const NEXT_OBSERVER_CONSENT_KEY = "cargento.observer-model-consent.v1";
 let nextObserverConsentMemo = null;
 const nextObserverRequests = new Set();
@@ -111,6 +123,9 @@ function nextRouteFromFragment(fragment){
     const project = nextDecodeRoutePart(parts[1]);
     const focus = nextDecodeRoutePart(parts[2]);
     const tab = nextDecodeRoutePart(parts[3]);
+    const held = project && focus && tab === NEXT_RETIRED_SESSION_TAB
+      ? nextHeldToSessionRoute(project, focus) : null;
+    if(held) return held;
     if(project && focus && nextCockpitTabs(focus).includes(tab)){
       return {view:"project",project,session:null,focus,tab};
     }
@@ -137,6 +152,10 @@ function nextFragmentForRoute(route){
       ? `${prefix}${encodeURIComponent(harness)}:${encodeURIComponent(route.session)}`
       : `${prefix}${encodeURIComponent(route.session)}`;
   }
+  const held = route && route.view === "project" && route.project && route.focus &&
+    route.tab === NEXT_RETIRED_SESSION_TAB
+    ? nextHeldToSessionRoute(route.project, String(route.focus)) : null;
+  if(held) return nextFragmentForRoute(held);
   if(route && route.view === "project" && route.project){
     const focus = route.focus ? `:${encodeURIComponent(route.focus)}` : "";
     const tab = nextCockpitTabs(route.focus).includes(route.tab) && route.tab !== "now"
@@ -332,7 +351,7 @@ function nextSessionResumeControl(session){
 const NEXT_FOCUS_META = 'meta[name="cargento-focus"]';
 
 // One fact about the process, stated at two scopes: the fleet coverage line on
-// Attention and the per-session limit in the Held to tab. Hoisted rather than
+// Attention and the per-session limit beside a departure. Hoisted rather than
 // spelled twice, because two spellings of one fact drift.
 const NEXT_FOCUS_OFF_LINE = "Terminal raise: off for this run.";
 
@@ -368,12 +387,12 @@ function nextFocusCapability(){
 // reaches once, where a per-row note would print forever and say nothing.
 //
 // That holds for a QUEUE of rows and is why Attention states it once. It does not
-// hold where one session is the whole subject: the Held to tab is about the
-// session on screen, a reader there is asking whether they can get back into that
-// one, and "nothing at all" is the answer that reads as "no limit" rather than as
-// "not this session". `nextCockpitHeldReEntry` states it for that scope, which is
-// a second place and not a per-row note.
-function nextSessionRaiseControl(session){
+// hold where one session is the whole subject: the session page's departures are
+// about the session on screen, a reader there is asking whether they can get back
+// into that one, and "nothing at all" is the answer that reads as "no limit" rather
+// than as "not this session". `nextDepartureReentryLimit` states it for that scope,
+// once per section, which is a second place and not a per-row note.
+function nextSessionRaiseControl(session, primary = false){
   if(!session || session.focusable !== true) return "";
   const sid = String(session.sid == null ? "" : session.sid).trim();
   const harness = String(session.harness == null ? "" : session.harness).trim();
@@ -386,7 +405,14 @@ function nextSessionRaiseControl(session){
   // (DRC-4390). `aria-disabled` rather than `disabled`: the control keeps its
   // place in the tab order, and the click still reaches the handler that says why.
   const busy = nextRaiseInFlight ? ' aria-disabled="true"' : "";
-  return '<button type="button" class="next-session-raise next-attention-raise" ' +
+  /* `primary` only on the session page's header, for a session waiting on the
+     reader: the raise is the one primary a question can have, since no answer
+     option is ever emphasised
+     ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+     The primitive's classes then override
+     the resting amber on purpose, since this is the one control to press. */
+  return `<button type="button" class="next-session-raise next-attention-raise${primary
+    ? " next-action next-action--primary" : ""}" ` +
     `data-next-raise-session="${esc(sid)}" data-next-raise-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-raise-state", "raise", harness, sid)}${busy} ` +
     'aria-label="Raise the terminal this session is running in">' +
