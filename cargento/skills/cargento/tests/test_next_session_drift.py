@@ -3,8 +3,8 @@
 [DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)
 merges the cockpit's Held to tab into the session view: one DRIFT block, first after the page's
 identity, holding the reader's words, the agent's direction, the later-direction question, the
-reading and every departure on record. It has one primary, "Check for drift", which a session
-blocked on the reader gives up to its answer control.
+reading and every departure on record. It has at most one primary: "Check for drift", or, while
+the session waits on the reader, the raise when one is offered and nothing otherwise.
 
 The fixtures are the cockpit composition board's, read through the module rather than imported by
 name, so the loader does not collect that class a second time here.
@@ -188,7 +188,13 @@ console.log(JSON.stringify({parsed, emitted, route: nextRoute, hash: location.ha
         self.assertIn('data-next-cockpit-action="reading-ask"', primaries[0])
         self.assertNotIn("Ask for a reading", html)
 
-    def test_a_session_waiting_on_you_keeps_its_answer_as_the_primary(self) -> None:
+    def test_a_question_without_a_raise_leaves_nothing_primary(self) -> None:
+        """The owner's ruling (2026-09-23): no answer option is ever emphasised.
+
+        A filled first option reads as advice to approve. With no raise on offer, nothing on the
+        page is primary while the question is open, and the check renders as an ordinary control
+        below the question.
+        """
         html = self.page("""
 __dashboard.reading_check = "accepted";
 __dashboard.ask = true;
@@ -198,30 +204,37 @@ __dashboard.asks = [{id:"ask-1", harness:"codex", session_id:"focus-1", project:
 await refreshNext();
 """)
 
-        primaries = re.findall(r"<button\b[^>]*next-action--primary[^>]*>", html)
-        self.assertEqual(1, len(primaries), primaries)
-        self.assertIn("data-next-answer=", primaries[0])
+        self.assertEqual([], re.findall(r"<button\b[^>]*next-action--primary[^>]*>", html))
+        answers = re.findall(r"<button\b[^>]*data-next-answer=[^>]*>", html)
+        self.assertEqual(2, len(answers), html)
+        for answer in answers:
+            self.assertIn('class="next-action"', answer)
         check = re.search(r'<button\b[^>]*data-next-cockpit-action="reading-ask"[^>]*>', html)
         self.assertIsNotNone(check)
         assert check is not None
-        self.assertNotIn("next-action--primary", check.group(0))
-        # The check sits below the answer, not beside it or above.
+        self.assertIn('class="next-action"', check.group(0))
+        # The check sits below the question, not beside it or above.
         self.assertLess(html.index('data-next-session-section="ask"'), check.start())
 
-    def test_the_raise_is_the_primary_when_it_is_the_only_way_to_answer(self) -> None:
+    def test_the_raise_is_the_primary_while_a_question_is_open(self) -> None:
         html = self.page("""
 const query = document.querySelector;
 document.querySelector = selector => selector === NEXT_FOCUS_META
   ? {getAttribute(){return "test-focus";}} : query(selector);
 __dashboard.reading_check = "accepted";
+__dashboard.ask = true;
 __dashboard.sessions[0].state = "needs_input";
 __dashboard.sessions[0].focusable = true;
+__dashboard.asks = [{id:"ask-1", harness:"codex", session_id:"focus-1", project:"cargento",
+  question:"Ship it?", options:["Yes", "Not yet"]}];
 await refreshNext();
 """)
 
         primaries = re.findall(r"<button\b[^>]*next-action--primary[^>]*>", html)
         self.assertEqual(1, len(primaries), primaries)
         self.assertIn("data-next-raise-session=", primaries[0])
+        for answer in re.findall(r"<button\b[^>]*data-next-answer=[^>]*>", html):
+            self.assertNotIn("next-action--primary", answer)
 
     def test_departures_asked_and_unasked_render_once_in_the_drift_block(self) -> None:
         html = self.page(READING + UNASKED)

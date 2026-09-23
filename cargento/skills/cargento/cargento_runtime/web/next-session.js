@@ -150,14 +150,13 @@ function nextSessionMeta(session){
   return parts.join(" · ");
 }
 
-function nextSessionAskBlock(session, asks, observed, primaryAnswer = null){
+function nextSessionAskBlock(session, asks, observed){
   if(!observed.askKnown) return "";
   const cards = asks.map(ask => {
     const id = String(ask && ask.id || "");
     const options = Array.isArray(ask && ask.options) ? ask.options : [];
     const buttons = options.map((option, index) =>
-      `<button type="button" class="next-action${ask === primaryAnswer && index === 0
-        ? " next-action--primary" : ""}" data-next-answer="${esc(id)}" ` +
+      `<button type="button" class="next-action" data-next-answer="${esc(id)}" ` +
       `data-next-answer-index="${index}">${esc(option)}</button>`
     ).join("");
     const choices = buttons
@@ -623,19 +622,15 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
   const rate = observed.rateKnown ? ` · ${esc(observed.rateText)}` : "";
-  /* The page's one primary. A session blocked on the reader keeps its answer
-     control as the primary and "Check for drift" drops below it
+  /* At most one primary, and none while a question is open without a raise
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
-     The ruling names "its answer control" and does not say which, so this
-     takes the one control that answers from this page: the first option of
-     the first exact request, in the order the session published them; where
-     there is none, the raise that puts the reader in front of the waiting
-     terminal. With neither on the page nothing here answers, and the check
-     keeps the primary so the page still has exactly one. */
-  const primaryAnswer = observed.askKnown ? asks.find(ask =>
-    Array.isArray(ask && ask.options) && ask.options.length > 0) || null : null;
-  const raise = observed.isNeeds ? nextSessionRaiseControl(session, !primaryAnswer) : "";
-  const answerPrimary = Boolean(primaryAnswer) || raise.includes("next-action--primary");
+     No answer option is ever emphasised: a filled first option reads as advice
+     to approve, so every option stays a plain control. A session waiting on
+     the reader gives the primary to the raise when one is offered; without
+     one nothing is primary, and "Check for drift" renders as an ordinary
+     control. */
+  const waiting = observed.isNeeds || observed.askKnown;
+  const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
   const controls = nextSessionCopyControl(session) + nextSessionResumeControl(session) + raise;
   const identity = `<header class="next-session-detail-header">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
@@ -653,13 +648,13 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const group = nextProjectGroups().find(candidate => candidate.label === label) ||
     {label, sessions: [session]};
   const drift = nextCockpitDriftBlock(group, session,
-    nextSessionCommandSurface(session, observed), !answerPrimary);
+    nextSessionCommandSurface(session, observed), !waiting);
   /* Identity, then what is waiting on the reader, then drift. The answer sits
      above the check because it outranks it; for every other session the drift
      block is the first thing after the page's name. */
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
-    nextSessionAskBlock(session, asks, observed, primaryAnswer) + drift.drift +
+    nextSessionAskBlock(session, asks, observed) + drift.drift +
     nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +

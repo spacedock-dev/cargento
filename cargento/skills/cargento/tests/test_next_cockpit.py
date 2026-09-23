@@ -6429,10 +6429,12 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
     #              Everything else on the tab is consent or navigation.
     #
     # `held-to` kept its one primary, "Ask for a reading", until DRC-4639 merged
-    # it into the session page. There the one primary is "Check for drift", and
-    # a session blocked on the reader gives it up to the answer control (DEC-20,
-    # which amends this ruling). The per-tab count below is extended with both
-    # session-page states rather than replaced.
+    # it into the session page. There the rule is "at most one primary; none
+    # while a question is open without a raise" (DEC-20, which amends this
+    # ruling): "Check for drift" holds it on an unblocked session, no answer
+    # option is ever emphasised, and a blocked session with no raise on offer
+    # has none. The per-tab count below is extended with both session-page
+    # states rather than replaced.
     #
     # The ruling is BOUND rather than narrated. A zero is what a tab with no
     # controls at all scores and what a tab whose controls were all deleted
@@ -6526,24 +6528,25 @@ console.log(JSON.stringify({counts, steer, tripwire, onSession, onBlocked}));
                 "decisions": 0,
                 "console": 0,
                 "held-to": 1,
-                "session-blocked": 1,
+                "session-blocked": 0,
             },
             out["counts"],
         )
-        # Which control holds it: the check on an unblocked session, the answer
-        # on one blocked on the reader (DEC-20).
+        # Which control holds it: the check on an unblocked session, and nothing
+        # on one blocked on the reader with no raise on offer (DEC-20).
         on_session = cast("list[str]", out["onSession"])
-        on_blocked = cast("list[str]", out["onBlocked"])
         self.assertIn('data-next-cockpit-action="reading-ask"', on_session[0])
-        self.assertIn("data-next-answer=", on_blocked[0])
+        self.assertEqual([], out["onBlocked"])
         self.assertNotIn("next-action--primary", out["steer"])
         self.assertNotIn("next-action--primary", out["tripwire"])
-        # The four zeros above are the ruling, so name them from the one place
-        # that holds it. A tab quietly dropped from either list would otherwise
-        # stop being asserted about.
+        # The four tab zeros above are the ruling, so name them from the one
+        # place that holds it. A tab quietly dropped from either list would
+        # otherwise stop being asserted about. The blocked session page's zero
+        # is DEC-20's, not this ruling's, so it is set aside by name.
         self.assertEqual(
             set(self.NO_PRIMARY_TABS),
-            {tab for tab, count in cast("dict[str, int]", out["counts"]).items() if count == 0},
+            {tab for tab, count in cast("dict[str, int]", out["counts"]).items() if count == 0}
+            - {"session-blocked"},
         )
 
     def test_the_four_tabs_without_a_primary_render_no_act_to_mark(self) -> None:

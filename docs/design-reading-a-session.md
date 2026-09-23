@@ -613,8 +613,10 @@ floor on the first screen and lets a result add to it, rather than the other way
    a session has no drift, because DEC-17 rule 4 forbids rendering `consistent with the evidence
    read` as met. An unsettled later instruction of yours is DEC-16's baseline question and reads
    "Conflict to settle", never Drift. The label asks; it does not say a contradiction was found.
-4. Held to merges into the session view and the `held-to` slug aliases to it, which also removes
-   the dead end a session with no project reaches today.
+4. Held to merges into the session view and the `held-to` slug aliases to it. A session with no
+   project gets the same drift block once its page is routed, but reaching that page is a routing
+   question this merge does not settle, so the dead end such a session reaches is not claimed
+   removed here.
 
 | State | Words on the row | Source record | Surfaces |
 | -- | -- | -- | -- |
@@ -624,22 +626,23 @@ floor on the first screen and lets a result add to it, rather than the other way
 | Not checked | none on the row; the control offers "Check for drift" | absence of a stored reading | session page; one screen-level sentence on a default run |
 | No goal typed | none on the row; the goal slot shows your latest prompt or is empty | absence of an annotation revision | first screen goal slot, session page |
 
-The one primary control on the session page reads "Check for drift", replacing "Ask for a reading"
-and the DRC-4603 ruling that held that label. A session blocked on you, by needs input or an exact
-request, keeps its answer control as the primary, and the check sits below it.
+The session page has at most one primary control, and it reads "Check for drift", replacing "Ask
+for a reading" and the DRC-4603 ruling that held that label. A session blocked on you, by needs
+input or an exact request, gives the primary to the raise when one is offered; without one nothing
+is primary while the question is open, and the check sits below it as an ordinary control. The rule
+is at most one primary, and none while a question is open without a raise.
 
 ### What the session page build had to decide
 
-Built 2026-09-23 (DRC-4639, DRC-4642). The ruling names "its answer control" and a blocked session
-can show several controls, or none. The build takes the one control that answers from the page: the
-first option of the first exact request, in the order the session published them, and where there
-is none, the raise that selects the waiting terminal's pane. With neither on the page nothing there
-answers, so the check keeps the primary and the page still has exactly one. Marking the first option
-does emphasise the session's own first choice over the others, which is the cost of the singular
-the ruling asks for, and it is the part to revisit if that emphasis reads as advice.
+Built 2026-09-23 (DRC-4639, DRC-4642). The ruling as first written said a blocked session "keeps
+its answer control as the primary", and the first build read that as the first option of the first
+exact request. The owner overruled that reading on 2026-09-23: no answer option is ever emphasised,
+because a filled first option reads as advice to approve, and every option stays a plain control.
+The primary goes to the raise that selects the waiting terminal's pane when one is offered, and
+otherwise nothing on the page is primary while the question is open.
 
 The block sits after the session's identity header rather than above it, and a blocked session's
-question sits between the two, because the answer outranks the check. The CURRENT ACTIVITY card is
+question sits between the two, because the question outranks the check. The CURRENT ACTIVITY card is
 the agent's direction beside the reader's words, moved into the block rather than copied, so the
 NOW line has one renderer.
 

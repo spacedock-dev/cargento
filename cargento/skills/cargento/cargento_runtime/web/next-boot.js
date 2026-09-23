@@ -402,10 +402,12 @@ function nextSessionRaiseControl(session, primary = false){
   // (DRC-4390). `aria-disabled` rather than `disabled`: the control keeps its
   // place in the tab order, and the click still reaches the handler that says why.
   const busy = nextRaiseInFlight ? ' aria-disabled="true"' : "";
-  /* `primary` only on the session page, and only when this is the answer
-     control of a session blocked on the reader, per the drift ruling; the primitive's
-     classes then override the resting amber on purpose, since this is the one
-     control to press. */
+  /* `primary` only on the session page's header, for a session waiting on the
+     reader: the raise is the one primary a question can have, since no answer
+     option is ever emphasised
+     ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+     The primitive's classes then override
+     the resting amber on purpose, since this is the one control to press. */
   return `<button type="button" class="next-session-raise next-attention-raise${primary
     ? " next-action next-action--primary" : ""}" ` +
     `data-next-raise-session="${esc(sid)}" data-next-raise-harness="${esc(harness)}"` +
