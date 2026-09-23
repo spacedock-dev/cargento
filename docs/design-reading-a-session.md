@@ -302,7 +302,7 @@ suite stays green, because the fixtures bypass the rebuild.
 The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
 recorded case review to enable the control.
 
-The reading is built now. The `Ask for a reading` control is not enabled until an abstention check
+The reading is built now. The `Ask for a reading` control (`Check for drift` since DRC-4639) is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
 Codex, with a person other than whoever writes the reading prompt marking each constraint in advance
 with one binary expectation. Should this abstain, or not. No severity, no expected judgement text,
@@ -590,8 +590,10 @@ two lanes are the same strength, and a shared value name would have been defensi
 
 ## DEC-20: the first screen shows goal beside direction, and drift has one home
 
-Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. None of it is built yet:
-DRC-4636 to DRC-4642 build it, and until they ship the board behaves as the sections above and
+Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. DRC-4636 to DRC-4642 build
+it. The session page (item 4, the session page half of item 3, and the primary control) is built by
+DRC-4639 and DRC-4642; the first screen, its row and its mark are not yet, and until they ship the
+landing view behaves as the sections above and
 [NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describe.
 
 The question was what a person sees about drift when they open Cargento. Measured on a default run
@@ -625,6 +627,25 @@ floor on the first screen and lets a result add to it, rather than the other way
 The one primary control on the session page reads "Check for drift", replacing "Ask for a reading"
 and the DRC-4603 ruling that held that label. A session blocked on you, by needs input or an exact
 request, keeps its answer control as the primary, and the check sits below it.
+
+### What the session page build had to decide
+
+Built 2026-09-23 (DRC-4639, DRC-4642). The ruling names "its answer control" and a blocked session
+can show several controls, or none. The build takes the one control that answers from the page: the
+first option of the first exact request, in the order the session published them, and where there
+is none, the raise that selects the waiting terminal's pane. With neither on the page nothing there
+answers, so the check keeps the primary and the page still has exactly one. Marking the first option
+does emphasise the session's own first choice over the others, which is the cost of the singular
+the ruling asks for, and it is the part to revisit if that emphasis reads as advice.
+
+The block sits after the session's identity header rather than above it, and a blocked session's
+question sits between the two, because the answer outranks the check. The CURRENT ACTIVITY card is
+the agent's direction beside the reader's words, moved into the block rather than copied, so the
+NOW line has one renderer.
+
+The way back beside a departure is the header's own resume and raise controls, drawn per departure
+whatever the session's state; what is missing is said once per departures section, because a limit
+repeated under every row is furniture.
 
 ### Where a drift row sorts, and why that makes no count
 

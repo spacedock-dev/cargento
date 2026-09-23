@@ -70,16 +70,14 @@ them. **Console** leads with the operations rail, Delegation, Waiting on you, Ca
 Tripwires, and keeps how the server was started in one disclosure beneath it, holding the selected
 session's optional read-only terminal, the observer-model controls and the status line. The summary
 names the state of both capabilities. A capability that is on renders expanded and outside the
-disclosure, so nothing you can act on is behind a click. **Held to** appears only with a
-session selected and holds the goal and expected output you typed for it, the observed entries
-naming it, any direction you gave after you saved those words, the reading block, and how the
-session landed as two cards that do not imply each other. The control that asks for a reading is always on the tab; when it cannot fire it stays put, refuses the press and names the reason beside itself.
+disclosure, so nothing you can act on is behind a click. What you typed for a session, and
+everything read against it, lives on that session's own page (below), not on a tab here.
 Browser-local
 human context and old tripwire notes do not instruct an agent and remain inert.
 
-Each tab names its own panel in a line beneath the strip, because three of the five open onto a
-heading that does not repeat the label. Course, Decisions and Held to also carry a cue on the tab
-itself: the number of observed state changes, decisions, or departures raised. A cue reads `…` while
+Each tab names its own panel in a line beneath the strip, because two of the four open onto a
+heading that does not repeat the label. Course and Decisions also carry a cue on the tab
+itself: the number of observed state changes or decisions. A cue reads `…` while
 the record is still loading and `·` where nothing published the figure, and those two are never the
 same claim as a zero. Every cue is spelled out for a screen reader beside its mark.
 
@@ -103,13 +101,19 @@ a separate prototype store; `--forget` does not delete it. The terminal is also 
 requires both interaction flags and registration from inside the selected session's tmux pane,
 and accepts no input. Its xterm assets are vendored and served from loopback.
 
-Exact session detail remains available from Sessions and cockpit session links, with the recorded
-request, tasks, subagents, token measurements, and any answerable question attributed to it.
+Exact session detail is reachable from Sessions, cockpit session links and the Intent log. Under
+the session's name it leads with a **DRIFT** block: the goal and expected output you typed, the
+agent's current activity beside them, any direction you gave after you saved those words (labelled
+"Conflict to settle", which asks a question and records no finding), the reading, and every
+departure on record, asked for or not. A session waiting on you shows its question first. Below
+the block come the recorded request, tasks, subagents, token measurements, how the session landed
+and the observed record. The page has one primary control, `Check for drift`; a session blocked on
+you gives it up to the control that answers, and the check sits below it.
 
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
 `#n=project:<encoded-project>` with the selected session and then the open tab appended when either
 is set, or the full project, harness, and session identity for session
-detail. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
+detail. A project link that ends in the retired `held-to` tab opens that session's page. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
 that belonged to the retired dashboard normalize to Projects. Open the dashboard at its bare URL;
 the retired `next` query is no longer a dashboard route.
 
@@ -270,10 +274,9 @@ counts until anything in it writes again; a subagent write counts. Marks live in
 
 You can record a goal and an expected output against one session, in your own words. Both are
 optional and set independently, bounded at 240 characters each, and saving one leaves the other
-alone. Select a session in the project view and open its `Held to` tab, which appears only when a
-session is selected because there is nobody whose words these would be otherwise. A line above
-the fields says what typing buys: a reading happens when you ask for one, and Cargento never writes
-into the session. Each field shows
+alone. Open the session's page: the two fields are the first thing in its drift block, for a
+session with or without a project. A line above the fields says what typing buys: a check happens
+when you ask for one, and Cargento never writes into the session. Each field shows
 how many of its 240 characters you have used as you type, offers `clear` only when there is text and `save`
 only when the box differs from what is stored, and Escape puts the stored value back.
 
@@ -298,10 +301,10 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields the tab runs in reading order: a later direction, the reading, the departures
-it raised, how it landed, and last the observed record. The record is last because it is the longest
-block here and its absence sentence is one of four that used to arrive before you reached the
-reading. It lists every observed entry naming that session with its own type and the source that
+Below the two fields the drift block runs in reading order: the agent's current activity, a later
+direction, the reading, and the departures on record. How it landed and the observed record follow
+the session's own facts further down. The record is last because it is the longest block here and
+its absence sentence is one of four that used to arrive before you reached the reading. It lists every observed entry naming that session with its own type and the source that
 published it, and states the limit under it: demonstrated work results are read on Pi alone, so on
 every other harness those entries are instructions, dispatches and gate decisions and never an
 inspected file, test or deliverable. Your words also appear beside the goal the harness published,
@@ -309,17 +312,18 @@ in the project view's stated goal block, each on its own row so the two claims a
 the derived row says when the directive was observed.
 
 Long caveats keep their claim on the page and put the rest behind a summary you can open, on both
-`Held to` and Console. Nothing is removed by that: an opened one stays open when the board redraws,
+the session page's drift block and Console. Nothing is removed by that: an opened one stays open when the board redraws,
 and a closed one still holds every word it was written with.
 
-A later direction gets its own block. Every instruction you gave after your newest save is listed
+A later direction gets its own block, labelled "Conflict to settle". Every instruction you gave after your newest save is listed
 there with its age, and nothing there decides whether it changes what you asked for: that is yours,
 and Cargento does not write into the session either way. Marking the baseline as still applying
 settles them through the newest one shown, which is what `settle_through` records. The retype
 control only moves the caret to the goal field, because Cargento cannot author your words. While a
 later direction is unsettled a reading states no departure at all.
 
-`DEPARTURES RAISED TO YOU` is where a raise is reviewed, and it keeps two collections apart. One
+`DEPARTURES RAISED TO YOU` is where a raise is reviewed, and the one place on the session page it
+appears; it keeps two collections apart. One
 holds what a reading you asked for raised; the other holds what the checks run while you were away
 raised, with the annotation revision each read against and where its evidence stopped. Where the
 words have since moved to a later revision the row says so, in the same wording the reading block
@@ -341,15 +345,19 @@ and why the board never describes it as a session nobody typed against. That act
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not
-looking at the screen. The Intent log carries the same raises a line at a time, and keeps them
-after the session leaves the board.
+looking at the screen. Beside each departure sit the command that resumes the session, on Claude
+Code and Codex, and the raise that selects its tmux pane, whatever state the session is in; the
+raise does not bring the window forward. Where either is missing the section says why once. Neither
+sends anything to the session. The Intent log carries the same raises a line at a time, and keeps
+them after the session leaves the board.
 
 Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
 indicator. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
-one control. The accepted case review enables that control; the evidence stays readable
-whether or not you ask for a reading. A press shows progress while the request runs and prevents
-another press in this tab until it finishes. The response says whether a reading arrived or none
+one control, `Check for drift`. When it cannot run it stays on the page, refuses the press, and
+names one next step. The accepted case review enables that control; the evidence stays readable
+whether or not you ask for a reading. A press says a check can take up to a minute, the rest of the
+page stays usable meanwhile, and it prevents another press in this tab until it finishes. The response says whether a reading arrived or none
 was produced; a failed request says its result could not be confirmed and is never retried
 automatically. The counter reports recorded model requests, so a refusal before the model runs
 does not increase it.
@@ -539,7 +547,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run, unasked checks included (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits above the button in `Held to`, the press itself stands in for consent rather than a stored answer, and the button is enabled by the accepted case review. Quota consent authorizes neither. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries and reader-requested readings, or refuse them for this run, unasked checks included (refusal wins). Off by default. Each model request requires separate disclosure consent and sends at most 16,384 bytes of redacted prompt, with one call in flight per session and a 60-second timeout. Console offers the disclosure for an exact session, stores the answer in this browser, and sends content only when the reader chooses Summarize this session. A reading is the other sender: its disclosure sits above the `Check for drift` button on the session page, the press itself stands in for consent rather than a stored answer, and the button is enabled by the accepted case review. Quota consent authorizes neither. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
@@ -556,7 +564,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The session-end store is neither read nor written, since the coordinator is its only writer, so a session that ended before this run reads as quiet. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
-| `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the `Held to` tab offers no field and says why. The rollback switch for the one store holding prose you composed. |
+| `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the session page's drift block offers no field and says why. The rollback switch for the one store holding prose you composed. |
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
@@ -578,7 +586,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/annotate` | Record a goal or expected output against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
-| `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the `Held to` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or when the reading gate is closed. The accepted case review opens that gate in this build. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
+| `POST /api/reading` | Ask for one reading of a session against the words typed against it, the same press the session page's `Check for drift` button makes. Body is `{"harness", "sid", "press": true, "observer_model": 1}`, capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, with the observer model off, or when the reading gate is closed. The accepted case review opens that gate in this build. 409 while a reading for that session is already in flight, and 200 with `produced: false` when there is no annotated session by that name. |
 
 ## Interpretation notes (share with the user if asked)
 

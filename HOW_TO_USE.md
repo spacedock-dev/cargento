@@ -423,8 +423,8 @@ same reason: `--no-annotations` is a switch for one run, not a statement about t
 session-end store goes with it, because both are the machine's memory of what it observed, and a
 session whose end was recorded then reads as quiet again. Nothing over the loopback port can delete
 history; this is the only way. It deletes nothing you typed: the goal and the expected output you wrote against a
-session, and any reading made against them, go when you discard that session's words in its Held to
-tab. The one thing it takes out of that store is the record of a discard, which holds when the act
+session, and any reading made against them, go when you discard that session's words on its
+session page. The one thing it takes out of that store is the record of a discard, which holds when the act
 happened and no text, and is the machine's memory of something it did rather than anything you
 wrote.
 
