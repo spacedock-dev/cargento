@@ -376,8 +376,9 @@ either path.
 Notification delivery is best effort; the dashboard's observed state remains the source to inspect.
 
 Cargento can also check an annotated session against what you asked for without being asked, and
-raise a departure while you are away. Off by default, behind `--unasked-readings`, and it is the
-only thing here that spends your model capacity with nobody watching. It checks on an observed state
+raise a departure while you are away. Off by default, behind `--unasked-readings`, refused by
+`--no-observer-model` whatever else is set, and it is the only thing here that spends your model
+capacity with nobody watching. It checks on an observed state
 change rather than every turn, it raises a departure and never a reassurance, and it stops at a
 per-session and a per-day limit. A spent limit is said out loud: a session nobody checked and a
 session checked and found clean are different sentences on the board, because you were not there to

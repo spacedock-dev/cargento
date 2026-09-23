@@ -464,7 +464,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
 | `--no-annotations` | The goal and expected output you typed against a session. Nothing is shown or saved, and the page offers no field |
 | `--no-focus` | Raising a session's terminal. No focus command runs, no terminal identity is recorded, and the page is offered no raise control. `--no-events` turns it off as well |
-| `--no-observer-model` | Model goal summaries, and the readings that use the same lane. It overrides `--observer-model`, so nothing reaches the Codex CLI for this run |
+| `--no-observer-model` | Model goal summaries, and the readings that use the same lane, unasked checks included. It overrides `--observer-model` and `--unasked-readings`, so nothing reaches the Codex CLI for this run |
 | `--no-reach` | Off-machine reach nudges. Outbound webhook nudges are disabled for this run |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
