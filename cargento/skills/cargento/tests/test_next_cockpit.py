@@ -7528,7 +7528,7 @@ __dashboard.sessions[0].annotation_output = "";
 __dashboard.sessions[0].annotation_at = null;
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
-console.log(JSON.stringify({has: __els.app.innerHTML.includes("CONFLICT TO SETTLE")}));
+console.log(JSON.stringify({has: __els.app.innerHTML.includes('class="next-cockpit-conflict"')}));
 """,
             storage_prelude({}) + self.FIXTURE,
         )

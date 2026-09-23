@@ -340,6 +340,45 @@ __dashboard.sessions[0].annotation_discarded_why = "Discarded";
                 assert reason is not None
                 self.assertIn(step, reason.group(1).replace("&#39;", "'"))
 
+    def test_conflict_to_settle_names_only_an_unsettled_later_direction(self) -> None:
+        """DEC-20 item 3: "Conflict to settle" is the label for an unsettled later direction.
+
+        Nothing since, a settled baseline and an unread record have nothing to settle, so they
+        keep the neutral heading rather than asking the reader to act on nothing.
+        """
+        states = {
+            # The fixture's own person-authored facts land at 102 and 104, after words saved at 100.
+            "pending": ("", "CONFLICT TO SETTLE"),
+            "nothing since": ("__dashboard.sessions[0].annotation_at = 106;\n", "A LATER DIRECTION"),
+            "settled": (
+                "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+                "__dashboard.sessions[0].annotation_settled_through = 300;\n"
+                "__dashboard.sessions[0].annotation_settled_revision = 2;\n",
+                "A LATER DIRECTION",
+            ),
+        }
+        for name, (setup, heading) in states.items():
+            with self.subTest(state=name):
+                html = self.page(setup)
+                block = re.search(r'<section class="next-cockpit-conflict">[\s\S]*?</section>', html)
+                self.assertIsNotNone(block, html)
+                assert block is not None
+                other = {"CONFLICT TO SETTLE", "A LATER DIRECTION"} - {heading}
+                self.assertIn(f"<h2>{heading}</h2>", block.group(0))
+                self.assertNotIn(other.pop(), html)
+        # And a record this page could not read: whether a later direction exists is unknown.
+        out = self.run_fixture(
+            ANNOTATED
+            + """
+const session = __dashboard.sessions[0];
+console.log(JSON.stringify(nextCockpitConflict(session, nextCockpitAnnotation(session),
+  {entries: [], state: "unread"})));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertIn("<h2>A LATER DIRECTION</h2>", out)
+        self.assertNotIn("CONFLICT TO SETTLE", out)
+
     def test_the_pending_check_says_how_long_it_can_take(self) -> None:
         out = self.run_fixture(
             ANNOTATED

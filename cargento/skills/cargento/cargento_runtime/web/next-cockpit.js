@@ -2470,9 +2470,15 @@ function nextCockpitConflict(session, annotation, source){
      than the held fields' cue class, so the tests that read the first held
      cue on the page never read this one instead. */
   const cue = nextCockpitHeldCue(nextCockpitHeldKey(session, "settle"));
-  const header = '<section class="next-cockpit-conflict"><header>' +
-    '<h2>CONFLICT TO SETTLE</h2></header>' +
+  /* "Conflict to settle" only where there is one: an unsettled later
+     direction is what the drift ruling names by that label. Nothing since, a
+     settled baseline and an unread record have nothing to settle, and calling
+     them a conflict asks the reader to act on nothing
+     ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)). */
+  const headed = title => '<section class="next-cockpit-conflict"><header>' +
+    `<h2>${title}</h2></header>` +
     (cue ? `<small class="next-cockpit-conflict-cue">${esc(cue)}</small>` : "");
+  const header = headed("A LATER DIRECTION");
   const steer = '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
     'what you are asking for. That is yours, and Cargento does not write into the session ' +
     'either way.</p></section>';
@@ -2503,7 +2509,7 @@ function nextCockpitConflict(session, annotation, source){
         `${age} ago`)}</span></div>`;
   }).join("");
   const count = pending.length;
-  return `${header}<p class="next-cockpit-conflict-open">${count} ` +
+  return `${headed("CONFLICT TO SETTLE")}<p class="next-cockpit-conflict-open">${count} ` +
     `${count === 1 ? "direction" : "directions"} you gave after you saved the words above, ` +
     'in the part of the record read here.</p>' + rows +
     '<div class="next-cockpit-conflict-choices">' +
