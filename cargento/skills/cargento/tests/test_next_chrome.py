@@ -1381,6 +1381,9 @@ __els.app = {
                     "[data-next-focus]",
                     # Read before the render discards it, same discipline.
                     "[data-next-draft]",
+                    # The boot render lands on Sessions, whose tier-2 caveats
+                    # use the cockpit disclosure lane; a fixed selector too.
+                    "[data-next-cockpit-disclosure]",
                 }
                 for selector in out["selectors"]
             ),

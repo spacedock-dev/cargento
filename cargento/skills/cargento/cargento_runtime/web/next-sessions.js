@@ -170,8 +170,12 @@ function nextOperationsTask(session, status){
 function nextOperationsFact(kind, label, value, detail = "", tone = ""){
   const suffix = tone ? ` next-operation-fact--${tone}` : "";
   const secondary = detail ? `<em>${esc(detail)}</em>` : "";
+  /* An `unknown` value is a stated absence, and absences wear `.next-absence`
+     rather than dim body text, so "not published" never reads as a quieter
+     version of a value. */
+  const absence = tone === "unknown" ? ' class="next-absence"' : "";
   return `<span class="next-operation-fact${suffix}" data-next-operation-fact="${kind}">` +
-    `<small>${label}</small><strong>${esc(value)}</strong>${secondary}</span>`;
+    `<small>${label}</small><strong${absence}>${esc(value)}</strong>${secondary}</span>`;
 }
 
 function nextOperationsWhere(session){
@@ -305,12 +309,18 @@ function nextOperationsColumns(history = false){
     (history ? '<span>STATE</span>' : '<span>NEXT</span><span>BLOCKED</span>') + '</div>';
 }
 
-function nextOperationsGroup(kind, title, description, sessions, renderer, empty){
+/* `label` is a fragment naming what the group holds; `caveat` is a sentence
+   qualifying it, and goes behind a disclosure so the first screen carries
+   values rather than prose
+   ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+function nextOperationsGroup(kind, title, label, sessions, renderer, empty, caveat = null){
   const rows = sessions.map(renderer).join("");
-  const body = rows || `<p class="next-sessions-empty">${esc(empty)}</p>`;
+  const body = rows || `<p class="next-sessions-empty next-absence">${esc(empty)}</p>`;
+  const lead = label ? `<p>${esc(label)}</p>` : "";
+  const why = caveat ? nextCockpitWhy(`sessions-${kind}-why`, caveat.summary, caveat.body) : "";
   return `<section class="next-operation-group next-operation-group--${kind}" ` +
     `data-next-operation-group="${kind}"><header><h2>${title}</h2>` +
-    `<p>${description}</p></header>${nextOperationsColumns(kind === "history")}` +
+    `${lead}${why}</header>${nextOperationsColumns(kind === "history")}` +
     `<div class="next-operation-rows">${body}</div></section>`;
 }
 
@@ -321,7 +331,8 @@ function nextOperationsObservedFact(kind, label, text, known, note = "", tone = 
 function nextOperationsObservedIdentity(session, source, labels, route, history){
   const dot = session.isLive
     ? nextStatusDot("working", "next-operation-live-glyph") : "";
-  const titleClass = session.titleKnown ? "" : ' class="next-operation-title--unknown"';
+  const titleClass = session.titleKnown ? "" :
+    ' class="next-operation-title--unknown next-absence"';
   const collision = session.sharedLabelKnown
     ? `<span class="next-operation-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +
       `${esc(session.sharedLabelText)}</span>` : "";
@@ -373,6 +384,28 @@ function nextOperationsObservedRow(session, source, labels, asks, history){
     identity + where + facts + "</article>";
 }
 
+/* Whether any session in the payload carries a check: a stored reading, a
+   reading counted against its words, or a departure on record. Read off the
+   rows rather than off a flag, and only while the annotation store is on,
+   because with it off a stored reading is not published and "none" would be
+   a claim about something the page cannot see. Returns null for that case. */
+function nextSessionsAnyChecked(rows){
+  if(!(nextData && nextData.annotate === true)) return null;
+  return rows.some(session => {
+    const assessment = session.annotation_assessment;
+    if(assessment !== undefined && assessment !== null && assessment !== "") return true;
+    if((nextNumber(session.annotation_reading_count) || 0) > 0) return true;
+    return Array.isArray(session.departures) && session.departures.length > 0;
+  });
+}
+
+/* The first screen's one sentence of prose
+   ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)):
+   the "not checked" line its table allows on a default run, and nothing once
+   a check exists or when checks cannot be seen. It carries no count, because
+   a drift total on any screen is the aggregation that ruling refuses. */
+const NEXT_SESSIONS_NOT_CHECKED = "No session has been checked for drift yet; open one to check it.";
+
 function nextSessionsView(){
   const model = nextCurrentObserved();
   const sources = new Map(nextRows().map(session => [nextSessionKey(session), session]));
@@ -381,18 +414,28 @@ function nextSessionsView(){
   const renderRow = (session, history) => nextOperationsObservedRow(
     session, sources.get(nextSessionKey(session)), labels, asks, history,
   );
+  const lede = nextSessionsAnyChecked(nextRows()) === false
+    ? `<p>${esc(NEXT_SESSIONS_NOT_CHECKED)}</p>` : "";
+  /* The fleet facts are the first thing read: four values that answer whether
+     anything needs the reader before any sentence does. Active now follows,
+     gate-first by `nextObservedLaneOrder`. The capacity strip, whose consent
+     and budget sentences answer a different question, sits after both groups
+     so the first screen carries values rather than prose. */
   return '<section class="next-operations" data-next-view-body="sessions">' +
     '<header class="next-operations-header"><span>COMMAND SURFACE</span>' +
-    '<h1>Session operations</h1>' +
-    '<p>Active evidence leads. Every recently observed session remains reachable.</p></header>' +
-    nextOperationsFleet(model) + nextCapacityView(nextData) +
+    '<h1>Session operations</h1>' + lede +
+    nextCockpitWhy("sessions-board-why", "How rows are split",
+      "Active evidence leads. Every recently observed session remains reachable.") +
+    '</header>' +
+    nextOperationsFleet(model) +
     nextOperationsGroup(
       "active", "Active now", "working, waiting on you, or an exact request",
       model.active, session => renderRow(session, false), "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
-      "history", "Recent history",
-      "Recently observed is not proof the harness process is still open or closed; " +
-        "rows marked ENDED reported their own end.",
+      "history", "Recent history", "",
       model.history, session => renderRow(session, true), "No recent-history rows in this payload.",
-    ) + "</section>";
+      {summary: "What recent means",
+        body: "Recently observed is not proof the harness process is still open or closed; " +
+          "rows marked ENDED reported their own end."},
+    ) + nextCapacityView(nextData) + "</section>";
 }

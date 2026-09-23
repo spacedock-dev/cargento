@@ -108,14 +108,174 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             raise AssertionError(f"no {name!r} operation group in {html}")
         return match.group(0)
 
+    @staticmethod
+    def disclosure(html: str, summary: str) -> str:
+        match = re.search(
+            rf"<details[^>]*><summary>{re.escape(summary)}</summary>[\s\S]*?</details>", html
+        )
+        if match is None:
+            raise AssertionError(f"no {summary!r} disclosure in {html}")
+        return match.group(0)
+
+    @staticmethod
+    def above_the_rows(html: str) -> str:
+        """Everything the first screen draws before the first session group."""
+        start = html.index('<section class="next-operations"')
+        return html[start : html.index('data-next-operation-group="active"')]
+
+    @staticmethod
+    def visible_prose(fragment: str) -> list[str]:
+        """Paragraphs a reader sees without opening anything."""
+        shut = re.sub(r"<details[\s\S]*?</details>", "", fragment)
+        return [
+            re.sub(r"<[^>]+>", "", body).strip()
+            for body in re.findall(r"<p[^>]*>([\s\S]*?)</p>", shut)
+        ]
+
+    def test_a_default_run_where_nothing_was_checked_says_so_in_one_sentence(self) -> None:
+        # DEC-20's table: "Not checked" gets one screen-level sentence on a
+        # default run, and no surface counts sessions or drift in it.
+        html = self.render(
+            """
+nextData.annotate = true;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        prose = self.visible_prose(self.above_the_rows(html))
+        self.assertEqual(
+            ["No session has been checked for drift yet; open one to check it."], prose
+        )
+        self.assertIsNone(re.search(r"\d", prose[0]))
+
+    def test_the_not_checked_sentence_leaves_once_any_session_carries_a_check(self) -> None:
+        out = self.render(
+            """
+nextData.annotate = true;
+const arms = {};
+nextData.sessions[4].annotation_assessment = {verdict: "consistent"};
+renderNext(); arms.assessed = __els.app.innerHTML;
+nextData.sessions[4].annotation_assessment = null;
+nextData.sessions[5].annotation_reading_count = 1;
+renderNext(); arms.read = __els.app.innerHTML;
+nextData.sessions[5].annotation_reading_count = 0;
+nextData.sessions[6].departures = [{id: "d1"}];
+renderNext(); arms.departed = __els.app.innerHTML;
+nextData.sessions[6].departures = [];
+nextData.annotate = false;
+renderNext(); arms.storeOff = __els.app.innerHTML;
+console.log(JSON.stringify(arms));
+"""
+        )
+        assert isinstance(out, dict)
+        for arm, html in out.items():
+            with self.subTest(arm=arm):
+                # With the store off nothing can be known about checks, so the
+                # screen says nothing rather than claiming none happened.
+                self.assertNotIn("has been checked for drift", html)
+                self.assertEqual([], self.visible_prose(self.above_the_rows(html)))
+
+    def test_the_first_screen_holds_no_caveat_or_quota_prose_above_the_rows(self) -> None:
+        html = self.render(
+            """
+nextCapacityView = () => '<section data-probe-capacity><p>Quota prose.</p></section>';
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        self.assertNotIn("data-probe-capacity", self.above_the_rows(html))
+        # Still rendered, after both groups: moved, not removed.
+        self.assertGreater(
+            html.index("data-probe-capacity"),
+            html.index('data-next-operation-group="history"'),
+        )
+        history = self.operation_group(html, "history")
+        self.assertIn(
+            "Recently observed is not proof the harness process is still open or closed",
+            self.disclosure(history, "What recent means"),
+        )
+        self.assertEqual([], [p for p in self.visible_prose(history) if "Recently" in p])
+
+    def test_an_opened_caveat_on_the_first_screen_stays_open_through_a_redraw(self) -> None:
+        # The board redraws on every live payload; a tier-2 disclosure that
+        # snaps shut on each one takes the sentence away mid-read.
+        out = self.render(
+            """
+let markup = __els.app.innerHTML;
+let disclosures = [];
+__els.app.querySelectorAll = selector =>
+  selector === "[data-next-cockpit-disclosure]" ? disclosures : [];
+Object.defineProperty(__els.app, "innerHTML", {
+  get: () => markup,
+  set: value => {
+    markup = value;
+    disclosures = [...value.matchAll(/data-next-cockpit-disclosure="([^"]+)"/g)]
+      .map(match => ({key: match[1], open: false,
+        getAttribute: () => match[1], querySelector: () => ({setAttribute(){}})}));
+  }
+});
+renderNext();
+const keys = disclosures.map(row => row.key);
+disclosures.forEach(row => { row.open = true; });
+renderNext();
+const kept = disclosures.map(row => row.open);
+disclosures.forEach(row => { row.open = false; });
+renderNext();
+console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, len(out["keys"]))
+        self.assertEqual([True, True], out["kept"])
+        self.assertEqual([False, False], out["closed"])
+
+    def test_every_absence_on_the_first_screen_takes_the_absence_class(self) -> None:
+        html = self.render(
+            """
+nextData.sessions[4].title = "";
+renderNext();
+const full = __els.app.innerHTML;
+nextData.sessions = [];
+renderNext();
+console.log(JSON.stringify({full, empty: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(html, dict)
+        full = html["full"]
+        facts = re.findall(
+            r'<span class="next-operation-fact([^"]*)"[^>]*>[\s\S]*?<strong([^>]*)>([^<]*)</strong>',
+            full,
+        )
+        self.assertTrue(facts)
+        for modifier, attrs, text in facts:
+            with self.subTest(value=text):
+                if "--unknown" in modifier:
+                    self.assertIn("next-absence", attrs)
+                else:
+                    self.assertNotIn("next-absence", attrs)
+        # Where, next and an unpublished title are absences on these rows.
+        self.assertIn('<strong class="next-absence">Exact location not published</strong>', full)
+        self.assertIn('<strong class="next-absence">No pending step published</strong>', full)
+        self.assertRegex(full, r'<strong class="[^"]*next-absence[^"]*">Title not published')
+        for text in (
+            "No exact session has active evidence right now.",
+            "No recent-history rows in this payload.",
+        ):
+            self.assertIn(f'<p class="next-sessions-empty next-absence">{text}</p>', html["empty"])
+        self.assertRegex(NEXT_STYLES, r"\.next-absence\{[^}]*border:1px dashed")
+
     def test_default_surface_leads_with_four_fleet_facts_from_exact_rows(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
         self.assertIn('<section class="next-operations"', html)
         self.assertIn("<h1>Session operations</h1>", html)
+        # Tier 2 now, and still on the page (NUI-19 deletes nothing).
         self.assertIn(
-            "Active evidence leads. Every recently observed session remains reachable.", html
+            "Active evidence leads. Every recently observed session remains reachable.",
+            self.disclosure(html, "How rows are split"),
         )
         expected = {
             "active": "4",

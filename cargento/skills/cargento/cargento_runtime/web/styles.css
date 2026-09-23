@@ -554,6 +554,9 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-operations-header>span{grid-row:1 / span 2;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-operations-header h1{margin:0;font-size:var(--fs-head);font-weight:700;letter-spacing:-.02em}
 .next-operations-header p{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+/* The last explicit column, so the tier-2 disclosure sits under the heading at every width rather than
+   being auto-placed into the 132px label column; the narrow layout's single column is that column. */
+.next-operations-header>.next-cockpit-why{grid-column:-2 / -1}
 .next-operations-fleet{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:24px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
 .next-operations-fleet>section{min-width:0;padding:15px 18px}
 .next-operations-fleet>section+section{border-left:1px solid var(--rule)}
