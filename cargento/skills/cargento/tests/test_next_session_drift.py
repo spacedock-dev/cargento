@@ -406,28 +406,32 @@ __fetchImpl = async url => ({ok: true, json: async () =>
             # `annotations.DISCARD_SENTENCES["unreadable"]`, which says why and names no step, so
             # the page adds the one that lifts it.
             "discarded": (
-                f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
-                """
+                (
+                    f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+                    """
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_discarded_at = 90;
 __dashboard.sessions[0].annotation_discarded_why = "Discarded";
-""",
+"""
+                ),
                 annotation_store.DISCARD_SENTENCES["unreadable"]
                 + " Save a goal above to check for drift.",
             ),
             # A build constant no press lifts: the sentence says what it waits on, and no longer
             # points at "this ruling", which named the retired tab's paragraph.
             "unauthorized": (
-                f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK_NOT_RUN)};\n"
-                """
+                (
+                    f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK_NOT_RUN)};\n"
+                    """
 __fetchImpl = async url => ({ok: true, json: async () =>
   String(url).startsWith("/api/project-context")
     ? {semantic: __semantic, child_assignments: [], observers: [],
        observer_model: {enabled: true}}
     : __dashboard});
-""",
+"""
+                ),
                 "It waits on a later release; nothing on this page lifts it.",
             ),
         }
@@ -468,18 +472,25 @@ __fetchImpl = async url => ({ok: true, json: async () =>
         states = {
             # The fixture's own person-authored facts land at 102 and 104, after words saved at 100.
             "pending": ("", "CONFLICT TO SETTLE"),
-            "nothing since": ("__dashboard.sessions[0].annotation_at = 106;\n", "A LATER DIRECTION"),
+            "nothing since": (
+                "__dashboard.sessions[0].annotation_at = 106;\n",
+                "A LATER DIRECTION",
+            ),
             "settled": (
-                "__dashboard.sessions[0].annotation_settled_at = 300;\n"
-                "__dashboard.sessions[0].annotation_settled_through = 300;\n"
-                "__dashboard.sessions[0].annotation_settled_revision = 2;\n",
+                (
+                    "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+                    "__dashboard.sessions[0].annotation_settled_through = 300;\n"
+                    "__dashboard.sessions[0].annotation_settled_revision = 2;\n"
+                ),
                 "A LATER DIRECTION",
             ),
         }
         for name, (setup, heading) in states.items():
             with self.subTest(state=name):
                 html = self.page(setup)
-                block = re.search(r'<section class="next-cockpit-conflict">[\s\S]*?</section>', html)
+                block = re.search(
+                    r'<section class="next-cockpit-conflict">[\s\S]*?</section>', html
+                )
                 self.assertIsNotNone(block, html)
                 assert block is not None
                 other = {"CONFLICT TO SETTLE", "A LATER DIRECTION"} - {heading}
@@ -652,7 +663,9 @@ __dashboard.sessions[0].resume_id = "focus-1";
 __dashboard.sessions[0].focusable = true;
 const __h = "codex", __s = "focus-1";
 """)
-        caveat = "A raise switches what the terminal displays; its window may still be behind others."
+        caveat = (
+            "A raise switches what the terminal displays; its window may still be behind others."
+        )
         section = html[html.index('class="next-cockpit-departures"') :]
         self.assertEqual(1, section.count(caveat))
         # After both departures: the reading's and the unasked lane's.

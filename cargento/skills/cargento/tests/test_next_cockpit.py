@@ -9210,7 +9210,7 @@ console.log(JSON.stringify({
         control = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             '__dashboard.reading_check = "not-run";\n'
-            '__dashboard.annotate = true;\n'
+            "__dashboard.annotate = true;\n"
             "console.log(JSON.stringify(nextCockpitReadingControl("
             '{harness:"codex", sid:"focus-1"}, {goal:"ship it", reading_count:0}, '
             "{enabled:true})));",
