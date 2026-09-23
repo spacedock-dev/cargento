@@ -94,7 +94,7 @@ function nextCockpitAnnotation(session){
      again. This is a three-defect site, and every defect was the page
      reading a field nothing publishes. */
   const fields = ["goal", "goal_why", "output", "output_why", "revision",
-    "revision_count", "at", "binding_why", "settled_at", "settled_through",
+    "revision_count", "at", "goal_source", "goal_source_at", "binding_why", "settled_at", "settled_through",
     "settled_revision", "assessment", "reading_count", "reading_withheld",
     "reading_refused", "discarded_at", "discarded_why"];
   const known = fields.some(name => {
@@ -1177,7 +1177,8 @@ function nextCockpitHeldField(session, annotation, spec, cap){
   const why = String(annotation && annotation[whyKey] || "");
   const cue = nextCockpitHeldCue(key);
   return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
-    `<span class="next-cockpit-held-label">${label}</span>` +
+    `<span class="next-cockpit-held-label">${kind === "goal" ? "GOAL" : label}</span>` +
+    (kind === "goal" ? nextPromptSourceLine(annotation) + nextPromptAdoptControls(session) : "") +
     `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
     `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
@@ -1476,7 +1477,7 @@ const NEXT_READING_BASELINE_OPEN =
    `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
-const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "read_at", "stamp", "cutoff",
+const NEXT_READING_ASSESSMENT_KEYS = ["goal_source", "goal_source_at", "revision_read", "revision_read_at", "read_at", "stamp", "cutoff",
   "scope", "scope_text", "ended_at_read", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a
@@ -1647,7 +1648,9 @@ function nextReadingCitations(raw, entries){
    detect a semantic conflict would be the false claim this whole tab exists to
    avoid. */
 function nextCockpitConflictCandidates(annotation, entries){
-  const typedAt = nextNumber(annotation && annotation.at);
+  const typedAt = nextNumber(annotation &&
+    (["latest-prompt", "first-prompt"].includes(annotation.goal_source)
+      ? annotation.goal_source_at : annotation.at));
   if(typedAt == null) return [];
   const settled = nextNumber(annotation && annotation.settled_through);
   const after = settled == null ? typedAt : Math.max(typedAt, settled);
@@ -1846,13 +1849,15 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
   const criteria = NEXT_READING_CONSTRAINTS
     .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
     .map(([key, label]) => nextCockpitReadingCriterion(
-      key, label, nextCockpitReadingClause(key, rows[key], annotation, historical),
+      key, key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
+        ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical),
       rows[key], entries, key === "output" ? limit : "", unsettled));
   return {
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
+    promptSource: ["latest-prompt", "first-prompt"].includes(source.goal_source),
     /* Through the same helper the criterion row uses, and filtered the same
        way. Read raw, the disclosure said "nothing typed in that revision" for
        an empty clause while the row beside it said the words were not
@@ -1862,7 +1867,8 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     readClauses: NEXT_READING_CONSTRAINTS
       .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
       .map(([key, label]) =>
-        [label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
+        [key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
+          ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
     stamp: String(source.stamp || ""),
     cutoff: String(source.cutoff || ""),
     /* From the READING, not from the live row. A stored reading describes
@@ -1966,7 +1972,7 @@ const NEXT_COCKPIT_STEER_BY_HAND_WHY = "Cargento does not write into a session, 
 // Defined where the noun is first used rather than in a glossary nobody
 // opens. One sentence each, and each rendered exactly once per panel.
 const NEXT_COCKPIT_DEPARTURE_DEFINITION =
-  "A departure is a place the record does not match what you typed.";
+  "A departure is a place the record does not match the words you chose.";
 const NEXT_COCKPIT_REVISION_DEFINITION = "Each save is a revision.";
 const NEXT_COCKPIT_READING_DEFINITION =
   "A reading is one model pass over the record, made only when you press for it.";
@@ -2287,7 +2293,7 @@ function nextReadingPolicyReason(policy){
 }
 
 function nextCockpitReadingControl(session, annotation, model, primary = true){
-  const reason = nextCockpitReadingRefusal(annotation, model);
+  const reason = nextPromptReadingRefusal(session, annotation, model);
   const key = sessKey(session);
   let request = nextCockpitReadingRequests.get(key);
   /* A refusal is a state, not an event, and it stops being true the moment the
@@ -2363,7 +2369,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
    and compares rendered indices, so a true word is what keeps it measuring. */
 const NEXT_READING_OFFER =
   "A reading is a model\u2019s account of the evidence on this page: the observed record below " +
-  "and the words you typed, and nothing else. It does not read a diff, a file, a test or a " +
+  "and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a " +
   "deliverable.";
 
 function nextCockpitReadingBaseline(shape){
@@ -2377,8 +2383,8 @@ function nextCockpitReadingBaseline(shape){
      doubts the reading, not part of it, and the block is long already. */
   if(shape.revisionRead == null) return "";
   const typed = shape.revisionReadAt != null
-    ? `typed ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
-    : "when it was typed was not recorded";
+    ? `${shape.promptSource ? "saved" : "typed"} ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
+    : (shape.promptSource ? "when it was saved was not recorded" : "when it was typed was not recorded");
   const rows = (shape.readClauses || []).map(([label, clause]) => {
     /* One wording with the criterion row, from one place. This board cannot
        tell "the reader typed nothing" from "the producer did not carry the
@@ -2488,7 +2494,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     reading: header +
       (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
       '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
-      stale + nextCockpitReadingBaseline(shape) + scope + why +
+      stale + (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") + nextCockpitReadingBaseline(shape) + scope + why +
       shape.criteria.map(nextCockpitReadingCriterionRow).join("") + '</section>',
     departures: nextCockpitDepartures(shape, source, session)};
 }
@@ -2733,7 +2739,7 @@ function nextCockpitDriftBlock(group, session, direction, primary){
   /* What typing buys, before anything that qualifies it, worded to the default
      board: the unasked lane is off unless the reader started with
      `--unasked-readings`, so a check happens because the reader pressed. */
-  const lede = '<p class="next-cockpit-held-lede">Type what you were after, then check for ' +
+  const lede = '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then check for ' +
     'drift: Cargento lists where this session departed from it. It never writes into the ' +
     'session, so steering stays yours.</p>';
   /* Named, because the reader has to know whose words these are: the harness
@@ -2788,14 +2794,14 @@ async function nextCockpitAskForReading(session, model, allow = false){
      ungated one spends the reader's own model capacity from a state the page
      calls unavailable. Answered rather than dropped, because a clicked control
      that goes silent is indistinguishable from a dead one. */
-  const refusal = nextCockpitReadingRefusal(nextCockpitAnnotation(session), model);
+  const refusal = nextPromptReadingRefusal(session, nextCockpitAnnotation(session), model);
   if(refusal){
     nextCockpitReadingRequests.set(key, {pending: false, message: refusal, refusal: true});
     renderNext();
     return;
   }
   if(!(nextData && nextData.reading && nextData.reading.consent) && !allow){
-    nextCockpitReadingRequests.set(key, {consent:true});
+    nextCockpitReadingRequests.set(key, {consent:true, adoption:nextImplicitAdoption(session)});
     renderNext();
     return;
   }
@@ -2804,6 +2810,9 @@ async function nextCockpitAskForReading(session, model, allow = false){
   /* The bound is `observer.OBSERVER_MODEL_TIMEOUT_SEC`, sixty seconds, and the
      sentence says so because a press that goes quiet for a minute otherwise
      reads as a dead control. Nothing on the page waits on it. */
+  const confirmation = nextCockpitReadingRequests.get(key);
+  const adoption = allow && confirmation && confirmation.consent
+    ? confirmation.adoption : nextImplicitAdoption(session);
   const request = {pending: true, message: NEXT_READING_PENDING};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
@@ -2812,7 +2821,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid,
-        press: true, observer_model: 1, ...(allow ? {allow:true} : {})}),
+        press: true, observer_model: 1, ...adoption, ...(allow ? {allow:true} : {})}),
     });
     if(response && response.status === 409){
       request.message = "A reading is already in progress for this session. " +
@@ -2820,6 +2829,11 @@ async function nextCockpitAskForReading(session, model, allow = false){
       return;
     }
     const answer = response ? await response.json() : null;
+    if(answer && answer.adoption_refused){
+      request.message = "The prompt or saved goal changed. Review the current goal before checking again.";
+      await refreshNext();
+      return;
+    }
     if(answer && answer.reading){
       nextData.reading = answer.reading;
       request.message = nextReadingPolicyReason(answer.reading);
@@ -4192,6 +4206,12 @@ document.addEventListener("click", event => {
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
     return;
   }
+  if(action === "prompt-adopt"){
+    event.preventDefault();
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(session) nextAdoptPrompt(session, target.dataset.arg);
+    return;
+  }
   if(action === "reading-off"){
     event.preventDefault();
     nextCockpitReadingOff();
@@ -4378,4 +4398,77 @@ function nextCockpitHandleKeydown(event){
     tab:tabs[next]});
   nextRestoreFocus({named:"cockpit-tab:" + tabs[next]}, nextAttention);
   return true;
+}
+
+
+function nextPromptCandidate(session, source = "latest-prompt"){
+  if(!session || !["claude", "codex"].includes(session.harness)) return null;
+  let text = "", at = null;
+  if(source === "first-prompt"){
+    text = String(session.first_prompt || ""); at = nextNumber(session.first_prompt_at);
+  }else if(source === "latest-prompt" && session.harness === "claude"){
+    const asked = nextSessionInstruction(session, "asked");
+    if(asked){ text = String(asked.text || ""); at = nextNumber(asked.at); }
+  }else if(source === "latest-prompt" && session.prompt_states_work === true){
+    text = String(session.title || ""); at = nextNumber(session.prompt_at);
+  }
+  return text ? {text, at: at != null && at > 0 ? at : null, source} : null;
+}
+
+function nextImplicitAdoption(session){
+  if(String(session && session.annotation_goal || "").trim()) return {};
+  const candidate = nextPromptCandidate(session);
+  return candidate && candidate.at != null ? {adopt:candidate.source,
+    expected_prompt:candidate.text, expected_prompt_at:candidate.at} : {};
+}
+
+function nextPromptReadingRefusal(session, annotation, model){
+  if(!(nextData && nextData.annotate === true)) return NEXT_READING_ANNOTATIONS_OFF;
+  if(!String(annotation && annotation.goal || "").trim()){
+    const candidate = nextPromptCandidate(session);
+    if(candidate && candidate.at == null){
+      return "The prompt time was not published, so it cannot be adopted. Type a goal to check for drift.";
+    }
+    if(candidate){ annotation = {...annotation,goal:candidate.text,discarded_at:null,discarded_why:""}; }
+  }
+  return nextCockpitReadingRefusal(annotation, model);
+}
+
+function nextPromptSourceLine(annotation){
+  if(!annotation || !["latest-prompt", "first-prompt"].includes(annotation.goal_source)) return "";
+  const which = annotation.goal_source === "first-prompt" ? "first" : "latest";
+  const clipped = String(annotation.goal || "").endsWith("…") ? " Shown excerpt only." : "";
+  return `<small class="next-cockpit-held-cue">from your prompt · ${which}.${clipped}</small>`;
+}
+
+function nextPromptAdoptControls(session){
+  if(!(nextData && nextData.annotate === true)) return "";
+  return ["latest-prompt", "first-prompt"].map(source => {
+    const candidate = nextPromptCandidate(session, source);
+    if(!candidate) return "";
+    if(candidate.at == null) return '<small class="next-cockpit-held-cue">Prompt time unavailable; type a goal instead.</small>';
+    const which = source === "first-prompt" ? "first" : "latest";
+    const clipped = candidate.text.endsWith("…") ? " Shown excerpt only." : "";
+    return `<details class="next-cockpit-held-adopt"><summary>Your ${which} prompt</summary>` +
+      `<p>${esc(candidate.text)}${clipped}</p>` +
+      `<button type="button" data-next-cockpit-action="prompt-adopt" data-arg="${source}">Use ${which} prompt without checking</button></details>`;
+  }).join("");
+}
+
+async function nextAdoptPrompt(session, source){
+  const candidate = nextPromptCandidate(session, source);
+  if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return;
+  const key = nextCockpitHeldKey(session, "goal");
+  try{
+    const response = await fetch("/api/annotate", {method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({harness:session.harness,sid:session.sid,adopt:source,
+        expected_prompt:candidate.text,expected_prompt_at:candidate.at,
+        expected_revision:nextNumber(session.annotation_revision) || 0})});
+    const answer = await response.json();
+    if(!response.ok || !answer.persisted) throw new Error("adoption not saved");
+    nextCockpitHeldDrafts.delete(key);
+    await refreshNext();
+  }catch(_error){
+    nextCockpitReadingRequests.set(sessKey(session),{message:"The prompt or saved goal changed, or could not be saved. Review the goal before trying again."});
+  }finally{renderNext();}
 }

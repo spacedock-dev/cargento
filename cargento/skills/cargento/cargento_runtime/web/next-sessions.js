@@ -361,7 +361,8 @@ function nextSessionsGoal(source, route){
     : source && source.harness === "codex" && source.prompt_states_work === true
       ? String(source.title || "").trim() : "";
   const text = typed || prompt;
-  const label = typed ? "GOAL · YOUR WORDS" : prompt ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
+  const label = typed ? (["latest-prompt", "first-prompt"].includes(source.annotation_goal_source)
+    ? "GOAL · FROM YOUR PROMPT" : "GOAL · YOUR WORDS") : prompt ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
   const content = typed ? `<strong>${esc(text)}</strong>`
     : `<a class="next-operation-goal-link${text ? "" : " next-absence"}" ` +
       `href="#n=${esc(route)}" data-next-route="${esc(route)}" data-next-goal-focus>` +
@@ -502,7 +503,7 @@ function nextSessionsView(){
     nextCockpitWhy("sessions-goal-source", "Goal sources",
       nextData && nextData.annotate === true
         ? "Your latest prompt comes from Claude Code or Codex; other harnesses show only your typed words. " +
-          "Showing a prompt does not adopt it as a goal; a Drift mark names a departure on record, not a new check."
+          "A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure."
         : "Annotations are off, so goals cannot be typed and Drift marks are not shown.") +
     '</header>' +
     nextOperationsFleet(model) +

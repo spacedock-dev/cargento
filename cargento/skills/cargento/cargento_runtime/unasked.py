@@ -146,6 +146,8 @@ class Lane:
             entry = annotation_store.find(entries, harness, sid)
             if entry is None or not entry.get("revisions"):
                 continue
+            if entry["revisions"][-1].get("goal_source", "typed") != "typed":
+                continue
             if stored is None:
                 stored = departures.load(self.config)
             if not self._claim(state, key, stored, now=now):

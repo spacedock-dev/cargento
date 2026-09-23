@@ -34,9 +34,10 @@ import math
 import os
 import re
 import threading
-from typing import TYPE_CHECKING, Any, Final, TypedDict
+from typing import TYPE_CHECKING, Any, Final, NotRequired, TypedDict
 
 from cargento_runtime import io as runtime_io
+from cargento_runtime import records
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
 # grow a second inert version field is that it already has one: a fourteen-day
 # time series whose reader must tolerate every past shape forever is how a silent
 # mis-parse ships.
-SCHEMA_VERSION: Final = 2
+SCHEMA_VERSION: Final = 3
 
 # Every version this build can read, newest last, and the reason it is a tuple
 # rather than a single number.
@@ -72,7 +73,7 @@ SCHEMA_VERSION: Final = 2
 # An admission therefore bumps `SCHEMA_VERSION` and appends the old value here.
 # It never resets. A version this tuple does not name is still refused, which is
 # the case the header exists to report.
-READABLE_VERSIONS: Final[tuple[int, ...]] = (1, SCHEMA_VERSION)
+READABLE_VERSIONS: Final[tuple[int, ...]] = (1, 2, SCHEMA_VERSION)
 
 STORE_FILENAME: Final = "cargento-history.json"
 
@@ -121,6 +122,10 @@ class Observation(TypedDict):
     annotation_goal: str
     annotation_output: str
     annotation_revision: float | None
+    first_prompt: NotRequired[str]
+    first_prompt_at: NotRequired[float | None]
+    annotation_goal_source: NotRequired[str | None]
+    annotation_goal_source_at: NotRequired[float | None]
 
 
 # Written out rather than derived from `Observation.__annotations__`, so the
@@ -135,6 +140,10 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
     "annotation_goal",
     "annotation_output",
     "annotation_revision",
+    "first_prompt",
+    "first_prompt_at",
+    "annotation_goal_source",
+    "annotation_goal_source_at",
 )
 
 # The carriers of prompt-derived text the board publishes. Named here so the
@@ -150,6 +159,7 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
 # test. Keeping it in step with what the board publishes is part of adding a
 # published field, which is why the names are here rather than inferred.
 PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
+    "first_prompt",
     "annotation_goal",
     "annotation_output",
     "goal",
@@ -183,6 +193,7 @@ PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
 # rest. A ban that lived only in prose was how the asymmetry the ruling removed
 # went unnoticed for as long as it did.
 PROMPT_TEXT_ALLOWLIST: Final[tuple[str, ...]] = (
+    "first_prompt",
     "annotation_goal",
     "annotation_output",
 )
@@ -240,6 +251,10 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
         "annotation_goal": _annotation_text(row.get("annotation_goal")),
         "annotation_output": _annotation_text(row.get("annotation_output")),
         "annotation_revision": _finite(row.get("annotation_revision")),
+        "first_prompt": _first_prompt_text(row.get("first_prompt")),
+        "first_prompt_at": _finite(row.get("first_prompt_at")),
+        "annotation_goal_source": _goal_source(row.get("annotation_goal_source")),
+        "annotation_goal_source_at": _finite(row.get("annotation_goal_source_at")),
     }
 
 
@@ -335,6 +350,10 @@ def _entry(value: Any) -> Observation | None:
         "annotation_goal": _annotation_text(value.get("annotation_goal")),
         "annotation_output": _annotation_text(value.get("annotation_output")),
         "annotation_revision": _finite(value.get("annotation_revision")),
+        "first_prompt": _first_prompt_text(value.get("first_prompt")),
+        "first_prompt_at": _finite(value.get("first_prompt_at")),
+        "annotation_goal_source": _goal_source(value.get("annotation_goal_source")),
+        "annotation_goal_source_at": _finite(value.get("annotation_goal_source_at")),
     }
 
 
@@ -743,3 +762,19 @@ class Lane:
         with self._lock:
             self._open()
             return self._reset
+
+
+def _goal_source(value: Any) -> str | None:
+    return (
+        value
+        if isinstance(value, str) and value in {"typed", "latest-prompt", "first-prompt"}
+        else None
+    )
+
+
+def _first_prompt_text(value: Any) -> str:
+    return (
+        records.safe_text(value, records.INSTRUCTION_CAP_CHARS + 1)
+        if isinstance(value, str)
+        else ""
+    )

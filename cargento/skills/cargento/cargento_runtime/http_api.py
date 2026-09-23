@@ -1364,40 +1364,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(400)
             return
         state = application.state
-        settle_through = payload.get("settle_through")
-        withdrew = True
-        if payload.get("clear") is True:
-            outcome = annotation_store.clear(
-                config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
-            )
-            withdrew = _withdraw_raises(application, outcome, harness, sid)
-        elif settle_through is not None:
-            # A third arm on this route rather than a route of its own: the
-            # subject is the same session's annotation, the reply shape is the
-            # same, and `test_history`'s POST inventory is a contract on the
-            # surface's WIDTH. The store clamps `settle_through` to now and
-            # refuses a bool, so nothing here needs to re-check the number
-            # beyond refusing what is not one.
-            outcome = annotation_store.settle(
-                config,
-                state,
-                harness,
-                sid,
-                through=settle_through,
-                now=application.clock(),
-                diagnostic_sink=application.diagnostic_sink,
-            )
-        else:
-            outcome = annotation_store.annotate(
-                config,
-                state,
-                harness,
-                sid,
-                goal=goal,
-                output=output,
-                now=application.clock(),
-                diagnostic_sink=application.diagnostic_sink,
-            )
+        outcome, withdrew = self._annotation_outcome(harness, sid, payload)
         # Dropped rather than waited out, for `_dismiss`'s reason: the next GET
         # would otherwise serve the pre-save payload for up to `collect_memo_sec`.
         state.snapshot.clear()
@@ -1425,6 +1392,51 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "withdrew": withdrew,
         }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
+    def _annotation_outcome(
+        self, harness: str, sid: str, payload: dict[str, Any]
+    ) -> tuple[str, bool]:
+        application = self.server.application
+        config = application.config
+        state = application.state
+        goal, output = payload.get("goal"), payload.get("output")
+        settle_through = payload.get("settle_through")
+        withdrew = True
+        if payload.get("clear") is True:
+            outcome = annotation_store.clear(
+                config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
+            )
+            withdrew = _withdraw_raises(application, outcome, harness, sid)
+        elif "adopt" in payload:
+            outcome = self._adopt_prompt(harness, sid, payload, standalone=True)
+        elif settle_through is not None:
+            # A third arm on this route rather than a route of its own: the
+            # subject is the same session's annotation, the reply shape is the
+            # same, and `test_history`'s POST inventory is a contract on the
+            # surface's WIDTH. The store clamps `settle_through` to now and
+            # refuses a bool, so nothing here needs to re-check the number
+            # beyond refusing what is not one.
+            outcome = annotation_store.settle(
+                config,
+                state,
+                harness,
+                sid,
+                through=settle_through,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        else:
+            outcome = annotation_store.annotate(
+                config,
+                state,
+                harness,
+                sid,
+                goal=goal,
+                output=output,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        return outcome, withdrew
 
     def _reading_refusal(self, payload: dict[str, Any]) -> int | None:
         """The status this press must be refused with, or None to proceed.
@@ -1519,7 +1531,47 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if permission["reason"]:
             self._reading_permission_reply(permission)
             return
-        self._send_reading(harness, sid)
+        self._reading_adoption(harness, sid, payload)
+
+    def _reading_adoption(self, harness: str, sid: str, payload: dict[str, Any]) -> None:
+        if "adopt" in payload:
+            outcome = self._adopt_prompt(harness, sid, payload)
+            if outcome not in {annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED}:
+                self._send(
+                    json.dumps({"ok": False, "produced": False, "adoption_refused": True}).encode(),
+                    "application/json",
+                    422,
+                )
+                return
+        self._send_reading(harness, sid, adoption=payload if "adopt" in payload else None)
+
+    def _adopt_prompt(
+        self, harness: str, sid: str, payload: dict[str, Any], *, standalone: bool = False
+    ) -> str:
+        application = self.server.application
+        expected = payload.get("expected_revision")
+        if standalone and (isinstance(expected, bool) or not isinstance(expected, int)):
+            return annotation_store.OUTCOME_REFUSED
+        # Read the source again rather than accepting client-authored provenance.
+        application.state.snapshot.clear()
+        _, body = application.collect_json(show_all=False)
+        rows = [
+            row
+            for row in json.loads(body)["sessions"]
+            if row.get("harness") == harness and row.get("sid") == sid
+        ]
+        if len(rows) != 1:
+            return annotation_store.OUTCOME_REFUSED
+        return annotation_store.adopt(
+            application.config,
+            application.state,
+            rows[0],
+            source=str(payload.get("adopt") or ""),
+            expected_text=payload.get("expected_prompt"),
+            expected_at=payload.get("expected_prompt_at"),
+            now=application.clock(),
+            expected_revision=expected if standalone else None,
+        )
 
     def _reading_permission_reply(
         self, answer: reading_policy.Status, *, off: bool = False
@@ -1541,7 +1593,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             code,
         )
 
-    def _send_reading(self, harness: str, sid: str) -> None:
+    def _send_reading(
+        self, harness: str, sid: str, *, adoption: dict[str, Any] | None = None
+    ) -> None:
         """Produce, store and answer. Split for the complexity cap alone."""
         application = self.server.application
         config = application.config
@@ -1560,6 +1614,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     separators=(",", ":"),
                 ).encode(),
                 "application/json",
+            )
+            return
+        if adoption is not None and not self._adoption_matches(entry, adoption):
+            self._send(
+                json.dumps({"ok": False, "produced": False, "adoption_refused": True}).encode(),
+                "application/json",
+                422,
             )
             return
         key = f"{harness}:{sid}"
@@ -1603,6 +1664,21 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 separators=(",", ":"),
             ).encode(),
             "application/json",
+        )
+
+    def _adoption_matches(
+        self, entry: annotation_store.Annotation, payload: dict[str, Any]
+    ) -> bool:
+        latest = entry["revisions"][-1] if entry["revisions"] else None
+        return bool(
+            latest
+            and latest.get("goal_source") == payload.get("adopt")
+            and latest.get("goal_source_at") == payload.get("expected_prompt_at")
+            and latest["goal"]
+            == records.safe_text(
+                payload.get("expected_prompt"),
+                self.server.application.config.annotation_text_cap_chars,
+            )
         )
 
     def _compose_reading(

@@ -1243,6 +1243,7 @@ class CodexInstructionTest(unittest.TestCase):
                 "last_prompt": "",
                 "instruction": None,
                 "prompt_states_work": False,
+                "prompt_at": None,
             },
             result,
         )
@@ -1340,6 +1341,7 @@ class CodexInstructionTest(unittest.TestCase):
                 "last_prompt": "",
                 "instruction": None,
                 "prompt_states_work": False,
+                "prompt_at": None,
             },
             runtime_transcripts.codex_instruction(config, state, "/nonexistent/rollout.jsonl"),
         )
