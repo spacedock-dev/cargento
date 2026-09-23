@@ -1876,8 +1876,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                31_266,
-                "6a8ba1d9d399e41448b647dc983be1a44a54e1465e691957a4e1131e1c9dad19",
+                31_382,
+                "bd9516f3a1795413cc8fd43c729d5c0d4ffe5ec105a85eefb6003daf7281e3cb",
             ),
             "next-observed.js": (
                 32_982,
@@ -1908,8 +1908,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "986a0b0d74771bbb9f1d9df520dbb6c91d5916685fe365a64eff61c29acab7cc",
             ),
             "next-sessions.js": (
-                22_382,
-                "8c0fdf352470621120849d37db19b3d1492c093916d900e4f0bc9e8105ec2c7e",
+                22_456,
+                "88758b83d86618efd56fccea31d04c6c3e74017cadc3826e86c9dbe5948293b9",
             ),
             "next-projects.js": (
                 5_829,
@@ -1971,9 +1971,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_072_284, len(assembled))
+        self.assertEqual(1_072_474, len(assembled))
         self.assertEqual(
-            "77ae7b93a34c648655c7d0da23a0fbfbdc3038c5cb63cfa67b1445496903adf2",
+            "de2e94967c3d6c0efb47eeefb9ae1dee854dd04bcb404499ae5b4243a364d4d1",
             hashlib.sha256(assembled).hexdigest(),
         )
 
