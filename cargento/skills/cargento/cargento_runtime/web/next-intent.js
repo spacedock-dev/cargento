@@ -276,7 +276,9 @@ function nextIntentRow(row, live, retained = true){
     ? nextAnnotationDiscardStamp(row)
     : (nextProjectRevisionLine(row) || "No revision saved yet");
   const departures = retained ? nextIntentDepartures(row) : "";
-  const reachable = Boolean(project);
+  /* Reachable while the session is in the payload, whatever its label: a
+     session with no project label has a route of its own. */
+  const reachable = Boolean(session);
   const name = reachable
     ? `<a href="${esc(nextFragmentForRoute({view: "session", project,
         harness: String(session.harness || ""), session: String(session.sid || "")}))}" ` +
@@ -303,7 +305,7 @@ function nextIntentRow(row, live, retained = true){
     reading +
     (departures ? `<span class="next-intent-revision">${esc(departures)}</span>` : "") +
     standing +
-    (session ? (reachable ? "" : '<span class="next-intent-why">On the board; project not published.</span>')
+    (reachable ? ""
       : '<span class="next-intent-why">Not on the board now, so there is ' +
       'nowhere to open.' + (discarded ? '' : ' The words are here.') + '</span>') +
     /* The binding caveat, because a list of many sessions is where a shared

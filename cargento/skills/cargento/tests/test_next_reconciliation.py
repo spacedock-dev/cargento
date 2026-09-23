@@ -65,7 +65,7 @@ console.log(JSON.stringify({routes,keys}));
         self.assertGreaterEqual(len(result["routes"]), 4)
         for route in result["routes"]:
             self.assertEqual(route["expected"], route["actual"])
-        self.assertEqual(["projects", "sessions", "attention", "projects"], result["keys"])
+        self.assertEqual(["projects", "sessions", "attention", "sessions"], result["keys"])
 
     def test_every_rendered_cockpit_disclosure_has_a_redraw_identity(self) -> None:
         result = self._run_page_js(

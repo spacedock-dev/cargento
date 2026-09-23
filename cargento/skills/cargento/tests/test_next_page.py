@@ -2094,7 +2094,7 @@ console.log(JSON.stringify({
         )
         self.assertEqual([None, None, "0s", "5m"], out["since"])
 
-    def test_the_default_bundle_mounts_primary_project_navigation(self) -> None:
+    def test_the_default_bundle_opens_on_sessions_with_the_primary_navigation(self) -> None:
         out = self._run_page_js(
             "console.log(JSON.stringify(__els.app.innerHTML));",
             '__els.app = {innerHTML: ""};\n',
@@ -2105,9 +2105,11 @@ console.log(JSON.stringify({
         # header while the router, the title and the `a` shortcut all knew it
         # (DRC-4421). Kept as a literal rather than loosened: it is the mounted
         # bundle's own markup, and the order is part of what a reader learns.
+        # Sessions is the landing view (DEC-20), so it is the one marked; the
+        # links keep their learned order and Projects stays one click away.
         self.assertIn(
-            '<nav aria-label="Primary"><a href="#n=projects" aria-current="page">Projects</a>'
-            '<a href="#n=sessions">Sessions</a>'
+            '<nav aria-label="Primary"><a href="#n=projects">Projects</a>'
+            '<a href="#n=sessions" aria-current="page">Sessions</a>'
             '<a href="#n=attention">Attention</a>'
             '<a href="#n=intent">Intent log</a></nav>',
             out,

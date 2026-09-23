@@ -87,10 +87,13 @@ console.log(JSON.stringify(results));
                 if arm["lane"] == "named":
                     self.assertEqual([4, 8], arm["caret"])
 
-    def test_projects_is_default_and_invalid_fragments_normalize_to_it(self) -> None:
+    def test_a_reader_opening_the_bare_url_or_a_dead_link_lands_on_sessions(self) -> None:
+        # DEC-20 makes Sessions the first screen, and NUI-3 normalizes the bare
+        # URL, an invalid fragment and a retired one to it. `#n=overview` and
+        # the pre-promotion `#n=session=` token are both retired spellings.
         out = self._run_page_js(
             """
-const fragments = ["", "#n=overview", "#n=unknown"];
+const fragments = ["", "#n=overview", "#n=unknown", "#n=session=old-bundle-token", "#n=project:"];
 const routes = fragments.map(nextRouteFromFragment);
 const repaired = routes.map(nextFragmentForRoute);
 console.log(JSON.stringify({routes, repaired}));
@@ -100,8 +103,8 @@ console.log(JSON.stringify({routes, repaired}));
         assert isinstance(out, dict)
 
         for route, repaired in zip(out["routes"], out["repaired"], strict=True):
-            self.assertEqual("projects", route["view"])
-            self.assertEqual("#n=projects", repaired)
+            self.assertEqual("sessions", route["view"])
+            self.assertEqual("#n=sessions", repaired)
 
     def test_attention_route_round_trips(self) -> None:
         out = self._run_page_js(
@@ -213,10 +216,10 @@ console.log(JSON.stringify({initial, project, attention: nextRoute, html: __els.
             out["project"],
         )
         self.assertEqual(
-            {"view": "projects", "project": None, "session": None},
+            {"view": "sessions", "project": None, "session": None},
             out["attention"],
         )
-        self.assertIn("<h1>Projects</h1>", out["html"])
+        self.assertIn("<h1>Session operations</h1>", out["html"])
 
     def test_canonical_session_route_round_trips_harness_and_sid(self) -> None:
         out = self._run_page_js(
@@ -1165,11 +1168,72 @@ console.log(JSON.stringify({sessionHtml, project, projects, stayed: nextRoute}))
             {"view": "project", "project": "recce", "session": None},
             out["project"],
         )
+        # Session detail still returns to its project (NUI-5); every other
+        # view returns to Sessions, the landing view DEC-20 set.
         self.assertEqual(
-            {"view": "projects", "project": None, "session": None},
+            {"view": "sessions", "project": None, "session": None},
             out["projects"],
         )
         self.assertEqual(out["projects"], out["stayed"])
+
+    def test_escape_from_any_view_but_session_detail_returns_a_reader_to_sessions(self) -> None:
+        out = self._run_page_js(
+            """
+const results = [];
+for(const route of [
+  {view: "projects", project: null, session: null},
+  {view: "attention", project: null, session: null},
+  {view: "intent", project: null, session: null},
+  {view: "project", project: "recce", session: null}
+]){
+  navigateNext(route);
+  __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
+  results.push({from: route.view, to: {...nextRoute}, hash: location.hash});
+}
+console.log(JSON.stringify(results));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+        assert isinstance(out, list)
+        for arm in out:
+            with self.subTest(origin=arm["from"]):
+                self.assertEqual({"view": "sessions", "project": None, "session": None}, arm["to"])
+                self.assertEqual("#n=sessions", arm["hash"])
+
+    def test_a_session_with_no_project_label_has_a_page_a_link_can_reach(self) -> None:
+        # A session whose harness published no project label groups under "".
+        # Its route used to fail the `project &&` guard and fall through to the
+        # landing view, so neither its page nor an Intent-log link to it opened.
+        out = self._run_page_js(
+            """
+nextData = {generated: 10000, annotate: true, sessions: [
+  {sid: "lone", harness: "claude", project: "", state: "idle", active: false,
+   title: "No label here", tasks: [], subagents: []}
+], asks: []};
+const route = {view: "session", project: "", harness: "claude", session: "lone"};
+const fragment = nextFragmentForRoute(route);
+location.hash = fragment;
+__fire("window:hashchange", {});
+const opened = {route: {...nextRoute}, hash: location.hash, html: __els.app.innerHTML};
+__fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
+console.log(JSON.stringify({fragment, opened, escaped: {...nextRoute}}));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+        self.assertEqual("#n=session::claude:lone", out["fragment"])
+        self.assertEqual(
+            {"view": "session", "project": "", "harness": "claude", "session": "lone"},
+            out["opened"]["route"],
+        )
+        self.assertEqual("#n=session::claude:lone", out["opened"]["hash"])
+        html = out["opened"]["html"]
+        self.assertIn('data-next-session-detail="lone"', html)
+        self.assertNotIn('data-next-session-state="outside-payload"', html)
+        # No project page exists to walk up to, so the crumb and Escape both
+        # go to Sessions rather than to an empty project link.
+        self.assertIn('<a class="next-crumb" href="#n=sessions">Sessions</a>', html)
+        self.assertNotIn('href="#n=project:"', html)
+        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["escaped"])
 
     def test_the_next_fragment_never_contains_the_old_session_token(self) -> None:
         out = self._run_page_js(
@@ -1193,7 +1257,7 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
         self.assertEqual("#n=projects", out["fragments"][1])
         self.assertEqual("#n=sessions", out["fragments"][2])
         self.assertEqual("#n=project:recce%3Acloud", out["fragments"][3])
-        self.assertEqual("#n=projects", out["repaired"])
+        self.assertEqual("#n=sessions", out["repaired"])
 
     def test_shortcuts_select_matching_top_level_routes_and_ignore_retired_dashboard_key(
         self,
@@ -1793,7 +1857,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
         self.assertNotIn("4 running", out)
-        self.assertIn("<h1>Projects</h1>", out)
+        self.assertIn("<h1>Session operations</h1>", out)
 
     def test_exact_request_state_skew_is_counted_in_the_header_block_total(self) -> None:
         out = self._run_page_js(
@@ -1910,7 +1974,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn('<nav aria-label="Primary"', out)
         self.assertIn('href="#n=projects"', out)
         self.assertIn('href="#n=sessions"', out)
-        self.assertIn("<h1>Projects</h1>", out)
+        self.assertIn("<h1>Session operations</h1>", out)
         self.assertNotIn("dashboard mode", out)
         self.assertNotIn('data-next-action="dashboard"', out)
 

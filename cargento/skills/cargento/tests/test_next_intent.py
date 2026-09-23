@@ -195,7 +195,10 @@ console.log(JSON.stringify({
         rows = out["html"].split('<div class="next-intent-row">')[1:]
         self.assertEqual(1, sum("codex:live-1" in row for row in rows))
         unprojected = next(row for row in rows if "codex:unprojected" in row)
-        self.assertIn("On the board; project not published", unprojected)
+        # A session with no project label has a route of its own now
+        # (DRC-4638), so its row opens its page rather than explaining why not.
+        self.assertIn('href="#n=session::codex:unprojected"', unprojected)
+        self.assertNotIn("project not published", unprojected)
         self.assertNotIn("Not on the board now", unprojected)
         self.assertIn("On the board", out["visible"])
         self.assertIn("Retained after leaving the board", out["visible"])

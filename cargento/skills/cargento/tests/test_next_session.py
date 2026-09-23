@@ -1118,7 +1118,7 @@ console.log(JSON.stringify({missing, wrongProject: __els.app.innerHTML}));
 
         for html in out.values():
             self.assertIn('data-next-session-state="outside-payload"', html)
-            self.assertIn("Not present in the current payload", html)
+            self.assertIn("This session is not in the current payload.", html)
             self.assertIn('href="#n=sessions"', html)
             self.assertNotIn("deleted", html.lower())
             self.assertNotIn("completed", html.lower())
@@ -1366,3 +1366,161 @@ class NextSessionDetailEndTest(NextPageJsHarness):
 
         self.assertIn("awaiting your message", html)
         self.assertNotIn("ended 10m ago", html)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionLinkTest(NextPageJsHarness):
+    """DRC-4638: any session's page is one click away, ended or not, and the
+    page carries a link a reader can paste."""
+
+    PRELUDE = """
+location.href = "http://127.0.0.1:4573/#n=sessions";
+let __copied = [];
+let __clipboardFails = false;
+const navigator = {clipboard: {writeText(value){
+  if(__clipboardFails) return Promise.reject(new Error("denied"));
+  __copied.push(value); return Promise.resolve();
+}}};
+let __copyStatusText = "";
+const __copyStatus = {
+  setAttribute(){},
+  set textContent(value){ __copyStatusText = String(value); },
+  get textContent(){ return __copyStatusText; }
+};
+document.createElement = () => __copyStatus;
+__els.app = {
+  innerHTML: "", querySelectorAll(){ return []; }, querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+const __payload = () => ({generated: 10000, ask: true, annotate: true,
+  harnesses: [{key: "claude", label: "Claude Code", reports_needs_input: true}], asks: [],
+  sessions: [{harness: "claude", sid: "ended-1", project: "recce/cargento", state: "idle",
+    active: false, title: "Finished work", ended_at: 9000, tasks: [], subagents: []}]});
+"""
+
+    LINK = "http://127.0.0.1:4573/#n=session:recce%2Fcargento:claude:ended-1"
+
+    def test_an_ended_session_opens_from_the_first_screen_in_one_click(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = __payload();
+navigateNext({view: "sessions", project: null, session: null});
+const board = __els.app.innerHTML;
+const token = board.match(/data-next-route="(session:[^"]+)"/)[1];
+const target = {dataset: {nextRoute: token},
+  closest(selector){ return selector === "[data-next-route]" ? this : null; }};
+__fire("click", {target, preventDefault(){}});
+console.log(JSON.stringify({board, route: {...nextRoute}, page: __els.app.innerHTML}));
+""",
+            self.PRELUDE,
+        )
+        self.assertIn('data-next-operation-history="true"', out["board"])
+        self.assertEqual(
+            {
+                "view": "session",
+                "project": "recce/cargento",
+                "harness": "claude",
+                "session": "ended-1",
+            },
+            out["route"],
+        )
+        self.assertIn('data-next-session-detail="ended-1"', out["page"])
+
+    def test_the_session_page_offers_its_own_link_beside_copy_id(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = __payload();
+navigateNext({view: "session", project: "recce/cargento", harness: "claude", session: "ended-1"});
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            self.PRELUDE,
+        )
+        assert isinstance(out, str)
+        controls = re.search(r'<div class="next-session-controls">([\s\S]*?)</div>', out)
+        assert controls is not None
+        buttons = re.findall(r"<button[\s\S]*?</button>", controls.group(1))
+        self.assertIn("COPY ID", buttons[0])
+        self.assertIn("COPY LINK", buttons[1])
+        self.assertIn(f'data-next-copy-link="{self.LINK}"', buttons[1])
+        # The link is readable without a clipboard, as every copy control's is.
+        self.assertIn(f'title="{self.LINK}"', buttons[1])
+        self.assertIn('aria-label="Copy a link to this session"', buttons[1])
+
+    def test_a_copied_link_reopens_the_same_session_after_a_reload(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = __payload();
+navigateNext({view: "session", project: "recce/cargento", harness: "claude", session: "ended-1"});
+const target = {
+  dataset: {nextCopyLink: __els.app.innerHTML.match(/data-next-copy-link="([^"]+)"/)[1],
+    nextCopySession: "ended-1", nextCopyHarness: "claude"},
+  closest(selector){ return selector.includes("data-next-copy-") ? this : null; },
+  setAttribute(name, value){ this[name] = value; }
+};
+const before = {...nextRoute};
+__fire("click", {target, preventDefault(){}, stopPropagation(){}});
+await __settle();
+const copied = {value: __copied[0], status: __copyStatus.textContent,
+  state: target.dataset.nextCopyState, stayed: JSON.stringify(before) === JSON.stringify(nextRoute)};
+// A reload: a fresh route from nothing but the pasted fragment.
+navigateNext({view: "sessions", project: null, session: null});
+location.hash = copied.value.slice(copied.value.indexOf("#"));
+__fire("window:hashchange", {});
+const reopened = __els.app.innerHTML;
+__clipboardFails = true;
+__fire("click", {target, preventDefault(){}, stopPropagation(){}});
+await __settle();
+console.log(JSON.stringify({copied, reopened, failed: __copyStatus.textContent,
+  failedState: target.dataset.nextCopyState}));
+""",
+            self.PRELUDE,
+        )
+        self.assertEqual(self.LINK, out["copied"]["value"])
+        self.assertEqual("Copied a link to this session", out["copied"]["status"])
+        self.assertEqual("copied", out["copied"]["state"])
+        self.assertTrue(out["copied"]["stayed"])
+        self.assertIn('data-next-session-detail="ended-1"', out["reopened"])
+        self.assertEqual("The link to this session could not be copied", out["failed"])
+        self.assertEqual("failed", out["failedState"])
+
+    def test_a_pasted_link_to_a_session_no_longer_held_says_so_and_names_it(self) -> None:
+        out = self._run_page_js(
+            """
+location.hash = "#n=session:recce%2Fcargento:claude:gone-7";
+__fire("window:hashchange", {});
+const unread = __els.app.innerHTML;
+nextData = __payload();
+nextData.window_hours = 24;
+renderNext();
+console.log(JSON.stringify({unread, gone: __els.app.innerHTML}));
+""",
+            self.PRELUDE,
+        )
+        gone = out["gone"]
+        self.assertIn('data-next-session-state="outside-payload"', gone)
+        self.assertIn(
+            '<p class="next-absence">This session is not in the current payload.</p>', gone
+        )
+        self.assertIn("claude · gone-7", gone)
+        self.assertIn("The board holds sessions observed in the last 24 hours.", gone)
+        self.assertIn('href="#n=sessions"', gone)
+        # Before the first payload the page cannot know, and must not say absent.
+        unread = out["unread"]
+        self.assertNotIn("not in the current payload", unread)
+        self.assertIn('data-next-session-state="unread"', unread)
+        self.assertIn("The first payload has not arrived yet.", unread)
+
+    def test_an_intent_log_row_for_a_session_with_no_project_label_still_links(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = __payload();
+const session = {harness: "claude", sid: "lone", project: "", state: "idle"};
+nextData.sessions.push(session);
+const html = nextIntentRow({harness: "claude", sid: "lone", goal: "x", revision: 1},
+  new Map([[sessKey(session), session]]));
+console.log(JSON.stringify(html));
+""",
+            self.PRELUDE,
+        )
+        self.assertIn('href="#n=session::claude:lone"', out)
+        self.assertNotIn("next-intent-gone", out)
