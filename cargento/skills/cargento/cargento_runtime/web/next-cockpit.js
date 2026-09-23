@@ -1496,11 +1496,12 @@ const NEXT_READING_NO_WORDS =
   "Nothing has been typed for this session, so there is nothing to read it against. " +
   NEXT_READING_SAVE_STEP;
 /* One next step per refusal, as the inert-control rule asks: every other state names what would
-   lift it, and this one named nothing. The page asks for the model state with
-   each project-context read, so a refresh is what reads it again. */
+   lift it, and this one named nothing. The model state rides on the project
+   context, which `nextCockpitLoadContext` fetches again on every new payload
+   revision, so the step is the page's own and asks nothing of the reader. */
 const NEXT_READING_MODEL_UNREAD =
   "Observer model availability has not been read, so no reading can be offered. " +
-  "Refresh this page to read it again.";
+  "Cargento asks again with the next update.";
 const NEXT_READING_PENDING =
   "Checking for drift. This can take up to a minute; the rest of the page stays usable.";
 const NEXT_READING_MODEL_OFF =

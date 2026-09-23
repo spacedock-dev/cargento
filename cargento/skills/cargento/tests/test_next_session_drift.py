@@ -301,7 +301,7 @@ __dashboard.sessions[0].annotation_revision_count = 0;
 """,
                 "Save a goal above to check for drift.",
             ),
-            "model unread": ("", "Refresh this page to read it again."),
+            "model unread": ("", "Cargento asks again with the next update."),
             "model off": (
                 """
 __fetchImpl = async url => ({ok: true, json: async () =>
