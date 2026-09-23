@@ -1,4 +1,4 @@
 interface:
-  display_name: "Roadmap Burndown"
-  short_description: "Deliver one Cargento roadmap issue"
-  default_prompt: "Use $burndown to pick and deliver the next Cargento roadmap issue."
+  display_name: "Milestone Burndown"
+  short_description: "Burn down a Cargento milestone in grouped, stacked PRs"
+  default_prompt: "Use $burndown to plan, build and close the named Cargento milestone."

@@ -61,7 +61,7 @@ The project is **Cargento: Actions Front and Center** in Linear (team `DRC`):
 issue on that board is one entity here. The workflow runs until the board is empty.
 
 This workflow does not invent its own picking rules, its own build discipline, or its own
-reconcile list. Those already exist and are owned elsewhere: the `burndown` skill owns picking and
+reconcile list. Those already exist and are owned elsewhere: the `burndown` skill owns planning and
 reconciling, `recce-dev:linear-deep-dive` owns issue analysis, `superpowers:test-driven-development`
 owns the build, and **AGENTS.md, "Pre-PR Checks"** owns the gate. What this workflow adds is the
 part none of them own — a durable place for one issue's journey to sit between sessions, an
@@ -111,9 +111,9 @@ copy-paste starter.
 | `mod-block` | string | Pending mod-declared blocking action, format `{lifecycle_point}:{mod_name}` |
 | `linear-status` | string | The Linear state as last observed (`Backlog`, `Todo`, `In Progress`, `Ready for Review`, `Blocked`, `Done`). A cache for selection, never authority. |
 | `milestone` | string | The owning Linear milestone name, or empty. The milestone `triage` reviews and `done` reconciles. |
-| `release` | string | The `release:*` label row: `r1`, `r2`, `r3`, `later`, or empty. Drives rule 2 of the pick order. |
+| `release` | string | The `release:*` label row: `r1`, `r2`, `r3`, `later`, or empty. Kept for the `score` below. |
 | `promise` | string | The promise ID from the `journey:*` label, `P1` to `P5`, or empty. Cached at `selection`; the label is authority. |
-| `move` | enum | The `move:*` label: `keep`, `sharpen`, `extend`, `new`, `none`, or empty when not yet labelled. Drives rule 3 of the pick order. Empty ranks as `none`. |
+| `move` | enum | The `move:*` label: `keep`, `sharpen`, `extend`, `new`, `none`, or empty when not yet labelled. Empty means triage has not labelled it. |
 | `estimate` | string | The Linear estimate (`XS`/`S`/`M`/`L`/`XL`), or empty. |
 | `reconciled` | ISO 8601 | When the post-merge Linear reconcile completed. Written and committed **before** `merge guard` terminalizes. Empty on an archived entity with `pr` set means the reconcile was interrupted. |
 
@@ -131,10 +131,11 @@ id-style: slug
 `score` is the release-row weight and nothing more: `r1` 0.9, `r2` 0.7, `r3` 0.5, `later` 0.2,
 unlabeled 0.6. It exists so `spacedock status` sorts into something readable.
 
-**It is not the pick order.** The pick order is the `burndown` skill's seven lexicographic rules, and
-no single float can encode them — a float that appeared to would be a confidently wrong number, of
-exactly the kind this project has been burned by before. `selection` applies the rules against a
-live Linear fetch. When the rules and this number disagree, the rules win and the number is stale.
+**It is not the pick order.** `selection` takes the next issue in the `burndown` skill's approved
+plan (its step 2): `blockedBy` order, then priority, then the estimate-weighted path to the
+Verification issue. No single float can encode that, and a float that appeared to would be a
+confidently wrong number, of exactly the kind this project has been burned by before. When the plan
+and this number disagree, the plan wins and the number is stale.
 
 Unlabeled issues sit at 0.6 rather than 0 because a probe or a bug carries no `release:*` label and
 ranks on what it settles, not on a label it was never given.
@@ -149,7 +150,7 @@ An issue sits in `selection` when it is on the board and has not yet been picked
 is choosing which one leaves, and reconciling the board against Linear before choosing.
 
 - **Inputs:** A live Linear fetch of the project's issues, their states, labels, estimates,
-  milestones and `blockedBy` relations. The `burndown` skill's pick rules. The existing entity
+  milestones and `blockedBy` relations. The `burndown` skill's approved plan. The existing entity
   files. `docs/visibility-2x2/items.json` for panel scores **only** — its `state` fields are
   deliberately stale and are the dated record of what was scored, never what shipped.
 - **Outputs:**
@@ -340,12 +341,12 @@ The rewritten issue is approved and gets built in a dedicated worktree on its ow
   - The diff reviewed **in the worktree before the PR is opened**. Reviewing after means every PR
     runs CI twice — green, blocked by review, fixed, green again — at roughly fifteen minutes of
     pure waiting per PR, avoidable by reordering two steps.
-- **One issue per branch, deliberately.** `burndown`'s rule wins over **AGENTS.md**'s "One PR per
-  conflict surface, not one per issue" here, and the choice is recorded rather than inherited: this
-  workflow's unit of merge risk is also its unit of Linear reconcile, and a PR spanning two issues
-  cannot cleanly perform the post-merge reconcile for either. The cost AGENTS.md prices — a review,
-  a fix round, a CI cycle and a merge serialization per extra PR — is real and accepted. The hard
-  constraint survives regardless: exactly one in-flight PR may touch `cargento_runtime/web/`.
+- **Issues group into pull requests; each issue is still reconciled on its own.** A group of
+  issues that change the same view or contract is the unit of merge risk, and an issue remains the
+  unit of Linear reconcile, with its own receipt. The `burndown` skill owns the grouping rule and
+  the stack procedure. The hard constraint survives in one form: exactly one line of history may
+  touch `cargento_runtime/web/`, which is one pull request or one stack of layers built on each
+  other.
 - **Good:** The change is the narrow reading of the issue. Commits are DCO signed off. Comments
   record decisions — why not the obvious alternative, what was measured, what was rejected — and
   never restate the line below them.
@@ -386,9 +387,10 @@ would be reviewing its own work.
   - Confirmed material findings routed back to `implementation` through the `feedback-to` edge with
     their evidence, classification and authorized disposition transported unchanged — never
     re-triaged, and never fixed here.
-  - CI green on the **current head**. After any sibling merge this PR goes `BEHIND` and needs
-    `gh pr update-branch` plus a **full CI re-run**; the re-run is the point, because the previous
-    green belonged to a superseded head.
+  - CI green on the **current head**. After any sibling merge this PR goes `BEHIND` and needs a
+    **full CI re-run**: `gh pr update-branch` for a standalone PR, `gh stack sync` for a stacked
+    layer, never the former on a stack. The re-run is the point, because the previous green
+    belonged to a superseded head.
   - A GO or NO-GO verdict with the findings that produced it.
   - On GO, the worktree removed **before** the branch is deleted. `gh pr merge --delete-branch`
     fails while a worktree still holds the branch, and the tempting unstick — `git reset --hard` in
@@ -573,16 +575,16 @@ declared tolerance or on narrowed AC, require a captain-visible design reset. Cy
 Required, and the reason this workflow exists rather than just the skills it calls. Runs when the
 merge is detected, before the entity is reported closed to the captain.
 
-The six edits live in the `burndown` skill, at its step 4, and not here. This section used to carry
+The six edits live in the `burndown` skill, at its step 6, and not here. This section used to carry
 its own copy, against this document's own lede, and the copy drifted: it kept a dated historical
 section on milestones that `sync-project` removes, it required an "As of" block of derived numbers
 on the project overview that `sync-project` forbids, and its third item was a different instruction
 from the skill's third rather than a reworded one. Read `.claude/skills/burndown/SKILL.md` and do
-what step 4 says. The evidence for why the step is not optional lives with it.
+what step 6 says. The evidence for why the step is not optional lives with it.
 
 What this workflow adds on top is set out at the `merge` stage above and is not the skill's: the
 receipt comment on the Linear issue, and the `reconciled` stamp written before `merge guard`
-archives. One thing step 4.2 needs from here: the milestone write resends the whole description, so
+archives. One thing step 6.2 needs from here: the milestone write resends the whole description, so
 the milestone-edit rule in `## Workflow-specific rules` applies to it. Report what the serializer
 moves; do not repair it.
 
@@ -706,7 +708,7 @@ only proof is a review of its own prose. The rules below add the specifics of th
   is parsed as a mention too. There is therefore no safe way to reference an issue in a body: expect
   relations from any reference, and **read back the relation set after any body write that mentions an issue.**
   It has not been observed creating a `blocks` or `blockedBy` edge; if it ever does, that is Material
-  immediately, because rule 1 of the pick order reads exactly those and a silent gate would drop a
+  immediately, because the plan's `blockedBy` order reads exactly those and a silent gate would drop a
   live candidate.
 - **Check a Linear error against read-back state before retrying it.** **Reproducible, not a
   one-off** — observed three times across two cycles (2026-08-28): a `save_issue` call returns
@@ -834,6 +836,10 @@ Two rulings, in the captain's own words, scoped to this milestone's burndown.
   it was buying is paid another way: the post-merge Linear reconcile still runs **once per issue**,
   and the PR body carries one `Implements [DRC-####](url)` line per issue it closes. A tier is the
   merge-risk unit; an issue remains the reconcile unit.
+
+  Superseded 2026-09-23: grouping is now the `burndown` skill's standing rule for every milestone,
+  and the `web/` constraint is one line of history (one pull request or one stack), not one pull
+  request. The ruling above is kept as the record.
 - **Standing conn for this milestone: "I pre-approve all the triage and merge gates, just automate
   this entire process and do it."** The first officer renders triage and review gate decisions
   itself, recorded `agent:first-officer` with the grant quoted, and drives to terminal without
@@ -1066,7 +1072,9 @@ which the FO then answered with a full scope-back.
 - **One correction round per pull request is the default.** A second needs a reason stated in one
   line: which user-visible regression it closes. If there is none, file and merge.
 - **Never serialise the rest of a milestone behind one pull request.** Only `implementation` and
-  `review` are bound by the one-PR-per-`web/` constraint, and stacking removes even that. Twelve
+  `review` are bound by the one-line-of-history-per-`web/` constraint, and a stack satisfies it
+  while several layers are open at once. A fix to a lower layer still means regenerating the byte
+  pins in every `web/` layer above it. Twelve
   gate-approved issues sat idle behind one branch through four review cycles because the FO waited
   on a verdict instead of dispatching the work that did not depend on it.
 
