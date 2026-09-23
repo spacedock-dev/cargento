@@ -966,9 +966,8 @@ The bounds, all of which hold together:
 - Off switch. `--no-observer-model` disables calls for a run regardless of consent and overrides
   `--observer-model`. `--no-harness-usage` is an alias for that rollback. Both default to disabled
   without the opt-in flag. Windows daemon respawn currently omits the opt-in flag, so the model
-  remains disabled there.
-  Measured 2026-09-23, a violation of this bound: the unasked lane never reads the flag, so
-  `--unasked-readings --no-harness-usage` still starts Codex readings. DRC-4649 fixes it.
+  remains disabled there. The off switch refuses the unasked lane as well: with it set,
+  `--unasked-readings` attaches no lane, starts no Codex reading, and the page reports the lane off.
 
 A violation of any of those is a security bug: an invocation with the setting off or unanswered, an
 invocation carrying unredacted text, a credential read that this section does not name, tool access
@@ -984,7 +983,7 @@ stated here rather than implied.
 [DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask) changes two
 of the bounds above for reader-requested readings and adds a caller. The first two take effect with
 DRC-4640 and the caller with DRC-4650; until then the bounds above describe the build. The off switch
-is already a bound above, and DRC-4649 repairs the violation of it recorded there.
+is already a bound above and already holds.
 
 - Opt-in becomes the first press. The first "Check for drift" shows the reading disclosure with an
   explicit allow, and that answer is DEC-14's opt-in. It is kept in `~/.cargento` so every tab and a
@@ -994,8 +993,9 @@ is already a bound above, and DRC-4649 repairs the violation of it recorded ther
   keeping `POST /api/reading` narrow (see [the reading paragraph](#known-and-accepted-1)), and a
   remembered answer can be granted by any local process that reaches the port, so a rolling
   twenty-four hour cap on reader-requested readings takes its place.
-- The off switch covers everything, as it already should. `--no-observer-model` and
-  `--no-harness-usage` refuse every model call, the unasked lane included.
+- The off switch still covers everything. `--no-observer-model` and `--no-harness-usage` refuse
+  every model call, the unasked lane included. Unlike the rest of this list, that part is already
+  built (DRC-4649).
 - A second caller. A reading runs on the session's own harness, so a Claude Code session is read by
   Claude Code and its evidence goes to Anthropic, not OpenAI. The fallback to the other harness is
   named before the press. The Claude Code producer needs its own entry beside Observer model calls
@@ -1009,9 +1009,10 @@ through the same `observer.codex_exec`, so the two share one set of sandbox flag
 that could drift. These are the paths that can send session content off the
 machine. A reading is produced by a codex subprocess whatever harness the session runs on, so a
 reading of a Claude session spends the operator's Codex capacity and sends that session's evidence
-to OpenAI. It is off unless `--observer-model` was supplied. `--no-observer-model` always wins.
-DEC-21 changes the first two of those sentences when DRC-4650 and DRC-4640 ship; see the ruled
-section above.
+to OpenAI. A reader-requested reading is off unless `--observer-model` was supplied, and an unasked
+one unless `--unasked-readings` was. `--no-observer-model` always wins, over both.
+DEC-21 changes the reader-requested half of that sentence, and the first one, when DRC-4650 and
+DRC-4640 ship; see the ruled section above.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
 focused session and up to three active children whose assignment is unavailable.

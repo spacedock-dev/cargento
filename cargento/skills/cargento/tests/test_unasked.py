@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import departures, reading, unasked
+from cargento_runtime import departures, diagnostics, reading, unasked
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -182,6 +182,50 @@ class TheSwitchIsTheWholeGateTest(unittest.TestCase):
         application = cli.build_application(config, state, diagnostic_sink=lambda _line: None)
 
         self.assertIsNotNone(application.unasked_lane)
+
+    def _serving(self, *argv: str) -> Any:
+        """An application built the way `server.py` builds one, from argv."""
+        from cargento_runtime import cli  # noqa: PLC0415
+
+        environ = {"HOME": str(self.root), "CARGENTO_HOME": str(self.root / "state")}
+        args = cli.build_parser().parse_args(list(argv))
+        with mock.patch.object(cli, "runtime_environ", return_value=environ):
+            config, state = cli.build_runtime(args, started=1_000.0)
+        return cli.build_application(config, state, diagnostic_sink=lambda _line: None)
+
+    def test_the_off_switch_refuses_the_lane(self) -> None:
+        # DRC-4649. SECURITY.md's Light harness usage off switch refuses every
+        # model call for the run, and the unasked lane is the one caller that
+        # used to not read it: `--unasked-readings --no-harness-usage` started
+        # codex readings anyway. Both spellings, because the alias is the one
+        # the issue was reported against.
+        #
+        # The lane is the only thing that starts a codex subprocess for an
+        # unasked reading, so the assertion is that it is never constructed.
+        # Patching `subprocess` around a collection instead would pass with the
+        # guard removed: a fresh home has no annotated session to read, so no
+        # reading is attempted either way.
+        for off_switch in ("--no-harness-usage", "--no-observer-model"):
+            with self.subTest(off_switch=off_switch):
+                with mock.patch.object(unasked, "Lane", wraps=unasked.Lane) as lane:
+                    application = self._serving("--unasked-readings", off_switch)
+                    payload = application.collect(show_all=False)
+
+                lane.assert_not_called()
+                self.assertIsNone(application.unasked_lane)
+                self.assertFalse(application.config.unasked_enabled)
+                # The page draws the lane-off sentence from this key's absence.
+                self.assertNotIn("unasked", payload)
+                self.assertIs(False, diagnostics.diagnose(application)["unasked"]["enabled"])
+
+    def test_the_switch_alone_still_attaches_the_lane(self) -> None:
+        # The control for the test above, so its refusal is the off switch's
+        # doing and not a harness that never attaches the lane from argv.
+        application = self._serving("--unasked-readings")
+
+        self.assertIsNotNone(application.unasked_lane)
+        self.assertIs(True, application.collect(show_all=False).get("unasked"))
+        self.assertIs(True, diagnostics.diagnose(application)["unasked"]["enabled"])
 
 
 class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):

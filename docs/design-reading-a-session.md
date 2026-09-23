@@ -648,8 +648,8 @@ amended when DRC-4641 ships the mark, not before, because it describes the shipp
 
 ## DEC-21: a reading works the first time you ask
 
-Decided 2026-09-23 (DRC-4634). Built by DRC-4640, DRC-4649 and DRC-4650; until they ship, readings
-need `--observer-model` exactly as [the light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
+Decided 2026-09-23 (DRC-4634). Item 3 is built (DRC-4649). The rest is built by DRC-4640 and
+DRC-4650, and until they ship, readings need `--observer-model` exactly as [the light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
 say today.
 
 On a default run the reading control tells the reader to restart the server with a flag. The press
@@ -667,8 +667,8 @@ allowed only with something that does that job instead.
    carries no timezone for a calendar day.
 3. `--no-observer-model` and its alias `--no-harness-usage` refuse every model call, the unasked
    lane included. Measured the day this was decided, the unasked lane did not read the flag at all,
-   so `--unasked-readings --no-harness-usage` still started Codex readings. DRC-4649 fixes that and
-   is a security bug under the bounds, not a feature.
+   so `--unasked-readings --no-harness-usage` still started Codex readings. That was a security bug
+   under the bounds, not a feature, and DRC-4649 fixed it: the off switch now attaches no lane.
 4. A reading runs on the session's own harness: a Claude Code session is read by Claude Code, a
    Codex session by Codex. When that harness is not installed the check falls back to the other and
    says so before the press, so session text reaches a second provider only after the page has named
