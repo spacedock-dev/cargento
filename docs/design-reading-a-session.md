@@ -646,6 +646,14 @@ question sits between the two, because the question outranks the check. The CURR
 the agent's direction beside the reader's words, moved into the block rather than copied, so the
 NOW line has one renderer.
 
+Inside the block the check is on the first screen: the two goal fields, then the direction, then
+`Check for drift` with its send disclosure beside it, then the reading, then the later-direction
+block and the caveats on the typed words (the binding sentence, the discard explanation and its
+button), then the departures. Measured on a live board at 1440 by 900 with a goal saved, the
+button's top sat at 1010px while the disclosure stacked above it, and at 840px once the two shared a
+row. The reading says it is never a verification once, in the server's disclosure, and the page's
+own sentence renders only where no disclosure was published.
+
 The way back beside a departure is the header's own resume and raise controls, drawn per departure
 whatever the session's state; what is missing is said once per departures section, because a limit
 repeated under every row is furniture.

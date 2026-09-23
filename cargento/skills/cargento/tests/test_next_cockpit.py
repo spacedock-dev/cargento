@@ -5651,9 +5651,10 @@ __dashboard.annotate_cap = 240;
 __dashboard.reading_check = "not-run";
 const read = () => {
   const html = __els.app.innerHTML;
-  const block = html.slice(html.indexOf('class="next-cockpit-reading"'));
+  const block = html.slice(html.indexOf('class="next-session-drift-check"'));
+  const reading = html.slice(html.indexOf('class="next-cockpit-reading"'));
   return {
-    text: (block.match(/class="next-cockpit-reading-why"[^>]*>([^<]*)</) || [])[1],
+    text: (reading.match(/class="next-cockpit-reading-why"[^>]*>([^<]*)</) || [])[1],
     // The refusal by its id rather than by being first. The offer paragraph
     // now precedes it in every state, because the control renders in all of
     // them, and "the first reason paragraph" stopped naming the reason.
@@ -6112,7 +6113,7 @@ __dashboard.sessions[0].annotation_binding_why = "";
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const block = (__els.app.innerHTML.match(
-  /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+  /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
 """
 
     NOTHING_TYPED = (
@@ -6187,7 +6188,7 @@ console.log(JSON.stringify({
             + r"""
 const read = () => {
   const block = (__els.app.innerHTML.match(
-    /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+    /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
   const found = (block.match(/(\d+) model requests? recorded for this session\./) || [])[1];
   return found === undefined ? null : found;
 };
@@ -6363,7 +6364,7 @@ const ctx = nextCockpitContexts.get(
 ctx.data = Object.assign({}, ctx.data, {observer_model:{enabled:true, disclosure:"x"}});
 renderNext();
 const block = () => (__els.app.innerHTML.match(
-  /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+  /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
 const sentence = "Nothing has been typed for this session, so there is nothing to read it against.";
 const count = () => block().split(sentence).length - 1;
 const before = count();
@@ -7888,10 +7889,15 @@ __dashboard.sessions[0].annotation_discarded_why = "";
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const html = __els.app.innerHTML;
+/* The words' section and the caveats on them, which render below the reading
+   since the check moved onto the first screen (DRC-4639). */
+const caveatsAt = html.indexOf('<div class="next-session-drift-caveats">');
 const held = (html.match(
-  /<section class="next-cockpit-held">[\s\S]*?<\/section>/) || [""])[0];
+  /<section class="next-cockpit-held">[\s\S]*?<\/section>/) || [""])[0] +
+  (caveatsAt === -1 ? "" :
+    html.slice(caveatsAt, html.indexOf('<section class="next-cockpit-departures"', caveatsAt)));
 const reading = (html.match(
-  /<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+  /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
 console.log(JSON.stringify({
   held, reading,
   heldText: held.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
@@ -11410,7 +11416,7 @@ console.log(JSON.stringify({
   departures: (html.match(
     /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0],
   reading: (html.match(
-    /<section class="next-cockpit-reading">[\\s\\S]*?<\\/section>/) || [""])[0],
+    /<div class="next-session-drift-check">[\\s\\S]*?<section class="next-cockpit-reading">[\\s\\S]*?<\\/section>/) || [""])[0],
 }));
 """,
             storage_prelude({}) + self.FIXTURE,
@@ -11844,10 +11850,14 @@ console.log(JSON.stringify({
         out = self.tab()
         html = out["html"]
         assert isinstance(html, str)
+        # The check sits directly under the words and the direction, so it is on the first
+        # screen; the reading, then the later-direction question it constrains, follow it
+        # (DRC-4639).
         order = [
             "WHAT YOU ASKED FOR",
+            'data-next-cockpit-action="reading-ask"',
+            "<h2>READING</h2>",
             "CONFLICT TO SETTLE",
-            "READING",
             "DEPARTURES RAISED TO YOU",
             "HOW IT LANDED",
             "OBSERVED RECORD",

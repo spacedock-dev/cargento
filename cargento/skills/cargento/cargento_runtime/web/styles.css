@@ -823,6 +823,16 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift-heading{margin:0;padding:14px 16px 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-drift>.next-session-command-surface{margin:0 16px 14px}
 .next-session-drift>.next-cockpit-conflict{margin:0 16px 14px}
+/* The check and its send disclosure, directly under the direction, and the
+   caveats on the reader's words below the reading (DRC-4639). */
+.next-session-drift-check,.next-session-drift-caveats{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-reading-ask{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;align-items:start}
+.next-cockpit-reading-ask>button{grid-column:1;grid-row:1;align-self:start}
+.next-cockpit-reading-ask>p{grid-column:2;grid-row:1}
+@media(max-width:760px){
+  .next-cockpit-reading-ask{grid-template-columns:minmax(0,1fr)}
+  .next-cockpit-reading-ask>button,.next-cockpit-reading-ask>p{grid-column:1;grid-row:auto;justify-self:start}
+}
 .next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
 .next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
 .next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}

@@ -19,6 +19,7 @@ import unittest
 from typing import Any
 
 from cargento_runtime import annotations as annotation_store
+from cargento_runtime import reading
 
 from . import test_next_cockpit as cockpit_tests
 from .next_harness import NextPageJsHarness, storage_prelude
@@ -127,12 +128,55 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             for mark in (
                 "WHAT YOU ASKED FOR",
                 "CURRENT ACTIVITY",
-                "READING",
+                'data-next-cockpit-action="reading-ask"',
+                "<h2>READING</h2>",
                 "DEPARTURES RAISED TO YOU",
             )
         ]
         self.assertEqual(sorted(order), order)
         self.assertIn(">DRIFT<", block)
+
+    def test_the_check_comes_before_every_caveat_so_it_reaches_the_first_screen(self) -> None:
+        """Goal fields, direction, the check with its send disclosure, then the reading.
+
+        The binding caveat, the discard explanation and its button, and the later-direction block
+        all render below the reading: above the control they pushed it off a 1440x900 screen.
+        """
+        html = self.page(
+            f"__dashboard.reading_disclosure = {json.dumps(reading.DISCLOSURE)};\n"
+            f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
+            '__dashboard.sessions[0].annotation_binding_why = "Bound to codex:focus-1 by its id.";\n'
+        )
+        drift = html[
+            html.index("data-next-session-drift") : html.index('class="next-session-facts"')
+        ]
+        fields = drift.index('class="next-cockpit-held-fields"')
+        direction = drift.index("CURRENT ACTIVITY")
+        check = drift.index('data-next-cockpit-action="reading-ask"')
+        disclosure = drift.index(reading.DISCLOSURE.split(".")[0])
+        the_reading = drift.index("<h2>READING</h2>")
+        self.assertLess(fields, direction)
+        self.assertLess(direction, check)
+        self.assertLess(direction, disclosure)
+        # Beside the control: the disclosure and the button share one container, before the
+        # reading starts.
+        container = drift[drift.index('class="next-session-drift-check"') : the_reading]
+        self.assertIn('data-next-cockpit-action="reading-ask"', container)
+        self.assertIn(reading.DISCLOSURE.split(".")[0], container)
+        for below in (
+            "Bound to codex:focus-1 by its id.",
+            annotation_store.DISCARD_WHY,
+            'data-next-cockpit-action="held-discard"',
+            'class="next-cockpit-conflict"',
+        ):
+            with self.subTest(below=below[:40]):
+                self.assertLess(the_reading, drift.index(below))
+        self.assertLess(
+            drift.index('class="next-cockpit-conflict"'), drift.index("DEPARTURES RAISED TO YOU")
+        )
+        # Said once on the page, by the disclosure beside the control.
+        self.assertEqual(1, visible_text(html).count("never a verification that the work was done"))
 
     def test_a_session_with_no_project_still_gets_its_drift_block(self) -> None:
         out = self.run_fixture(

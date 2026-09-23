@@ -2274,7 +2274,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
   /* Before the button, not after the press. The reading spends the reader's
      own Codex capacity and sends their goal and a slice of the observed
-     record off this machine; the offer paragraph above scopes WHAT is sent
+     record off this machine; the offer paragraph in the reading scopes WHAT is sent
      and says nothing about where it goes or who pays. A reader who has not
      read this has not been warned. */
   const disclosure = nextData && nextData.reading_disclosure
@@ -2286,13 +2286,16 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      the answer control holds it and this sits below as an ordinary control
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
      The four cockpit tabs have no action to mark at all (DRC-4590, DRC-4603). */
-  return disclosure +
+  /* The disclosure and the button share a row, the disclosure still first in
+     reading order: stacked, the disclosure's five sentences pushed the button
+     under a 900px first screen, measured on a live board at 1440 wide. */
+  return '<div class="next-cockpit-reading-ask">' + disclosure +
     `<button type="button" class="next-action${primary ? " next-action--primary" : ""}" ` +
     'data-next-cockpit-action="reading-ask" ' +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
-    `${pending ? "Checking for drift…" : "Check for drift"}</button>` +
+    `${pending ? "Checking for drift…" : "Check for drift"}</button></div>` +
     (request && !request.refusal
       ? '<p class="next-cockpit-reading-why" role="status"' +
         `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
@@ -2350,8 +2353,23 @@ function nextCockpitReadingBaseline(shape){
     rows + "</details>";
 }
 
+/* The three parts in the page's order, joined. The drift block places them
+   apart, with the conflict and the caveats between the reading and the
+   departures; this joined form is for a caller that wants one block. */
 function nextCockpitReading(session, annotation, entries, model, observed, unsettled, source,
     primary = true){
+  const parts = nextCockpitReadingParts(session, annotation, entries, model, observed, unsettled,
+    source, primary);
+  return parts.control + parts.reading + parts.departures;
+}
+
+/* The control is its own part so it can sit on the first screen, directly
+   under the direction, with the reading and its caveats below it (DRC-4639).
+   Every arm returns the same control; only the reading varies. */
+function nextCockpitReadingParts(session, annotation, entries, model, observed, unsettled, source,
+    primary = true){
+  const control = '<div class="next-session-drift-check">' +
+    nextCockpitReadingControl(session, annotation, model, primary) + '</div>';
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = String(session.harness || "") === "pi"
     ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
@@ -2361,9 +2379,11 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
      already renders NEXT_READING_OFFER, which says what a reading is at more
      length, and a second sentence saying the same thing is a regression
      rather than a fix. Every other arm needs the short one. */
-  const close = (body, shape, defined) => `${header}</header>` +
-    (defined ? "" : `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>`) +
-    `${body}</section>` + nextCockpitDepartures(shape, source, session);
+  const close = (body, shape, defined) => ({control,
+    reading: `${header}</header>` +
+      (defined ? "" : `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>`) +
+      `${body}</section>`,
+    departures: nextCockpitDepartures(shape, source, session)});
   /* A press that produced nothing is not the same as no press, and the
      reason it produced nothing is a sentence the producer chose from a
      closed set rather than one this page infers. */
@@ -2390,10 +2410,13 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
         "build could not read it, so nothing from it is shown. Asking again replaces it." +
         "</p>"
       : "";
-    const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER} ` +
-      `${NEXT_READING_NOT_A_VERIFICATION}</p>`;
-    return close(refused + offer + why + nextCockpitReadingControl(session, annotation, model, primary),
-      null, true);
+    /* Said once. The send disclosure beside the control already ends on the
+       server's "never a verification that the work was done", so the page's
+       own wording rides here only where no disclosure was published. */
+    const verification = nextData && nextData.reading_disclosure
+      ? "" : ` ${NEXT_READING_NOT_A_VERIFICATION}`;
+    const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER}${verification}</p>`;
+    return close(refused + offer + why, null, true);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
   if(shape.malformed){
@@ -2402,8 +2425,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
        any kind. */
     return close(
       `<p class="next-cockpit-reading-why">${esc(NEXT_READING_UNKNOWN_KEY)}</p>` +
-      `<p class="next-cockpit-reading-why">Unrecognised: ${esc(shape.malformed)}.</p>` +
-      nextCockpitReadingControl(session, annotation, model, primary), shape);
+      `<p class="next-cockpit-reading-why">Unrecognised: ${esc(shape.malformed)}.</p>`, shape);
   }
   const current = nextNumber(annotation && annotation.revision);
   /* The one warm ink the design allows near a reading, and it is not part of
@@ -2420,13 +2442,13 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
      a test asserts the two derivations match. */
   const scope = shape.scopeText
     ? `<p class="next-cockpit-reading-why">${esc(shape.scopeText)}</p>` : "";
-  return header +
-    (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
-    '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
-    stale + nextCockpitReadingBaseline(shape) + scope + why +
-    shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
-    nextCockpitReadingControl(session, annotation, model, primary) + '</section>' +
-    nextCockpitDepartures(shape, source, session);
+  return {control,
+    reading: header +
+      (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
+      '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
+      stale + nextCockpitReadingBaseline(shape) + scope + why +
+      shape.criteria.map(nextCockpitReadingCriterionRow).join("") + '</section>',
+    departures: nextCockpitDepartures(shape, source, session)};
 }
 
 /* HOW IT LANDED: the two axes `nextObservedLanding` derives, drawn where the
@@ -2461,8 +2483,8 @@ function nextCockpitLanded(observed){
 
 /* The block, gated on the annotation alone rather than on a reading existing,
    so a later direction that raises no departure falls out of the layout rather
-   than needing a rule. It sits above the reading because it constrains one,
-   and below the observed record because it cites rows from it.
+   than needing a rule. It sits directly under the reading it constrains, below
+   the one control, so the control stays on the first screen (DRC-4639).
 
    The window is the record's own. A direction older than the tail
    `io.read_tail` keeps is not in `entries` and cannot be counted here, so the
@@ -2605,10 +2627,11 @@ function nextCockpitHeldDiscardBlock(session, annotation){
    `record` renders after the session's own facts
    ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
 
-   The order inside the block is the tab's, and it is load bearing: what you
-   asked for, then the agent's direction beside it, then any later direction of
-   yours still to settle, then the reading, then every departure on record. Your
-   words come first, so nothing above the reading is a model's.
+   The order inside the block is load bearing: what you asked for, then the
+   agent's direction beside it, then the one control, so it is on the first
+   screen; then the reading, then any later direction of yours and the caveats
+   on what you typed, then every departure on record. Your words come first, so
+   nothing above the reading is a model's.
 
    `direction` is the caller's CURRENT ACTIVITY card, handed in rather than
    rebuilt, so the NOW line has one renderer. `primary` is false when the
@@ -2681,13 +2704,18 @@ function nextCockpitDriftBlock(group, session, direction, primary){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    discarded + binding + ended + nextCockpitHeldDiscardBlock(session, annotation) +
+    ended + '</section>';
+  const reading = nextCockpitReadingParts(session, annotation, entries,
+    nextCockpitObserverModel(group, session), observed, unsettled, workSource, primary);
+  /* Below the reading, not between the fields and the control: none of these
+     is the next thing to do, and above the control they pushed it off the
+     first screen. */
+  const discard = nextCockpitHeldDiscardBlock(session, annotation);
+  const caveats = discarded || binding || discard
+    ? `<div class="next-session-drift-caveats">${discarded}${binding}${discard}</div>` : "";
+  const drift = head + asked + direction + reading.control + reading.reading +
+    nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
     '</section>';
-  const drift = head + asked + direction +
-    nextCockpitConflict(session, annotation, workSource) +
-    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group, session),
-      observed,
-      unsettled, workSource, primary) + '</section>';
   /* Below the session's facts: how it landed, the observed record the reading
      cites, and where a raise is kept. The reading's offer says the record is
      "below", and it is. */
