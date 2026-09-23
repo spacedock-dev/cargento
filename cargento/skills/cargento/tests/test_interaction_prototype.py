@@ -22,7 +22,7 @@ from unittest import mock
 from cargento_runtime import cli, http_api
 from cargento_runtime import interaction_prototype as interaction
 
-from .support import PAGE_BYTES, build_app, make_server
+from .support import PAGE_BYTES, build_app, make_server, poll_fast
 
 
 class FakeTmuxAdapter:
@@ -166,7 +166,7 @@ class InteractionPrototypeHTTPTest(unittest.TestCase):
             PAGE_BYTES,
             interaction_prototype=self.prototype,
         )
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=poll_fast(self.httpd), daemon=True)
         self.thread.start()
 
     def tearDown(self) -> None:
@@ -507,7 +507,7 @@ class InteractionPrototypeDisabledTest(unittest.TestCase):
     def test_normal_dashboard_has_no_prototype_routes(self) -> None:
         # Given: the normal dashboard server has no interaction prototype.
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             connection = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
@@ -591,7 +591,7 @@ class CollectedSessionOriginHTTPTest(unittest.TestCase):
             PAGE_BYTES,
             interaction_prototype=self.prototype,
         )
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=poll_fast(self.httpd), daemon=True)
         self.thread.start()
 
     def tearDown(self) -> None:

@@ -62,7 +62,7 @@ def _no_runner(*_args: Any, **_kwargs: Any) -> Any:
 
 
 def _config(
-    home: str = "/home/cargento-test",
+    home: str = "/nonexistent-cargento-test",
     platform_name: str = "linux",
     **changes: Any,
 ) -> RuntimeConfig:
@@ -216,7 +216,7 @@ def _forbidden_opener() -> Any:
 class TokenReadTest(unittest.TestCase):
     def test_credentials_path_follows_the_claude_store(self) -> None:
         self.assertEqual(
-            "/home/cargento-test/.claude/.credentials.json",
+            "/nonexistent-cargento-test/.claude/.credentials.json",
             quota.credentials_path(_config()),
         )
         # A CLAUDE_CONFIG_DIR override moves the projects store, and the

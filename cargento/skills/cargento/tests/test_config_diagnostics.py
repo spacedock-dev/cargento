@@ -49,7 +49,7 @@ class CargentoServerTest(RuntimeTestCase):
         # this prints or joins, state_dir for anything that wants a Path.
         override = "C:/plugin/state"
         config = build_runtime_config(
-            environ={"HOME": "/home/cargento-test", "CARGENTO_HOME": override},
+            environ={"HOME": "/nonexistent-cargento-test", "CARGENTO_HOME": override},
             platform_name="win32",
             os_name="nt",
             launcher_path=SERVER_PATH,
@@ -1027,9 +1027,9 @@ class OperatingSystemExpectationTest(unittest.TestCase):
         cases = [
             # The measured six-directory case, encoded the way Claude encodes one.
             (
-                "/home/cargento-test",
+                "/nonexistent-cargento-test",
                 (
-                    "-home-cargento-test-repos-recce-recce-cloud-infra"
+                    "-nonexistent-cargento-test-repos-recce-recce-cloud-infra"
                     "--claude-worktrees-drc-3976-finish"
                 ),
                 "3976-finish",

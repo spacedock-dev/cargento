@@ -40,6 +40,7 @@ report a size nobody sees.
 
 from __future__ import annotations
 
+import functools
 import pathlib
 import re
 from typing import cast
@@ -385,6 +386,15 @@ class UnsupportedSelectorError(Exception):
 
 def _steps(selector: str) -> list[tuple[str, Compound]]:
     """Selector as [(combinator, compound)], the first combinator ignored."""
+    return list(_parsed_steps(selector))
+
+
+# Parsed once per selector. The rendered-tier guards call `matches` about 840k
+# times over a few hundred distinct selectors, and re-parsing was 5 of their
+# 6.6 seconds (measured 2026-09-23). The compounds are shared between callers,
+# so they are read-only by contract: nothing here writes to one after parsing.
+@functools.cache
+def _parsed_steps(selector: str) -> tuple[tuple[str, Compound], ...]:
     parts = _split_steps(selector.strip())
     if any(part in ("+", "~") for part in parts):
         raise UnsupportedSelectorError(selector)
@@ -396,7 +406,7 @@ def _steps(selector: str) -> list[tuple[str, Compound]]:
             continue
         steps.append((combinator, _compound(part)))
         combinator = " "
-    return steps
+    return tuple(steps)
 
 
 def _structural_matches(node: Node, name: str) -> bool:
@@ -520,18 +530,29 @@ def matches(path: list[Node], selector: str) -> tuple[int, int, int] | None:
 
 
 def declared_size(body: str, tokens: dict[str, float]) -> float | None:
+    kind, value = _declared_size_source(body)
+    if kind == "token":
+        return tokens.get(str(value))
+    return cast("float | None", value)
+
+
+# The regexes below are the whole cost of `declared_size`, and `resolve` asks the
+# same bodies again at every depth of every path; only the token lookup depends
+# on the caller, so the source is cached and the lookup is not.
+@functools.cache
+def _declared_size_source(body: str) -> tuple[str, str | float | None]:
     token = re.search(r"font-size:\s*var\(--(fs-[a-z0-9-]+)\)", body) or re.search(
         r"font:[^;]*?var\(--(fs-[a-z0-9-]+)\)", body
     )
     if token:
-        return tokens.get(token.group(1))
+        return ("token", token.group(1))
     # The lookbehind is load-bearing: without it `font:0.65rem/1.5` matched the
     # optional weight against `0` and the size resolved to `.65`.
     literal = re.search(r"font-size:\s*([0-9.]+)rem", body) or re.search(
         r"font:[^;{}]*?(?<![0-9.])([0-9.]+)rem", body
     )
     if literal:
-        return float(literal.group(1))
+        return ("size", float(literal.group(1)))
     # A px literal is off the scale by definition, and the sheet carries none.
     # It is still read, at the reference root, so a mutant written in px
     # resolves to something comparable rather than to nothing: a census that
@@ -539,7 +560,7 @@ def declared_size(body: str, tokens: dict[str, float]) -> float | None:
     fallback = re.search(r"font-size:\s*([0-9.]+)px", body) or re.search(
         r"font:[^;{}]*?(?<![0-9.])([0-9.]+)px", body
     )
-    return rem(float(fallback.group(1))) if fallback else None
+    return ("size", rem(float(fallback.group(1))) if fallback else None)
 
 
 def resolve(path: list[Node], tokens: dict[str, float], rules: list[Rule]) -> float | None:

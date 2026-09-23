@@ -607,7 +607,7 @@ class CoordinatorTargetTest(unittest.TestCase):
         # why every test here has to say so.
         #
         # A real, empty state home too: `session_ended` writes the end store
-        # (DRC-4547), and `support.make_config`'s notional `/home/cargento-test`
+        # (DRC-4547), and `support.make_config`'s notional `/nonexistent-cargento-test`
         # is outside every sandbox. See `test_observation.ObservationTestCase`.
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)

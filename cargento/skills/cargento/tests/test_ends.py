@@ -818,7 +818,7 @@ class OneShotCommandsAndTheStoreTest(unittest.TestCase):
         # defect too (the same trap `test_history` records).
         seed_claude_transcript(
             Path(self.env["CLAUDE_CONFIG_DIR"]) / "projects",
-            "-home-cargento-test-repos-recce-cargento",
+            "-nonexistent-cargento-test-repos-recce-cargento",
             when=time.time(),
         )
         self.config = build_runtime_config(

@@ -63,7 +63,8 @@ same directories through the relative symlinks under `.agents/skills/`.
 - The full unittest suite under `coverage`, against the `fail_under` threshold in `pyproject.toml`.
   That threshold only ratchets up. A PR that must merge below it needs the `coverage-exception`
   label, which is visible in the PR timeline.
-- `platform-tests`, the unit suite re-run natively on Ubuntu, macOS and Windows.
+- `platform-tests`, the unit suite re-run natively on macOS and Windows. Ubuntu is covered by the
+  coverage job and the runtime floor, which both run the whole suite there.
 
 Those checks run in five jobs, and they run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import inspect
+import io
 import json
 import os
 import subprocess
@@ -233,6 +235,28 @@ class CommandSocketTest(unittest.TestCase):
             check=False,
         )
 
+    def run_hook_inprocess(self, payload: Any, harness: str = "claude") -> tuple[int, str, str]:
+        """`run_hook` with `deterministic_driver`, without starting an interpreter.
+
+        The driver already replaces `threading` and `time` inside the child, so a
+        fresh interpreter proves nothing per case that the same `main` over the
+        same socket does not; what it costs is a Python start and an HTTP import
+        per case, about 90ms against about 15ms (measured 2026-09-23). The tests
+        below keep real subprocess cases so the shipped script is still run.
+        """
+        stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            patch.object(sys, "stdin", stdin),
+            patch.dict(os.environ, {"CARGENTO_HOME": self.tmp.name}),
+            patch.object(event_hook, "threading", SimpleNamespace(Thread=_InlineThread)),
+            patch.object(event_hook, "time", SimpleNamespace(monotonic=lambda: 0.0)),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            code = event_hook.main(["event_hook", harness, str(self.port)])
+        return code, out.getvalue(), err.getvalue()
+
     def post(self, payload: dict[str, Any], harness: str = "claude") -> dict[str, Any]:
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.port}/api/events/{harness}",
@@ -387,13 +411,19 @@ raise SystemExit(status)
     def test_every_literal_and_wrapper_reaches_only_fixed_reports_over_a_socket(self) -> None:
         for harness in ("claude", "codex"):
             for wrapper in ("", "rtk ", "rtk proxy "):
-                for command, pattern in POSITIVES:
+                for index, (command, pattern) in enumerate(POSITIVES):
                     with self.subTest(harness=harness, wrapper=wrapper, command=command):
                         before = len(self.received)
-                        proc = self.run_hook(
-                            native(wrapper + command), harness, driver=deterministic_driver()
-                        )
-                        self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
+                        # The first case per harness runs the shipped script as a
+                        # real process; the rest run the same `main` in-process.
+                        if index == 0 and not wrapper:
+                            proc = self.run_hook(
+                                native(wrapper + command), harness, driver=deterministic_driver()
+                            )
+                            outcome = (proc.returncode, proc.stdout.decode(), proc.stderr.decode())
+                        else:
+                            outcome = self.run_hook_inprocess(native(wrapper + command), harness)
+                        self.assertEqual((0, "", ""), outcome)
                         self.assertEqual(before + 1, len(self.received))
                         report = self.received[-1]
                         self.assertEqual(set(wire()), set(report))
@@ -416,10 +446,14 @@ raise SystemExit(status)
                 native("git push --force", session_id="x" * 201),
             ]
         )
-        for payload in payloads:
+        for index, payload in enumerate(payloads):
             with self.subTest(payload=payload):
-                proc = self.run_hook(payload)
-                self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
+                if index == 0:
+                    proc = self.run_hook(payload)
+                    outcome = (proc.returncode, proc.stdout.decode(), proc.stderr.decode())
+                else:
+                    outcome = self.run_hook_inprocess(payload)
+                self.assertEqual((0, "", ""), outcome)
         self.assertEqual([], self.received)
         self.assertEqual([], self.coordinator.command_reports())
 

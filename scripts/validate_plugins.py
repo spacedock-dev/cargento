@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import os
 import re
@@ -67,16 +69,32 @@ try {
 """
 
 
+# One probe per distinct adapter source. The result depends only on the adapter's
+# bytes and which harness it is, and each run carries about 0.5s of fixed sleeps:
+# the suites asked 35 times for 10 distinct inputs, about 16s of waiting
+# (measured 2026-09-23). A mutated copy has different bytes, so it is probed on
+# its own; a failure raises and is never cached.
+_JS_ADAPTER_RESULTS: dict[tuple[str, str], dict[str, Any]] = {}
+
+
 def exercise_js_adapter(path: Path) -> dict[str, Any]:
     """Observe the actual passive callback, with no fake event-route declaration."""
+    source = path.read_bytes()
+    key = (path.name, hashlib.sha256(source).hexdigest())
+    if key not in _JS_ADAPTER_RESULTS:
+        _JS_ADAPTER_RESULTS[key] = _probe_js_adapter(path.name, source)
+    return copy.deepcopy(_JS_ADAPTER_RESULTS[key])
+
+
+def _probe_js_adapter(name: str, source: bytes) -> dict[str, Any]:
     node = shutil.which("node")
     if node is None:
         raise FileNotFoundError("node is required for JavaScript adapter derivation")
     with tempfile.TemporaryDirectory() as tmp:
         module = Path(tmp) / "adapter.mjs"
-        module.write_bytes(path.read_bytes())
+        module.write_bytes(source)
         proc = subprocess.run(  # noqa: S603 — node and local source under validation
-            [node, "--input-type=module", "-", str(module), JS_ADAPTERS[path.name]],
+            [node, "--input-type=module", "-", str(module), JS_ADAPTERS[name]],
             input=JS_ADAPTER_PROBE,
             capture_output=True,
             text=True,
@@ -89,7 +107,7 @@ def exercise_js_adapter(path: Path) -> dict[str, Any]:
             check=False,
         )
     if proc.returncode or proc.stderr:
-        raise ValueError(f"{path.name}: JavaScript callback probe failed: {proc.stderr}")
+        raise ValueError(f"{name}: JavaScript callback probe failed: {proc.stderr}")
     result: dict[str, Any] = json.loads(proc.stdout)
     return result
 

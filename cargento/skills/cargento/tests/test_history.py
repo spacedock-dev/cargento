@@ -1202,7 +1202,9 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
     # Six directories: repos/recce/recce-cloud-infra/.claude/worktrees/
     # drc-3976-finish, encoded the way Claude encodes one, under the fake home
     # `make_config` builds. A real measured value, not an invented one.
-    ENCODED = "-home-cargento-test-repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
+    ENCODED = (
+        "-nonexistent-cargento-test-repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
+    )
     PUBLISHED = "repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
     BOUNDED = "3976-finish"
 
@@ -1481,7 +1483,7 @@ class DiagnoseReadsAndNeverWritesTest(HistoryStoreTestCase):
         env = isolated_environment(self.state_home, home.name)
         seed_claude_transcript(
             Path(env["CLAUDE_CONFIG_DIR"]) / "projects",
-            "-home-cargento-test-repos-recce-cargento",
+            "-nonexistent-cargento-test-repos-recce-cargento",
             when=time.time(),
         )
         return env

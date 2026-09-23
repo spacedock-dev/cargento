@@ -184,9 +184,14 @@ python3 scripts/bump_version.py --current   # version-field parity across all ow
 git diff "$(git merge-base origin/main HEAD)"..HEAD \
   -- '*plugin.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 coverage erase
-coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
-coverage run -a -m unittest discover -s scripts/tests -t scripts/tests
+python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
+python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
+coverage combine
 coverage report   # enforces the fail_under threshold from pyproject.toml
+# scripts/run_tests.py is the gate's own runner: the same discovery, fixtures and
+# verdict as `python3 -m unittest discover`, spread over every core, with per-worker
+# coverage files that `combine` merges. `-j N` caps the workers. Plain
+# `unittest discover` still works and reaches the same verdict, serially.
 # `test_capture_terminal_identity` and `test_capture_focus_raise` exercise AppleScript
 # against Terminal.app, and this suite now sends nothing. It used to: measured on a macOS desk with Terminal
 # open, `test_capture_terminal_identity` sent 91 `tell application "Terminal"`
@@ -245,7 +250,9 @@ produced errors that look like regressions and are not:
 
 Run the full suite **once**, and confirm any failure in those modules by running that module alone
 before believing it. Report both results rather than the convenient one. A load average above about
-10 makes this near-certain.
+10 makes this near-certain. `scripts/run_tests.py` starts one worker per core by default, so a second
+worktree's suite running beside it oversubscribes the machine at once: give each `-j` a share of the
+cores rather than both the default.
 
 **Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
 and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
@@ -347,7 +354,7 @@ choose. Nobody asked for twelve hours; they asked for the work.
 
 ## Quality Gate
 
-Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on Ubuntu, macOS and Windows. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
+Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and Windows (Ubuntu is already covered by the two jobs before it). Every job runs the suite through `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
 **The required context always reports; its constituent jobs may not run.** A `changes` job decides
 whether the diff contains anything the gate can measure, and the five measurable jobs are gated on
