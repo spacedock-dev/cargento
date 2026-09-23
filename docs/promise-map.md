@@ -32,8 +32,8 @@ Four steps, and only the first two are required.
    harness it finds on the machine regardless of which one launched it. No account, no cloud
    service, no repository token. The server binds IPv4 loopback and nothing else.
 3. Read the first screen. Sessions separates active work from recent history and gives each active
-   session the same four columns: where it is, what it is doing now, what it does next, and whether
-   it is blocked. Projects, one click away, groups the sessions by the label their harness
+   session its goal beside what it is doing now, plus where it is, what it does next, and whether
+   it is blocked. A recorded departure brings a session forward without counting it as active. Projects, one click away, groups the sessions by the label their harness
    publishes, with active projects first.
 4. Optionally connect two things, both one-time and both documented in
    [HOW_TO_USE.md](../HOW_TO_USE.md): the lifecycle hooks that let a blocked session raise a
@@ -61,7 +61,8 @@ each session is, the projects view that groups sessions by the repository they a
 the active-versus-recent split that shipped with the session operations board in 0.19.
 
 Where it stops: a row counts as active only when its harness published evidence that it is. A
-recent observation cannot prove that a harness is still open, so history keeps identity and scope
+recorded departure may bring an idle session into the first group without adding to the active
+figure. A recent observation cannot prove that a harness is still open, so history keeps identity and scope
 and makes no claim about live state. A harness with no local session data shows as discovered but
 disabled rather than silently missing.
 
@@ -69,7 +70,9 @@ disabled rather than silently missing.
 
 **We promise:** for each live session, what it is doing now, what it plans next, how far into the
 current turn it is, and an estimate of when that turn ends. It tells you when that changes instead
-of making you poll.
+of making you poll. The first screen sets your goal or a permitted prompt beside current activity
+and brings recorded departures forward; the session page offers a reading and a way back into the
+session, without steering it for you.
 Claude Code and Codex hooks also report matched destructive command shapes; a match does not
 prove success. Cargento saves a stage you choose for a Spacedock workflow and alerts once when
 it observes an entity enter that stage; gaps and unavailable sources are stated, and a

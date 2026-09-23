@@ -999,7 +999,7 @@ observation window from reading as a list of open harness processes.
 
 The body makes the time boundary visible. Active now contains only exact sessions with active
 evidence (DEC-20 adds rows with drift on record; see the 2026-09-23 amendment at the end of this
-section) and gives each one stable WHERE, NOW, NEXT, and BLOCKED columns. WHERE is the project
+section) and gives each one stable WHERE, GOAL, NOW, NEXT, and BLOCKED columns. WHERE is the project
 display label and explicitly withholds exact location. NOW prefers an in-progress source task,
 then bounded state detail. NEXT uses a pending source task or names that no pending step was
 published. BLOCKED distinguishes a reported block, a source-backed no-block reading, and a harness
@@ -1016,9 +1016,9 @@ ID so equal IDs from different harnesses cannot select the wrong row.
 
 The 320-pixel layout changes form instead of squeezing the table. The fleet strip becomes a
 compact two-by-two summary. Each active session becomes a nearly full-width card with identity
-across the top and WHERE, NOW, NEXT, and BLOCKED in a two-by-two fact grid. Recent history keeps
-its activity and observed outcome beside identity and scope. Labels that would repeat desktop
-column headers appear inside cards only at responsive widths. This preserves scan order without a
+across the top, WHERE across the card, then GOAL beside NOW and NEXT beside BLOCKED. Recent history keeps
+its goal, activity and observed outcome beside identity and scope. Labels that would repeat desktop
+column headers appear inside cards only at responsive widths, except the goal source, which stays visible. This preserves scan order without a
 page-level horizontal viewport.
 
 Projects follows the same hierarchy one level up. It separates active projects from recently
@@ -1059,14 +1059,17 @@ sessions, so a summary derived from what came back would report an enabled bridg
 capability that is on is operational content, so its section renders expanded and outside the
 disclosure rather than collapsed with the rest.
 
-Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home). The entry point is built (DRC-4636); the goal slot and the drift
-sort are not yet built. The entry point moves back to Sessions, the reverse of
+Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home). The entry point, goal slot and drift sort are built (DRC-4636, DRC-4637, DRC-4641). The entry point moves back to Sessions, the reverse of
 the v2 move above. The v2 reason was that a reader first finds the project and then its sessions. The
 drift journey reverses it, because drift belongs to one session, and the project level caps members
 and draws none for an idle-only project, which is where unattended drift lands. Each active row puts
 the reader's goal beside NOW (DRC-4637). A session with drift on record joins Active now whatever its
 state, after blocked and before working, and is not counted in the `Active now` figure, which keeps
-the definition above (DRC-4641). Projects stays one click away with the member order the 2026-09-23
+the definition above (DRC-4641). Each row labels a typed goal as your words, or a permitted Claude
+Code or Codex prompt as your latest prompt; other harnesses supply only typed words. A goal slot
+without typed words opens the same session composer with the cursor in the goal field. The store-off
+slot has no link. The once-per-screen Goal sources disclosure explains that limit and the permitted
+prompt sources. Projects stays one click away with the member order the 2026-09-23
 amendment above gave it.
 
 The first screen carries values before prose (DRC-4636). The first thing read is the fleet strip,

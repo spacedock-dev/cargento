@@ -362,8 +362,17 @@ raise does not bring the window forward. Where either is missing the section say
 sends anything to the session. The Intent log carries the same raises a line at a time, and keeps
 them after the session leaves the board.
 
-Reading is asked for, never running. Nothing evaluates on a cadence, so there is no drift
-indicator. With nothing typed the block says there is nothing to read against; with the observer
+Sessions labels your typed goal beside NOW, or shows your latest prompt from Claude Code or
+Codex when its source permits that; other harnesses show typed words only. A slot without a typed
+goal opens the session page with the cursor in its goal field. Showing a prompt does not save it.
+A recorded departure adds a Drift mark with its age and moves the session after blocked sessions
+and before working ones, even if it is idle; it does not add to the Active now figure. Earlier
+revisions say the words have moved, and legacy readings without a reading time say the age is
+unknown. Consistent readings add no mark or rank, and there is no drift total. With annotations
+off the slot has no link and there is no Drift mark; the screen explains that once.
+
+Nothing here evaluates on a cadence. Drift marks show departures already on record, from a
+reader-requested reading or the optional unasked lane. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control, `Check for drift`. When it cannot run it stays on the page, refuses the press, and
 names one next step. The accepted case review enables that control; the evidence stays readable
