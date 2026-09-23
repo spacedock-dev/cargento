@@ -964,9 +964,9 @@ The bounds, all of which hold together:
 - Visible spend. Model metadata records whether a call ran or was refused. Provider token usage
   is not measured by this prototype; it must not present a zero cost as if it had measured one.
 - Off switch. `--no-observer-model` disables calls for a run regardless of consent and overrides
-  `--observer-model`. `--no-harness-usage` is an alias for that rollback. Both default to disabled
-  without the opt-in flag. Windows daemon respawn currently omits the opt-in flag, so the model
-  remains disabled there. The off switch refuses the unasked lane as well: with it set,
+  `--observer-model`. `--no-harness-usage` is an alias for that rollback. The explicit off state
+  survives daemon respawn and is distinct from a default run without the goal-summary flag.
+  The off switch refuses the unasked lane as well: with it set,
   `--unasked-readings` attaches no lane, starts no Codex reading, and the page reports the lane off.
 
 A violation of any of those is a security bug: an invocation with the setting off or unanswered, an
@@ -978,41 +978,42 @@ its own retention, and what it does with a prompt is outside Cargento's control.
 trust the operator already extends to that harness by running it, but it is a real transfer and it is
 stated here rather than implied.
 
-### Ruled 2026-09-23 and not yet built: a reading without the startup flag
+### Reader-requested permission and rolling budget
 
-[DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask) changes two
-of the bounds above for reader-requested readings and adds a caller. The first two take effect with
-DRC-4640 and the caller with DRC-4650; until then the bounds above describe the build. The off switch
-is already a bound above and already holds.
+[DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask) replaces
+the startup flag for reader-requested readings (DRC-4640). The first "Check for drift" presents the
+reading disclosure and "Allow and check". The answer lives under `CARGENTO_HOME` (by default
+`~/.cargento`) in `cargento-reading-permission.sqlite3`, shared by tabs and respawned daemons.
+"Turn off readings" and `--forget` revoke it. Goal summaries keep `--observer-model` and their
+separate browser consent. The explicit model off switch overrides both permissions.
 
-- Opt-in becomes the first press. The first "Check for drift" shows the reading disclosure with an
-  explicit allow, and that answer is DEC-14's opt-in. It is kept in `~/.cargento` so every tab and a
-  respawned daemon agree, `--forget` clears it, and the session page carries the off switch. Goal
-  summaries keep `--observer-model` and their own consent.
-- A daily cap replaces the flag as the bound on a local process. The flag was one of three things
-  keeping `POST /api/reading` narrow (see [the reading paragraph](#known-and-accepted-1)), and a
-  remembered answer can be granted by any local process that reaches the port, so a rolling
-  twenty-four hour cap on reader-requested readings takes its place.
-- The off switch still covers everything. `--no-observer-model` and `--no-harness-usage` refuse
-  every model call, the unasked lane included. Unlike the rest of this list, that part is already
-  built (DRC-4649).
-- A second caller. A reading runs on the session's own harness, so a Claude Code session is read by
-  Claude Code and its evidence goes to Anthropic, not OpenAI. The fallback to the other harness is
-  named before the press. The Claude Code producer needs its own entry beside Observer model calls
-  below before it ships.
+The same SQLite store holds only that answer and model-attempt timestamps, never session ids or
+content. A transaction reserves one of twelve reader-requested attempts in a rolling twenty-four
+hours before the model starts. Eligibility checks and a known missing CLI spend nothing; a failed
+or timed-out attempt keeps its reservation because the provider may already have spent capacity.
+Concurrent processes share the transaction bound. A denied or corrupt store fails closed. The page
+reports the cap and the earliest time another attempt can be admitted. Turning permission off,
+back on, or forgetting it does not erase unexpired spend timestamps or refill the budget.
+
+The store is created owner-only; SQLite is required for this permission path. Deleting the file
+manually can reset its budget, as can any other modification by the owning local user. The cap
+bounds requests through the HTTP route, not a hostile owner editing their own files.
+
+The second producer in DEC-21 remains unbuilt (DRC-4650). Readings still use Codex/OpenAI for every
+session harness. A Claude Code producer needs its own caller entry and fresh abstention check
+before it is offered.
 
 ### Observer model calls
 
+Goal summaries are off unless `--observer-model` was supplied and their disclosure accepted.
 `observer.CodexGoalModel` sends a generated prompt to the installed Codex CLI, which uses its
 own authentication to reach OpenAI. `reading.CodexReadingModel` is the second caller and goes
 through the same `observer.codex_exec`, so the two share one set of sandbox flags rather than two
 that could drift. These are the paths that can send session content off the
 machine. A reading is produced by a codex subprocess whatever harness the session runs on, so a
 reading of a Claude session spends the operator's Codex capacity and sends that session's evidence
-to OpenAI. A reader-requested reading is off unless `--observer-model` was supplied, and an unasked
-one unless `--unasked-readings` was. `--no-observer-model` always wins, over both.
-DEC-21 changes the reader-requested half of that sentence, and the first one, when DRC-4650 and
-DRC-4640 ship; see the ruled section above.
+to OpenAI. A reader-requested reading requires the remembered answer and rolling budget above; an
+unasked reading requires `--unasked-readings`. `--no-observer-model` always wins over both.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
 focused session and up to three active children whose assignment is unavailable.
@@ -1021,7 +1022,8 @@ those words as well as the session's evidence, which is why it carries a disclos
 rather than reusing the observer's. Merely opening a panel does not call the model, and neither
 does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
 server also requires `observer_model=1` on either request, following the quota consent pattern;
-the page must send it only after presenting the observer disclosure and storing its answer.
+the page sends it only on an explicit request. A reading additionally requires its durable
+permission; summaries require their own browser-stored answer.
 Only loopback peers can authorize a model call, and cross-origin Fetch Metadata is refused.
 The response publishes the disclosure and byte cap. The backend does not treat `usage=1` as
 observer consent. Console presents that disclosure for an exact session and stores the answer separately from
@@ -2045,11 +2047,10 @@ A reading spends the reader's own capacity, and any local process that can reach
 it. `POST /api/reading` carries no capability token. The precedent is the quota fetch rather than the
 event ingress: the harm is a side effect on the operator's Codex balance rather than a forged claim
 about a session, and what holds it is the same-origin check and the refusal of a document
-navigation, neither of which a local process sends headers for. Three things keep it narrow. The
-route answers 503 unless `--observer-model` was supplied, so a default run spends nothing. One
-reading per session may be in flight, so a loop cannot multiply a single session's cost. When
-DEC-21 ships, a remembered first-press answer replaces the flag and a daily cap takes over its part
-here, as Light harness usage records. And the
+navigation, neither of which a local process sends headers for. A local process can grant the
+remembered answer too. The rolling cap of twelve attempts across tabs and processes bounds that
+exposure. One reading per session may be in flight, and the explicit model off switch refuses all
+calls. The
 route reads nothing back to the caller beyond whether a reading was produced: an unknown session is
 the same 200 as any other, never a 404, so it is not an oracle for which sessions the board holds.
 

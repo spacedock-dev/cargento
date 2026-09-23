@@ -1507,13 +1507,13 @@ const NEXT_READING_NO_WORDS =
    context, which `nextCockpitLoadContext` fetches again on every new payload
    revision, so the step is the page's own and asks nothing of the reader. */
 const NEXT_READING_MODEL_UNREAD =
-  "Observer model availability has not been read, so no reading can be offered. " +
+  "Reading availability has not been read, so no reading can be offered. " +
   "Cargento asks again with the next update.";
 const NEXT_READING_PENDING =
   "Checking for drift. This can take up to a minute; the rest of the page stays usable.";
 const NEXT_READING_MODEL_OFF =
-  "Observer model is disabled for this run, so no reading can be offered. " +
-  "Start with --observer-model to allow one; --no-observer-model refuses it.";
+  "Model calls are off for this run. Restart without --no-observer-model or its alias " +
+  "--no-harness-usage to allow a reading.";
 /* A build constant, not a run setting, so no flag or press on this page lifts
    it and the sentence names none: it says what it waits on. */
 const NEXT_READING_UNAUTHORIZED =
@@ -1909,9 +1909,7 @@ function nextCockpitReadingStates(annotation, model){
        who is being refused can see the one step that would permit it. */
     return NEXT_READING_NO_WORDS;
   }
-  if(!model) return NEXT_READING_MODEL_UNREAD;
-  if(model.enabled !== true) return NEXT_READING_MODEL_OFF;
-  return "";
+  return nextReadingPolicyReason(nextData && nextData.reading);
 }
 
 /* Mono is for words a person typed. When the revision a reading read is no
@@ -2015,11 +2013,11 @@ function nextCockpitDepartures(shape, source, session){
      nowhere else, and "raised nothing" is only worth the evidence it read. */
   const onRecord = (reading.count || 0) + laneRows > 0;
   if(!onRecord && !shape && !(nextData && nextData.unasked === true)) return "";
-  const limit = onRecord ? nextDepartureReentryLimit(session) : {resume: "", raise: ""};
+  const limit = nextSessionRaiseControl(session) ? nextDepartureReentryLimit(session) : {raise:""};
   return '<section class="next-cockpit-departures"><header>' +
     '<h2>DEPARTURES RAISED TO YOU</h2>' +
     `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p></header>` +
-    limit.resume + reading.html +
+    reading.html +
     nextCockpitUnaskedPart(session) + limit.raise +
     nextCockpitDeliveryPart(session, Boolean(lane)) +
     nextCockpitDepartureCounts(reading.count, lane) +
@@ -2059,11 +2057,11 @@ function nextCockpitUnaskedPart(session){
        paragraphs, so neither can be read as qualifying the other. */
     const rows = Array.isArray(session && session.departures) ? session.departures : [];
     const standing = rows.length ? nextUnaskedDepartureBody(session) : "";
+    const why = nextData && nextData.unasked_off_reason === "run-disabled"
+      ? "The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them."
+      : "Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.";
     return '<div class="next-cockpit-departure-part">' + label +
-      '<p class="next-cockpit-reading-why" data-absence="run-config">Nothing watches for a ' +
-      'departure on its own. ' +
-      'Start with --unasked-readings to have Cargento check a session against what you ' +
-      'asked for while you are away.</p>' +
+      `<p class="next-cockpit-reading-why" data-absence="run-config">${esc(why)}</p>` +
       (standing
         ? '<p class="next-cockpit-reading-why" data-absence="run-config">' +
           `${esc(NEXT_UNASKED_LANE_OFF_RECORD)}</p>` +
@@ -2276,6 +2274,18 @@ function nextCockpitReadingRefusal(annotation, model){
 // already does two hundred lines below.
 const NEXT_READING_REFUSED_ID = "next-cockpit-reading-refused";
 
+function nextReadingPolicyReason(policy){
+  if(!policy) return NEXT_READING_MODEL_UNREAD;
+  if(policy.reason === "run-disabled") return NEXT_READING_MODEL_OFF;
+  if(policy.reason === "store-unavailable") return "Reading permission or its daily budget could not be read or saved. Restore access to the Cargento store before checking.";
+  if(policy.reason === "daily-cap"){
+    const at = nextNumber(policy.retry_at);
+    return at == null ? "The daily reading limit is reached. Wait for the next update."
+      : `The daily reading limit is reached. Try again after ${new Date(at * 1000).toLocaleString()}.`;
+  }
+  return "";
+}
+
 function nextCockpitReadingControl(session, annotation, model, primary = true){
   const reason = nextCockpitReadingRefusal(annotation, model);
   const key = sessKey(session);
@@ -2291,6 +2301,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     request = undefined;
   }
   const pending = request && request.pending;
+  const confirming = request && request.consent && !(nextData && nextData.reading && nextData.reading.consent);
   /* `authorized` is no longer a second term here: an unauthorized check is
      one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
      already carries it. */
@@ -2317,12 +2328,15 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      under a 900px first screen, measured on a live board at 1440 wide. */
   return '<div class="next-cockpit-reading-ask">' + disclosure +
     `<button type="button" class="next-action${primary ? " next-action--primary" : ""}" ` +
-    'data-next-cockpit-action="reading-ask" ' +
+    `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
-    `${pending ? "Checking for drift…" : "Check for drift"}</button></div>` +
-    (request && !request.refusal
+    `${pending ? "Checking for drift…" : confirming ? "Allow and check" : "Check for drift"}</button>` +
+    (nextData && nextData.reading && nextData.reading.consent
+      ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
+    '</div>' +
+    (request && request.message && !request.refusal
       ? '<p class="next-cockpit-reading-why" role="status"' +
         `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
         `${esc(request.message)}</p>` : "") +
@@ -2764,14 +2778,10 @@ function nextCockpitDriftBlock(group, session, direction, primary){
    and the route refuses a body without it. Nothing on render, poll,
    reconnect, resume, focus change or revision save carries it.
 
-   `observer_model: 1` is the route's required token and NOT a consent claim.
-   An earlier version of this comment said it was "the same per-press
-   disclosure echo /api/project-context requires"; it is not the same. On
-   that route `next-render.js` withholds the literal unless the reader has
-   answered a disclosure, so it MEANS they consented. Here it is a constant.
-   What stands in for consent is the press itself, under a disclosure the
-   control renders above the button. */
-async function nextCockpitAskForReading(session, model){
+   `observer_model: 1` preserves the route's explicit-request guard. The
+   separate allow field records a first-press answer; the server checks its
+   durable permission and budget again at the model seam. */
+async function nextCockpitAskForReading(session, model, allow = false){
   const key = sessKey(session);
   if(nextCockpitReadingRequests.get(key)?.pending) return;
   /* This press arrives from states the browser used to swallow, and an
@@ -2781,6 +2791,11 @@ async function nextCockpitAskForReading(session, model){
   const refusal = nextCockpitReadingRefusal(nextCockpitAnnotation(session), model);
   if(refusal){
     nextCockpitReadingRequests.set(key, {pending: false, message: refusal, refusal: true});
+    renderNext();
+    return;
+  }
+  if(!(nextData && nextData.reading && nextData.reading.consent) && !allow){
+    nextCockpitReadingRequests.set(key, {consent:true});
     renderNext();
     return;
   }
@@ -2797,18 +2812,26 @@ async function nextCockpitAskForReading(session, model){
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid,
-        press: true, observer_model: 1}),
+        press: true, observer_model: 1, ...(allow ? {allow:true} : {})}),
     });
     if(response && response.status === 409){
       request.message = "A reading is already in progress for this session. " +
         "Wait for it to finish; this press did not start another.";
       return;
     }
+    const answer = response ? await response.json() : null;
+    if(answer && answer.reading){
+      nextData.reading = answer.reading;
+      request.message = nextReadingPolicyReason(answer.reading);
+      request.refusal = Boolean(request.message);
+      request.consent = answer.reading.reason === "consent-required";
+      return;
+    }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
-    const answer = await response.json();
     if(!answer || answer.ok !== true || typeof answer.produced !== "boolean"){
       throw new Error("reading not confirmed");
     }
+    if(allow && nextData.reading) nextData.reading.consent = true;
     request.message = answer.produced ? "Reading received." : "No new reading was produced.";
     await refreshNext();
   }catch(_error){
@@ -2819,6 +2842,23 @@ async function nextCockpitAskForReading(session, model){
     request.pending = false;
     renderNext();
   }
+}
+
+async function nextCockpitReadingOff(){
+  try{
+    const response = await fetch("/api/reading", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({consent:"off",press:true,observer_model:1})});
+    const answer = await response.json();
+    if(!response.ok || !answer || answer.ok !== true || !answer.reading) throw new Error("permission not saved");
+    nextData.reading = answer.reading;
+    for(const [key, request] of nextCockpitReadingRequests){
+      if(!request.pending) nextCockpitReadingRequests.delete(key);
+    }
+    await refreshNext();
+  }catch(_error){
+    const session = nextSessionFind(nextRoute.project,nextRoute.harness,nextRoute.session);
+    if(session) nextCockpitReadingRequests.set(sessKey(session), {message:"Could not confirm readings are off. Try turning them off again."});
+  }finally{ renderNext(); }
 }
 
 async function nextCockpitConflictSettle(session, through){
@@ -4152,11 +4192,16 @@ document.addEventListener("click", event => {
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
     return;
   }
-  if(action === "reading-ask"){
+  if(action === "reading-off"){
+    event.preventDefault();
+    nextCockpitReadingOff();
+    return;
+  }
+  if(action === "reading-ask" || action === "reading-allow"){
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;
     event.preventDefault();
-    nextCockpitAskForReading(session, nextCockpitObserverModel(group));
+    nextCockpitAskForReading(session, nextCockpitObserverModel(group), action === "reading-allow");
     return;
   }
   if(action === "conflict-settle" || action === "conflict-retype"){

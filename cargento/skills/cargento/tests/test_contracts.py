@@ -1349,6 +1349,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # collectors and whichever one is added next. `records` is a leaf, so
         # this stays inward.
         "cargento_runtime.aggregate": {
+            "cargento_runtime.reading_policy",
             "cargento_runtime.tripwires",
             "cargento_runtime.annotations",
             "cargento_runtime.collectors",
@@ -1407,6 +1408,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         },
         # The CLI is the assembly point, so it may import any runtime module.
         "cargento_runtime.cli": {
+            "cargento_runtime.reading_policy",
             "cargento_runtime.aggregate",
             # `--forget` sweeps the discard records this store keeps
             # (DRC-4565): a record that Cargento deleted something is the
@@ -1631,6 +1633,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
+        # A durable permission/budget leaf: config names its store, io owns
+        # optional SQLite loading. It reaches no session or model producer.
+        "cargento_runtime.reading_policy": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+        },
         "cargento_runtime.reading": {
             "cargento_runtime.config",
             "cargento_runtime.observer",
@@ -1702,6 +1710,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
+            "cargento_runtime.reading_policy",
             "cargento_runtime.tripwires",
             "cargento_runtime.annotations",
             "cargento_runtime.aggregate",

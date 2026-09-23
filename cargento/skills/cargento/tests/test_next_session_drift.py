@@ -397,6 +397,25 @@ __dashboard.sessions[0].annotation_revision_count = 0;
                 self.assertIn("DRIFT", text)
                 self.assertIn("Check for drift", text)
 
+    def test_goal_summary_model_state_does_not_disable_a_consented_reading(self) -> None:
+        for model in (None, {"enabled": False}):
+            with self.subTest(observer_model=model):
+                html = self.page(
+                    f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
+                    "__dashboard.reading = {consent:true,reason:''};\n"
+                    "__fetchImpl = async url => ({ok:true,json:async()=> "
+                    "String(url).startsWith('/api/project-context') ? "
+                    "{semantic:__semantic,child_assignments:[],observers:[],observer_model:"
+                    + json.dumps(model)
+                    + "} : __dashboard});"
+                )
+                control = re.search(
+                    r'<button\b[^>]*data-next-cockpit-action="reading-ask"[^>]*>', html
+                )
+                self.assertIsNotNone(control)
+                assert control is not None
+                self.assertNotIn('aria-disabled="true"', control.group(0))
+
     def test_a_refused_check_stays_on_the_page_and_names_one_next_step(self) -> None:
         cases = {
             "no goal": (
@@ -407,16 +426,13 @@ __dashboard.sessions[0].annotation_revision_count = 0;
 """,
                 "Save a goal above to check for drift.",
             ),
-            "model unread": ("", "Cargento asks again with the next update."),
-            "model off": (
-                """
-__fetchImpl = async url => ({ok: true, json: async () =>
-  String(url).startsWith("/api/project-context")
-    ? {semantic: __semantic, child_assignments: [], observers: [],
-       observer_model: {enabled: false}}
-    : __dashboard});
-""",
-                "Start with --observer-model to allow one; --no-observer-model refuses it.",
+            "reading permission unread": (
+                "__dashboard.reading = null;",
+                "Cargento asks again with the next update.",
+            ),
+            "explicit model off": (
+                '__dashboard.reading = {consent:false,reason:"run-disabled"};',
+                "Restart without --no-observer-model or its alias --no-harness-usage to allow a reading.",
             ),
             # The server's own sentences, as the payload publishes them: the discard refusal is
             # `annotations.DISCARD_SENTENCES["unreadable"]`, which says why and names no step, so
@@ -702,7 +718,8 @@ const __h = "pi", __s = "focus-1";
         ]
         self.assertNotIn("data-next-copy-command", drift)
         why = "Pi publishes no re-entry command, so there is none to copy."
-        self.assertEqual(1, drift.count(why), drift)
+        self.assertNotIn(why, drift)
+        self.assertEqual(1, html.count(why), html)
 
     def test_nothing_beside_a_departure_writes_to_the_session(self) -> None:
         html = self.page("""

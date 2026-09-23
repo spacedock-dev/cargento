@@ -695,9 +695,9 @@ amended when DRC-4641 ships the mark, not before, because it describes the shipp
 
 ## DEC-21: a reading works the first time you ask
 
-Decided 2026-09-23 (DRC-4634). Item 3 is built (DRC-4649). The rest is built by DRC-4640 and
-DRC-4650, and until they ship, readings need `--observer-model` exactly as [the light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
-say today.
+Decided 2026-09-23 (DRC-4634). Items 1 and 2 are built by DRC-4640; item 3 by DRC-4649.
+Item 4 remains unbuilt (DRC-4650). [The light harness usage bounds](../SECURITY.md#light-harness-usage-asking-a-harness-a-bounded-question)
+record the current permission and producer boundaries.
 
 On a default run the reading control tells the reader to restart the server with a flag. The press
 already carries a disclosure and is already the consent a browser can give, so the startup flag was
@@ -724,8 +724,10 @@ allowed only with something that does that job instead.
 5. The unasked check stays off by default for this milestone.
 
 This amends DEC-17's 2026-09-14 amendment, which keeps the `--observer-model` opt-in on each
-request. When DRC-4640 ships, the press, the remembered answer and the daily cap together are that
-opt-in.
+request. The press, remembered answer and daily cap now supply that opt-in. The cap is twelve
+actual or reserved attempts per rolling twenty-four hours, admitted atomically before launch.
+Off/on and `--forget` revoke consent without erasing unexpired spend; otherwise either would be
+a way to refill the budget. A known missing Codex CLI is refused before admission.
 
 ### Where the unasked default stands
 

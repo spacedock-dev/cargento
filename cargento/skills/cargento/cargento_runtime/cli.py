@@ -22,6 +22,7 @@ from cargento_runtime import (
     lifecycle,
     notifications,
     observation,
+    reading_policy,
     unasked,
 )
 from cargento_runtime import annotations as annotation_store
@@ -432,6 +433,7 @@ def build_runtime(
         tripwires_enabled=not args.no_tripwires,
         usage_fetch_enabled=not args.no_usage,
         observer_model_enabled=args.observer_model and not args.no_observer_model,
+        model_calls_disabled=args.no_observer_model,
         git_probe_enabled=not args.no_git,
         focus_enabled=not args.no_focus,
         irreversible_enabled=not args.no_irreversible and not args.no_events,
@@ -689,7 +691,14 @@ def run_one_shot(
             }[swept],
             print,
         )
-        return 0
+        permission_forgotten = reading_policy.forget(config)
+        runtime_io.diag(
+            "Cargento: forgot reading permission; unexpired spend timestamps remain"
+            if permission_forgotten
+            else "Cargento: could not forget reading permission; the store is unavailable",
+            print,
+        )
+        return 0 if permission_forgotten else 1
     if args.stop:
         message, code = lifecycle.stop_instance(config, args.port)
         runtime_io.diag(message, print)

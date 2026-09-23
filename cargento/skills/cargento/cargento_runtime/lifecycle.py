@@ -623,6 +623,7 @@ def _opt_out_argv(args: argparse.Namespace) -> list[str]:
     flags = [
         ("--no-spacedock", args.no_spacedock),
         ("--no-usage", args.no_usage),
+        ("--no-observer-model", getattr(args, "no_observer_model", False)),
         ("--no-git", args.no_git),
         ("--no-focus", args.no_focus),
         ("--no-events", args.no_events),

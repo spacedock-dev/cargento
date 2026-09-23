@@ -409,7 +409,14 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
-`--forget` deletes the local history store and the session-end store, removes the records of any
+To check for drift, save a goal on the session page and press **Check for drift**, then read the
+disclosure and choose **Allow and check**. The permission is remembered across tabs and restarts.
+Use **Turn off readings** on a session page to revoke it. Checks spend your Codex capacity, including
+when the session belongs to another harness. Twelve attempts are allowed in a rolling twenty-four
+hours; a refused check names when capacity under that limit becomes available again. Goal summaries
+in Console still require their separate startup flag and consent.
+
+`--forget` also clears reading permission without resetting its rolling spend budget. It deletes the local history store and the session-end store, removes the records of any
 session you discarded everything for, and exits. It belongs with `--status` and `--stop` rather
 than in the table below, because what it does is not undone by running the next command without it:
 

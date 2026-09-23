@@ -19,6 +19,7 @@ from . import (
     quota,
     reach,
     reading,
+    reading_policy,
     records,
     sessions,
     tripwires,
@@ -910,6 +911,7 @@ class Application:
                         # button that sends their words to OpenAI on their own
                         # Codex capacity.
                         "reading_disclosure": reading.DISCLOSURE,
+                        "reading": reading_policy.status(config, now=now),
                         # The discard control's sentences, published for
                         # `reading_disclosure`'s reason and one more: the
                         # success sentence claims something about the
@@ -1076,6 +1078,9 @@ class Application:
         # draws nothing rather than a panel that never fills.
         return {
             **({"unasked": True} if self.unasked_lane is not None else {}),
+            "unasked_off_reason": "run-disabled"
+            if self.config.model_calls_disabled
+            else "not-requested",
             **(
                 {"intent_revision": self.intent_revision(entries, stored, now=now)}
                 if self.config.annotations_enabled

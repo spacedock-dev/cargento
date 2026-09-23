@@ -57,6 +57,7 @@ class RuntimeConfig:
     tripwires_enabled: bool
     usage_fetch_enabled: bool
     observer_model_enabled: bool
+    model_calls_disabled: bool
     # Whether the end-of-session git probe runs at all. `--no-git` is the off
     # switch [DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe) made part of its
     # ruling, and off means no git command runs and
@@ -590,6 +591,7 @@ def build_runtime_config(
     tripwires_enabled: bool = True,
     usage_fetch_enabled: bool = True,
     observer_model_enabled: bool = False,
+    model_calls_disabled: bool = False,
     git_probe_enabled: bool = True,
     focus_enabled: bool = True,
     irreversible_enabled: bool = True,
@@ -645,6 +647,7 @@ def build_runtime_config(
         tripwires_enabled=tripwires_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
         observer_model_enabled=observer_model_enabled,
+        model_calls_disabled=model_calls_disabled,
         git_probe_enabled=git_probe_enabled,
         focus_enabled=focus_enabled,
         irreversible_enabled=irreversible_enabled,

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -279,7 +280,8 @@ DISCLOSURE = (
     "A reading sends the goal you typed, and a bounded list of entries from the "
     "observed record, to a codex subprocess. Codex uses its own authentication to "
     "reach OpenAI, so this is one of the paths that sends session content off this "
-    "machine. Your expected output is sent only on a harness that publishes work "
+    "machine and spends your Codex capacity. Your expected output is sent only on a "
+    "harness that publishes work "
     "evidence, and on no other. The reading is a model's account of the evidence it "
     "was given, never a verification that the work was done."
 )
@@ -1260,3 +1262,8 @@ class CodexReadingModel:
             runner=self.runner,
             binary_resolver=self.binary_resolver,
         )
+
+    def available(self) -> bool:
+        """A missing executable is known before reserving a reading attempt."""
+        binary = self.binary_resolver("codex")
+        return bool(binary and os.path.isabs(binary))
