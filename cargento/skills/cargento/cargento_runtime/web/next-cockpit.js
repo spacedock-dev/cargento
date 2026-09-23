@@ -4445,16 +4445,18 @@ function nextPromptSourceLine(annotation){
 
 function nextPromptAdoptControls(session){
   if(!(nextData && nextData.annotate === true)) return "";
-  return ["latest-prompt", "first-prompt"].map(source => {
+  const choices = ["latest-prompt", "first-prompt"].map(source => {
     const candidate = nextPromptCandidate(session, source);
     if(!candidate) return "";
     if(candidate.at == null) return '<small class="next-cockpit-held-cue">Prompt time unavailable; type a goal instead.</small>';
     const which = source === "first-prompt" ? "first" : "latest";
     const clipped = candidate.text.endsWith("…") ? " Shown excerpt only." : "";
-    return `<details class="next-cockpit-held-adopt"><summary>Your ${which} prompt</summary>` +
+    return `<details class="next-cockpit-held-adopt"${nextCockpitDisclosureAttr("adopt:" + source)}><summary>Your ${which} prompt</summary>` +
       `<p>${esc(candidate.text)}${clipped}</p>` +
       `<button type="button" data-next-cockpit-action="prompt-adopt" data-arg="${source}">Use ${which} prompt without checking</button></details>`;
   }).join("");
+  return choices ? `<details class="next-cockpit-prompt-choices"${nextCockpitDisclosureAttr("adopt:choices")}><summary>Use a prompt</summary>` +
+    choices + '</details>' : "";
 }
 
 async function nextAdoptPrompt(session, source){

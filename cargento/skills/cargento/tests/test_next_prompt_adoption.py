@@ -17,6 +17,28 @@ console.log(JSON.stringify(nextCockpitConflictCandidates({at:30,goal_source:'fir
 """)
         self.assertEqual(1, out)
 
+    def test_prompt_disclosures_survive_redraw_without_opening_another_session(self) -> None:
+        out = self.run_page("""
+nextData.annotate=true;
+const session={harness:'claude',sid:'one',instruction:{label:'asked',text:'Latest prompt',at:20},first_prompt:'First prompt',first_prompt_at:10};
+nextRoute={view:'session',project:'demo',harness:'claude',session:'one'};
+let nodes=[];
+const mount=()=>{
+ const html=nextPromptAdoptControls(session);
+ nodes=[...html.matchAll(/data-next-cockpit-disclosure="([^"]+)"/g)].map(match=>({
+  open:false,getAttribute(){return match[1];},querySelector(){return {setAttribute(){}};}
+ }));
+};
+__els.app.querySelectorAll=selector=>selector==='[data-next-cockpit-disclosure]'?nodes:[];
+mount();nextCockpitAfterRender();
+for(const node of nodes)node.open=true;
+nextCockpitBeforeRender();mount();nextCockpitAfterRender();
+const restored=nodes.map(node=>node.open);
+nextCockpitBeforeRender();nextRoute.session='two';mount();nextCockpitAfterRender();
+console.log(JSON.stringify({restored,other:nodes.map(node=>node.open)}));
+""")
+        self.assertEqual({"restored": [True, True, True], "other": [False, False, False]}, out)
+
     def test_goalless_check_posts_the_exact_prompt_and_time(self) -> None:
         out = self.run_page("""
 nextData.annotate=true;nextData.reading_check='accepted';
