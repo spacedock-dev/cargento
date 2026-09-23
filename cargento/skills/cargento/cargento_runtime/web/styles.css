@@ -1155,6 +1155,9 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-held-revision{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--rule)}
+.next-cockpit-held-heading{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+.next-cockpit-held-adopt{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.next-cockpit-held-adopt>summary{min-height:44px;align-content:center;cursor:pointer}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}

@@ -87,3 +87,30 @@ console.log(JSON.stringify(posts));
         assert isinstance(out, list)
         self.assertEqual("Build the original parser", out[0]["expected_prompt"])
         self.assertEqual(10, out[0]["expected_prompt_at"])
+
+    def test_revoked_consent_keeps_adoption_through_allow_and_rejects_changed_prompt(self) -> None:
+        out = self.run_page("""
+nextData.annotate=true;nextData.reading_check='accepted';nextData.reading={consent:true,reason:''};
+const session=nextData.sessions[0];session.annotation_goal='';session.annotation_output='';
+session.instruction={label:'asked',text:'Build original parser',at:10};
+const posts=[];
+__fetchImpl=async(url,init)=>{
+ if(!init)return {ok:true,json:async()=>nextData};
+ posts.push(JSON.parse(init.body));
+ return posts.length===1
+  ? {ok:false,status:403,json:async()=>({ok:false,produced:false,reading:{consent:false,reason:'consent-required',used:0,limit:12,retry_at:null}})}
+  : {ok:false,status:422,json:async()=>({ok:false,produced:false,adoption_refused:true})};
+};
+await nextCockpitAskForReading(session,null);
+const confirmation=nextCockpitReadingControl(session,nextCockpitAnnotation(session),null);
+session.instruction={label:'asked',text:'Build changed parser',at:20};
+await nextCockpitAskForReading(session,null,true);
+console.log(JSON.stringify({posts,confirmation,after:nextCockpitReadingControl(session,nextCockpitAnnotation(session),null)}));
+""")
+        assert isinstance(out, dict)
+        self.assertIn("Allow and check", out["confirmation"])
+        self.assertEqual("latest-prompt", out["posts"][1].get("adopt"))
+        self.assertEqual("Build original parser", out["posts"][1].get("expected_prompt"))
+        self.assertEqual(10, out["posts"][1].get("expected_prompt_at"))
+        self.assertIn("The prompt or saved goal changed", out["after"])
+        self.assertNotIn("Reading received", out["after"])

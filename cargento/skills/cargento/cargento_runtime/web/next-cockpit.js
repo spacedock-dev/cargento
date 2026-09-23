@@ -1177,8 +1177,10 @@ function nextCockpitHeldField(session, annotation, spec, cap){
   const why = String(annotation && annotation[whyKey] || "");
   const cue = nextCockpitHeldCue(key);
   return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
+    '<div class="next-cockpit-held-heading">' +
     `<span class="next-cockpit-held-label">${kind === "goal" ? "GOAL" : label}</span>` +
     (kind === "goal" ? nextPromptSourceLine(annotation) + nextPromptAdoptControls(session) : "") +
+    '</div>' +
     `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
     `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
@@ -2813,7 +2815,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
   const confirmation = nextCockpitReadingRequests.get(key);
   const adoption = allow && confirmation && confirmation.consent
     ? confirmation.adoption : nextImplicitAdoption(session);
-  const request = {pending: true, message: NEXT_READING_PENDING};
+  const request = {pending: true, message: NEXT_READING_PENDING, adoption};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
   try{
