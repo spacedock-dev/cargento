@@ -71,8 +71,9 @@ disabled rather than silently missing.
 **We promise:** for each live session, what it is doing now, what it plans next, how far into the
 current turn it is, and an estimate of when that turn ends. It tells you when that changes instead
 of making you poll. The first screen sets your goal or a permitted prompt beside current activity
-and brings recorded departures forward; the session page offers a reading and a way back into the
-session, without steering it for you.
+and brings recorded departures forward. The session page asks once before a reading, remembers
+your answer, and offers an off switch and a way back into the session, without steering it for you.
+Reader-requested readings are capped at twelve attempts per rolling twenty-four hours.
 Claude Code and Codex hooks also report matched destructive command shapes; a match does not
 prove success. Cargento saves a stage you choose for a Spacedock workflow and alerts once when
 it observes an entity enter that stage; gaps and unavailable sources are stated, and a
@@ -115,7 +116,8 @@ is drawn.
 An ETA is an estimate, and it says so.
 
 Your words are yours. The accepted case review enables you to ask for a model reading against
-them when the observer model is on. The reading states the evidence it read and its limits;
+them after you allow it on the session page, unless model calls are off for this run. The reading
+states the evidence it read and its limits;
 the evidence remains readable beside your words without asking for one.
 Demonstrated work results are read on Pi alone, which the work evidence states under itself rather
 than leaving an empty list to read as no work done.
@@ -251,7 +253,8 @@ and why the board can tell a session you discarded from one nobody ever typed ag
 
 Where it stops: nothing reads your words for you at the end. The two axes say what ended and who
 claims it finished, drawn separately because neither implies the other, and the comparison against
-what you asked for is yours to make. You can ask for a model reading when the observer model is on;
+what you asked for is yours to make. You can allow a model reading from the session page unless
+model calls are off for this run;
 the accepted case review enables that control. A reading is an account of the evidence, never
 verification that the work was done. The words are kept under a
 session count rather than a date, so an old enough annotation is evicted rather than expired. The
