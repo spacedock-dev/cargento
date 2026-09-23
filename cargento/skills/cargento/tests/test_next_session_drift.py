@@ -180,6 +180,22 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         # Said once on the page, by the disclosure beside the control.
         self.assertEqual(1, visible_text(html).count("never a verification that the work was done"))
 
+    def test_worker_history_cannot_push_the_check_below_the_drift_block(self) -> None:
+        """Keeping worker rows in CURRENT ACTIVITY hid the check below 31 old workers."""
+        html = self.page("""
+__dashboard.sessions[0].subagents = Array.from({length: 31}, (_, index) => ({
+  name: `historical-worker-${String(index).padStart(2, "0")}`, state: "ended",
+  model: "test-model", started_at: 80, completed_at: 90
+}));
+await refreshNext();
+""")
+        check = html.index('data-next-cockpit-action="reading-ask"')
+        workers = html.index("data-next-session-subagents")
+        self.assertLess(html.index("CURRENT ACTIVITY"), check)
+        self.assertLess(check, workers)
+        for index in range(31):
+            self.assertEqual(1, html.count(f"historical-worker-{index:02}"))
+
     def test_a_routed_session_with_no_project_renders_the_same_drift_block(self) -> None:
         """Rendering only: the route is set by hand here.
 

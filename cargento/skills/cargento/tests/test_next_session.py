@@ -318,17 +318,22 @@ console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived})
         self.assertNotIn("<h2>CURRENT ACTIVITY</h2>", html)
         self.assertNotIn('<span class="next-session-detail-label">SESSION</span>', html)
 
-    def test_running_subagents_are_integrated_into_the_current_activity_lede(self) -> None:
+    def test_running_subagents_remain_visible_below_the_drift_block(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         current = re.search(r'<section class="next-session-current"[^>]*>[\s\S]*?</section>', html)
         self.assertIsNotNone(current)
         lede = current.group(0) if current else ""
 
-        self.assertIn("2 RUNNING SUBAGENTS", lede)
-        self.assertIn("worker-a", lede)
-        self.assertIn("worker-b", lede)
-        self.assertIn("5m", lede)
+        self.assertNotIn("worker-a", lede)
+        self.assertIn("2 RUNNING SUBAGENTS", html)
+        self.assertIn("worker-a", html)
+        self.assertIn("worker-b", html)
+        self.assertIn("5m", html)
+        self.assertLess(
+            html.index('data-next-cockpit-action="reading-ask"'),
+            html.index("data-next-session-subagents"),
+        )
         self.assertNotIn('data-next-session-section="subagents"', html)
 
     def test_plain_exact_ask_is_one_needs_you_fact_and_not_a_next_action(self) -> None:

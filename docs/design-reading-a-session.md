@@ -644,7 +644,9 @@ otherwise nothing on the page is primary while the question is open.
 The block sits after the session's identity header rather than above it, and a blocked session's
 question sits between the two, because the question outranks the check. The CURRENT ACTIVITY card is
 the agent's direction beside the reader's words, moved into the block rather than copied, so the
-NOW line has one renderer.
+NOW line has one renderer. The subagent rows follow the drift block, rather than sharing the
+CURRENT ACTIVITY card: on a live session with 31 historical workers, those rows pushed the check
+to 2019px on a 900px screen. All worker rows remain on the page.
 
 Inside the block the check is on the first screen: the two goal fields, then the direction, then
 `Check for drift` with its send disclosure beside it, then the reading, then the later-direction

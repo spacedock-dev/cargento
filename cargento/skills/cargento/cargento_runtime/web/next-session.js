@@ -83,8 +83,7 @@ function nextSessionCommandSurface(session, observed){
     '<section class="next-session-current" data-next-session-command="activity">' +
     '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
     `<strong${observed.nowKnown ? "" : ' class="next-session-absent"'}>` +
-    `${esc(state)} · ${esc(observed.nowText)}</strong>${contextLine}` +
-    nextSessionSubagents(observed) + "</section></div>";
+    `${esc(state)} · ${esc(observed.nowText)}</strong>${contextLine}</section></div>`;
 }
 
 function nextSessionFacts(observed, asks){
@@ -657,6 +656,9 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
     nextSessionAskBlock(session, asks, observed) + drift.drift +
+    /* Worker history has no height bound: 31 old workers put the check at
+       2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
+    nextSessionSubagents(observed) +
     nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
