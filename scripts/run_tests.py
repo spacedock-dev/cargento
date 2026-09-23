@@ -10,11 +10,13 @@ fixtures and verdict, and spreads the work:
   ``tests/support.py`` and get their temporary ``HOME`` and ``CARGENTO_HOME``
   only because discovery imports it first. A worker that imported just its
   own modules would run those against the developer's real home.
-- The unit of work is a whole test class, so ``setUpClass`` keeps its meaning.
-  Classes go into one queue, largest first, and each worker pulls until it is
-  empty. Measured 2026-09-23: 131s serial, 33.8s with four workers, with the
-  same 3705 tests and verdict. A timings file was tried and gained 0.2s at four
-  workers, so the queue orders on test count alone and nothing goes stale.
+- The unit of work is a test class that has class fixtures, so ``setUpClass``
+  keeps its meaning, and a single test otherwise, so a long fixture-free class
+  spreads across workers. Units go into one queue, largest first, and each
+  worker pulls until it is empty. Measured 2026-09-23 on the same 3705 tests
+  and verdict: 131s serial, 33.8s on four workers with whole classes, 19s once
+  fixture-free classes were split. A timings file gained 0.2s at four workers,
+  so the queue orders on test count alone and nothing goes stale.
 - Workers are started with ``spawn`` everywhere, which is what Windows does
   anyway, so a pass on Linux says something about the other two.
 - ``--coverage`` starts coverage inside each worker with a data suffix; run
@@ -71,8 +73,23 @@ def iter_tests(suite: unittest.TestSuite) -> Iterator[unittest.TestCase]:
             yield item
 
 
+def has_class_fixture(kind: type) -> bool:
+    """Whether a class overrides `setUpClass` or `tearDownClass` anywhere above it."""
+    return any(
+        getattr(kind, name).__func__ is not getattr(unittest.TestCase, name).__func__
+        for name in ("setUpClass", "tearDownClass")
+    )
+
+
 def unit_of(test: unittest.TestCase) -> str:
-    """Name the class a test belongs to: the runner's unit of work.
+    """Name a test's unit of work: its class if it has class fixtures, else itself.
+
+    A class with `setUpClass` or `tearDownClass` stays on one worker, so the
+    fixture runs once around all its tests. A class without one has nothing that
+    ties its tests together, so each test is its own unit and a long class
+    spreads across workers. Measured on the Windows runner 2026-09-23: one
+    fixture-free class of about twenty tests took 54s of an 89s job, every
+    other class at most 18s, and a class runs on one worker.
 
     An import failure is keyed by its own id, which names the module, because
     every one of them shares the class `unittest.loader._FailedTest` and a
@@ -80,7 +97,9 @@ def unit_of(test: unittest.TestCase) -> str:
     """
     kind = type(test)
     name = f"{kind.__module__}.{kind.__qualname__}"
-    return test.id() if name == "unittest.loader._FailedTest" else name
+    if name == "unittest.loader._FailedTest" or not has_class_fixture(kind):
+        return test.id()
+    return name
 
 
 def discover(start: str, top: str | None, pattern: str) -> dict[str, list[unittest.TestCase]]:
