@@ -2777,7 +2777,10 @@ function nextCockpitDriftBlock(group, session, direction, primary){
     ? `<p class="next-cockpit-held-absent">${esc(annotation.binding_why)}</p>` : "";
   /* An ended session may still be annotated, and the store will keep it. What
      is unsettled is whether anything should then read it, so the line says
-     that rather than disabling a control over an open question. */
+     that rather than disabling a control over an open question. A caveat, so
+     it renders with the caveats below the reading (DRC-4669): between the
+     fields and the control it pushed Check for drift under a 1440x900 fold
+     on every ended session. */
   const ended = nextSessionEndedAt(session) != null
     ? '<p class="next-cockpit-held-absent">This session has ended. Annotating a finished ' +
       'session is an open proposal: your words are kept, and nothing is promised to read ' +
@@ -2798,15 +2801,15 @@ function nextCockpitDriftBlock(group, session, direction, primary){
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
-    ended + '</section>';
+    '</section>';
   const reading = nextCockpitReadingParts(session, annotation, entries,
     nextCockpitObserverModel(group, session), observed, unsettled, workSource, primary);
   /* Below the reading, not between the fields and the control: none of these
      is the next thing to do, and above the control they pushed it off the
      first screen. */
   const discard = nextCockpitHeldDiscardBlock(session, annotation);
-  const caveats = discarded || binding || discard
-    ? `<div class="next-session-drift-caveats">${discarded}${binding}${discard}</div>` : "";
+  const caveats = ended || discarded || binding || discard
+    ? `<div class="next-session-drift-caveats">${ended}${discarded}${binding}${discard}</div>` : "";
   const drift = head + asked + direction + reading.control + reading.reading +
     nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
     '</section>';

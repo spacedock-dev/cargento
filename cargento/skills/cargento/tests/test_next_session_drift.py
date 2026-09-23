@@ -738,3 +738,131 @@ const __h = "codex", __s = "focus-1";
 
 if __name__ == "__main__":
     unittest.main()
+
+
+ENDED_NOTE = (
+    "This session has ended. Annotating a finished session is an open proposal: your words are "
+    "kept, and nothing is promised to read them."
+)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
+    """DRC-4669. On an ended session the "has ended" note sat between the goal
+    fields and Check for drift, and pushed the control to 940px at 1440x900
+    where a live session's sits at 884px. It is a caveat, not the next step,
+    so it renders below the reading with the other caveats, unchanged."""
+
+    def page(self, ended: bool) -> str:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + ANNOTATED
+            + ("__dashboard.sessions[0].ended_at = 104;\n" if ended else "")
+            + SESSION_ROUTE
+            + "\nawait __settle();\nawait __settle();\n"
+            + "console.log(JSON.stringify(__els.app.innerHTML));",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(out, str)
+        return out
+
+    def test_the_ended_note_follows_the_reading_and_not_the_fields(self) -> None:
+        html = self.page(ended=True)
+        drift = html[
+            html.index("data-next-session-drift") : html.index('class="next-session-facts"')
+        ]
+        self.assertEqual(1, drift.count(ENDED_NOTE), "the note must render once, unchanged")
+        note = drift.index(ENDED_NOTE)
+        check = drift.index('data-next-cockpit-action="reading-ask"')
+        self.assertLess(check, note)
+        self.assertLess(drift.index("<h2>READING</h2>"), note)
+        self.assertLess(drift.index('class="next-session-drift-caveats"'), note)
+        # Nothing that sits above the control on a live session moved below it.
+        live = self.page(ended=False)
+        live_drift = live[
+            live.index("data-next-session-drift") : live.index('class="next-session-facts"')
+        ]
+        for mark in ('class="next-cockpit-held-fields"', "WHAT YOU ASKED FOR", "CURRENT ACTIVITY"):
+            with self.subTest(mark=mark):
+                self.assertLess(drift.index(mark), check)
+                self.assertLess(
+                    live_drift.index(mark),
+                    live_drift.index('data-next-cockpit-action="reading-ask"'),
+                )
+        self.assertNotIn(ENDED_NOTE, live_drift)
+        # And the one-primary rule holds on the ended page.
+        self.assertEqual(1, drift.count("next-action--primary"))
+
+    def test_between_the_fields_and_the_check_an_ended_page_adds_nothing(self) -> None:
+        """From the fields to the direction, the markup is the same live or ended. The
+        direction itself says the session ended, which is true and stays; what may not
+        return is anything added to what the reader asked for."""
+
+        def span(html: str) -> str:
+            start = html.index('class="next-cockpit-held-fields"')
+            return html[start : html.index("CURRENT ACTIVITY")]
+
+        self.assertEqual(span(self.page(ended=False)), span(self.page(ended=True)))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class WhatADiscardSaysAboutAnAdoptedGoalTest(NextPageJsHarness):
+    """DRC-4668. A goal adopted from a prompt was never typed, so after "discard
+    everything" the goal field may not say the reader typed it.
+
+    The row is the store's own: a real adoption, a real discard, and
+    `annotations.published` for the fields the page renders, so the sentence
+    asserted is the one a reader would see.
+    """
+
+    def _published_after_discard(self) -> dict[str, Any]:
+        import tempfile  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
+
+        from .support import make_runtime  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as home:
+            config, state = make_runtime(state_home=home, state_dir=Path(home))
+            row = {
+                "harness": "codex",
+                "sid": "focus-1",
+                "first_prompt": "Shape the cockpit",
+                "first_prompt_at": 50.0,
+            }
+            outcome = annotation_store.adopt(
+                config,
+                state,
+                row,
+                source="first-prompt",
+                expected_text="Shape the cockpit",
+                expected_at=50.0,
+                now=100.0,
+            )
+            self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+            annotation_store.clear(config, state, "codex", "focus-1", now=101.0)
+            entry = annotation_store.find(annotation_store.load(config), "codex", "focus-1")
+            return annotation_store.published(entry)
+
+    def test_a_discarded_adopted_goal_is_not_called_typed(self) -> None:
+        published = self._published_after_discard()
+        setup = "".join(
+            f"__dashboard.sessions[0].annotation_{key} = {json.dumps(value)};\n"
+            for key, value in published.items()
+        )
+        html = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + setup
+            + "\nawait refreshNext();\nawait __settle();\n"
+            + SESSION_ROUTE
+            + "\nawait __settle();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(html, str)
+        text = visible_text(html)
+        self.assertIn(published["goal_why"], text, "the goal field's sentence did not render")
+        self.assertIn("was discarded", published["goal_why"])
+        self.assertNotIn("goal you typed", text)
+        self.assertNotIn("Everything you typed", text)
+        self.assertNotIn("Everything typed against", text)

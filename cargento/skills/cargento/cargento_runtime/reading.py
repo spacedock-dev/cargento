@@ -261,12 +261,12 @@ WITHHELD = {
     # first sentence read as the second was the false account the discard left
     # behind on every surface it reached.
     WITHHELD_DISCARDED: (
-        "Everything typed against this session was discarded, so there is nothing left to "
+        "Everything saved against this session was discarded, so there is nothing left to "
         "read it against."
     ),
 }
 
-# What a stored reason read as before DRC-4650, and the token it means now.
+# What a stored reason read as in an earlier build, and the token it means now.
 # The old Codex sentence was true when stored, but its second half ("whatever
 # harness the session runs on") is not true of this build, so it is mapped to
 # the current sentence on read rather than kept or dropped: kept, it renders a
@@ -276,6 +276,11 @@ LEGACY_WITHHELD = {
         "The Codex CLI was not found on this machine, so no reading was made. A reading "
         "is produced by a codex subprocess whatever harness the session runs on."
     ): WITHHELD_MODEL_UNAVAILABLE,
+    # DRC-4668: "typed" was false of a goal adopted from a prompt.
+    (
+        "Everything typed against this session was discarded, so there is nothing left to "
+        "read it against."
+    ): WITHHELD_DISCARDED,
 }
 
 # Two sentences that must never read alike, and the reason they are constants
