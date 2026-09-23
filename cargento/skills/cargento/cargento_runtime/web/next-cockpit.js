@@ -4065,7 +4065,11 @@ function nextCockpitBeforeRender(){
 
 function nextCockpitAfterRender(){
   const app = document.getElementById("app");
-  nextCockpitHadDisclosures = Boolean(nextRoute && ["project", "session"].includes(nextRoute.view));
+  /* Sessions joins the two cockpit views because its tier-2 caveats are built
+     on `nextCockpitWhy`; their keys carry no project, so they cannot collide
+     with a project's. */
+  nextCockpitHadDisclosures = Boolean(nextRoute &&
+    ["project", "session", "sessions"].includes(nextRoute.view));
   for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
     const key = details.getAttribute("data-next-cockpit-disclosure");
     details.open = nextCockpitDisclosureStates.get(key) === true;

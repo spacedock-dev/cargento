@@ -379,8 +379,9 @@ function nextStampControlStates(selector, attribute, keyOf){
 // One key for the click and for the render, derived from the control's own
 // dataset either way. Two spellings of it would agree until one of them changed.
 function nextCopyStateKey(dataset){
+  const lane = dataset.nextCopyCommand ? "command" : (dataset.nextCopyLink ? "link" : "copy");
   return nextControlStateKey(
-    dataset.nextCopyCommand ? "command" : "copy",
+    lane,
     dataset.nextCopyHarness,
     dataset.nextCopySession,
   );
@@ -405,8 +406,9 @@ function nextCopyState(target, key, state){
 async function nextCopyToClipboard(target){
   const dataset = target && target.dataset || {};
   const command = String(dataset.nextCopyCommand || "");
+  const link = command ? "" : String(dataset.nextCopyLink || "");
   const sid = String(dataset.nextCopySession || "");
-  const value = command || sid;
+  const value = command || link || sid;
   const status = nextSessionCopyStatus(document.getElementById("app"));
   // Written to the element for the reader looking at it now, and to the module
   // map for the render that is about to replace it (DRC-4392). The two controls
@@ -417,13 +419,16 @@ async function nextCopyToClipboard(target){
       typeof navigator.clipboard.writeText !== "function") throw new Error("clipboard unavailable");
     await navigator.clipboard.writeText(value);
     nextCopyState(target, key, "copied");
-    if(status) status.textContent = command ? `Copied ${command}` : `Copied session ID ${sid}`;
+    if(status){
+      status.textContent = command ? `Copied ${command}` :
+        (link ? "Copied a link to this session" : `Copied session ID ${sid}`);
+    }
   }catch(_error){
     nextCopyState(target, key, "failed");
     if(status){
       status.textContent = command
         ? "Re-entry command could not be copied"
-        : "Session ID could not be copied";
+        : (link ? "The link to this session could not be copied" : "Session ID could not be copied");
     }
   }
 }
@@ -578,11 +583,17 @@ function nextBreadcrumb(){
       `<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>` +
       `<span aria-current="page">${project}</span>`;
   }
-  const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
   const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
   const sessionLabel = session
     ? nextSessionTitle(session, nextSessionAsks(session))
     : "Session";
+  const current = '<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>' +
+    `<span aria-current="page">${esc(sessionLabel)}</span>`;
+  /* No project label, no project page: the crumb names the view Escape goes to. */
+  if(!nextRoute.project){
+    return `<a class="next-crumb" href="#n=sessions">Sessions</a>${current}`;
+  }
+  const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
   return `${projects}` +
     `<span aria-hidden="true"> › </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
     `<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>` +
@@ -745,7 +756,7 @@ function navigateNext(route){
 
 document.addEventListener("click", event => {
   const copyTarget = event.target && event.target.closest
-    ? event.target.closest("[data-next-copy-session],[data-next-copy-command]")
+    ? event.target.closest("[data-next-copy-session],[data-next-copy-command],[data-next-copy-link]")
     : null;
   if(copyTarget){
     event.preventDefault();
@@ -848,12 +859,15 @@ document.addEventListener("keydown", event => {
   }
   if(["input", "select", "textarea"].includes(tag) || event.target && event.target.isContentEditable) return;
   if(event.key === "Escape"){
-    if(nextRoute.view === "session"){
-      event.preventDefault();
+    /* Session detail walks up to its project; every other view returns to
+       Sessions, the landing view
+       ([NUI-5](docs/design-next-ui.md#nui-5-chrome-and-navigation-reflect-the-current-payload)).
+       A session with no project label has no project page to walk up to. */
+    event.preventDefault();
+    if(nextRoute.view === "session" && nextRoute.project){
       navigateNext({view: "project", project: nextRoute.project, session: null});
     }else{
-      event.preventDefault();
-      navigateNext({view: "projects", project: null, session: null});
+      navigateNext({view: "sessions", project: null, session: null});
     }
     return;
   }

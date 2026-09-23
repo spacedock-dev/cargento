@@ -604,9 +604,27 @@ function nextCommandReports(session = null){
 
 function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const session = nextSessionFind(project, harness, sid);
+  /* A pasted link lands here before the first payload does, and "not in the
+     payload" would then be a claim about a payload nobody has read. */
+  if(!nextData){
+    return '<section class="next-session-detail-empty" data-next-session-state="unread">' +
+      '<p class="next-absence">The first payload has not arrived yet.</p></section>';
+  }
   if(!session){
+    /* Named, because a pasted link is the usual way here and the reader needs
+       to know which session the board no longer holds. The window is stated
+       as a fact about the board, never as the cause: a session from another
+       machine is absent for a different reason. */
+    const who = [harness, sid].map(part => String(part == null ? "" : part)).filter(Boolean)
+      .join(" · ");
+    const hours = nextNumber(nextData.window_hours);
+    const window = hours != null && hours > 0
+      ? `<p>The board holds sessions observed in the last ${hours} ` +
+        `${hours === 1 ? "hour" : "hours"}.</p>` : "";
     return '<section class="next-session-detail-empty" ' +
-      'data-next-session-state="outside-payload"><p>Not present in the current payload.</p>' +
+      'data-next-session-state="outside-payload">' +
+      '<p class="next-absence">This session is not in the current payload.</p>' +
+      (who ? `<p class="next-session-identity">${esc(who)}</p>` : "") + window +
       '<a href="#n=sessions" data-next-route="sessions">View all sessions</a></section>';
   }
   nextPruneSessionAnswerNotes();
@@ -631,7 +649,8 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
      control. */
   const waiting = observed.isNeeds || observed.askKnown;
   const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
-  const controls = nextSessionCopyControl(session) + nextSessionResumeControl(session) + raise;
+  const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
+    nextSessionResumeControl(session) + raise;
   const identity = `<header class="next-session-detail-header">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
     `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +

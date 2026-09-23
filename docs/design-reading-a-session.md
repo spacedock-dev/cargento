@@ -592,8 +592,9 @@ two lanes are the same strength, and a shared value name would have been defensi
 
 Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. DRC-4636 to DRC-4642 build
 it. The session page (item 4, the session page half of item 3, and the primary control) is built by
-DRC-4639 and DRC-4642; the first screen, its row and its mark are not yet, and until they ship the
-landing view behaves as the sections above and
+DRC-4639 and DRC-4642. The landing view and its one screen-level sentence are built by DRC-4636,
+and every session's page is one click away by DRC-4638; the row's goal slot and the mark are not
+yet, and until they ship the rows behave as the sections above and
 [NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describe.
 
 The question was what a person sees about drift when they open Cargento. Measured on a default run

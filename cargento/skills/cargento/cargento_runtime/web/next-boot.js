@@ -95,7 +95,8 @@ function nextDecodeRoutePart(value){
   try{
     return decodeURIComponent(value);
   }catch(_error){
-    return "";
+    /* An empty project is valid; malformed encoding must not name it. */
+    return null;
   }
 }
 
@@ -130,22 +131,30 @@ function nextRouteFromFragment(fragment){
       return {view:"project",project,session:null,focus,tab};
     }
   }
+  /* A session route may carry an empty project: a harness that publishes no
+     project label groups the session under "", and requiring a label here
+     left that session with no page and no link that could open it. The part
+     count, not the label, tells the two session forms apart, because
+     `encodeURIComponent` escapes every colon inside a part. */
   if(parts.length === 4 && parts[0] === "session"){
     const project = nextDecodeRoutePart(parts[1]);
     const harness = nextDecodeRoutePart(parts[2]);
     const session = nextDecodeRoutePart(parts[3]);
-    if(project && harness && session) return {view: "session", project, harness, session};
+    if(project !== null && harness && session) return {view: "session", project, harness, session};
   }
   if(parts.length === 3 && parts[0] === "session"){
     const project = nextDecodeRoutePart(parts[1]);
     const session = nextDecodeRoutePart(parts[2]);
-    if(project && session) return {view: "session", project, session};
+    if(project !== null && session) return {view: "session", project, session};
   }
-  return {view: "projects", project: null, session: null};
+  /* Sessions is the landing view
+     ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)),
+     so the bare URL and every fragment that parses as nothing land there. */
+  return {view: "sessions", project: null, session: null};
 }
 
 function nextFragmentForRoute(route){
-  if(route && route.view === "session" && route.project && route.session){
+  if(route && route.view === "session" && route.project != null && route.session){
     const harness = String(route.harness || "");
     const prefix = `#n=session:${encodeURIComponent(route.project)}:`;
     return harness
@@ -163,7 +172,7 @@ function nextFragmentForRoute(route){
     return `#n=project:${encodeURIComponent(route.project)}${focus}${tab}`;
   }
   if(route && NEXT_TOP_LEVEL_VIEWS.has(route.view)) return `#n=${route.view}`;
-  return "#n=projects";
+  return "#n=sessions";
 }
 
 function nextNumber(value){
@@ -280,6 +289,38 @@ function nextSessionCopyControl(session){
     `${nextControlStateAttr("data-next-copy-state", "copy", harness, sid)} ` +
     `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
     '<span aria-hidden="true">COPY ID</span></button>';
+}
+
+/* The absolute link to one session's page, for a reader to paste: this
+   page's own address up to its fragment, then the session route. Everything
+   before `#` is kept, `?all=1` included, because the pasted link should open
+   the board the reader was looking at. */
+function nextSessionLink(session){
+  const sid = String(session && session.sid || "");
+  if(!sid) return "";
+  const fragment = nextFragmentForRoute({view: "session",
+    project: String(session.project == null ? "" : session.project),
+    harness: String(session.harness || ""), session: sid});
+  const href = typeof location !== "undefined" && typeof location.href === "string"
+    ? location.href : "";
+  const at = href.indexOf("#");
+  return `${at < 0 ? href : href.slice(0, at)}${fragment}`;
+}
+
+/* Beside COPY ID on the session page, in the same copy lane. The link rides
+   `title` for the reason the command does: a context with no clipboard still
+   shows the reader what to paste. */
+function nextSessionLinkControl(session){
+  const link = nextSessionLink(session);
+  if(!link) return "";
+  const sid = String(session.sid);
+  const harness = String(session.harness || "");
+  return `<button type="button" class="next-action next-session-copy" ` +
+    `data-next-copy-link="${esc(link)}" data-next-copy-session="${esc(sid)}" ` +
+    `data-next-copy-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-copy-state", "link", harness, sid)} ` +
+    `aria-label="Copy a link to this session" title="${esc(link)}">` +
+    '<span aria-hidden="true">COPY LINK</span></button>';
 }
 
 // The verb each harness's own CLI takes to re-enter a session, keyed by harness.

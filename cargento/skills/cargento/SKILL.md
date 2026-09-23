@@ -38,8 +38,10 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 ## Dashboard views
 
-The dark-only dashboard opens on **Projects**, grouping sessions by the label their harness publishes.
-**Sessions** keeps active work first and recent history below it. **Intent log** lists every
+The dark-only dashboard opens on **Sessions**, which keeps active work first and recent history
+below it. Above the rows it carries at most one sentence: while the annotation store is on and no
+session has been checked for drift, it says so, with no count. **Projects**, one click away, groups
+sessions by the label their harness publishes. **Intent log** lists every
 current board session and retained annotation/discard record once, including sessions without a
 project or a goal. It labels typed goal and expected output, cached deterministic goal, and each
 published workflow goal separately. A missing workflow title supplies no goal. Saved deterministic
@@ -52,7 +54,8 @@ board. Discard removes typed words and readings without removing independently l
 An open log invalidates withdrawn words before loading their replacement, including a discard
 made in another tab. The annotation store keeps at most 256 records and sixteen revisions each;
 discard records are evicted before retained words, then oldest first. These limits do not apply
-to board-only rows. A present session without a project says so and offers no project link.
+to board-only rows. A present session without a project links to its own page, which has no
+project to return to.
 Each project opens its cockpit:
 a left **Scope** rail selects the project or one exact session. Each row leads with the session
 title, with its harness, state and age as a caption beneath; a row whose title was never published says
@@ -111,19 +114,22 @@ subagents, token measurements, how the session landed and the observed record. T
 one primary control, `Check for drift`. No answer option is ever emphasised: a session blocked on
 you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
 while its question is open.
+Beside `COPY ID`, `COPY LINK` copies the page's own address, which reopens the same session after
+a reload. A link to a session the board no longer holds names that session and says it is not in
+the current payload.
 
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
 `#n=project:<encoded-project>` with the selected session and then the open tab appended when either
 is set, or the full project, harness, and session identity for session
-detail. A project link that ends in the retired `held-to` tab opens that session's page. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
-that belonged to the retired dashboard normalize to Projects. Open the dashboard at its bare URL;
+detail, where the project part is empty for a session that published no project label. A project link that ends in the retired `held-to` tab opens that session's page. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
+that belonged to the retired dashboard normalize to Sessions, as the bare URL does. Open the dashboard at its bare URL;
 the retired `next` query is no longer a dashboard route.
 
 The header reports event-backed running sessions and all observed subagents. When work needs intervention, a button counting
 the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
 Projects, and Sessions unless focus is in a form control or Meta, Control, or Alt is held.
-`Escape` returns from a session to its project and otherwise to Projects, under the same focus and
-modifier rules. Inside a tripwire draft it cancels the draft. Breadcrumbs return through the same
+`Escape` returns from a session to its project (to Sessions when it has none) and otherwise to
+Sessions, under the same focus and modifier rules. Inside a tripwire draft it cancels the draft. Breadcrumbs return through the same
 project hierarchy.
 
 MCP tools appear under the service being called rather than their wire name, for example
@@ -173,7 +179,8 @@ observed records, not commands sent to a harness.
 
 ## Usage and rate limits
 
-The capacity strip sits beneath the fleet counts on Session operations. Each readable window shows
+The capacity strip sits on Session operations below the two session groups, so the first screen
+carries values rather than its consent and budget sentences. Each readable window shows
 how much of its allowance is spent against how much of its own time is gone, so the two can be
 compared: a window a third spent with an eighth of its time gone runs out long before one that is
 nine-tenths spent with nine-tenths of its time gone. Rows are ordered by when the budget runs out at

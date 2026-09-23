@@ -489,7 +489,7 @@ afterwards brings nothing with it.
 
 Usage quota reads and operator-configured reach nudges are the outbound requests Cargento can make,
 and neither sends anything until you configure it. The first time the dashboard opens on a machine
-where a harness could be asked, a banner beneath the fleet counts explains that answering yes lets
+where a harness could be asked, a banner on Session operations, below the session groups, explains that answering yes lets
 Cargento read the credential that harness already stored and send it to that vendor for your usage
 numbers. Until you answer, nothing is read and nothing is sent. The request carries the vendor's own
 token and nothing else, behind a five minute floor.
