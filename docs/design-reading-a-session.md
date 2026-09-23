@@ -757,8 +757,8 @@ allowing Claude Code to send them to Anthropic. An answer saved before the split
 Turning readings off and `--forget` revoke every provider, and the twelve-attempt rolling cap is
 shared, so a second provider cannot double it. If the CLI is missing at launch, or a call fails,
 nothing else is tried: a fresh press is the only retry. The flags the Claude Code call runs with,
-and the fact that they are CLI restrictions rather than an OS sandbox, are in the light harness
-usage bounds.
+and the fact that they are CLI restrictions rather than an OS sandbox, are in
+[the light harness usage bounds](../SECURITY.md#claude-code-reading-calls).
 
 ### Where the unasked default stands
 

@@ -11,6 +11,14 @@ answer key. The runtime publishes `accepted`; no scoring verdict is implied. The
 [amended ruling](../design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review)
 owns enablement. The scoring format and verdicts below remain available for evaluating the producer.
 
+That acceptance covers the Codex producer only. The Claude Code producer built by DRC-4650 has its
+own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, and it is recorded `not-run`. No recorded Claude
+Code case has been read by that producer, the accepted packet was reviewed against Codex readings,
+and the scorer here still drives `reading.CodexReadingModel`. Until a run under DRC-4666 qualifies
+it, Codex keeps reading Claude Code sessions and the page says so before the press. The
+[amendment](../design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated) owns
+that ruling.
+
 ## What lives here
 
 `results.json`, once a scoring run has been committed, written by
