@@ -194,7 +194,7 @@ DISCARD_UNWITHDRAWN = (
 # other copy is named here rather than left to that note, because this sentence
 # also renders on the Held to tab and the session page, where the note does not.
 DISCARD_RECORD = (
-    "Everything you typed against this session was discarded, along with any reading of it. "
+    "What you asked of this session was discarded, along with any reading of it. "
     "None of it is kept here: this record says only that the act happened and when. Where "
     "session history is recording, it holds its own fourteen-day copy of those two fields, "
     "and --forget deletes that store."
@@ -207,8 +207,15 @@ DISCARD_RECORD_STANDING = (
 # the absences on a session nobody ever typed against. Both states render in
 # the same slot, and rendering one sentence for both is the false answer this
 # issue exists to remove.
-DISCARDED_GOAL = "The goal you typed for this session was discarded."
-DISCARDED_OUTPUT = "The expected output you typed for this session was discarded."
+#
+# One sentence for both fields, and it names neither (DRC-4668). A discard
+# record keeps no per-field facts, so it cannot say which field held words or
+# how they got there: a goal may have been adopted from the reader's prompt,
+# and either field may never have been filled. "The goal you typed" was false
+# of an adopted goal, and any per-field "was discarded" is false of an empty
+# field. The two names stay so each slot reads as its own.
+DISCARDED_GOAL = "Discarded with everything else you asked of this session."
+DISCARDED_OUTPUT = DISCARDED_GOAL
 # A discard of a session that had nothing to discard. The control is gated on
 # a stored revision so a reader cannot reach it, but the route can be reached
 # by hand and answered as though an act had landed.

@@ -92,7 +92,9 @@ function nextIntentSources(row, session, retained){
   const workflows = nextData && nextData.spacedock_enabled === false ? []
     : nextObservedRecords(session && session.spacedock && session.spacedock.workflows);
   const line = (label, text) => `<span class="next-intent-words">${esc(label)}: ${esc(text)}</span>`;
-  let html = discarded ? line("Typed words", row.discarded_why || "") : "";
+  /* "Your words", not "Typed words": a discarded goal may have been adopted
+     from the reader's prompt, so the record cannot say they typed it. */
+  let html = discarded ? line("Your words", row.discarded_why || "") : "";
   if(typed){
     html += line(["latest-prompt", "first-prompt"].includes(row.goal_source) ? "Goal from your prompt" : "Typed goal", row.goal || row.goal_why || "No goal typed for this session.") +
       line("Typed expected output", row.output || row.output_why || "No expected output typed.");

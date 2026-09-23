@@ -261,8 +261,7 @@ WITHHELD = {
     # first sentence read as the second was the false account the discard left
     # behind on every surface it reached.
     WITHHELD_DISCARDED: (
-        "Everything typed against this session was discarded, so there is nothing left to "
-        "read it against."
+        "What you asked of this session was discarded, so there is nothing left to read it against."
     ),
 }
 

@@ -736,5 +736,210 @@ const __h = "codex", __s = "focus-1";
         self.assertNotRegex(reentry, r"<form|data-next-steer|data-next-send|/api/")
 
 
+ENDED_NOTE = (
+    "This session has ended. Anything you save against it is kept, and nothing is promised to "
+    "read it."
+)
+
+# A session nobody typed against: no revision, no binding, so no discard offer. Only the ended
+# note can open the caveats block here.
+UNTYPED = """
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
+__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_revision = null;
+__dashboard.sessions[0].annotation_revision_count = 0;
+__dashboard.sessions[0].annotation_at = null;
+"""
+
+
+def caveats_block(html: str) -> str:
+    """The inner markup of the drift block's caveats `<div>`, nested divs balanced."""
+    opener = '<div class="next-session-drift-caveats">'
+    start = html.index(opener) + len(opener)
+    depth = 1
+    for tag in re.finditer(r"<(/?)div\b[^>]*>", html[start:]):
+        depth += -1 if tag.group(1) else 1
+        if depth == 0:
+            return html[start : start + tag.start()]
+    msg = "the caveats block never closed"
+    raise AssertionError(msg)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
+    """DRC-4669. On an ended session the "has ended" note sat between the goal
+    fields and Check for drift, and pushed the control to 940px at 1440x900
+    where a live session's sits at 884px. It is a caveat, not the next step,
+    so it renders below the reading with the other caveats."""
+
+    def page(self, *, ended: bool, setup: str = "") -> str:
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + ANNOTATED
+            + setup
+            + ("__dashboard.sessions[0].ended_at = 104;\n" if ended else "")
+            + SESSION_ROUTE
+            + "\nawait __settle();\nawait __settle();\n"
+            + "console.log(JSON.stringify(__els.app.innerHTML));",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(out, str)
+        return out
+
+    @staticmethod
+    def drift(html: str) -> str:
+        return html[
+            html.index("data-next-session-drift") : html.index('class="next-session-facts"')
+        ]
+
+    def test_the_ended_note_follows_the_reading_and_not_the_fields(self) -> None:
+        drift = self.drift(self.page(ended=True))
+        self.assertEqual(1, drift.count(ENDED_NOTE), "the note must render once")
+        note = drift.index(ENDED_NOTE)
+        check = drift.index('data-next-cockpit-action="reading-ask"')
+        self.assertLess(check, note)
+        self.assertLess(drift.index("<h2>READING</h2>"), note)
+        # Nothing that sits above the control on a live session moved below it.
+        live_drift = self.drift(self.page(ended=False))
+        for mark in ('class="next-cockpit-held-fields"', "WHAT YOU ASKED FOR", "CURRENT ACTIVITY"):
+            with self.subTest(mark=mark):
+                self.assertLess(drift.index(mark), check)
+                self.assertLess(
+                    live_drift.index(mark),
+                    live_drift.index('data-next-cockpit-action="reading-ask"'),
+                )
+        self.assertNotIn(ENDED_NOTE, live_drift)
+        # And the one-primary rule holds on the ended page.
+        self.assertEqual(1, drift.count("next-action--primary"))
+
+    def test_the_ended_note_opens_the_caveats_above_every_departure(self) -> None:
+        """Inside the caveats and first in them, so a long list of raises never buries it."""
+        drift = self.drift(self.page(ended=True, setup=READING + UNASKED))
+        self.assertEqual(1, drift.count(ENDED_NOTE))
+        inner = caveats_block(drift)
+        self.assertTrue(
+            inner.startswith(f'<p class="next-cockpit-held-absent">{ENDED_NOTE}</p>'), inner
+        )
+        departures = drift.index('class="next-cockpit-departures"')
+        self.assertLess(drift.index(ENDED_NOTE), departures)
+        self.assertLess(drift.index(ENDED_NOTE), drift.index("DEPARTURES RAISED TO YOU"))
+
+    def test_an_ended_session_nobody_typed_against_still_says_it_ended(self) -> None:
+        """The commonest ended session: nothing typed, nothing to discard, no binding.
+        The note alone must still open the caveats block."""
+        drift = self.drift(self.page(ended=True, setup=UNTYPED))
+        self.assertNotIn('data-next-cockpit-action="held-discard"', drift)
+        self.assertEqual(1, drift.count(ENDED_NOTE), drift)
+        self.assertIn(ENDED_NOTE, caveats_block(drift))
+        self.assertNotIn(ENDED_NOTE, self.drift(self.page(ended=False, setup=UNTYPED)))
+
+    def test_between_the_fields_and_the_check_an_ended_page_adds_nothing(self) -> None:
+        """From the fields to the direction, the markup is the same live or ended. The
+        direction itself says the session ended, which is true and stays; what may not
+        return is anything added to what the reader asked for."""
+
+        def span(html: str) -> str:
+            start = html.index('class="next-cockpit-held-fields"')
+            return html[start : html.index("CURRENT ACTIVITY")]
+
+        self.assertEqual(span(self.page(ended=False)), span(self.page(ended=True)))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class WhatADiscardSaysAboutAnAdoptedGoalTest(NextPageJsHarness):
+    """DRC-4668. A goal adopted from a prompt was never typed, so after "discard
+    everything" nothing on the page may say the reader typed it.
+
+    A discard record keeps no per-field facts and deliberately keeps the
+    departure rows, so every sentence it prints must be true whichever fields
+    held words and however they got there. The rows are the store's own: a real
+    adoption or save, a real discard, and `annotations.published` for the fields
+    the page renders.
+    """
+
+    def _published_after_discard(self, *, adopt: bool = True, output: str = "") -> dict[str, Any]:
+        import tempfile  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
+
+        from .support import make_runtime  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as home:
+            config, state = make_runtime(state_home=home, state_dir=Path(home))
+            row = {
+                "harness": "codex",
+                "sid": "focus-1",
+                "first_prompt": "Shape the cockpit",
+                "first_prompt_at": 50.0,
+            }
+            if adopt:
+                outcome = annotation_store.adopt(
+                    config,
+                    state,
+                    row,
+                    source="first-prompt",
+                    expected_text="Shape the cockpit",
+                    expected_at=50.0,
+                    now=100.0,
+                )
+            else:
+                outcome = annotation_store.annotate(
+                    config, state, "codex", "focus-1", goal="", output=output, now=100.0
+                )
+            self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+            annotation_store.clear(config, state, "codex", "focus-1", now=101.0)
+            entry = annotation_store.find(annotation_store.load(config), "codex", "focus-1")
+            return annotation_store.published(entry)
+
+    def _page_text(self, published: dict[str, Any]) -> str:
+        fields = "".join(
+            f"__dashboard.sessions[0].annotation_{key} = {json.dumps(value)};\n"
+            for key, value in published.items()
+        )
+        html = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
+            f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
+            + fields
+            + "\nawait refreshNext();\nawait __settle();\n"
+            + SESSION_ROUTE
+            + "\nawait __settle();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(html, str)
+        return visible_text(html)
+
+    def test_a_discarded_adopted_goal_is_not_called_typed(self) -> None:
+        published = self._published_after_discard()
+        text = self._page_text(published)
+        for key in ("goal_why", "output_why"):
+            with self.subTest(field=key):
+                self.assertIn("discarded", published[key].lower())
+                self.assertIn(published[key], text, "the field's sentence did not render")
+        self.assertIn(published["discarded_why"], text)
+        # The reader typed nothing on this session: the goal was adopted and the
+        # expected output was never filled.
+        self.assertNotRegex(text, r"(?i)\byou typed\b|\btyped words\b|\beverything typed\b")
+        # A discard blanks each departure row and keeps it on disk, because the
+        # record that a check ran bounds how often one may run. So neither the
+        # record nor the reading's refusal may say everything went.
+        self.assertIn(annotation_store.DISCARD_SENTENCES["unreadable"], text)
+        self.assertNotRegex(text, r"(?i)\beverything (?:saved|typed|you typed)\b")
+
+    def test_a_discard_claims_no_field_the_reader_never_filled(self) -> None:
+        """The record cannot tell which fields held words, so neither field's
+        sentence may name a field as having held any."""
+        cases = {
+            "an adopted goal, no output": self._published_after_discard(),
+            "a typed output, no goal": self._published_after_discard(adopt=False, output="a PR"),
+        }
+        for name, published in cases.items():
+            with self.subTest(case=name):
+                self.assertNotIn("goal", published["goal_why"].lower())
+                self.assertNotIn("output", published["output_why"].lower())
+                self.assertNotIn("typed", published["goal_why"] + published["output_why"])
+
+
 if __name__ == "__main__":
     unittest.main()

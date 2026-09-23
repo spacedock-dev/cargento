@@ -389,6 +389,11 @@ console.log(JSON.stringify({
         # And when, derived from the moment on the row against the payload's
         # own `generated`, in the register the revision line already uses.
         self.assertIn("discarded 1m ago", visible)
+        # The label beside the record makes no claim about how the words got
+        # there: a goal adopted from a prompt was saved, never typed (DRC-4668).
+        gone = visible[visible.index("codex:gone-9") :]
+        self.assertIn(f"Your words: {annotation_store.DISCARD_RECORD}", gone)
+        self.assertNotIn("Typed words", gone)
 
     def test_a_discarded_session_and_one_nobody_typed_against_never_read_alike(self) -> None:
         """A discard record and a board-only row have different source absences."""

@@ -11965,10 +11965,10 @@ console.log(JSON.stringify({
         styles = (web / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("next-cockpit-held-sub", cockpit)
         self.assertNotIn("next-cockpit-held-sub", styles)
-        # The two surviving occurrences are sentences, not labels.
-        self.assertEqual(2, cockpit.count("your words"))
+        # The surviving occurrence is a sentence, not a label. The ended note
+        # that was the second now says "anything you save" (DRC-4668).
+        self.assertEqual(1, cockpit.count("your words"))
         self.assertIn("your words are still in the box", cockpit)
-        self.assertIn("your words are kept", cockpit)
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
