@@ -1235,6 +1235,33 @@ console.log(JSON.stringify({fragment, opened, escaped: {...nextRoute}}));
         self.assertNotIn('href="#n=project:"', html)
         self.assertEqual({"view": "sessions", "project": None, "session": None}, out["escaped"])
 
+    def test_a_malformed_project_in_a_link_cannot_open_an_unlabelled_session(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = {generated: 10000, annotate: true, sessions: [
+  {sid: "lone", harness: "claude", project: "", state: "idle", active: false,
+   title: "No label here", tasks: [], subagents: []}
+], asks: []};
+const results = [];
+for(const fragment of ["#n=session:%:claude:lone", "#n=session:%:lone",
+  "#n=session:%E0%A4%A:claude:lone", "#n=session:%E0%A4%A:lone"]){
+  location.hash = fragment;
+  __fire("window:hashchange", {});
+  results.push({fragment, route: {...nextRoute}, hash: location.hash,
+    openedSession: __els.app.innerHTML.includes('data-next-session-detail="lone"')});
+}
+console.log(JSON.stringify(results));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+        for arm in out:
+            with self.subTest(fragment=arm["fragment"]):
+                self.assertFalse(arm["openedSession"])
+                self.assertEqual(
+                    {"view": "sessions", "project": None, "session": None}, arm["route"]
+                )
+                self.assertEqual("#n=sessions", arm["hash"])
+
     def test_the_next_fragment_never_contains_the_old_session_token(self) -> None:
         out = self._run_page_js(
             """

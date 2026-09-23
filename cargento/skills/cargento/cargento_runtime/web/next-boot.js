@@ -95,7 +95,8 @@ function nextDecodeRoutePart(value){
   try{
     return decodeURIComponent(value);
   }catch(_error){
-    return "";
+    /* An empty project is valid; malformed encoding must not name it. */
+    return null;
   }
 }
 
@@ -139,12 +140,12 @@ function nextRouteFromFragment(fragment){
     const project = nextDecodeRoutePart(parts[1]);
     const harness = nextDecodeRoutePart(parts[2]);
     const session = nextDecodeRoutePart(parts[3]);
-    if(harness && session) return {view: "session", project, harness, session};
+    if(project !== null && harness && session) return {view: "session", project, harness, session};
   }
   if(parts.length === 3 && parts[0] === "session"){
     const project = nextDecodeRoutePart(parts[1]);
     const session = nextDecodeRoutePart(parts[2]);
-    if(session) return {view: "session", project, session};
+    if(project !== null && session) return {view: "session", project, session};
   }
   /* Sessions is the landing view
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)),

@@ -1072,11 +1072,11 @@ amendment above gave it.
 The first screen carries values before prose (DRC-4636). The first thing read is the fleet strip,
 four values that answer whether anything needs the reader, and Active now follows it in the gate-first
 order `nextObservedLaneOrder` gives it. Above the rows there is at most one sentence: while the
-annotation store is on and no session in the payload carries a stored reading, a counted reading or a
-departure, it is DEC-20's "not checked" line, with no count; otherwise there is none, because with the
-store off "none checked" would be a claim about a field the page cannot see. The two sentences that
-used to sit under the heading, and the Recent history caveat, went behind tier-2 disclosures. The
-capacity strip moved below both session groups, so its consent question and budget sentences no longer
+annotation store is on and no session in the payload carries a stored reading, a counted reading, an
+unasked check or a departure, it is DEC-20's "not checked" line, with no count; otherwise there is
+none, because with the store off "none checked" would be a claim about a field the page cannot see.
+The two sentences that used to sit under the heading, and the Recent history caveat, went behind
+tier-2 disclosures. The capacity strip moved below both session groups, so its consent question and budget sentences no longer
 sit above the first row. Measured on a four-session board at 1825x1146: 147 words in twelve sentences
 above the fold before, 21 words in one sentence and one label after. Every absence on the screen wears
 `.next-absence`.

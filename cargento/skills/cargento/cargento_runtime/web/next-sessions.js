@@ -385,13 +385,14 @@ function nextOperationsObservedRow(session, source, labels, asks, history){
 }
 
 /* Whether any session in the payload carries a check: a stored reading, a
-   reading counted against its words, or a departure on record. Read off the
-   rows rather than off a flag, and only while the annotation store is on,
+   reading counted against its words, an unasked check, or a departure on record.
+   Read off the rows rather than off a flag, and only while the annotation store is on,
    because with it off a stored reading is not published and "none" would be
    a claim about something the page cannot see. Returns null for that case. */
 function nextSessionsAnyChecked(rows){
   if(!(nextData && nextData.annotate === true)) return null;
   return rows.some(session => {
+    if(session.departure_checked === true) return true;
     const assessment = session.annotation_assessment;
     if(assessment !== undefined && assessment !== null && assessment !== "") return true;
     if((nextNumber(session.annotation_reading_count) || 0) > 0) return true;

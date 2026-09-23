@@ -176,6 +176,27 @@ console.log(JSON.stringify(arms));
                 self.assertNotIn("has been checked for drift", html)
                 self.assertEqual([], self.visible_prose(self.above_the_rows(html)))
 
+    def test_an_unasked_check_with_no_departure_is_still_a_check(self) -> None:
+        out = self.render(
+            """
+nextData.annotate = true;
+Object.assign(nextData.sessions[0], {
+  annotation_assessment: null, annotation_reading_count: 0, departures: []
+});
+const arms = {};
+for(const checked of [false, "true", true]){
+  nextData.sessions[0].departure_checked = checked;
+  renderNext();
+  arms[typeof checked + ":" + checked] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(arms));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertNotIn("No session has been checked", out["boolean:true"])
+        self.assertIn("No session has been checked", out["boolean:false"])
+        self.assertIn("No session has been checked", out["string:true"])
+
     def test_the_first_screen_holds_no_caveat_or_quota_prose_above_the_rows(self) -> None:
         html = self.render(
             """
