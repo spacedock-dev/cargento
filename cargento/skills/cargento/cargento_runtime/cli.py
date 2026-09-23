@@ -208,7 +208,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-observer-model",
         "--no-harness-usage",
         action="store_true",
-        help="refuse observer model calls for this run, overriding --observer-model",
+        help=(
+            "refuse every model call for this run, "
+            "overriding --observer-model and --unasked-readings"
+        ),
     )
     parser.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
     parser.add_argument(

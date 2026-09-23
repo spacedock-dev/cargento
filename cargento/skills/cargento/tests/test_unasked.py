@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import departures, reading, unasked
+from cargento_runtime import departures, diagnostics, reading, unasked
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -216,6 +216,7 @@ class TheSwitchIsTheWholeGateTest(unittest.TestCase):
                 self.assertFalse(application.config.unasked_enabled)
                 # The page draws the lane-off sentence from this key's absence.
                 self.assertNotIn("unasked", payload)
+                self.assertIs(False, diagnostics.diagnose(application)["unasked"]["enabled"])
 
     def test_the_switch_alone_still_attaches_the_lane(self) -> None:
         # The control for the test above, so its refusal is the off switch's
@@ -224,6 +225,7 @@ class TheSwitchIsTheWholeGateTest(unittest.TestCase):
 
         self.assertIsNotNone(application.unasked_lane)
         self.assertIs(True, application.collect(show_all=False).get("unasked"))
+        self.assertIs(True, diagnostics.diagnose(application)["unasked"]["enabled"])
 
 
 class ItEvaluatesOnAChangeAndNotPerCollectionTest(unittest.TestCase):

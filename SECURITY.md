@@ -1011,8 +1011,8 @@ machine. A reading is produced by a codex subprocess whatever harness the sessio
 reading of a Claude session spends the operator's Codex capacity and sends that session's evidence
 to OpenAI. A reader-requested reading is off unless `--observer-model` was supplied, and an unasked
 one unless `--unasked-readings` was. `--no-observer-model` always wins, over both.
-DEC-21 changes the first two of those sentences when DRC-4650 and DRC-4640 ship; see the ruled
-section above.
+DEC-21 changes the reader-requested half of that sentence, and the first one, when DRC-4650 and
+DRC-4640 ship; see the ruled section above.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
 focused session and up to three active children whose assignment is unavailable.

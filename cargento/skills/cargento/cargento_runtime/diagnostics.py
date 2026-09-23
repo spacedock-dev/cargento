@@ -119,6 +119,10 @@ def diagnose(application: Application) -> dict[str, Any]:
             "path": tripwires.store_path(config) if config.tripwires_enabled else None,
             "error": data["tripwires"]["error"],
         },
+        # The unasked lane is the one model caller an operator can switch on
+        # at startup without the observer flag, so whether the off switch
+        # refused it is reported here rather than left to the page (DRC-4649).
+        "unasked": {"enabled": config.unasked_enabled},
         "platform": config.platform_name,
         "python": sys.version.split()[0],
         "executable": sys.executable,
@@ -168,6 +172,7 @@ def render_diagnosis(report: dict[str, Any]) -> str:
         f"  tripwires  {stage['path'] or 'disabled'}"
         + (": " + stage["error"] if stage["error"] else "")
     )
+    lines.append(f"  unasked    {'on' if report['unasked']['enabled'] else 'off'}")
     env = report["env"]
     lines.append(
         "  overrides  " + (", ".join(f"{k}={v}" for k, v in env.items()) if env else "none")
