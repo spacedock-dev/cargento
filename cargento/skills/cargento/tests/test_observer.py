@@ -1875,7 +1875,8 @@ class ClaudeExecTest(unittest.TestCase):
         self.assertNotEqual(config.state_dir, cwd, "the store directory is not a scratch cwd")
         self.assertEqual(config.state_dir, cwd.parent)
         self.assertTrue(observed["cwd_exists"])
-        self.assertEqual(0o700, observed["cwd_mode"])
+        if os.name != "nt":  # POSIX permission bits; Windows uses ACLs
+            self.assertEqual(0o700, observed["cwd_mode"])
         self.assertEqual([], observed["cwd_entries"])
 
     def test_stdout_goes_to_an_owner_only_file_outside_the_working_directory(self) -> None:
@@ -1898,7 +1899,8 @@ class ClaudeExecTest(unittest.TestCase):
             binary_resolver=lambda _n: "/bin/claude",
         )
         self.assertEqual(1, len(seen))
-        self.assertEqual(0o600, seen[0][1] & 0o777)
+        if os.name != "nt":  # POSIX permission bits; Windows uses ACLs
+            self.assertEqual(0o600, seen[0][1] & 0o777)
 
     def test_the_reply_is_read_only_up_to_its_byte_cap(self) -> None:
         _seen, text, status, _config = self._run(reply=b"x" * 10_000, cap=64)
