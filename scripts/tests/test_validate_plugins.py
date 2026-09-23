@@ -1576,6 +1576,10 @@ class ScriptTestsDiscoveryContractTest(unittest.TestCase):
         self.assertNotIn("scripts.tests.test_bump_version", quality_gate_text)
         self.assertNotIn("scripts.tests.test_bump_version", agents_text)
 
-        # Must use discover pattern for scripts/tests
-        self.assertIn("unittest discover -s scripts/tests -t scripts/tests", quality_gate_text)
-        self.assertIn("unittest discover -s scripts/tests -t scripts/tests", agents_text)
+        # Must use discovery for scripts/tests: `unittest discover` itself, or
+        # scripts/run_tests.py, which repeats the same discover call per worker.
+        discovery = (
+            r"(unittest discover|scripts/run_tests\.py)( --\S+)* -s scripts/tests -t scripts/tests"
+        )
+        self.assertRegex(quality_gate_text, discovery)
+        self.assertRegex(agents_text, discovery)

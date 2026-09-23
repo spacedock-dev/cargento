@@ -87,11 +87,11 @@ class ObservationTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.now = NOW
         # A real, empty state home per case. `support.make_config`'s
-        # `/home/cargento-test` is a path that exists nowhere, which was harmless
+        # `/nonexistent-cargento-test` is a path that exists nowhere, which was harmless
         # while nothing here wrote: since DRC-4547 every `session_ended` reaching
         # `_record` writes the end store, so every coordinator built here is a
         # live writer outside any sandbox. Measured: `LedgerTest` as it stood made
-        # ten `os.makedirs("/home/cargento-test/.cargento")` calls, and it passed
+        # ten `os.makedirs("/nonexistent-cargento-test/.cargento")` calls, and it passed
         # on macOS only because that raises OSError and `ends.save` swallows it.
         # On the Windows runner the same path is creatable by an ordinary user.
         home = tempfile.TemporaryDirectory()

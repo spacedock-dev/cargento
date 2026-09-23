@@ -56,4 +56,4 @@ jobs:
       # the detector and still read by test_documentation.py: one stranded table
       # row gave detector `code=false`, validator exit 0, and this suite red.
       - name: Run dashboard tests
-        run: python3 -m unittest discover -s cargento/skills/cargento/tests -t .
+        run: python3 scripts/run_tests.py -s cargento/skills/cargento/tests -t .

@@ -858,7 +858,7 @@ class ContractTest(unittest.TestCase):
         this reports.
         """
         config = build_runtime_config(
-            environ={"HOME": "/home/cargento-test"},
+            environ={"HOME": "/nonexistent-cargento-test"},
             platform_name="linux",
             os_name="posix",
             launcher_path=pathlib.Path(mcp_server.__file__),

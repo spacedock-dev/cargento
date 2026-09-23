@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import inspect
+import io
 import json
 import os
 import subprocess
@@ -233,6 +235,28 @@ class CommandSocketTest(unittest.TestCase):
             check=False,
         )
 
+    def run_hook_inprocess(self, payload: Any, harness: str = "claude") -> tuple[int, str, str]:
+        """`run_hook` with `deterministic_driver`, without starting an interpreter.
+
+        The driver already replaces `threading` and `time` inside the child, so a
+        fresh interpreter proves nothing per case that the same `main` over the
+        same socket does not; what it costs is a Python start and an HTTP import
+        per case, about 90ms against about 15ms (measured 2026-09-23). The tests
+        below keep real subprocess cases so the shipped script is still run.
+        """
+        stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            patch.object(sys, "stdin", stdin),
+            patch.dict(os.environ, {"CARGENTO_HOME": self.tmp.name}),
+            patch.object(event_hook, "threading", SimpleNamespace(Thread=_InlineThread)),
+            patch.object(event_hook, "time", SimpleNamespace(monotonic=lambda: 0.0)),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            code = event_hook.main(["event_hook", harness, str(self.port)])
+        return code, out.getvalue(), err.getvalue()
+
     def post(self, payload: dict[str, Any], harness: str = "claude") -> dict[str, Any]:
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.port}/api/events/{harness}",
@@ -384,24 +408,53 @@ raise SystemExit(status)
                     proc.kill()
                     proc.communicate()
 
-    def test_every_literal_and_wrapper_reaches_only_fixed_reports_over_a_socket(self) -> None:
-        for harness in ("claude", "codex"):
-            for wrapper in ("", "rtk ", "rtk proxy "):
-                for command, pattern in POSITIVES:
-                    with self.subTest(harness=harness, wrapper=wrapper, command=command):
-                        before = len(self.received)
-                        proc = self.run_hook(
-                            native(wrapper + command), harness, driver=deterministic_driver()
-                        )
-                        self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
-                        self.assertEqual(before + 1, len(self.received))
-                        report = self.received[-1]
-                        self.assertEqual(set(wire()), set(report))
-                        self.assertEqual(pattern, report["pattern_id"])
-                        self.assertNotIn("private", json.dumps(report))
+    def assert_literals_report_over_the_socket(self, harness: str, wrapper: str) -> None:
+        """Every positive literal, under one harness and wrapper, reaches one fixed report.
+
+        One method per harness and wrapper rather than one loop over all six, so
+        the parallel runner can spread them: on the Windows runner each loopback
+        request cost about 0.47s, and the single loop was a 42s unit on its own
+        (measured 2026-09-23). The assertions are the loop's, unchanged.
+        """
+        for index, (command, pattern) in enumerate(POSITIVES):
+            with self.subTest(harness=harness, wrapper=wrapper, command=command):
+                before = len(self.received)
+                # The first case per harness runs the shipped script as a real
+                # process; the rest run the same `main` in-process.
+                if index == 0 and not wrapper:
+                    proc = self.run_hook(
+                        native(wrapper + command), harness, driver=deterministic_driver()
+                    )
+                    outcome = (proc.returncode, proc.stdout.decode(), proc.stderr.decode())
+                else:
+                    outcome = self.run_hook_inprocess(native(wrapper + command), harness)
+                self.assertEqual((0, "", ""), outcome)
+                self.assertEqual(before + 1, len(self.received))
+                report = self.received[-1]
+                self.assertEqual(set(wire()), set(report))
+                self.assertEqual(pattern, report["pattern_id"])
+                self.assertNotIn("private", json.dumps(report))
         served = json.loads(self.app.collect_json(show_all=False)[1])
         self.assertNotIn("private", json.dumps(served["command_reports"]))
         self.assertNotIn("private", str(self.coordinator._command_reports.__dict__))
+
+    def test_every_literal_reaches_only_fixed_reports_over_a_socket_claude(self) -> None:
+        self.assert_literals_report_over_the_socket("claude", "")
+
+    def test_every_literal_under_rtk_reaches_only_fixed_reports_claude(self) -> None:
+        self.assert_literals_report_over_the_socket("claude", "rtk ")
+
+    def test_every_literal_under_rtk_proxy_reaches_only_fixed_reports_claude(self) -> None:
+        self.assert_literals_report_over_the_socket("claude", "rtk proxy ")
+
+    def test_every_literal_reaches_only_fixed_reports_over_a_socket_codex(self) -> None:
+        self.assert_literals_report_over_the_socket("codex", "")
+
+    def test_every_literal_under_rtk_reaches_only_fixed_reports_codex(self) -> None:
+        self.assert_literals_report_over_the_socket("codex", "rtk ")
+
+    def test_every_literal_under_rtk_proxy_reaches_only_fixed_reports_codex(self) -> None:
+        self.assert_literals_report_over_the_socket("codex", "rtk proxy ")
 
     def test_ambiguous_malformed_and_oversized_calls_produce_no_report(self) -> None:
         malformed: tuple[Any, ...] = (*NEGATIVES, None, 2, [], {})
@@ -416,12 +469,20 @@ raise SystemExit(status)
                 native("git push --force", session_id="x" * 201),
             ]
         )
-        for payload in payloads:
+        for index, payload in enumerate(payloads):
             with self.subTest(payload=payload):
-                proc = self.run_hook(payload)
-                self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
+                if index == 0:
+                    proc = self.run_hook(payload)
+                    outcome = (proc.returncode, proc.stdout.decode(), proc.stderr.decode())
+                else:
+                    outcome = self.run_hook_inprocess(payload)
+                self.assertEqual((0, "", ""), outcome)
         self.assertEqual([], self.received)
         self.assertEqual([], self.coordinator.command_reports())
+        # A canary through the same in-process path: `main` swallows every
+        # exception, so a broken path would pass every negative above vacuously.
+        self.run_hook_inprocess(native(POSITIVES[0][0]))
+        self.assertEqual(1, len(self.received))
 
     def test_recorded_harness_shapes_admit_only_the_measured_after_tool_field(self) -> None:
         for harness, filename in (

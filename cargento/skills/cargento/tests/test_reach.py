@@ -18,6 +18,8 @@ from cargento_runtime import reach
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
+from .support import poll_fast
+
 
 def make_config(**overrides: Any) -> Any:
     state_dir = overrides.pop("state_dir", None) or tempfile.mkdtemp()
@@ -61,7 +63,7 @@ class _MockReachHandler(http.server.BaseHTTPRequestHandler):
 class ReachNudgeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.server = MockReachServer()
-        self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.server_thread = threading.Thread(target=poll_fast(self.server), daemon=True)
         self.server_thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}/webhook"
 

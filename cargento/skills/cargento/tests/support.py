@@ -205,8 +205,12 @@ def cfg() -> RuntimeConfig:
 
 
 def make_config(**changes: Any) -> RuntimeConfig:
+    # A root-level path that exists nowhere. It used to be `/home/cargento-test`,
+    # and on macOS `/home` is an autofs automount, so every store lookup under
+    # it was a round trip to the automount daemon: 12.96ms against 0.00ms for a
+    # path outside it, about 28s of a 131s suite, measured 2026-09-23.
     config = build_runtime_config(
-        environ={"HOME": "/home/cargento-test"},
+        environ={"HOME": "/nonexistent-cargento-test"},
         platform_name="linux",
         os_name="posix",
         launcher_path=SERVER_PATH,
