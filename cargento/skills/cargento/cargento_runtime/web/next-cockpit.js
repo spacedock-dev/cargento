@@ -1476,7 +1476,7 @@ const NEXT_READING_BASELINE_OPEN =
    `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
-const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "stamp", "cutoff",
+const NEXT_READING_ASSESSMENT_KEYS = ["revision_read", "revision_read_at", "read_at", "stamp", "cutoff",
   "scope", "scope_text", "ended_at_read", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a

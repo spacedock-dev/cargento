@@ -89,6 +89,7 @@ CONSTRAINTS = (CONSTRAINT_GOAL, CONSTRAINT_OUTPUT)
 ASSESSMENT_KEYS = (
     "revision_read",
     "revision_read_at",
+    "read_at",
     "stamp",
     "cutoff",
     "scope",
@@ -463,6 +464,8 @@ class Assessment(TypedDict):
     # reading already carries its own clause text through that eviction; the
     # time travels the same way. `None` on a reading written before this field.
     revision_read_at: float | None
+    # Missing on legacy records: a clock-only display stamp cannot establish age.
+    read_at: float | None
     stamp: str
     cutoff: str
     scope: str
@@ -1217,6 +1220,7 @@ def produce(
     revision = latest.get("n")
     assessment: Assessment = {
         "revision_read": revision if isinstance(revision, int) and revision > 0 else 1,
+        "read_at": now,
         "stamp": stamp_text,
         "cutoff": cutoff_text(selected.entries, len(ledger), now),
         "scope": scope,

@@ -305,7 +305,7 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses, history
 
 function nextOperationsColumns(history = false){
   return '<div class="next-operations-columns" aria-hidden="true">' +
-    '<span>SESSION</span><span>WHERE</span><span>NOW</span>' +
+    '<span>SESSION</span><span>WHERE</span><span>GOAL</span><span>NOW</span>' +
     (history ? '<span>STATE</span>' : '<span>NEXT</span><span>BLOCKED</span>') + '</div>';
 }
 
@@ -348,10 +348,80 @@ function nextOperationsObservedIdentity(session, source, labels, route, history)
     nextSessionScanOnly(source) + nextSessionUnread(source) + "</span>";
 }
 
+/* [DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal)
+   admits the collector's asked Claude instruction and classified Codex
+   title, never a workflow/observer paraphrase. Displaying it saves nothing. */
+function nextSessionsGoal(source, route){
+  if(!(nextData && nextData.annotate === true)){
+    return nextOperationsFact("goal", "GOAL", "Annotations off", "", "unknown");
+  }
+  const typed = String(source && source.annotation_goal || "").trim();
+  const asked = source && source.harness === "claude" ? nextSessionInstruction(source, "asked") : null;
+  const prompt = asked ? String(asked.text || "").trim()
+    : source && source.harness === "codex" && source.prompt_states_work === true
+      ? String(source.title || "").trim() : "";
+  const text = typed || prompt;
+  const label = typed ? "GOAL · YOUR WORDS" : prompt ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
+  const content = typed ? `<strong>${esc(text)}</strong>`
+    : `<a class="next-operation-goal-link${text ? "" : " next-absence"}" ` +
+      `href="#n=${esc(route)}" data-next-route="${esc(route)}" data-next-goal-focus>` +
+      `${esc(text || "Add a goal")}</a>`;
+  return `<span class="next-operation-fact" data-next-operation-fact="goal">` +
+    `<small>${label}</small>${content}</span>`;
+}
+
+/* A record projection, not a new reading. Neither the annotation's presence
+   nor its press count establishes a departure. Legacy assessments have no
+   reading epoch; their clock-only stamp cannot supply one. */
+function nextSessionsDrift(source){
+  if(!(nextData && nextData.annotate === true) || !source) return [];
+  const rows = (Array.isArray(source.departures) ? source.departures : [])
+    .filter(row => row && typeof row === "object")
+    .map(row => ({at: nextNumber(row.at), revision: nextNumber(row.revision), subject: "This raise"}));
+  const raw = source.annotation_assessment;
+  if(raw && typeof raw === "object" && !Array.isArray(raw) &&
+      Object.keys(raw).every(key => NEXT_READING_ASSESSMENT_KEYS.includes(key)) &&
+      ["goal", "output"].some(key => {
+        const criterion = raw.criteria && raw.criteria[key];
+        return criterion && criterion.result === "departure" &&
+          Array.isArray(criterion.cites) && criterion.cites.some(cite => typeof cite === "string" && cite.trim());
+      })){
+    rows.push({at: nextNumber(raw.read_at), revision: nextNumber(raw.revision_read), subject: "This reading"});
+  }
+  return rows;
+}
+
+function nextSessionsDriftMark(source){
+  const records = nextSessionsDrift(source);
+  if(!records.length) return "";
+  const dated = records.map(row => row.at).filter(at => at != null && at > 0);
+  const age = dated.length ? nextDurationSince(Math.max(...dated)) : null;
+  const stale = [...new Set(records.map(row => nextRevisionSuperseded(
+    row.subject, row.revision, nextNumber(source.annotation_revision))).filter(Boolean))];
+  return '<span class="next-operation-drift" data-next-session-drift-mark>' +
+    `<strong>Drift</strong> · ${esc(age == null ? "age unknown" : `${age} ago`)}` +
+    (records.some(row => row.at == null || row.at <= 0) && dated.length
+      ? '<small>Some recorded departure ages are unknown</small>' : "") +
+    stale.map(line => `<small>${esc(line)}</small>`).join("") + '</span>';
+}
+
+/* Promote only this screen's rows. Changing shared isActive or model.active
+   would turn a stored reading into running evidence and inflate its counter. */
+function nextSessionsGroups(model, sources){
+  const ordered = [...model.active, ...model.history];
+  const rank = session => session.isNeeds || session.askKnown ? 0
+    : nextSessionsDrift(sources.get(nextSessionKey(session))).length ? 1 : 2;
+  const active = ordered.filter(session => session.isActive || rank(session) < 2);
+  const activeKeys = new Set(active.map(nextSessionKey));
+  active.sort((left, right) => rank(left) - rank(right));
+  return {active, history: ordered.filter(session => !activeKeys.has(nextSessionKey(session)))};
+}
+
 function nextOperationsObservedRow(session, source, labels, asks, history){
   const route = nextRouteToken({view: "session", project: session.project,
     harness: session.harness, session: session.sid});
   const identity = nextOperationsObservedIdentity(session, source, labels, route, history);
+  const goal = nextSessionsGoal(source, route);
   const where = nextOperationsObservedFact("where", "WHERE · PROJECT LABEL", session.whereText,
     session.whereKnown, session.project);
   const since = session.isEnded ? nextDurationSince(nextSessionEndedAt(source)) : "";
@@ -381,7 +451,7 @@ function nextOperationsObservedRow(session, source, labels, asks, history){
   return `<article class="next-operation-row next-operation-row--${esc(session.tone)}" ` +
     `data-next-harness="${esc(session.harness)}" data-next-session="${esc(session.sid)}"` +
     (history ? ' data-next-operation-history="true"' : "") + ">" +
-    identity + where + facts + "</article>";
+    identity + where + goal + facts + nextSessionsDriftMark(source) + "</article>";
 }
 
 /* Whether any session in the payload carries a check: a stored reading, a
@@ -411,6 +481,7 @@ function nextSessionsView(){
   const model = nextCurrentObserved();
   const sources = new Map(nextRows().map(session => [nextSessionKey(session), session]));
   const asks = nextOperationsAsks(nextRows());
+  const groups = nextSessionsGroups(model, sources);
   const labels = nextHarnessLabels();
   const renderRow = (session, history) => nextOperationsObservedRow(
     session, sources.get(nextSessionKey(session)), labels, asks, history,
@@ -426,15 +497,21 @@ function nextSessionsView(){
     '<header class="next-operations-header"><span>COMMAND SURFACE</span>' +
     '<h1>Session operations</h1>' + lede +
     nextCockpitWhy("sessions-board-why", "How rows are split",
-      "Active evidence leads. Every recently observed session remains reachable.") +
+      "Blocked sessions lead, followed by recorded departures, then working sessions. " +
+      "The Active now figure counts active evidence only; a recorded departure adds no active session.") +
+    nextCockpitWhy("sessions-goal-source", "Goal sources",
+      nextData && nextData.annotate === true
+        ? "Your latest prompt comes from Claude Code or Codex; other harnesses show only your typed words. " +
+          "Showing a prompt does not adopt it as a goal; a Drift mark names a departure on record, not a new check."
+        : "Annotations are off, so goals cannot be typed and Drift marks are not shown.") +
     '</header>' +
     nextOperationsFleet(model) +
     nextOperationsGroup(
-      "active", "Active now", "working, waiting on you, or an exact request",
-      model.active, session => renderRow(session, false), "No exact session has active evidence right now.",
+      "active", "Active now", "working, waiting on you, an exact request, or recorded drift",
+      groups.active, session => renderRow(session, false), "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
       "history", "Recent history", "",
-      model.history, session => renderRow(session, true), "No recent-history rows in this payload.",
+      groups.history, session => renderRow(session, true), "No recent-history rows in this payload.",
       {summary: "What recent means",
         body: "Recently observed is not proof the harness process is still open or closed; " +
           "rows marked ENDED reported their own end."},

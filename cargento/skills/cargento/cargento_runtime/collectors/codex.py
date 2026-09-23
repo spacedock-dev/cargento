@@ -628,6 +628,7 @@ def collect(
                 else None,
                 "resume_id": sessions.resume_token(s["sid"]),
                 "title": asked["title"],
+                "prompt_states_work": asked.get("prompt_states_work", False),
                 "last_prompt": asked["last_prompt"],
                 "instruction": asked["instruction"],
                 "last_output": (info or {}).get("last_output"),

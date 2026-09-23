@@ -54,6 +54,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "consumption",
         "title",
         "last_prompt",
+        "prompt_states_work",
         "last_output",
         "instruction",
         "state",

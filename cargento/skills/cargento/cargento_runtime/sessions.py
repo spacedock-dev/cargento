@@ -531,6 +531,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "consumption": None,
         "title": None,
         "last_prompt": "",
+        "prompt_states_work": False,
         "last_output": None,
         # The second line beneath the title. A mapping of label, text and at, or
         # None. The label is one of "asked", "agent" or "earlier", and the page
