@@ -103,8 +103,7 @@ function nextCockpitAnnotation(session){
    session's own derived goal, and the raw row's missing keys read as
    `undefined`, which is how a `known` flag defaulted to true and drew an
    empty value as a published one. */
-function nextCockpitFocusedObserved(group, project){
-  const focus = nextCockpitFocusedSession(group);
+function nextCockpitFocusedObserved(group, project, focus = nextCockpitFocusedSession(group)){
   if(!focus || !project) return null;
   const key = sessKey(focus);
   return (project.sessions || []).find(session => sessKey(session) === key) || null;
@@ -117,9 +116,31 @@ function nextCockpitFocusedAnnotation(group){
   return nextCockpitAnnotation(nextCockpitFocusedSession(group));
 }
 
+/* The one session this page is about, on either route that has one. The
+   session view joined the project cockpit's focus when Held to merged into it
+   under the drift ruling, and every drift control resolves its session here, so the two
+   routes cannot disagree about whose words a press acts on. The session arm
+   applies `nextSessionFind`'s rule: harness and sid, and exactly one match. */
 function nextCockpitFocusedSession(group){
-  if(!nextRoute || nextRoute.view !== "project" || !nextRoute.focus) return null;
+  if(!nextRoute || !group) return null;
+  if(nextRoute.view === "session"){
+    const harness = String(nextRoute.harness || "");
+    const matches = group.sessions.filter(session =>
+      String(session.sid == null ? "" : session.sid) === String(nextRoute.session || "") &&
+      (!harness || String(session.harness || "") === harness));
+    return matches.length === 1 ? matches[0] : null;
+  }
+  if(nextRoute.view !== "project" || !nextRoute.focus) return null;
   return group.sessions.find(session => sessKey(session) === nextRoute.focus) || null;
+}
+
+/* The project group the current route is inside, for the project cockpit and
+   for a session page alike. A session with no project label groups under "",
+   which is a real group here rather than a missing one. */
+function nextCockpitRouteGroup(){
+  if(!nextRoute || !["project", "session"].includes(nextRoute.view)) return null;
+  const label = String(nextRoute.project == null ? "" : nextRoute.project);
+  return nextProjectGroups().find(candidate => candidate.label === label) || null;
 }
 
 function nextCockpitSessionActivityDetail(session){
@@ -841,8 +862,8 @@ function nextCockpitRecoveryBriefing(group, focus, observation, commandAttention
   return {outcome,currentFocus,task,active,children,latest,decisions,coverage,text:lines.join("\n")};
 }
 
-/* Project scope only, since DRC-4508. The `Held to` tab put two more typed
-   fields on the session-scope page, and four of them across two bounds (240
+/* Project scope only, since DRC-4508. The drift block (once the `Held to`
+   tab) puts two more typed fields on the session page, and four of them across two bounds (240
    here, 500 there) and two save semantics (a numbered revision on the server,
    autosave into this browser) is a surface nobody can read the rules off. The
    memo cell keeps the scope where it has no rival; nothing is deleted, and
@@ -1387,8 +1408,7 @@ function nextCockpitWorkMix(entries){
   return `${parts.join(" · ")}.`;
 }
 
-function nextCockpitObserverModel(group){
-  const focus = nextCockpitFocusedSession(group);
+function nextCockpitObserverModel(group, focus = nextCockpitFocusedSession(group)){
   nextCockpitLoadContext(group, focus);
   for(const scope of [focus, null]){
     const entry = nextCockpitContexts.get(nextCockpitContextKey(group, scope));
@@ -1471,9 +1491,15 @@ const NEXT_COCKPIT_AUTHORITY_GLOSS =
 
 const NEXT_READING_NO_WORDS =
   "Nothing has been typed for this session, so there is nothing to read it against. " +
-  "Save a goal above to enable a reading.";
+  "Save a goal above to check for drift.";
+/* One next step per refusal, as the inert-control rule asks: every other state names what would
+   lift it, and this one named nothing. The page asks for the model state with
+   each project-context read, so a refresh is what reads it again. */
 const NEXT_READING_MODEL_UNREAD =
-  "Observer model availability has not been read, so no reading can be offered.";
+  "Observer model availability has not been read, so no reading can be offered. " +
+  "Refresh this page to read it again.";
+const NEXT_READING_PENDING =
+  "Checking for drift. This can take up to a minute; the rest of the page stays usable.";
 const NEXT_READING_MODEL_OFF =
   "Observer model is disabled for this run, so no reading can be offered. " +
   "Start with --observer-model to allow one; --no-observer-model refuses it.";
@@ -1914,7 +1940,7 @@ const NEXT_COCKPIT_STEER_BY_HAND_WHY = "Cargento does not write into a session, 
    tab's LAST slot and not this section's -- the design's order ends "the
    departures it raised, then how it landed, then where it is kept", and reading
    those three as five slots inside one section put the Intent-log pointer
-   before HOW IT LANDED. `nextCockpitHeldTo` appends it. */
+   before HOW IT LANDED. `nextCockpitDriftBlock` appends it. */
 // Defined where the noun is first used rather than in a glossary nobody
 // opens. One sentence each, and each rendered exactly once per panel.
 const NEXT_COCKPIT_DEPARTURE_DEFINITION =
@@ -1952,12 +1978,16 @@ function nextCockpitDepartureLaneCount(session){
 }
 
 function nextCockpitDepartures(shape, source, session){
-  const reading = nextCockpitReadingDepartures(shape, source);
+  const reading = nextCockpitReadingDepartures(shape, source, session);
   const lane = nextCockpitDepartureLaneCount(session);
+  const laneRows = Array.isArray(session && session.departures) ? session.departures.length : 0;
+  /* Once for the section, and only where a departure is drawn: a missing way
+     back is worth saying beside the thing it would act on (DRC-4642). */
+  const limit = (reading.count || 0) + laneRows > 0 ? nextDepartureReentryLimit(session) : "";
   return '<section class="next-cockpit-departures"><header>' +
     '<h2>DEPARTURES RAISED TO YOU</h2>' +
     `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p></header>` +
-    reading.html +
+    limit + reading.html +
     nextCockpitUnaskedPart(session) +
     nextCockpitDeliveryPart(session, Boolean(lane)) +
     nextCockpitDepartureCounts(reading.count, lane) +
@@ -2108,7 +2138,7 @@ function nextCockpitDepartureCounts(fromReading, fromLane){
    rows because it could not read the collection -- no reading, a reading this
    build cannot parse, or a payload whose observed record has not landed, so the
    citations cannot resolve. */
-function nextCockpitReadingDepartures(shape, source){
+function nextCockpitReadingDepartures(shape, source, session = null){
   const part = (body) =>
     '<div class="next-cockpit-departure-part">' +
     '<span class="next-cockpit-departure-label">FROM THE READING YOU ASKED FOR</span>' +
@@ -2171,7 +2201,7 @@ function nextCockpitReadingDepartures(shape, source){
     `<em class="next-cockpit-reading-detail">${esc(row.detail || row.result)}</em>` +
     row.evidence.map(line =>
       `<span class="next-cockpit-reading-evidence">${esc(line)}</span>`).join("") +
-    '</div>').join("");
+    (session ? nextDepartureReentry(session) : "") + '</div>').join("");
   /* Once, for the block. It was inside each departure row, which said one
      fact as many times as there were departures and never once when there
      were none — and a reading that raised nothing is exactly the one whose
@@ -2211,7 +2241,7 @@ function nextCockpitReadingRefusal(annotation, model){
 // already does two hundred lines below.
 const NEXT_READING_REFUSED_ID = "next-cockpit-reading-refused";
 
-function nextCockpitReadingControl(session, annotation, model){
+function nextCockpitReadingControl(session, annotation, model, primary = true){
   const reason = nextCockpitReadingRefusal(annotation, model);
   const key = sessKey(session);
   let request = nextCockpitReadingRequests.get(key);
@@ -2242,15 +2272,17 @@ function nextCockpitReadingControl(session, annotation, model){
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
-  /* The board's one primary. Four of the five cockpit tabs have no action to
-     mark at all, so this is where "the one thing to press" is said (DRC-4590). */
+  /* The page's one primary, unless the session is blocked on the reader: then
+     the answer control holds it and this sits below as an ordinary control
+     ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+     The four cockpit tabs have no action to mark at all (DRC-4590, DRC-4603). */
   return disclosure +
-    '<button type="button" class="next-action next-action--primary" ' +
+    `<button type="button" class="next-action${primary ? " next-action--primary" : ""}" ` +
     'data-next-cockpit-action="reading-ask" ' +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
-    `${pending ? "Reading in progress…" : "Ask for a reading"}</button>` +
+    `${pending ? "Checking for drift…" : "Check for drift"}</button>` +
     (request && !request.refusal
       ? '<p class="next-cockpit-reading-why" role="status"' +
         `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
@@ -2308,7 +2340,8 @@ function nextCockpitReadingBaseline(shape){
     rows + "</details>";
 }
 
-function nextCockpitReading(session, annotation, entries, model, observed, unsettled, source){
+function nextCockpitReading(session, annotation, entries, model, observed, unsettled, source,
+    primary = true){
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = String(session.harness || "") === "pi"
     ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
@@ -2349,7 +2382,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
       : "";
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER} ` +
       `${NEXT_READING_NOT_A_VERIFICATION}</p>`;
-    return close(refused + offer + why + nextCockpitReadingControl(session, annotation, model),
+    return close(refused + offer + why + nextCockpitReadingControl(session, annotation, model, primary),
       null, true);
   }
   const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
@@ -2360,7 +2393,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     return close(
       `<p class="next-cockpit-reading-why">${esc(NEXT_READING_UNKNOWN_KEY)}</p>` +
       `<p class="next-cockpit-reading-why">Unrecognised: ${esc(shape.malformed)}.</p>` +
-      nextCockpitReadingControl(session, annotation, model), shape);
+      nextCockpitReadingControl(session, annotation, model, primary), shape);
   }
   const current = nextNumber(annotation && annotation.revision);
   /* The one warm ink the design allows near a reading, and it is not part of
@@ -2382,7 +2415,7 @@ function nextCockpitReading(session, annotation, entries, model, observed, unset
     '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
     stale + nextCockpitReadingBaseline(shape) + scope + why +
     shape.criteria.map(nextCockpitReadingCriterionRow).join("") +
-    nextCockpitReadingControl(session, annotation, model) + '</section>' +
+    nextCockpitReadingControl(session, annotation, model, primary) + '</section>' +
     nextCockpitDepartures(shape, source, session);
 }
 
@@ -2416,24 +2449,6 @@ function nextCockpitLanded(observed){
     'an end and a claim of completion are separate questions.</p></section>';
 }
 
-/* DRC-4509's fourth criterion and DRC-4511's third: where re-entry is
-   supported, expose the route and state its limits. The route was already
-   reachable and the limits were not, which is the half the pull request
-   conceded rather than half-built.
-
-   A link rather than a fifth copy of the two controls. `next-session.js`
-   renders both unconditionally on the session view and `nextSessionHeldLink`
-   links that view to this tab; this is the return leg, and the criterion
-   verifies with a navigation check, which is what a link is.
-
-   Two limits, not one, and split by cause. A harness outside
-   `NEXT_RESUME_COMMANDS` has no re-entry command and never will; one inside it
-   with no usable id has none THIS RUN. `nextResumeCommand` collapses both to
-   "", which is the same conflation journey-review finding C fixed on the
-   observed record. The raise's limit is the standing one recorded beside
-   `nextSessionRaiseControl`, said here because a single session is the whole
-   subject of this tab and rendering nothing reads as "no limit" rather than as
-   "not this session". */
 /* The block, gated on the annotation alone rather than on a reading existing,
    so a later direction that raises no departure falls out of the layout rather
    than needing a rule. It sits above the reading because it constrains one,
@@ -2456,7 +2471,7 @@ function nextCockpitConflict(session, annotation, source){
      cue on the page never read this one instead. */
   const cue = nextCockpitHeldCue(nextCockpitHeldKey(session, "settle"));
   const header = '<section class="next-cockpit-conflict"><header>' +
-    '<h2>A LATER DIRECTION</h2></header>' +
+    '<h2>CONFLICT TO SETTLE</h2></header>' +
     (cue ? `<small class="next-cockpit-conflict-cue">${esc(cue)}</small>` : "");
   const steer = '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
     'what you are asking for. That is yours, and Cargento does not write into the session ' +
@@ -2505,65 +2520,6 @@ function nextCockpitConflict(session, annotation, source){
        button is that way out. */
     '<p class="next-cockpit-conflict-why">Retyping clears this only if the words change. If ' +
     'they still stand, say so with the other choice.</p>' + steer;
-}
-
-function nextCockpitHeldReEntry(session){
-  if(!session) return "";
-  const harness = String(session.harness || "");
-  const project = String(session.project == null ? "" : session.project);
-  /* Each branch keeps its own claim and its own reason, split at the sentence
-     that stops being about this session and starts being about the platform.
-     The claim is what a reader deciding whether to click needs; the platform
-     explanation is what they need only once they have read the claim and
-     disagreed with it. */
-  /* The disclosure label travels with the branch rather than sitting on the
-     row, because the two branches put different things behind it. On the
-     available branch the body is the raise's LIMIT -- what a raise does and
-     does not move -- and a summary reading "Why a raise is unavailable" over
-     it contradicted the claim one line above it, which says the terminal can
-     be raised. Only the refusal branch is explaining an unavailability. */
-  const raise = !nextFocusCapability()
-    ? {claim: NEXT_FOCUS_OFF_LINE, why: "", whyLabel: ""}
-    : session.focusable === true
-      ? {claim: "Its terminal can be raised, and that control is offered while the session " +
-          "is waiting on you.",
-         why: "A raise switches what the terminal displays; its window may still be behind " +
-          "others.",
-         whyLabel: "What a raise can and cannot change"}
-      : {claim: "No terminal was reported for this session, so it cannot be raised.",
-         why: "That is the ordinary answer outside tmux, for a session older than this " +
-          "server run, and on Linux and Windows.",
-         whyLabel: "Why a raise is unavailable"};
-  const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
-  const resume = !NEXT_RESUME_COMMANDS.has(harness)
-    ? `${label} publishes no re-entry command, so there is none to copy.`
-    : nextResumeCommand(session)
-      ? "A re-entry command for it is on the session page."
-      : "This session published no usable id this run, so there is no re-entry command to copy.";
-  /* `data-next-focus` because keyboard focus here is a managed lane
-     ([reader state](docs/design-reader-state.md#the-inventory)); an
-     anchor without it loses focus on every redraw. */
-  const link = project
-    ? `<a href="${esc(nextFragmentForRoute({view: "session", project, harness,
-        session: String(session.sid == null ? "" : session.sid)}))}" ` +
-      'data-next-focus="cockpit-held-reentry">Open this session</a> to re-enter it.'
-    : "";
-  /* The available path first, on its own line, because it is the one act this
-     block offers and it used to arrive inside a paragraph whose middle
-     forty-two words were about what cannot be done. The anchor also leaves the
-     paragraph it shared: `#app a` is `display:inline-flex`, and an inline-flex
-     anchor inflates the leading of every line of prose it sits in. */
-  const row = (label, text) => text
-    ? '<div class="next-cockpit-held-reentry-row">' +
-      `<span class="next-cockpit-held-reentry-label">${esc(label)}</span>` +
-      `<span class="next-cockpit-held-reentry-text">${esc(text)}</span></div>`
-    : "";
-  return '<div class="next-cockpit-held-reentry">' +
-    (link ? `<p class="next-cockpit-held-reentry-action">${link}</p>` : "") +
-    row("Re-entry", resume) +
-    row("Raise", raise.claim) +
-    nextCockpitWhy("reentry-raise-why", raise.whyLabel, raise.why) +
-    '</div>';
 }
 
 /* The act the endpoint has always had and no control reached (DRC-4561).
@@ -2627,52 +2583,48 @@ function nextCockpitHeldDiscardBlock(session, annotation){
     '</div>';
 }
 
-function nextCockpitHeldTo(group, observation){
-  const session = nextCockpitFocusedSession(group);
-  if(!session){
-    return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
-      '<p class="next-cockpit-held-absent">No session is selected, so there is nobody ' +
-      'whose words these would be.</p></section>';
-  }
+/* The session page's DRIFT block, and the sections that follow it lower down
+   (DRC-4639). Held to merged into the session view, so what was the tab's body
+   is now two returns: `drift` renders first after the page's identity, and
+   `record` renders after the session's own facts
+   ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+
+   The order inside the block is the tab's, and it is load bearing: what you
+   asked for, then the agent's direction beside it, then any later direction of
+   yours still to settle, then the reading, then every departure on record. Your
+   words come first, so nothing above the reading is a model's.
+
+   `direction` is the caller's CURRENT ACTIVITY card, handed in rather than
+   rebuilt, so the NOW line has one renderer. `primary` is false when the
+   session is blocked on the reader and an answer control holds the page's one
+   primary. The word drift names the block and the control and nothing else: no
+   sentence here may say a session has none. */
+function nextCockpitDriftBlock(group, session, direction, primary){
+  const head = '<section class="next-session-drift" data-next-session-drift ' +
+    'aria-labelledby="next-session-drift-heading">' +
+    '<h2 id="next-session-drift-heading" class="next-session-drift-heading">DRIFT</h2>';
   /* No field at all when the store is off, which is what `--no-annotations`
      promises. A box whose every save answers 503 is worse than none, and the
-     reason is on screen rather than left to the reader. */
+     reason is on screen rather than left to the reader. The direction and any
+     standing raise still render: the departure store is read whichever way. */
   if(!(nextData && nextData.annotate === true)){
-    return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
+    const off = '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2></header>' +
       '<p class="next-cockpit-held-absent">Annotations are off for this run. Start without ' +
       '--no-annotations to type a goal and an expected output here.</p></section>';
+    const source = nextCockpitWorkSource(group, session);
+    return {drift: head + off + direction + nextCockpitDepartures(null, source, session) +
+      '</section>', record: ""};
   }
   const annotation = nextCockpitAnnotation(session);
   const workSource = nextCockpitWorkSource(group, session);
   // The full set, not the displayed window: a citation resolves against what
   // the payload holds, and the window is a readability bound on the rows.
   const entries = workSource.all || workSource.entries;
-  /* The design's order inside this tab: what you asked for, then the reading
-     of it, then the departures it raised. Intent first, then a reading of the
-     intent, so nothing above the reading is a model's words. */
-  const observed = nextCockpitFocusedObserved(group, nextCockpitObservedProject(group));
-  /* The design's order inside this tab, and it is load bearing: what you asked
-     for, any unresolved baseline conflict, the reading, the departures it
-     raised, how it landed, then the record, and last where it is kept. */
-  /* A LATER DIRECTION is above the reading because it constrains one. It used
-     to be below the observed record as well, because it cites rows from it,
-     and that half is deliberately overturned (DRC-4594): the record is the
-     first of four consecutive sections that each report that nothing is here,
-     and a reader meeting them before the reading never reaches the two boxes
-     this tab is for. The conflict block's rows carry their own text and their
-     own age inline, so they read without the record above them; the one
-     sentence that was positionally anchored to it is reworded in
-     `nextCockpitConflict` rather than left claiming a position it no longer
-     has. The same open set still gates the block and the demotion, so those
-     two cannot disagree about whether a baseline is settled. */
+  const observed = nextCockpitFocusedObserved(group, nextCockpitObservedProject(group), session);
+  /* The same open set gates the conflict block and the reading's demotion, so
+     those two cannot disagree about whether a baseline is settled. */
   const unsettled = Boolean(
     nextCockpitConflictCandidates(annotation, workSource.all || entries).length);
-  const evidence = nextCockpitConflict(session, annotation, workSource) +
-    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group), observed,
-      unsettled, workSource) +
-    nextCockpitLanded(observed) +
-    nextCockpitWorkEvidence(session, workSource) +
-    nextCockpitDeparturesKept();
   const cap = nextCockpitHeldCap();
   /* The header line, and the discard stamp takes its slot rather than sitting
      under it (DRC-4565). Both answer "what state are these two boxes in", and
@@ -2697,23 +2649,15 @@ function nextCockpitHeldTo(group, observation){
     ? '<p class="next-cockpit-held-absent">This session has ended. Annotating a finished ' +
       'session is an open proposal: your words are kept, and nothing is promised to read ' +
       'them.</p>' : "";
-  /* Named, because the reader has to know whose words these are. Two sessions
-     that publish one title are indistinguishable in the scope rail, and this
-     block said nothing at all about which of them it was binding to. The
-     harness and the session id are what the store keys on, so they are what
-     is shown. */
-  /* What typing buys, before anything that qualifies it. The tab answered it
-     once, four sections down, inside a CLI instruction, and a reader who has
-     not met the idea cannot infer it from a layout.
-
-     Worded to the default board and not to the flag: the unasked lane is off
-     unless the reader started with `--unasked-readings`, so any wording about
-     an automatic check would be false on the board this sentence renders on
-     most. A reading happens because the reader asked for one. */
-  const lede = '<p class="next-cockpit-held-lede">Type what you were after. Ask for a ' +
-    'reading, and Cargento lists where this session departed from it. It never writes into ' +
-    'the session, so steering stays yours.</p>';
-  return '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
+  /* What typing buys, before anything that qualifies it, worded to the default
+     board: the unasked lane is off unless the reader started with
+     `--unasked-readings`, so a check happens because the reader pressed. */
+  const lede = '<p class="next-cockpit-held-lede">Type what you were after, then check for ' +
+    'drift: Cargento lists where this session departed from it. It never writes into the ' +
+    'session, so steering stays yours.</p>';
+  /* Named, because the reader has to know whose words these are: the harness
+     and the session id are what the store keys on. */
+  const asked = '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
     lede +
     `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
@@ -2722,7 +2666,19 @@ function nextCockpitHeldTo(group, observation){
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
     discarded + binding + ended + nextCockpitHeldDiscardBlock(session, annotation) +
-    nextCockpitHeldReEntry(session) + '</section>' + evidence;
+    '</section>';
+  const drift = head + asked + direction +
+    nextCockpitConflict(session, annotation, workSource) +
+    nextCockpitReading(session, annotation, entries, nextCockpitObserverModel(group, session),
+      observed,
+      unsettled, workSource, primary) + '</section>';
+  /* Below the session's facts: how it landed, the observed record the reading
+     cites, and where a raise is kept. The reading's offer says the record is
+     "below", and it is. */
+  const record = nextCockpitLanded(observed) +
+    nextCockpitWorkEvidence(session, workSource) +
+    nextCockpitDeparturesKept();
+  return {drift, record};
 }
 
 /* The reader's answer, posted to the same route their words go to. `through`
@@ -2758,7 +2714,10 @@ async function nextCockpitAskForReading(session, model){
   }
   /* Session-scoped state survives polling and navigation while the model
      runs. Another press must not spend capacity on a duplicate request. */
-  const request = {pending: true, message: "Reading in progress. This may take a minute."};
+  /* The bound is `observer.OBSERVER_MODEL_TIMEOUT_SEC`, sixty seconds, and the
+     sentence says so because a press that goes quiet for a minute otherwise
+     reads as a dead control. Nothing on the page waits on it. */
+  const request = {pending: true, message: NEXT_READING_PENDING};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
   try{
@@ -3318,23 +3277,20 @@ function nextCockpitViewingSession(focus){
 }
 
 /* One sentence per tab, naming the tab's own word and what its panel holds.
-   Three of the five open onto a heading that does not repeat the label -- Now
-   onto GOING ON, Course onto OBSERVED STATE CHANGES, Held to onto WHAT YOU
-   ASKED FOR -- and renaming either end would move a string two other views
-   share. */
+   Two of the four open onto a heading that does not repeat the label -- Now
+   onto GOING ON, Course onto OBSERVED STATE CHANGES -- and renaming either end
+   would move a string two other views share. */
 const NEXT_COCKPIT_TAB_LEDES = new Map([
   ["now", "Now: what is running in this project this minute, and how sessions here have ended."],
   ["course", "Course: direction changes Cargento observed in the session record."],
   ["decisions", "Decisions: rulings found in the record, and what each one has been spent on."],
   ["console", "Console: the read-only terminal of one selected session, and the controls for it."],
-  ["held-to", "Held to: what you asked this session for, and how its record measures against it."],
 ]);
 
 // Singular and plural for the cue's gloss, per tab that carries one.
 const NEXT_COCKPIT_TAB_NOUNS = new Map([
   ["course", ["observed state change", "observed state changes"]],
   ["decisions", ["decision", "decisions"]],
-  ["held-to", ["departure raised", "departures raised"]],
 ]);
 
 function nextCockpitTabLede(tab, focus){
@@ -3423,13 +3379,6 @@ function nextCockpitTabCueBase(tab, context, focus){
     if(!semantic || !Array.isArray(semantic.facts)) return {state:"unobserved"};
     return nextCockpitTabCueCount(projectDecisionFacts(
       group ? nextCockpitCanonicalSemantic(group, semantic) : semantic).length);
-  }
-  if(tab === "held-to"){
-    // The panel renders no collection at all with the store off, which is the
-    // rule Now and Console are under rather than an absence to assert.
-    if(!focus || !(nextData && nextData.annotate === true)) return null;
-    const lane = nextCockpitDepartureLaneCount(focus);
-    return lane == null ? {state:"unobserved"} : nextCockpitTabCueCount(lane);
   }
   return null;
 }
@@ -3970,8 +3919,6 @@ function nextCockpitPanel(context, focus, observation, commandAttention){
   if(tab === "now"){
     body = nextProjectGoingOn(context, commandAttention) + nextProjectEndings(context) +
       nextProjectPlanStatus(context) + nextCockpitPlanDisclosure(context);
-  }else if(tab === "held-to"){
-    body = nextCockpitHeldTo(context.group, observation);
   }else if(tab === "course"){
     body = nextProjectChanges(context.project) +
       nextCockpitCoursePanel(context.group, focus) + nextCockpitCompletedWork(context);
@@ -4046,7 +3993,7 @@ function nextCockpitBeforeRender(){
 
 function nextCockpitAfterRender(){
   const app = document.getElementById("app");
-  nextCockpitHadDisclosures = nextRoute && nextRoute.view === "project";
+  nextCockpitHadDisclosures = Boolean(nextRoute && ["project", "session"].includes(nextRoute.view));
   for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
     const key = details.getAttribute("data-next-cockpit-disclosure");
     details.open = nextCockpitDisclosureStates.get(key) === true;
@@ -4120,11 +4067,10 @@ document.addEventListener("click", event => {
   const target = nextCockpitActionTarget(event);
   if(!target) return;
   const action = String(target.dataset.nextCockpitAction || "");
-  const group = nextRoute.view === "project"
-    ? nextProjectGroups().find(candidate => candidate.label === nextRoute.project) : null;
+  const group = nextCockpitRouteGroup();
   if(action === "tab"){
     const tab = String(target.dataset.arg || "");
-    if(!group || !nextCockpitTabs(nextRoute.focus).includes(tab)) return;
+    if(!group || nextRoute.view !== "project" || !nextCockpitTabs(nextRoute.focus).includes(tab)) return;
     event.preventDefault();
     navigateNext({view:"project",project:group.label,focus:nextRoute.focus || null,tab});
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);

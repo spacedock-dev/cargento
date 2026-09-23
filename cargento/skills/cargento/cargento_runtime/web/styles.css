@@ -816,6 +816,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-instruction-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
 .next-session-command-surface{margin-top:0}
+/* The drift block leads the session page (DRC-4639). One card holding what was
+   the Held to tab's first five sections, with the agent's direction card set
+   inside it beside the reader's words rather than as a second card above. */
+.next-session-drift{margin:18px 0 0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
+.next-session-drift-heading{margin:0;padding:14px 16px 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-drift>.next-session-command-surface{margin:0 16px 14px}
 .next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
 .next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
 .next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}
@@ -1271,9 +1277,6 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    Cargento asserting the session is wrong, which is exactly the claim it may
    not make. The baseline line is dimmer still, because it is provenance rather
    than the reading. */
-.next-session-departures{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--rule)}
-.next-session-departures h2{margin:0;color:var(--ink-label);font-family:var(--mono);
-  font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-departures-count{margin:6px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 /* The sentence saying why there is nothing. Dimmer than a departure, because a
    spent cap and a quiet board are both absences and neither is a finding. */
@@ -1282,6 +1285,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    is left here is spacing and the one element that row has no counterpart for:
    the stamp saying when the raise happened. */
 .next-session-departure{margin:8px 0 0}
+/* The way back beside a departure (DRC-4642): the header's own copy and raise
+   controls, so they keep the primitive's look and the raise keeps its resting
+   amber. The limit sentence is an absence, in the absence register. */
+.next-departure-reentry{display:flex;flex-wrap:wrap;gap:7px;padding-top:4px}
+.next-departure-reentry button{margin:0}
+.next-departure-reentry-why{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-session-departure-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-session-departure-reading,.next-session-departure-base{margin:0}
 /* What later evidence showed. Sans and upright, because it is the board
@@ -1304,7 +1313,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The same label shape as every other fact on this panel, and that is the
    correction rather than a preference: walked on a real board, the block was the
    only one here without an uppercase mono label, so it read as a loose paragraph
-   between the LONG TURN callout and the held-to link rather than as a fact the
+   between the LONG TURN callout and the drift record rather than as a fact the
    panel is stating. Matches .next-session-evidence h2. */
 .next-session-delivery h2{margin:0;color:var(--ink-label);font-family:var(--mono);
   font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}

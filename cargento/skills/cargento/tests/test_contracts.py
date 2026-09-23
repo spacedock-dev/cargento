@@ -675,11 +675,13 @@ def unwired_cockpit_actions(source: str, *, reachable: bool) -> set[str]:
 class LaneOffSentenceIsOwnedOnceTest(unittest.TestCase):
     """DRC-4559. One sentence, three surfaces, and no second wording.
 
-    The session page, the departure review and the Intent log each state that
+    The session page's departure review and the Intent log each state that
     the away-checking lane is off and that what was already raised is still on
-    record. Three literals is how the least true wording becomes the most
-    reassuring, so the string is defined once in `next-boot.js` — first in
-    `APP_PARTS`, so all three see it — and referenced by name everywhere else.
+    record. It was three surfaces until the session page's own UNASKED CHECKS
+    section was absorbed into the drift block's review (DRC-4639). A second
+    literal is how the least true wording becomes the most reassuring, so the
+    string is defined once in `next-boot.js` — first in `APP_PARTS`, so both
+    see it — and referenced by name everywhere else.
     """
 
     WEB = pathlib.Path(__file__).resolve().parents[1] / "cargento_runtime" / "web"
@@ -706,7 +708,7 @@ class LaneOffSentenceIsOwnedOnceTest(unittest.TestCase):
         literal = {name for name, body in wrote.items() if self.SENTENCE in self._joined(body)}
         self.assertEqual({"next-boot.js"}, literal)
         self.assertIn(f"const {self.NAME} =", wrote["next-boot.js"])
-        for name in ("next-session.js", "next-cockpit.js", "next-intent.js"):
+        for name in ("next-cockpit.js", "next-intent.js"):
             with self.subTest(surface=name):
                 self.assertIn(self.NAME, wrote[name])
 

@@ -1214,6 +1214,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-session-departure-next",
         ".next-session-departures-count",
         ".next-session-departures-why",
+        ".next-departure-reentry-why",
         ".next-session-detail-instruction",
         ".next-session-facts dd",
         ".next-session-health",
@@ -1343,8 +1344,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # by. It took one until a live board showed it rendering at 13px.
         #
         # The one duplicate is unchanged, so the rule count still exceeds the
-        # selector count by exactly one.
-        self.assertEqual(105, len(above))
+        # selector count by exactly one. DRC-4642 then added one:
+        # `.next-departure-reentry-why`, the limit sentence beside a departure.
+        self.assertEqual(106, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

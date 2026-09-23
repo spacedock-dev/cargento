@@ -280,7 +280,7 @@ function nextAttentionStatus(app){
   return status;
 }
 
-/* The two regions the Held to tab's cues are written into, built the way
+/* The two regions the drift block's cues are written into, built the way
    `nextAttentionStatus` is and for its reason: `renderNext` assigns `#app`'s
    inner HTML wholesale, so a region drawn inside it is destroyed and recreated
    with its text already inside it on every render, and a node that arrives

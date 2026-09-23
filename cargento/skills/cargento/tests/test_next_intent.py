@@ -293,12 +293,15 @@ console.log(JSON.stringify({
         self.assertNotIn("bottom row is the next to go", out["visible"])
         self.assertIn("One departure raised", out["visible"])
 
-    def test_a_session_still_on_the_board_links_into_its_held_to_tab(self) -> None:
+    def test_a_session_still_on_the_board_links_into_its_session_page(self) -> None:
         out = self.render([self._row()])
 
         self.assertEqual(1, out["rows"])
         self.assertIn("Ship the cockpit", out["visible"])
-        self.assertIn("#n=project:cargento:codex%3Alive-1:held-to", out["html"])
+        # The session page, where the drift block holds these words since Held
+        # to merged into it (DRC-4639), and not the retired tab slug.
+        self.assertIn("#n=session:cargento:codex:live-1", out["html"])
+        self.assertNotIn(":held-to", out["html"])
 
     def test_a_departed_session_keeps_its_words_and_says_it_cannot_be_opened(self) -> None:
         out = self.render([self._row(sid="gone-9", goal="Prove the fixes landed")])
@@ -307,7 +310,7 @@ console.log(JSON.stringify({
         self.assertIn("Prove the fixes landed", out["visible"])
         self.assertIn("Not on the board now, so there is nowhere to open", out["visible"])
         # And it offers no link that would land on the stale-filter surface.
-        self.assertNotIn("gone-9:held-to", out["html"])
+        self.assertNotRegex(out["html"], r'#n=session:[^"]*gone-9')
 
     def test_an_off_board_discard_does_not_claim_its_words_remain_beside_retained_words(
         self,
@@ -322,7 +325,7 @@ console.log(JSON.stringify({
         retained = next(row for row in rows if "codex:gone-8" in row)
         for row in (discarded, retained):
             self.assertIn("Not on the board now, so there is nowhere to open.", row)
-            self.assertNotIn(":held-to", row)
+            self.assertNotIn("#n=session:", row)
         self.assertIn(annotation_store.DISCARD_RECORD, discarded)
         self.assertIn("discarded 1m ago", discarded)
         self.assertNotIn("The words are here.", discarded)
@@ -757,7 +760,7 @@ console.log(JSON.stringify({
         self.assertIn("Prove the fixes landed", visible)
         self.assertIn("Not on the board now, so there is nowhere to open", visible)
         self.assertIn("One departure raised", visible)
-        self.assertNotIn("gone-9:held-to", out["html"])
+        self.assertNotRegex(out["html"], r'#n=session:[^"]*gone-9')
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

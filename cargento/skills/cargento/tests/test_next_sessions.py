@@ -1204,7 +1204,12 @@ class NextSessionDeparturesPanelTest(NextPageJsHarness):
     def test_the_panel_carries_the_same_label_shape_as_its_neighbours(self) -> None:
         html = self.detail('departures: [], departure_why: "Cargento has checked this session."')
 
-        self.assertIn("<h2>UNASKED CHECKS</h2>", html)
+        # Absorbed into the drift block's departures section (DRC-4639), under
+        # that section's labelled part rather than a section of its own.
+        self.assertIn("<h2>DEPARTURES RAISED TO YOU</h2>", html)
+        self.assertIn("FROM THE CHECKS RUN WHILE YOU WERE AWAY", html)
+        self.assertIn("Cargento has checked this session.", html)
+        self.assertNotIn("UNASKED CHECKS", html)
 
     def test_a_departure_says_what_later_evidence_showed(self) -> None:
         """DRC-4514. The follow-up axis, printed verbatim from the server.

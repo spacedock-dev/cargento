@@ -4316,6 +4316,7 @@ for(const focus of [null, "codex:focus-1"]){
   const html = __els.app.innerHTML;
   seen[focus || "project"] = {
     tab: html.includes('data-arg="held-to"'),
+    drift: html.includes("data-next-session-drift"),
     asked: html.includes("WHAT YOU ASKED FOR"),
 
     goal: html.includes("Capture every screen with live sessions"),
@@ -4345,7 +4346,10 @@ console.log(JSON.stringify(seen));
         project, session = out["project"], out["codex:focus-1"]
         self.assertFalse(project["tab"])
         self.assertFalse(project["asked"])
-        self.assertTrue(session["tab"])
+        # A Held to link now opens the session page, whose drift block holds the
+        # fields; the strip offers no tab for them (DRC-4639).
+        self.assertFalse(session["tab"])
+        self.assertTrue(session["drift"])
         self.assertTrue(session["asked"])
         # The memo cell moves to project scope in the same commit that adds
         # these two fields: four typed fields on one session-scope page, at two
@@ -4898,8 +4902,10 @@ console.log(JSON.stringify({view: nextRoute.view, tab: nextRoute.tab,
         )
 
         assert isinstance(out, dict)
-        self.assertEqual("project", out["view"])
-        self.assertEqual("held-to", out["tab"])
+        # Still on the page it was pressed on, which is the session page since
+        # Held to merged into it (DRC-4639).
+        self.assertEqual("session", out["view"])
+        self.assertIsNone(out.get("tab"))
         self.assertFalse(out["armed"])
         self.assertEqual("discard everything", out["label"])
         self.assertEqual(0, out["posts"])
@@ -5554,10 +5560,10 @@ await Promise.all([pending, duplicate]);
 console.log(JSON.stringify({during, other, after:control(), calls}));
 """)
         assert isinstance(out, dict)
-        self.assertIn("Reading in progress", out["during"])
+        self.assertIn("Checking for drift", out["during"])
         self.assertIn("0 model requests recorded", out["during"])
         self.assertRegex(out["during"], r'reading-ask"[^>]*disabled')
-        self.assertNotIn("Reading in progress", out["other"])
+        self.assertNotIn("Checking for drift", out["other"])
         self.assertEqual(1, out["calls"])
         self.assertIn("Reading received", out["after"])
         self.assertNotRegex(out["after"], r'reading-ask"[^>]*disabled')
@@ -5717,7 +5723,7 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         assert isinstance(out, dict)
         self.assertEqual(
             "Nothing has been typed for this session, so there is nothing to read it against. "
-            "Save a goal above to enable a reading.",
+            "Save a goal above to check for drift.",
             out["empty"]["reason"],
         )
         # The control renders in every reason state now, inert and carrying
@@ -6019,10 +6025,11 @@ console.log(JSON.stringify({
 """
         )
 
-        # Then: the tab still parses from a bookmarked link, and it carries
-        # the reason instead of a field whose every save would answer 503.
+        # Then: a bookmarked Held to link still parses, onto the session page,
+        # and it carries the reason instead of a field whose every save would
+        # answer 503.
         assert isinstance(out, dict)
-        self.assertTrue(out["tab"])
+        self.assertFalse(out["tab"])
         self.assertEqual(0, out["inputs"])
         self.assertTrue(out["reason"])
 
@@ -6151,7 +6158,7 @@ console.log(JSON.stringify({
   count: block.split(sentence).length - 1,
   buttonAt,
   afterButton: block.indexOf(sentence) > buttonAt,
-  extended: block.includes(sentence + " Save a goal above to enable a reading."),
+  extended: block.includes(sentence + " Save a goal above to check for drift."),
 }));
 """
         )
@@ -6421,7 +6428,11 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
     #              own acceptance forbids marking either it or the steer submit.
     #              Everything else on the tab is consent or navigation.
     #
-    # `held-to` keeps its one primary, "Ask for a reading".
+    # `held-to` kept its one primary, "Ask for a reading", until DRC-4639 merged
+    # it into the session page. There the one primary is "Check for drift", and
+    # a session blocked on the reader gives it up to the answer control (DEC-20,
+    # which amends this ruling). The per-tab count below is extended with both
+    # session-page states rather than replaced.
     #
     # The ruling is BOUND rather than narrated. A zero is what a tab with no
     # controls at all scores and what a tab whose controls were all deleted
@@ -6475,27 +6486,56 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
             + r"""
 __dashboard.reading_check = "accepted";
 const counts = {};
-for(const tab of ["now", "course", "decisions", "console", "held-to"]){
+const primaries = () => [...__els.app.innerHTML.matchAll(
+  /<button\b[^>]*next-action--primary[^>]*>/g)].map(match => match[0]);
+for(const tab of ["now", "course", "decisions", "console"]){
   navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab});
   await __settle();
   counts[tab] = (__els.app.innerHTML.match(/next-action--primary/g) || []).length;
 }
+// The retired Held to slug, and the session page it now opens.
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+counts["held-to"] = (__els.app.innerHTML.match(/next-action--primary/g) || []).length;
+const onSession = primaries();
+// Blocked on the reader: an exact request with options on the page.
+__dashboard.ask = true;
+__dashboard.sessions[0].state = "needs_input";
+__dashboard.asks = [{id:"ask-1", harness:"codex", session_id:"focus-1", project:"cargento",
+  question:"Ship it?", options:["Yes", "Not yet"]}];
+await refreshNext();
+await __settle();
+counts["session-blocked"] = (__els.app.innerHTML.match(/next-action--primary/g) || []).length;
+const onBlocked = primaries();
 // The two Console controls the criterion names, read from their own emitters
 // rather than from whichever tab happens to render them.
 const steer = nextProjectSteer("cargento", {steers:[]});
 const tripwire = nextProjectGuardrailAdd("cargento", {adding:false});
-console.log(JSON.stringify({counts, steer, tripwire}));
+console.log(JSON.stringify({counts, steer, tripwire, onSession, onBlocked}));
 """
         )
 
         assert isinstance(out, dict)
-        # Counted per tab and not as a page total: a total asserts nothing
+        # Counted per surface and not as a page total: a total asserts nothing
         # about WHERE the primary landed, and would pass with a stray one on
-        # Console and none on Held to.
+        # Console and none on the session page.
         self.assertEqual(
-            {"now": 0, "course": 0, "decisions": 0, "console": 0, "held-to": 1},
+            {
+                "now": 0,
+                "course": 0,
+                "decisions": 0,
+                "console": 0,
+                "held-to": 1,
+                "session-blocked": 1,
+            },
             out["counts"],
         )
+        # Which control holds it: the check on an unblocked session, the answer
+        # on one blocked on the reader (DEC-20).
+        on_session = cast("list[str]", out["onSession"])
+        on_blocked = cast("list[str]", out["onBlocked"])
+        self.assertIn('data-next-cockpit-action="reading-ask"', on_session[0])
+        self.assertIn("data-next-answer=", on_blocked[0])
         self.assertNotIn("next-action--primary", out["steer"])
         self.assertNotIn("next-action--primary", out["tripwire"])
         # The four zeros above are the ruling, so name them from the one place
@@ -7406,12 +7446,12 @@ console.log(JSON.stringify(scopes));
             with self.subTest(scope=scope):
                 rendered = seen["rendered"]
                 self.assertEqual(rendered[1:] + rendered[:1], seen["walked"])
-        # The two scopes no longer hold the same tabs, which is what the walk
-        # above exists to survive: `Held to` is session scope only, so a wrap
-        # computed over the project list would skip it on the reader's screen.
+        # Both scopes hold the same four tabs since Held to merged into the
+        # session page (DRC-4639). The walk still reads the rendered set rather
+        # than the list, so a session-scope tab added later cannot be skipped.
         self.assertEqual(["now", "course", "decisions", "console"], out["project"]["rendered"])
         self.assertEqual(
-            ["now", "course", "decisions", "console", "held-to"],
+            ["now", "course", "decisions", "console"],
             out["codex:focus-1"]["rendered"],
         )
         # A route whose focus names no session in the payload draws the stale
@@ -7485,7 +7525,7 @@ __dashboard.sessions[0].annotation_output = "";
 __dashboard.sessions[0].annotation_at = null;
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
-console.log(JSON.stringify({has: __els.app.innerHTML.includes("A LATER DIRECTION")}));
+console.log(JSON.stringify({has: __els.app.innerHTML.includes("CONFLICT TO SETTLE")}));
 """,
             storage_prelude({}) + self.FIXTURE,
         )
@@ -7504,12 +7544,14 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes("A LATER DIRECTION
         # Detected, not judged. The block must never claim the later direction
         # conflicts, because nothing here can read that.
         self.assertIn("Nothing here decides whether it changes what you are asking for", block)
-        # On the visible text, not the markup: the class names carry the word
-        # `conflict` and a reader never sees those. What the reader must never
-        # be told is that Cargento found one, because nothing here can read
-        # that.
+        # On the visible text, not the markup. DEC-20 labels the block
+        # "Conflict to settle", knowing it breaks DEC-16's no-conflict sentence:
+        # the label puts a question and records no finding. So the word appears
+        # once, as that label, and nowhere else -- no sentence says Cargento
+        # found one, because nothing here can read that.
         visible = re.sub(r"<[^>]*>", " ", block).lower()
-        self.assertNotIn("conflict", visible)
+        self.assertEqual(1, visible.count("conflict"))
+        self.assertIn("conflict to settle", visible)
         # Both choices, and the honest note about the one that mints nothing.
         self.assertIn("The baseline still applies", block)
         self.assertIn("Retype the baseline", block)
@@ -7984,13 +8026,14 @@ __dashboard.sessions[0].departures = [{
 
 
 class CockpitHeldReEntryTest(NextPageJsHarness):
-    """DRC-4509 AC4 and DRC-4511 AC3: the route exposed WITH its limits.
+    """DRC-4509 AC4 and DRC-4511 AC3, carried to where DRC-4642 put the way back.
 
-    The route was always reachable. Its limits were stated in one place, the
-    Attention view's coverage disclosure, which a reader in the Held to tab is
-    not looking at. A raise control that silently does not render states no
-    limit at all, and on this tab a single session is the whole subject, so
-    rendering nothing reads as "no limit" rather than as "not this session".
+    The route back was always reachable and its limits were not. The Held to
+    tab's re-entry block stated them; that tab merged into the session page
+    (DRC-4639), and the controls now sit beside each departure with their limits
+    said once for the departures section. One session is the whole subject
+    there, so a raise that silently does not render would read as "no limit"
+    rather than as "not this session".
     """
 
     FIXTURE = NextCockpitCompositionTest.FIXTURE
@@ -8015,33 +8058,28 @@ __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
 __dashboard.sessions[0].annotation_binding_why = "";
+__dashboard.sessions[0].departures = [{constraint:"TYPED GOAL", clause:"Ship the cockpit",
+  reading:"It changed the board.", revision:1, at:100, cutoff:100}];
 """
 
-    def render(self, extra: str, *, focus: str = "codex:focus-1") -> dict[str, Any]:
+    def render(self, extra: str, *, harness: str = "codex") -> dict[str, Any]:
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             + self.ANNOTATED
             + extra
-            + "navigateNext({view:'project', project:'cargento', focus:"
-            + json.dumps(focus)
-            + ", tab:'held-to'});\n"
+            + "navigateNext({view:'session', project:'cargento', harness:"
+            + json.dumps(harness)
+            + ", session:'focus-1'});\n"
             + """
 await __settle();
 const html = __els.app.innerHTML;
-const held = html.indexOf('class="next-cockpit-held"');
-const closes = html.indexOf("</section>", held);
-const at = html.indexOf('class="next-cockpit-held-reentry"');
+const section = (html.match(
+  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
 console.log(JSON.stringify({
-  // The whole container, not one paragraph: DRC-4594 split the block into a
-  // primary action over two labelled rows plus a disclosure, so a probe that
-  // reads to the first </p> now reads the action alone and would call every
-  // limitation below it missing.
-  note: (html.match(
-    /class="next-cockpit-held-reentry">([\\s\\S]*?)<\\/div>(?=<\\/section>)/) || [])[1] || "",
-  // Inside the WHAT YOU ASKED FOR section, not merely after its header.
-  // Asserted against that section's own closing tag, because "after the bound
-  // header" is also true of a paragraph that escaped the section entirely.
-  inside: at > held && at < closes,
+  note: [...section.matchAll(/class="next-departure-reentry-why"[^>]*>([^<]*)</g)]
+    .map(match => match[1]).join(" "),
+  rows: (section.match(/data-next-departure-reentry/g) || []).length,
+  section,
   offLine: NEXT_FOCUS_OFF_LINE,
 }));
 """,
@@ -8056,19 +8094,17 @@ console.log(JSON.stringify({
             + "__dashboard.sessions[0].focusable = true;\n"
             + '__dashboard.sessions[0].resume_id = "abc123";\n'
         )
-        note = out["note"]
-        assert isinstance(note, str)
-        self.assertTrue(out["inside"], "the note rendered outside the block it describes")
-        self.assertIn("Open this session", note)
-        # The route back, which is what the criterion's navigation check needs.
-        self.assertIn("#n=session:cargento:codex:focus-1", note)
-        # Keyboard focus here is a managed lane; an anchor without this loses
-        # focus on every redraw.
-        self.assertIn("cockpit-held-reentry", note)
+        section = out["section"]
+        assert isinstance(section, str)
+        # Both controls beside the departure, whatever the session's state.
+        self.assertEqual(1, out["rows"])
+        self.assertIn('data-next-copy-command="codex resume abc123"', section)
+        self.assertIn("data-next-raise-session=", section)
         # A raise is not a window manager, and the hedge matches the one the
         # status line already uses after a raise is sent.
-        self.assertIn("its window may still be behind others", note)
-        self.assertIn("re-entry command for it is on the session page", note)
+        self.assertIn("its window may still be behind others", out["note"])
+        # Nothing is missing, so nothing is said about a missing command.
+        self.assertNotIn("re-entry command", out["note"])
 
     def test_no_reported_terminal_is_a_different_sentence_from_the_run_being_off(self) -> None:
         absent = self.render(self.FOCUS_ON)
@@ -8086,14 +8122,62 @@ console.log(JSON.stringify({
         # `pi` is not in NEXT_RESUME_COMMANDS; `codex` is, so an absent id
         # there is a different fact. `nextResumeCommand` collapses both to "".
         never = self.render(
-            self.FOCUS_ON + '__dashboard.sessions[0].harness = "pi";\n',
-            focus="pi:focus-1",
+            self.FOCUS_ON + '__dashboard.sessions[0].harness = "pi";\n', harness="pi"
         )
         this_run = self.render(self.FOCUS_ON)
 
         self.assertIn("publishes no re-entry command", never["note"])
         self.assertIn("no usable id this run", this_run["note"])
         self.assertNotIn("no usable id this run", never["note"])
+
+    def test_every_branch_of_the_way_back_draws_a_different_shape(self) -> None:
+        """Three raise branches against two re-entry arms, asserted to DIFFER.
+
+        Carried from the retired re-entry block's matrix, which collapsed twice:
+        once by exercising one arm, then by six copies of one arm when the
+        capability stub did not answer `getAttribute` as the page reads it.
+        Guarding each case cannot see six identical cases, so the six shapes
+        are compared to each other.
+        """
+        cases = {
+            "capability-off/no-resume": ("", "pi"),
+            "capability-off/resume": ("", "codex"),
+            "focusable/no-resume": ("focusable", "pi"),
+            "focusable/resume": ("focusable", "codex"),
+            "no-terminal/no-resume": ("unfocusable", "pi"),
+            "no-terminal/resume": ("unfocusable", "codex"),
+        }
+        shapes: dict[str, tuple[bool, bool, str]] = {}
+        for name, (focus_mode, harness) in cases.items():
+            with self.subTest(branch=name):
+                setup = f"__dashboard.sessions[0].harness = {json.dumps(harness)};\n"
+                setup += '__dashboard.sessions[0].resume_id = "abc123";\n'
+                if focus_mode:
+                    setup += self.FOCUS_ON + (
+                        "__dashboard.sessions[0].focusable = "
+                        f"{'true' if focus_mode == 'focusable' else 'false'};\n"
+                    )
+                out = self.render(setup, harness=harness)
+                section = out["section"]
+                assert isinstance(section, str)
+                shapes[name] = (
+                    "data-next-copy-command=" in section,
+                    "data-next-raise-session=" in section,
+                    str(out["note"]),
+                )
+                # Every branch says something: a control, a limit, or both.
+                self.assertTrue(any(shapes[name][:2]) or shapes[name][2])
+        self.assertEqual(6, len(set(shapes.values())), shapes)
+        # The resume command follows the harness, never the raise branch.
+        for name, shape in shapes.items():
+            with self.subTest(resume=name):
+                self.assertEqual(name.endswith("/resume"), shape[0])
+                self.assertEqual(name.startswith("focusable/"), shape[1])
+
+    def test_a_session_with_no_departure_says_nothing_about_a_way_back(self) -> None:
+        out = self.render("__dashboard.sessions[0].departures = [];\n")
+        # The limit belongs beside a departure; with none drawn it is noise.
+        self.assertEqual("", out["note"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -9107,7 +9191,7 @@ console.log(JSON.stringify({
             "be asked for yet. The evidence below stays readable without one.",
             control,
         )
-        self.assertIn("Ask for a reading</button>", control)
+        self.assertIn("Check for drift</button>", control)
         # `aria-disabled`, not the bare attribute: the control keeps its place
         # in the tab order and `nextCockpitAskForReading` refuses the press it
         # now receives (DRC-4588). Both spellings are named, because a
@@ -9115,7 +9199,7 @@ console.log(JSON.stringify({
         self.assertIn('aria-disabled="true"', control)
         self.assertNotIn(" disabled>", control)
         # And the review section itself invites no press of its own.
-        self.assertNotIn("Ask for a reading", out["block"])
+        self.assertNotIn("Check for drift", out["block"])
 
     def test_an_unsettled_baseline_leaves_no_departure_in_the_reading_part(self) -> None:
         """AC3, verified rather than rebuilt.
@@ -9142,7 +9226,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        self.assertIn("A LATER DIRECTION", out["html"])
+        self.assertIn("CONFLICT TO SETTLE", out["html"])
         self.assertNotIn("It changed the board.", out["block"])
         self.assertIn(
             "This reading verified neither constraint, so it raised nothing and confirmed nothing.",
@@ -10377,7 +10461,6 @@ class CockpitTabsNameTheirPanelTest(NextPageJsHarness):
         "course": "Course:",
         "decisions": "Decisions:",
         "console": "Console:",
-        "held-to": "Held to:",
     }
 
     def run_fixture(self, checks: str, *, storage: dict[str, str] | None = None) -> object:
@@ -10392,9 +10475,8 @@ class CockpitTabsNameTheirPanelTest(NextPageJsHarness):
         out = self.run_fixture(
             """
 const seen = {};
-for(const tab of ["now","course","decisions","console","held-to"]){
-  navigateNext({view:"project",project:"cargento",
-    focus:tab === "held-to" ? "codex:focus-1" : null,tab});
+for(const tab of ["now","course","decisions","console"]){
+  navigateNext({view:"project",project:"cargento",focus:null,tab});
   await __settle();
   const html = __els.app.innerHTML;
   const ledes = [...html.matchAll(/<p class="next-cockpit-lede">([\\s\\S]*?)<\\/p>/g)]
@@ -10522,17 +10604,13 @@ console.log(JSON.stringify({
             ],
             out["decisions"],
         )
-        self.assertEqual(
-            [
-                {"state": "zero", "value": 0},
-                {"state": "count", "value": 1},
-                {"state": "count", "value": 3},
-            ],
-            out["held"],
-        )
+        # Held to is no longer a tab (DRC-4639), so it carries no cue at all
+        # rather than a count of a collection no strip shows.
+        self.assertEqual([None, None, None], out["held"])
+        self.assertIsNone(out["heldAbsent"])
         # A collection the board never published is not a collection read and
         # found empty, and neither is 0.
-        for absent in ("courseAbsent", "decisionsAbsent", "heldAbsent"):
+        for absent in ("courseAbsent", "decisionsAbsent"):
             with self.subTest(absent=absent):
                 self.assertEqual({"state": "unobserved"}, out[absent])
 
@@ -10625,7 +10703,7 @@ console.log(JSON.stringify({cues, buttons,
             with self.subTest(tab=tab):
                 self.assertIsNone(out["cues"][tab])
                 self.assertEqual("", out["html"][tab])
-        for tab in ("now", "console", "held-to"):
+        for tab in ("now", "console"):
             with self.subTest(button=tab):
                 self.assertNotIn("next-cockpit-tab-cue", out["buttons"][tab])
 
@@ -10652,7 +10730,9 @@ console.log(JSON.stringify({atProject:args(atProject), atSession:args(atSession)
         )
         assert isinstance(out, dict)
         self.assertEqual(["now", "course", "decisions", "console"], out["atProject"])
-        self.assertEqual(["now", "course", "decisions", "console", "held-to"], out["atSession"])
+        # Held to merged into the session page (DRC-4639), so both scopes answer
+        # four; the route is still the source, which the stale case above binds.
+        self.assertEqual(["now", "course", "decisions", "console"], out["atSession"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -11020,7 +11100,10 @@ console.log(JSON.stringify({first, firstAfterPress, secondUntouched,
             / "next-boot.js"
         ).read_text(encoding="utf-8")
         self.assertIn('const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];', boot)
-        self.assertIn('const NEXT_SESSION_TABS = ["held-to"];', boot)
+        # Held to retired into the session page (DRC-4639): the session tab list is
+        # empty and its slug is an alias, not a tab.
+        self.assertIn("const NEXT_SESSION_TABS = [];", boot)
+        self.assertIn('const NEXT_RETIRED_SESSION_TAB = "held-to";', boot)
         out = self.run_fixture(
             r"""
 const routes = ["#n=project:cargento:decisions", "#n=project:cargento:codex%3Afocus-1:held-to",
@@ -11038,12 +11121,8 @@ console.log(JSON.stringify({routes, round}));
         self.assertEqual(
             [
                 {"view": "project", "project": "cargento", "focus": None, "tab": "decisions"},
-                {
-                    "view": "project",
-                    "project": "cargento",
-                    "focus": "codex:focus-1",
-                    "tab": "held-to",
-                },
+                # The retired slug opens that session's page (NUI-3's alias).
+                {"view": "session", "project": "cargento", "focus": None, "tab": None},
                 {"view": "project", "project": "cargento", "focus": None, "tab": None},
                 {
                     "view": "project",
@@ -11054,7 +11133,7 @@ console.log(JSON.stringify({routes, round}));
             ],
             out["routes"],
         )
-        self.assertEqual("#n=project:cargento:codex%3Afocus-1:held-to", out["round"])
+        self.assertEqual("#n=session:cargento:codex:focus-1", out["round"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -11690,7 +11769,7 @@ class HeldToOrderingTest(NextPageJsHarness):
             + self.ANNOTATED
             + setup
             + """
-navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+navigateNext({view:"session", project:"cargento", harness:"codex", session:"focus-1"});
 await __settle();
 const html = __els.app.innerHTML;
 console.log(JSON.stringify({
@@ -11716,10 +11795,9 @@ console.log(JSON.stringify({
         # to a matching `</section>`, which nested sections make unfindable by
         # scan; anything after the panel is also after the lede, so the slice
         # can only ever add elements the assertion still holds for.
-        panel = html[html.index('data-next-cockpit-panel="held-to"') :]
+        panel = html[html.index("data-next-session-drift") :]
         at = panel.index('class="next-cockpit-held-lede"')
         self.assertLess(at, panel.index('class="next-cockpit-held-fields"'))
-        self.assertLess(at, panel.index('class="next-cockpit-held-reentry"'))
         # Every absence element the board rendered, found by the same convention
         # `test_next_page._absence_rules` sweeps the stylesheet with: an
         # `-absent` class-name segment, or one of the three absence attributes.
@@ -11755,7 +11833,7 @@ console.log(JSON.stringify({
         for claim in ("watch", "automatic", "checks for you"):
             with self.subTest(claim=claim):
                 self.assertNotIn(claim, lede.lower())
-        self.assertIn("Ask for a reading", lede)
+        self.assertIn("check for drift", lede)
 
     def test_the_section_order_puts_the_record_last(self) -> None:
         """AC-3. Falsified by moving any section, including re-raising OBSERVED
@@ -11765,7 +11843,7 @@ console.log(JSON.stringify({
         assert isinstance(html, str)
         order = [
             "WHAT YOU ASKED FOR",
-            "A LATER DIRECTION",
+            "CONFLICT TO SETTLE",
             "READING",
             "DEPARTURES RAISED TO YOU",
             "HOW IT LANDED",
@@ -11794,160 +11872,6 @@ console.log(JSON.stringify({
         assert isinstance(html, str)
         self.assertNotIn("record read above", html)
         self.assertIn("is in the observed record read for this session", html)
-
-    def test_the_reentry_block_leads_with_the_action(self) -> None:
-        """AC-5. The containment check is kept rather than loosened -- "after the
-        header" is also true of a paragraph that escaped the section entirely.
-
-        Both limits still render, each with its own sentence; what moves is
-        that the one act this block offers is no longer the opening clause of a
-        paragraph whose remainder is about what cannot be done.
-        """
-        out = self._run_page_js(
-            "await __settle();\nawait __settle();\n"
-            "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
-            + self.ANNOTATED
-            + """
-navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
-await __settle();
-const html = __els.app.innerHTML;
-const held = html.indexOf('class="next-cockpit-held"');
-const closes = html.indexOf("</section>", held);
-const at = html.indexOf('class="next-cockpit-held-reentry"');
-console.log(JSON.stringify({
-  inside: at > held && at < closes,
-  anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
-  reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
-  raiseLabelAt: html.indexOf('reentry-label">Raise<'),
-  resume: html.includes("there is no re-entry command to copy"),
-  raise: html.includes(NEXT_FOCUS_OFF_LINE),
-}));
-""",
-            storage_prelude({}) + self.FIXTURE,
-        )
-        assert isinstance(out, dict)
-        self.assertTrue(out["inside"], "the block rendered outside the section it describes")
-        anchor_at = out["anchorAt"]
-        reentry_at, raise_at = out["reentryLabelAt"], out["raiseLabelAt"]
-        assert isinstance(anchor_at, int)
-        for name, at in (("anchor", anchor_at), ("Re-entry", reentry_at), ("Raise", raise_at)):
-            with self.subTest(part=name):
-                self.assertNotEqual(-1, at, f"{name} did not render")
-        self.assertLess(anchor_at, reentry_at, "a limitation arrived before the action")
-        self.assertLess(anchor_at, raise_at, "a limitation arrived before the action")
-        # Neither limit was dropped on the way into its own row.
-        self.assertTrue(out["resume"])
-        self.assertTrue(out["raise"])
-
-    def test_the_action_leads_on_every_branch_this_block_can_draw(self) -> None:
-        """AC-5 across the combinations it names, and asserted to BE different.
-
-        The criterion promises six: three raise branches (focus capability off,
-        a focusable session, a session with no terminal) against two re-entry
-        arms (a harness with a resume command and one without). The check above
-        exercises one -- capability off, no resume command -- and that is the
-        arm where the anchor is emitted first anyway.
-
-        **This matrix has now collapsed twice.** First by exercising one arm.
-        Then by exercising six copies of one arm: the capability stub returned
-        `{content:"tmux"}`, and `nextFocusCapability` requires
-        `typeof meta.getAttribute === "function"`, so it resolved to "" and all
-        six drew the capability-off branch -- one raise sentence, no
-        disclosure. Every per-case guard passed, because the anchor and both
-        rows render on every branch. Guarding each case cannot see six
-        identical cases.
-
-        So the shapes are asserted to DIFFER as well as to be ordered: three
-        distinct raise claims, two distinct re-entry sentences, six distinct
-        pairs. The stub is `CockpitHeldReEntryTest.FOCUS_ON`'s, which answers
-        `getAttribute` as the page reads it.
-
-        Measured before this was widened: moving the anchor to the END of the
-        block survives all 3639 behavioural tests on the branch a
-        FOCUS-CAPABLE board draws. That is not a narrow-selection artifact.
-        """
-        cases = {
-            "capability-off/no-resume": ("", "pi"),
-            "capability-off/resume": ("", "codex"),
-            "focusable/no-resume": ("focusable", "pi"),
-            "focusable/resume": ("focusable", "codex"),
-            "no-terminal/no-resume": ("unfocusable", "pi"),
-            "no-terminal/resume": ("unfocusable", "codex"),
-        }
-        shapes: dict[str, tuple[str, str, bool]] = {}
-        for name, (focus_mode, harness) in cases.items():
-            with self.subTest(branch=name):
-                out = self._run_page_js(
-                    "await __settle();\nawait __settle();\n"
-                    "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
-                    + self.ANNOTATED
-                    + f"__dashboard.sessions[0].harness = {json.dumps(harness)};\n"
-                    + (
-                        CockpitHeldReEntryTest.FOCUS_ON + f"__dashboard.sessions[0].focusable = "
-                        f"{'true' if focus_mode == 'focusable' else 'false'};\n"
-                        if focus_mode
-                        else ""
-                    )
-                    + f"""
-navigateNext({{view:"project", project:"cargento",
-  focus:{json.dumps(harness + ":focus-1")}, tab:"held-to"}});
-await __settle();
-const html = __els.app.innerHTML;
-const block = (html.match(
-  /<div class="next-cockpit-held-reentry">[\\s\\S]*?<\\/div>\\s*<\\/section>/) || [""])[0];
-const rowText = label => {{
-  const at = block.indexOf(`>${{label}}<`);
-  if(at < 0) return "";
-  const from = block.indexOf('next-cockpit-held-reentry-text">', at);
-  return from < 0 ? "" : block.slice(from + 32, block.indexOf("<", from + 32));
-}};
-console.log(JSON.stringify({{
-  anchorAt: html.indexOf('data-next-focus="cockpit-held-reentry"'),
-  reentryLabelAt: html.indexOf('reentry-label">Re-entry<'),
-  raiseLabelAt: html.indexOf('reentry-label">Raise<'),
-  raise: rowText("Raise"), resume: rowText("Re-entry"),
-  disclosure: (block.match(/<summary>([^<]*)<\\/summary>/) || [])[1] || ""}}));
-""",
-                    storage_prelude({}) + self.FIXTURE,
-                )
-                assert isinstance(out, dict)
-                anchor_at = out["anchorAt"]
-                self.assertNotEqual(-1, anchor_at, "the re-entry anchor did not render")
-                self.assertNotEqual(-1, out["reentryLabelAt"], "the Re-entry row did not render")
-                self.assertNotEqual(-1, out["raiseLabelAt"], "the Raise row did not render")
-                self.assertLess(anchor_at, out["reentryLabelAt"])
-                self.assertLess(anchor_at, out["raiseLabelAt"])
-                raise_text, resume_text = out["raise"], out["resume"]
-                assert isinstance(raise_text, str) and isinstance(resume_text, str)
-                self.assertNotEqual("", raise_text, "the Raise row rendered no sentence")
-                self.assertNotEqual("", resume_text, "the Re-entry row rendered no sentence")
-                shapes[name] = (raise_text, resume_text, bool(out["disclosure"]))
-
-        # The six are six. Without this, six copies of one branch pass every
-        # assertion above -- which is how this matrix collapsed the second time.
-        self.assertEqual(6, len(set(shapes.values())), shapes)
-        self.assertEqual(3, len({shape[0] for shape in shapes.values()}), "raise branches")
-        self.assertEqual(2, len({shape[1] for shape in shapes.values()}), "re-entry arms")
-        # And the capability-off branch is the one that draws no disclosure,
-        # which is the arm the broken stub made universal.
-        self.assertFalse(shapes["capability-off/resume"][2])
-        self.assertTrue(shapes["focusable/resume"][2])
-        self.assertTrue(shapes["no-terminal/resume"][2])
-
-    def test_the_managed_focus_lane_survives_the_restructure(self) -> None:
-        """AC-6. Falsified by a wrapper that takes the attribute, which keeps a
-        bare string assertion green while focus lands on the wrapper.
-
-        Asserted against the opening tag that carries the attribute, not
-        against the attribute's presence anywhere in the markup.
-        """
-        out = self.tab()
-        html = out["html"]
-        assert isinstance(html, str)
-        tag = re.search(r'<([a-z]+)[^>]*data-next-focus="cockpit-held-reentry"[^>]*>', html)
-        assert tag is not None, "the managed focus lane is not on the tab"
-        self.assertEqual("a", tag.group(1), "the focus lane moved off the anchor")
-        self.assertIn("#n=session:cargento:codex:focus-1", tag.group(0))
 
     def test_the_count_labels_drop_the_repeated_quantity_noun(self) -> None:
         """AC-7. Falsified by rewording any `line()` value argument or collapsing
@@ -12028,7 +11952,7 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "so the question below still stands as it did": "next-cockpit-conflict-open",
         "already been dropped and the question below still stands": "next-cockpit-conflict-open",
         "so nothing above is an inspected file": "OBSERVED RECORD",
-        "Save a goal above to enable a reading": 'class="next-cockpit-held-fields"',
+        "Save a goal above to check for drift": 'class="next-cockpit-held-fields"',
         "The evidence below stays readable without one": "OBSERVED RECORD",
         "the observed record below and the words you typed": "OBSERVED RECORD",
         "after you saved the words above": 'class="next-cockpit-held-fields"',

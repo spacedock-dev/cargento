@@ -125,7 +125,7 @@ function nextIntentSources(row, session, retained){
 }
 
 function nextIntentReading(row){
-  /* Compact on purpose. The Held to tab owns the full sentence about a reading
+  /* Compact on purpose. The session page's drift block owns the full sentence about a reading
      that read an older revision; this says the same fact in the space a list
      row has, and a reader who wants the wording follows the link. Two full
      wordings of one fact is the divergence this file already refuses for the
@@ -152,7 +152,7 @@ function nextIntentReading(row){
 function nextIntentClose(ordered, listed = (ordered || []).length){
   /* Derived from the rows this view is already holding, rather than asserted.
      The constant it replaces said no reading existed while one rendered on the
-     Held to tab for a session listed directly beneath it.
+     session page's drift block for a session listed directly beneath it.
 
      Over the rows that still hold words and not over every row (DRC-4565). A
      discard record can never carry a reading, so counting one in the
@@ -212,7 +212,7 @@ function nextIntentClose(ordered, listed = (ordered || []).length){
    them together is the point.
 
    Compact, for `nextIntentReading`'s reason. The count is derived from the
-   published list the Held to tab renders from, which filters the checks that
+   published list the session page's drift block renders from, which filters the checks that
    raised nothing, so it is a count of raises and not of store rows. Where there
    is none, the server's own sentence says which of the four reasons, because a
    bare zero here would read as a session found to be on track.
@@ -278,8 +278,9 @@ function nextIntentRow(row, live, retained = true){
   const departures = retained ? nextIntentDepartures(row) : "";
   const reachable = Boolean(project);
   const name = reachable
-    ? `<a href="${esc(nextFragmentForRoute({view: "project", project,
-        focus: key, tab: "held-to"}))}" data-next-focus="intent:${esc(key)}">${esc(key)}</a>`
+    ? `<a href="${esc(nextFragmentForRoute({view: "session", project,
+        harness: String(session.harness || ""), session: String(session.sid || "")}))}" ` +
+      `data-next-focus="intent:${esc(key)}">${esc(key)}</a>`
     : `<span class="next-intent-gone">${esc(key)}</span>`;
   /* The reading cell is dropped on a record and not softened. Every sentence
      it can produce -- "No reading asked for" most of all -- is about a session
@@ -307,7 +308,7 @@ function nextIntentRow(row, live, retained = true){
       'nowhere to open.' + (discarded ? '' : ' The words are here.') + '</span>') +
     /* The binding caveat, because a list of many sessions is where a shared
        prefix would actually bite and an absent caveat here reads as exact
-       binding. Found by walking the board: the Held to tab says it for one
+       binding. Found by walking the board: the drift block says it for one
        session and this said nothing for all of them. */
     (row.binding_why ? `<span class="next-intent-why">${esc(row.binding_why)}</span>` : "") +
     '</div>';
