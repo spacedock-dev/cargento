@@ -409,8 +409,11 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
-To check for drift, save a goal on the session page and press **Check for drift**, then read the
-disclosure and choose **Allow and check**. The permission is remembered across tabs and restarts.
+To check for drift, press **Check for drift** on the session page, then read the disclosure and
+choose **Allow and check**. With no saved goal, the check adopts the latest permitted Claude Code
+or Codex prompt. The goal field lets you choose the first prompt or adopt without checking; you
+can also type your own goal. Adopted words say "from your prompt", and editing them makes a typed
+goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts.
 Use **Turn off readings** on a session page to revoke it. Checks spend your Codex capacity, including
 when the session belongs to another harness. Twelve attempts are allowed in a rolling twenty-four
 hours; a refused check names when capacity under that limit becomes available again. Goal summaries

@@ -73,7 +73,7 @@ The posture rests on two invariants:
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
    which is the delivery completing rather than a change a caller asked for. Four write to disk.
    `POST /api/dismiss` writes the sessions you marked handled,
-   `POST /api/annotate` writes the goal and expected output you typed against a session, and
+   `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected output you typed against a session, and
    `POST /api/reading` writes a model's reading of that session back into the same annotation
    entry. A press that produces nothing still writes, because the reason and the spend count are
    recorded too. These three routes write Cargento's own state under `~/.cargento` and never a harness
@@ -922,7 +922,7 @@ each of those shipped withholding its answer instead. Cargento may now ask a har
 question and consume a little of the operator's own capacity doing it.
 
 The observer model is the first implementation of this pathway, deriving a session's goal line, and
-the reading lane is the second, reading a session against the words the reader typed against it.
+the reading lane is the second, reading a session against the words the reader saved against it.
 Each has its own entry below naming what it sends, what it asks, and what it caps. Future harness
 callers need their own entry.
 
@@ -1208,7 +1208,7 @@ output goes; `cargento-dismissals.json`, the sessions the reader marked handled,
 Dismissals below; `observer/<harness>_<sid>.json`, the sidecar `GET /api/observe` records when a
 reader opens that panel for a session, named in invariant 2 above; `cargento-history.json`, the
 history of what this server observed, described in Local history above;
-`cargento-annotations.json`, the goal and expected output you typed and the readings taken against
+`cargento-annotations.json`, the typed or explicitly adopted goal, typed expected output and readings taken against
 them, named in invariant 2 above and turned off by `--no-annotations`;
 `cargento-deliveries.json`, what became of each notification this board raised, described in
 Delivery records below; `cargento-departures.json`, what an unasked reading raised, described in
@@ -1469,13 +1469,27 @@ The allowlist, one line per field:
   against reopen after a restart and after the live row leaves the board.
 - `annotation_output`, the same field's other half: what the reader typed the session should
   produce. Same bound, same redaction, same reason.
+- `first_prompt`, the first recorded user prompt offered by DEC-22 so a reader can choose the
+  original goal without retyping it. Published for Claude Code and Codex, redacted before clipping
+  to 140 characters plus the clipping mark, and scrubbed to the same bound on history reload.
+  Its existing history retention, size cap, `--no-history` and `--forget` apply unchanged.
 
-Ruled 2026-09-23 by [DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal) and not yet built (DRC-4643): `annotation_goal` may also hold the
-reader's own latest or first prompt, adopted in one press and marked as adopted. That makes "what the
-reader typed" an inference for adopted rows, since authorship rests on the harness recording a user
-message and on an injected-prompt filter that fails open. The adopted words go through the same
-`annotations.annotate` write, redaction and bounds. The first prompt is a new published field and
-needs its own line here when it ships.
+[DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal) also admits
+an explicitly adopted latest or first prompt as `annotation_goal`. Authorship is inferred from the
+harness user-message shape and injected-prompt filter, which fails open; it is not proof a person
+wrote the message. The server resolves the published source again, requires its displayed text and
+source time to match, and refuses implicit adoption over an existing goal. Adoption uses the same
+240-character, one-line annotation writer. Its closed source token and source time survive with
+the revision and the reading that used it; an explicit goal save makes typed words instead.
+Adopted goals never authorize unasked checks, even when the same revision has a typed output.
+
+The history record also keeps `first_prompt_at`, `annotation_goal_source` and
+`annotation_goal_source_at`, scalar provenance for the admitted words. Schema 3 reads versions 1
+and 2 without discarding their observations. Unknown versions still refuse. First prompts come
+from a bounded two-MiB transcript-prefix scan, excluding generated titles, compaction summaries
+and recognized injected messages. An unread prefix yields no first prompt; it never substitutes
+a later record. Source text is at most 140 characters plus the clipping mark. The page names an
+excerpt rather than silently adopting a longer prompt. Missing source times prevent adoption.
 
 The revision number beside them, `annotation_revision`, is in the record and not on this list. It
 is an integer the board derives, not text anybody typed.

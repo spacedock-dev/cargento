@@ -73,7 +73,9 @@ current turn it is, and an estimate of when that turn ends. It tells you when th
 of making you poll. The first screen sets your goal or a permitted prompt beside current activity
 and brings recorded departures forward. The session page asks once before a reading, remembers
 your answer, and offers an off switch and a way back into the session, without steering it for you.
-Reader-requested readings are capped at twelve attempts per rolling twenty-four hours.
+Reader-requested readings are capped at twelve attempts per rolling twenty-four hours. With no saved
+goal, a check can adopt your latest Claude Code or Codex prompt; the goal field also offers your
+first prompt. Adopted words are marked, and missing source times refuse adoption.
 Claude Code and Codex hooks also report matched destructive command shapes; a match does not
 prove success. Cargento saves a stage you choose for a Spacedock workflow and alerts once when
 it observes an entity enter that stage; gaps and unavailable sources are stated, and a
