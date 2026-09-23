@@ -730,6 +730,58 @@ class ClaudeCollectorTest(RuntimeTestCase):
 
         self.assertEqual(["12345678"], [session["session"] for session in sessions])
 
+    def test_a_transcript_of_harness_metadata_alone_is_not_a_session(self) -> None:
+        # DRC-4645. Measured 2026-09-23: 438 of 765 transcripts in one project
+        # directory were a single `ai-title` record, and 30 of 34 rows under
+        # that project were those files. The other metadata-only shapes found
+        # in the same sweep ride the same rule.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "-Users-test-repo"
+            project.mkdir(parents=True)
+            (project / "aaaa0001-0000-0000-0000-000000000000.jsonl").write_text(
+                json.dumps({"type": "ai-title", "aiTitle": "Work in another repo"}) + "\n"
+            )
+            (project / "aaaa0002-0000-0000-0000-000000000000.jsonl").write_text(
+                json.dumps({"type": "pr-link", "url": "https://example.invalid/pr/1"})
+                + "\n"
+                + json.dumps({"type": "file-history-snapshot"})
+                + "\n"
+            )
+            (project / "bbbb0001-0000-0000-0000-000000000000.jsonl").write_text(
+                json.dumps({"type": "ai-title", "aiTitle": "The real session"})
+                + "\n"
+                + json.dumps({"type": "user", "timestamp": iso, "message": {"content": "build it"}})
+                + "\n"
+            )
+            with store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")):
+                sessions = collect_claude(now, 24, True)
+
+        self.assertEqual(["bbbb0001"], [session["session"] for session in sessions])
+        self.assertEqual("The real session", sessions[0]["title"])
+
+    def test_a_metadata_transcript_larger_than_the_scan_is_still_counted(self) -> None:
+        # The check reads a bounded prefix. A file longer than that prefix is
+        # never hidden on a guess about what the unread part holds.
+        # Records are sized to divide the scan exactly, so the prefix ends on a
+        # record boundary and parses clean: a torn last line would keep the file
+        # counted on its own and leave the bound untested.
+        now = time.time()
+        scan = cfg().claude_agent_scan_bytes
+        stem = json.dumps({"type": "progress", "data": ""})
+        record = stem.replace('""', '"' + "x" * (64 - len(stem) - 1) + '"') + "\n"
+        self.assertEqual(0, scan % len(record))
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "-Users-test-repo"
+            project.mkdir(parents=True)
+            big = project / "cccc0001-0000-0000-0000-000000000000.jsonl"
+            big.write_text(record * (scan // len(record) + 4))
+            with store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")):
+                sessions = collect_claude(now, 24, True)
+
+        self.assertEqual(["cccc0001"], [session["session"] for session in sessions])
+
     def test_modern_subagent_transcripts_fold_into_parent_session(self) -> None:
         # Harness >= 2.x writes subagent transcripts as ordinary top-level
         # <uuid>.jsonl files whose records carry agentName and

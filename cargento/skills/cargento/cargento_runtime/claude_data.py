@@ -502,6 +502,70 @@ def hook_user_event(
     return (True, last_user_event(config, state, real_path))
 
 
+# Record types that carry no conversation. A transcript made only of these is a
+# harness artifact rather than a session: measured 2026-09-23, 438 of 765 files
+# in one project directory were a single `ai-title` record (DRC-4645), and every
+# other conversation-free file in the same sweep was one of the rest. A record
+# of any type not named here, including one with no type, keeps the file a
+# session, so a new harness record type fails toward showing a row.
+METADATA_RECORD_TYPES = frozenset(
+    {
+        "ai-title",
+        "agent-name",
+        "attachment",
+        "file-history-snapshot",
+        "last-prompt",
+        "mode",
+        "permission-mode",
+        "pr-link",
+        "progress",
+        "saved_hook_context",
+        "system",
+    }
+)
+
+
+def has_conversation(config: RuntimeConfig, state: RuntimeState, path: str) -> bool:
+    """Whether a top-level transcript is a session rather than harness metadata.
+
+    Only a file that fits inside the bounded prefix is ever classified as
+    metadata, because a longer one cannot be judged without reading it all.
+    A True answer is final (transcripts only append); a False answer is keyed
+    on the file's stat and recomputed when it changes.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return True
+    key = (stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.conversation_cache.get(path)
+    if cached is not None and (cached[1] or cached[0] == key):
+        return cached[1]
+    result = True
+    try:
+        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
+    except OSError:
+        return True
+    if stat.st_size <= len(data):
+        types: set[object] = set()
+        for line in data.split(b"\n"):
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                types.add(None)
+                break
+            types.add(rec.get("type") if isinstance(rec, dict) else None)
+        result = not types or not types <= METADATA_RECORD_TYPES
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.conversation_cache, path, (key, result), limit=config.max_cache_entries
+        )
+    return result
+
+
 def agent_identity(
     config: RuntimeConfig,
     state: RuntimeState,

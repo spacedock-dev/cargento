@@ -17,12 +17,38 @@ function nextProjectSessionLine(session){
   return '<button type="button" class="next-project-session" data-next-project-session ' +
     `data-next-harness="${esc(session.harness)}" data-next-session="${esc(session.sid)}" ` +
     `data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
-    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isLive ? " next-project-dot--working" : ""}" ` +
-    `role="img" aria-label="${esc(session.state)}"></span>` +
+    nextSessionDot(session) +
     `<span class="next-project-session-harness">${esc(session.harness)}</span>` +
     nextProjectValue(session.titleText, session.titleKnown, "next-project-session-title") +
     nextProjectValue(session.nowText, session.nowKnown, "next-project-session-now") +
     nextProjectValue(session.nextText, session.nextKnown, "next-project-session-next") + "</button>";
+}
+
+/* The member lines an Active project row renders (DRC-4647). Blocked on you,
+   then working, then quiet by most recent activity, then everything else, then
+   ended. Every blocked and working member renders even past the cap, because
+   hiding one would bury the thing the row exists to show; the rest fill up to
+   NEXT_PROJECT_MEMBER_CAP and one count line names what is left. */
+const NEXT_PROJECT_MEMBER_CAP = 5;
+
+function nextProjectMembers(sessions){
+  const rank = session => session.isNeeds || session.askKnown ? 0 : (session.isWorking ? 1 :
+    (session.isEnded ? 4 : (session.isQuiet ? 2 : 3)));
+  const ordered = sessions.map((session, index) => ({session, index})).sort((a, b) =>
+    rank(a.session) - rank(b.session) ||
+    (rank(a.session) >= 2 ? (b.session.lastActivityAt || 0) - (a.session.lastActivityAt || 0) : 0) ||
+    a.index - b.index).map(row => row.session);
+  const pinned = ordered.filter(session => rank(session) <= 1);
+  const rest = ordered.filter(session => rank(session) > 1);
+  const shown = [...pinned, ...rest.slice(0, Math.max(0, NEXT_PROJECT_MEMBER_CAP - pinned.length))];
+  return {shown, hidden: ordered.length - shown.length};
+}
+
+function nextProjectMoreLine(hidden, route){
+  if(!hidden) return "";
+  return `<button type="button" class="next-project-more" data-next-project-more ` +
+    `data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
+    `${hidden} other ${hidden === 1 ? "session" : "sessions"}</button>`;
 }
 
 function nextProjectRow(project, history = false){
@@ -33,11 +59,12 @@ function nextProjectRow(project, history = false){
   const count = `<div class="next-project-summary">${esc(project.countLine)}</div>`;
   const shared = project.sharedLabelKnown
     ? `<div class="next-project-collision">${esc(project.sharedLabelText)}</div>` : "";
+  const members = history ? null : nextProjectMembers(project.sessions);
   const content = history ? identity + count :
     '<div class="next-project-project">' + identity +
     nextProjectValue(project.scopeText, project.scopeKnown, "next-project-scope") + count + shared +
     '</div><div class="next-project-sessions" aria-label="Observed sessions">' +
-    project.sessions.map(nextProjectSessionLine).join("") + "</div>";
+    members.shown.map(nextProjectSessionLine).join("") + nextProjectMoreLine(members.hidden, route) + "</div>";
   return `<article class="next-project-row next-project-tone--${esc(project.tone)}${historyClass}" ` +
     `data-next-project-row data-next-project="${esc(project.key)}" data-next-route="${esc(route)}" ` +
     `data-next-focus="${esc(route)}" role="link" tabindex="0"${historyAttr}>` + content +

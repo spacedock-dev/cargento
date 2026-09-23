@@ -774,7 +774,10 @@ class NextSessionsUnreadSourceTest(NextPageJsHarness):
         # The activity absence and the unread-source note are separate claims.
         row = self.row(self.view(self.QUIET), "agy-quiet")
 
-        self.assertIn("awaiting your message", row)
+        # DRC-4646: a quiet row states its quiet age, not the collector's
+        # "awaiting your message", which no hour-old observation can back.
+        self.assertIn("quiet · 1h 0m", row)
+        self.assertNotIn("awaiting your message", row)
         self.assertNotIn("Source not fully read", row)
 
     def test_a_second_harnesss_unread_store_uses_the_same_sentence(self) -> None:

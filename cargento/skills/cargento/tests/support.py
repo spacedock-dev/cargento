@@ -361,6 +361,7 @@ def clear_state(state: RuntimeState) -> None:
         state.claude_user_event_cache.clear()
         state.cwd_cache.clear()
         state.agent_class_cache.clear()
+        state.conversation_cache.clear()
         state.spacedock_role_cache.clear()
         state.spacedock_boot_cache.clear()
         state.spacedock_workflow_cache.clear()

@@ -101,6 +101,9 @@ class RuntimeState:
     pi_scan: dict[str, dict[str, Any]] = field(default_factory=dict)
     turn_scan: dict[str, Any] = field(default_factory=dict)
     agent_class_cache: dict[str, tuple[bool, str, str]] = field(default_factory=dict)
+    # path -> ((mtime_ns, size), has a conversation). True is final because a
+    # transcript only appends; False is re-read once the stat moves (DRC-4645).
+    conversation_cache: dict[str, tuple[tuple[int, int], bool]] = field(default_factory=dict)
     spacedock_role_cache: dict[str, str] = field(default_factory=dict)
     # path -> ((mtime_ns, size), the start stamp or None). It joined the two
     # above when DRC-4344 widened the published roster past the freshness gate:

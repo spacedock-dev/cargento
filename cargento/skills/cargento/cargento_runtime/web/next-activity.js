@@ -38,8 +38,7 @@ function nextProjectActivityCard(session, project, source){
   return `<button type="button" class="next-activity-card next-project-tone--${esc(session.tone)}" ` +
     `data-next-going-on="${esc(session.sid)}" data-next-route="${esc(route)}" data-next-focus="${esc(route)}">` +
     '<span class="next-activity-title">' +
-    `<span class="next-project-dot next-project-tone--${esc(session.tone)}${session.isLive ? " next-project-dot--working" : ""}" ` +
-    `role="img" aria-label="${esc(session.state)}"></span>` +
+    nextSessionDot(session) +
     nextProjectValue(session.titleText, session.titleKnown) + '</span>' + instruction +
     `<span class="next-activity-now"><span class="next-activity-harness">${esc(session.harness)} · </span>` +
     nextProjectValue(session.nowText, session.nowKnown) + '</span>' +

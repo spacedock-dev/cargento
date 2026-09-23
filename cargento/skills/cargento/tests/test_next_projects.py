@@ -729,8 +729,9 @@ console.log(JSON.stringify({html, routes}));
 """
         )
         assert isinstance(out, dict)
+        # Blocked on you renders first (DRC-4647), so the needs-input line leads.
         self.assertEqual(
-            [("codex", "live"), ("claude", "second")],
+            [("claude", "second"), ("codex", "live")],
             [(route["harness"], route["session"]) for route in out["routes"]],
         )
         self.assertEqual(0, out["html"].count("next-project-dot--working"))
@@ -757,6 +758,124 @@ console.log(JSON.stringify(nextProjectsView(v2Model)));
         self.assertIn("1 session · 1 quiet", row)
         self.assertNotIn("Compiling", row)
         self.assertNotIn("data-next-project-session", row)
+
+
+PROJECT_PAYLOAD_JS = """
+__els.app = {innerHTML: ""};
+const base = {harness: "claude", project: "repo/main", active: true, last_activity: 9900};
+function renderProjects(sessions){
+  nextData = {generated: 100000, sessions: sessions.map(s => ({...base, ...s}))};
+  nextAttention = nextAttentionModel(nextData);
+  nextRoute = {view: "projects", project: null, session: null};
+  renderNext();
+  return __els.app.innerHTML;
+}
+function lines(html){
+  return [...html.matchAll(/<button[^>]*data-next-project-session[^>]*data-next-session="([^"]+)"[^>]*>([\\s\\S]*?)<\\/button>/g)]
+    .map(m => ({sid: m[1], body: m[2]}));
+}
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextProjectMemberLinesTest(NextPageJsHarness):
+    """DRC-4646 and DRC-4647: what a member line claims, and how many render."""
+
+    def test_a_quiet_session_is_hollow_and_says_how_long_it_has_been_quiet(self) -> None:
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+const html = renderProjects([
+  {sid: "work", state: "working", last_activity: 9995},
+  {sid: "quiet", state: "idle", state_detail: "awaiting your message", last_activity: 100000 - 23 * 3600},
+  {sid: "gone", state: "idle", ended_at: 9800, last_activity: 9800},
+  {sid: "gate", state: "needs_input", state_detail: "waiting for your input"}
+]);
+console.log(JSON.stringify(lines(html)));
+"""
+        )
+        assert isinstance(out, list)
+        by = {row["sid"]: row["body"] for row in out}
+        dot = {}
+        for sid, body in by.items():
+            found = re.search(r'<span class="(next-project-dot[^"]*)"', body)
+            assert found is not None, body
+            dot[sid] = found.group(1)
+        self.assertIn("next-project-dot--working", dot["work"])
+        self.assertIn("next-project-dot--quiet", dot["quiet"])
+        self.assertNotIn("next-project-tone--ok", dot["quiet"])
+        self.assertIn("next-project-dot--ended", dot["gone"])
+        self.assertNotIn("next-project-dot--quiet", dot["gone"])
+        self.assertIn("next-project-tone--want", dot["gate"])
+        self.assertNotIn("next-project-dot--quiet", dot["gate"])
+        self.assertIn("quiet · 23h 0m", by["quiet"])
+        self.assertNotIn("awaiting your message", by["quiet"])
+        self.assertIn("waiting for your input", by["gate"])
+
+    def test_the_three_lifecycle_dots_differ_by_shape_not_only_by_colour(self) -> None:
+        # Greyscale test by construction: working is filled, quiet is a ring,
+        # ended is square. Colour alone must not be what tells them apart.
+        styles = NEXT_STYLES
+        self.assertRegex(styles, r"\.next-project-dot--quiet\{[^}]*background:transparent")
+        self.assertRegex(styles, r"\.next-project-dot--ended\{[^}]*border-radius:1px")
+
+    def test_a_long_project_shows_five_lines_and_names_the_rest(self) -> None:
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+const sessions = [
+  {sid: "q1", state: "idle", last_activity: 9000},
+  {sid: "q2", state: "idle", last_activity: 9500},
+  {sid: "q3", state: "idle", last_activity: 9990},
+  {sid: "g1", state: "needs_input"},
+  {sid: "e1", state: "idle", ended_at: 9990, last_activity: 9990},
+  {sid: "w1", state: "working", last_activity: 9999},
+  {sid: "q4", state: "idle", last_activity: 9100},
+  {sid: "g2", state: "needs_input"}
+];
+const html = renderProjects(sessions);
+const more = html.match(/<button[^>]*data-next-project-more[^>]*>([^<]*)<\\/button>/);
+const moreTag = html.match(/<button[^>]*data-next-project-more[^>]*>/);
+console.log(JSON.stringify({sids: lines(html).map(r => r.sid), more: more && more[1],
+  tag: moreTag && moreTag[0]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["g1", "g2", "w1", "q3", "q2"], out["sids"])
+        self.assertEqual("3 other sessions", out["more"])
+        self.assertIn('data-next-route="project:repo%2Fmain"', out["tag"] or "")
+
+    def test_blocked_and_working_members_are_never_hidden_to_meet_the_cap(self) -> None:
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+const sessions = [];
+for(let i = 0; i < 6; i++) sessions.push({sid: "g" + i, state: "needs_input"});
+sessions.push({sid: "w", state: "working"});
+sessions.push({sid: "q", state: "idle"});
+const html = renderProjects(sessions);
+const more = html.match(/<button[^>]*data-next-project-more[^>]*>([^<]*)<\\/button>/);
+console.log(JSON.stringify({sids: lines(html).map(r => r.sid), more: more && more[1]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["g0", "g1", "g2", "g3", "g4", "g5", "w"], out["sids"])
+        self.assertEqual("1 other session", out["more"])
+
+    def test_a_project_at_the_cap_has_no_count_line(self) -> None:
+        out = self._run_page_js(
+            PROJECT_PAYLOAD_JS
+            + """
+// One working member keeps the project Active; an all-quiet one is history.
+const sessions = [{sid: "w", state: "working"}];
+for(let i = 0; i < 4; i++) sessions.push({sid: "q" + i, state: "idle", last_activity: 9000 + i});
+const html = renderProjects(sessions);
+console.log(JSON.stringify({count: lines(html).length, more: html.includes("data-next-project-more")}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(5, out["count"])
+        self.assertFalse(out["more"])
 
 
 if __name__ == "__main__":
