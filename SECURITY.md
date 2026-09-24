@@ -1113,6 +1113,85 @@ is not verified by this repository's tests, and neither is whether a given accou
 pinned model id. Both were unmeasured when this entry was written, because the build is gated and
 no Claude Code reading was run.
 
+### Tool output in a Claude Code reading
+
+Ruled 2026-09-24 by [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) and not built yet. DRC-4676 builds the record and keeps it off
+every model prompt and the unasked lane; DRC-4677 admits it to a reading. The named-read count under
+Irreversible actions moves in DRC-4676, not before.
+
+The content class is what a Claude Code transcript recorded about the checks a session ran and the
+files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
+a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
+the check's own segment, never the rest of the shell line, after credential redaction and masking of
+the forms redaction cannot recognise (`NAME=value`, `-p` and `--password` values, `user:pass@`),
+clipped to 120 characters; the last 180 characters of output, with redaction run over the whole read
+window before the clip; and a written path relative to the working directory. No file content is
+read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
+rest are counted. The class lives in the observed record only, as its own fact type, kept out of the
+semantic history store and out of every session row field, and it is named in
+`history.PROMPT_DERIVED_CARRIERS`.
+
+The destination rule: it may go to the reading producer that reads the session, or to the fallback
+route `reading_route.resolve` selects and discloses before the press, and on either only after a
+fresh "Allow and analyze" whose disclosure names tool output and the receiving vendor. A permission
+given before tool output was named does not cover it. The disclosure names the destination as
+configured, including an `ANTHROPIC_BASE_URL`, Bedrock or Vertex setting in the daemon's environment
+or in managed settings, which still apply under `--restricted`. Those settings are examples. On the
+Codex route, which reads a Claude Code session on this build, the same holds for any environment
+variable or managed configuration that can move Codex's endpoint, which `--ignore-user-config` does
+not remove; whether Codex honours `OPENAI_BASE_URL` there is not measured. A destination the build
+cannot positively name, on either route, is one it cannot name. Where the destination cannot be
+named, tool output is not sent. It is quoted into the prompt as untrusted data, never into an
+instruction Cargento writes. The unasked lane never receives it until DEC-18's rubric thresholds
+exist. The live drift estimate reads it on this machine and publishes a derived level on the session
+payload only, never on a row, in history or in any off-machine payload.
+
+What it cannot remove: a reported success is what the tool said, not an inspection of the work, and
+a reading labels it that way. The output tail is whatever the runner printed. A traceback, an
+assertion diff or a printed setting can carry source lines, file content or a secret that has no
+recognisable shape, and output gets credential-shape redaction only, because the command-line masks
+do not apply to it. It leaves the machine under the destination rule above. The command field is
+the check's own segment, so other commands on the same line are never recorded as a field or sent;
+the live estimate only classifies them on this machine, by time.
+
+### Analyze drift, Cancel and copied corrections
+
+Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy) and not built yet. Each part arrives with the layer named
+beside it, and the route counts in Scope move in those layers, not here.
+
+The labels. "Check for drift" becomes "Analyze drift", and "Allow and check" becomes "Allow and
+analyze", with DRC-4680. The permission and rolling budget above are otherwise unchanged, except
+that an allow given before the disclosure named tool output does not cover it
+([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). "Keep my intent
+and analyze" counts as the allow when the disclosure beside it has not been allowed yet.
+
+The Cancel route, with DRC-4693. An analysis runs as a job the server owns, in its own process group
+(a Job Object on Windows), so Cancel never signals the daemon's group. Cancel kills that group,
+releases the one-in-flight slot only after the child is reaped and its temporary files are removed,
+records a "cancelled" withheld reason as a spent attempt, and discards a reply that arrives after it.
+A forged cancel needs the job id, which the push publishes to any loopback client, and like every
+route that can authorize a model call it is refused to a non-loopback peer and cross-site. It
+discards a reading the reader started and records it as a cancelled, spent attempt, as though the
+reader chose it, and it reaches no process but the reading's own.
+
+The copied-correction route, with DRC-4678. When the reader copies a correction, the server records
+a digest of the exact text copied, edited or not: bounded per session, one use per digest, matched
+only after the copy. The correction is composed without a model from the reader's goal, outcome
+lines with their state, and cited entry numbers and times, and never from model prose, tool output
+or a recorded command. A later user message whose digest, computed from its raw text before any
+clipping, matches exactly is treated as Cargento-assisted: not adopted as the goal, not
+person-authored evidence and not an unsettled later direction. The residual is a local process: any
+process that can reach the loopback route can record a digest. Each digest it records can mark one
+later message whose text matches exactly as Cargento-assisted, once, up to the per-session bound. A
+marked message is not person-authored evidence and not an unsettled later direction, so a process
+that records the exact text of a short direction in advance can keep that direction from raising
+the later-direction question and from blocking "None or low". DRC-4678 states here, before it
+ships, where the digest is kept and what clears it.
+
+The Not accurate token, with DRC-4695. A reader may mark a reading not accurate. The token is stored
+with the annotation entry and removed with it, and, like the words and readings in that file, it is
+not reached by `--forget`. It is never sent, never counted and never entered into abstention marks.
+
 ### The abstention check
 
 The `Check for drift` control (named `Ask for a reading` until DRC-4639) is enabled by the captain's acceptance of the recorded case review
@@ -1673,6 +1752,8 @@ The operator-cockpit prototype also reads dispatch evidence:
 
 These are evidence reads, not command execution. In total, seven expressions in `cargento_runtime`
 reach an input payload. The counts and module names are checked by `test_documentation`.
+DEC-23 adds a named read for the checks a Claude Code session ran; it arrives with DRC-4676, which
+moves that count, and [its entry](#tool-output-in-a-claude-code-reading) states its bounds.
 The prototype has no additional switch that disables just these dispatch reads.
 
 A shape match is a different kind of read from those. It happens in the hook, inside
@@ -1761,6 +1842,11 @@ output reaching a socket, an input read the allowlist above does not name, an op
 pattern, a hook that returns anything but its harness's no-opinion answer, an envelope field this
 document has not named, or a shape identifier in the history store with no published field behind
 it.
+
+DEC-23 scopes the tool-output clause above once DRC-4676 ships. It governs what a hook reports and
+the socket it posts to. The bounded tool output a Claude Code transcript recorded is a separate read
+from the transcript, and it reaches a model only under the destination rule in
+[Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading).
 
 ## The ask lane (`ask_operator`)
 
@@ -2178,6 +2264,8 @@ end-of-session git reading). `--no-events` turns the whole path off for a run.
 The event envelope is allowlisted at both ends. Each adapter builds the fourteen permitted fields
 one at a time across the ordinary and command-report variants; no variant carries all fourteen.
 The prompt, the tool input and the tool output stay dropped in the hook and never reach a socket.
+That is the hook: the bounded tool output a Claude Code transcript recorded is a separate read,
+governed by [Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading).
 Ordinary lifecycle envelopes still drop the tool name. Command reports carry only the six fields
 listed in Irreversible actions above, with an allowlisted tool name and pattern identifier.
 The server validates independently because a hook's output is untrusted. Ordinary `cwd` and
