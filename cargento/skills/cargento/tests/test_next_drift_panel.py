@@ -601,6 +601,22 @@ __dashboard.asks = [{id:"ask-1", harness:"claude", session_id:"focus-1", project
 """
         )
         self.assertIn("State: </span>needs input</span>", waiting)
+        # Verifier V-2: after `session_ended` pops the overlay, the state is the collector's
+        # own inference, `working` or `idle`, while an exact ask can still be open. A question
+        # waiting on the reader says so, whatever the collector inferred.
+        for state in ("working", "idle"):
+            with self.subTest(ended_with_question=state):
+                html = self.page(
+                    setup=f"""
+__dashboard.ask = true;
+__dashboard.sessions[0].state = "{state}";
+__dashboard.sessions[0].ended_at = 104;
+__dashboard.asks = [{{id:"ask-1", harness:"claude", session_id:"focus-1", project:"cargento",
+  question:"Ship it?", options:["Yes", "Not yet"]}}];
+"""
+                )
+                self.assertIn('data-next-session-section="ask"', html)
+                self.assertIn("State: </span>needs input</span>", html)
 
     def test_while_analyzing_the_box_comes_first_and_the_disclosure_once_after_it(self) -> None:
         disclosure = routes()["claude"]["disclosure"][:60]
@@ -677,6 +693,18 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
                 self.assertIn("min-width:0", body)
         self.assertIn("flex:1 1 100%", rule(".next-cockpit-reading-ask>p"))
         self.assertIn("margin:0 0 0 auto", rule(".next-session-controls"))
+        # Verifier V-5: the spacing the six-line fold's 7px margin rests on, and the two margins
+        # that put a field's count and controls at the end of its heading row.
+        self.assertIn("gap:var(--sp-2)", rule(".next-session-panel"))
+        self.assertIn("padding:8px 16px 10px", rule(".next-session-drift-head"))
+        self.assertIn("margin-left:auto", rule(".next-cockpit-held-tools"))
+        self.assertIn(
+            "margin-left:auto", rule(".next-cockpit-held-heading>.next-cockpit-held-count")
+        )
+        self.assertIn(
+            "margin-left:0",
+            rule(".next-cockpit-held-heading>.next-cockpit-held-count+.next-cockpit-held-tools"),
+        )
 
     def test_a_box_at_rest_shows_whole_rows_and_grows_to_the_full_text_on_focus(self) -> None:
         """Owner, 2026-09-24: "one clean row, expand on focus". A saved line longer than its box
@@ -726,6 +754,44 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
         )
         self.assertIn(">The toggle writes the choice to the settings store</textarea>", html)
         self.assertIn('data-next-cockpit-held-line-count="0">50/240<', html)
+
+    def test_a_box_without_field_sizing_still_opens_several_rows_on_focus(self) -> None:
+        """Verifier V-3: the focus expansion rests on `field-sizing:content`, which not every
+        engine ships. Where it is missing, a focused box takes a fixed height of several rows
+        and scrolls inside it; the at-rest rules are the same either way."""
+        css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
+        block = re.search(
+            r"@supports not \(field-sizing: ?content\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css
+        )
+        assert block is not None, "no field-sizing fallback"
+        rules = {
+            sel.strip(): body for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", block.group(1))
+        }
+        self.assertIn(
+            "height:calc(var(--fs-body)*1.55*4 + 16px)",
+            rules[".next-session-panel .next-cockpit-held-line textarea:focus"],
+        )
+        self.assertIn(
+            "height:calc(var(--fs-body)*1.55*6 + 16px)",
+            rules[".next-session-panel .next-cockpit-held-field>textarea:focus"],
+        )
+        for body in rules.values():
+            self.assertNotIn("overflow", body)
+
+    def test_the_goals_heading_row_keeps_its_controls_on_the_top_line(self) -> None:
+        """Verifier V-4: centred, the count, clear and save floated beside an open "Use a
+        prompt" menu and read as its controls. Every item is one control tall and the row is
+        top-aligned, so they stay on the heading's first line whether the menu is open or not."""
+        self.assertIn(
+            "align-items:flex-start", rule(".next-session-panel .next-cockpit-held-heading")
+        )
+        for selector in (
+            ".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label",
+            ".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-count",
+        ):
+            with self.subTest(item=selector):
+                self.assertIn("min-height:44px", rule(selector))
+                self.assertIn("align-items:center", rule(selector))
 
     def test_on_a_narrow_screen_a_lines_box_takes_the_full_row(self) -> None:
         """At 320 the box shared its row with the count, source and remove and showed about 12

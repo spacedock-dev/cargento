@@ -840,6 +840,18 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
 .next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
 .next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
+/* Where `field-sizing` is missing the box cannot size to its text, so focus
+   gives it several rows and it scrolls inside them (verifier V-3). */
+@supports not (field-sizing: content){
+  .next-session-panel .next-cockpit-held-line textarea:focus{height:calc(var(--fs-body)*1.55*4 + 16px)}
+  .next-session-panel .next-cockpit-held-field>textarea:focus{height:calc(var(--fs-body)*1.55*6 + 16px)}
+}
+/* Top-aligned, each item one control tall, so a field's count and controls
+   stay on the heading's first line and never float beside an open "Use a
+   prompt" menu as though they were its controls (verifier V-4). */
+.next-session-panel .next-cockpit-held-heading{align-items:flex-start}
+.next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
+.next-session-panel .next-cockpit-held-heading>.next-cockpit-held-count{display:inline-flex;min-height:44px;align-items:center}
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
 .next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 /* Two rows: state, name and id; then the measured line with the controls on

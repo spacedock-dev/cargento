@@ -1586,7 +1586,11 @@ the analysis's recommendation.
   gives the aside no visible heading, only its "Intent and drift" label, so none was added.
 - The fold criterion, reworded by the owner after review: "Analyze drift sits above the fold at
   1440x900 with a goal and up to three outcome lines (the design's textarea footprint); with more
-  lines the Drift heading stays above the fold." The owner's fix for the lines themselves: every
+  lines the Drift heading stays above the fold." The owner then scoped it to a session with no
+  question waiting (2026-09-24). A waiting question runs full width above both columns, about
+  183px with a one-line question, and while it waits answering it is the primary and Analyze drift
+  is not; measured with one open, a goal and three lines put Analyze drift's bottom at 964 (Claude
+  Code) and 996 (Codex). The owner's fix for the lines themselves: every
   saved line is one row of about one control height. The line grid had three tracks for four items
   (box, count, source, remove), so a saved line's source pushed remove onto a second row and each
   line cost 85px; it now has a track per item. That alone left a goal and three lines at 926 on a
@@ -1607,7 +1611,18 @@ the analysis's recommendation.
   whole text. Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's
   bottom at 781 (Claude Code) and 813 (Codex), and six lines put the Drift heading's bottom at 893.
   A focused 102-character line grows to its full text at 1440, 375 and 320 with no horizontal
-  overflow.
+  overflow. Where an engine lacks `field-sizing` (it ships in Chromium), an `@supports not`
+  fallback gives a focused line four rows and the goal six, and the box scrolls inside them.
+- At 760px and below, the sheet's existing narrow step, a line's box takes the whole first row and
+  its count, source and remove follow on a second in the same order. Sharing one row, the box
+  showed about 12 characters at 320; it is now 292px wide there and 327px at 375. At 1440 and 1100
+  a line is still one row, so the fold numbers above do not move.
+- The goal's heading row is top-aligned, with the label and the count each one control tall, so an
+  open "Use a prompt" menu no longer leaves the count, clear and save floating beside its entries
+  as though they were its controls.
+- The header chip says "needs input" whenever a question is waiting, whatever state the collector
+  inferred. After `session_ended` pops the overlay, the state falls back to the collector's
+  `working` or `idle` while the ask stays open, and the chip read "working" beside "ended".
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

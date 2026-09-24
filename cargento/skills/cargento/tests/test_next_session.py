@@ -435,11 +435,20 @@ console.log(JSON.stringify(__els.app.innerHTML));
             """
 const session = nextData.sessions[0];
 const variants = {};
+// The fixture's ask is kept only where the state says a question waits: since DRC-4680's
+// verifier round (V-2) a waiting question makes the chip say "needs input" whatever the
+// collector's state, which the last variant checks.
+const asks = nextData.asks;
 for(const state of ["working", "idle", "needs_input", "unknown<script>"]){
   session.state = state;
+  nextData.asks = state === "needs_input" ? asks : [];
   renderNext();
   variants[state] = __els.app.innerHTML;
 }
+session.state = "working";
+nextData.asks = asks;
+renderNext();
+variants.workingWithAsk = __els.app.innerHTML;
 console.log(JSON.stringify(variants));
 """
         )
@@ -466,6 +475,10 @@ console.log(JSON.stringify(variants));
         self.assertNotIn("data-next-session-state=", out["unknown<script>"])
         self.assertNotIn("State:", out["unknown<script>"])
         self.assertNotIn("unknown<script>", out["unknown<script>"])
+        self.assertIn(
+            '<span class="next-visually-hidden">State: </span>needs input</span>',
+            out["workingWithAsk"],
+        )
 
     def test_session_age_metadata_matches_state_and_requires_measurement(self) -> None:
         out = self.render(
