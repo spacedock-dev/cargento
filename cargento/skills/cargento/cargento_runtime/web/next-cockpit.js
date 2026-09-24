@@ -894,7 +894,7 @@ const nextCockpitHeldDrafts = new Map();
 const nextCockpitHeldStates = new Map();
 const NEXT_COCKPIT_HELD_CAP = 240;
 const NEXT_COCKPIT_HELD_FIELDS = [
-  ["goal", "TYPED GOAL", "goal", "goal_why", "what you are after, in one line"],
+  ["goal", "Goal", "goal", "goal_why", "what you are after, in one line"],
 ];
 /* The seventh line's refusal, said where the reader meets it: beside the add
    control, which stays on the page and inert at six, and in the polite region
@@ -1216,7 +1216,7 @@ function nextCockpitHeldField(session, annotation, spec, cap){
   const cue = nextCockpitHeldCue(key);
   return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
     '<div class="next-cockpit-held-heading">' +
-    `<span class="next-cockpit-held-label">${kind === "goal" ? "GOAL" : label}</span>` +
+    `<span class="next-cockpit-held-label">${esc(label)}</span>` +
     (kind === "goal" ? nextPromptSourceLine(annotation) + nextPromptAdoptControls(session) : "") +
     '</div>' +
     `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
@@ -1322,7 +1322,7 @@ function nextCockpitHeldLines(session, annotation, cap){
   return '<div class="next-cockpit-held-field next-cockpit-held-lines" ' +
     'data-next-cockpit-held-field="lines">' +
     '<div class="next-cockpit-held-heading">' +
-    '<span class="next-cockpit-held-label">EXPECTED OUTCOME</span></div>' +
+    '<span class="next-cockpit-held-label">Expected outcome</span></div>' +
     `<ol class="next-cockpit-held-list">${rows}</ol>` +
     add +
     nextCockpitHeldControl("held-save", "save", "lines", nextCockpitLinesChanged(draft, annotation),
@@ -1364,8 +1364,11 @@ function nextCockpitWorkEvidenceLimit(harness){
       "listed here. A result is what the tool reported; Cargento inspects no file, test or " +
       "deliverable." + (sent ? ` ${sent}` : "");
   }
-  return `${label} publishes no demonstrated work results. Cargento reads those on Pi ` +
-    "alone, so nothing above is an inspected file, test or deliverable.";
+  /* "Cargento reads those on Pi alone" stood here, and stopped being true
+     when Claude Code's checks were read too. The panel's own harness limit is
+     `nextDriftLevel`'s, so this line says only what the record above is. */
+  return `${label} publishes no demonstrated work results, so nothing above is an ` +
+    "inspected file, test or deliverable.";
 }
 
 /* The reading's Expected Output limit, apart from the record's own line. On
@@ -1800,7 +1803,7 @@ const NEXT_COCKPIT_AUTHORITY_GLOSS =
 
 /* The one step that lifts both refusals about missing words: nothing typed,
    and what was asked discarded. Page-owned, so it is spelled once. */
-const NEXT_READING_SAVE_STEP = "Save a goal above to check for drift.";
+const NEXT_READING_SAVE_STEP = "Save a goal above to analyze drift.";
 const NEXT_READING_NO_WORDS =
   "Nothing has been typed for this session, so there is nothing to read it against. " +
   NEXT_READING_SAVE_STEP;
@@ -1828,7 +1831,7 @@ const NEXT_READING_MODEL_OFF =
 /* A build constant, not a run setting, so no flag or press on this page lifts
    it and the sentence names none: it says what it waits on. */
 const NEXT_READING_UNAUTHORIZED =
-  "Checking for drift is not enabled in this build, because the abstention check that " +
+  "Analyzing drift is not enabled in this build, because the abstention check that " +
   "gates it has not been recorded. It waits on a later release; nothing on this page lifts it.";
 /* `--no-annotations`: the check stays on the page, inert, and this is its one
    refusal ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)).
@@ -2689,6 +2692,7 @@ function nextCockpitReadingRefusal(annotation, model){
 // button points at can carry a constant id, as the discard control's warning
 // already does two hundred lines below.
 const NEXT_READING_REFUSED_ID = "next-cockpit-reading-refused";
+const NEXT_READING_DISCLOSURE_ID = "next-cockpit-reading-disclosure";
 
 function nextReadingRoute(session){
   const routes = nextData && nextData.reading_routes;
@@ -2826,14 +2830,18 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   const enabled = !reason && !pending;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
   const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
-  /* Before the button, not after the press: the route's disclosure, naming
-     this session's own receiver, whose capacity is spent and where the words
-     go. The offer paragraph in the reading scopes WHAT is sent and says
-     nothing about where it goes or who pays. With no provider there is no
-     disclosure and no offer: the route's sentence says why, as the refusal
-     below. */
+  /* The route's disclosure, naming this session's own receiver, whose
+     capacity is spent and where the words go. The offer paragraph in the
+     reading scopes WHAT is sent and says nothing about where it goes or who
+     pays. Where it sits is the owner's ruling (DRC-4680): idle, under the
+     button with the hint, as item 5 of
+     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+     draws it, because that press sends nothing yet; confirming, before
+     "Allow and analyze", because that press is the consent. Either way the
+     button is described by it, unless a refusal is what describes it. */
   const disclosure = provider && route.disclosure
-    ? `<p class="next-cockpit-reading-why">${esc(route.disclosure)}</p>` : "";
+    ? `<p class="next-cockpit-reading-why" id="${NEXT_READING_DISCLOSURE_ID}">` +
+      `${esc(route.disclosure)}</p>` : "";
   /* What an analysis will read, under the control, and only where a press
      could read it: a provider, no refusal beside it, saved words, and words
      given before any observed end, which the server withholds by the same
@@ -2846,6 +2854,32 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     !(endedAt != null && given != null && given > endedAt) ? nextObservedReadHint(session) : "";
   const readHint = hint ? `${hint} ${NEXT_READING_BACKGROUND}` : "";
   const job = nextReadingJob(session);
+  const off = nextReadingAnyConsent()
+    ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "";
+  /* Only from a published annotation: with the store off there is no count
+     to read, and "0 requests" would be a default standing in for one. */
+  const counted = annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "";
+  /* While a job runs, the box stands where the button and its hint were, as
+     the design draws it, and the disclosure and the count stay beside it. A
+     refusal is about a new press, which is not offered, so it waits. */
+  if(job){
+    return '<div class="next-cockpit-reading-ask">' + disclosure + off + '</div>' +
+      nextReadingJobBox(job, key) + counted;
+  }
+  /* No reader on this machine: the route's reason stands where the button
+     would be, and no inert button is drawn, because there is no press to
+     refuse. A narrowing of
+     [NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)
+     for this one case (owner, DRC-4680); every other refusal keeps the inert
+     control and its sentence. `--no-annotations` is one of those, so the
+     store's state is checked first. */
+  const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
+  if(noReader){
+    return '<div class="next-cockpit-reading-ask next-cockpit-reading-ask--none">' +
+      `<p class="next-cockpit-reading-why" data-next-reading-no-reader` +
+      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(noReader))}>${esc(noReader)}</p>` +
+      off + '</div>' + counted;
+  }
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
@@ -2854,37 +2888,23 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      below as an ordinary control
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
      The four cockpit tabs have no action to mark at all (DRC-4590, DRC-4603). */
-  /* The disclosure and the button share a row, the disclosure still first in
-     reading order: stacked, the disclosure's five sentences pushed the button
-     under a 900px first screen, measured on a live board at 1440 wide. */
-  /* While a job runs, the box stands where the button and its hint were, as
-     the design draws it, and the disclosure and the count stay beside it. A
-     refusal is about a new press, which is not offered, so it waits. */
-  if(job){
-    return '<div class="next-cockpit-reading-ask">' + disclosure +
-      (nextReadingAnyConsent()
-        ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
-      '</div>' + nextReadingJobBox(job, key) +
-      (annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "");
-  }
-  return '<div class="next-cockpit-reading-ask">' + disclosure +
+  const described = reason ? NEXT_READING_REFUSED_ID : disclosure ? NEXT_READING_DISCLOSURE_ID : "";
+  const button =
     `<button type="button" class="next-action${primary && provider ? " next-action--primary" : ""}" ` +
     `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
-    `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
-    `${confirming ? "Allow and check" : "Check for drift"}</button>` +
-    (nextReadingAnyConsent()
-      ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
+    `${described ? ` aria-describedby="${described}"` : ""}>` +
+    `${confirming ? "Allow and analyze" : "Analyze drift"}</button>`;
+  return '<div class="next-cockpit-reading-ask">' + (confirming ? disclosure : "") + button + off +
     '</div>' +
     (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "") +
+    (confirming ? "" : disclosure) +
     (request && request.message && !request.refusal
       ? '<p class="next-cockpit-reading-why" role="status"' +
         `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
         `${esc(request.message)}</p>` : "") +
-    /* Only from a published annotation: with the store off there is no count
-       to read, and "0 requests" would be a default standing in for one. */
-    (annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "") +
+    counted +
     /* The announcement and the description are one node while a refusal
        stands. Printing the stored message and the reason separately rendered
        the same sentence twice, adjacent and identical, where the contract is
@@ -2897,16 +2917,15 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
       : "");
 }
 
-/* "below", and the word is kept rather than dropped. DRC-4594 moved OBSERVED
-   RECORD to the end of this tab and left both of these sentences claiming the
-   side they used to have; the tempting repair is to delete the positional word
-   from each, after which the sweep that found them returns nothing and passes
-   forever. `HeldToPositionalSentencesTest` reads the direction each one states
-   and compares rendered indices, so a true word is what keeps it measuring. */
+/* No positional word. The record is in the activity column and this sentence
+   in the panel beside it (DRC-4680), so "below" was true of the markup and
+   false to the eye at every width wide enough for two columns. It names the
+   column instead, and `HeldToPositionalSentencesTest` lost its row with the
+   word rather than keeping a row that measures nothing. */
 const NEXT_READING_OFFER =
-  "A reading is a model\u2019s account of the evidence on this page: the observed record below " +
-  "and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a " +
-  "deliverable.";
+  "A reading is a model\u2019s account of the evidence on this page: the observed record in " +
+  "this session\u2019s activity and the goal and output you saved, and nothing else. It does not " +
+  "read a diff, a file, a test or a deliverable.";
 
 function nextCockpitReadingBaseline(shape){
   /* What the reading actually read, verbatim, rather than only which revision
@@ -3213,38 +3232,66 @@ function nextCockpitHeldDiscardBlock(session, annotation){
     '</div>';
 }
 
-/* The session page's DRIFT block, and the sections that follow it lower down
-   (DRC-4639). Held to merged into the session view, so what was the tab's body
-   is now two returns: `drift` renders first after the page's identity, and
-   `record` renders after the session's own facts
-   ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
+/* Under the Drift heading, verbatim from the design. It names what the
+   section measures and asserts no result. */
+const NEXT_DRIFT_SUBTITLE = "How far the session has moved from the goal";
+/* Item 14 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy),
+   as its own sentence. */
+const NEXT_DRIFT_HARNESS_LIMIT = "Cargento can't read work from this harness.";
 
-   The order inside the block is load bearing: what you asked for, then the
-   agent's direction beside it, then the one control, so it is on the first
-   screen; then the reading, then any later direction of yours and the caveats,
-   then every departure on record. Your words come first, so
-   nothing above the reading is a model's.
+/* The slot the level and meter take once a level is published: the analysis
+   level (DRC-4695) and the live estimate (DRC-4696). Until then it draws
+   nothing on Claude Code, because a meter with no level behind it would read
+   the same on every session whether or not anything was read. Elsewhere the
+   harness limit stands in it and replaces only the level: Analyze drift stays
+   wherever the route names a reader (owner, DRC-4680). Never on Pi, whose work
+   results are read, so the sentence would be false there. */
+function nextDriftLevel(session){
+  const harness = String(session && session.harness || "");
+  if(harness === "claude" || harness === "pi") return "";
+  return `<p class="next-session-drift-limit" data-next-drift-limit>${esc(NEXT_DRIFT_HARNESS_LIMIT)}</p>`;
+}
 
-   `direction` is the caller's CURRENT ACTIVITY card, handed in rather than
-   rebuilt, so the NOW line has one renderer. `primary` is false while the
-   session waits on the reader, whose question the check never outranks. The word drift names the block and the control and nothing else: no
-   sentence here may say a session has none. */
-function nextCockpitDriftBlock(group, session, direction, primary){
-  const head = '<section class="next-session-drift" data-next-session-drift ' +
+/* The session page's Intent and drift panel, and the activity column's
+   sections that belong to it (DRC-4680). Three returns: `panel` is the aside,
+   `record` renders in the activity column after the session's own facts
+   ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home),
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+   item 1).
+
+   The order inside the panel is load bearing: the Intent section, the
+   reader's own words; then the Drift section with the one control, so it is
+   on the first screen; then the reading, then any later direction of yours
+   and the caveats, then every departure on record. Your words come first, so
+   nothing above the reading is a model's. CURRENT ACTIVITY is no longer in
+   here: it leads the activity column, beside the panel rather than inside it.
+
+   `primary` is false while the session waits on the reader, whose question the
+   check never outranks. The word drift names the section and the control and
+   nothing else: no sentence here may say a session has none. */
+function nextCockpitDriftBlock(group, session, primary){
+  /* `data-next-session-drift` marks the whole panel, which is where the
+     drift block's contents now live. */
+  const open = '<aside class="next-session-panel" data-next-session-drift aria-label="Intent and drift">';
+  const head = '<section class="next-session-drift" id="next-session-drift" ' +
     'aria-labelledby="next-session-drift-heading">' +
-    '<h2 id="next-session-drift-heading" class="next-session-drift-heading">DRIFT</h2>';
+    '<header class="next-session-drift-head">' +
+    '<h2 id="next-session-drift-heading" class="next-session-drift-heading">Drift</h2>' +
+    `<p class="next-session-drift-sub">${esc(NEXT_DRIFT_SUBTITLE)}</p></header>` +
+    nextDriftLevel(session);
   /* No field at all when the store is off, which is what `--no-annotations`
      promises. A box whose every save answers 503 is worse than none, and the
-     reason is on screen rather than left to the reader. The direction and any
-     standing raise still render: the departure store is read whichever way. */
+     reason is on screen rather than left to the reader. Any standing raise
+     still renders: the departure store is read whichever way. */
   if(!(nextData && nextData.annotate === true)){
     /* The check stays, inert, and its refusal is the one place the store's
-       state is said: no field section above it repeating the sentence. */
+       state is said: no Intent section above it repeating the sentence. */
     const source = nextCockpitWorkSource(group, session);
     const check = '<div class="next-session-drift-check">' +
       nextCockpitReadingControl(session, null, null, primary) + '</div>';
-    return {drift: head + direction + check + nextCockpitDepartures(null, source, session) +
-      '</section>', record: ""};
+    return {panel: open + head + check + nextCockpitDepartures(null, source, session) +
+      '</section></aside>', record: ""};
   }
   const annotation = nextCockpitAnnotation(session);
   const workSource = nextCockpitWorkSource(group, session);
@@ -3278,20 +3325,21 @@ function nextCockpitDriftBlock(group, session, direction, primary){
      is unsettled is whether anything should then read it, so the line says
      that rather than disabling a control over an open question. A caveat, so
      it renders with the caveats below the reading (DRC-4669): between the
-     fields and the control it pushed Check for drift under a 1440x900 fold
-     on every ended session. */
+     fields and the control it pushed the control under a 1440x900 fold on
+     every ended session. */
   const ended = nextSessionEndedAt(session) != null
     ? '<p class="next-cockpit-held-absent">This session has ended. Anything you save ' +
       'against it is kept, and nothing is promised to read it.</p>' : "";
   /* What typing buys, before anything that qualifies it, worded to the default
      board: the unasked lane is off unless the reader started with
      `--unasked-readings`, so a check happens because the reader pressed. */
-  const lede = '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then check for ' +
+  const lede = '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then analyze ' +
     'drift: Cargento lists where this session departed from it. It never writes into the ' +
     'session, so steering stays yours.</p>';
   /* Named, because the reader has to know whose words these are: the harness
      and the session id are what the store keys on. */
-  const asked = '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
+  const intent = '<section class="next-cockpit-held">' +
+    '<header><h2 id="next-session-intent-heading">Intent</h2>' +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
     lede +
     (nextCockpitStoreUnreadable()
@@ -3311,16 +3359,15 @@ function nextCockpitDriftBlock(group, session, direction, primary){
   const discard = nextCockpitHeldDiscardBlock(session, annotation);
   const caveats = ended || discarded || binding || discard
     ? `<div class="next-session-drift-caveats">${ended}${discarded}${binding}${discard}</div>` : "";
-  const drift = head + asked + direction + reading.control + reading.reading +
+  const panel = open + intent + head + reading.control + reading.reading +
     nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
-    '</section>';
-  /* Below the session's facts: how it landed, the observed record the reading
-     cites, and where a raise is kept. The reading's offer says the record is
-     "below", and it is. */
+    '</section></aside>';
+  /* In the activity column, after the session's facts: how it landed, the
+     observed record the reading cites, and where a raise is kept. */
   const record = nextCockpitLanded(observed) +
     nextCockpitWorkEvidence(session, workSource) +
     nextCockpitDeparturesKept();
-  return {drift, record};
+  return {panel, record};
 }
 
 /* The reader's answer, posted to the same route their words go to. `through`
@@ -4996,7 +5043,7 @@ document.addEventListener("click", event => {
     if(action === "conflict-retype"){
       /* No write. Cargento cannot author the reader's words, and prefilling
          the field from a fact summary would put a harness-published string in
-         the TYPED GOAL box. Moving the caret there is the whole of it. */
+         the Goal box. Moving the caret there is the whole of it. */
       nextRestoreFocus({named: nextCockpitHeldKey(session, "goal")}, nextAttention);
       return;
     }
@@ -5213,7 +5260,7 @@ function nextPromptReadingRefusal(session, annotation, model){
   if(!String(annotation && annotation.goal || "").trim()){
     const candidate = nextPromptCandidate(session);
     if(candidate && candidate.at == null){
-      return "The prompt time was not published, so it cannot be adopted. Type a goal to check for drift.";
+      return "The prompt time was not published, so it cannot be adopted. Type a goal to analyze drift.";
     }
     if(candidate){ annotation = {...annotation,goal:candidate.text,discarded_at:null,discarded_why:""}; }
   }

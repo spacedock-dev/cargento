@@ -1,10 +1,11 @@
 """The session page leads with drift (DRC-4639) and puts the way back beside it (DRC-4642).
 
 [DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)
-merges the cockpit's Held to tab into the session view: one DRIFT block, first after the page's
-identity, holding the reader's words, the agent's direction, the later-direction question, the
-reading and every departure on record. It has at most one primary: "Check for drift", or, while
-the session waits on the reader, the raise when one is offered and nothing otherwise.
+merges the cockpit's Held to tab into the session view. Since DRC-4680 that is the Intent and drift
+panel, first after the page's identity, holding the reader's words, the later-direction question,
+the reading and every departure on record; the agent's direction leads the activity column beside
+it. It has at most one primary: "Analyze drift", or, while the session waits on the reader, the
+raise when one is offered and nothing otherwise.
 
 The fixtures are the cockpit composition board's, read through the module rather than imported by
 name, so the loader does not collect that class a second time here.
@@ -122,24 +123,29 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         ):
             with self.subTest(later=later):
                 self.assertLess(drift, html.index(later))
-        # Inside it, in the reader's order: their words, the agent's direction, the reading, then
-        # every departure on record.
-        block = html[drift : html.index('class="next-session-facts"')]
+        # Inside it, in the reader's order: their words, the control, the reading, then every
+        # departure on record. The agent's direction leads the activity column beside the panel
+        # (DRC-4680), after the panel in the markup.
+        block = html[drift : html.index("</aside>")]
         order = [
             block.index(mark)
             for mark in (
-                "WHAT YOU ASKED FOR",
-                "CURRENT ACTIVITY",
+                ">Intent</h2>",
+                ">Drift</h2>",
                 'data-next-cockpit-action="reading-ask"',
                 "<h2>READING</h2>",
                 "DEPARTURES RAISED TO YOU",
             )
         ]
         self.assertEqual(sorted(order), order)
-        self.assertIn(">DRIFT<", block)
+        self.assertNotIn("CURRENT ACTIVITY", block)
+        activity = html.index("data-next-session-activity")
+        self.assertLess(html.index("</aside>"), activity)
+        self.assertLess(activity, html.index("CURRENT ACTIVITY"))
+        self.assertLess(html.index("CURRENT ACTIVITY"), html.index('class="next-session-facts"'))
 
     def test_the_check_comes_before_every_caveat_so_it_reaches_the_first_screen(self) -> None:
-        """Goal fields, direction, the check with its send disclosure, then the reading.
+        """Goal fields, the check with its send disclosure under it, then the reading.
 
         The binding caveat, the discard explanation and its button, and the later-direction block
         all render below the reading: above the control they pushed it off a 1440x900 screen.
@@ -155,13 +161,14 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             html.index("data-next-session-drift") : html.index('class="next-session-facts"')
         ]
         fields = drift.index('class="next-cockpit-held-fields"')
-        direction = drift.index("CURRENT ACTIVITY")
         check = drift.index('data-next-cockpit-action="reading-ask"')
         disclosure = drift.index(CODEX_ROUTE_NOTE)
         the_reading = drift.index("<h2>READING</h2>")
-        self.assertLess(fields, direction)
-        self.assertLess(direction, check)
-        self.assertLess(direction, disclosure)
+        self.assertLess(fields, check)
+        # Idle, the disclosure follows the button (owner, DRC-4680); the direction is no longer
+        # between the fields and the check, because it leads the activity column instead.
+        self.assertLess(check, disclosure)
+        self.assertNotIn("CURRENT ACTIVITY", drift[: drift.index("</aside>")])
         # Beside the control: the disclosure and the button share one container, before the
         # reading starts.
         container = drift[drift.index('class="next-session-drift-check"') : the_reading]
@@ -192,7 +199,9 @@ await refreshNext();
 """)
         check = html.index('data-next-cockpit-action="reading-ask"')
         workers = html.index("data-next-session-subagents")
-        self.assertLess(html.index("CURRENT ACTIVITY"), check)
+        # The workers are in the activity column, which follows the panel holding the check.
+        self.assertLess(check, html.index("</aside>"))
+        self.assertLess(html.index("</aside>"), workers)
         self.assertLess(check, workers)
         for index in range(31):
             self.assertEqual(1, html.count(f"historical-worker-{index:02}"))
@@ -218,7 +227,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(out, str)
         self.assertIn("data-next-session-drift", out)
         self.assertIn("Capture every screen with live sessions", out)
-        self.assertIn("Check for drift", out)
+        self.assertIn("Analyze drift", out)
 
     def test_a_held_to_link_opens_that_sessions_page(self) -> None:
         out = self.run_fixture(
@@ -267,12 +276,12 @@ console.log(JSON.stringify({
         self.assertNotEqual("session", parsed.get("view"))
         self.assertNotIn("#n=session:", str(out["emitted"]))
 
-    def test_the_one_primary_reads_check_for_drift(self) -> None:
+    def test_the_one_primary_reads_analyze_drift(self) -> None:
         html = self.page("__dashboard.reading_check = 'accepted';\n")
 
         primaries = re.findall(r"<button\b[^>]*next-action--primary[^>]*>[\s\S]*?</button>", html)
         self.assertEqual(1, len(primaries), primaries)
-        self.assertIn("Check for drift", primaries[0])
+        self.assertIn("Analyze drift", primaries[0])
         self.assertIn('data-next-cockpit-action="reading-ask"', primaries[0])
         self.assertNotIn("Ask for a reading", html)
 
@@ -395,8 +404,8 @@ __dashboard.sessions[0].annotation_revision_count = 0;
                 text = visible_text(self.page(setup))
                 self.assertIsNone(DRIFT_ABSENCE.search(text), DRIFT_ABSENCE.findall(text))
                 # And the word is present where it names the block and the control.
-                self.assertIn("DRIFT", text)
-                self.assertIn("Check for drift", text)
+                self.assertIn(" Drift ", text)
+                self.assertIn("Analyze drift", text)
 
     def test_goal_summary_model_state_does_not_disable_a_consented_reading(self) -> None:
         for model in (None, {"enabled": False}):
@@ -425,7 +434,7 @@ __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 """,
-                "Save a goal above to check for drift.",
+                "Save a goal above to analyze drift.",
             ),
             "reading permission unread": (
                 "__dashboard.reading = null;",
@@ -450,7 +459,7 @@ __dashboard.sessions[0].annotation_discarded_why = "Discarded";
 """
                 ),
                 annotation_store.DISCARD_SENTENCES["unreadable"]
-                + " Save a goal above to check for drift.",
+                + " Save a goal above to analyze drift.",
             ),
             # A build constant no press lifts: the sentence says what it waits on, and no longer
             # points at "this ruling", which named the retired tab's paragraph.
@@ -482,7 +491,7 @@ __fetchImpl = async url => ({ok: true, json: async () =>
                 )
                 self.assertIsNotNone(control, "the check left the page")
                 assert control is not None
-                self.assertIn("Check for drift", control.group(1))
+                self.assertIn("Analyze drift", control.group(1))
                 self.assertIn('aria-disabled="true"', control.group(0))
                 described = re.search(r'aria-describedby="([^"]+)"', control.group(0))
                 self.assertIsNotNone(described)
@@ -558,7 +567,7 @@ console.log(JSON.stringify(nextCockpitConflict(session, nextCockpitAnnotation(se
         )
         self.assertIsNotNone(control, "the check left the page")
         assert control is not None
-        self.assertIn("Check for drift", control.group(1))
+        self.assertIn("Analyze drift", control.group(1))
         self.assertIn('aria-disabled="true"', control.group(0))
         described = re.search(r'aria-describedby="([^"]+)"', control.group(0))
         assert described is not None
@@ -777,7 +786,7 @@ def caveats_block(html: str) -> str:
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
     """DRC-4669. On an ended session the "has ended" note sat between the goal
-    fields and Check for drift, and pushed the control to 940px at 1440x900
+    fields and Analyze drift, and pushed the control to 940px at 1440x900
     where a live session's sits at 884px. It is a caveat, not the next step,
     so it renders below the reading with the other caveats."""
 
@@ -810,7 +819,9 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         self.assertLess(drift.index("<h2>READING</h2>"), note)
         # Nothing that sits above the control on a live session moved below it.
         live_drift = self.drift(self.page(ended=False))
-        for mark in ('class="next-cockpit-held-fields"', "WHAT YOU ASKED FOR", "CURRENT ACTIVITY"):
+        # CURRENT ACTIVITY left this list with the panel (DRC-4680): it leads the activity
+        # column beside the panel, so it is above the control on neither page.
+        for mark in ('class="next-cockpit-held-fields"', ">Intent</h2>"):
             with self.subTest(mark=mark):
                 self.assertLess(drift.index(mark), check)
                 self.assertLess(
@@ -843,13 +854,14 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         self.assertNotIn(ENDED_NOTE, self.drift(self.page(ended=False, setup=UNTYPED)))
 
     def test_between_the_fields_and_the_check_an_ended_page_adds_nothing(self) -> None:
-        """From the fields to the direction, the markup is the same live or ended. The
-        direction itself says the session ended, which is true and stays; what may not
-        return is anything added to what the reader asked for."""
+        """From the fields to the control, the markup is the same live or ended. What may
+        not return is anything added to what the reader asked for. The direction, which
+        says the session ended, is in the activity column since DRC-4680, so the span now
+        ends at the control rather than at it."""
 
         def span(html: str) -> str:
             start = html.index('class="next-cockpit-held-fields"')
-            return html[start : html.index("CURRENT ACTIVITY")]
+            return html[start : html.index('data-next-cockpit-action="reading-ask"')]
 
         self.assertEqual(span(self.page(ended=False)), span(self.page(ended=True)))
 

@@ -1121,6 +1121,7 @@ class NextPageAssetContractTest(unittest.TestCase):
     """
 
     SENTENCE_TIER_RULES: ClassVar[set[str]] = {
+        ".next-session-drift-limit",
         # Every rule this census resolves at or above the floor. A set rather
         # than a count, so one rule leaving the tier while another joins cannot
         # pass unnoticed.
@@ -1359,8 +1360,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # sentence that counts the checks from the whole scan. DRC-4685 adds
         # one: the sentence saying why a seventh outcome line is refused.
         # DRC-4686 adds three at the body floor: the analyzing box's title, its
-        # steps and the line saying the page stays usable.
-        self.assertEqual(113, len(above))
+        # steps and the line saying the page stays usable. DRC-4680 adds one: the
+        # harness limit that stands where a level would be.
+        self.assertEqual(114, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

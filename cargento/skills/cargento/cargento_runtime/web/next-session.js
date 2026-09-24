@@ -635,8 +635,10 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const blocked = observed.isNeeds ? " next-session-detail--blocked" : "";
   const state = nextSessionDetailState(session.state);
   const stateAttr = state ? ` data-next-session-state="${state.token}"` : "";
-  const stateLabel = state ?
-    `<span class="next-visually-hidden">State: ${state.label}</span>` : "";
+  /* Visible, in the words the Sessions rows use, rather than the design's
+     "Running": renaming a state on one page would rename it for the product. */
+  const stateLabel = state ? '<span class="next-session-state">' +
+    `<span class="next-visually-hidden">State: </span>${state.label}</span>` : "";
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
@@ -646,7 +648,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
      No answer option is ever emphasised: a filled first option reads as advice
      to approve, so every option stays a plain control. A session waiting on
      the reader gives the primary to the raise when one is offered; without
-     one nothing is primary, and "Check for drift" renders as an ordinary
+     one nothing is primary, and "Analyze drift" renders as an ordinary
      control. */
   const waiting = observed.isNeeds || observed.askKnown;
   const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
@@ -670,14 +672,18 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const label = String(session.project == null ? "" : session.project);
   const group = nextProjectGroups().find(candidate => candidate.label === label) ||
     {label, sessions: [session]};
-  const drift = nextCockpitDriftBlock(group, session,
-    nextSessionCommandSurface(session, observed), !waiting);
-  /* Identity, then what is waiting on the reader, then drift. The answer sits
-     above the check because it outranks it; for every other session the drift
-     block is the first thing after the page's name. */
-  return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
-    `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
-    nextSessionAskBlock(session, asks, observed) + drift.drift +
+  const drift = nextCockpitDriftBlock(group, session, !waiting);
+  /* Identity, then what is waiting on the reader, both full width; then the
+     Intent and drift panel and the session's activity as two columns
+     (DRC-4680). The answer sits above both because it outranks the check.
+     The panel comes first in the markup, so it is the first thing after the
+     page's name in reading and keyboard order and leads the single column on
+     a narrow screen; the stylesheet puts it on the right when both fit. The
+     page scrolls as one document: the panel is not its own scroll container
+     and is not sticky. */
+  const activity = '<div class="next-session-activity" data-next-session-activity>' +
+    '<h2 class="next-session-activity-heading">Session activity</h2>' +
+    nextSessionCommandSurface(session, observed) +
     /* Worker history has no height bound: 31 old workers put the check at
        2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
     nextSessionSubagents(observed) +
@@ -685,6 +691,11 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
     nextCommandReports(session) + nextSessionDelivery(session) + missingReentry + drift.record +
+    "</div>";
+  return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
+    `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
+    nextSessionAskBlock(session, asks, observed) +
+    `<div class="next-session-columns">${drift.panel}${activity}</div>` +
     nextSessionFooter(session) + "</article>";
 }
 

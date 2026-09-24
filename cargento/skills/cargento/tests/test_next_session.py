@@ -452,7 +452,12 @@ console.log(JSON.stringify(variants));
         ):
             with self.subTest(state=state):
                 self.assertIn(f'data-next-session-state="{state}"', out[state])
-                self.assertIn(f"State: {label}", out[state])
+                # Visible since DRC-4680, with the "State: " prefix for a screen reader only.
+                self.assertIn(
+                    '<span class="next-session-state"><span class="next-visually-hidden">'
+                    f"State: </span>{label}</span>",
+                    out[state],
+                )
                 self.assertIn(">Resolve the gate</h1>", out[state])
         self.assertNotIn("next-session-detail--blocked", out["working"])
         self.assertNotIn("next-session-detail--blocked", out["idle"])

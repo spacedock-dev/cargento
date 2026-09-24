@@ -130,7 +130,7 @@ await nextCockpitAskForReading(session,null,true);
 console.log(JSON.stringify({posts,confirmation,after:nextCockpitReadingControl(session,nextCockpitAnnotation(session),null)}));
 """)
         assert isinstance(out, dict)
-        self.assertIn("Allow and check", out["confirmation"])
+        self.assertIn("Allow and analyze", out["confirmation"])
         self.assertEqual("latest-prompt", out["posts"][1].get("adopt"))
         self.assertEqual("Build original parser", out["posts"][1].get("expected_prompt"))
         self.assertEqual(10, out["posts"][1].get("expected_prompt_at"))

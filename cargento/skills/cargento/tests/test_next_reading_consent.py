@@ -42,7 +42,7 @@ console.log(JSON.stringify({first,second,posts,policy:nextData.reading}));
         self.assertLess(
             # The server's route for this Claude Code row names its receiver.
             out["first"]["html"].index("so Codex reads this session"),
-            out["first"]["html"].index("Allow and check"),
+            out["first"]["html"].index("Allow and analyze"),
         )
         self.assertEqual(1, len(out["second"]))
         self.assertIs(True, out["second"][0]["body"]["allow"])
@@ -122,6 +122,6 @@ const recovered = nextCockpitReadingControl(session,nextCockpitAnnotation(sessio
 console.log(JSON.stringify({refused,recovered}));
 """)
         assert isinstance(out, dict)
-        self.assertIn("Allow and check", out["refused"])
+        self.assertIn("Allow and analyze", out["refused"])
         self.assertNotIn("Readings are off", out["recovered"])
-        self.assertNotIn("Allow and check", out["recovered"])
+        self.assertNotIn("Allow and analyze", out["recovered"])
