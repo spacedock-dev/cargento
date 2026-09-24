@@ -1567,3 +1567,28 @@ the line "reads checks and file paths, not what the intent says" is the live est
 These are what DRC-4692 validates, not a measured result. Medium: a pass is followed by writes, or
 some writes fall outside the named folders. High: the latest run of any check failed, or most writes
 fall outside the named folders. Extreme: both hold. "None or low" is the per-source floor in item 1.
+
+### What the levels build decided, 2026-09-24
+
+DRC-4692 built the two functions in `cargento_runtime/levels.py`, and `scripts/levels_cases.py`
+to measure them. The ruling left these open. Each was settled on the withholding side, and each is
+part of what the owner's marks validate.
+
+- "Both hold" means both of High's conditions: a failed latest run and most writes outside the named
+  folders. An analysis reads no folder, so it never reads Extreme. A first draft reached Extreme
+  from an analysis when a failure came with departures on most lines. Its own failed-check case then
+  read Extreme on a one-line intent, and the rule was one nobody had ruled, so it was dropped.
+- A folder is a path-shaped word in the goal or a line: `server/`, `./web`, `src/app`, or a file
+  path's own folder. A bare word, a URL and an absolute path name none. A write outside the working
+  directory counts as outside every folder.
+- The live floor also withholds when the scan counts a background launch, because a check only ever
+  run in the background is neither listed nor counted (DEC-23 item 1) and the launch count cannot
+  tell it from a server. It also withholds when the twelve listed entries cannot place every pass,
+  or, where folders are named, every write.
+- An analysis line is shown only by a `consistent` with no `why` that cites a passing check with no
+  later change. A line demoted because its cited pass was followed by a change reads Medium, as a
+  pass followed by a write does on the live side. A failed check anywhere in the reading's window
+  reads High whether or not the reading cited it.
+- A level passes the owner's mark when it matches or reassures less. "Not enough recorded yet" is
+  more cautious than "None or low" only. Said of a case marked Medium or higher, it hides drift the
+  owner saw.

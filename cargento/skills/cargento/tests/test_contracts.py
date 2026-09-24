@@ -1669,6 +1669,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.supervise",
         },
+        # The drift levels (DEC-26) read the producer's closed vocabulary: its
+        # result sentences, `why` tokens and outcome-line names, spelt once
+        # there. Nothing imports `levels` yet; DRC-4696 and DRC-4695 will.
+        "cargento_runtime.levels": {
+            "cargento_runtime.reading",
+        },
         # A reading job's thread (DRC-4686): it writes the outcome through the
         # store and reads the job registry beside the slot in `reading`. The
         # application it runs over is a protocol, so it never imports upward.
