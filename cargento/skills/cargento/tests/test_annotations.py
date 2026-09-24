@@ -863,7 +863,7 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
         said = set(annotation_store.DISCARD_SENTENCES.values())
 
         self.assertEqual(len(annotation_store.DISCARD_SENTENCES), len(said))
-        self.assertEqual(11, len(said))
+        self.assertEqual(12, len(said))
         self.assertNotIn("Saved as a new revision.", said)
         for sentence in said:
             with self.subTest(sentence=sentence[:32]):
@@ -2147,7 +2147,7 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, unwritable)
         # The vocabulary is closed and every token is a distinct string, so no
         # two outcomes can render as one sentence by accident.
-        self.assertEqual(5, len(set(annotation_store.OUTCOMES)))
+        self.assertEqual(6, len(set(annotation_store.OUTCOMES)))
         self.assertNotIn(True, annotation_store.OUTCOMES)
         self.assertNotIn(False, annotation_store.OUTCOMES)
 
@@ -2419,7 +2419,11 @@ class IntentRevisionTest(unittest.TestCase):
 
     def test_collection_does_not_read_either_store_again_for_the_token(self) -> None:
         with (
-            mock.patch.object(annotation_store, "load", wraps=annotation_store.load) as annotations,
+            # The file read itself: `refresh` reads it through `_read_store`,
+            # which also says whether it could be read.
+            mock.patch.object(
+                annotation_store, "_read_store", wraps=annotation_store._read_store
+            ) as annotations,
             mock.patch.object(departures, "load", wraps=departures.load) as checks,
         ):
             self._revision()

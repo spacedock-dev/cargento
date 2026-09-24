@@ -90,8 +90,8 @@ _WRITE_LOCK: Final = threading.Lock()
 # outcome lines never reach it (item 12 of the ruling
 # `reading.MAX_OUTCOME_LINES` cites).
 NOTHING_DEPARTED: Final = (
-    "Cargento has checked this session against your goal and found nothing to raise. Unasked "
-    "checks do not read your expected outcome."
+    "Cargento has checked this session against your goal and found nothing to raise. Checks run "
+    "while you were away read only your goal, not your expected outcome."
 )
 NEVER_CHECKED: Final = (
     "Cargento has not checked this session against what you asked for. Nothing here says whether "

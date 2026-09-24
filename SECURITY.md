@@ -83,7 +83,9 @@ The posture rests on two invariants:
    and by a 16 MiB read limit that every write trims to, dropping the least recently written
    entries and never the one being written. A store file that exists and cannot be read whole is
    never written over: every save answers `untrusted` until it can be, because a write would keep
-   only what this build could read. It is
+   only what this build could read, and the board says the file could not be read rather than
+   showing every session as one nobody typed against. A session whose own entry this build cannot
+   read is kept as it was, and a save, adoption or discard of it answers `unreadable`. It is
    redacted on the way in like every other prompt-derived string, written owner-only through a temp
    file and a rename -- the file synced before the rename and the directory synced after it, so
    that rename is trusted only once both are on disk; where the directory cannot be synced, as on
@@ -125,7 +127,7 @@ The posture rests on two invariants:
    both: it deletes every revision and blanks the quotations from the departure rows those
    revisions were read against, keeping only that a check ran, so words discarded that way are
    gone from this response and from both of those stores on disk. Both of those and not every
-   store: session history keeps its own fourteen-day copy of the same two fields, the discard
+   store: session history keeps its own fourteen-day copy of the goal and each outcome line, the discard
    path does not touch it, and `--forget` is what removes that copy. The record's own sentence
    names it, so a reader meets that fact where the act happened rather than only here.
    What stays in the annotation store in their place is a

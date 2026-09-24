@@ -167,11 +167,23 @@ DISCARD_UNWRITABLE = (
     "Not discarded. The store could not be written, so the next collection reads every "
     "revision back and nothing raised against them was withdrawn."
 )
-# The store exists and this build cannot read it, so nothing was written.
+# The store exists and this build cannot read it, so nothing was written. It
+# names the file and the step, as every refusal here names one.
 DISCARD_UNTRUSTED = (
-    "Not discarded. The annotation store on disk could not be read, so nothing was written to "
-    "it: writing now would keep only what this board can read. Every revision it holds is "
-    "still there."
+    "Not discarded. Cargento could not read cargento-annotations.json, so nothing was saved "
+    "and nothing was overwritten. Move or repair that file to save again."
+)
+# This session's own entry is one this build cannot read.
+DISCARD_HELD = (
+    "Not discarded. This session's words were saved by a build of Cargento that can read more "
+    "than this one, so nothing was changed. Discard them from that build, or remove this "
+    "session's entry from cargento-annotations.json."
+)
+# What the board says at rest while the store cannot be read, in place of
+# every session reading as one nobody typed against.
+STORE_UNREADABLE = (
+    "Cargento could not read cargento-annotations.json, so what you typed against sessions "
+    "cannot be shown and nothing will be saved over it. Move or repair that file to save again."
 )
 # The half-landed case, and the reason DISCARD_STORED cannot simply be worded
 # more carefully. A discard is one act over two stores: `clear` drops the
@@ -248,6 +260,7 @@ DISCARD_SENTENCES: Final[dict[str, str]] = {
     "refused": DISCARD_REFUSED,
     "unwritable": DISCARD_UNWRITABLE,
     "untrusted": DISCARD_UNTRUSTED,
+    "held": DISCARD_HELD,
     "record": DISCARD_RECORD,
     "record_standing": DISCARD_RECORD_STANDING,
     "nothing": DISCARD_NOTHING,
@@ -273,12 +286,17 @@ OUTCOME_UNWRITABLE = "unwritable"
 # other session's words away (owner ruling, 2026-09-24). Its own token, because
 # the reader's remedy differs from a failed write's: the file needs looking at.
 OUTCOME_UNTRUSTED = "untrusted"
+# The store is readable and this session's own entry is not: a later build
+# wrote it with more lines or a source this one does not know. Kept raw and
+# never written over, renumbered or dropped from this build.
+OUTCOME_UNREADABLE = "unreadable"
 OUTCOMES = (
     OUTCOME_STORED,
     OUTCOME_UNCHANGED,
     OUTCOME_REFUSED,
     OUTCOME_UNWRITABLE,
     OUTCOME_UNTRUSTED,
+    OUTCOME_UNREADABLE,
 )
 
 # What one `--forget` sweep of this store did (DRC-4565). A closed vocabulary
@@ -287,6 +305,8 @@ OUTCOMES = (
 FORGET_SWEPT = "swept"
 FORGET_NOTHING = "nothing"
 FORGET_UNWRITABLE = "unwritable"
+# The store exists and could not be read, so the sweep wrote nothing.
+FORGET_UNTRUSTED = "untrusted"
 
 # Whether the identity this store bound on is the session's whole identity.
 # `exact` is the ordinary case. `prefix` is the one the issue named as a hazard
@@ -1051,12 +1071,10 @@ def _commit(
     """Write one mutator's result: trimmed, the written entry kept, the refused kept raw.
 
     Inside the caller's lock, and the cache set before the write, as every
-    mutator did before this was shared. A raw entry for the session being
-    written is replaced by the new one: the reader is writing that session now.
+    mutator did before this was shared. Every raw entry goes back as it was:
+    a mutator refuses a session held raw before it reaches here (`_held`).
     """
-    raw = tuple(
-        value for value in store.kept_raw if _key(value.get("harness"), value.get("sid")) != key
-    )
+    raw = store.kept_raw
     kept = _kept(config, entries, keep=key, raw=raw)
     if kept is None:
         return OUTCOME_UNWRITABLE
@@ -1068,16 +1086,28 @@ def _commit(
     )
 
 
+def _held(store: _Store, key: tuple[str, str]) -> bool:
+    """Whether this session's own entry is one this build refused on read."""
+    return any(_key(value.get("harness"), value.get("sid")) == key for value in store.kept_raw)
+
+
 def refresh(config: RuntimeConfig, state: RuntimeState) -> tuple[Annotation, ...]:
     """Re-read the store into this process's copy, and return it.
 
     Two dashboards can bind on one machine and the file is the record, so a save
-    made in one is picked up by the other on its next collection.
+    made in one is picked up by the other on its next collection. Whether the
+    file could be read whole is kept beside it, for `store_notice`.
     """
-    entries = load(config)
+    store = _read_store(config) if config.annotations_enabled else _Store((), (), trusted=True)
     with state.annotation_lock:
-        state.annotations = _stored(entries)
-    return entries
+        state.annotations = _stored(store.entries)
+        state.annotations_trusted = store.trusted
+    return store.entries
+
+
+def store_notice(state: RuntimeState) -> str:
+    """The board's sentence while the store cannot be read, or nothing."""
+    return "" if state.annotations_trusted else STORE_UNREADABLE
 
 
 def active(config: RuntimeConfig, state: RuntimeState) -> tuple[Annotation, ...]:
@@ -1396,6 +1426,7 @@ def annotate(  # noqa: PLR0913
     output: Any = None,
     lines: Any = None,
     expected_revision: Any = None,
+    origins: Any = None,
     now: float | None = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
@@ -1408,6 +1439,10 @@ def annotate(  # noqa: PLR0913
     one-line form such an older page posts: it saves as a list of that one
     line only where no list is stored yet, and it is refused over any stored
     list, because that page sends no revision and never showed the lines.
+    `origins`, beside `lines`, names the stored line each posted line came
+    from (or None for a new one), so a line keeps its own entry when two
+    share text; the store checks the text, so it can only keep a source,
+    never claim one.
     """
     legacy = lines is None and isinstance(output, str)
     if legacy:
@@ -1416,7 +1451,10 @@ def annotate(  # noqa: PLR0913
         isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
     ):
         return OUTCOME_REFUSED
-    options: dict[str, Any] = {"legacy_output": legacy}
+    aligned = _aligned_origins(origins, lines, config.annotation_text_cap_chars)
+    if aligned is False:
+        return OUTCOME_REFUSED
+    options: dict[str, Any] = {"legacy_output": legacy, "origins": aligned}
     if expected_revision is not None:
         options["expected_revision"] = expected_revision
     return _annotate(
@@ -1429,6 +1467,27 @@ def annotate(  # noqa: PLR0913
         adoption=options,
         diagnostic_sink=diagnostic_sink,
     )
+
+
+def _aligned_origins(origins: Any, lines: Any, cap: int) -> list[int | None] | bool | None:
+    """`origins` kept beside the lines `_typed_lines` keeps; None if none sent, False if bad."""
+    if origins is None:
+        return None
+    if (
+        not isinstance(origins, list)
+        or not isinstance(lines, (list, tuple))
+        or len(origins) != len(lines)
+        or not all(
+            item is None or (isinstance(item, int) and not isinstance(item, bool) and item >= 0)
+            for item in origins
+        )
+    ):
+        return False
+    return [
+        origin
+        for origin, line in zip(origins, lines, strict=True)
+        if isinstance(line, str) and records.safe_text(line, cap).strip()
+    ]
 
 
 def _typed_lines(value: Any, cap: int) -> list[str] | None:
@@ -1452,22 +1511,35 @@ def _typed_lines(value: Any, cap: int) -> list[str] | None:
     return texts if len(texts) <= reading.MAX_OUTCOME_LINES else None
 
 
-def _sourced(texts: list[str], previous: tuple[OutcomeLine, ...]) -> tuple[OutcomeLine, ...]:
+def _sourced(
+    texts: list[str],
+    previous: tuple[OutcomeLine, ...],
+    origins: Sequence[int | None] | None = None,
+) -> tuple[OutcomeLine, ...]:
     """The lines to store, each with the source the server gives it.
 
     The client never names a source. Each `entry` line of the revision before
     lends its source to one new line with the same text, and only one, so a
     newly typed duplicate of it is typed; any other line, an edited one
-    included, is typed, as an edited adopted goal is.
+    included, is typed, as an edited adopted goal is. Which line it lends to
+    is decided by the page's `origins` first, then by position, then by the
+    first line with that text: two lines sharing text each keep their own.
     """
-    unused = [line for line in previous if line["source"] == LINE_ENTRY]
-    out: list[OutcomeLine] = []
-    for text in texts:
-        match = next((line for line in unused if line["text"] == text), None)
-        if match is not None:
-            unused.remove(match)
-        out.append(match or _typed(text))
-    return tuple(out)
+    unused = [i for i, line in enumerate(previous) if line["source"] == LINE_ENTRY]
+    out: list[OutcomeLine | None] = [None] * len(texts)
+
+    def take(i: int, j: int | None) -> None:
+        if out[i] is None and j in unused and previous[j]["text"] == texts[i]:
+            out[i] = previous[j]
+            unused.remove(j)
+
+    for i in range(len(texts)):
+        take(i, origins[i] if origins and i < len(origins) else None)
+    for i in range(len(texts)):
+        take(i, i)
+    for i, text in enumerate(texts):
+        take(i, next((j for j in unused if previous[j]["text"] == text), None))
+    return tuple(line or _typed(texts[i]) for i, line in enumerate(out))
 
 
 def _unguarded_replacement(
@@ -1543,8 +1615,11 @@ def _annotate(
         # made by a second dashboard since this one's last collection is carried
         # forward instead of being written away.
         store = _read_store(config)
-        if not store.trusted:
-            return OUTCOME_UNTRUSTED
+        if not store.trusted or _held(store, key):
+            # A session held raw is refused like an unreadable store: its
+            # words are on disk, this build cannot read them, and a save here
+            # would renumber from 1 over them.
+            return OUTCOME_UNTRUSTED if not store.trusted else OUTCOME_UNREADABLE
         current = store.entries
         existing = find(current, *key)
         actual_revision = (
@@ -1567,7 +1642,11 @@ def _annotate(
             if new_goal is None:
                 source_fields = _provenance(last) or {}
             text_goal = last["goal"] if new_goal is None else new_goal
-            text_lines = last["lines"] if new_texts is None else _sourced(new_texts, last["lines"])
+            text_lines = (
+                last["lines"]
+                if new_texts is None
+                else _sourced(new_texts, last["lines"], options.get("origins"))
+            )
             if (last["goal"], last["lines"]) == (text_goal, text_lines) and (
                 _provenance(last) or {}
             ) == source_fields:
@@ -1732,8 +1811,8 @@ def clear(
     stamp = time.time() if now is None else now
     with state.annotation_lock:
         store = _read_store(config)
-        if not store.trusted:
-            return OUTCOME_UNTRUSTED
+        if not store.trusted or _held(store, key):
+            return OUTCOME_UNTRUSTED if not store.trusted else OUTCOME_UNREADABLE
         current = store.entries
         existing = find(current, *key)
         others = tuple(e for e in current if (e["harness"], e["sid"]) != key)
@@ -1784,7 +1863,7 @@ def forget(config: RuntimeConfig) -> str:
     if not store.trusted:
         # A store this build cannot read is never written over: the sweep
         # would keep only what it could parse, which is nothing.
-        return FORGET_UNWRITABLE
+        return FORGET_UNTRUSTED
     entries = store.entries
     kept = tuple(entry for entry in entries if not is_discarded(entry))
     if len(kept) == len(entries):

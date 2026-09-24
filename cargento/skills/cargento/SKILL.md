@@ -301,13 +301,18 @@ rather than clipped. It writes a numbered revision; an earlier revision is never
 revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely,
 or `settle_through` with a timestamp to mark the directions given up to that moment as settled
 against the current baseline. The reply says what happened: `persisted` is whether the words are
-on disk, and `outcome` is which of five things the store did — `stored` (a new revision),
+on disk, and `outcome` is which of six things the store did — `stored` (a new revision),
 `unchanged` (the same words again, so no revision was minted and `persisted` is still true),
 `refused` (the request named nothing the store would take, such as a settle on a session with no
 words, or a list saved without the revision it was drafted against, and nothing was written),
-`unwritable` (the write failed, so the words are held for this run only) or `untrusted` (the
-store file exists and could not be read whole, so nothing was written over it). The page draws a
-different sentence for each, and re-saving the same words never mints a revision.
+`unwritable` (the write failed, so the words are held for this run only; or the entry could not
+fit the store even alone, so nothing was written and nothing is held), `untrusted` (the store
+file exists and could not be read whole, so nothing was written over it, and the page says so
+in place of "nothing typed" until the file is moved or repaired) or `unreadable` (this session's
+own entry was saved by a build that can read more than this one, so it is kept as it was and not
+saved over). A save may send `origins`, the saved position each line came from, so two lines that
+share text each keep their own source. The page draws a different sentence for each, and
+re-saving the same words never mints a revision.
 
 They are held in `cargento-annotations.json`, bounded by how many sessions carry words and how many
 revisions each keeps rather than by age, because a session still on the board should not lose what
@@ -616,10 +621,10 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
 | `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
 | `POST /api/tripwire` | Save, Remove or Rearm one workflow stage condition. Requires `action`, opaque `id`, declared `stage` and `expected_revision`; stale revisions return 409, failed writes 503. Disabled by `--no-tripwires`. |
-| `POST /api/annotate` | Record a goal or the expected outcome checklist against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
+| `POST /api/annotate` | Record a goal or the expected outcome checklist against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused`, `unwritable`, `untrusted` or `unreadable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected outcome line against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
-| `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true`, which allows that provider only. `{"consent":"off","press":true,"observer_model":1}` revokes permission. Bodies are capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
+| `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true`, which allows that provider only. `{"consent":"off","press":true,"observer_model":1}` revokes permission. Bodies are capped at 12,288 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
 
 ## Interpretation notes (share with the user if asked)
 

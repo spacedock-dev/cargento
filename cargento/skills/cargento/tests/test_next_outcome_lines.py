@@ -439,10 +439,84 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
 
         self.assertIn(
-            "Not saved. The annotation store on disk could not be read, so nothing was written to "
-            "it, and what you typed is still in the box.",
+            "Not saved. Cargento could not read cargento-annotations.json, so nothing was saved and "
+            "nothing was overwritten, and what you typed is still in the box. Move or repair that "
+            "file to save again.",
             visible_text(out),
         )
+
+    def save_answering(self, outcome: str) -> str:
+        out = self.page(
+            lines_setup(SIX[:1]),
+            """
+__fetchImpl = url => String(url) === "/api/annotate"
+  ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted:false, outcome:"OUTCOME"})})
+  : new Promise(() => {});
+__type(0, "edited");
+__press("held-save", "lines");
+await __settle();
+await __settle();
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""".replace("OUTCOME", outcome),
+        )
+        return visible_text(out)
+
+    def test_a_save_to_a_session_this_build_cannot_read_says_what_to_do(self) -> None:
+        text = self.save_answering("unreadable")
+
+        self.assertIn("saved by a build of Cargento that can read more than this one", text)
+        self.assertIn("what you typed is still in the box", text)
+
+    def test_the_board_says_the_store_could_not_be_read_instead_of_nothing_typed(self) -> None:
+        html = self.page(
+            lines_setup([])
+            + "__dashboard.sessions[0].annotation_goal = '';\n"
+            + f"__dashboard.sessions[0].annotation_goal_why = {json.dumps(annotation_store.NO_GOAL_TYPED)};\n"
+            + f"__dashboard.annotate_unreadable = {json.dumps(annotation_store.STORE_UNREADABLE)};\n"
+        )
+
+        text = visible_text(html)
+        self.assertIn(annotation_store.STORE_UNREADABLE, text)
+        self.assertNotIn(annotation_store.NO_GOAL_TYPED, text)
+        self.assertNotIn(annotation_store.NO_LINES_TYPED, text)
+
+    def test_an_adoption_over_an_unreadable_store_does_not_say_the_prompt_changed(self) -> None:
+        out = self.page(
+            lines_setup([]),
+            """
+__fetchImpl = url => String(url) === "/api/annotate"
+  ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted:false, outcome:"untrusted"})})
+  : new Promise(() => {});
+const session = nextCockpitFocusedSession(nextCockpitRouteGroup());
+session.harness = "claude"; session.first_prompt = "Shape the cockpit"; session.first_prompt_at = 50;
+await nextAdoptPrompt(session, "first-prompt");
+console.log(JSON.stringify(nextCockpitReadingRequests.get(sessKey(session)) || null));
+""",
+        )
+
+        assert out is not None
+        self.assertIn("could not read cargento-annotations.json", out["message"])
+        self.assertNotIn("changed", out["message"])
+
+    def test_removing_the_first_of_two_saved_lines_says_which_one_stayed(self) -> None:
+        out = self.page(
+            lines_setup(["same", "same"]),
+            """
+__fetchImpl = url => String(url) === "/api/annotate"
+  ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted:true, outcome:"stored"})})
+  : new Promise(() => {});
+__press("held-line-remove", 0);
+await __settle();
+__press("held-save", "lines");
+await __settle();
+const call = __fetchCalls.find(args => String(args[0]) === "/api/annotate");
+console.log(JSON.stringify(call ? JSON.parse(call[1].body) : null));
+""",
+        )
+
+        self.assertEqual(["same"], out["lines"])
+        self.assertEqual([1], out["origins"])
 
 
 class ThePageAndTheStoreAgreeOnSixTest(unittest.TestCase):

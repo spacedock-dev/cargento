@@ -838,7 +838,7 @@ class AStoreThatCannotBeReadIsNeverOverwrittenTest(_StoreCase):
         with open(annotation_store.store_path(self.config), "rb") as handle:
             before = handle.read()
 
-        self.assertEqual(annotation_store.FORGET_UNWRITABLE, annotation_store.forget(self.config))
+        self.assertEqual(annotation_store.FORGET_UNTRUSTED, annotation_store.forget(self.config))
         with open(annotation_store.store_path(self.config), "rb") as handle:
             self.assertEqual(before, handle.read())
 
@@ -952,6 +952,192 @@ class AnEntryThisBuildCannotReadIsKeptTest(_StoreCase):
 
         self.assertEqual(annotation_store.FORGET_SWEPT, annotation_store.forget(self.config))
         self.assertIn(self.FUTURE, self.on_disk())
+
+
+class ASessionHeldRawIsNeverWrittenOverTest(_StoreCase):
+    """Round 2, F1: a session whose words this build cannot read takes no save, adopt or clear."""
+
+    RAW: dict[str, Any] = {  # noqa: RUF012
+        "harness": "claude",
+        "sid": "future",
+        "revisions": [
+            {"n": 1, "at": NOW, "goal": "G", "lines": []},
+            {
+                "n": 2,
+                "at": NOW,
+                "goal": "G",
+                "lines": [{"text": f"l{k}", "source": "typed"} for k in range(7)],
+            },
+        ],
+    }
+
+    def seed(self) -> bytes:
+        self.write_raw({"v": 3, "entries": [dict(self.RAW)]})
+        with open(annotation_store.store_path(self.config), "rb") as handle:
+            return handle.read()
+
+    def test_a_save_adopt_or_clear_on_that_session_is_refused_and_writes_nothing(self) -> None:
+        row = {
+            "harness": "claude",
+            "sid": "future",
+            "first_prompt": "Shape the cockpit",
+            "first_prompt_at": NOW - 10,
+        }
+        writes: dict[str, Callable[[], str]] = {
+            "goal": lambda: annotation_store.annotate(
+                self.config, self.state, "claude", "future", goal="typed on old build", now=NOW
+            ),
+            "lines": lambda: annotation_store.annotate(
+                self.config, self.state, "claude", "future", lines=["x"], now=NOW
+            ),
+            "adopt": lambda: annotation_store.adopt(
+                self.config,
+                self.state,
+                row,
+                source="first-prompt",
+                expected_text="Shape the cockpit",
+                expected_at=NOW - 10,
+                now=NOW,
+            ),
+            "clear": lambda: annotation_store.clear(self.config, self.state, "claude", "future"),
+        }
+        for name, write in writes.items():
+            with self.subTest(write=name):
+                before = self.seed()
+
+                outcome = write()
+
+                self.assertEqual(annotation_store.OUTCOME_UNREADABLE, outcome)
+                with open(annotation_store.store_path(self.config), "rb") as handle:
+                    self.assertEqual(before, handle.read())
+
+    def test_the_refusal_has_a_sentence_naming_what_the_reader_can_do(self) -> None:
+        source = (
+            REPO
+            / "cargento"
+            / "skills"
+            / "cargento"
+            / "cargento_runtime"
+            / "web"
+            / "next-cockpit.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('unreadable: "unreadable"', source)
+        self.assertIn(annotation_store.OUTCOME_UNREADABLE, annotation_store.OUTCOMES)
+
+
+class AnUnreadableStoreNamesTheFileAndTheStepTest(_StoreCase):
+    """Round 2, F2 and F3: every sentence about an unreadable store names the file and a step."""
+
+    def damage(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="keep me", now=NOW)
+        path = pathlib.Path(annotation_store.store_path(self.config))
+        path.write_bytes(path.read_bytes()[:-1])
+
+    def test_the_discard_sentence_names_the_file_and_the_step(self) -> None:
+        said = annotation_store.DISCARD_UNTRUSTED
+        self.assertIn("cargento-annotations.json", said)
+        self.assertIn("Move or repair that file", said)
+
+    def test_the_board_says_the_store_could_not_be_read_rather_than_nothing_typed(self) -> None:
+        self.damage()
+
+        annotation_store.refresh(self.config, self.state)
+
+        said = annotation_store.store_notice(self.state)
+        self.assertIn("could not read cargento-annotations.json", said)
+        self.assertIn("Move or repair that file", said)
+
+    def test_the_payload_carries_the_notice_to_the_page(self) -> None:
+        self.damage()
+        application = cli.build_application(
+            self.config, self.state, diagnostic_sink=lambda _l: None
+        )
+
+        payload = application.collect(show_all=False)
+
+        self.assertEqual(annotation_store.STORE_UNREADABLE, payload["annotate_unreadable"])
+
+    def test_a_readable_store_publishes_no_notice(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="G", now=NOW)
+
+        annotation_store.refresh(self.config, self.state)
+
+        self.assertEqual("", annotation_store.store_notice(self.state))
+
+    def test_forget_says_the_store_could_not_be_read(self) -> None:
+        self.damage()
+
+        self.assertEqual(annotation_store.FORGET_UNTRUSTED, annotation_store.forget(self.config))
+        source = (
+            REPO / "cargento" / "skills" / "cargento" / "cargento_runtime" / "cli.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("could not be read", source)
+
+
+class AnEntryLineKeepsItsOwnEntryTest(_StoreCase):
+    """Round 2, F5: of two same-text entry lines, the one the page says it kept keeps its entry."""
+
+    def seed(self) -> None:
+        self.write_raw(
+            {
+                "v": 2,
+                "entries": [
+                    {
+                        "harness": "claude",
+                        "sid": "s-1",
+                        "revisions": [
+                            {
+                                "n": 1,
+                                "at": NOW,
+                                "goal": "G",
+                                "lines": [
+                                    {"text": "same", "source": "entry", "source_id": "f-1"},
+                                    {"text": "same", "source": "entry", "source_id": "f-2"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    def save(self, **kwargs: Any) -> tuple[Any, ...]:
+        annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", expected_revision=1, now=NOW + 1, **kwargs
+        )
+        return tuple(line.get("source_id") for line in self.entry()["revisions"][-1]["lines"])
+
+    def test_deleting_the_first_of_two_keeps_the_survivors_own_entry(self) -> None:
+        self.seed()
+
+        self.assertEqual(("f-2",), self.save(lines=["same"], origins=[1]))
+
+    def test_without_origins_a_line_keeps_the_source_in_its_own_place(self) -> None:
+        self.seed()
+
+        # First-text matching would give the second line f-1; its own place held f-2.
+        self.assertEqual((None, "f-2"), self.save(lines=["typed first", "same"]))
+
+    def test_an_origin_naming_a_different_text_gives_no_source(self) -> None:
+        self.seed()
+
+        self.assertEqual((None,), self.save(lines=["other"], origins=[0]))
+
+    def test_malformed_origins_refuse_the_save(self) -> None:
+        self.seed()
+        for origins in ([0, 1], ["0"], [True], [-1]):
+            with self.subTest(origins=origins):
+                outcome = annotation_store.annotate(
+                    self.config,
+                    self.state,
+                    "claude",
+                    "s-1",
+                    lines=["same"],
+                    origins=origins,
+                    expected_revision=1,
+                    now=NOW + 1,
+                )
+                self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
 
 
 class AnEntryLineKeepsItsSourceOnceTest(_StoreCase):
@@ -1652,6 +1838,17 @@ class TheAnnotateRouteTakesAListTest(unittest.TestCase):
         assert entry is not None
         self.assertEqual(SIX[:2], [line["text"] for line in entry["revisions"][-1]["lines"]])
 
+    def test_origins_that_are_not_a_list_of_saved_positions_are_refused_with_400(self) -> None:
+        for origins in ("0", [0, 1], ["0"], [True]):
+            with self.subTest(origins=origins), self.serving() as port:
+                status, _body = self.post(
+                    port,
+                    json.dumps(
+                        {"harness": "claude", "sid": "s-1", "lines": ["a"], "origins": origins}
+                    ).encode(),
+                )
+                self.assertEqual(400, status)
+
     def test_anything_but_a_list_of_strings_is_refused_with_400(self) -> None:
         for lines in ("one line", [1, 2], [{"text": "x", "source": "entry"}], {"a": 1}):
             with self.subTest(lines=lines), self.serving() as port:
@@ -1784,7 +1981,10 @@ class TheUnaskedSentenceSaysWhatTheLaneReadTest(unittest.TestCase):
 
         self.assertTrue(said["departure_checked"])
         self.assertIn("your goal", said["departure_why"])
-        self.assertIn("do not read your expected outcome", said["departure_why"])
+        self.assertIn(
+            "Checks run while you were away read only your goal, not your expected outcome.",
+            said["departure_why"],
+        )
 
     def test_lines_with_no_goal_are_never_called_checked(self) -> None:
         said = self.published("")

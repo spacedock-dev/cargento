@@ -1034,11 +1034,21 @@ const NEXT_COCKPIT_HELD_CUES = {
     "stands as it did.",
   /* The store exists and the server could not read it, so it wrote nothing:
      writing would keep only what it can read and lose every other session's
-     words (`annotations.OUTCOME_UNTRUSTED`). The remedy is the file, not a retry. */
-  untrusted: "Not saved. The annotation store on disk could not be read, so nothing was " +
-    "written to it, and what you typed is still in the box.",
-  "settle-untrusted": "Not settled. The annotation store on disk could not be read, so " +
-    "nothing was written and the later direction is still unsettled.",
+     words (`annotations.OUTCOME_UNTRUSTED`). The remedy is the file, not a
+     retry, so the sentence names the file and the step, as every refusal
+     names one:
+     [NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page). */
+  untrusted: "Not saved. Cargento could not read cargento-annotations.json, so nothing was " +
+    "saved and nothing was overwritten, and what you typed is still in the box. Move or " +
+    "repair that file to save again.",
+  "settle-untrusted": "Not settled. Cargento could not read cargento-annotations.json, so " +
+    "nothing was saved and nothing was overwritten. Move or repair that file to settle again.",
+  /* This session's own entry is one this build cannot read
+     (`annotations.OUTCOME_UNREADABLE`): it is kept as it was, never saved over. */
+  unreadable: "Not saved. This session's words were saved by a build of Cargento that can " +
+    "read more than this one, so nothing was saved over them, and what you typed is still in " +
+    "the box. Save from that build, or remove this session's entry from " +
+    "cargento-annotations.json.",
   "settle-unpersisted": "Not settled. The store could not be written, so the mark has " +
     "already been dropped and the question below still stands.",
 };
@@ -1057,7 +1067,7 @@ const NEXT_COCKPIT_SETTLE_LANDED = "Settled. A direction given after this will r
    `persisted`, which keeps its meaning across builds. */
 const NEXT_COCKPIT_HELD_OUTCOME_CUES = {
   stored: "saved", unchanged: "unchanged", refused: "error", unwritable: "unpersisted",
-  untrusted: "untrusted",
+  untrusted: "untrusted", unreadable: "unreadable",
 };
 
 /* The stamped kind, or nothing once it has expired. Split out from the cue
@@ -1187,12 +1197,19 @@ function nextCockpitHeldMark(key, kind){
   nextCockpitAnnounceCue(key, nextCockpitHeldSentence(kind), kind === "discard-armed");
 }
 
+/* The server's sentence while the annotation store cannot be read, or "".
+   While it stands, no box may say nothing was typed: the words may be on disk
+   in a file this build could not read (`annotations.store_notice`). */
+function nextCockpitStoreUnreadable(){
+  return String(nextData && nextData.annotate_unreadable || "");
+}
+
 function nextCockpitHeldField(session, annotation, spec, cap){
   const [kind, label, valueKey, whyKey, placeholder] = spec;
   const key = nextCockpitHeldKey(session, kind);
   const saved = String(annotation && annotation[valueKey] || "");
   const draft = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : saved;
-  const why = String(annotation && annotation[whyKey] || "");
+  const why = nextCockpitStoreUnreadable() ? "" : String(annotation && annotation[whyKey] || "");
   const cue = nextCockpitHeldCue(key);
   return `<div class="next-cockpit-held-field" data-next-cockpit-held-field="${kind}">` +
     '<div class="next-cockpit-held-heading">' +
@@ -1239,6 +1256,27 @@ function nextCockpitLinesDraft(session, annotation){
     : nextCockpitSavedLines(annotation);
 }
 
+/* Which saved line each draft line came from, by position, or null for one
+   added here. Kept beside the draft so the save can say it, and the store can
+   give a line its own source when two lines share text: deleting the first of
+   two lends the survivor its own entry, not the deleted one's. */
+const nextCockpitHeldOrigins = new Map();
+
+function nextCockpitLinesOrigins(key, draft){
+  const held = nextCockpitHeldOrigins.get(key);
+  return held && held.length === draft.length ? held.slice() : draft.map((_text, index) => index);
+}
+
+function nextCockpitLinesKeep(key, draft, origins){
+  nextCockpitHeldDrafts.set(key, draft);
+  nextCockpitHeldOrigins.set(key, origins);
+}
+
+function nextCockpitLinesForget(key){
+  nextCockpitHeldDrafts.delete(key);
+  nextCockpitHeldOrigins.delete(key);
+}
+
 // What a save would send: the lines with words in them, in order.
 function nextCockpitLinesToSend(draft){
   return draft.filter(text => String(text || "").trim());
@@ -1255,7 +1293,7 @@ function nextCockpitHeldLines(session, annotation, cap){
   const draft = nextCockpitLinesDraft(session, annotation);
   const boxes = draft.length ? draft : [""];
   const full = draft.length >= NEXT_OUTCOME_LINES_MAX;
-  const why = String(annotation && annotation.lines_why || "");
+  const why = nextCockpitStoreUnreadable() ? "" : String(annotation && annotation.lines_why || "");
   const cue = nextCockpitHeldCue(key);
   const rows = boxes.map((text, index) => {
     // The source is a fact about saved words, so it shows only while the box
@@ -2234,6 +2272,7 @@ function nextCockpitReadingStates(annotation, model){
     const why = String(said.unreadable || "").trim();
     return why ? `${why} ${NEXT_READING_SAVE_STEP}` : NEXT_READING_SAVE_STEP;
   }
+  if(nextCockpitStoreUnreadable()) return nextCockpitStoreUnreadable();
   if(!String(annotation && annotation.goal || "").trim() &&
       !nextAnnotationLines(annotation).length){
     /* Both sentences are this page's. The route refuses the same state in its
@@ -3129,6 +3168,8 @@ function nextCockpitDriftBlock(group, session, direction, primary){
   const asked = '<section class="next-cockpit-held"><header><h2>WHAT YOU ASKED FOR</h2>' +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
     lede +
+    (nextCockpitStoreUnreadable()
+      ? `<p class="next-cockpit-held-absent">${esc(nextCockpitStoreUnreadable())}</p>` : "") +
     `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
     `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
     '<div class="next-cockpit-held-fields">' +
@@ -3372,7 +3413,8 @@ async function nextCockpitDiscardAnnotation(session){
     /* The store's own token, with `persisted` as the fallback an older or
        newer server leaves: one bit cannot carry three sentences, which is
        what `NEXT_COCKPIT_HELD_CUES` records about the save path. */
-    const answered = ["stored", "refused", "unwritable", "untrusted"].includes(outcome)
+    const answered = outcome === "unreadable" ? "discard-held"
+      : ["stored", "refused", "unwritable", "untrusted"].includes(outcome)
       ? `discard-${outcome}`
       : (answer.persisted === true ? "discard-stored" : "discard-unwritable");
     /* A discard is one act over two stores and the second half fails on its
@@ -3393,6 +3435,7 @@ async function nextCockpitDiscardAnnotation(session){
       for(const kind of [...NEXT_COCKPIT_HELD_FIELDS.map(spec => spec[0]), "lines"]){
         nextCockpitHeldDrafts.delete(nextCockpitHeldKey(session, kind));
       }
+      nextCockpitHeldOrigins.delete(nextCockpitHeldKey(session, "lines"));
     }
     nextCockpitHeldMark(key, kind);
     renderNext();
@@ -3414,12 +3457,15 @@ async function nextCockpitLinesSave(session){
   const draft = nextCockpitLinesDraft(session, annotation);
   if(!nextCockpitLinesChanged(draft, annotation)) return;
   const sent = nextCockpitLinesToSend(draft);
+  const from = nextCockpitLinesOrigins(key, draft);
+  const origins = draft.map((text, index) => [text, from[index]])
+    .filter(([text]) => String(text || "").trim()).map(([_text, origin]) => origin);
   try{
     const response = await fetch("/api/annotate", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, goal: null, lines: sent,
-        expected_revision: nextNumber(annotation && annotation.revision) || 0}),
+        origins, expected_revision: nextNumber(annotation && annotation.revision) || 0}),
     });
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
     const saved = await response.json();
@@ -3432,7 +3478,7 @@ async function nextCockpitLinesSave(session){
     const held = nextCockpitHeldDrafts.get(key);
     if((kind === "saved" || kind === "unchanged") && held &&
         JSON.stringify(nextCockpitLinesToSend(held)) === JSON.stringify(sent)){
-      nextCockpitHeldDrafts.delete(key);
+      nextCockpitLinesForget(key);
     }
     nextCockpitHeldMark(key, kind);
     await refreshNext();
@@ -4674,9 +4720,10 @@ document.addEventListener("input", event => {
   if(value !== input.value) input.value = value;
   const annotation = nextCockpitAnnotation(session);
   const draft = nextCockpitLinesDraft(session, annotation);
-  while(draft.length <= index) draft.push("");
+  const origins = nextCockpitLinesOrigins(key, draft);
+  while(draft.length <= index){ draft.push(""); origins.push(null); }
   draft[index] = value;
-  nextCockpitHeldDrafts.set(key, draft);
+  nextCockpitLinesKeep(key, draft, origins);
   nextCockpitHeldDrop(key);
   const field = input.closest("[data-next-cockpit-held-field]");
   if(!field || !field.querySelector) return;
@@ -4700,6 +4747,7 @@ document.addEventListener("click", event => {
     event.preventDefault();
     const key = nextCockpitHeldKey(session, "lines");
     const draft = nextCockpitLinesDraft(session, nextCockpitAnnotation(session));
+    const origins = nextCockpitLinesOrigins(key, draft);
     if(action === "held-line-add" && draft.length >= NEXT_OUTCOME_LINES_MAX){
       // Refused in place: nothing is added, and the sentence beside the
       // control is said aloud, because an inert control that goes silent
@@ -4709,12 +4757,14 @@ document.addEventListener("click", event => {
     }
     if(action === "held-line-add"){
       // An empty list is drawn as one empty box, so adding to it adds the second.
-      if(!draft.length) draft.push("");
+      if(!draft.length){ draft.push(""); origins.push(null); }
       draft.push("");
+      origins.push(null);
     }else{
       draft.splice(Number(target.dataset.arg), 1);
+      origins.splice(Number(target.dataset.arg), 1);
     }
-    nextCockpitHeldDrafts.set(key, draft);
+    nextCockpitLinesKeep(key, draft, origins);
     nextCockpitHeldDrop(key);
     renderNext({named: `${key}:${Math.max(0, draft.length - 1)}`});
     return;
@@ -4888,7 +4938,7 @@ function nextCockpitHandleKeydown(event){
     // render and the store cannot disagree.
     event.preventDefault();
     const key = String(lines.dataset.nextCockpitHeldLinesKey || "");
-    nextCockpitHeldDrafts.delete(key);
+    nextCockpitLinesForget(key);
     nextCockpitHeldDrop(key);
     renderNext({named: `${key}:0`});
     return true;
@@ -4999,6 +5049,14 @@ function nextPromptAdoptControls(session){
     choices + '</details>' : "";
 }
 
+const NEXT_COCKPIT_ADOPT_REFUSED = {
+  untrusted: "Cargento could not read cargento-annotations.json, so your prompt was not saved as " +
+    "the goal and nothing was overwritten. Move or repair that file to save again.",
+  unreadable: "This session's words were saved by a build of Cargento that can read more than " +
+    "this one, so your prompt was not saved as the goal. Save from that build, or remove this " +
+    "session's entry from cargento-annotations.json.",
+};
+
 async function nextAdoptPrompt(session, source){
   const candidate = nextPromptCandidate(session, source);
   if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return;
@@ -5009,6 +5067,13 @@ async function nextAdoptPrompt(session, source){
         expected_prompt:candidate.text,expected_prompt_at:candidate.at,
         expected_revision:nextNumber(session.annotation_revision) || 0})});
     const answer = await response.json();
+    if(response.ok && answer && ["untrusted", "unreadable"].includes(String(answer.outcome || ""))){
+      /* Not a changed prompt: the store could not take the save at all, and
+         saying the prompt changed would send the reader to the wrong place. */
+      nextCockpitReadingRequests.set(sessKey(session), {message:
+        NEXT_COCKPIT_ADOPT_REFUSED[String(answer.outcome)]});
+      return;
+    }
     if(!response.ok || !answer.persisted) throw new Error("adoption not saved");
     nextCockpitHeldDrafts.delete(key);
     await refreshNext();

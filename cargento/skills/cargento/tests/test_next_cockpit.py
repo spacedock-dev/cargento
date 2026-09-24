@@ -5544,6 +5544,8 @@ console.log(JSON.stringify({posts,
                     "sid": "focus-1",
                     "goal": None,
                     "lines": ["Six screenshots"],
+                    # A line typed into the offered empty box came from no saved line.
+                    "origins": [None],
                     "expected_revision": 2,
                 },
                 {
@@ -9291,7 +9293,8 @@ console.log(JSON.stringify({
             "__dashboard.sessions[0].departures = [];\n"
             "__dashboard.sessions[0].departure_checked = true;\n"
             '__dashboard.sessions[0].departure_why = "Cargento has checked this session '
-            'against what you asked for and found nothing to raise.";\n'
+            "against your goal and found nothing to raise. Checks run while you were away read "
+            'only your goal, not your expected outcome.";\n'
         )
 
         values = re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', out["block"])

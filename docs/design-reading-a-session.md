@@ -167,8 +167,11 @@ The larger store costs a second downgrade, and the owner ruled on it on 2026-09-
 stays at 16 MiB. A build that old refuses a store over 2.5 MiB as unreadable, and its next save
 writes every session's saved words away, not only the lines. This build does the opposite: a store
 it cannot read whole, whether unreadable, over its limit or not JSON, is never written over, and
-every save answers `untrusted` until the file is readable again. A missing store is not that
-state; it is empty and takes the first save.
+every save answers `untrusted` until the file is readable again, and the board says so in place
+of "nothing typed". A missing store is not that state; it is empty and takes the first save. One
+session's entry that this build cannot read, such as seven lines or an unknown source from a later
+build, is kept as it was: it is written back unchanged, and a save, adoption or discard of that
+session answers `unreadable` rather than renumbering it from revision 1.
 
 ## DEC-16: Cargento does not write into a session
 
