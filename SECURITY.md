@@ -1328,22 +1328,29 @@ project, no title, no prompt text and no model prose reach the repository from e
 a test asserts that none of the local half's fields (the session id, the project, the title, the
 opening ask, the cutoff sentence, the model's detail) appears anywhere in the summary.
 
-A scoring run names its producer with a required `--producer`: `codex` spends the operator's
-Codex capacity through `reading.CodexReadingModel`, and `claude` spends their Anthropic capacity
-through `reading.ClaudeReadingModel`, each the same subprocess and flags as `POST /api/reading`
-above. It spends once per case whose ledger holds anything citable and sends exactly what that
-route sends for the same session: the yardstick sentences, or a format 5 case's own goal and
-outcome lines, in place of the reader's typed words, and the bounded, redacted menu of ledger
-entries. A format 5 Claude Code case also carries its checks, frozen from the transcript as it
-stood at the capture, with their redacted output tails, as a press with a tool-output grant would;
-the run refuses to start when `reading_route.destination` cannot name where they would go. The
-owner authorized that sending for DRC-4666's qualification only, 2026-09-24, and bounded it at
-twenty calls: every call is charged before it runs to a ledger beside the cases
-(`abstention-<producer>-spend.json`, case ids, times and statuses only), which stops the run at the
-cap across every run, and `--resume` re-calls only the cases whose call failed. The scorer does not
-pass through the reader's rolling budget, so that ledger is the bound. The committed summary names
-the producer, its model and a digest of the argv it ran under; a Claude Code result is its own
-file, `docs/abstention/claude-results.json`, and opens no gate by being written. A case the producer refuses before the model, an empty ledger or a session the
+A scoring run names its producer with a required `--producer`, and only `claude` may score:
+no Codex spend is authorized for DRC-4666, so `--producer codex` reports and refuses to score. A
+Claude Code run spends the operator's Anthropic capacity through `reading.ClaudeReadingModel`, the
+same subprocess and flags as `POST /api/reading` above, pinned to the CLI the run verified. It
+spends once per case whose ledger holds anything citable and sends exactly what that route sends
+for the same session: a format 5 case's own goal and outcome lines in place of the reader's typed
+words, and the bounded, redacted menu of ledger entries. A Claude Code case also carries its checks,
+frozen from the transcript as it stood at the capture, with their redacted output tails, as a press
+with a tool-output grant would. The owner authorized that sending for this qualification only,
+2026-09-24, and bounded it at twenty calls, one of them the browser walk.
+
+The scorer refuses to start unless the call reaches Anthropic (`reading_route.destination` names
+`Anthropic`) through the native installer's CLI, whose version file and `--version` line agree, and
+unless every case is marked with closed tokens. The committed summary names the producer, the
+model, the argv digest, the destination, the CLI path with the home directory written `~`, and its
+version. Every call is charged before it runs to one ledger at a fixed path,
+`~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
+cases it was made under. It never follows `CARGENTO_HOME`, stops at nineteen calls across every
+run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
+freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The
+scorer does not pass through the reader's rolling budget, so that ledger is the bound.
+`--probe-argv` calls a local stub only, and writes and charges nothing. A Claude Code result is its
+own file, `docs/abstention/claude-results.json`, and opens no gate by being written. A case the producer refuses before the model, an empty ledger or a session the
 board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
 the run writes nothing to `cargento-annotations.json` and increments no reading count. Historical
 replay reads the frozen row, facts and clock instead of the live board. Reviewer excerpts and

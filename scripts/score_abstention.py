@@ -12,13 +12,14 @@ continues to report measured outcomes and never substitutes acceptance for PASS.
     score_abstention.py --score --producer claude      run the Claude Code producer once per case
     score_abstention.py --score --producer claude --resume
                                                        re-call only the cases the model failed
-    score_abstention.py --score --producer codex --rubric F
+    score_abstention.py --probe-argv                   one call to a local stub; writes nothing
 
-`--producer` is required to score: a result names the producer, the model and a
-digest of the argv it ran under, and a Claude Code result goes to its own file,
-`docs/abstention/claude-results.json`. Every model call is charged to a spend
-ledger beside the packet before it runs, and the ledger stops at twenty calls
-across runs (DRC-4666, the owner's authorization of 2026-09-24).
+`--producer claude` is required to score, and is the only producer that may: no
+Codex spend is authorized. A result names the producer, the model, a digest of
+the argv, the destination and the CLI it ran under, and goes to its own file,
+`docs/abstention/claude-results.json`. Every model call is charged first to the
+one ledger `abstention_ledger` owns, which stops at nineteen calls across every
+run (DRC-4666, the owner's authorization of 2026-09-24, less the browser walk).
 
 ## Two corpora, two files, two questions
 
@@ -91,6 +92,8 @@ import math
 import os
 import pathlib
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -99,6 +102,7 @@ import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, Any
 
+import abstention_ledger
 import mark_abstention
 
 if TYPE_CHECKING:
@@ -137,9 +141,16 @@ SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "results.json")
 # keeps the one from being read as the other.
 CLAUDE_SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "claude-results.json")
 PRODUCERS = ("claude", "codex")
-# The owner's authorization of 2026-09-24: at most twenty real readings for
-# this qualification, across every run. `--max-calls` may lower it, never raise it.
-MAX_CALLS = 20
+# The owner's authorization of 2026-09-24: at most twenty real readings, one of
+# them the browser walk. `abstention_ledger` owns the cap and the one ledger.
+MAX_CALLS = abstention_ledger.MAX_CALLS
+# Where the native installer puts each Claude Code version, one file per version
+# named for it. A `claude` resolving anywhere else is refused: a PATH stub
+# answered as `claude-sonnet-5` in review, and nothing in the result showed it.
+CLAUDE_VERSIONS_ROOTS = (
+    os.path.join(os.path.expanduser("~"), ".local", "share", "claude", "versions"),
+)
+_CLAUDE_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+) \(Claude Code\)$")
 
 # DEC-15's five kinds, as the rubric file must spell them.
 KIND_SUPPORTED_DEPARTURE = "supported-departure"
@@ -168,6 +179,9 @@ RUBRIC_HARNESSES = (*COVERAGE_HARNESSES, "pi")
 ORIGIN_RECORDED = "recorded"
 ORIGIN_SYNTHESISED = "synthesised"
 ORIGINS = (ORIGIN_RECORDED, ORIGIN_SYNTHESISED)
+# A frozen case the machine's own records do not vouch for (DRC-4666, F4):
+# scored, and never counted toward the recorded floor.
+ORIGIN_SYNTHETIC = mark_abstention.ORIGIN_SYNTHETIC
 
 # A case id is `sha256("<harness>|<sid>")[:16]`, and nothing else may key a
 # rubric entry: the key is copied into the committed summary, and a hand-edited
@@ -203,6 +217,12 @@ RUBRIC_OVER_ABSTENTION = "over-abstention"
 # read is not scored at all, and is counted here so it cannot hide inside
 # `correct`.
 RUBRIC_UNSCORED = "unscored:bad-expectation"
+# Every constraint of a case the rubric tags is required. One with no
+# expectation is not scored, and an expectation under a key the case does not
+# have is counted rather than copied: the key is hand-typed. Either blocks a
+# pass, since a false reassurance hid behind exactly that (review, F6).
+RUBRIC_UNSCORED_MISSING = "unscored:missing-expectation"
+RUBRIC_UNKNOWN = "unscored:unknown-constraint"
 RUBRIC_OUTCOMES = (
     RUBRIC_CORRECT,
     RUBRIC_FALSE_REASSURANCE,
@@ -210,6 +230,8 @@ RUBRIC_OUTCOMES = (
     RUBRIC_MISSED_DEPARTURE,
     RUBRIC_OVER_ABSTENTION,
     RUBRIC_UNSCORED,
+    RUBRIC_UNSCORED_MISSING,
+    RUBRIC_UNKNOWN,
 )
 
 # Why a rubric entry may not be scored, as closed tokens. The offending value
@@ -229,6 +251,7 @@ VERDICT_PASSED = "passed"
 VERDICT_FAILED = "failed"
 VERDICT_SHORT = "short"
 VERDICT_STALE = "stale"
+VERDICT_BLOCKED = "blocked"
 
 MARK_JUDGE = "judge"
 MARK_ABSTAIN = "abstain"
@@ -270,47 +293,22 @@ def _get(url: str, timeout: int = 30) -> Any:
 
 # ------------------------------------------------------------- spend and argv
 
-BINDING_KEYS = ("producer", "model", "argv_digest")
+BINDING_KEYS = ("producer", "model", "argv_digest", "destination", "binary", "cli_version")
+WITHHELD_LEDGER = "ledger-refused"
 
 
-class SpendCapError(Exception):
-    """The ledger is full: no further call may be made under this authorization."""
-
-
-class SpendLedger:
-    """Every model call this check makes, charged before it runs, across runs.
-
-    A file beside the packet, so the bound survives a crash, a rerun and a
-    resume: a count held in memory would reset with each. The charge is
-    written before the call, as `reading_policy.reserve` commits one, because
-    a call that started and then failed has already been spent. It holds case
-    ids, times and statuses, never a sid or anything the model said.
-    """
-
-    def __init__(self, path: str, *, cap: int, producer: str) -> None:
-        self.path = path
-        self.cap = min(cap, MAX_CALLS)
-        self.producer = producer
-
-    def calls(self) -> list[dict[str, Any]]:
-        raw = mark_abstention._load(self.path).get("calls")  # noqa: SLF001
-        return [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
-
-    def used(self) -> int:
-        return len(self.calls())
-
-    def _save(self, calls: list[dict[str, Any]]) -> None:
-        mark_abstention._write(self.path, {"v": 1, "producer": self.producer, "calls": calls})  # noqa: SLF001
-
-    def guard(self, case_id: str, model: Callable[..., tuple[str, str]]) -> _Charged:
-        return _Charged(self, case_id, model)
+def marks_digest(corpus: Corpus) -> str:
+    return hashlib.sha256(corpus.marks_bytes).hexdigest()
 
 
 class _Charged:
-    """One case's model, behind the ledger. Raises rather than calling past the cap."""
+    """One case's model behind the ledger: charged before, settled after, never past the cap."""
 
     def __init__(
-        self, ledger: SpendLedger, case_id: str, model: Callable[..., tuple[str, str]]
+        self,
+        ledger: abstention_ledger.Ledger,
+        case_id: str,
+        model: Callable[..., tuple[str, str]],
     ) -> None:
         self.ledger = ledger
         self.case_id = case_id
@@ -321,18 +319,51 @@ class _Charged:
         available = getattr(self.model, "available", None)
         if available is not None and not available():
             return "", "unavailable"
-        calls = self.ledger.calls()
-        if len(calls) >= self.ledger.cap:
-            raise SpendCapError
-        calls.append(
-            {"at": time.time(), "case": self.case_id, "producer": self.ledger.producer,
-             "status": "charged"}
-        )  # fmt: skip
-        self.ledger._save(calls)  # noqa: SLF001
+        charge = self.ledger.charge(self.case_id)
         raw, status = self.model(prompt, output_cap_bytes=output_cap_bytes)
-        calls[-1]["status"] = status if status in ("ok", "failed", "unavailable") else "failed"
-        self.ledger._save(calls)  # noqa: SLF001
+        self.ledger.settle(charge, status)
         return raw, status
+
+
+class BinaryError(Exception):
+    """The `claude` on PATH is not an installed Claude Code CLI this check can name."""
+
+
+def _display_path(path: str) -> str:
+    home = os.path.expanduser("~")
+    return "~" + path[len(home) :] if path == home or path.startswith(home + os.sep) else path
+
+
+def verify_claude_binary(
+    *,
+    resolver: Callable[[str], str | None] = shutil.which,
+    runner: Callable[..., Any] = subprocess.run,
+) -> tuple[str, str, str]:
+    """(display path, `--version` line, absolute path) of the real Claude Code CLI.
+
+    Real means the native installer's layout: the command resolves into one of
+    `CLAUDE_VERSIONS_ROOTS`, to a file named for the version it reports as
+    `<x.y.z> (Claude Code)`. `--version` starts no model and spends nothing.
+    """
+    found = resolver("claude")
+    if not found or not os.path.isabs(found):
+        msg = "no absolute `claude` on PATH"
+        raise BinaryError(msg)
+    real = os.path.realpath(found)
+    roots = [os.path.realpath(root) for root in CLAUDE_VERSIONS_ROOTS]
+    if os.path.dirname(real) not in roots:
+        msg = f"`claude` resolves to {_display_path(real)}, outside the installed versions"
+        raise BinaryError(msg)
+    result = runner([real, "--version"], capture_output=True, text=True, timeout=30, check=False)
+    line = str(getattr(result, "stdout", "") or "").strip()
+    match = _CLAUDE_VERSION_RE.fullmatch(line)
+    if getattr(result, "returncode", 1) != 0 or match is None:
+        msg = "`claude --version` did not answer as Claude Code"
+        raise BinaryError(msg)
+    if match.group(1) != os.path.basename(real):
+        msg = "`claude --version` names another version than the file it runs"
+        raise BinaryError(msg)
+    return _display_path(real), line, real
 
 
 class _ArgvCapturedError(Exception):
@@ -476,7 +507,15 @@ def basis(criterion: Mapping[str, Any] | None, ledger: Sequence[Mapping[str, Any
         return ""
     wanted = {str(c) for c in criterion.get("cites") or ()}
     cited = [entry for entry in ledger if str(entry.get("id")) in wanted]
-    if any(reading.demonstrates_work(entry) for entry in cited):
+    # A check with a recorded result, and nothing else: a written file shows
+    # the agent acted, not that anything checked it (review, F8), so a Goal
+    # resting on one is the agent's account.
+    if any(
+        entry.get("type") == reading.TOOL_REPORT_TYPE
+        and entry.get("subject") == reading.CHECK_SUBJECT
+        and entry.get("result") in (reading.RESULT_PASSED, reading.RESULT_FAILED)
+        for entry in cited
+    ):
         return BASIS_TOOL
     authors = {entry.get("author") for entry in cited}
     if reading.AUTHOR_AGENT in authors:
@@ -531,8 +570,10 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
                 # may be read at a turn stop, and nowhere else.
                 admit_turn_stop=harness in reading.TURN_STOP_HARNESSES,
             )
-        except SpendCapError:
+        except abstention_ledger.SpendCapError:
             assessment, why, spent = None, WITHHELD_SPEND_CAP, False
+        except abstention_ledger.LedgerError:
+            assessment, why, spent = None, WITHHELD_LEDGER, False
     stored = assessment["criteria"] if assessment else {}
     criteria = {name: stored[_stored_name(name)] for name in names if _stored_name(name) in stored}
     # The producer's own predicate over the ledger it read, so the scorer
@@ -604,10 +645,27 @@ def rubric_harness(entry: Mapping[str, Any], record: Mapping[str, Any] | None) -
     return named if named in RUBRIC_HARNESSES else ""
 
 
+def _required(record: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The constraints a rubric entry must expect: the goal, and each line that was asked."""
+    names = _names(record)
+    if record is not None and not record.get("asks_output", True):
+        return names[:1]
+    return names
+
+
 def rubric_case(
-    entry: Mapping[str, Any], record: Mapping[str, Any] | None, case_id: str
+    entry: Mapping[str, Any],
+    record: Mapping[str, Any] | None,
+    case_id: str,
+    *,
+    case_origin: str | None = None,
 ) -> dict[str, Any]:
-    """One rubric entry scored against the producer's record for that case."""
+    """One rubric entry scored against the producer's record for that case.
+
+    `case_origin` is the packet's own word for the case. It wins over the
+    entry's, which is hand-typed: a frozen case the machine's records did not
+    vouch for stays synthetic whatever the rubric says.
+    """
     harness = rubric_harness(entry, record)
     refused = rubric_refusal(entry, harness)
     is_admitted = not refused
@@ -617,22 +675,28 @@ def rubric_case(
     judgement: dict[str, str] = {}
     cites: dict[str, dict[str, int]] = {}
     criteria = record["criteria"] if record and reached else {}
+    required = _required(record)
     for name in _names(record):
         wanted = expect.get(name) if isinstance(expect.get(name), dict) else None
-        if not reached or wanted is None:
+        if not reached:
+            continue
+        if wanted is None:
+            if name in required:
+                judgement[name] = RUBRIC_UNSCORED_MISSING
             continue
         got = criteria.get(name) or {}
         judgement[name] = rubric_outcome(str(wanted.get("result") or ""), got.get("result"))
         cites[name] = extraction(wanted.get("cites") or (), got.get("cites") or ())
+    unknown = sum(1 for key in expect if key not in _names(record)) if reached else 0
     kind = str(entry.get("kind") or "")
-    origin = str(entry.get("origin") or ORIGIN_RECORDED)
+    origin = case_origin or str(entry.get("origin") or ORIGIN_RECORDED)
     return {
         "id": case_id,
         # Closed tokens or nothing. A refused entry keeps its refusal, not the
         # value that earned it.
         "kind": kind if kind in KINDS else "",
         "harness": harness,
-        "origin": origin if origin in ORIGINS else "",
+        "origin": origin if origin in (*ORIGINS, ORIGIN_SYNTHETIC) else "",
         "admitted": is_admitted,
         "refused": refused,
         # Whether the producer ran on this id at all. An entry with no record
@@ -641,7 +705,14 @@ def rubric_case(
         "reached_model": reached,
         "judgement": judgement,
         "extraction": cites,
+        "unknown_expectations": unknown,
     }
+
+
+def _fully_scored(record: Mapping[str, Any]) -> bool:
+    return not record.get("unknown_expectations") and not any(
+        str(got).startswith("unscored:") for got in (record.get("judgement") or {}).values()
+    )
 
 
 # ------------------------------------------------------------------ summary
@@ -680,6 +751,7 @@ def _coverage(rubric_records: Sequence[Mapping[str, Any]]) -> dict[str, dict[str
             and r["admitted"]
             and r["reached_model"]
             and r["kind"] in KINDS
+            and _fully_scored(r)
         }
         out[harness] = {"kinds": len(kinds), "missing": [k for k in KINDS if k not in kinds]}
     return out
@@ -694,8 +766,11 @@ def _verdict(
     # does: it is the failure DEC-17 exists to catch, and DEC-23's surviving
     # class, a `consistent` on a line a passing check does not cover, is often
     # visible only to the rubric (decision of 2026-09-24).
-    if dec17["failed"] or (rubric_counts or {}).get(RUBRIC_FALSE_REASSURANCE, 0):
+    counts = rubric_counts or {}
+    if dec17["failed"] or counts.get(RUBRIC_FALSE_REASSURANCE, 0):
         return VERDICT_FAILED
+    if any(count for name, count in counts.items() if name.startswith("unscored:")):
+        return VERDICT_BLOCKED
     if any(coverage[h]["kinds"] < len(KINDS) for h in COVERAGE_HARNESSES):
         return VERDICT_SHORT
     return VERDICT_PASSED
@@ -704,7 +779,7 @@ def _verdict(
 def summarize(
     records: Sequence[Mapping[str, Any]],
     *,
-    marks: Mapping[str, Any],
+    marks: Mapping[str, Any],  # noqa: ARG001 - kept for callers; see the "marks" key below
     marks_bytes: bytes,
     now: float,
     rubric_records: Sequence[Mapping[str, Any]] = (),
@@ -727,6 +802,7 @@ def summarize(
     for entry in rubric_records:
         for got in entry["judgement"].values():
             rubric_counts[got] = rubric_counts.get(got, 0) + 1
+        rubric_counts[RUBRIC_UNKNOWN] += int(entry.get("unknown_expectations") or 0)
     dec17 = _dec17(records)
     coverage = _coverage(rubric_records)
     bound = {key: str((binding or {})[key]) for key in BINDING_KEYS if key in (binding or {})}
@@ -735,11 +811,15 @@ def summarize(
         "v": 1,
         "scored_at": now,
         "marks_digest": hashlib.sha256(marks_bytes).hexdigest(),
-        "marks": {k: dict(v) for k, v in marks.items()},
+        # From the scored records only, as closed tokens: the marks file is
+        # hand-editable, and a note or an orphan key in it reached the
+        # committed file once (review, F5). `marks` is the caller's parsed
+        # file and is deliberately not read here.
+        "marks": {r["id"]: _closed_marks(r) for r in records if CASE_ID_RE.fullmatch(r["id"])},
         "cases": {
             r["id"]: {
                 "harness": r["harness"],
-                "marks": dict(r["marks"]),
+                "marks": _closed_marks(r),
                 "outcomes": dict(r["outcomes"]),
                 "reached_model": bool(r["reached_model"]),
                 "asks_output": bool(r.get("asks_output", True)),
@@ -778,12 +858,21 @@ def summarize(
                     "reached_model": r["reached_model"],
                     "judgement": dict(r["judgement"]),
                     "extraction": {k: dict(v) for k, v in r["extraction"].items()},
+                    "unknown_expectations": int(r.get("unknown_expectations") or 0),
                 }
                 for r in rubric_records
             },
             "counts": rubric_counts,
         },
         "verdict": _verdict(dec17, coverage, rubric_counts),
+    }
+
+
+def _closed_marks(record: Mapping[str, Any]) -> dict[str, str]:
+    marks = record.get("marks") or {}
+    return {
+        name: str(marks.get(name)) if marks.get(name) in (MARK_JUDGE, MARK_ABSTAIN) else ""
+        for name in _names(record)
     }
 
 
@@ -884,9 +973,19 @@ def _render_rubric(summary: Mapping[str, Any]) -> list[str]:
             lines.append(f"  {case_id}  withheld before the model, proves nothing about it")
             continue
         lines.extend(
-            rubric_line(case_id, name, judgement, entry["extraction"][name])
+            rubric_line(
+                case_id,
+                name,
+                judgement,
+                entry["extraction"].get(name) or {"hit": 0, "miss": 0, "extra": 0},
+            )
             for name, judgement in entry["judgement"].items()
         )
+        if entry.get("unknown_expectations"):
+            lines.append(
+                f"  {case_id}  {entry['unknown_expectations']} expectations under keys this case "
+                "does not have: not scored, and PASS is refused"
+            )
     return lines
 
 
@@ -937,7 +1036,7 @@ def render(summary: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def _verdict_sentence(summary: Mapping[str, Any]) -> str:
+def _verdict_sentence(summary: Mapping[str, Any]) -> str:  # noqa: PLR0911 - one per verdict
     verdict = summary["verdict"]
     if verdict == VERDICT_STALE:
         return (
@@ -948,6 +1047,12 @@ def _verdict_sentence(summary: Mapping[str, Any]) -> str:
         if not (summary.get("dec17") or {}).get("failed"):
             return "FAILED: the rubric records a false reassurance."
         return "FAILED: a case marked should-abstain judged."
+    if verdict == VERDICT_BLOCKED:
+        return (
+            "BLOCKED: the rubric left a required judgement unscored, a constraint with no "
+            "expectation, one it cannot read, or an expectation under a key the case lacks. "
+            "PASS is refused until every required judgement is scored."
+        )
     if verdict == VERDICT_SHORT:
         return (
             "SHORT: no failure, and PASS is refused because the coverage floor is not met. "
@@ -1051,14 +1156,15 @@ def _epoch(value: Any) -> TypeGuard[float]:
     )
 
 
-def replay_refusal(case: Mapping[str, Any]) -> str:
+def replay_refusal(case: Mapping[str, Any], *, synthetic_ok: bool = False) -> str:
     """Closed reasons only: neither malformed text nor a foreign fact gets relabelled.
 
     A missing state looks running to the live producer. Replay must require an
     observed state, and timestamps must establish the cutoff before production.
     Review excerpts are deliberately outside this interface.
     """
-    if case.get("origin") != ORIGIN_RECORDED:
+    origins = (ORIGIN_RECORDED, ORIGIN_SYNTHETIC) if synthetic_ok else (ORIGIN_RECORDED,)
+    if case.get("origin") not in origins:
         return "replay-not-recorded"
     at = case.get("captured_at")
     if not _epoch(at):
@@ -1139,8 +1245,10 @@ def _replay_marks_match(corpus: Corpus) -> bool:
             "Replay marks are missing or belong to different cases. Mark this frozen packet first."
         )
         return False
-    marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     body = dict(corpus.cases)
+    if body.get("v") == mark_abstention.FORMAT_INTENT:
+        return _intent_marks_refusal(body, corpus.marks) == ""
+    marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     for case in body.get("cases") or ():
         mark = marks.get(case["id"])
         if mark is None:
@@ -1152,6 +1260,37 @@ def _replay_marks_match(corpus: Corpus) -> bool:
             print(f"Case {case['id']}: marked without every constraint. Mark it again.")
             return False
     return True
+
+
+def _intent_marks_refusal(body: Mapping[str, Any], marks_file: Mapping[str, Any]) -> str:
+    """A format 5 key must be whole and closed before a single call (review, F5 and F7).
+
+    Every case marked, on exactly its own constraints, with `judge` or
+    `abstain` and nothing else. The authorization says every case is marked
+    before any reading runs, and a key with room for text is a key that can
+    carry it into the committed file.
+    """
+    raw = marks_file.get("marks")
+    cases = {str(c["id"]): c for c in body.get("cases") or ()}
+    why = ""
+    if not isinstance(raw, dict):
+        why = "the marks file holds no marks"
+    elif set(raw) - set(cases):
+        why = f"{len(set(raw) - set(cases))} marks name no case in this packet"
+    elif set(cases) - set(raw):
+        why = f"{len(set(cases) - set(raw))} cases are not marked; mark every case first"
+    else:
+        for case_id, mark in raw.items():
+            names = set(mark_abstention.case_constraints(dict(body), dict(cases[case_id])))
+            if not isinstance(mark, dict) or set(mark) != names:
+                why = f"case {case_id} is marked on other constraints than its own"
+            elif any(value not in (MARK_JUDGE, MARK_ABSTAIN) for value in mark.values()):
+                why = f"case {case_id} carries a mark other than judge or abstain"
+            if why:
+                break
+    if why:
+        print(f"Refused: {why}.")
+    return why
 
 
 def _replay_preflight(corpus: Corpus) -> bool:
@@ -1173,7 +1312,9 @@ def _replay_preflight(corpus: Corpus) -> bool:
             valid = False
             continue
         seen.add(case_id)
-        why = replay_refusal(case) or (intent_refusal(case) if intents else "")
+        why = replay_refusal(case, synthetic_ok=intents) or (
+            intent_refusal(case) if intents else ""
+        )
         if why:
             print(f"Case {case_id}: {why}")
             valid = False
@@ -1227,19 +1368,39 @@ def _tool_output(
 
 
 def _resume_matches(
-    resume: Mapping[str, Any], corpus: Corpus, binding: Mapping[str, str] | None
+    resume: Mapping[str, Any],
+    corpus: Corpus,
+    binding: Mapping[str, str] | None,
+    ledger: abstention_ledger.Ledger | None,
 ) -> bool:
-    """A resume continues the same run or none: same packet, marks and producer."""
+    """A resume continues the same run or none, and only on records the ledger vouches for.
+
+    The local results file is hand-editable, so its records are carried over
+    only when they hash to what the ledger recorded as that run's (review, F9):
+    a hand-edited outcome would otherwise reach the committed summary.
+    """
     raw = resume.get("summary")
     before: Mapping[str, Any] = raw if isinstance(raw, dict) else {}
+    records = resume.get("records")
+    try:
+        last = ledger.last_run() if ledger is not None else None
+    except abstention_ledger.LedgerError:
+        last = None
     same = (
-        isinstance(resume.get("records"), dict)
+        isinstance(records, dict)
         and before.get("inputs_digest") == _inputs_digest(corpus)
-        and before.get("marks_digest") == hashlib.sha256(corpus.marks_bytes).hexdigest()
+        and before.get("marks_digest") == marks_digest(corpus)
         and all(before.get(k) == (binding or {}).get(k) for k in BINDING_KEYS)
+        and last is not None
+        and last["records_digest"] == abstention_ledger.digest(records)
+        and (last["marks_digest"], last["inputs_digest"])
+        == (marks_digest(corpus), _inputs_digest(corpus))
     )
     if not same:
-        print("The results to resume belong to other cases, marks or producer. Score afresh.")
+        print(
+            "The results to resume are not the last run the ledger recorded for these cases, "
+            "marks and producer. Nothing ran."
+        )
     return same
 
 
@@ -1262,13 +1423,32 @@ def _write_halves(
     print(f"Committable summary: {summary_path}.")
 
 
+def _binding_refusal(corpus: Corpus, binding: Mapping[str, str] | None) -> str:
+    """A Claude Code result is written only from a format 5 packet, to Anthropic (F3, F7)."""
+    if (binding or {}).get("producer") != "claude":
+        return ""
+    _runtime()
+    from cargento_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
+
+    if corpus.cases.get("v") != mark_abstention.FORMAT_INTENT:
+        return "a Claude Code result is scored only from a format 5 packet"
+    if (binding or {}).get("destination") != reading_route.VENDORS["claude"]:
+        return "the reading call would not reach Anthropic, so nothing it said qualifies Claude"
+    return ""
+
+
 def _may_score(
     corpus: Corpus,
     tool_destination: str | None,
     resume: Mapping[str, Any] | None,
     binding: Mapping[str, str] | None,
+    ledger: abstention_ledger.Ledger | None,
 ) -> bool:
     """Every refusal a run makes before its first call, in one place."""
+    refused = _binding_refusal(corpus, binding)
+    if refused:
+        print(f"Refused: {refused}.")
+        return False
     if _is_replay(corpus) and not (_replay_preflight(corpus) and _replay_marks_match(corpus)):
         return False
     body = dict(corpus.cases)
@@ -1281,7 +1461,14 @@ def _may_score(
     ):
         print("Cargento cannot name where the producer would send these checks. Nothing ran.")
         return False
-    return resume is None or _resume_matches(resume, corpus, binding)
+    if ledger is not None:
+        why = ledger.check()
+        # A full ledger still lets a resume carry its records over; any other
+        # refusal stops the run before it starts.
+        if why and not (resume is not None and why.startswith("the spend ledger already holds")):
+            print(f"Refused: {why}.")
+            return False
+    return resume is None or _resume_matches(resume, corpus, binding, ledger)
 
 
 def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
@@ -1295,19 +1482,32 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     now: float,
     binding: Mapping[str, str] | None = None,
     tool_destination: str | None = None,
-    ledger: SpendLedger | None = None,
+    ledger_path: str | None = None,
+    max_calls: int = MAX_CALLS,
     resume: Mapping[str, Any] | None = None,
 ) -> int:
     """Run the producer once per case, write both halves, print the report.
 
     `tool_destination` is where the producer sends a Claude Code case's frozen
     checks, `reading_route.destination`'s answer; empty refuses the run, as a
-    press withholds checks it cannot name a receiver for. `ledger` charges
-    every call; `resume` is the local half of an earlier run, whose records
-    are kept except where the model failed.
+    press withholds checks it cannot name a receiver for. `ledger_path` is the
+    one spend ledger, charged under this packet's digests; `resume` is the
+    local half of the last run, whose records are kept except where the model
+    failed.
     """
+    ledger = (
+        abstention_ledger.Ledger(
+            ledger_path,
+            cap=max_calls,
+            marks_digest=marks_digest(corpus),
+            inputs_digest=_inputs_digest(corpus),
+            producer=str((binding or {}).get("producer") or ""),
+        )
+        if ledger_path
+        else None
+    )
     replay = _is_replay(corpus)
-    if not _may_score(corpus, tool_destination, resume, binding):
+    if not _may_score(corpus, tool_destination, resume, binding, ledger):
         return 2
     intents = corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
     body = dict(corpus.cases)
@@ -1326,7 +1526,7 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     label = reading_label(str((binding or {}).get("producer") or ""))
 
     def charged(case_id: str) -> Callable[..., tuple[str, str]]:
-        return ledger.guard(case_id, model) if ledger is not None else model
+        return _Charged(ledger, case_id, model) if ledger is not None else model
 
     records: dict[str, dict[str, Any]] = {}
     for case_id, mark in marks.items():
@@ -1374,6 +1574,7 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         summary["inputs_digest"] = _inputs_digest(corpus)
     if ledger is not None:
         summary["spend"] = {"charged": ledger.used(), "cap": ledger.cap}
+        ledger.record_run(abstention_ledger.digest(records))
     _write_halves(records, summary, results_path=results_path, summary_path=summary_path)
     if any(r["withheld"] == WITHHELD_SPEND_CAP for r in records.values()):
         print(f"STOPPED at the spend ledger's cap of {ledger.cap if ledger else MAX_CALLS} calls.")
@@ -1408,7 +1609,16 @@ def _score_rubric(
                 model=charged(case_id),
                 now=now,
             )
-        rubric_records.append(rubric_case(entry, record, case_id))
+        case = next(
+            (
+                c
+                for c in corpus.cases.get("cases") or ()
+                if isinstance(c, dict) and c.get("id") == case_id
+            ),
+            None,
+        )
+        origin = str(case.get("origin") or "") if case is not None else None
+        rubric_records.append(rubric_case(entry, record, case_id, case_origin=origin))
     return rubric_records
 
 
@@ -1465,9 +1675,37 @@ def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
         "inputs_digest"
     ) != _inputs_digest(corpus):
         checked["verdict"] = VERDICT_STALE
+    drift = _ledger_drift(summary)
+    if drift:
+        print(drift)
+        checked["verdict"] = VERDICT_STALE
     for line in render(checked):
         print(line)
     return 0
+
+
+def _ledger_drift(summary: Mapping[str, Any]) -> str:
+    """Why the spend ledger contradicts a Claude Code result, or empty.
+
+    Every call the qualification made is in the one ledger, under the digests
+    it was charged under. A call under other marks or other cases means the
+    key or the packet moved after something was spent, and this result is not
+    the whole story.
+    """
+    if summary.get("producer") != "claude":
+        return ""
+    try:
+        calls = abstention_ledger.read(abstention_ledger.LEDGER_PATH)["calls"]
+    except abstention_ledger.LedgerError as error:
+        return f"The spend ledger cannot vouch for this result: {error}."
+    bound = (summary.get("marks_digest"), summary.get("inputs_digest"))
+    other = [c for c in calls if (c["marks_digest"], c["inputs_digest"]) != bound]
+    if other:
+        return (
+            f"The spend ledger holds {len(other)} calls charged under other marks or other "
+            "cases than this result was scored against."
+        )
+    return ""
 
 
 def _load_corpus(rubric_path: str) -> Corpus:
@@ -1490,13 +1728,14 @@ def results_path_for(producer: str) -> str:
     return RESULTS_PATH
 
 
-def spend_path_for(producer: str) -> str:
-    return os.path.join(HOME, f"abstention-{producer}-spend.json")
-
-
 def _argument_refusal(args: argparse.Namespace) -> str:
+    if args.score and args.probe_argv:
+        return "--probe-argv never scores; run it on its own."
     if args.score and not args.producer:
-        return "--score needs --producer claude or --producer codex: a result names what ran."
+        return "--score needs --producer claude: a result names what ran."
+    if args.score and args.producer == "codex":
+        # No Codex spend is authorized for this qualification (2026-09-24).
+        return "--producer codex may report but not score: no Codex spend is authorized."
     if not 1 <= args.max_calls <= MAX_CALLS:
         return f"--max-calls must be between 1 and {MAX_CALLS}, the authorized spend."
     if args.resume and not args.score:
@@ -1504,7 +1743,30 @@ def _argument_refusal(args: argparse.Namespace) -> str:
     return ""
 
 
-def main(argv: list[str] | None = None) -> int:
+def _is_loopback(destination: str) -> bool:
+    host = destination.rsplit(":", 1)[0] if destination.count(":") == 1 else destination
+    return host.strip("[]") in ("127.0.0.1", "localhost", "::1")
+
+
+def probe_argv(config: Any, destination: str, binary: str) -> int:
+    """One call to a local stub, to see what the CLI sends. Writes nothing and charges nothing.
+
+    For checking the argv against a stub `ANTHROPIC_BASE_URL` at no cost. It
+    refuses any destination that is not this machine, so it can never spend,
+    and it cannot write a result because it has no result to write: a fixed
+    sentence goes to the model, never a case.
+    """
+    _config, reading, _records = _runtime()
+    if not _is_loopback(destination):
+        print(f"Refused: --probe-argv only calls a local stub, and this reaches {destination}.")
+        return 2
+    model = reading.ClaudeReadingModel(config, binary_resolver=lambda _name: binary)
+    raw, status = model("Reply with the word ok.", output_cap_bytes=256)
+    print(f"Probe to {destination}: {status}, {len(raw)} characters back. Nothing was written.")
+    return 0 if status == "ok" else 1
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal per line
     parser = argparse.ArgumentParser(description="Score the reading producer against the marks.")
     parser.add_argument("--score", action="store_true", help="run the producer; spends")
     parser.add_argument("--report", action="store_true", help="where things stand; spends nothing")
@@ -1513,6 +1775,9 @@ def main(argv: list[str] | None = None) -> int:
         "--max-calls", type=int, default=MAX_CALLS, help=f"spend ledger cap, at most {MAX_CALLS}"
     )
     parser.add_argument("--resume", action="store_true", help="re-call only model failures")
+    parser.add_argument(
+        "--probe-argv", action="store_true", help="one call to a local stub; writes nothing"
+    )
     parser.add_argument("--port", type=int, default=4553, help="the dashboard port to read")
     parser.add_argument("--rubric", default=RUBRIC_PATH, help="the DEC-15 expectation file")
     parser.add_argument("--out", default=None, help="where the committable summary goes")
@@ -1521,14 +1786,6 @@ def main(argv: list[str] | None = None) -> int:
     if refusal:
         print(refusal)
         return 2
-    out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
-    corpus = _load_corpus(args.rubric)
-    if not corpus.cases.get("cases"):
-        print(f"No cases at {CASES_PATH}. Run mark_abstention.py --build or --freeze first.")
-        return 1
-    if not args.score:
-        summary = mark_abstention._load(out) if os.path.exists(out) else None  # noqa: SLF001
-        return report(corpus, summary or None)
     config_mod, reading, _records = _runtime()
     from cargento_runtime import observer, reading_route  # noqa: PLC0415 - see `_runtime`
 
@@ -1539,18 +1796,40 @@ def main(argv: list[str] | None = None) -> int:
         launcher_path=pathlib.Path(_SKILL, "server.py"),
         observer_model_enabled=True,
     )
-    producer = str(args.producer)
-    model = (
-        reading.ClaudeReadingModel(config)
-        if producer == "claude"
-        else reading.CodexReadingModel(config)
-    )
+    if args.probe_argv:
+        try:
+            _shown, _version, binary = verify_claude_binary()
+        except BinaryError as error:
+            print(f"Refused: {error}.")
+            return 2
+        return probe_argv(config, reading_route.destination("claude"), binary)
+    out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
+    corpus = _load_corpus(args.rubric)
+    if not corpus.cases.get("cases"):
+        print(f"No cases at {CASES_PATH}. Run mark_abstention.py --build or --freeze first.")
+        return 1
+    if not args.score:
+        summary = mark_abstention._load(out) if os.path.exists(out) else None  # noqa: SLF001
+        return report(corpus, summary or None)
+    destination = reading_route.destination("claude")
+    if destination != reading_route.VENDORS["claude"]:
+        where = destination or "an unnamed host"
+        print(f"Refused: the reading call would reach {where}, not Anthropic.")
+        return 2
+    try:
+        shown, version, binary = verify_claude_binary()
+    except BinaryError as error:
+        print(f"Refused: {error}.")
+        return 2
     binding = {
-        "producer": producer,
-        "model": observer.CLAUDE_READING_MODEL if producer == "claude" else observer.OBSERVER_MODEL,
-        "argv_digest": argv_digest(producer, config),
+        "producer": "claude",
+        "model": observer.CLAUDE_READING_MODEL,
+        "argv_digest": argv_digest("claude", config),
+        "destination": destination,
+        "binary": shown,
+        "cli_version": version,
     }
-    results_path = results_path_for(producer)
+    results_path = results_path_for("claude")
     resume = None
     if args.resume:
         resume = mark_abstention._load(results_path)  # noqa: SLF001
@@ -1561,13 +1840,15 @@ def main(argv: list[str] | None = None) -> int:
         args.port,
         corpus,
         config=config,
-        model=model,
+        # Pinned to the binary the result names, so the call runs what was verified.
+        model=reading.ClaudeReadingModel(config, binary_resolver=lambda _name: binary),
         results_path=results_path,
         summary_path=out,
         now=time.time(),
         binding=binding,
-        tool_destination=reading_route.destination(producer),
-        ledger=SpendLedger(spend_path_for(producer), cap=args.max_calls, producer=producer),
+        tool_destination=destination,
+        ledger_path=abstention_ledger.LEDGER_PATH,
+        max_calls=args.max_calls,
         resume=resume,
     )
 

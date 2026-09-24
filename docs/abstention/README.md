@@ -31,6 +31,12 @@ file per producer, one run each. It holds:
   sha256 of the argv its exec builds, read without starting a process. A later change to a flag,
   the model or the effort moves the digest, so a result cannot be carried over to a producer that
   no longer runs that way.
+- `destination`, `binary` and `cli_version`: where `reading_route.destination` says the call goes,
+  the installed CLI it ran (its path with the home directory written `~`) and that CLI's
+  `--version` line. A Claude Code result is written only when the destination is `Anthropic` and
+  the CLI is the native installer's, a file under `~/.local/share/claude/versions` named for the
+  version it reports. A stub on `PATH` or an `ANTHROPIC_BASE_URL` pointed elsewhere refuses the
+  run before anything is written.
 - `spend`, the calls charged to the spend ledger when the run finished and the cap it ran under.
 - `marks_digest`, the sha256 of `~/.cargento/abstention-marks.json` as it was when scored. A later
   `--report` hashes the marks again and refuses PASS if they moved, because a mark written after
@@ -39,7 +45,8 @@ file per producer, one run each. It holds:
   report refuses PASS if either changed. The inputs themselves stay local.
 - `marks`, the captain's answer key: one sixteen-character hash of `(harness, sid)` per case, and
   `judge` or `abstain` for each constraint: `goal` and `output` in the older formats, `goal` and
-  `line_1` to `line_k` in format 5.
+  `line_1` to `line_k` in format 5. Copied from the scored records as closed tokens, never from the
+  marks file, which is hand-editable.
 - `cases`, per case id: the harness, the marks, the outcome the producer landed in for each
   constraint, whether the case reached the model at all, and `asks_output`: whether the Expected
   Output question was put to the model. Only a case whose record shows work (a Pi work result,
@@ -48,8 +55,9 @@ file per producer, one run each. It holds:
   report says so instead of counting it as the model abstaining. `counts.output_not_asked` is how
   many cases that covers. In format 5 a Claude Code case's frozen checks are work evidence, so its
   lines are asked when the record holds a check or a written file.
-- `basis`, per case and constraint, what a judged result rests on: `tool` when it cites a check or
-  written file, `account` when it cites only what the agent said, `person`, `derived`, or empty
+- `basis`, per case and constraint, what a judged result rests on: `tool` only when it cites a check
+  with a recorded result, `account` when it cites what the agent said or did (a written file shows
+  the agent acted, not that anything checked it), `person`, `derived`, or empty
   where nothing was judged. A Goal `consistent` resting on the agent's account is never counted as
   tool-reported; `counts.goal_consistent_on_account` is how many there were.
 - `counts`, `dec17`, `coverage` and `verdict`, which are what the report prints.
@@ -118,14 +126,28 @@ yardstick. Each case carries every format 4 field, plus:
 | `tool_output` | Claude Code only: `tails`, each check's redacted output tail by call id, and `changed_after`, the `[call id, check line]` pairs a later command may have changed. Both as a press read them at `captured_at`. |
 
 Build a packet with `mark_abstention.py --freeze <spec>`. It spends nothing. The spec is a local
-file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the recorded `row`
-lifecycle (`state`, `finished_at`, `ended_at`), the `intent`, and for Claude Code optionally the
+file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the `row` lifecycle
+(`state`, `finished_at`, `ended_at`), the `intent`, and for Claude Code optionally the
 `transcript` path. The freeze reads the session's facts from the board and keeps only those dated at
 or before `captured_at`. It never keeps a board check: those are computed over the whole transcript,
 so a later run would reach back into the moment. It rebuilds the checks and the press reads from
 the transcript as it stood at `captured_at`. It refuses a capture taken before a recorded turn
-stop or end had settled. A Codex case is a recorded history `working` observation frozen at its
-last activity, because Codex has no session-end hook and is never read at a turn stop.
+stop or end had settled.
+
+A frozen case is `recorded` only when the machine's own records vouch for it. Otherwise it is
+`synthetic`: it is marked and scored, never counts toward the coverage floor, and the rubric's word
+for it does not change that. `unconfirmed` lists why, as closed tokens:
+
+- `transcript-outside-projects`: the Claude Code transcript is not under `~/.claude/projects`.
+- `transcript-other-session`: its records do not all name this session id.
+- `lifecycle-unconfirmed`: the dashboard's stores did not observe the lifecycle the spec gives. A
+  `working` row needs a history observation in `working` at `captured_at` itself. A turn stop needs
+  an `idle` observation whose `last_activity` is the `finished_at`. An end needs the ends store's
+  stamp. The freeze reads `cargento-history.json` and `cargento-ends.json` from `--store-home`,
+  `~/.cargento` by default, never from the packet's own directory.
+
+A Codex case is a recorded history `working` observation frozen at its last activity, because
+Codex has no session-end hook and is never read at a turn stop.
 
 The scorer passes each Claude Code case's frozen checks to the producer as a press with a
 tool-output grant would, and reads a Claude Code turn stop as the route does. It refuses to start
@@ -134,25 +156,48 @@ its source and the frozen ledger, every check with its result words and its outp
 the goal and then each line. Where the record holds no check or work result, the lines are fixed
 at `abstain` without asking.
 
-Every model call is charged, before it runs, to a spend ledger beside the cases:
-`abstention-<producer>-spend.json`. It holds case ids, times and statuses. The run stops at
-`--max-calls`, which defaults to and may not exceed twenty, the owner's authorization, counted
-across every run. A case the cap stopped is withheld as `spend-cap`. `--resume` re-reads the local
-results and re-calls only the cases whose call failed (`withheld:model-failed`). It carries every
-other record over, and refuses when the packet, the marks or the producer binding moved. A reading
-made outside the scorer, such as the browser walk, is not in the ledger, so leave room for it in
-`--max-calls`.
+Scoring refuses before its first call unless every case in the packet is marked, each on exactly
+its own constraints, with `judge` or `abstain` and nothing else. The authorization says every case
+is marked before any reading runs. A Claude Code result is written only from a format 5 packet.
+`--producer codex` may report but not score, because no Codex spend is authorized for this
+qualification.
 
-The owner's commands, in order, each in the packet's own `CARGENTO_HOME`:
+### The spend ledger
+
+Every model call is charged, before it runs, to one ledger at a fixed path,
+`~/.cargento/drc-4666-spend.json`. It is shared by every producer and every packet directory, and
+it never follows `CARGENTO_HOME`, so a fresh packet directory does not start the count again. It
+holds case ids, times, statuses and two digests per call: the marks file's and the cases and
+rubric's. It stops the run at 19 calls across every run, because the owner authorized twenty and
+the browser walk after a pass is the twentieth. `--max-calls` can lower that and never raise it. A
+case the cap stopped is withheld as `spend-cap`.
+
+- The cap check and the charge happen under an exclusive lock, so concurrent runs cannot pass it.
+- A missing ledger is an empty one. A ledger that cannot be read, or holds anything but this
+  script's own shape, refuses every call and is left as it is.
+- Once a call is charged, the key is frozen. `mark_abstention.py` refuses to write marks or
+  `--reset`, and `--score` refuses a packet whose marks or cases hash differently from the calls
+  already charged. A mark written after an output was seen is agreement, not a mark.
+- `--report` flags a result as stale when the ledger holds a call charged under other digests.
+- `--resume` re-reads the local results and re-calls only the cases whose call failed
+  (`withheld:model-failed`). It carries the other records over only when they hash to what the
+  ledger recorded as the last run, so a hand-edited outcome is refused.
+
+`--probe-argv` is the one way to watch what the CLI sends without spending: it calls the verified
+CLI once with a fixed sentence, only when `ANTHROPIC_BASE_URL` points at a local stub, and writes no
+result and charges nothing. It refuses any destination that is not this machine.
+
+The owner's commands, in order. `CARGENTO_HOME` holds the packet; the ledger does not move with it:
 
 ```bash
 export CARGENTO_HOME=~/.cargento/abstention-claude-<date>
 python3 scripts/mark_abstention.py --freeze "$CARGENTO_HOME/freeze-spec.json"   # spends nothing
 python3 scripts/score_abstention.py --report          # preflight, spends nothing
-python3 scripts/mark_abstention.py                    # y/n/s/q per constraint
+python3 scripts/mark_abstention.py                    # y/n/s/q per constraint, every case
 python3 scripts/mark_abstention.py --report
-python3 scripts/score_abstention.py --score --producer claude --max-calls 19 \
-  --rubric "$CARGENTO_HOME/abstention-rubric.json"
+# write the kind tags and one expectation per asked constraint into abstention-rubric.json now:
+# changing the rubric after the first call changes the inputs digest and the ledger refuses it
+python3 scripts/score_abstention.py --score --producer claude
 python3 scripts/score_abstention.py --score --producer claude --resume   # only if a call failed
 ```
 
@@ -164,7 +209,8 @@ else can, which is the point. The outcome per constraint is one of `withheld:<re
 the model ran, so the case says nothing about the model, and it is counted for neither side.
 
 The verdict is `failed` when a case marked should-abstain judged or the rubric records a false
-reassurance (a mark of `abstain` on that line is not enough on its own), `short` when no case failed but
+reassurance (a mark of `abstain` on that line is not enough on its own), `blocked` when a rubric
+entry left a required judgement unscored, `short` when no case failed but
 fewer than one recorded case per DEC-15 kind reached the model on Claude or on Codex, `stale` when
 the marks no longer hash to `marks_digest` or replay inputs no longer match `inputs_digest`, and
 `passed` only when none of those hold. The report
@@ -207,7 +253,11 @@ Kept beside the cases, never here. Its shape, so a case set can be written again
 `matching-intent-incorrect-execution`, `misleading-completion` and `insufficient-evidence`.
 `result` is one of `departure`, `consistent` and `unverifiable`, the producer's own three tokens. A
 `recorded` entry names a case in the cases file by id and carries no body, and against a format 5
-case its `expect` is keyed `goal` and `line_1` onwards; a `synthesised` entry
+case its `expect` is keyed `goal` and `line_1` onwards. Every asked constraint of a rubric case is
+required: the goal, and each outcome line when the case's record shows work. A required constraint
+with no expectation lands as `unscored:missing-expectation`, and an expectation under a key the
+case does not have is counted as `unscored:unknown-constraint` without its key being copied. Any
+`unscored:*` blocks a pass, and a case with one does not count toward coverage; a `synthesised` entry
 carries its own `row` and `facts`, and is admitted only when `generated_by` and `verified_by` are
 both present and differ. A synthesised entry verified by its own author is listed in the summary as
 not admitted and scores nothing.

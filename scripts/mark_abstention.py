@@ -74,10 +74,13 @@ import json
 import os
 import pathlib
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, TypeGuard
+
+import abstention_ledger
 
 _SKILL = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cargento", "skills", "cargento"
@@ -120,6 +123,15 @@ FORMAT_INTENT = 5
 # When a case's intent counts as typed, unless it names its own time: before
 # every session end, for the reason `score_abstention.YARDSTICK_AT` gives.
 INTENT_AT = 1.0
+# A frozen case the machine's own records do not vouch for: scored, and never
+# counted toward the recorded floor (DRC-4666 review, F4).
+ORIGIN_SYNTHETIC = "synthetic"
+# Where a recorded session's words can come from. A transcript anywhere else
+# was written by somebody, not recorded by the harness.
+CLAUDE_PROJECTS_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+# Where the freeze reads the dashboard's own history and ends: the store the
+# lifecycle was observed into, never the packet's directory.
+STORE_HOME = os.path.join(os.path.expanduser("~"), ".cargento")
 
 # Cases per (harness, end shape), so the corpus spreads instead of filling up
 # with whichever harness ran most today. v2 had this constant and no bucketing,
@@ -241,7 +253,7 @@ def _transcript_index() -> dict[str, str]:
     if _TRANSCRIPTS is not None:
         return _TRANSCRIPTS
     index: dict[str, str] = {}
-    root = os.path.expanduser("~/.claude/projects")
+    root = CLAUDE_PROJECTS_ROOT
     try:
         for base, _dirs, names in os.walk(root):
             for name in names:
@@ -533,8 +545,106 @@ class FreezeError(ValueError):
     """Why a spec entry cannot become a recorded case. Closed words, no session text."""
 
 
-def freeze_case(config: Any, entry: dict[str, Any], facts: list[dict[str, Any]]) -> dict[str, Any]:
+def _inside(path: str, root: str) -> bool:
+    real, base = os.path.realpath(path), os.path.realpath(root)
+    return real.startswith(base + os.sep)
+
+
+def _transcript_is_the_session(path: str, sid: str) -> bool:
+    """Whether every record in it names this session, and at least one does."""
+    seen = False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                named = record.get("sessionId") if isinstance(record, dict) else None
+                if named is None:
+                    continue
+                if not isinstance(named, str) or not named.startswith(sid):
+                    return False
+                seen = True
+    except OSError:
+        return False
+    return seen and len(sid) >= 8
+
+
+def _same(a: Any, b: Any) -> bool:
+    return _epoch(a) and _epoch(b) and abs(float(a) - float(b)) < 1e-3
+
+
+def _lifecycle_recorded(
+    snapshot: dict[str, Any],
+    captured: float,
+    observations: Any,
+    ends: Any,
+) -> bool:
+    """Whether the dashboard's own stores observed the lifecycle the spec claims.
+
+    A running row needs a `working` observation at the capture itself; an end
+    needs the ends store's stamp; a turn stop needs an `idle` observation at
+    the stop. Anything else is hand-typed.
+    """
+    key = (snapshot["harness"], snapshot["sid"])
+    mine = [
+        o for o in observations if isinstance(o, dict) and (o.get("harness"), o.get("sid")) == key
+    ]
+    if snapshot.get("ended_at") is not None:
+        return any(
+            isinstance(e, dict)
+            and (e.get("harness"), e.get("sid")) == key
+            and _same(e.get("at"), snapshot["ended_at"])
+            for e in ends
+        )
+    if snapshot.get("state") == "working":
+        return any(
+            o.get("state") == "working" and _same(o.get("last_activity"), captured) for o in mine
+        )
+    if snapshot.get("state") == "idle" and snapshot.get("finished_at") is not None:
+        return any(
+            o.get("state") == "idle" and _same(o.get("last_activity"), snapshot["finished_at"])
+            for o in mine
+        )
+    return False
+
+
+def _frozen_checks(
+    config: Any, entry: dict[str, Any], sid: str, captured: float, unconfirmed: list[str]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """A Claude Code case's checks as they stood, noting what the transcript cannot vouch for."""
+    transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
+    if not transcript or not os.path.isfile(transcript):
+        raise FreezeError("no-transcript")
+    if not _inside(transcript, CLAUDE_PROJECTS_ROOT):
+        unconfirmed.append("transcript-outside-projects")
+    if not _transcript_is_the_session(transcript, sid):
+        unconfirmed.append("transcript-other-session")
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    checks, press = project_context.frozen_claude_checks(config, transcript, sid, until=captured)
+    return checks, {
+        "tails": dict(press.tails),
+        "changed_after": sorted([list(pair) for pair in press.changed_after]),
+    }
+
+
+def freeze_case(
+    config: Any,
+    entry: dict[str, Any],
+    facts: list[dict[str, Any]],
+    *,
+    observations: Any = (),
+    ends: Any = (),
+) -> dict[str, Any]:
     """One recorded case, frozen as the session stood at `captured_at`.
+
+    The case is `recorded` only when the machine vouches for it: a Claude Code
+    transcript inside `CLAUDE_PROJECTS_ROOT` whose records name this session,
+    and a lifecycle the dashboard's history or ends store observed
+    (`observations`, `ends`). Anything short of that is `synthetic`, with the
+    reasons listed in `unconfirmed`, and never counts toward the floor.
 
     Facts are kept only where dated at or before the capture. A Claude Code
     check is never one of them: its latest run, earlier failure and later
@@ -580,6 +690,9 @@ def freeze_case(config: Any, entry: dict[str, Any], facts: list[dict[str, Any]])
         and _epoch(fact.get("at"))
         and fact["at"] <= captured
     ]
+    unconfirmed: list[str] = []
+    if not _lifecycle_recorded(snapshot, captured, observations, ends):
+        unconfirmed.append("lifecycle-unconfirmed")
     case: dict[str, Any] = {
         "id": _case_id(harness, sid),
         "harness": harness,
@@ -592,24 +705,31 @@ def freeze_case(config: Any, entry: dict[str, Any], facts: list[dict[str, Any]])
         "intent": intent,
     }
     if harness == "claude":
-        transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
-        if not transcript or not os.path.isfile(transcript):
-            raise FreezeError("no-transcript")
-        from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
-
-        checks, press = project_context.frozen_claude_checks(
-            config, transcript, sid, until=captured
-        )
+        checks, case["tool_output"] = _frozen_checks(config, entry, sid, captured, unconfirmed)
         kept.extend(checks)
-        case["tool_output"] = {
-            "tails": dict(press.tails),
-            "changed_after": sorted([list(pair) for pair in press.changed_after]),
-        }
     case["producer_facts"] = kept
+    case["unconfirmed"] = unconfirmed
+    if unconfirmed:
+        case["origin"] = ORIGIN_SYNTHETIC
     return case
 
 
-def freeze(port: int, spec_path: str, *, force: bool = False) -> int:
+def _observed_stores(store_home: str) -> tuple[Any, Any]:
+    """The dashboard's history observations and session ends, read from `store_home`."""
+    _reading()
+    from cargento_runtime import config as config_mod  # noqa: PLC0415 - see `_reading`
+    from cargento_runtime import ends, history  # noqa: PLC0415 - see `_reading`
+
+    config = config_mod.build_runtime_config(
+        environ={**os.environ, "CARGENTO_HOME": store_home},
+        platform_name=sys.platform,
+        os_name=os.name,
+        launcher_path=pathlib.Path(_SKILL, "server.py"),
+    )
+    return history.load(config)[0], ends.load(config)
+
+
+def freeze(port: int, spec_path: str, *, force: bool = False, store_home: str = "") -> int:
     """Write a format 5 packet from a spec of recorded moments. Spends nothing.
 
     The spec is local and hand-written: per case the harness, sid, project,
@@ -626,6 +746,7 @@ def freeze(port: int, spec_path: str, *, force: bool = False) -> int:
         print("Use a fresh CARGENTO_HOME, or --force to write the packet anyway.")
         return 1
     config = _runtime_config()
+    observations, ends = _observed_stores(store_home or STORE_HOME)
     cases: list[dict[str, Any]] = []
     for index, entry in enumerate(entries, 1):
         if not isinstance(entry, dict):
@@ -638,12 +759,15 @@ def freeze(port: int, spec_path: str, *, force: bool = False) -> int:
             print(f"Case {index}: the board on port {port} did not answer for it")
             return 1
         try:
-            cases.append(freeze_case(config, entry, facts))
+            cases.append(freeze_case(config, entry, facts, observations=observations, ends=ends))
         except FreezeError as error:
             print(f"Case {index}: {error}")
             return 1
     _write(CASES_PATH, {"v": FORMAT_INTENT, "cases": cases})
+    synthetic = sum(1 for case in cases if case["origin"] == ORIGIN_SYNTHETIC)
     print(f"Froze {len(cases)} cases into {CASES_PATH} (stays on this machine).")
+    if synthetic:
+        print(f"  {synthetic} are synthetic: the machine's records do not vouch for them.")
     return 0
 
 
@@ -654,8 +778,9 @@ def _write(path: str, body: dict[str, Any]) -> None:
     file and the next run died on it with no backup.
     """
     os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as handle:
+    # Its own temporary file: two runs sharing one `.tmp` crashed in review.
+    descriptor, tmp = tempfile.mkstemp(prefix=".write-", suffix=".tmp", dir=os.path.dirname(path))
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         json.dump(body, handle, indent=2)
     os.chmod(tmp, 0o600)
     os.replace(tmp, path)
@@ -920,7 +1045,23 @@ def _mark_one(body: dict[str, Any], case: dict[str, Any]) -> dict[str, str] | No
     return answers
 
 
+def _ledger_refusal() -> bool:
+    """True, having said why, once the qualification has charged any call.
+
+    A mark written after an output was seen is agreement, not a mark, so the
+    key is frozen from the first charge (review, F1). An unreadable ledger
+    counts as charged: fail closed.
+    """
+    if not abstention_ledger.has_calls(abstention_ledger.LEDGER_PATH):
+        return False
+    print("The spend ledger already holds a call, so the answer key is frozen.")
+    print("Marks cannot be written or discarded after anything has been spent.")
+    return True
+
+
 def mark() -> int:
+    if _ledger_refusal():
+        return 1
     body = _load(CASES_PATH)
     cases = body.get("cases") if isinstance(body.get("cases"), list) else None
     if not cases:
@@ -1017,7 +1158,7 @@ def report() -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per mode
     parser = argparse.ArgumentParser(description="Collect the abstention answer key.")
     parser.add_argument("--build", action="store_true", help="assemble cases from the live board")
     parser.add_argument("--port", type=int, default=4553, help="the dashboard port to read")
@@ -1025,13 +1166,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", action="store_true", help="how far through the key you are")
     parser.add_argument("--reset", action="store_true", help="discard the marks and start over")
     parser.add_argument("--freeze", metavar="SPEC", help="freeze a format 5 packet from a spec")
+    parser.add_argument(
+        "--store-home", default=STORE_HOME, help="where the dashboard's history and ends live"
+    )
     args = parser.parse_args(argv)
     if args.freeze:
-        return freeze(args.port, args.freeze, force=args.force)
+        return freeze(args.port, args.freeze, force=args.force, store_home=args.store_home)
     if args.build and args.reset:
         print("--build and --reset together are ambiguous. Run them one at a time.")
         return 2
     if args.reset:
+        if _ledger_refusal():
+            return 1
         if os.path.exists(MARKS_PATH):
             os.remove(MARKS_PATH)
             print(f"Discarded {MARKS_PATH}. The cases are untouched.")
