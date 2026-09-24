@@ -439,5 +439,252 @@ class SupervisedRunTest(unittest.TestCase):
         self.assertEqual(1, len(killed), "the timeout no longer killed the group")
 
 
+# A process that runs one supervised CLI and cancels it the way the reading
+# route does, then reports on itself. "daemon" calls `setsid` first, as
+# `--daemon` does; "foreground" keeps a sentinel sibling in its own group, as
+# a terminal's job would hold one.
+_CANCELS_ITS_CLI = (
+    "import json, os, subprocess, sys, threading, time\n"
+    "sys.path.insert(0, sys.argv[3])\n"
+    "from cargento_runtime import supervise\n"
+    "mode, pid_file = sys.argv[1], sys.argv[2]\n"
+    "sentinel = None\n"
+    "if mode == 'daemon':\n"
+    "    os.setsid()\n"
+    "else:\n"
+    "    sentinel = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+    "groups, spawned = [], threading.Event()\n"
+    "def call():\n"
+    "    supervise.run([sys.executable, '-c', sys.argv[4], pid_file], input='',\n"
+    "        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,\n"
+    "        on_spawn=lambda g: (groups.append(g), spawned.set()))\n"
+    "worker = threading.Thread(target=call, daemon=True)\n"
+    "worker.start()\n"
+    "spawned.wait(10)\n"
+    "deadline = time.monotonic() + 10\n"
+    "while time.monotonic() < deadline and not os.path.exists(pid_file):\n"
+    "    time.sleep(0.02)\n"
+    "groups[0].cancel()\n"
+    "worker.join(15)\n"
+    "report = {'cli_done': not worker.is_alive(), 'cli': groups[0].pid,\n"
+    "    'sentinel': sentinel is not None and sentinel.poll() is None}\n"
+    "if sentinel is not None:\n"
+    "    sentinel.kill()\n"
+    "    sentinel.wait()\n"
+    "print(json.dumps(report))\n"
+)
+
+
+class CancelKillsTheCliAndNothingElseTest(unittest.TestCase):
+    """DRC-4693: Cancel ends the CLI's group or Job Object, and never the caller's."""
+
+    def setUp(self) -> None:
+        self.home = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.home, True))
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _running(self) -> tuple[list[supervise.Group], list[Any], threading.Thread, Path]:
+        pid_file = self.home / "grandchild.pid"
+        groups: list[supervise.Group] = []
+        outcome: list[Any] = []
+
+        def call() -> None:
+            try:
+                outcome.append(
+                    supervise.run(
+                        [sys.executable, "-c", _SPAWNS_A_GRANDCHILD, str(pid_file)],
+                        input="",
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=60,
+                        on_spawn=groups.append,
+                    )
+                )
+            except supervise.UnstoppedError as exc:
+                outcome.append(exc)
+
+        worker = threading.Thread(target=call, daemon=True)
+        worker.start()
+        self.assertTrue(_wait_until(lambda: pid_file.exists() and pid_file.read_text().strip()))
+        return groups, outcome, worker, pid_file
+
+    def test_a_cancel_ends_the_cli_and_its_grandchild_well_inside_the_call_timeout(self) -> None:
+        """On Windows this is the Job Object's `TerminateJobObject`, run by platform-tests."""
+        groups, outcome, worker, pid_file = self._running()
+        grandchild = int(pid_file.read_text())
+        started = time.monotonic()
+        groups[0].cancel()
+        worker.join(15)
+        self.assertFalse(worker.is_alive(), "a cancelled CLI left its caller waiting")
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertNotEqual(0, outcome[0].returncode)
+        self.assertTrue(groups[0].cancelled())
+        self.assertTrue(_wait_until(lambda: not process_alive(grandchild)))
+        self.assertEqual(frozenset(), supervise.live())
+
+    def test_a_cancel_whose_kill_fails_is_reported_unstopped_within_the_bound(self) -> None:
+        with (
+            mock.patch.object(supervise.Group, "_kill", return_value=False),
+            mock.patch.object(supervise, "REAP_TIMEOUT_SEC", 0.5),
+        ):
+            groups, outcome, worker, pid_file = self._running()
+            started = time.monotonic()
+            groups[0].cancel()
+            worker.join(15)
+        self.assertLess(time.monotonic() - started, 10, "Cancel waited out the call timeout")
+        self.assertIsInstance(outcome[0], supervise.UnstoppedError)
+        # Clean up what the patched kill left running.
+        with contextlib.suppress(OSError):
+            os.kill(int(pid_file.read_text()), signal.SIGTERM)
+        with contextlib.suppress(OSError):
+            groups[0]._process.kill()
+            groups[0]._process.wait(5)
+
+    def test_a_cancel_after_the_reap_signals_nothing(self) -> None:
+        groups: list[supervise.Group] = []
+        supervise.run(
+            [sys.executable, "-c", "pass"],
+            input="",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            on_spawn=groups.append,
+        )
+        with mock.patch.object(supervise.Group, "_kill") as kill:
+            groups[0].cancel()
+        kill.assert_not_called()
+
+    # Correction round (S6 review).
+
+    def test_a_cancel_never_holds_the_request_thread_on_the_group_lock(self) -> None:
+        groups, _outcome, worker, _pid = self._running()
+        group = groups[0]
+        group._lock.acquire()
+        try:
+            done = threading.Event()
+
+            def cancel() -> None:
+                group.cancel()
+                done.set()
+
+            threading.Thread(target=cancel, daemon=True).start()
+            self.assertTrue(done.wait(1.0), "Cancel blocked its caller on the group lock")
+        finally:
+            group._lock.release()
+        worker.join(15)
+        self.assertFalse(worker.is_alive())
+
+    def test_a_cancel_kills_on_the_callers_thread_when_the_lock_is_free(self) -> None:
+        groups, _outcome, worker, _pid = self._running()
+        seen: list[Any] = []
+        real = supervise.Group._kill
+
+        def kill(group: supervise.Group) -> bool:
+            seen.append(threading.current_thread())
+            return real(group)
+
+        with mock.patch.object(supervise.Group, "_kill", kill):
+            groups[0].cancel()
+            self.assertIn(threading.current_thread(), seen)
+            worker.join(15)
+        self.assertFalse(worker.is_alive())
+
+    def test_a_cancel_of_an_unwatchable_exit_ends_the_call_without_a_timeout(self) -> None:
+        """The first kill misses; the call's own reap must still end it, and return."""
+        real = supervise.Group._kill
+        calls: list[int] = []
+
+        def kill(group: supervise.Group) -> bool:
+            calls.append(1)
+            return False if len(calls) == 1 else real(group)
+
+        with (
+            mock.patch.object(supervise, "_state", return_value=supervise._UNKNOWN),
+            mock.patch.object(supervise.Group, "_kill", kill),
+        ):
+            groups, outcome, worker, _pid = self._running()
+            started = time.monotonic()
+            groups[0].cancel()
+            worker.join(15)
+        self.assertFalse(worker.is_alive(), "the cancelled call waited for its own timeout")
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertEqual(1, len(outcome))
+        self.assertNotIsInstance(outcome[0], BaseException)
+
+    def test_a_windows_cancel_whose_reap_outlasts_the_call_timeout_does_not_spin(self) -> None:
+        """Review P2: once cancelled, the wait keeps its poll step whatever the deadline says.
+
+        A fake process, because `_wait_windows` runs only on Windows: its
+        `communicate` never finishes, and the kill never lands.
+        """
+
+        class _Process:
+            pid, args = 4242, ["cli"]
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def communicate(self, _data: Any = None, timeout: float | None = None) -> None:
+                self.calls += 1
+                if timeout:
+                    time.sleep(timeout)
+                raise subprocess.TimeoutExpired("cli", timeout or 0.0)
+
+        process = _Process()
+        group = supervise.Group(process)  # type: ignore[arg-type]
+        with (
+            mock.patch.object(supervise.Group, "_kill", return_value=False),
+            mock.patch.object(supervise, "REAP_TIMEOUT_SEC", 0.5),
+        ):
+            group.cancel()
+            with self.assertRaises(supervise.UnstoppedError):
+                supervise._wait_windows(group, "prompt", 0.05)
+        # About 0.5 s at 0.1 s a step, plus the call's own 0.05 s: a handful.
+        self.assertLess(process.calls, 50, "the reap window spun on a zero timeout")
+
+    def _harness(self, mode: str) -> dict[str, Any]:
+        root = str(Path(supervise.__file__).resolve().parent.parent)
+        # The foreground harness leads a group of its own, so a wrong kill lands
+        # on it and its sentinel rather than on this test runner. The daemon
+        # one must not lead a group yet: `setsid` refuses a group leader.
+        options: dict[str, Any] = (
+            {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined,unused-ignore]
+            if sys.platform == "win32"
+            else {"start_new_session": mode != "daemon"}
+        )
+        done = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                _CANCELS_ITS_CLI,
+                mode,
+                str(self.home / f"{mode}.pid"),
+                root,
+                _SPAWNS_A_GRANDCHILD,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+            **options,
+        )
+        self.assertEqual(0, done.returncode, f"the process that cancelled died: {done.stderr}")
+        report: dict[str, Any] = __import__("json").loads(done.stdout)
+        return report
+
+    @unittest.skipIf(sys.platform == "win32", "`--daemon` calls setsid, which is POSIX only")
+    def test_a_cancel_under_a_daemon_leaves_the_daemon_running(self) -> None:
+        report = self._harness("daemon")
+        self.assertTrue(report["cli_done"])
+        self.assertFalse(process_alive(report["cli"]))
+
+    def test_a_cancel_in_a_foreground_run_leaves_the_launching_group_alone(self) -> None:
+        report = self._harness("foreground")
+        self.assertTrue(report["cli_done"])
+        self.assertTrue(report["sentinel"], "a sibling in the launching group was killed")
+
+
 if __name__ == "__main__":
     unittest.main()

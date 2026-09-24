@@ -3,6 +3,9 @@ const NEXT_COCKPIT_MEMO_LIMIT = 500;
 const nextCockpitContexts = new Map();
 const nextCockpitRequests = new Map();
 const nextCockpitReadingRequests = new Map();
+/* A Cancel in flight, or one that could not be confirmed, per session and for
+   the one job it named, so neither outlives that job's box (DRC-4693). */
+const nextCockpitReadingCancels = new Map();
 const nextCockpitMemoDrafts = new Map();
 const nextCockpitMemoStates = new Map();
 const nextCockpitBriefingCopyStates = new Map();
@@ -1816,6 +1819,9 @@ const NEXT_READING_MODEL_UNREAD =
 const NEXT_READING_JOB_TITLE = "Analyzing drift";
 const NEXT_READING_JOB_NOTE = "You can keep working. The result will appear here.";
 const NEXT_READING_BACKGROUND = "Runs in the background.";
+/* A lost answer does not establish that the cancel missed, nor that it landed. */
+const NEXT_READING_CANCEL_FAILED =
+  "Could not confirm the cancel. The analysis may still be running; refresh to check.";
 const NEXT_READING_MODEL_OFF =
   "Model calls are off for this run. Restart without --no-observer-model or its alias " +
   "--no-harness-usage to allow a reading.";
@@ -2756,7 +2762,7 @@ function nextReadingJob(session){
    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
    keeps off every result. An unknown phase
    marks every step still to come rather than guessing which one is running. */
-function nextReadingJobBox(job){
+function nextReadingJobBox(job, key){
   const steps = Array.isArray(job.steps) ? job.steps : [];
   const at = steps.findIndex(step => step && step.phase === job.phase);
   const items = steps.map((step, index) => {
@@ -2766,12 +2772,29 @@ function nextReadingJobBox(job){
       '<span class="next-cockpit-reading-step-mark" aria-hidden="true"></span>' +
       `<span>${esc(String(step && step.text || ""))}</span></li>`;
   }).join("");
-  /* The header row leaves room for DRC-4693's Cancel, and `data-next-analyzing`
-     is the hook DRC-4680's meter dims on. */
+  /* Cancel sits in the header row beside the title, as the design draws it.
+     While a cancel is finishing it keeps its label and is disabled, from the
+     published `cancelling` so a reload draws the same; a request of this
+     page's own still in flight disables it too. The press button's focus key
+     goes to the title, not to Cancel: on Cancel, a keyboard press followed by
+     a second Enter cancelled the analysis it had just started, which is a
+     spent attempt (S6 review, P-1). Cancel's own key falls back to the press,
+     so focus lands there again when the box goes.
+     `data-next-analyzing` is the hook DRC-4680's meter dims on. */
+  const held = nextCockpitReadingCancels.get(key);
+  const mine = held && held.job === job.id ? held : null;
+  const finishing = job.cancelling === true || Boolean(mine && mine.pending);
   return `<div class="next-cockpit-reading-job" role="status" data-next-analyzing="${esc(job.id)}">` +
-    `<div class="next-cockpit-reading-job-head"><span class="next-cockpit-reading-job-title">${esc(NEXT_READING_JOB_TITLE)}</span></div>` +
+    '<div class="next-cockpit-reading-job-head"><span class="next-cockpit-reading-job-title" ' +
+    `tabindex="-1" data-next-focus="reading:${esc(key)}">${esc(NEXT_READING_JOB_TITLE)}</span>` +
+    '<button type="button" class="next-action" data-next-cockpit-action="reading-cancel" ' +
+    `data-next-focus="reading-cancel:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"` +
+    `${finishing ? ' aria-disabled="true"' : ""}>Cancel</button></div>` +
     `<ol class="next-cockpit-reading-steps">${items}</ol>` +
-    `<p class="next-cockpit-reading-job-note">${esc(NEXT_READING_JOB_NOTE)}</p></div>`;
+    `<p class="next-cockpit-reading-job-note">${esc(NEXT_READING_JOB_NOTE)}</p>` +
+    (mine && mine.failed && !finishing
+      ? `<p class="next-cockpit-reading-why">${esc(NEXT_READING_CANCEL_FAILED)}</p>` : "") +
+    "</div>";
 }
 
 function nextReadingJobShown(session, job){
@@ -2841,7 +2864,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     return '<div class="next-cockpit-reading-ask">' + disclosure +
       (nextReadingAnyConsent()
         ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
-      '</div>' + nextReadingJobBox(job) +
+      '</div>' + nextReadingJobBox(job, key) +
       (annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "");
   }
   return '<div class="next-cockpit-reading-ask">' + disclosure +
@@ -3445,6 +3468,47 @@ async function nextCockpitAskForReading(session, model, allow = false){
       "Refresh to check for a result before asking again.";
   }finally{
     request.pending = false;
+    renderNext();
+  }
+}
+
+/* Cancel the running analysis this box shows (DRC-4693). The job id goes with
+   it, so a stale tab cannot cancel a newer press. One request per job: a
+   Cancel in flight, or one the server already accepted, sends nothing. A
+   `409 not-running` means the job ended or was never this one, and the board
+   says what stands, with no sentence of this page's own. */
+async function nextCockpitCancelReading(session){
+  const key = sessKey(session);
+  const job = nextReadingJob(session);
+  const held = nextCockpitReadingCancels.get(key);
+  if(!job || job.cancelling === true || (held && held.job === job.id && held.pending)) return;
+  const cancel = {job: job.id, pending: true, failed: false};
+  nextCockpitReadingCancels.set(key, cancel);
+  renderNext();
+  try{
+    const response = await fetch("/api/reading/cancel", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid, job: job.id,
+        press: true, observer_model: 1}),
+    });
+    const answer = response && typeof response.json === "function"
+      ? await response.json().catch(() => null) : null;
+    if(response && response.status === 409 && answer && answer.reason === "not-running"){
+      nextCockpitReadingCancels.delete(key);
+      await refreshNext();
+      return;
+    }
+    if(!response || response.status !== 202 || !answer || answer.cancelling !== true){
+      throw new Error("cancel not confirmed");
+    }
+    nextReadingJobShown(session, {...job, cancelling: true});
+    nextCockpitReadingCancels.delete(key);
+    await refreshNext();
+  }catch(_error){
+    cancel.failed = true;
+  }finally{
+    cancel.pending = false;
     renderNext();
   }
 }
@@ -4909,6 +4973,13 @@ document.addEventListener("click", event => {
   if(action === "reading-off"){
     event.preventDefault();
     nextCockpitReadingOff();
+    return;
+  }
+  if(action === "reading-cancel"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    nextCockpitCancelReading(session);
     return;
   }
   if(action === "reading-ask" || action === "reading-allow"){

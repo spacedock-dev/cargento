@@ -3092,6 +3092,7 @@ class ReadingRouteTest(unittest.TestCase):
         *,
         settle: bool = True,
         headers: dict[str, str] | None = None,
+        path: str = "/api/reading",
     ) -> tuple[int, bytes]:
         """One press. A press that started a job is waited out unless told not to.
 
@@ -3103,7 +3104,7 @@ class ReadingRouteTest(unittest.TestCase):
         try:
             conn.request(
                 "POST",
-                "/api/reading",
+                path,
                 body=json.dumps(payload).encode(),
                 headers={"Content-Type": "application/json", **(headers or {})},
             )
@@ -4241,6 +4242,270 @@ class ReadingRouteTest(unittest.TestCase):
                 conn.close()
         self.assertEqual(413, status)
         self.assertEqual([], calls)
+
+    # DRC-4693: Cancel on a running analysis, over the socket.
+
+    @contextlib.contextmanager
+    def _held_model(self, *, at_seam: bool = False) -> Any:
+        """A Codex model that holds its call until released, so a job stays running.
+
+        `at_seam` holds it at the availability check instead, which is before
+        anything is reserved.
+        """
+        release, entered = threading.Event(), threading.Event()
+        calls: list[str] = []
+
+        class _Held:
+            unavailable_reason = runtime_reading.WITHHELD_MODEL_UNAVAILABLE
+
+            def __init__(self, _config: Any, **_kw: Any) -> None:
+                pass
+
+            def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+                calls.append(prompt)
+                entered.set()
+                release.wait(10)
+                return "{}", "ok"
+
+            @staticmethod
+            def available() -> bool:
+                if at_seam:
+                    entered.set()
+                    release.wait(10)
+                return True
+
+        with (
+            self._counting_model(),
+            mock.patch.object(runtime_reading, "CodexReadingModel", _Held),
+        ):
+            try:
+                yield release, entered, calls
+            finally:
+                release.set()
+
+    def _cancel(
+        self, port: int, job_id: str, *, headers: dict[str, str] | None = None, **over: Any
+    ) -> tuple[int, bytes]:
+        return self._post(
+            port,
+            {**self._press(), "job": job_id, **over},
+            settle=False,
+            headers=headers,
+            path="/api/reading/cancel",
+        )
+
+    def _board_job(self, port: int) -> Any:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/data", headers={"Sec-Fetch-Site": "same-origin"})
+            board = json.loads(conn.getresponse().read())
+        finally:
+            conn.close()
+        return (board.get("reading_jobs") or {}).get("pi:s1")
+
+    def test_a_reader_who_cancels_sees_the_board_say_cancelling_until_the_job_ends(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        with (
+            self._held_model() as (release, entered, calls),
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press(), settle=False)
+            self.assertEqual(202, status, body)
+            job_id = json.loads(body)["job"]["id"]
+            self.assertTrue(entered.wait(10))
+            self.assertIs(False, self._board_job(port)["cancelling"])
+            status, body = self._cancel(port, job_id)
+            self.assertEqual(202, status, body)
+            self.assertEqual({"ok": True, "cancelling": True}, json.loads(body))
+            # A reload while the cancel is finishing draws the same box.
+            self.assertIs(True, self._board_job(port)["cancelling"])
+            release.set()
+            self._settle()
+            self.assertIsNone(self._board_job(port))
+        self.assertEqual(1, len(calls))
+        self.assertEqual(
+            [{"produced": False, "reason": runtime_reading.WITHHELD_CANCELLED, "spent": True}],
+            self.outcomes,
+        )
+
+    def test_a_cancel_before_anything_is_reserved_spends_nothing(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._held_model(at_seam=True) as (release, entered, calls),
+            self._serving(self._app(config, state)) as port,
+        ):
+            _status, body = self._post(port, self._press(), settle=False)
+            job_id = json.loads(body)["job"]["id"]
+            self.assertTrue(entered.wait(10))
+            status, _ = self._cancel(port, job_id)
+            self.assertEqual(202, status)
+            release.set()
+            self._settle()
+        self.assertEqual([], calls)
+        self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+        self.assertEqual(
+            [
+                {
+                    "produced": False,
+                    "reason": runtime_reading.WITHHELD_CANCELLED_UNSENT,
+                    "spent": False,
+                }
+            ],
+            self.outcomes,
+        )
+
+    def test_a_forged_cross_site_cancel_is_refused_and_the_analysis_keeps_running(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        with (
+            self._held_model() as (release, entered, _calls),
+            self._serving(self._app(config, state)) as port,
+        ):
+            _status, body = self._post(port, self._press(), settle=False)
+            job_id = json.loads(body)["job"]["id"]
+            self.assertTrue(entered.wait(10))
+            for headers in (
+                {"Sec-Fetch-Site": "cross-site"},
+                {"Sec-Fetch-Site": "same-site"},
+                {"Origin": f"http://127.0.0.1:{port + 1}"},
+                {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"},
+            ):
+                with self.subTest(headers=headers):
+                    status, _ = self._cancel(port, job_id, headers=headers)
+                    self.assertEqual(403, status)
+                    self.assertIs(False, self._board_job(port)["cancelling"])
+            release.set()
+            self._settle()
+        self.assertEqual([{"produced": True, "reason": ""}], self.outcomes)
+
+    def test_a_cancel_naming_another_job_or_no_session_answers_the_same_not_running(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        with (
+            self._held_model() as (release, entered, _calls),
+            self._serving(self._app(config, state)) as port,
+        ):
+            idle, idle_body = self._cancel(port, "0123456789abcdef")
+            _status, body = self._post(port, self._press(), settle=False)
+            job_id = json.loads(body)["job"]["id"]
+            self.assertTrue(entered.wait(10))
+            stale, stale_body = self._cancel(port, "0123456789abcdef")
+            unknown, unknown_body = self._cancel(port, job_id, sid="no-such-session")
+            self.assertIs(False, self._board_job(port)["cancelling"])
+            release.set()
+            self._settle()
+        self.assertEqual([409, 409, 409], [idle, stale, unknown])
+        # One body for all three, so a guessed session id learns nothing.
+        self.assertEqual({"ok": False, "reason": "not-running"}, json.loads(stale_body))
+        self.assertEqual(stale_body, unknown_body)
+        self.assertEqual(stale_body, idle_body)
+        self.assertEqual([{"produced": True, "reason": ""}], self.outcomes)
+
+    def test_a_cancel_without_the_press_marks_or_a_job_id_is_refused(self) -> None:
+        config, state = self._runtime()
+        with self._held_model(), self._serving(self._app(config, state)) as port:
+            for over in ({"press": False}, {"observer_model": 0}, {"job": 7}, {"sid": ""}):
+                with self.subTest(over=over):
+                    status, _ = self._cancel(port, "0123456789abcdef", **over)
+                    self.assertEqual(400, status)
+
+    def test_an_oversized_cancel_is_refused_before_it_is_read(self) -> None:
+        config, state = self._runtime()
+        with self._held_model(), self._serving(self._app(config, state)) as port:
+            status, _ = self._cancel(
+                port, "0123456789abcdef", pad="x" * (config.annotation_body_cap_bytes + 16)
+            )
+        self.assertEqual(413, status)
+
+    def test_the_board_never_shows_the_job_gone_before_its_outcome_is_counted(self) -> None:
+        """The walk's W1: a collection that began before the write must not stand after it.
+
+        A collection holds the collect lock while the job records, ends and
+        publishes. Without the fix it read the store before the write and the
+        job registry after the end, and its body then stood as the fresh
+        snapshot: no box, the previous sentence, the previous count.
+        """
+        config, state = self._runtime()
+        application = self._app(config, state)
+        paused, resume = threading.Event(), threading.Event()
+        real = application._collect_harnesses
+        collector: dict[str, Any] = {}
+
+        def held(*args: Any, **kwargs: Any) -> Any:
+            if threading.current_thread() is collector.get("thread"):
+                paused.set()
+                resume.wait(10)
+            return real(*args, **kwargs)
+
+        def board() -> dict[str, Any]:
+            _revision, body = application.collect_json(show_all=False)
+            answer: dict[str, Any] = json.loads(body)
+            return answer
+
+        with (
+            self._held_model() as (release, entered, _calls),
+            self._serving(application) as port,
+            mock.patch.object(application, "_collect_harnesses", held),
+        ):
+            _status, body = self._post(port, self._press(), settle=False)
+            job_id = json.loads(body)["job"]["id"]
+            self.assertTrue(entered.wait(10))
+
+            def collect() -> None:
+                application.state.snapshot.clear()
+                collector["body"] = json.loads(application.collect_json(show_all=False)[1])
+
+            collector["thread"] = threading.Thread(target=collect, daemon=True)
+            collector["thread"].start()
+            self.assertTrue(paused.wait(10))
+            canceller = threading.Thread(
+                target=runtime_reading_jobs.cancel,
+                args=(application, "pi:s1", job_id),
+                daemon=True,
+            )
+            canceller.start()
+            release.set()
+            self.assertTrue(
+                self._until(lambda: not runtime_reading.published_jobs(config)),
+                "the job never ended",
+            )
+            resume.set()
+            collector["thread"].join(10)
+            canceller.join(10)
+            self._settle()
+            published = board()
+        # The collection that straddled the end shows the job or its outcome,
+        # never neither: it samples the registry before it reads the store.
+        straddled = collector["body"]
+        first = next(r for r in straddled["sessions"] if r.get("sid") == "s1")
+        self.assertTrue(
+            straddled["reading_jobs"] or first["annotation_reading_count"] == 1,
+            "a collection published the job gone beside the previous count",
+        )
+        row = next(r for r in published["sessions"] if r.get("sid") == "s1")
+        self.assertEqual({}, published["reading_jobs"])
+        self.assertEqual(1, row["annotation_reading_count"])
+        self.assertEqual(
+            runtime_reading.WITHHELD[runtime_reading.WITHHELD_CANCELLED],
+            row["annotation_reading_withheld"],
+        )
+
+    def test_a_cancel_writes_no_consent_and_reserves_nothing(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        with (
+            self._held_model(),
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, _ = self._cancel(port, "0123456789abcdef", allow=True)
+        self.assertEqual(409, status)
+        answer = reading_policy.status(config, now=1_700_000_100.0)
+        self.assertFalse(answer["consent"])
+        self.assertEqual(0, answer["used"])
 
 
 class AnnotateRouteTest(unittest.TestCase):

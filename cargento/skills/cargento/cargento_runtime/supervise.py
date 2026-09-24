@@ -12,7 +12,7 @@ A Job Object on Windows has no such exit.
 `run` keeps `subprocess.run`'s keyword subset, so a test that injects a runner
 with that signature stays valid, plus `on_spawn`: it is handed the `Group` the
 moment the child exists, which is the seam a reading job uses to say it is
-waiting on the provider and DRC-4693 will use to cancel. Output goes to a file
+waiting on the provider and a Cancel reaches the CLI through (`Group.cancel`). Output goes to a file
 or nowhere, never to a pipe: every model call writes its reply to a file.
 
 This module imports nothing from the runtime.
@@ -46,6 +46,10 @@ _SHUTDOWN = threading.Event()
 # SIGKILL is not ignorable, so the only children that outlast this are ones the
 # kill never reached, and waiting longer would hang the reading instead.
 REAP_TIMEOUT_SEC = 5.0
+# How often a running call looks up from its wait to see whether it was
+# cancelled. Only a kill that failed needs it: one that worked ends the wait
+# at once. It bounds how late the call starts its own bounded reap.
+_CANCEL_POLL_SEC = 0.1
 
 _RUNNING, _EXITED, _REAPED, _UNKNOWN = "running", "exited", "reaped", "unknown"
 
@@ -148,6 +152,8 @@ class Group:
         # reaped, when its id could name somebody else's group.
         self._lock = threading.Lock()
         self._reaped = False
+        # Set by a Cancel, from any thread; the call's own wait reads it.
+        self._cancelled = threading.Event()
 
     @property
     def pid(self) -> int:
@@ -185,7 +191,7 @@ class Group:
                     self._reaped = True
                     return True
             remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            if remaining <= 0 or self._cancelled.is_set():
                 return False
             time.sleep(min(0.02, remaining))
 
@@ -193,6 +199,26 @@ class Group:
         """Kill the group. Safe from any thread and more than once; False if it failed."""
         with self._lock:
             return self._kill() if not self._reaped else True
+
+    def cancel(self) -> None:
+        """Ask the call to end its CLI, and kill it now when that costs no wait.
+
+        Never blocks the caller, which is a request thread. The group lock is
+        held for up to `REAP_TIMEOUT_SEC` by the call's own reap, and that reap
+        kills anyway; any other holder lets go within one poll, after which
+        the call sees the flag and kills and reaps with its bound. So a kill
+        skipped here is one the call makes itself.
+        """
+        self._cancelled.set()
+        if self._lock.acquire(blocking=False):
+            try:
+                if not self._reaped:
+                    self._kill()
+            finally:
+                self._lock.release()
+
+    def cancelled(self) -> bool:
+        return self._cancelled.is_set()
 
     def _kill(self) -> bool:
         if sys.platform == "win32":
@@ -373,25 +399,41 @@ def _run_posix(
             on_spawn(group)
         if data is not None and process.stdin is not None:
             threading.Thread(target=_feed, args=(process.stdin, data), daemon=True).start()
-        limit = 1e9 if timeout is None else timeout
-        state = _state(process.pid, limit)
-        # An exit that cannot be watched is waited on by polling, never read
-        # as an exit: that would kill a running CLI at once.
-        timed_out = (
-            not group._await_exit(limit)  # noqa: SLF001
-            if state == _UNKNOWN
-            else state == _RUNNING
-        )
+        timed_out = _wait_posix(group, 1e9 if timeout is None else timeout)
     except BaseException:
         # The timeout, a failing `on_spawn`, or an interrupt: kill before
         # reaping, reap with a bound, then let it propagate.
         with contextlib.suppress(UnstoppedError):
             group._finish()  # noqa: SLF001
         raise
+    # A cancelled call reaps here as a timeout does: kill while the leader is
+    # unreaped, then wait with the bound, so a kill that failed is reported
+    # unstopped within it rather than after the call's own timeout.
     group._finish()  # noqa: SLF001
-    if timed_out:
+    if timed_out and not group.cancelled():
         raise subprocess.TimeoutExpired(process.args, timeout or 0.0)
     return int(process.returncode)
+
+
+def _wait_posix(group: Group, limit: float) -> bool:
+    """Wait for the leader to exit, a Cancel, or the limit. True on the limit.
+
+    In slices, so a Cancel whose kill did not land is seen within one. An exit
+    that cannot be watched is waited on by polling, never read as an exit:
+    that would kill a running CLI at once.
+    """
+    pid = group.pid
+    deadline = time.monotonic() + limit
+    while True:
+        remaining = deadline - time.monotonic()
+        step = min(_CANCEL_POLL_SEC, max(remaining, 0.0))
+        state = _state(pid, step)
+        if state == _UNKNOWN:
+            return not group._await_exit(max(deadline - time.monotonic(), 0.0))  # noqa: SLF001
+        if state != _RUNNING or group.cancelled():
+            return False
+        if remaining <= step:
+            return True
 
 
 def _run_windows(
@@ -404,9 +446,9 @@ def _run_windows(
     try:
         if on_spawn is not None:
             on_spawn(group)
-        # `communicate` writes stdin from a thread on Windows, where the pipe
-        # buffer is smaller than a 16 KiB prompt.
-        process.communicate(data, timeout=timeout)
+        _wait_windows(group, data, timeout)
+    except UnstoppedError:
+        raise
     except BaseException:
         group.kill()
         try:
@@ -415,6 +457,40 @@ def _run_windows(
             raise UnstoppedError(process.pid) from exc
         raise
     return int(process.returncode)
+
+
+def _wait_windows(group: Group, data: str | bytes | None, timeout: float | None) -> None:
+    """`communicate` in slices, so a Cancel is seen within one. Raises on the limit.
+
+    CPython's Windows `communicate` writes stdin in the calling thread, so the
+    first call does not return until the prompt is written; a retry after its
+    timeout loses no output, and the input goes with the first call only, as it
+    must. Once cancelled, the step stays `_CANCEL_POLL_SEC` whatever the call's
+    deadline says: a deadline that ran out inside the reap window made every
+    step zero, and the loop spun on a core until the reap bound.
+    """
+    process = group._process  # noqa: SLF001
+    deadline = None if timeout is None else time.monotonic() + timeout
+    pending = data
+    reap_by: float | None = None
+    while True:
+        step = _CANCEL_POLL_SEC
+        if deadline is not None and not group.cancelled():
+            step = min(step, max(deadline - time.monotonic(), 0.0))
+        try:
+            process.communicate(pending, timeout=step)
+        except subprocess.TimeoutExpired:
+            pending = None
+        else:
+            return
+        if group.cancelled():
+            if reap_by is None:
+                group.kill()
+                reap_by = time.monotonic() + REAP_TIMEOUT_SEC
+            elif time.monotonic() >= reap_by:
+                raise UnstoppedError(process.pid)
+        elif deadline is not None and time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(process.args, timeout or 0.0)
 
 
 class _Windows:

@@ -11,6 +11,12 @@ A spend the dashboard was stopped in the middle of is not lost. Once the spend
 is committed, a small marker names the job; the outcome's write removes it,
 and the next start turns any marker whose process is gone into a spent
 `interrupted` attempt (Q2 on the issue). The marker holds identifiers only.
+
+A Cancel (DRC-4693) marks the job, kills its CLI's group, and lets this thread
+finish as it would have: the reap, the file removal, the write, and only then
+the slot. The outcome is decided at the seal, just before the write, so a
+Cancel either lands before it and discards whatever came back, or after it and
+changes nothing.
 """
 
 from __future__ import annotations
@@ -63,11 +69,24 @@ _RECOVERY_WAIT_SECONDS = 10.0
 
 
 # The reasons a kept marker carries as they were, rather than as "unstored".
-_KEPT_REASONS = (reading.WITHHELD_INTERRUPTED, reading.WITHHELD_UNSTOPPED)
+# A refused `cancelled` recovered as "The analysis ran" would be false.
+_KEPT_REASONS = (
+    reading.WITHHELD_INTERRUPTED,
+    reading.WITHHELD_UNSTOPPED,
+    reading.WITHHELD_CANCELLED,
+)
+# Held across every read-and-rewrite and removal of a marker, because a Cancel
+# rewrites one from a request thread while the job's own thread may remove it:
+# unheld, a rewrite could land after the removal and leave a marker behind.
+_MARKER_LOCK = threading.Lock()
 
 
 class UnrecordedError(OSError):
     """The restart marker could not be written, so the job may not spend."""
+
+
+class CancelledBeforeReserveError(Exception):
+    """A Cancel was accepted before the job's commit point, so nothing is reserved."""
 
 
 Outcome = tuple["reading.Assessment | None", str, bool]
@@ -106,23 +125,34 @@ class Hooks:
         the other side of that line: a dashboard that dies between this write
         and the reservation leaves a marker for an attempt the budget never
         charged, and the next start counts it.
+
+        The last step before the reservation is the job's commit point, taken
+        under the lock a Cancel takes, so the spent and unspent sides of a
+        cancel are divided by the reservation itself: a Cancel accepted before
+        it raises `CancelledBeforeReserveError` here, with the marker removed,
+        and one accepted after it is charged. Checking the flag and reserving
+        without that step let a cancel landing between them spend.
         """
         config = self._application.config
-        try:
-            runtime_io.atomic_write_owner_only(
-                str(_marker(config, self._job.id)),
-                json.dumps(
-                    {
-                        "id": self._job.id,
-                        "harness": self._job.harness,
-                        "sid": self._job.sid,
-                        "pid": os.getpid(),
-                        "started_at": self._job.started_at,
-                    }
-                ),
-            )
-        except OSError as exc:
-            raise UnrecordedError(str(exc)) from exc
+        marker: dict[str, Any] = {
+            "id": self._job.id,
+            "harness": self._job.harness,
+            "sid": self._job.sid,
+            "pid": os.getpid(),
+            "started_at": self._job.started_at,
+        }
+        path = _marker(config, self._job.id)
+        # Held across the write and the commit, so a Cancel accepted after the
+        # commit rewrites a marker that already exists.
+        with _MARKER_LOCK:
+            try:
+                runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
+            except OSError as exc:
+                raise UnrecordedError(str(exc)) from exc
+            if not reading.commit_job(self._job):
+                with contextlib.suppress(OSError):
+                    path.unlink(missing_ok=True)
+                raise CancelledBeforeReserveError(self._job.id)
 
     def reserved(self) -> None:
         """The spend is committed."""
@@ -136,15 +166,24 @@ class Hooks:
         turned into "ran".
         """
         path = _marker(self._application.config, self._job.id)
-        with contextlib.suppress(OSError, ValueError):
+        with _MARKER_LOCK, contextlib.suppress(OSError, ValueError):
             marker = json.loads(path.read_text(encoding="utf-8"))
             marker["reason"] = why if why in _KEPT_REASONS else reading.WITHHELD_UNSTORED
             runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
 
     def spawned(self, group: Any) -> None:
-        """The CLI exists, so the job is waiting on the provider now."""
-        self._job.group = group
+        """The CLI exists, so the job is waiting on the provider now.
+
+        A Cancel that came before the handover found no group to kill, so it
+        is killed here, at once.
+        """
+        if reading.hand_over(self._job, group):
+            group.cancel()
         self.phase(reading.PHASE_WAITING)
+
+    def cancelled(self) -> bool:
+        """Whether a reader's Cancel was accepted for this job."""
+        return reading.job_cancelled(self._job)
 
     def phase(self, phase: str) -> None:
         if reading.advance_job(
@@ -164,7 +203,13 @@ def _publish(application: Application) -> None:
     one alike, through the push they already hold.
     """
     try:
-        application.state.snapshot.clear()
+        # Cleared under the collect lock, so a collection already in flight,
+        # which read the store before this job's write, publishes first and is
+        # then dropped. Cleared without it, that body stood as the fresh
+        # snapshot after the job ended: no box, the previous sentence and the
+        # previous count (the S6 walk, W1).
+        with application.state.collect_memo_lock:
+            application.state.snapshot.clear()
         application.collect_json(show_all=False)
     except Exception as exc:  # noqa: BLE001 (a failed publish must not end the reading)
         runtime_io.diag(
@@ -193,6 +238,32 @@ def launch(
     return thread
 
 
+def cancel(application: Application, session_key: str, job_id: str) -> bool:
+    """A reader's Cancel. True when the named job was running and is now ending.
+
+    Never waits for the reap: the job's own thread does that, so a request
+    thread is never held for `supervise.REAP_TIMEOUT_SEC`.
+    """
+    accepted, group = reading.cancel_job(
+        application.config, session_key, job_id, now=application.clock()
+    )
+    if not accepted:
+        return False
+    # So a dashboard that dies before the outcome is stored says at its next
+    # start that the attempt was cancelled. A marker that already carries a
+    # reason keeps it: "may still be running" is never overwritten.
+    path = _marker(application.config, job_id)
+    with _MARKER_LOCK, contextlib.suppress(OSError, ValueError):
+        marker = json.loads(path.read_text(encoding="utf-8"))
+        if "reason" not in marker:
+            marker["reason"] = reading.WITHHELD_CANCELLED
+            runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
+    if group is not None:
+        group.cancel()
+    _publish(application)
+    return True
+
+
 def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], Outcome]) -> None:
     config = application.config
     hooks = Hooks(application, job)
@@ -200,6 +271,8 @@ def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], 
     try:
         _publish(application)
         outcome = _outcome(application, compose, hooks)
+        if reading.seal_job(job) and outcome is not None:
+            outcome = _cancelled(job, outcome, spent=hooks.spent)
         if outcome is not None:
             durable = _record(application, job, outcome)
     finally:
@@ -207,7 +280,7 @@ def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], 
         # only record that the attempt was charged, and the next start counts
         # it. Anything else has been stored, or never spent.
         if durable or not hooks.spent:
-            with contextlib.suppress(OSError):
+            with _MARKER_LOCK, contextlib.suppress(OSError):
                 _marker(config, job.id).unlink(missing_ok=True)
         else:
             # Kept, and told why, so the next start says the store refused the
@@ -232,6 +305,8 @@ def _outcome(
         return None
     except UnrecordedError:
         return None, reading.WITHHELD_JOB_UNRECORDED, False
+    except CancelledBeforeReserveError:
+        return None, reading.WITHHELD_CANCELLED_UNSENT, False
     except Exception as exc:  # noqa: BLE001 (a failed job must still free its slot)
         runtime_io.diag(
             f"Cargento: a reading job failed ({exc.__class__.__name__}).",
@@ -245,6 +320,33 @@ def _outcome(
         # was, as the next start would have said it (review F5).
         return None, reading.WITHHELD_INTERRUPTED, True
     return outcome
+
+
+def _cancelled(job: reading.Job, outcome: Outcome, *, spent: bool) -> Outcome:
+    """The outcome of a job a Cancel reached before its seal.
+
+    "May still be running" outranks the cancel, as it outranks a stop (verify
+    N5). A cancel made after the shutdown began leaves the stop's own word
+    where the stop reached the call first: `interrupted` once it was spent,
+    `stopping` when the seam refused it. A shutdown that begins after the
+    seam's `closed()` check does not reach it first, so a cancel accepted
+    before the commit point then records `cancelled-unsent` where, with no
+    cancel, the job would have reserved and recorded `interrupted`: nothing is
+    reserved, so the count still equals the charge.
+    Anything else, a reply included, becomes the cancel: spent from the
+    reservation on, and unspent before it.
+    """
+    _assessment, why, was_spent = outcome
+    if why == reading.WITHHELD_UNSTOPPED:
+        return outcome
+    if job.cancelled_after_close and why in (
+        reading.WITHHELD_INTERRUPTED,
+        reading.WITHHELD_STOPPING,
+    ):
+        return outcome
+    if was_spent or spent:
+        return None, reading.WITHHELD_CANCELLED, True
+    return None, reading.WITHHELD_CANCELLED_UNSENT, False
 
 
 def _record(application: Application, job: reading.Job, outcome: Outcome) -> bool:

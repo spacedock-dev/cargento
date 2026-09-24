@@ -89,6 +89,17 @@ function nextFocusKey(app, active){
   return "";
 }
 
+// The key a named control asks focus to fall back to when it is gone, so a
+// control that exists only while something runs can hand focus back to the
+// control it stood beside. Read from the same element `nextFocusKey` found.
+function nextFocusFallback(app, key){
+  for(const target of app.querySelectorAll("[data-next-focus]")){
+    if(String(target.dataset && target.dataset.nextFocus || "") !== key) continue;
+    return String(target.dataset && target.dataset.nextFocusFallback || "");
+  }
+  return "";
+}
+
 function nextFocusNamed(app, key, options, input){
   for(const target of app.querySelectorAll("[data-next-focus]")){
     if(String(target.dataset && target.dataset.nextFocus || "") !== key) continue;
@@ -132,7 +143,10 @@ function nextCaptureFocus(){
       start:active.selectionStart, end:active.selectionEnd,
       top:active.scrollTop || 0, left:active.scrollLeft || 0,
     } : null;
-    return control ? {named, control, input, ...viewport} : {named, input, ...viewport};
+    const fallback = nextFocusFallback(app, named);
+    const also = fallback ? {fallback} : {};
+    return control ? {named, control, input, ...also, ...viewport}
+      : {named, input, ...also, ...viewport};
   }
   for(const session of app.querySelectorAll("[data-next-session]")){
     if(typeof session.contains !== "function" || !session.contains(active)) continue;
@@ -199,6 +213,7 @@ function nextRestoreFocus(snapshot, model){
   // moves. See [reader state](docs/design-reader-state.md#the-inventory).
   const options = {preventScroll: snapshot.preventScroll === true};
   if(snapshot.named && nextFocusNamed(app, snapshot.named, options, snapshot.input)) return;
+  if(snapshot.fallback && nextFocusNamed(app, snapshot.fallback, options, null)) return;
   if(snapshot.control && nextFocusRowControl(app, snapshot.control, options)) return;
   if(snapshot.session){
     for(const session of app.querySelectorAll("[data-next-session]")){

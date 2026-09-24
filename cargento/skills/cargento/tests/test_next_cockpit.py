@@ -4244,7 +4244,9 @@ __els.app = {
     this.html = html;
     __els.renders += 1;
     document.activeElement = null;
-    controls = [...html.matchAll(/<(button|a|textarea)\b([^>]*)>/g)].map(match => {
+    // A span is a control here only when it is focusable, as the analysis
+    // box's title is (tabindex="-1").
+    controls = [...html.matchAll(/<(button|a|textarea|span(?=[^>]*\btabindex=))\b([^>]*)>/g)].map(match => {
       const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
         .map(attr => [attr[1], decode(attr[2])]));
       const dataset = Object.fromEntries(Object.entries(attrs)
@@ -5645,6 +5647,375 @@ console.log(JSON.stringify(
         assert isinstance(out, str)
         self.assertNotIn("Analyzing drift", out)
         self.assertIn('data-next-cockpit-action="reading-ask"', out)
+
+    # DRC-4693: Cancel in the analyzing box, and what stands after it.
+    CANCELLED = (
+        "The analysis was cancelled before it finished. Nothing is shown from it, the "
+        "attempt still counts, and a fresh press is the only retry."
+    )
+    CANCEL_FAILED = (
+        "Could not confirm the cancel. The analysis may still be running; refresh to check."
+    )
+
+    def _cancel_fixture(self, body: str) -> Any:
+        return self.run_fixture(
+            r"""
+__dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
+const session = __dashboard.sessions[0];
+session.annotation_goal = "ship it";
+const job = {id:"j1", phase:"waiting", started_at:100, phase_at:101, provider:"codex",
+  cancelling:false, steps:"""
+            + self.JOB_STEPS
+            + r"""};
+__dashboard.reading_jobs = {"codex:focus-1": job};
+nextData = __dashboard;
+const annotation = {goal:"ship it", reading_count:1};
+const control = (a = annotation) => nextCockpitReadingControl(session, a, {enabled:true});
+const upstream = __fetchImpl;
+const posts = [];
+"""
+            + body
+        )
+
+    def test_a_reader_sees_cancel_beside_analyzing_drift(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+const other = nextCockpitReadingControl(__dashboard.sessions[1], annotation, {enabled:true});
+__dashboard.reading_jobs = {};
+console.log(JSON.stringify({html: (__dashboard.reading_jobs = {"codex:focus-1": job}, control()),
+  other, idle: (__dashboard.reading_jobs = {}, control())}));
+"""
+        )
+        assert isinstance(out, dict)
+        head = re.search(
+            r'<div class="next-cockpit-reading-job-head">(.*?)</div>', out["html"], re.DOTALL
+        )
+        assert head is not None
+        self.assertIn("Analyzing drift", head.group(1))
+        button = re.search(r"<button[^>]*>Cancel</button>", head.group(1))
+        assert button is not None, "no Cancel in the box's header row"
+        self.assertIn('data-next-cockpit-action="reading-cancel"', button.group(0))
+        # Not the press button's focus key, which the title holds (review P-1),
+        # and a fallback to it, so focus lands on the press when the box goes.
+        self.assertIn('data-next-focus="reading-cancel:codex:focus-1"', button.group(0))
+        self.assertIn('data-next-focus-fallback="reading:codex:focus-1"', button.group(0))
+        self.assertRegex(
+            head.group(1), r'<span[^>]*tabindex="-1"[^>]*data-next-focus="reading:codex:focus-1"'
+        )
+        # Nobody cancelled this job, so its Cancel is live.
+        self.assertNotIn("aria-disabled", button.group(0))
+        for text in (out["other"], out["idle"]):
+            self.assertNotIn('data-next-cockpit-action="reading-cancel"', text)
+
+    def test_after_cancel_the_reader_sees_the_press_again_with_why_and_the_count(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+const board = JSON.parse(JSON.stringify(__dashboard));
+board.reading_jobs = {};
+__fetchImpl = (url, init) => String(url) === "/api/reading/cancel"
+  ? (posts.push(JSON.parse(init.body)),
+     Promise.resolve({ok:true, status:202, json:async()=>({ok:true, cancelling:true})}))
+  : String(url).startsWith("/api/data")
+    ? Promise.resolve({ok:true, status:200, json:async()=>board})
+    : upstream(url, init);
+await nextCockpitCancelReading(session);
+await __settle();
+renderNext();
+const sentence = """
+            + json.dumps(self.CANCELLED)
+            + r""";
+// The whole reading block, where the stored sentence stands beside the press.
+console.log(JSON.stringify({posts, after: nextCockpitReading(session,
+  {goal:"ship it", reading_count:2, reading_withheld:sentence}, [], {enabled:true})}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            [
+                {
+                    "harness": "codex",
+                    "sid": "focus-1",
+                    "job": "j1",
+                    "press": True,
+                    "observer_model": 1,
+                }
+            ],
+            out["posts"],
+        )
+        after = out["after"]
+        self.assertNotIn("Analyzing drift", after)
+        self.assertIn('data-next-cockpit-action="reading-ask"', after)
+        self.assertIn(self.CANCELLED, after)
+        self.assertIn("2 model requests recorded", after)
+        self.assertNotIn(self.CANCEL_FAILED, after)
+        for wrong in ("You cancelled", "No drift", "Nothing found", "✓", "✔"):
+            self.assertNotIn(wrong, after)
+
+    def test_a_second_cancel_click_sends_nothing(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+let answer;
+const answered = new Promise(resolve => { answer = resolve; });
+__fetchImpl = (url, init) => String(url) === "/api/reading/cancel"
+  ? (posts.push(JSON.parse(init.body)), answered)
+  : upstream(url, init);
+const first = nextCockpitCancelReading(session);
+renderNext();
+const pending = control();
+await nextCockpitCancelReading(session);
+// The server's own word: the job is finishing, as a reload would also read it.
+__dashboard.reading_jobs = {"codex:focus-1": {...job, cancelling:true}};
+answer({ok:true, status:202, json:async()=>({ok:true, cancelling:true})});
+await first;
+await nextCockpitCancelReading(session);
+console.log(JSON.stringify({calls: posts.length, pending, finishing: control()}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["calls"], "a second Cancel sent another request")
+        for html in (out["pending"], out["finishing"]):
+            button = re.search(r"<button[^>]*>Cancel</button>", html)
+            assert button is not None, "Cancel was replaced by some other label"
+            self.assertIn('aria-disabled="true"', button.group(0))
+            self.assertIn("Analyzing drift", html)
+
+    def test_a_reload_while_a_cancel_is_finishing_draws_cancel_disabled(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+__dashboard.reading_jobs = {"codex:focus-1": {...job, cancelling:true}};
+nextCockpitReadingRequests.clear();
+console.log(JSON.stringify(control()));
+"""
+        )
+        assert isinstance(out, str)
+        button = re.search(r"<button[^>]*>Cancel</button>", out)
+        assert button is not None
+        self.assertIn('aria-disabled="true"', button.group(0))
+        self.assertIn("Waiting for Codex", out)
+
+    def test_a_cancel_that_could_not_be_confirmed_says_it_may_still_be_running(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+const results = [];
+for(const reply of [null, {ok:false, status:503, json:async()=>{ throw new Error("html"); }},
+                    {ok:true, status:202, json:async()=>({})}]){
+  __fetchImpl = async (url, init) => {
+    if(String(url) !== "/api/reading/cancel") return upstream(url, init);
+    posts.push(1);
+    if(reply === null) throw new Error("network down");
+    return reply;
+  };
+  await nextCockpitCancelReading(session);
+  results.push(control());
+}
+console.log(JSON.stringify({results, calls: posts.length}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(3, out["calls"])
+        for html in out["results"]:
+            self.assertIn(self.CANCEL_FAILED, html)
+            self.assertIn("Analyzing drift", html)
+            # The job was never confirmed as ending, so Cancel may be tried again.
+            button = re.search(r"<button[^>]*>Cancel</button>", html)
+            assert button is not None
+            self.assertNotIn("aria-disabled", button.group(0))
+
+    def test_a_cancel_the_server_says_is_not_running_takes_the_boards_word(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+const board = JSON.parse(JSON.stringify(__dashboard));
+board.reading_jobs = {};
+let refreshed = 0;
+__fetchImpl = (url, init) => String(url) === "/api/reading/cancel"
+  ? Promise.resolve({ok:false, status:409, json:async()=>({ok:false, reason:"not-running"})})
+  : String(url).startsWith("/api/data")
+    ? (refreshed++, Promise.resolve({ok:true, status:200, json:async()=>board}))
+    : upstream(url, init);
+await nextCockpitCancelReading(session);
+await __settle();
+renderNext();
+console.log(JSON.stringify({refreshed, html: control()}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertGreaterEqual(out["refreshed"], 1)
+        self.assertNotIn("Analyzing drift", out["html"])
+        self.assertNotIn(self.CANCEL_FAILED, out["html"])
+        self.assertIn('data-next-cockpit-action="reading-ask"', out["html"])
+
+    def test_a_failed_cancel_says_nothing_under_a_newer_press(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+__fetchImpl = async (url, init) => {
+  if(String(url) === "/api/reading/cancel") throw new Error("network down");
+  return upstream(url, init);
+};
+await nextCockpitCancelReading(session);
+const failed = control();
+__dashboard.reading_jobs = {"codex:focus-1": {...job, id:"j2"}};
+console.log(JSON.stringify({failed, newer: control()}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn(self.CANCEL_FAILED, out["failed"])
+        self.assertIn("Analyzing drift", out["newer"])
+        self.assertNotIn(self.CANCEL_FAILED, out["newer"])
+
+    def test_a_lost_answer_the_board_then_confirms_drops_the_failed_sentence(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+__fetchImpl = async (url, init) => {
+  if(String(url) === "/api/reading/cancel") throw new Error("answer lost");
+  return upstream(url, init);
+};
+await nextCockpitCancelReading(session);
+__dashboard.reading_jobs = {"codex:focus-1": {...job, cancelling:true}};
+console.log(JSON.stringify(control()));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertNotIn(self.CANCEL_FAILED, out)
+        self.assertRegex(out, r'<button[^>]*aria-disabled="true"[^>]*>Cancel</button>')
+
+    def test_an_accepted_cancel_stays_disabled_when_the_refresh_fails(self) -> None:
+        out = self._cancel_fixture(
+            r"""
+__fetchImpl = (url, init) => String(url) === "/api/reading/cancel"
+  ? Promise.resolve({ok:true, status:202, json:async()=>({ok:true, cancelling:true})})
+  : String(url).startsWith("/api/data")
+    ? Promise.reject(new Error("board unreachable"))
+    : upstream(url, init);
+await nextCockpitCancelReading(session).catch(() => {});
+await __settle();
+console.log(JSON.stringify(control()));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertRegex(out, r'<button[^>]*aria-disabled="true"[^>]*>Cancel</button>')
+
+    def test_a_reader_who_clicks_cancel_sees_it_disabled_and_keeps_focus_on_the_press(
+        self,
+    ) -> None:
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + r"""
+__dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
+__dashboard.sessions[0].annotation_goal = "ship it";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+const job = {id:"j1", phase:"waiting", started_at:100, phase_at:101, provider:"codex",
+  cancelling:false, steps:"""
+            + self.JOB_STEPS
+            + r"""};
+__dashboard.reading_jobs = {"codex:focus-1": job};
+nextData = __dashboard;
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const ctx = nextCockpitContexts.get(
+  nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
+if(ctx) ctx.data = Object.assign({}, ctx.data, {observer_model:{enabled:true, disclosure:"x"}});
+renderNext();
+const upstream = __fetchImpl;
+let answer;
+const posts = [];
+__fetchImpl = (url, init) => String(url) === "/api/reading/cancel"
+  ? (posts.push(1), new Promise(r => { answer = r; }))
+  : upstream(url, init);
+const cancel = () => controls.find(c => c.dataset.nextCockpitAction === "reading-cancel");
+const found = Boolean(cancel());
+if(found){
+  cancel().focus();
+  __fire("click", {target:cancel(), preventDefault(){}});
+}
+const pendingHtml = __els.app.innerHTML;
+const pendingDisabled = found && cancel() ? cancel().getAttribute("aria-disabled") : null;
+__dashboard.reading_jobs = {};
+if(answer) answer({ok:true, status:202, json:async()=>({ok:true, cancelling:true})});
+await __settle();
+const cancellingFocus = document.activeElement && document.activeElement.dataset
+  ? document.activeElement.dataset.nextCockpitAction : null;
+// The job ends: the next board has no job, as the server's would.
+nextData.reading_jobs = {};
+renderNext();
+const active = document.activeElement;
+console.log(JSON.stringify({found, posts: posts.length, pendingDisabled,
+  pendingBox: pendingHtml.includes("Analyzing drift"),
+  focusedAction: active && active.dataset ? active.dataset.nextCockpitAction || "" : null,
+  focusedKey: active && active.dataset ? active.dataset.nextFocus || "" : null,
+  cancellingFocus, afterBox: __els.app.innerHTML.includes("Analyzing drift"), jobs: nextData.reading_jobs,
+  same: nextData === __dashboard, cancels: [...nextCockpitReadingCancels.entries()]}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["found"], "no Cancel drawn on the held-to tab")
+        self.assertEqual(1, out["posts"], "clicking Cancel sent nothing")
+        self.assertTrue(out["pendingBox"])
+        self.assertEqual("true", out["pendingDisabled"])
+        self.assertEqual("reading-cancel", out["cancellingFocus"])
+        self.assertFalse(out["afterBox"])
+        self.assertEqual("reading-ask", out["focusedAction"])
+        self.assertEqual("reading:codex:focus-1", out["focusedKey"])
+
+    def test_a_keyboard_press_does_not_leave_focus_on_cancel(self) -> None:
+        """Review P-1: a double Enter on the press must not cancel the analysis it started."""
+        out = self.run_fixture(
+            self.FOCUS_DOM
+            + r"""
+__dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
+__dashboard.sessions[0].annotation_goal = "ship it";
+__dashboard.sessions[0].annotation_revision = 1;
+__dashboard.sessions[0].annotation_revision_count = 1;
+__dashboard.sessions[0].annotation_at = 100;
+__dashboard.reading_jobs = {};
+nextData = __dashboard;
+navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+await __settle();
+const group = nextProjectGroups().find(g => g.label === "cargento");
+const ctx = nextCockpitContexts.get(
+  nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
+if(ctx) ctx.data = Object.assign({}, ctx.data, {observer_model:{enabled:true, disclosure:"x"}});
+renderNext();
+const job = {id:"j1", phase:"preparing", started_at:100, phase_at:101, provider:"codex",
+  cancelling:false, steps:"""
+            + self.JOB_STEPS
+            + r"""};
+const upstream = __fetchImpl;
+__fetchImpl = (url, init) => String(url) === "/api/reading"
+  ? (__dashboard.reading_jobs = {"codex:focus-1": job},
+     Promise.resolve({ok:true, status:202, json:async()=>({ok:true, job})}))
+  : upstream(url, init);
+const ask = controls.find(c => c.dataset.nextCockpitAction === "reading-ask");
+ask.focus();
+__fire("click", {target:ask, preventDefault(){}});
+await __settle();
+renderNext();
+const active = document.activeElement;
+const focused = active && active.dataset ? {action: active.dataset.nextCockpitAction || "",
+  key: active.dataset.nextFocus || ""} : null;
+// A second Enter on whatever holds focus now.
+let cancels = 0;
+const before = __fetchImpl;
+__fetchImpl = (url, init) => String(url) === "/api/reading/cancel"
+  ? (cancels++, Promise.resolve({ok:true, status:202, json:async()=>({ok:true, cancelling:true})}))
+  : before(url, init);
+if(active) __fire("click", {target:active, preventDefault(){}});
+await __settle();
+console.log(JSON.stringify({box: __els.app.innerHTML.includes("Analyzing drift"), focused,
+  cancels}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["box"])
+        self.assertNotEqual("reading-cancel", out["focused"]["action"])
+        # The box's title holds the press's focus key while the analysis runs.
+        self.assertEqual("reading:codex:focus-1", out["focused"]["key"])
+        self.assertEqual(0, out["cancels"], "a second Enter cancelled the analysis")
 
     def test_a_reload_draws_the_same_box_from_the_published_job_alone(self) -> None:
         out = self.run_fixture(
