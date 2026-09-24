@@ -896,21 +896,23 @@ class TheCollectorDocstringDescribesTheScorerThatExists(unittest.TestCase):
 
 
 class TheOutputColumnIsTheRulingsOnMostHarnesses(unittest.TestCase):
-    """Only a work-evidence harness is asked the Expected Output question.
+    """Only a case whose record shows work is asked the Expected Output question.
 
     Everywhere else the collector fixes the mark to `abstain` and the producer
     answers `not verifiable` without asking, so "abstained as marked" there
     would read as a measurement of the model. It is the ruling's answer, and
     twenty three of twenty three output marks on the corpus this was written
-    against were exactly that.
+    against were exactly that. This check never grants tool output, so the case
+    that shows work is a Pi case with a demonstrated work result.
     """
 
     def _score(self, harness: str, reply: str) -> dict[str, Any]:
+        work = [_fact("w1", harness=harness, fact_type="work_result")] if harness == "pi" else []
         return score_abstention.score_case(
             cast("Any", _Config()),
             _case("abcd1234abcd1234", harness=harness),
             _row(harness=harness),
-            [_fact("f1", harness=harness)],
+            [_fact("f1", harness=harness), *work],
             {"goal": "abstain", "output": "abstain"},
             words=(mark_abstention.GOAL, mark_abstention.OUTPUT),
             model=_FakeModel(reply),
@@ -921,7 +923,7 @@ class TheOutputColumnIsTheRulingsOnMostHarnesses(unittest.TestCase):
         record = self._score("claude", _reply("unverifiable", ()))
         self.assertFalse(record["asks_output"])
         line = score_abstention.case_line(record)
-        self.assertIn("output abstain -> abstained (not asked of this harness", line)
+        self.assertIn("output abstain -> abstained (not asked, nothing it read shows work", line)
         self.assertNotIn("output abstain -> abstained (abstained as marked)", line)
         # The goal column is still a measurement on the same line.
         self.assertIn("goal abstain -> abstained (abstained as marked)", line)
@@ -1266,11 +1268,10 @@ class ARubricEntryReachesTheCommittedFileAsClosedTokensOnly(unittest.TestCase):
         self.assertIn("no case with this id was scored", text)
         self.assertNotIn("withheld before the model", text)
 
-    def test_the_known_harnesses_hold_the_producers_work_evidence_row(self) -> None:
-        sys.path.insert(0, str(SKILL))
-        from cargento_runtime import reading  # noqa: PLC0415
-
-        for harness in (*score_abstention.COVERAGE_HARNESSES, *reading.WORK_EVIDENCE_HARNESSES):
+    def test_the_known_harnesses_hold_the_one_whose_record_publishes_work(self) -> None:
+        # Pi is the harness whose record publishes demonstrated work results
+        # without a tool-output grant, which this check never gives.
+        for harness in (*score_abstention.COVERAGE_HARNESSES, "pi"):
             self.assertIn(harness, score_abstention.RUBRIC_HARNESSES)
 
 

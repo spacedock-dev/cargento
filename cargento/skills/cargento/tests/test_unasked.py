@@ -1261,6 +1261,70 @@ class TheUnaskedLaneNeverReachesClaudeCodeTest(unittest.TestCase):
         self.assertIsInstance(models[0], reading.CodexReadingModel)
 
 
+class TheUnaskedLaneNeverSendsACheckTest(unittest.TestCase):
+    """DEC-23 item 10: the lane never receives tool outcomes until DEC-18's
+    rubric thresholds exist, whatever the reader allowed for a press. Run
+    through the real producer, so the prompt the lane would send is the one
+    asserted on."""
+
+    CHECK: ClassVar[dict[str, Any]] = {
+        "fact_id": "check-1",
+        "type": "tool_report",
+        "subject": "check",
+        "result": "failed",
+        "result_source": "flag",
+        "summary": "python3 -m pytest tests/test_retry.py",
+        "at": 20.0,
+        "evidence": {"source": "Claude Bash call and paired result", "confidence": "exact"},
+        "source_session": {"harness": "claude", "sid": "s-1"},
+        "branch": {"harness": "claude", "sid": "s-1", "record_id": "call-1"},
+    }
+    WORDS: ClassVar[dict[str, Any]] = {
+        "fact_id": "f1",
+        "type": "user_message",
+        "summary": "ship the cockpit please",
+        "at": 15.0,
+        "evidence": {"source": "root transcript", "confidence": "exact"},
+        "source_session": {"harness": "claude", "sid": "s-1"},
+    }
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def test_a_reader_who_allowed_tool_output_still_gets_no_check_sent_unasked(self) -> None:
+        from cargento_runtime import reading_policy  # noqa: PLC0415
+
+        config = _config(self.root)
+        reading_policy.set_consent(
+            config, True, now=1_000.0, provider="codex", tool_output="OpenAI"
+        )
+        prompts: list[str] = []
+
+        def call(_self: Any, prompt: str, **_kw: Any) -> tuple[str, str]:
+            prompts.append(prompt)
+            return "{}", "ok"
+
+        harness = _Harness(config, None)
+        harness.lane.produce = reading.produce
+        harness.lane.facts_for = lambda _state, _row, _now: [self.WORDS, self.CHECK]
+        with mock.patch.object(reading.CodexReadingModel, "__call__", call):
+            # A change to a running row, which a mid-flight reading may read.
+            harness.consider([_row(state="idle")])
+            harness.consider([_row(state="working")])
+        self.assertEqual(1, len(prompts), "the lane did not read, so this proves nothing")
+        self.assertIn("ship the cockpit please", prompts[0])
+        self.assertNotIn("pytest", prompts[0])
+        self.assertNotIn("tool_report", prompts[0])
+
+    def test_the_lane_names_no_tool_output_admission_at_all(self) -> None:
+        source = Path(unasked.__file__).read_text(encoding="utf-8")
+        for name in ("tool_output", "ToolOutput", "press_check_tails", "claude_check_tails"):
+            with self.subTest(name=name):
+                self.assertNotIn(name, source)
+
+
 class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCase):
     """Structural half of ruling 3: no summary, lane or context module names it.
 

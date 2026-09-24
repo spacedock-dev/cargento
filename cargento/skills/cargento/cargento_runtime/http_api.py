@@ -1529,16 +1529,37 @@ class _RequestHandler(BaseHTTPRequestHandler):
         route = self._reading_route(harness, payload)
         if route is None:
             return
-        provider = route["provider"]
-        permission = (
-            reading_policy.set_consent(config, True, now=application.clock(), provider=provider)
-            if payload.get("allow") is True
-            else reading_policy.status(config, now=application.clock(), provider=provider)
-        )
+        permission = self._reading_permission(payload, route)
         if permission["reason"]:
             self._reading_permission_reply(permission)
             return
         self._reading_adoption(harness, sid, payload, route)
+
+    def _reading_permission(
+        self, payload: dict[str, Any], route: runtime_reading_route.Route
+    ) -> reading_policy.Status:
+        """The stored answer this press rests on, after any Allow it carried."""
+        application = self.server.application
+        config = application.config
+        provider, where = route["provider"], route["destination"]
+        permission = (
+            reading_policy.set_consent(
+                config, True, now=application.clock(), provider=provider, tool_output=where
+            )
+            if payload.get("allow") is True
+            else reading_policy.status(config, now=application.clock(), provider=provider)
+        )
+        if (
+            not permission["reason"]
+            and where
+            and not reading_policy.tool_output_allowed(permission, provider, where)
+        ):
+            # Allowed for the reader's words, and not for tool output to this
+            # destination: an answer given before tool output was named, or for
+            # an endpoint that has since moved. Asked again, and nothing read,
+            # item 7 of the ruling `reading.build_ledger` cites.
+            return {**permission, "consent": False, "reason": "tool-output-consent-required"}
+        return permission
 
     def _reading_route(
         self, harness: str, payload: dict[str, Any]
@@ -1546,10 +1567,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
         """The one provider this press may reach, or None once refused.
 
         From the payload's harness alone, so the answer says nothing about
-        whether the session exists. Both refusals come before any consent
+        whether the session exists. Every refusal comes before any consent
         write or reservation: "Allow and check" allowed the provider the page
         named, and when that is not the provider that would run, the answer
-        was given about a different receiver and records nothing.
+        was given about a different receiver and records nothing. The same
+        holds for where tool output goes: an Allow whose disclosure named
+        another destination, or none, records nothing either.
         """
         route = runtime_reading_route.resolve(harness)
         refusal = (
@@ -1557,6 +1580,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
             if not route["provider"]
             else (409, "provider-changed")
             if payload.get("provider") != route["provider"]
+            else (409, "destination-changed")
+            if payload.get("allow") is True
+            and route["destination"]
+            and payload.get("tool_output") != route["destination"]
             else None
         )
         if refusal is None:
@@ -1761,21 +1788,61 @@ class _RequestHandler(BaseHTTPRequestHandler):
             row,
             entry["revisions"],
             facts,
-            now=application.clock(),
+            **self._reading_arguments(row, entry, route),
+        )
+
+    def _reading_arguments(
+        self,
+        row: dict[str, Any],
+        entry: annotation_store.Annotation,
+        route: runtime_reading_route.Route,
+    ) -> dict[str, Any]:
+        """Everything `produce` takes beyond the record, from the route that ran."""
+        application = self.server.application
+        harness, sid = str(row.get("harness")), str(row.get("sid"))
+        tool_output = None
+        where = route["destination"]
+        if harness in runtime_reading_route.TOOL_OUTPUT_HARNESSES and not where:
+            # Nothing to grant: the reading runs on the reader's words and its
+            # cutoff says the checks were not sent and why (owner, Q5).
+            tool_output = runtime_reading.ToolOutput(destination="", label=route["label"])
+        elif harness in runtime_reading_route.TOOL_OUTPUT_HARNESSES and (
+            reading_policy.tool_output_allowed(
+                reading_policy.status(
+                    application.config, now=application.clock(), provider=route["provider"]
+                ),
+                route["provider"],
+                where,
+            )
+        ):
+            # Re-read inside the press rather than taken from the payload: only
+            # a stored grant for exactly this provider and destination admits
+            # the checks, and their output tails are read here, at the press,
+            # never from the published record.
+            tool_output = runtime_reading.ToolOutput(
+                destination=where,
+                label=route["label"],
+                tails=runtime_project_context.press_check_tails(
+                    application.config, application.state, harness, sid
+                ),
+            )
+        return {
+            "tool_output": tool_output,
+            "now": application.clock(),
             # A discard record has no revisions, which is also what a session
             # nobody typed against has. `produce` is handed revisions and
             # cannot tell them apart, so the caller that holds the entry says
             # which (DRC-4565).
-            discarded=annotation_store.is_discarded(entry),
+            "discarded": annotation_store.is_discarded(entry),
             # A stamp: what read it and when, from the route that ran. It once
             # carried a policy sentence, rendered where the design says a
             # stamp names the model and the moment. The policy belongs in the
             # route's disclosure above the button, seen BEFORE pressing.
-            stamp_text=(
+            "stamp_text": (
                 f"{route['model']} · read at "
                 f"{time.strftime('%H:%M', time.localtime(application.clock()))}"
             ),
-            model=reading_policy.GuardedModel(
+            "model": reading_policy.GuardedModel(
                 application.config,
                 (
                     runtime_reading.ClaudeReadingModel
@@ -1785,7 +1852,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 application.clock,
                 provider=route["provider"],
             ),
-        )
+        }
 
     def _events(self, harness: str) -> None:
         """A harness's lifecycle events, forwarded by its own hook.

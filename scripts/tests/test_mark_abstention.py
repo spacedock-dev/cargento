@@ -71,7 +71,16 @@ class FrozenMarksTest(unittest.TestCase):
             "harness": "pi",
             "sid": "s1",
             "row_snapshot": {"harness": "pi", "sid": "s1", "state": "working"},
-            "producer_facts": [],
+            "producer_facts": [
+                {
+                    "fact_id": "w1",
+                    "type": "work_result",
+                    "summary": "wrote out.csv",
+                    "at": 90.0,
+                    "evidence": {"source": "record", "confidence": "exact"},
+                    "source_session": {"harness": "pi", "sid": "s1"},
+                }
+            ],
         }
         body = {"v": 4, "goal": "FROZEN GOAL", "output": "FROZEN OUTPUT", "cases": [case]}
         with tempfile.TemporaryDirectory() as folder:
@@ -164,9 +173,25 @@ class TheOutputQuestionIsNotAskedWhereTheRulingFixesItTest(unittest.TestCase):
     question, and the unanimity guard then punished the correct answer.
     """
 
-    def test_only_a_work_evidence_harness_is_asked(self) -> None:
-        self.assertNotIn("claude", mark_abstention._reading().WORK_EVIDENCE_HARNESSES)
-        self.assertIn("pi", mark_abstention._reading().WORK_EVIDENCE_HARNESSES)
+    def test_only_a_case_whose_frozen_ledger_shows_work_is_asked(self) -> None:
+        def case(harness: str, fact_type: str) -> dict[str, Any]:
+            fact = {
+                "fact_id": "f1",
+                "type": fact_type,
+                "subject": "check",
+                "result": "passed",
+                "summary": "wrote out.csv",
+                "at": 90.0,
+                "evidence": {"source": "record", "confidence": "exact"},
+                "source_session": {"harness": harness, "sid": "s1"},
+            }
+            return {"harness": harness, "sid": "s1", "producer_facts": [fact]}
+
+        body = {"v": 4, "output": "a CSV"}
+        self.assertTrue(mark_abstention._mark_asks_output(body, case("pi", "work_result")))
+        self.assertFalse(mark_abstention._mark_asks_output(body, case("pi", "user_message")))
+        # This tool never grants tool output, so a Claude Code check is not read.
+        self.assertFalse(mark_abstention._mark_asks_output(body, case("claude", "tool_report")))
 
     def test_the_guard_ignores_a_column_the_corpus_cannot_vary(self) -> None:
         cases = [{"id": f"c{i}", "asks_output": False} for i in range(10)]

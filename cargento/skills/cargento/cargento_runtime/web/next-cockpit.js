@@ -1223,26 +1223,37 @@ function nextCockpitWorkEvidenceLimit(harness){
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
   if(harness === "pi") return `${label} publishes demonstrated work results, and they are read here.`;
   if(harness === "claude"){
+    /* The route's own sentence says what a reading sends of them and to whom,
+       or that it sends none, so the line under the checks and the disclosure
+       beside the button cannot word it two ways. */
+    const route = nextReadingRoute({harness});
+    const sent = route && route.provider ? String(route.tool_output || "") : "";
     return `${label} records the checks a session ran and the files it wrote, and they are ` +
       "listed here. A result is what the tool reported; Cargento inspects no file, test or " +
-      "deliverable.";
+      "deliverable." + (sent ? ` ${sent}` : "");
   }
   return `${label} publishes no demonstrated work results. Cargento reads those on Pi ` +
     "alone, so nothing above is an inspected file, test or deliverable.";
 }
 
-/* The reading's Expected Output limit, apart from the record's own line. They
-   were one function, and the record now lists Claude Code's checks while a
-   reading may not read them until DRC-4677 admits them, under item 7 of
+/* The reading's Expected Output limit, apart from the record's own line. On
+   Claude Code it is lifted only where the route names where the checks go, so
+   a reading can carry them after the reader allows tool output, under item 7 of
    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work).
-   One sentence for both would either deny the checks beside it or lift the
-   demotion early. */
+   Where it cannot name that, no check is sent and the demotion stays. */
 function nextReadingOutputLimit(harness){
   if(harness === "pi") return "";
   if(harness !== "claude") return nextCockpitWorkEvidenceLimit(harness);
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
-  return `${label} records the checks a session ran, but no reading reads them yet, so a ` +
-    "reading cannot judge an expected output here.";
+  const route = nextReadingRoute({harness});
+  if(route && route.provider && route.destination) return "";
+  if(route && route.provider){
+    return `${label} records the checks a session ran, but Cargento cannot name where ` +
+      `${route.label} would send them, so no check is sent and a reading cannot judge an ` +
+      "expected output here.";
+  }
+  return `${label} records the checks a session ran, but no reading can carry them here, so ` +
+    "a reading cannot judge an expected output here.";
 }
 
 /* A check's or a written path's own line under its summary: who, what, and
@@ -1648,6 +1659,9 @@ const NEXT_READING_ROUTE_UNREAD =
 const NEXT_READING_PROVIDER_CHANGED =
   "The reader for this session changed since this page was drawn, so nothing was sent; " +
   "read who reads it now and press again.";
+const NEXT_READING_DESTINATION_CHANGED =
+  "Where tool output would go changed since this page was drawn, so nothing was sent; " +
+  "read where it goes now and press again.";
 const NEXT_READING_REFUSAL_ABSENCE = new Map([
   [NEXT_READING_ROUTE_UNREAD, "not-observed"],
   [NEXT_READING_NO_WORDS, "waiting-on-you"],
@@ -1685,6 +1699,16 @@ const NEXT_READING_NOT_ASKED =
 const NEXT_READING_VERDICT_STATED =
   "The reading's explanation stated whether the work landed, which is a verdict the evidence " +
   "read does not license, so its result was withdrawn.";
+/* Item 8 of the tool report ruling, as the page re-applies it and as the
+   producer stores it (`check-does-not-show-it`). */
+const NEXT_READING_CHECK_DOES_NOT_SHOW_IT =
+  "The check it cited does not show this: a departure needs its latest run failing, and a " +
+  "consistent its latest run passing with no change after it, both after the words you saved.";
+/* Only the producer knows which failed checks the prompt had no room for, so
+   this one is read from the store and never re-derived. */
+const NEXT_READING_FAILED_CHECK_UNREAD =
+  "A check that failed was not read, because the reading had no room for it, so nothing here " +
+  "says the output is consistent.";
 /* Why a stored row is `not verifiable`, token to sentence. The producer owns
    the tokens (`reading.WHY_TOKENS`, compared by `ReadingVocabularyIsSpeltOnceTest`)
    and this page owns every sentence, so no producer prose reaches the page
@@ -1700,6 +1724,8 @@ const NEXT_READING_STORED_WHY = {
   "board-quoting-itself": NEXT_READING_DERIVED_ONLY,
   "uncorroborated": NEXT_READING_OWN_WORDS_ONLY,
   "verdict-stated": NEXT_READING_VERDICT_STATED,
+  "check-does-not-show-it": NEXT_READING_CHECK_DOES_NOT_SHOW_IT,
+  "failed-check-unread": NEXT_READING_FAILED_CHECK_UNREAD,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
@@ -1723,6 +1749,20 @@ const NEXT_READING_WORK_TYPES = ["work_result", "result", "tool_report"];
 
 function nextReadingDemonstratesWork(entry){
   return NEXT_READING_WORK_TYPES.indexOf(String(entry && entry.type || "")) >= 0;
+}
+
+/* `reading.check_supports`, spelt for the entries the page holds: a cited
+   tool report carries a verdict only as a check run in the window, failed for
+   a departure, passed and not before the last change for a consistent. A
+   written path shows a write and no result, so it carries neither. */
+function nextReadingCheckSupports(entry, result, windowStart){
+  if(String(entry && entry.type || "") !== "tool_report") return true;
+  if(entry.subject !== "check") return false;
+  const at = nextNumber(entry.at);
+  if(at == null || at <= 0 || (windowStart != null && at < windowStart)) return false;
+  if(result === NEXT_READING_DEPARTURE) return entry.result === "failed";
+  if(result === NEXT_READING_CONSISTENT) return entry.result === "passed" && !entry.beforeLastChange;
+  return false;
 }
 
 /* The third author, which the page did not have. An observer snapshot is
@@ -1777,8 +1817,9 @@ function nextCockpitConflictCandidates(annotation, entries){
   });
 }
 
-function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled){
-  const citations = nextReadingCitations(raw, entries);
+function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled,
+    windowStart = null){
+  let citations = nextReadingCitations(raw, entries);
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
   const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
   let limitText = limit || "";
@@ -1839,6 +1880,16 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_MALFORMED;
   }
+  let droppedCheck = false;
+  if(result !== NEXT_READING_UNVERIFIABLE){
+    const supporting = citations.filter(entry => nextReadingCheckSupports(entry, result, windowStart));
+    droppedCheck = supporting.length < citations.length;
+    citations = supporting;
+    if(!citations.length){
+      result = NEXT_READING_UNVERIFIABLE;
+      why = NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
+    }
+  }
   const fromPerson = citations.filter(nextReadingPersonAuthored);
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
@@ -1848,7 +1899,7 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
        deliverable needs an entry that DEMONSTRATES work. The agent saying it
        finished does not, and neither does the reader's own request. */
     result = NEXT_READING_UNVERIFIABLE;
-    why = NEXT_READING_ASSISTANT_ONLY;
+    why = droppedCheck ? NEXT_READING_CHECK_DOES_NOT_SHOW_IT : NEXT_READING_ASSISTANT_ONLY;
   }
   if(result !== NEXT_READING_UNVERIFIABLE && derivedOnly){
     /* On either constraint: a verdict resting only on Cargento's own
@@ -1867,7 +1918,7 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
        DEPARTURE on her own words is different and stays: a stated change of
        direction is exactly what that evidence is good for. */
     result = NEXT_READING_UNVERIFIABLE;
-    why = NEXT_READING_OWN_WORDS_ONLY;
+    why = droppedCheck ? NEXT_READING_CHECK_DOES_NOT_SHOW_IT : NEXT_READING_OWN_WORDS_ONLY;
   }
   if(result === NEXT_READING_UNVERIFIABLE && !why && !limitText &&
       Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
@@ -1889,12 +1940,22 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
      second in the flattering direction: an observer snapshot is Cargento's
      own derived summary, not the agent's account, and calling it the latter
      credits the session with having said something it did not. */
+  /* The label item 6 of
+     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+     gives a consistent resting on a check: what the tool reported, never an
+     inspection. Named by the check's own command, because the activity list
+     does not number its entries yet (its item 11). */
+  const reported = result === NEXT_READING_CONSISTENT
+    ? citations.find(entry => String(entry.type || "") === "tool_report") : null;
   const restsOn = result !== NEXT_READING_CONSISTENT || fromPerson.length ? ""
     : (authors.indexOf("derived") >= 0
       ? "Rests on the agent's own account and Cargento's derived summary of it, and on " +
         "nothing a person wrote."
       : "Rests on the agent's own account alone.");
-  const narration = restsOn;
+  const narration = reported
+    ? `Consistent with the check "${String(reported.summary || "")}", as the tool reported; ` +
+      "not inspected."
+    : restsOn;
   return {
     key, label,
     clause: clause || NEXT_READING_CLAUSE_UNRETAINED,
@@ -1963,12 +2024,17 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
      its row and its departure with it, after which the departures block
      rendered "The reading raised no departure from the revision it read" —
      a sentence about a revision whose departure had just been deleted. */
+  /* Where the evidence window opened for the revision this reading read,
+     the producer's `baseline_at`, so a check before the words cannot carry a
+     verdict on either side. */
+  const windowStart = nextNumber(["latest-prompt", "first-prompt"].includes(source.goal_source)
+    ? source.goal_source_at : source.revision_read_at);
   const criteria = NEXT_READING_CONSTRAINTS
     .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
     .map(([key, label]) => nextCockpitReadingCriterion(
       key, key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
         ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical),
-      rows[key], entries, key === "output" ? limit : "", unsettled));
+      rows[key], entries, key === "output" ? limit : "", unsettled, windowStart));
   return {
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
@@ -2414,6 +2480,22 @@ function nextReadingConsent(provider){
     ? map[provider] === true : provider === "codex" && policy.consent === true;
 }
 
+/* Tool output is its own answer, keyed by where it goes: a words-only Allow,
+   or one given for another destination, never covers it (item 7 of the tool
+   report ruling). */
+function nextReadingToolOutputGranted(route){
+  const policy = nextData && nextData.reading;
+  const map = policy && policy.tool_output;
+  const granted = map && typeof map === "object" && route ? map[String(route.provider)] : null;
+  return Array.isArray(granted) && granted.includes(String(route.destination));
+}
+
+function nextReadingNeedsAllow(route){
+  if(!route || !route.provider) return false;
+  return !nextReadingConsent(String(route.provider)) ||
+    Boolean(route.destination && !nextReadingToolOutputGranted(route));
+}
+
 function nextReadingAnyConsent(){
   const policy = nextData && nextData.reading;
   const map = policy && policy.providers;
@@ -2456,7 +2538,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   const pending = request && request.pending;
   const route = nextReadingRoute(session);
   const provider = route && route.provider ? String(route.provider) : "";
-  const confirming = Boolean(provider && request && request.consent && !nextReadingConsent(provider));
+  const confirming = Boolean(provider && request && request.consent && nextReadingNeedsAllow(route));
   /* `authorized` is no longer a second term here: an unauthorized check is
      one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
      already carries it. */
@@ -2955,8 +3037,12 @@ async function nextCockpitAskForReading(session, model, allow = false){
   /* The provider the page named, sent with the press so the server can
      refuse one whose receiver changed since. A refusal above already covers
      a route with no provider. */
-  const provider = String(nextReadingRoute(session).provider);
-  if(!nextReadingConsent(provider) && !allow){
+  const route = nextReadingRoute(session);
+  const provider = String(route.provider);
+  /* The destination the disclosure named, sent with an Allow so the server
+     can refuse one given about an endpoint that has since moved. */
+  const destination = String(route.destination || "");
+  if(nextReadingNeedsAllow(route) && !allow){
     nextCockpitReadingRequests.set(key, {consent:true, adoption:nextImplicitAdoption(session)});
     renderNext();
     return;
@@ -2977,7 +3063,8 @@ async function nextCockpitAskForReading(session, model, allow = false){
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
-        press: true, observer_model: 1, ...adoption, ...(allow ? {allow:true} : {})}),
+        press: true, observer_model: 1, ...adoption,
+        ...(allow ? {allow:true, ...(destination ? {tool_output:destination} : {})} : {})}),
     });
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
@@ -2991,6 +3078,12 @@ async function nextCockpitAskForReading(session, model, allow = false){
       /* Nothing was sent or saved. The next press starts again, and asks for
          the new receiver's own Allow if it has none. */
       request.message = NEXT_READING_PROVIDER_CHANGED;
+      request.consent = false;
+      await refreshNext();
+      return;
+    }
+    if(response && response.status === 409 && answer && answer.reason === "destination-changed"){
+      request.message = NEXT_READING_DESTINATION_CHANGED;
       request.consent = false;
       await refreshNext();
       return;
@@ -3014,7 +3107,8 @@ async function nextCockpitAskForReading(session, model, allow = false){
       nextData.reading = answer.reading;
       request.message = nextReadingPolicyReason(answer.reading);
       request.refusal = Boolean(request.message);
-      request.consent = answer.reading.reason === "consent-required";
+      request.consent = ["consent-required", "tool-output-consent-required"]
+        .includes(answer.reading.reason);
       return;
     }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
@@ -3024,6 +3118,11 @@ async function nextCockpitAskForReading(session, model, allow = false){
     if(allow && nextData.reading){
       nextData.reading.consent = true;
       nextData.reading.providers = {...(nextData.reading.providers || {}), [provider]: true};
+      if(destination){
+        const granted = (nextData.reading.tool_output || {})[provider] || [];
+        nextData.reading.tool_output = {...(nextData.reading.tool_output || {}),
+          [provider]: granted.includes(destination) ? granted : [...granted, destination]};
+      }
     }
     request.message = answer.produced ? "Reading received." : "No new reading was produced.";
     await refreshNext();

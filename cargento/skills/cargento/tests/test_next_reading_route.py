@@ -8,6 +8,7 @@ see rather than one invented for the test.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -18,7 +19,15 @@ from . import test_next_sessions
 from .next_harness import NextPageJsHarness
 
 
-def _route(harness: str, installed: set[str], *, claude_open: bool = False) -> dict[str, Any]:
+def _route(
+    harness: str,
+    installed: set[str],
+    *,
+    claude_open: bool = False,
+    environ: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """The server's route on a machine with no endpoint setting unless one is
+    given, so this machine's own environment never decides a page test."""
     check = (
         annotation_store.ABSTENTION_CHECK_PASSED
         if claude_open
@@ -31,6 +40,8 @@ def _route(harness: str, installed: set[str], *, claude_open: bool = False) -> d
                 binary_resolver=lambda name: (
                     f"/usr/local/bin/{name}" if name in installed else None
                 ),
+                environ=environ or {},
+                root=Path("/nonexistent-cargento-root"),
             )
         )
 
@@ -39,6 +50,7 @@ GATED_CLAUDE = _route("claude", {"codex", "claude"})
 NO_READER = _route("claude", {"claude"})
 OPEN_CLAUDE = _route("claude", {"codex", "claude"}, claude_open=True)
 CODEX = _route("codex", {"codex", "claude"})
+UNNAMED_CLAUDE = _route("claude", {"codex"}, environ={"OPENAI_BASE_URL": "https://gw.example"})
 
 
 class ReadingRoutePageTest(NextPageJsHarness):
@@ -52,7 +64,7 @@ class ReadingRoutePageTest(NextPageJsHarness):
             + (
                 reading
                 or 'nextData.reading = {consent:true,reason:"",used:0,limit:12,'
-                "providers:{codex:true,claude:false}};\n"
+                'providers:{codex:true,claude:false},tool_output:{codex:["OpenAI"]}};\n'
             )
             + "const session = nextData.sessions[0];\n"
             'session.harness = "claude";\n'
@@ -250,3 +262,123 @@ console.log(JSON.stringify({html: control(), posts: posts.length}));
         self.assertNotIn("OpenAI", out["html"])
         self.assertNotIn("A reading sends", out["html"])
         self.assertIn("Who would read this session is not published", out["html"])
+
+
+class ToolOutputOnThePageTest(ReadingRoutePageTest):
+    """DEC-23 item 7 on the page: a Claude Code reader is told what the checks
+    send and to whom before any press, an Allow given before tool output was
+    named is asked again, and the press names the destination it disclosed."""
+
+    WORDS_ONLY = (
+        'nextData.reading = {consent:true,reason:"",used:0,limit:12,'
+        "providers:{codex:true,claude:false},tool_output:{}};\n"
+    )
+
+    def _press_script(self, answer: str = "({ok:true,produced:true})", status: int = 200) -> str:
+        return f"""
+let gets = 0;
+__fetchImpl = async (url, init) => {{
+  if(init && init.method === "POST"){{ posts.push(JSON.parse(init.body)); return {{ok:{str(status == 200).lower()},status:{status},json:async()=>{answer}}}; }}
+  gets += 1;
+  return {{ok:true,json:async()=>nextData}};
+}};
+"""
+
+    def test_a_reader_who_allowed_only_their_words_is_asked_again_naming_tool_output(
+        self,
+    ) -> None:
+        out = self.render(
+            {"claude": GATED_CLAUDE},
+            self._press_script()
+            + """
+await nextCockpitAskForReading(session, null);
+const asked = {posts: posts.length, html: control()};
+await nextCockpitAskForReading(session, null, true);
+console.log(JSON.stringify({asked, posts, policy: nextData.reading}));
+""",
+            reading=self.WORDS_ONLY,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(0, out["asked"]["posts"], "tool output left before a fresh Allow")
+        html = out["asked"]["html"]
+        self.assertIn("Allow and check", html)
+        self.assertLess(html.index("to Codex, which reaches OpenAI"), html.index("Allow and check"))
+        self.assertEqual(1, len(out["posts"]))
+        self.assertIs(True, out["posts"][0]["allow"])
+        self.assertEqual("OpenAI", out["posts"][0]["tool_output"])
+        self.assertEqual(["OpenAI"], out["policy"]["tool_output"]["codex"])
+
+    def test_a_reader_whose_destination_cannot_be_named_presses_on_their_words_alone(
+        self,
+    ) -> None:
+        out = self.render(
+            {"claude": UNNAMED_CLAUDE},
+            self._press_script()
+            + """
+await nextCockpitAskForReading(session, null);
+console.log(JSON.stringify({posts, html: control()}));
+""",
+            reading=self.WORDS_ONLY,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertNotIn("tool_output", out["posts"][0])
+        self.assertIn("Tool output is not sent", out["html"])
+
+    def test_a_destination_that_moved_is_said_once_and_asks_again(self) -> None:
+        moved = _route("claude", {"codex"}, environ={"OPENAI_BASE_URL": "https://gw.example"})
+        out = self.render(
+            {"claude": GATED_CLAUDE},
+            self._press_script(
+                '({ok:false,produced:false,reason:"destination-changed",route:'
+                + json.dumps(moved)
+                + "})",
+                409,
+            )
+            + """
+const before = gets;
+await nextCockpitAskForReading(session, null, true);
+console.log(JSON.stringify({posts, html: control(), refreshed: gets > before}));
+""",
+            reading=self.WORDS_ONLY,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertTrue(out["refreshed"], "the page did not read where the output goes now")
+        self.assertEqual(
+            1, out["html"].count("Where tool output would go changed since this page was drawn")
+        )
+
+    def test_a_server_asking_for_the_tool_output_allow_turns_the_button_into_allow(self) -> None:
+        out = self.render(
+            {"claude": GATED_CLAUDE},
+            self._press_script(
+                '({ok:false,produced:false,reading:{consent:false,reason:"tool-output-consent-required",'
+                "used:0,limit:12,providers:{codex:true,claude:false},tool_output:{}}})",
+                403,
+            )
+            + """
+nextData.reading.tool_output = {codex: ["OpenAI"]};
+await nextCockpitAskForReading(session, null);
+console.log(JSON.stringify({posts: posts.length, html: control()}));
+""",
+            reading=self.WORDS_ONLY,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["posts"])
+        self.assertIn("Allow and check", out["html"])
+
+    def test_the_limit_lines_say_what_is_sent_and_to_whom(self) -> None:
+        for name, route in (("named", GATED_CLAUDE), ("unnamed", UNNAMED_CLAUDE)):
+            with self.subTest(route=name):
+                out = self.render(
+                    {"claude": route},
+                    "console.log(JSON.stringify({work: nextCockpitWorkEvidenceLimit('claude'),"
+                    " reading: nextReadingOutputLimit('claude')}));",
+                )
+                assert isinstance(out, dict)
+                self.assertIn(route["tool_output"], out["work"])
+                if name == "named":
+                    self.assertEqual("", out["reading"], "a sent check still demotes the output")
+                else:
+                    self.assertIn("cannot name where Codex would send them", out["reading"])

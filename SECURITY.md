@@ -1115,10 +1115,11 @@ no Claude Code reading was run.
 
 ### Tool output in a Claude Code reading
 
-Ruled 2026-09-24 by [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work). The record is built: `project_context.claude_tool_reports`
-reads it into the observed record, and `reading.build_ledger` drops it from every model prompt and
-the unasked lane. DRC-4677 admits it to a reading, and until then nothing in it leaves this machine.
-The named read is listed under Irreversible actions.
+Ruled 2026-09-24 by [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work). The record and its route to a model are both built:
+`project_context.claude_tool_reports` reads it into the observed record, and `reading.build_ledger`
+admits it to a reading only under a tool-output grant for a named destination, the rule below. With
+no grant, and in the unasked lane always, it drops it, and nothing in it leaves this machine. The
+named read is listed under Irreversible actions.
 
 The content class is what a Claude Code transcript recorded about the checks a session ran and the
 files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
@@ -1128,11 +1129,12 @@ the check's own segment, never the rest of the shell line, with a substituted co
 redaction cannot recognise, clipped to 120 characters; the last 180 characters of output, with redaction run over the whole read
 window before the clip; and a written path relative to the working directory. No file content is
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
-rest are counted. Today the output tail is read only to classify a check's result: the published
-entry carries the check segment, the result and where the result came from, and never the output
-itself. The class lives in the observed record only, as its own fact type, kept out of the
-semantic history store and out of every session row field, and it is named in
-`history.PROMPT_DERIVED_CARRIERS`.
+rest are counted. The published entry carries the check segment, the result and where the result
+came from, and never the output itself. The output tail is read again at the press
+(`project_context.claude_check_tails`), keyed by the call, and carried into that one prompt only,
+never onto the fact, a row, the page or history. The class lives in the observed record only, as
+its own fact type, kept out of the semantic history store and out of every session row field, and
+it is named in `history.PROMPT_DERIVED_CARRIERS`.
 
 Masking is by named form, word by word, and covers these forms and no others: a `NAME=value`
 assignment; the value after `--password`, `--token`, `--api-key`, `--secret`, `--auth`, `-p` or
@@ -1142,21 +1144,57 @@ after any other flag is published as typed unless it has a credential shape.
 
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
-fresh "Allow and analyze" whose disclosure names tool output and the receiving vendor. A permission
-given before tool output was named does not cover it. The disclosure names the destination as
-configured, including an `ANTHROPIC_BASE_URL`, Bedrock or Vertex setting in the daemon's environment
-or in managed settings, which still apply under `--restricted`. Those settings are examples. On the
-Codex route, which reads a Claude Code session on this build, the same holds for any environment
-variable or managed configuration that can move Codex's endpoint, which `--ignore-user-config` does
-not remove; whether Codex honours `OPENAI_BASE_URL` there is not measured. A destination the build
-cannot positively name, on either route, is one it cannot name. Where the destination cannot be
-named, tool output is not sent. It is quoted into the prompt as untrusted data, never into an
-instruction Cargento writes. The unasked lane never receives it until DEC-18's rubric thresholds
-exist. The live drift estimate (DEC-26, not built yet) will read it on this machine and publish a
-derived level on the session payload only, never on a row, in history or in any off-machine payload.
+fresh Allow whose disclosure names tool output and the receiving vendor. The page's button still
+reads "Allow and check" until DRC-4680 renames it "Allow and analyze". A permission given before
+tool output was named does not cover it. What is built:
+
+- The grant is its own table, `tool_output_permission` in the reading permission store, keyed by
+  provider and destination. No answer in the words-only tables is read as one, so every answer
+  saved before this build covers the reader's words and never tool output. An Allow writes a grant
+  only when the press carried the destination the server computes; a press that carried another,
+  or none, is refused `409 destination-changed` before anything is written or spent. Allowed for
+  the words and not for tool output to this destination, a press is refused `403
+  tool-output-consent-required` and nothing is read. "Turn off readings" and `--forget` clear every
+  grant. The press re-reads the grant inside the reading before admitting any check.
+- `reading_route.destination` names the destination as configured, or names nothing. For Claude
+  Code: `Anthropic`; `Amazon Bedrock` or `Google Vertex AI` under `CLAUDE_CODE_USE_BEDROCK` or
+  `CLAUDE_CODE_USE_VERTEX`; or the host and port of `ANTHROPIC_BASE_URL`, never its path, query or
+  user information. It reads the daemon's environment, the managed settings file and its drop-in
+  folder (`/Library/Application Support/ClaudeCode/managed-settings.json` and `managed-settings.d/`
+  on macOS, `/etc/claude-code/` on Linux) and the cached remote settings
+  (`~/.claude/remote-settings.json`, or under `CLAUDE_CONFIG_DIR`). Those paths were measured in
+  the live 2.1.281 binary on 2026-09-24. For Codex: `OpenAI`.
+- It names nothing, and tool output is not sent, where: two provider switches are on, or one it
+  does not know; a switch holds a value that is neither on nor off; a base URL sits beside a cloud
+  switch, or any `ANTHROPIC_*_BASE_URL` other than `ANTHROPIC_BASE_URL` is set; two sources set one
+  endpoint variable differently; a settings file cannot be read or parsed;
+  `CLAUDE_CODE_MANAGED_SETTINGS_PATH` is set; a macOS managed-preferences profile
+  (`/Library/Managed Preferences/com.anthropic.claudecode.plist`, or its per-user copy) exists,
+  because the build does not read it; or the machine is Windows, whose policy lives in the registry
+  and under `C:\Program Files\ClaudeCode`, neither of which is read. On the Codex route, which
+  reads a Claude Code session on this build, it names nothing where `OPENAI_BASE_URL` or
+  `OPENAI_API_BASE` is set, whether or not Codex honours them under `--ignore-user-config`, which is
+  not measured; where `/etc/codex/managed_config.toml` or `/etc/codex/config.toml` exists, or a
+  `com.openai.codex` managed-preferences profile, each measured in the live 0.156.1 binary; and on
+  Windows.
+- A proxy variable does not change the destination named: it carries the call, and the vendor that
+  answers it is the same (owner, 2026-09-24).
+- Where the destination cannot be named, the reading still runs on the reader's words, and its
+  cutoff sentence says the checks were not sent and why.
+
+It is quoted into the prompt as untrusted data, never into an instruction Cargento writes: each
+check is one numbered row whose result words are Cargento's own, and its output tail is one
+JSON-quoted field on that row with line breaks and the menu heading neutralised. A reply that obeys
+an instruction in that output is held to the same shape rules as any other. The unasked lane never
+receives it until DEC-18's rubric thresholds exist. The live drift estimate (DEC-26, not built yet)
+will read it on this machine and publish a derived level on the session payload only, never on a
+row, in history or in any off-machine payload.
 
 What it cannot remove: a reported success is what the tool said, not an inspection of the work, and
-a reading labels it that way. The output tail is whatever the runner printed. A traceback, an
+a reading labels it that way. Two settings sources are not read and so cannot be named or refused:
+Codex's cloud-delivered managed configuration, and any Claude Code remote setting not yet cached
+on this machine. A managed setting that moves the endpoint through either reaches the destination
+it names, not the one the disclosure named. The output tail is whatever the runner printed. A traceback, an
 assertion diff or a printed setting can carry source lines, file content or a secret that has no
 recognisable shape, and output gets credential-shape redaction only, because the command-line masks
 do not apply to it. It leaves the machine under the destination rule above. The command field is

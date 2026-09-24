@@ -606,6 +606,42 @@ class WhereTheChecksGoOnceCollected(ClaudeChecksTestCase):
         )
 
 
+class WhatAReadingMayCarryOfACheckAtThePress(WhereTheChecksGoOnceCollected):
+    """Owner ruling on DRC-4677, Q1: the model sees each check's redacted
+    output tail. It is read again at the press, keyed by the call, and never
+    put on the published fact, so the page and history never hold it."""
+
+    def test_each_latest_check_run_carries_its_redacted_tail_keyed_by_its_call(self) -> None:
+        self.session.bash("pytest", "1 failed", is_error=True)
+        last = self.session.bash(
+            "pytest", "x" * 400 + f" token={FAKE_KEY} 5 passed", is_error=False
+        )
+        self.session.write(self.file("src/retry.py"))
+        self.session.save(self.path)
+        tails = project_context.claude_check_tails(self.config, str(self.path))
+        self.assertEqual([last], list(tails))
+        self.assertLessEqual(len(tails[last]), project_context.TOOL_REPORT_TAIL_CHARS)
+        self.assertTrue(tails[last].endswith("5 passed"))
+        self.assertNotIn(FAKE_KEY, tails[last])
+
+    def test_the_tail_joins_the_published_fact_by_its_record_id(self) -> None:
+        call = self.session.bash("pytest", "5 passed", is_error=False)
+        facts = [f for f in self.collect()["semantic"]["facts"] if f.get("subject") == "check"]
+        self.assertEqual([call], [fact["branch"]["record_id"] for fact in facts])
+        self.assertIn(call, project_context.claude_check_tails(self.config, str(self.path)))
+
+    def test_the_output_never_reaches_the_published_record(self) -> None:
+        self.session.bash("pytest", "UNIQUE_OUTPUT_MARKER 5 passed", is_error=False)
+        self.assertNotIn("UNIQUE_OUTPUT_MARKER", json.dumps(self.collect()))
+
+    def test_a_background_run_has_no_tail_to_carry(self) -> None:
+        self.session.bash(
+            "pytest", "Command running in background with ID: b1", run_in_background=True
+        )
+        self.session.save(self.path)
+        self.assertEqual({}, project_context.claude_check_tails(self.config, str(self.path)))
+
+
 def results_by_title(events: list[dict[str, Any]]) -> dict[str, str]:
     return {e["title"]: e["result"] for e in events if e["subject"] == "check"}
 

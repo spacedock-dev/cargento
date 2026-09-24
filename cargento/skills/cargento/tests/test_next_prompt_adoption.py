@@ -42,7 +42,7 @@ console.log(JSON.stringify({restored,other:nodes.map(node=>node.open)}));
     def test_goalless_check_posts_the_exact_prompt_and_time(self) -> None:
         out = self.run_page("""
 nextData.annotate=true;nextData.reading_check='accepted';
-nextData.reading={consent:true,reason:''};
+nextData.reading={consent:true,reason:'',tool_output:{codex:['OpenAI']}};
 const session=nextData.sessions[0];session.harness='claude';session.annotation_goal='';session.annotation_output='';
 session.instruction={label:'asked',text:'Build the parser',at:10};
 const posts=[];__fetchImpl=async(url,init)=>{if(init&&init.method==='POST')posts.push(JSON.parse(init.body));return {ok:true,json:async()=>init?{ok:true,produced:true}:nextData};};
@@ -112,7 +112,7 @@ console.log(JSON.stringify(posts));
 
     def test_revoked_consent_keeps_adoption_through_allow_and_rejects_changed_prompt(self) -> None:
         out = self.run_page("""
-nextData.annotate=true;nextData.reading_check='accepted';nextData.reading={consent:true,reason:''};
+nextData.annotate=true;nextData.reading_check='accepted';nextData.reading={consent:true,reason:'',tool_output:{codex:['OpenAI']}};
 const session=nextData.sessions[0];session.annotation_goal='';session.annotation_output='';
 session.instruction={label:'asked',text:'Build original parser',at:10};
 const posts=[];

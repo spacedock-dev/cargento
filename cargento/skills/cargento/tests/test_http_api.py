@@ -3075,6 +3075,10 @@ class ReadingRouteTest(unittest.TestCase):
         status: str = "ok",
         launch_finds: tuple[str, ...] | None = None,
         harness: str = "pi",
+        destination: str = "",
+        extra_facts: tuple[dict[str, Any], ...] = (),
+        tails: dict[str, str] | None = None,
+        on_collect: Any = None,
     ) -> Any:
         """A model per provider that records every invocation and runs no subprocess.
 
@@ -3083,6 +3087,11 @@ class ReadingRouteTest(unittest.TestCase):
         the machine: `installed` is what the route resolver finds on PATH, and
         `launch_finds` what each model finds at launch (the same, by default).
         Every call lands in `calls`; `self.providers` says whose each one was.
+
+        `destination` is what the route names for tool output on this machine,
+        "" (cannot be named) unless a test says otherwise, so no real
+        environment or managed setting decides a test. `extra_facts` and
+        `tails` are the session's checks and what the press reads of them.
         """
         calls: list[str] = []
         self.providers: list[str] = []
@@ -3121,13 +3130,23 @@ class ReadingRouteTest(unittest.TestCase):
             mock.patch.object(
                 runtime_project_context,
                 "collect",
-                lambda *_a, **_k: {
-                    "semantic": {
-                        "facts": [
-                            {**self.FACT, "source_session": {"harness": harness, "sid": "s1"}}
-                        ]
+                lambda *_a, **_k: (
+                    (on_collect() if on_collect else None)
+                    or {
+                        "semantic": {
+                            "facts": [
+                                {**self.FACT, "source_session": {"harness": harness, "sid": "s1"}},
+                                *extra_facts,
+                            ]
+                        }
                     }
-                },
+                ),
+            ),
+            mock.patch.object(runtime_reading_route, "destination", lambda *_a, **_k: destination),
+            mock.patch.object(
+                runtime_project_context,
+                "press_check_tails",
+                lambda *_a, **_k: dict(tails or {}),
             ),
         ):
             yield calls
@@ -3535,6 +3554,175 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual({"codex": False, "claude": False}, self._consents(config))
         self.assertEqual([], calls)
+
+    CHECKS: ClassVar[tuple[dict[str, Any], ...]] = tuple(
+        {
+            "fact_id": f"check-{index}",
+            "type": "tool_report",
+            "subject": "check",
+            "result": result,
+            "result_source": "flag",
+            "summary": f"python3 -m pytest tests/test_{name}.py",
+            "at": 1_700_000_050.0 + index,
+            "evidence": {"source": "Claude Bash call and paired result", "confidence": "exact"},
+            "source_session": {"harness": "claude", "sid": "s1"},
+            "branch": {"harness": "claude", "sid": "s1", "record_id": f"call-{index}"},
+        }
+        for index, (name, result) in enumerate((("retry", "failed"), ("parser", "passed")))
+    )
+    TAILS: ClassVar[dict[str, str]] = {
+        "call-0": "FAILED tests/test_retry.py::test_backoff",
+        "call-1": "5 passed in 0.2s",
+    }
+
+    def _checks_press(self, config: Any, state: Any, payload: dict[str, Any], **model: Any) -> Any:
+        model.setdefault("destination", "OpenAI")
+        with (
+            self._counting_model(
+                ("codex", "claude"),
+                harness="claude",
+                extra_facts=self.CHECKS,
+                tails=self.TAILS,
+                **model,
+            ) as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, payload)
+        return status, json.loads(body), calls
+
+    @staticmethod
+    def _checks_sent(prompt: str) -> int:
+        return prompt.count("python3 -m pytest tests/test_")
+
+    def test_a_reader_who_allowed_codex_before_tool_output_was_named_is_asked_again(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        status, answer, calls = self._checks_press(config, state, self._claude_press())
+        self.assertEqual(403, status)
+        self.assertEqual("tool-output-consent-required", answer["reading"]["reason"])
+        self.assertEqual([], calls)
+        self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
+    def test_an_allow_naming_where_the_checks_go_sends_them_to_codex(self) -> None:
+        config, state = self._runtime()
+        status, answer, calls = self._checks_press(
+            config, state, self._claude_press(allow=True, tool_output="OpenAI")
+        )
+        self.assertEqual(200, status, answer)
+        self.assertEqual(["codex"], self.providers)
+        self.assertEqual(2, self._checks_sent(calls[0]))
+        self.assertIn(json.dumps(self.TAILS["call-0"]), calls[0])
+        granted = reading_policy.status(config, now=1_700_000_100.0, provider="codex")
+        self.assertTrue(reading_policy.tool_output_allowed(granted, "codex", "OpenAI"))
+        # The grant is remembered: the next press needs no second Allow.
+        status, _answer, calls = self._checks_press(config, state, self._claude_press())
+        self.assertEqual(200, status)
+        self.assertEqual(2, self._checks_sent(calls[0]))
+
+    def test_an_allow_for_a_destination_that_has_moved_is_refused_before_anything(self) -> None:
+        config, state = self._runtime()
+        before = reading_policy.status(config, now=1_700_000_100.0, provider="codex")
+        status, answer, calls = self._checks_press(
+            config,
+            state,
+            self._claude_press(allow=True, tool_output="OpenAI"),
+            destination="gw.corp.example",
+        )
+        self.assertEqual(409, status)
+        self.assertEqual("destination-changed", answer["reason"])
+        self.assertEqual("gw.corp.example", answer["route"]["destination"])
+        self.assertEqual([], calls)
+        self.assertEqual(
+            before, reading_policy.status(config, now=1_700_000_100.0, provider="codex")
+        )
+
+    def test_a_grant_for_one_destination_does_not_cover_another(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+        )
+        status, answer, calls = self._checks_press(
+            config, state, self._claude_press(), destination="gw.corp.example"
+        )
+        self.assertEqual(403, status)
+        self.assertEqual("tool-output-consent-required", answer["reading"]["reason"])
+        self.assertEqual([], calls)
+
+    def test_where_the_destination_cannot_be_named_the_codex_prompt_holds_no_check(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        status, answer, calls = self._checks_press(
+            config, state, self._claude_press(), destination=""
+        )
+        self.assertEqual(200, status, answer)
+        self.assertEqual(0, self._checks_sent(calls[0]))
+        self.assertNotIn("FAILED tests/test_retry.py", calls[0])
+        entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+        assert entry is not None
+        self.assertIn("were not sent", entry["assessment"]["cutoff"])
+
+    def test_turning_readings_off_withdraws_the_tool_output_grant(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+        )
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="codex")
+        status, answer, calls = self._checks_press(config, state, self._claude_press())
+        self.assertEqual(403, status)
+        self.assertEqual("tool-output-consent-required", answer["reading"]["reason"])
+        self.assertEqual([], calls)
+
+    def test_a_grant_withdrawn_while_the_press_is_in_flight_sends_no_check(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+        )
+
+        def withdraw() -> None:
+            # Another tab turns readings off and allows the words alone again.
+            reading_policy.set_consent(config, False, now=1_700_000_100.0)
+            reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="codex")
+
+        status, answer, calls = self._checks_press(
+            config, state, self._claude_press(), on_collect=withdraw
+        )
+        self.assertEqual(200, status, answer)
+        self.assertEqual(0, self._checks_sent(calls[0]))
+
+    def test_on_the_claude_code_route_the_checks_go_only_after_the_same_allow(self) -> None:
+        config, state = self._runtime()
+        with self._open_claude():
+            status, answer, calls = self._checks_press(
+                config,
+                state,
+                self._claude_press(provider="claude", allow=True),
+                destination="Anthropic",
+            )
+            self.assertEqual(409, status)
+            self.assertEqual("destination-changed", answer["reason"])
+            self.assertEqual([], calls)
+            status, answer, calls = self._checks_press(
+                config,
+                state,
+                self._claude_press(provider="claude", allow=True, tool_output="Anthropic"),
+                destination="Anthropic",
+            )
+        self.assertEqual(200, status, answer)
+        self.assertEqual(["claude"], self.providers)
+        self.assertEqual(2, self._checks_sent(calls[0]))
+
+    def test_a_session_on_another_harness_is_never_asked_about_tool_output(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model(destination="OpenAI") as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press())
+        self.assertEqual(200, status, body)
+        self.assertEqual(1, len(calls))
 
     def test_an_oversized_body_is_refused_before_it_is_read(self) -> None:
         config, state = self._runtime()

@@ -228,3 +228,69 @@ class PermissionIsPerProviderTest(unittest.TestCase):
         guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0, provider="claude")
         self.assertEqual(("", "unavailable"), guarded("prompt", output_cap_bytes=100))
         self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+
+
+class AnAllowGivenBeforeToolOutputWasNamedDoesNotCoverIt(unittest.TestCase):
+    """DEC-23 item 7: tool output leaves only after a fresh Allow whose
+    disclosure named it and its destination. The grant is its own row, keyed
+    by provider and destination, so no older answer can be read as one."""
+
+    def setUp(self) -> None:
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+
+    def _granted(self, provider: str, where: str) -> bool:
+        answer = reading_policy.status(self.config, now=100.0, provider=provider)
+        return reading_policy.tool_output_allowed(answer, provider, where)
+
+    def test_a_reader_who_allowed_both_providers_before_this_build_sent_no_tool_output(
+        self,
+    ) -> None:
+        for provider in ("codex", "claude"):
+            reading_policy.set_consent(self.config, True, now=100.0, provider=provider)
+        for provider in ("codex", "claude"):
+            with self.subTest(provider=provider):
+                self.assertTrue(
+                    reading_policy.status(self.config, now=100.0, provider=provider)["consent"]
+                )
+                self.assertFalse(self._granted(provider, reading_route_vendor(provider)))
+
+    def test_an_allow_naming_a_destination_covers_that_destination_and_no_other(self) -> None:
+        answer = reading_policy.set_consent(
+            self.config, True, now=100.0, provider="codex", tool_output="OpenAI"
+        )
+        self.assertTrue(answer["consent"])
+        self.assertTrue(reading_policy.tool_output_allowed(answer, "codex", "OpenAI"))
+        self.assertTrue(self._granted("codex", "OpenAI"))
+        self.assertFalse(self._granted("codex", "gw.corp.example"))
+        self.assertFalse(self._granted("claude", "OpenAI"))
+
+    def test_an_empty_destination_is_never_a_grant(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="codex", tool_output="")
+        self.assertFalse(self._granted("codex", ""))
+        self.assertEqual({}, reading_policy.status(self.config, now=100.0)["tool_output"])
+
+    def test_turning_readings_off_or_forgetting_withdraws_every_tool_output_grant(self) -> None:
+        for revoke in ("off", "forget"):
+            with self.subTest(revoke=revoke):
+                reading_policy.set_consent(
+                    self.config, True, now=100.0, provider="codex", tool_output="OpenAI"
+                )
+                if revoke == "off":
+                    reading_policy.set_consent(self.config, False, now=100.0)
+                else:
+                    reading_policy.forget(self.config, now=100.0)
+                self.assertFalse(self._granted("codex", "OpenAI"))
+
+    def test_a_store_that_cannot_be_read_grants_nothing(self) -> None:
+        reading_policy.store_path(self.config).write_bytes(b"not a database")
+        answer = reading_policy.set_consent(
+            self.config, True, now=100.0, provider="codex", tool_output="OpenAI"
+        )
+        self.assertEqual("store-unavailable", answer["reason"])
+        self.assertFalse(reading_policy.tool_output_allowed(answer, "codex", "OpenAI"))
+
+
+def reading_route_vendor(provider: str) -> str:
+    return {"codex": "OpenAI", "claude": "Anthropic"}[provider]

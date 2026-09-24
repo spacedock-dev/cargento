@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from cargento_runtime import reading_route
 from cargento_runtime.web import page as frontend_page
@@ -28,6 +29,10 @@ def published_routes(*harnesses: str, installed: tuple[str, ...] = ("codex",)) -
     routes = reading_route.resolve_all(
         harnesses,
         binary_resolver=lambda name: f"/usr/local/bin/{name}" if name in installed else None,
+        # No endpoint setting, so this machine's environment never decides
+        # what a page fixture says about where tool output goes.
+        environ={},
+        root=Path("/nonexistent-cargento-root"),
     )
     return json.dumps(routes)
 

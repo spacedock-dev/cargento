@@ -13,7 +13,7 @@ from typing import Any, cast
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import history, http_api, reading, transcripts
+from cargento_runtime import history, http_api, reading, reading_route, transcripts
 
 from . import test_http_api, test_reading, test_transcripts, test_unasked
 from .support import make_runtime
@@ -172,8 +172,12 @@ class AdoptionRouteTest(unittest.TestCase):
         handler.server.server_port = 4580
         handler.rfile = io.BytesIO(body)
         codex_on_path = mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}")
+        # This machine's endpoint settings must not decide an adoption test:
+        # with no nameable destination the press asks nothing about tool output.
+        unnamed = mock.patch.object(reading_route, "destination", return_value="")
         with (
             codex_on_path,
+            unnamed,
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)
             ) as compose,
@@ -194,6 +198,7 @@ class AdoptionRouteTest(unittest.TestCase):
 
         with (
             codex_on_path,
+            mock.patch.object(reading_route, "destination", return_value=""),
             mock.patch.object(handler, "_send_reading", side_effect=changed_before_send),
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)

@@ -43,6 +43,12 @@ class Status(TypedDict):
     # provider its route names still needs an Allow. `consent` answers for the
     # one provider the call asked about.
     providers: dict[str, bool]
+    # The tool-output grants, provider to the destinations the reader allowed
+    # it to reach, item 7 of the ruling `reading.build_ledger` cites.
+    # Its own table: no answer in the two above is
+    # ever read as one, so an Allow given before tool output was named cannot
+    # cover it, and a destination that moves is asked about again.
+    tool_output: dict[str, list[str]]
 
 
 def store_path(config: RuntimeConfig) -> Path:
@@ -54,6 +60,7 @@ def _answer(
     dates: tuple[float, ...] = (),
     reason: str = "",
     providers: dict[str, bool] | None = None,
+    tool_output: dict[str, list[str]] | None = None,
 ) -> Status:
     full = len(dates) >= DAILY_CAP
     return {
@@ -63,7 +70,13 @@ def _answer(
         "retry_at": min(dates) + DAY_SEC if full else None,
         "reason": reason or ("consent-required" if not consent else "daily-cap" if full else ""),
         "providers": dict(providers) if providers else dict.fromkeys(PROVIDERS, False),
+        "tool_output": {name: list(where) for name, where in (tool_output or {}).items()},
     }
+
+
+def tool_output_allowed(answer: Status, provider: str, destination: str) -> bool:
+    """Whether this answer holds a grant for exactly this provider and destination."""
+    return bool(destination) and destination in answer.get("tool_output", {}).get(provider, [])
 
 
 def _connect(config: RuntimeConfig) -> Any:
@@ -89,6 +102,16 @@ def _allowed(db: Any) -> dict[str, bool]:
     return allowed
 
 
+def _tool_output(db: Any) -> dict[str, list[str]]:
+    granted: dict[str, list[str]] = {}
+    for name, where in db.execute(
+        "SELECT provider, destination FROM tool_output_permission ORDER BY provider, destination"
+    ):
+        if name in PROVIDERS and isinstance(where, str) and where:
+            granted.setdefault(name, []).append(where)
+    return granted
+
+
 def _write(db: Any, provider: str, allowed: bool) -> None:
     if provider == LEGACY_PROVIDER:
         db.execute("INSERT OR REPLACE INTO permission VALUES (1, ?)", (int(allowed),))
@@ -98,7 +121,9 @@ def _write(db: Any, provider: str, allowed: bool) -> None:
         )
 
 
-def _transaction(config: RuntimeConfig, now: float, operation: str, provider: str) -> Status:
+def _transaction(
+    config: RuntimeConfig, now: float, operation: str, provider: str, tool_output: str = ""
+) -> Status:
     if not math.isfinite(now) or now <= 0:
         return _answer(reason="store-unavailable")
     with contextlib.closing(_connect(config)) as db:
@@ -111,6 +136,10 @@ def _transaction(config: RuntimeConfig, now: float, operation: str, provider: st
             "CREATE TABLE IF NOT EXISTS provider_permission (provider TEXT PRIMARY KEY, "
             "allowed INTEGER NOT NULL CHECK(allowed IN (0,1)))"
         )
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS tool_output_permission (provider TEXT NOT NULL, "
+            "destination TEXT NOT NULL, PRIMARY KEY (provider, destination))"
+        )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
         allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
@@ -120,6 +149,11 @@ def _transaction(config: RuntimeConfig, now: float, operation: str, provider: st
         if operation == "allow" and provider in allowed:
             _write(db, provider, True)
             allowed[provider] = True
+            if tool_output:
+                db.execute(
+                    "INSERT OR IGNORE INTO tool_output_permission VALUES (?, ?)",
+                    (provider, tool_output),
+                )
         elif operation == "off":
             # Every receiver at once: "Turn off readings" and `--forget` name
             # no provider, and a revocation that left one allowed would not be
@@ -127,7 +161,10 @@ def _transaction(config: RuntimeConfig, now: float, operation: str, provider: st
             for name in PROVIDERS:
                 _write(db, name, False)
             allowed = dict.fromkeys(PROVIDERS, False)
-        answer = _answer(allowed.get(provider, False), dates, providers=allowed)
+            db.execute("DELETE FROM tool_output_permission")
+        answer = _answer(
+            allowed.get(provider, False), dates, providers=allowed, tool_output=_tool_output(db)
+        )
         if operation == "reserve" and not answer["reason"]:
             db.execute("INSERT INTO spends VALUES (?)", (now,))
             answer = {**answer, "used": len(dates) + 1}
@@ -135,9 +172,11 @@ def _transaction(config: RuntimeConfig, now: float, operation: str, provider: st
         return answer
 
 
-def _run(config: RuntimeConfig, now: float, operation: str, provider: str) -> Status:
+def _run(
+    config: RuntimeConfig, now: float, operation: str, provider: str, tool_output: str = ""
+) -> Status:
     try:
-        return _transaction(config, now, operation, provider)
+        return _transaction(config, now, operation, provider, tool_output)
     except (OSError, ValueError, RuntimeError, _SQL_ERROR):
         return _answer(reason="store-unavailable")
 
@@ -151,10 +190,19 @@ def status(config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER
 
 
 def set_consent(
-    config: RuntimeConfig, allowed: bool, *, now: float, provider: str = LEGACY_PROVIDER
+    config: RuntimeConfig,
+    allowed: bool,
+    *,
+    now: float,
+    provider: str = LEGACY_PROVIDER,
+    tool_output: str = "",
 ) -> Status:
-    """Allow one provider, or revoke every provider: off never names one."""
-    return _run(config, now, "allow" if allowed else "off", provider)
+    """Allow one provider, or revoke every provider: off never names one.
+
+    `tool_output` is the destination the press's disclosure named. Only an
+    Allow that carried one grants tool output, and only to that destination.
+    """
+    return _run(config, now, "allow" if allowed else "off", provider, tool_output)
 
 
 def reserve(config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER) -> Status:

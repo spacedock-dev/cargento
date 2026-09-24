@@ -1755,6 +1755,9 @@ class _ToolReportTally:
                     "result_source": source,
                     "recorded": result is not None,
                     "background": background,
+                    # Held for the press only (`claude_check_tails`); never
+                    # copied onto the published entry.
+                    "tail": tail if result is not None else "",
                     # V7: a fixer at or after this check in the call ages its pass.
                     "fixes": any(i >= index for i in call.fixers),
                 }
@@ -1843,6 +1846,41 @@ class _ToolReportTally:
             {**{k: v for k, v in row.items() if k != "rank"}, "harness": "claude", "sid": sid}
             for row in listed
         ]
+
+    def tails(self) -> dict[str, str]:
+        """Each check's latest foreground run's redacted output tail, by call id."""
+        latest = (history[-1] for history in self.runs.values())
+        return {
+            run["record_id"]: run["tail"] for run in latest if not run["background"] and run["tail"]
+        }
+
+
+def claude_check_tails(
+    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+) -> dict[str, str]:
+    """The output tails a press may carry to a model, keyed by the call's record id.
+
+    Read again at the press rather than published: the owner ruled that the
+    model sees each check's redacted tail (DRC-4677, Q1), and it stays off the
+    fact, the page and history, so only a reading the reader allowed tool
+    output for ever holds it. The same scan and bounds as
+    `claude_tool_reports`, so the tail belongs to the run that fact lists.
+    """
+    transcript = _work_records(config, transcript_path, max_bytes=max_bytes)
+    tally = _ToolReportTally(_tool_result_blocks(transcript))
+    for call in _claude_tool_uses(transcript):
+        tally.add(*call)
+    return tally.tails()
+
+
+def press_check_tails(
+    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str
+) -> dict[str, str]:
+    """`claude_check_tails` for one session, found as `collect` finds it; {} elsewhere."""
+    if harness != "claude":
+        return {}
+    transcript_path = observer.resolve_transcript(config, state, harness, sid)
+    return claude_check_tails(config, transcript_path) if transcript_path else {}
 
 
 def claude_tool_reports(
