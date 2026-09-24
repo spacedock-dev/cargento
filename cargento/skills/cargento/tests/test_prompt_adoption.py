@@ -405,7 +405,7 @@ class AdoptedReadingTest(unittest.TestCase):
             entry = test_unasked._annotation()
             entry["revisions"][-1]["goal_source"] = "first-prompt"
             entry["revisions"][-1]["goal_source_at"] = 10.0
-            entry["revisions"][-1]["output"] = "Typed output"
+            entry["revisions"][-1]["lines"] = ({"text": "Typed output", "source": "typed"},)
             for state in ["working", "idle"]:
                 lane.lane.consider(
                     lane.state, [test_unasked._row(state=state)], [entry], now=5000.0

@@ -109,8 +109,25 @@ DECLARED_SESSION_FIELDS = frozenset(
         # admits field names and a name cannot reach inside a dict.
         "annotation_goal",
         "annotation_goal_why",
-        "annotation_output",
-        "annotation_output_why",
+        "annotation_lines_why",
+        "annotation_line_1",
+        "annotation_line_1_source",
+        "annotation_line_1_source_id",
+        "annotation_line_2",
+        "annotation_line_2_source",
+        "annotation_line_2_source_id",
+        "annotation_line_3",
+        "annotation_line_3_source",
+        "annotation_line_3_source_id",
+        "annotation_line_4",
+        "annotation_line_4_source",
+        "annotation_line_4_source_id",
+        "annotation_line_5",
+        "annotation_line_5_source",
+        "annotation_line_5_source_id",
+        "annotation_line_6",
+        "annotation_line_6_source",
+        "annotation_line_6_source_id",
         "annotation_revision",
         "annotation_revision_count",
         "annotation_at",
@@ -1443,7 +1460,7 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 rows = self.sessions_for(self.collect(build, when=self.NOW), key)
                 self.assertEqual("", rows[0]["annotation_goal"])
                 self.assertTrue(rows[0]["annotation_goal_why"], "an absence with no reason")
-                self.assertTrue(rows[0]["annotation_output_why"], "an absence with no reason")
+                self.assertTrue(rows[0]["annotation_lines_why"], "an absence with no reason")
                 self.assertEqual(0, rows[0]["annotation_revision_count"])
                 self.assertIsNone(rows[0]["annotation_revision"])
 
@@ -1456,7 +1473,13 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
         with self.subTest(harness=key):
             config, _state = support_runtime()
             annotation_store.annotate(
-                config, _state, key, self.SID, goal="Ship the cockpit", now=self.NOW
+                config,
+                _state,
+                key,
+                self.SID,
+                goal="Ship the cockpit",
+                lines=["A screenshot per screen", "No board edits"],
+                now=self.NOW,
             )
             # The store is the shared runtime's and outlives this test, so the
             # sibling asserting an unannotated row would see these words.
@@ -1465,6 +1488,13 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
             self.assertEqual("Ship the cockpit", rows[0]["annotation_goal"])
             self.assertEqual(1, rows[0]["annotation_revision"])
             self.assertEqual("", rows[0]["annotation_goal_why"])
+            # Each outcome line reaches the row as its own field, never the
+            # constructor's empty default (DEC-24 item 3).
+            self.assertEqual("A screenshot per screen", rows[0]["annotation_line_1"])
+            self.assertEqual("No board edits", rows[0]["annotation_line_2"])
+            self.assertEqual("typed", rows[0]["annotation_line_2_source"])
+            self.assertEqual("", rows[0]["annotation_line_3"])
+            self.assertEqual("", rows[0]["annotation_lines_why"])
 
     def test_every_field_an_event_may_patch_is_a_declared_field(self) -> None:
         # The reachable-by-an-envelope half, which no store fixture can produce:

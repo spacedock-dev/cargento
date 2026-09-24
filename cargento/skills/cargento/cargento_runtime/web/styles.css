@@ -1169,6 +1169,15 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-held-field button[aria-disabled="true"]{color:var(--ink3);cursor:not-allowed}
 .next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink-absence);font-size:var(--fs-body);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
+/* The expected outcome's checklist: one row per line, each its own box,
+   counter, source and remove, inside the field's own grid. */
+.next-cockpit-held-list{grid-column:1/-1;display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:2px 8px}
+.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px}
+.next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-held-source[hidden]{display:none}
+.next-cockpit-held-full{grid-column:1/-1;margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-cockpit-held-full[hidden]{display:none}
 /* Section scope, outside the field grid: the act is per annotation and the
    grid has exactly three columns for the counter and the two field controls.
    No colour on it -- `--clay` reads as an observation about the session under

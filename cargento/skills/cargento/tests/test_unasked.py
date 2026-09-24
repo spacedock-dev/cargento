@@ -50,7 +50,7 @@ def _annotation(sid: str = "s-1") -> Annotation:
     return {
         "harness": "claude",
         "sid": sid,
-        "revisions": ({"n": 4, "goal": "Ship the cockpit", "output": "", "at": 10.0},),
+        "revisions": ({"n": 4, "goal": "Ship the cockpit", "lines": (), "at": 10.0},),
     }
 
 
@@ -72,6 +72,7 @@ def _assessment(*results: str) -> reading.Assessment:
         "scope": "final",
         "scope_text": "",
         "ended_at_read": None,
+        "evidence_through": None,
         "criteria": {
             f"c{n}": {
                 "result": result,
@@ -568,8 +569,8 @@ class TheRaiseCarriesItsOwnBaselineTest(unittest.TestCase):
                     "harness": "claude",
                     "sid": "s-1",
                     "revisions": (
-                        {"n": 4, "goal": "Ship the cockpit", "output": "", "at": 10.0},
-                        {"n": 9, "goal": "Something else entirely", "output": "", "at": 20.0},
+                        {"n": 4, "goal": "Ship the cockpit", "lines": (), "at": 10.0},
+                        {"n": 9, "goal": "Something else entirely", "lines": (), "at": 20.0},
                     ),
                 }
             ],
@@ -766,7 +767,7 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         blank: Any = {
             "harness": "claude",
             "sid": "s-1",
-            "revisions": ({"n": 5, "goal": "", "output": "", "at": 20.0},),
+            "revisions": ({"n": 5, "goal": "", "lines": (), "at": 20.0},),
         }
 
         stored = departures.load(self.config)
@@ -789,7 +790,7 @@ class ExhaustedNeverReadsLikeQuietTest(unittest.TestCase):
         blank: Any = {
             "harness": "claude",
             "sid": "s-1",
-            "revisions": ({"n": 5, "goal": "", "output": "", "at": 20.0},),
+            "revisions": ({"n": 5, "goal": "", "lines": (), "at": 20.0},),
         }
 
         stored = departures.load(self.config)

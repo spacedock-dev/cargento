@@ -1398,11 +1398,11 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
         # reader of this contract acted on until DEC-15b earned the first two
         # entries, and a list that grew without this line moving would leave
         # the contract claiming an exposure it no longer has.
-        self.assertEqual(
-            ("first_prompt", "annotation_goal", "annotation_output"), history.PROMPT_TEXT_ALLOWLIST
-        )
+        # One bullet per outcome line, as condition 1 requires (DEC-24 item 3).
+        lines = tuple(f"annotation_line_{k}" for k in range(1, 7))
+        self.assertEqual(("first_prompt", "annotation_goal", *lines), history.PROMPT_TEXT_ALLOWLIST)
         entries = self.bullets(self.SECURITY, "The allowlist, one line per field:\n\n")
-        self.assertEqual(3, len(entries))
+        self.assertEqual(8, len(entries))
 
     def test_a_reserved_name_is_not_an_admitted_one(self) -> None:
         # The contract names five assessment fields it has NOT admitted, so a

@@ -1153,6 +1153,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-departures-kept",
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
+        ".next-cockpit-held-full",
         ".next-cockpit-held-field textarea",
         ".next-cockpit-held-lede",
         ".next-cockpit-held-reentry",
@@ -1351,8 +1352,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # `.next-departure-reentry-why`, the limit sentence beside a departure.
         # DRC-4637 adds the goal link at the body floor; no selector moved down.
         # DRC-4676 adds two at the body floor: a check's result line and the
-        # sentence that counts the checks from the whole scan.
-        self.assertEqual(109, len(above))
+        # sentence that counts the checks from the whole scan. DRC-4685 adds
+        # one: the sentence saying why a seventh outcome line is refused.
+        self.assertEqual(110, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1914,20 +1916,20 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "986a0b0d74771bbb9f1d9df520dbb6c91d5916685fe365a64eff61c29acab7cc",
             ),
             "next-sessions.js": (
-                27_289,
-                "2c8f1e1f80b1f2a88b4cfee335a39f4078e5bd3169ed29e3a21ea473ce70c5a1",
+                27_337,
+                "0a25ee33ad44f10a5df78aec4ca2a40324a5f4cb8f1e165f6f1416cbe8783f05",
             ),
             "next-projects.js": (
                 5_829,
                 "0324f6aebe951a37bde0f710c73c77f1007d26159a5b33e453b54711b4263348",
             ),
             "next-project.js": (
-                20_930,
-                "ecdbe1f2c556bfa4b918ebfff1d5a535c539ce6660c0c51b719e7b4ac6bcf40d",
+                22_108,
+                "d1ac21fa8e024a07533b91c043730cace9fefbbed57459ab64031f431c797f5f",
             ),
             "next-intent.js": (
-                21_732,
-                "5e3ed558080982391079c7a2ea197b8d9e4446ec09ec4592415ab4b6003b1d03",
+                21_894,
+                "57a257a363201a89a721f0ef9c626d7c50ad460f8416d5fe282455f665fdb3be",
             ),
             "next-activity.js": (
                 6_467,
@@ -1950,8 +1952,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                264_564,
-                "9ce4dad23380f9a0e0839a0118c5c800a657961a7493ae433431955a09e8d348",
+                280_953,
+                "e7ea6057e1fa9b3f154958a78230aad34af3c38bb43d5c6a6887873fca567a65",
             ),
             "next-render.js": (
                 12_231,
@@ -1970,16 +1972,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(142_557, len(styles))
+        self.assertEqual(143_289, len(styles))
         self.assertEqual(
-            "1c638b426fd8199f20b3e3b7908c752cb5ef0fa90dafae2feb4efabce69ef5be",
+            "f73b706ceb73bfb2866c20d0af7bdc8fdef273b3a0fa3ed76f9fbc6478cc2a17",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_104_174, len(assembled))
+        self.assertEqual(1_122_683, len(assembled))
         self.assertEqual(
-            "cf7c01a503bf2496c7d50fb71d93a06bc8634869de948ace54501c32c70ec0f6",
+            "f4d06619f3e914b67609a6615942a2719aaaa9b460ea8eeca11486bf9916ff3c",
             hashlib.sha256(assembled).hexdigest(),
         )
 

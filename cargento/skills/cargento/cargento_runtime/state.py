@@ -170,6 +170,10 @@ class RuntimeState:
     # first is unknown and the second is an absence with a reason.
     annotation_lock: LockType = field(default_factory=threading.Lock)
     annotations: tuple[dict[str, Any], ...] | None = None
+    # Whether the last read of the annotation store could read it whole. False
+    # means a file exists this build cannot read, which the board says rather
+    # than showing every session as one nobody typed against.
+    annotations_trusted: bool = True
     # When a dashboard tab last reported a working notification lane in itself,
     # under
     # [DEC-19](docs/design-reading-a-session.md#dec-19-the-page-may-report-a-lane-never-a-delivery).

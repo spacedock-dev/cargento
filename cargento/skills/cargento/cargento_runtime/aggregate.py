@@ -922,6 +922,9 @@ class Application:
                         # departure store, which the page never reads, so
                         # the page must not compose it (DRC-4561).
                         "annotate_discard": annotation_store.DISCARD_SENTENCES,
+                        # The store's own sentence while it cannot be read, so
+                        # no session reads as one nobody typed against.
+                        "annotate_unreadable": annotation_store.store_notice(state),
                     }
                     if config.annotations_enabled
                     else {

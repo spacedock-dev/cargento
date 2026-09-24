@@ -601,7 +601,7 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         route = reading_route.resolve("pi", binary_resolver=_resolver({"codex"}), environ={})
         self.assertNotIn("harness that publishes work evidence", route["disclosure"])
         self.assertIn(
-            "expected output is sent only when an entry sent is work", route["disclosure"]
+            "expected outcome lines are sent only when an entry sent is work", route["disclosure"]
         )
 
 

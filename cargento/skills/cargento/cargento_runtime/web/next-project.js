@@ -233,6 +233,31 @@ function nextAnnotationDiscarded(annotation){
   return nextNumber(annotation && annotation.discarded_at) != null;
 }
 
+/* The expected outcome's lines, in order, as the store publishes them: flat
+   `line_<k>` fields, because the history allowlist admits a field by name and
+   a name cannot reach into a list. A blank slot is not a line. Six is the
+   store's bound (`reading.MAX_OUTCOME_LINES`), and `ReadingVocabularyIsSpeltOnceTest`
+   holds this copy equal to it. */
+const NEXT_OUTCOME_LINES_MAX = 6;
+
+function nextAnnotationLines(annotation){
+  const lines = [];
+  for(let k = 1; k <= NEXT_OUTCOME_LINES_MAX; k += 1){
+    const text = String(annotation && annotation[`line_${k}`] || "");
+    if(!text.trim()) continue;
+    lines.push({k, text, source: String(annotation[`line_${k}_source`] || "typed")});
+  }
+  return lines;
+}
+
+/* Where a line came from, in the reader's words. Only the server mints an
+   entry line, and it keeps the entry's fact id rather than a number, because
+   the activity list numbers entries afresh; so this names the kind of source
+   and not "#n" until the list carries stable numbers. */
+function nextOutcomeLineSource(line){
+  return line && line.source === "entry" ? "added from an entry" : "typed";
+}
+
 /* The moment, in the register the revision line beside it already uses: mono,
    derived on the page from the epoch on the row and the payload's own clock,
    the way "typed 4m ago" is. The sentence is the server's; only the age is
@@ -312,8 +337,8 @@ function nextProjectGoal(project, annotation, focus){
     rows += nextProjectGoalRow(["latest-prompt", "first-prompt"].includes(typed.goal_source)
       ? "FROM YOUR PROMPT · GOAL" : "YOUR WORDS · GOAL", typed.goal, revision);
   }
-  if(typed && typed.output){
-    rows += nextProjectGoalRow("YOUR WORDS · EXPECTED OUTPUT", typed.output, revision);
+  for(const line of nextAnnotationLines(typed)){
+    rows += nextProjectGoalRow(`YOUR WORDS · EXPECTED OUTCOME · LINE ${line.k}`, line.text, revision);
   }
   /* The binding sentence, not a decoration. A Claude row's session id is an
      eight-character prefix, so another session sharing it would share these
@@ -322,7 +347,7 @@ function nextProjectGoal(project, annotation, focus){
      session sharing this prefix "would share these words", and with nothing
      typed, and on a run started with --no-annotations where nothing can be,
      it is a caveat about a binding that does not exist. */
-  const binding = typed && typed.binding_why && (typed.goal || typed.output)
+  const binding = typed && typed.binding_why && (typed.goal || nextAnnotationLines(typed).length)
     ? `<p class="next-project-goal-gap">${esc(typed.binding_why)}</p>` : "";
   const derived = rows
     ? nextProjectGoalRow("DERIVED FROM THE HARNESS", scope.text,

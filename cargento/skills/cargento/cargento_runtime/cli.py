@@ -688,6 +688,10 @@ def run_one_shot(
                     f"Cargento: could not write {annotations_path}, so its discard "
                     "records are still there"
                 ),
+                annotation_store.FORGET_UNTRUSTED: (
+                    f"Cargento: {annotations_path} could not be read, so nothing in it was "
+                    "changed; move or repair that file and run --forget again"
+                ),
             }[swept],
             print,
         )

@@ -820,7 +820,7 @@ class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
         # milestone says must never read the same.
         self.assertNotEqual(reading.NO_READING_YET, reading.WITHHELD[reading.WITHHELD_LEDGER_EMPTY])
         self.assertIn("No reading has been made", self.source)
-        self.assertIn("verified neither constraint", self.source)
+        self.assertIn("verified none of the constraints it read", self.source)
 
 
 class TheAnnotationFieldListIsDerivedTest(unittest.TestCase):

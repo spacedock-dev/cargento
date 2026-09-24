@@ -355,8 +355,8 @@ def _base_disclosure(provider: str) -> str:
         "A reading sends the goal you chose, and a bounded list of entries from the "
         f"observed record, to a {label} subprocess. {label} uses its own authentication to "
         f"reach {vendor}, so this is one of the paths that sends session content off this "
-        f"machine and spends your {label} capacity. Your expected output is sent only when "
-        "an entry sent is work evidence, and on no other reading. The reading is a model's "
+        f"machine and spends your {label} capacity. Your expected outcome lines are sent only "
+        "when an entry sent is work evidence, and on no other reading. The reading is a model's "
         "account of the evidence it was given, never a verification that the work was done."
     )
 

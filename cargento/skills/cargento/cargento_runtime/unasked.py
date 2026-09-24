@@ -146,7 +146,14 @@ class Lane:
             entry = annotation_store.find(entries, harness, sid)
             if entry is None or not entry.get("revisions"):
                 continue
-            if entry["revisions"][-1].get("goal_source", "typed") != "typed":
+            latest = entry["revisions"][-1]
+            # A typed goal alone makes a session a candidate. Outcome lines
+            # never do, and the lane never reads one: item 12 of the ruling
+            # `reading.MAX_OUTCOME_LINES` cites.
+            if (
+                latest.get("goal_source", "typed") != "typed"
+                or not str(latest.get("goal") or "").strip()
+            ):
                 continue
             if stored is None:
                 stored = departures.load(self.config)
@@ -451,7 +458,8 @@ def published(
     harness = str(row.get("harness") or "")
     sid = str(row.get("sid") or "")
     entry = annotation_store.find(entries, harness, sid)
-    has_words = annotation_store.has_typed_words(entry)
+    # The goal alone, because it is all the lane reads.
+    has_words = annotation_store.has_typed_goal(entry)
     return {
         "departures": departures.published(stored, harness, sid),
         # Absence, presence and discarded are three answers and not two

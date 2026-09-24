@@ -932,7 +932,7 @@ class TheOutputColumnIsTheRulingsOnMostHarnesses(unittest.TestCase):
         reply = json.dumps(
             {
                 "goal": {"result": "unverifiable", "cites": []},
-                "output": {"result": "unverifiable", "cites": []},
+                "line_1": {"result": "unverifiable", "cites": []},
             }
         )
         record = self._score("pi", reply)
@@ -948,7 +948,7 @@ class TheOutputColumnIsTheRulingsOnMostHarnesses(unittest.TestCase):
             json.dumps(
                 {
                     "goal": {"result": "unverifiable", "cites": []},
-                    "output": {"result": "unverifiable", "cites": []},
+                    "line_1": {"result": "unverifiable", "cites": []},
                 }
             ),
         )

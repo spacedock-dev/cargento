@@ -43,7 +43,7 @@ console.log(JSON.stringify({restored,other:nodes.map(node=>node.open)}));
         out = self.run_page("""
 nextData.annotate=true;nextData.reading_check='accepted';
 nextData.reading={consent:true,reason:'',tool_output:{codex:['OpenAI']}};
-const session=nextData.sessions[0];session.harness='claude';session.annotation_goal='';session.annotation_output='';
+const session=nextData.sessions[0];session.harness='claude';session.annotation_goal='';session.annotation_line_1='';
 session.instruction={label:'asked',text:'Build the parser',at:10};
 const posts=[];__fetchImpl=async(url,init)=>{if(init&&init.method==='POST')posts.push(JSON.parse(init.body));return {ok:true,json:async()=>init?{ok:true,produced:true}:nextData};};
 await nextCockpitAskForReading(session,null);
@@ -98,7 +98,7 @@ console.log(JSON.stringify(nextCockpitReadingBaseline(shape)));
     def test_allow_keeps_the_prompt_shown_by_the_first_press(self) -> None:
         out = self.run_page("""
 nextData.annotate=true;nextData.reading_check='accepted';nextData.reading={consent:false,reason:'consent-required'};
-const session=nextData.sessions[0];session.harness='claude';session.annotation_goal='';session.annotation_output='';
+const session=nextData.sessions[0];session.harness='claude';session.annotation_goal='';session.annotation_line_1='';
 session.instruction={label:'asked',text:'Build the original parser',at:10};
 await nextCockpitAskForReading(session,null);
 session.instruction={label:'asked',text:'Build a different parser',at:20};
@@ -113,7 +113,7 @@ console.log(JSON.stringify(posts));
     def test_revoked_consent_keeps_adoption_through_allow_and_rejects_changed_prompt(self) -> None:
         out = self.run_page("""
 nextData.annotate=true;nextData.reading_check='accepted';nextData.reading={consent:true,reason:'',tool_output:{codex:['OpenAI']}};
-const session=nextData.sessions[0];session.annotation_goal='';session.annotation_output='';
+const session=nextData.sessions[0];session.annotation_goal='';session.annotation_line_1='';
 session.instruction={label:'asked',text:'Build original parser',at:10};
 const posts=[];
 __fetchImpl=async(url,init)=>{

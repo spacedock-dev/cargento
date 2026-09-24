@@ -106,11 +106,11 @@ class AnnotationStoreTest(unittest.TestCase):
         assert entry is not None
         revision = entry["revisions"][-1]
         self.assertEqual("ship it and the doc", revision["goal"])
-        self.assertEqual("a PR green CI", revision["output"])
-        for field in ("goal", "output"):
-            with self.subTest(field=field):
-                self.assertNotIn("\n", revision[field])
-                self.assertNotIn("\t", revision[field])
+        self.assertEqual("a PR green CI", revision["lines"][0]["text"])
+        for text in (revision["goal"], revision["lines"][0]["text"]):
+            with self.subTest(text=text):
+                self.assertNotIn("\n", text)
+                self.assertNotIn("\t", text)
 
     def test_activity_after_the_annotation_does_not_erase_it(self) -> None:
         """The deliberate difference from `dismissals`, which lapses on activity.
@@ -178,9 +178,9 @@ class AnnotationStoreTest(unittest.TestCase):
         out_only = annotation_store.published(annotation_store.find(entries, "pi", "out-only"))
 
         self.assertEqual("G", goal_only["goal"])
-        self.assertEqual("", goal_only["output"])
-        self.assertTrue(goal_only["output_why"])
-        self.assertEqual("O", out_only["output"])
+        self.assertEqual("", goal_only["line_1"])
+        self.assertTrue(goal_only["lines_why"])
+        self.assertEqual("O", out_only["line_1"])
         self.assertTrue(out_only["goal_why"])
 
         # A session nobody annotated is an absence with a reason, never a blank
@@ -205,15 +205,18 @@ class AnnotationStoreTest(unittest.TestCase):
         entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
         assert entry is not None
         self.assertEqual(
-            ("G2", "O1"), (entry["revisions"][-1]["goal"], entry["revisions"][-1]["output"])
+            ("G2", ({"text": "O1", "source": "typed"},)),
+            (entry["revisions"][-1]["goal"], entry["revisions"][-1]["lines"]),
         )
 
         # An explicit empty string is a clear of that one field.
-        annotation_store.annotate(self.config, self.state, "pi", "s", output="", now=self.NOW + 2)
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s", lines=[], expected_revision=2, now=self.NOW + 2
+        )
         entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
         assert entry is not None
         self.assertEqual(
-            ("G2", ""), (entry["revisions"][-1]["goal"], entry["revisions"][-1]["output"])
+            ("G2", ()), (entry["revisions"][-1]["goal"], entry["revisions"][-1]["lines"])
         )
 
     def test_an_unannotated_session_publishes_no_zero_revision_and_no_epoch(self) -> None:
@@ -860,7 +863,7 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
         said = set(annotation_store.DISCARD_SENTENCES.values())
 
         self.assertEqual(len(annotation_store.DISCARD_SENTENCES), len(said))
-        self.assertEqual(10, len(said))
+        self.assertEqual(12, len(said))
         self.assertNotIn("Saved as a new revision.", said)
         for sentence in said:
             with self.subTest(sentence=sentence[:32]):
@@ -1069,7 +1072,7 @@ class ADiscardLeavesARecordThatSaysWhenTest(unittest.TestCase):
         # And the sentence the walk measured as identical on both.
         self.assertEqual(annotation_store.NO_GOAL_TYPED, absent["goal_why"])
         self.assertNotEqual(annotation_store.NO_GOAL_TYPED, discarded["goal_why"])
-        self.assertNotEqual(annotation_store.NO_OUTPUT_TYPED, discarded["output_why"])
+        self.assertNotEqual(annotation_store.NO_LINES_TYPED, discarded["lines_why"])
 
     def test_a_live_entry_publishes_no_discard(self) -> None:
         """The third state is a state and not a field every row carries a value
@@ -1315,7 +1318,7 @@ class WordsAreWhatAReadingCouldHaveReadTest(unittest.TestCase):
         assert entry is not None
         self.assertEqual(2, len(entry["revisions"]))
         self.assertEqual("", entry["revisions"][-1]["goal"])
-        self.assertEqual("", entry["revisions"][-1]["output"])
+        self.assertEqual((), entry["revisions"][-1]["lines"])
         self.assertIs(False, annotation_store.has_typed_words(entry))
 
     def test_words_in_either_field_of_the_latest_revision_are_words(self) -> None:
@@ -1348,7 +1351,7 @@ class AnnotationOnTheRowTest(unittest.TestCase):
             {
                 "harness": "pi",
                 "sid": "typed",
-                "revisions": ({"n": 2, "at": 5.0, "goal": "Ship it", "output": ""},),
+                "revisions": ({"n": 2, "at": 5.0, "goal": "Ship it", "lines": ()},),
             },
         )
         aggregate._attach_annotations(rows, entries)
@@ -1356,8 +1359,8 @@ class AnnotationOnTheRowTest(unittest.TestCase):
         self.assertEqual("Ship it", rows[0]["annotation_goal"])
         self.assertEqual(2, rows[0]["annotation_revision"])
         self.assertEqual("", rows[0]["annotation_goal_why"])
-        # The expected output was never typed, so it names its absence.
-        self.assertTrue(rows[0]["annotation_output_why"])
+        # No outcome line was typed, so the list names its absence.
+        self.assertTrue(rows[0]["annotation_lines_why"])
 
         # Present, not absent: the key exists so the render has something to ask.
         self.assertEqual("", rows[1]["annotation_goal"])
@@ -1374,7 +1377,7 @@ class AnnotationOnTheRowTest(unittest.TestCase):
             {
                 "harness": "claude",
                 "sid": "77aa41c2-bbbb",
-                "revisions": ({"n": 1, "at": 1.0, "goal": "Not yours", "output": ""},),
+                "revisions": ({"n": 1, "at": 1.0, "goal": "Not yours", "lines": ()},),
             },
         )
         aggregate._attach_annotations(rows, entries)
@@ -1621,7 +1624,7 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
                     "detail": "it renamed a different flag",
                     "clause": "rename the flag",
                 },
-                "output": {
+                "line_1": {
                     "result": runtime_reading.RESULT_UNVERIFIABLE,
                     "cites": (),
                     "detail": "",
@@ -1705,7 +1708,7 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
     def test_a_rewritten_store_cannot_publish_a_result_the_board_does_not_own(self) -> None:
         criteria = {
             "goal": {"result": "met", "cites": (), "detail": "", "clause": "g"},
-            "output": {"result": None, "cites": (), "detail": "", "clause": ""},
+            "line_1": {"result": None, "cites": (), "detail": "", "clause": ""},
         }
         self.assertIsNone(annotation_store._assessment(self._assessment(criteria=criteria), 240))
 
@@ -1768,7 +1771,7 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
                 "clause": "rename the flag",
                 "why": runtime_reading.WHY_UNREADABLE,
             },
-            "output": {
+            "line_1": {
                 "result": runtime_reading.RESULT_UNVERIFIABLE,
                 "cites": (),
                 "detail": "",
@@ -1785,7 +1788,7 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
         self.assertIsNotNone(stored)
         assert stored is not None
         self.assertEqual(runtime_reading.WHY_UNREADABLE, stored["criteria"]["goal"]["why"])
-        self.assertEqual(runtime_reading.WHY_NOT_ASKED, stored["criteria"]["output"]["why"])
+        self.assertEqual(runtime_reading.WHY_NOT_ASKED, stored["criteria"]["line_1"]["why"])
 
     def test_a_reason_this_build_does_not_know_refuses_the_reading_whole(self) -> None:
         # A closed set, refused whole like every other bad key: a half-read
@@ -1800,7 +1803,7 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
                     "clause": "g",
                     "why": why,
                 },
-                "output": {
+                "line_1": {
                     "result": runtime_reading.RESULT_UNVERIFIABLE,
                     "cites": (),
                     "detail": "",
@@ -1851,7 +1854,7 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
                     "detail": "",
                     "clause": "",
                 }
-                for name in runtime_reading.CONSTRAINTS
+                for name in (runtime_reading.CONSTRAINT_GOAL, "line_1")
             },
         }
 
@@ -2144,7 +2147,7 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, unwritable)
         # The vocabulary is closed and every token is a distinct string, so no
         # two outcomes can render as one sentence by accident.
-        self.assertEqual(4, len(set(annotation_store.OUTCOMES)))
+        self.assertEqual(6, len(set(annotation_store.OUTCOMES)))
         self.assertNotIn(True, annotation_store.OUTCOMES)
         self.assertNotIn(False, annotation_store.OUTCOMES)
 
@@ -2261,7 +2264,7 @@ class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
                     "clause": "ship it",
                     "why": "unreadable",
                 },
-                "output": {
+                "line_1": {
                     "result": runtime_reading.RESULT_UNVERIFIABLE,
                     "cites": [],
                     "detail": "",
@@ -2285,7 +2288,7 @@ class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
         current = self._write(stored)
         self.assertFalse(current["reading_refused"])
         assert current["assessment"] is not None
-        self.assertEqual("not-asked", current["assessment"]["criteria"]["output"]["why"])
+        self.assertEqual("not-asked", current["assessment"]["criteria"]["line_1"]["why"])
 
 
 class IntentRevisionTest(unittest.TestCase):
@@ -2416,7 +2419,11 @@ class IntentRevisionTest(unittest.TestCase):
 
     def test_collection_does_not_read_either_store_again_for_the_token(self) -> None:
         with (
-            mock.patch.object(annotation_store, "load", wraps=annotation_store.load) as annotations,
+            # The file read itself: `refresh` reads it through `_read_store`,
+            # which also says whether it could be read.
+            mock.patch.object(
+                annotation_store, "_read_store", wraps=annotation_store._read_store
+            ) as annotations,
             mock.patch.object(departures, "load", wraps=departures.load) as checks,
         ):
             self._revision()

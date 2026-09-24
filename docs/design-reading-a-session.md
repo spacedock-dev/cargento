@@ -154,6 +154,25 @@ reading, stored with the annotation entry and removed with it, never sent and no
 `--forget` (item 10). It also changes when a reading may run: a session waiting at its prompt after
 a turn stop may be read through its last turn (item 13).
 
+The outcome lines cost a downgrade, and this one crosses a shipped release: v0.27.0 stores one
+`output`. A build that old reads a revision holding lines as one with no expected output, and its
+next save writes the lines away. It refuses a reading keyed by line and keeps it verbatim, as it
+refuses any reading it cannot read. The owner accepted the loss on 2026-09-24. Going forward, a
+revision or reading stored with one `output` reads as one typed line and is written back as lines
+by the next save. The history copy carries up to six line fields where it carried one, so an
+annotated session's records are larger and the size cap ages other sessions out sooner. The owner
+accepted that too.
+
+The larger store costs a second downgrade, and the owner ruled on it on 2026-09-24: the read limit
+stays at 16 MiB. A build that old refuses a store over 2.5 MiB as unreadable, and its next save
+writes every session's saved words away, not only the lines. This build does the opposite: a store
+it cannot read whole, whether unreadable, over its limit or not JSON, is never written over, and
+every save answers `untrusted` until the file is readable again, and the board says so in place
+of "nothing typed". A missing store is not that state; it is empty and takes the first save. One
+session's entry that this build cannot read, such as seven lines or an unknown source from a later
+build, is kept as it was: it is written back unchanged, and a save, adoption or discard of that
+session answers `unreadable` rather than renumbering it from revision 1.
+
 ## DEC-16: Cargento does not write into a session
 
 A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
@@ -350,7 +369,8 @@ Recorded here because it had no durable home. The goal and the expected output a
 single line by the same control character scrub that stops a pasted private key body surviving into
 a published string, and it runs server side on write and again on read back. Admitting newlines
 means relaxing that scrub for two fields that a reader pastes into, which is the wrong two fields to
-relax it for. The browser collapses on input as well, so the reader watches it happen rather than
+relax it for. Since DEC-24 item 3 the expected output is a checklist, and each of its lines is held
+to the same rule: one line, the same scrub, on write and on read back. The browser collapses on input as well, so the reader watches it happen rather than
 finding out afterwards.
 
 ### What the contract does not remove
@@ -1253,10 +1273,22 @@ the later-direction floor (item 9).
    adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome.
 3. The checklist. The expected outcome is up to six lines the reader types, each at most 240
    characters and one line, each read and shown as its own constraint under DEC-17's rules. Each
-   line records its source: typed, or added from entry #n. The ruling requires bounds for the store
-   (six lines of at most 240 characters), the history copy (flat per-line fields), the prompt's
-   share, the reply cap and the annotation body cap. The last four have no figure yet: the layer
-   that first stores or sends outcome lines fixes each one in this section before it ships.
+   line records its source: typed, or added from entry #n. The bounds, fixed by DRC-4685, the layer
+   that first stores and sends outcome lines:
+   - The store holds 6 lines of at most 240 characters on each revision. A seventh line, or a line
+     over 240 characters, is refused rather than clipped. The store's read limit is 16 MiB, and a
+     write trims the least recently written entries until the file fits, so the next read reads
+     what the write kept (owner, 2026-09-24). The entry being written is never the one trimmed:
+     when it cannot fit even alone, nothing is written and the save answers `unwritable`.
+   - The history copy is one flat field per line, at most 256 characters each, with a closed
+     source token beside it and no entry id.
+   - The goal and the lines take at most 9,216 of 16,384 bytes of the prompt. Over that share,
+     every line is dropped together as not asked, never some of them.
+   - The reply cap is 8,192 bytes, and a reply cut at the cap keeps each answer that arrived
+     whole.
+   - The annotation request body cap is 12,288 bytes. The widest body the page can send is a
+     goal and six lines pasted as control characters, which the browser writes as six bytes each
+     before the store collapses them: 10,238 bytes with a 64-character session id.
 4. A later direction before an analysis. When the record holds an unsettled later direction of the
    reader's, the Drift section asks before the press, naming how many are unsettled. For one it
    says "You gave a later direction at #<n>: "<first line>"."; for several, "You gave <N> later

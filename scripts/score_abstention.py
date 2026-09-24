@@ -347,8 +347,16 @@ def score_case(
             now=now,
             stamp_text="abstention check",
             model=model,
+            # The output yardstick is one outcome line, asked as the reading
+            # route asks it, and it comes back as `line_1`.
+            read_lines=True,
         )
-    criteria = assessment["criteria"] if assessment else {}
+    stored = assessment["criteria"] if assessment else {}
+    criteria = {
+        name: stored[reading.outcome_line(1) if name == "output" else name]
+        for name in CONSTRAINTS
+        if (reading.outcome_line(1) if name == "output" else name) in stored
+    }
     # The producer's own predicate, so the scorer cannot call a column asked
     # that `resolve` answered without asking. Where the record the producer
     # reads holds no work evidence, the output is never posed and the producer

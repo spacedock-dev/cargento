@@ -69,6 +69,43 @@ def _websocket_frame(opcode: int, payload: bytes) -> bytes:
     return header + payload
 
 
+def _annotation_body_refused(payload: dict[str, Any]) -> bool:
+    """Whether an annotate body carries a field of the wrong shape, which answers 400.
+
+    The text fields are strings or absent: `records.safe_text` does
+    `str(value or "")`, so a dict would publish its repr. The outcome lines are
+    a list of strings and nothing else, because a line sent as an object would
+    be a client naming its own source, which only the server may do
+    (`annotations._sourced`). `origins` names the stored position each posted
+    line came from, so two lines sharing text keep their own entries; the
+    store checks the text, so a position can keep a source and never claim one.
+    """
+    goal, output = payload.get("goal"), payload.get("output")
+    lines, expected = payload.get("lines"), payload.get("expected_revision")
+    origins = payload.get("origins")
+    return (
+        any(value is not None and not isinstance(value, str) for value in (goal, output))
+        or (
+            lines is not None
+            and (not isinstance(lines, list) or not all(isinstance(line, str) for line in lines))
+        )
+        or (expected is not None and (isinstance(expected, bool) or not isinstance(expected, int)))
+        or (
+            origins is not None
+            and (
+                not isinstance(origins, list)
+                or not isinstance(lines, list)
+                or len(origins) != len(lines)
+                or not all(
+                    item is None
+                    or (isinstance(item, int) and not isinstance(item, bool) and item >= 0)
+                    for item in origins
+                )
+            )
+        )
+    )
+
+
 def _withdraw_raises(application: Application, outcome: str, harness: str, sid: str) -> bool:
     """Take the cleared words out of the departure store as well.
 
@@ -998,7 +1035,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         someone opens the log.
 
         The store's rows and only the store's. Session history keeps a copy of
-        the same two fields for fourteen days, and reading the log out of that
+        the goal and each outcome line for fourteen days, and reading the log out of that
         instead would resurrect words a reader withdrew: `annotations.clear`
         removes the entry because clearing the field is withdrawing the request,
         while a history observation already appended is never retro-deleted.
@@ -1058,7 +1095,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     raised,
                     entry["harness"],
                     entry["sid"],
-                    has_words=annotation_store.has_typed_words(entry),
+                    has_words=annotation_store.has_typed_goal(entry),
                     discarded=annotation_store.is_discarded(entry),
                     now=now,
                 ),
@@ -1352,16 +1389,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        goal, output = payload.get("goal"), payload.get("output")
         harness, sid = payload.get("harness"), payload.get("sid")
-        if any(value is not None and not isinstance(value, str) for value in (goal, output)):
-            self._reject(400)
-            return
         # The identity is untrusted too, and it reaches `records.safe_text` by
         # the same path the text does. An earlier version checked only the two
         # text fields, which let a dict harness land a store entry keyed on its
         # Python repr.
-        if not isinstance(harness, str) or not isinstance(sid, str):
+        if (
+            _annotation_body_refused(payload)
+            or not isinstance(harness, str)
+            or not isinstance(sid, str)
+        ):
             self._reject(400)
             return
         state = application.state
@@ -1386,7 +1423,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # like discarding two revisions of words (DRC-4565).
             "discarded": current["discarded_at"],
             # The second store's answer, and never folded into `outcome`: the
-            # four tokens are the annotation store's closed vocabulary and the
+            # six `OUTCOMES` tokens are the annotation store's closed vocabulary and the
             # page's save path reads them too. True on every arm that owes no
             # withdrawal, so a reader of the wire sees one field with one
             # meaning rather than a key that appears only sometimes.
@@ -1434,6 +1471,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 sid,
                 goal=goal,
                 output=output,
+                lines=payload.get("lines"),
+                expected_revision=payload.get("expected_revision"),
+                origins=payload.get("origins"),
                 now=application.clock(),
                 diagnostic_sink=application.diagnostic_sink,
             )
@@ -1788,6 +1828,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
             row,
             entry["revisions"],
             facts,
+            # The one caller that reads the outcome lines: the reader pressed
+            # for this reading (item 12 of the ruling
+            # `reading.MAX_OUTCOME_LINES` cites keeps them from
+            # every other).
+            read_lines=True,
             **self._reading_arguments(row, entry, route),
         )
 

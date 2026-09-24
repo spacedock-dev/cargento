@@ -35,21 +35,23 @@ import contextlib
 import json
 import os
 import time
-from typing import TYPE_CHECKING, Any, Final, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, NotRequired, TypedDict, cast
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import reading, records
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
 
 # Read but not enforced, for `dismissals.SCHEMA_VERSION`'s reason: every field
 # is re-validated on the way in, so refusing a whole file on an unrecognised
-# number throws away words a downgrade could still show.
-SCHEMA_VERSION = 1
+# number throws away words a downgrade could still show. 2 stores outcome
+# lines where 1 stored one `output`; a version 1 revision reads as one typed
+# line and is written back as lines by the next save, never rewritten in place.
+SCHEMA_VERSION = 2
 
 # What a stored key may occupy. Wide enough for a full UUID session id, which is
 # the identity this store binds on, and far narrower than the read cap.
@@ -105,7 +107,16 @@ def published_check() -> str:
 
 
 NO_GOAL_TYPED = "No goal typed for this session."
-NO_OUTPUT_TYPED = "No expected output typed."
+NO_LINES_TYPED = "No expected outcome typed."
+
+# Where an outcome line came from, a closed set. `typed` is every line a
+# reader saves; `entry` is a line added from an entry in the record, which only
+# a server-side route may mint, because a client that could send it could
+# forge the claim (DRC-4682 builds that route). Anything else refuses the
+# revision, and with it the entry, for `_entry`'s reason.
+LINE_TYPED = "typed"
+LINE_ENTRY = "entry"
+LINE_SOURCES = (LINE_TYPED, LINE_ENTRY)
 
 # What discarding a whole annotation is, and what it is not (DRC-4561).
 #
@@ -122,9 +133,9 @@ NO_OUTPUT_TYPED = "No expected output typed."
 # reader meets them is what closes that belief, and SECURITY.md already says
 # the shorter name is the one printed on the button.
 DISCARD_WHY = (
-    "The clear beside each box empties that box, and the save after it keeps every earlier "
-    "revision, so anything raised against those words goes on quoting them. Discarding "
-    "everything is the other act."
+    "The clear beside the goal and the remove beside each outcome line empty them, and the save "
+    "after it keeps every earlier revision, so anything raised against those words goes on "
+    "quoting them. Discarding everything is the other act."
 )
 # The confirmation, and it carries the whole scope rather than the fact that
 # there is one. It is the only sentence a reader sees before the act, so
@@ -156,6 +167,24 @@ DISCARD_UNWRITABLE = (
     "Not discarded. The store could not be written, so the next collection reads every "
     "revision back and nothing raised against them was withdrawn."
 )
+# The store exists and this build cannot read it, so nothing was written. It
+# names the file and the step, as every refusal here names one.
+DISCARD_UNTRUSTED = (
+    "Not discarded. Cargento could not read cargento-annotations.json, so nothing was saved "
+    "and nothing was overwritten. Move or repair that file to save again."
+)
+# This session's own entry is one this build cannot read.
+DISCARD_HELD = (
+    "Not discarded. This session's words were saved by a build of Cargento that can read more "
+    "than this one, so nothing was changed. Discard them from that build, or remove this "
+    "session's entry from cargento-annotations.json."
+)
+# What the board says at rest while the store cannot be read, in place of
+# every session reading as one nobody typed against.
+STORE_UNREADABLE = (
+    "Cargento could not read cargento-annotations.json, so what you typed against sessions "
+    "cannot be shown and nothing will be saved over it. Move or repair that file to save again."
+)
 # The half-landed case, and the reason DISCARD_STORED cannot simply be worded
 # more carefully. A discard is one act over two stores: `clear` drops the
 # entry, then `http_api._withdraw_raises` blanks the rows that quoted it, and
@@ -186,7 +215,7 @@ DISCARD_UNWITHDRAWN = (
 #
 # "kept here" and not "kept", and the qualifier is the whole of what stops this
 # sentence being false. Session history keeps its own copy of `annotation_goal`
-# and `annotation_output` for fourteen days, it is on by default, and nothing in
+# and each `annotation_line_<k>` for fourteen days, it is on by default, and nothing in
 # the discard path touches it: measured, the discarded words were still in the
 # store on disk and in every `/api/data` payload's `history` array after the
 # act. The Intent log prints that fourteen-day copy in its own closing note, so
@@ -196,8 +225,8 @@ DISCARD_UNWITHDRAWN = (
 DISCARD_RECORD = (
     "What you asked of this session was discarded, along with any reading of it. "
     "None of it is kept here: this record says only that the act happened and when. Where "
-    "session history is recording, it holds its own fourteen-day copy of those two fields, "
-    "and --forget deletes that store."
+    "session history is recording, it holds its own fourteen-day copy of the goal and each "
+    "outcome line, and --forget deletes that store."
 )
 DISCARD_RECORD_STANDING = (
     "The departure store could not be written when they went, so anything raised against "
@@ -215,7 +244,7 @@ DISCARD_RECORD_STANDING = (
 # of an adopted goal, and any per-field "was discarded" is false of an empty
 # field. The two names stay so each slot reads as its own.
 DISCARDED_GOAL = "Discarded with everything else you asked of this session."
-DISCARDED_OUTPUT = DISCARDED_GOAL
+DISCARDED_LINES = DISCARDED_GOAL
 # A discard of a session that had nothing to discard. The control is gated on
 # a stored revision so a reader cannot reach it, but the route can be reached
 # by hand and answered as though an act had landed.
@@ -230,6 +259,8 @@ DISCARD_SENTENCES: Final[dict[str, str]] = {
     "unwithdrawn": DISCARD_UNWITHDRAWN,
     "refused": DISCARD_REFUSED,
     "unwritable": DISCARD_UNWRITABLE,
+    "untrusted": DISCARD_UNTRUSTED,
+    "held": DISCARD_HELD,
     "record": DISCARD_RECORD,
     "record_standing": DISCARD_RECORD_STANDING,
     "nothing": DISCARD_NOTHING,
@@ -250,7 +281,23 @@ OUTCOME_STORED = "stored"
 OUTCOME_UNCHANGED = "unchanged"
 OUTCOME_REFUSED = "refused"
 OUTCOME_UNWRITABLE = "unwritable"
-OUTCOMES = (OUTCOME_STORED, OUTCOME_UNCHANGED, OUTCOME_REFUSED, OUTCOME_UNWRITABLE)
+# The store on disk exists and this build cannot read it whole, so nothing is
+# written: a save would keep only what this process holds and write every
+# other session's words away (owner ruling, 2026-09-24). Its own token, because
+# the reader's remedy differs from a failed write's: the file needs looking at.
+OUTCOME_UNTRUSTED = "untrusted"
+# The store is readable and this session's own entry is not: a later build
+# wrote it with more lines or a source this one does not know. Kept raw and
+# never written over, renumbered or dropped from this build.
+OUTCOME_UNREADABLE = "unreadable"
+OUTCOMES = (
+    OUTCOME_STORED,
+    OUTCOME_UNCHANGED,
+    OUTCOME_REFUSED,
+    OUTCOME_UNWRITABLE,
+    OUTCOME_UNTRUSTED,
+    OUTCOME_UNREADABLE,
+)
 
 # What one `--forget` sweep of this store did (DRC-4565). A closed vocabulary
 # for `OUTCOMES`' reason and not the wire's: these never leave the process, and
@@ -258,6 +305,8 @@ OUTCOMES = (OUTCOME_STORED, OUTCOME_UNCHANGED, OUTCOME_REFUSED, OUTCOME_UNWRITAB
 FORGET_SWEPT = "swept"
 FORGET_NOTHING = "nothing"
 FORGET_UNWRITABLE = "unwritable"
+# The store exists and could not be read, so the sweep wrote nothing.
+FORGET_UNTRUSTED = "untrusted"
 
 # Whether the identity this store bound on is the session's whole identity.
 # `exact` is the ordinary case. `prefix` is the one the issue named as a hazard
@@ -287,6 +336,20 @@ class Provenance(TypedDict, total=False):
     goal_source_at: float
 
 
+class OutcomeLine(TypedDict):
+    """One line of the expected outcome: one line of text and where it came from.
+
+    `source_id` is the fact id of the entry an `entry` line came from, never a
+    number: the activity list numbers entries afresh, so a stored number would
+    point at a different entry later (item 11 of the ruling
+    `reading.MAX_OUTCOME_LINES` cites).
+    """
+
+    text: str
+    source: str
+    source_id: NotRequired[str]
+
+
 class Revision(TypedDict):
     """One save. Immutable once written.
 
@@ -301,7 +364,7 @@ class Revision(TypedDict):
     n: int
     at: float
     goal: str
-    output: str
+    lines: tuple[OutcomeLine, ...]
 
 
 class Settlement(TypedDict):
@@ -375,6 +438,9 @@ class Annotation(TypedDict):
     # leaves nothing citable.
     discarded: NotRequired[float]
     discarded_revision: NotRequired[int]
+    # When a mutator last wrote this entry, which is what `_kept` trims by: a
+    # settle or a reading writes without minting a revision.
+    written: NotRequired[float]
 
 
 def store_path(config: RuntimeConfig) -> str:
@@ -385,6 +451,43 @@ def store_path(config: RuntimeConfig) -> str:
     `dismissals.store_path`.
     """
     return os.path.join(config.state_home, "cargento-annotations.json")
+
+
+def _line(value: Any, cap: int) -> OutcomeLine | None:
+    """One untrusted stored line, or nothing if it is not one."""
+    if not isinstance(value, dict) or not isinstance(value.get("text"), str):
+        return None
+    source = value.get("source")
+    if source not in LINE_SOURCES:
+        return None
+    line: OutcomeLine = {"text": records.safe_text(value["text"], cap), "source": str(source)}
+    if source == LINE_ENTRY:
+        fact = records.safe_text(value.get("source_id"), KEY_CAP_CHARS).strip()
+        if not fact:
+            return None
+        line["source_id"] = fact
+    return line
+
+
+def _lines(value: Mapping[str, Any], cap: int) -> tuple[OutcomeLine, ...] | None:
+    """A revision's outcome lines, or None when they cannot be trusted.
+
+    A revision written before the checklist carries one `output` and reads as
+    that one typed line, or none when it was empty. `lines` wins where both
+    are present. More than six, or one with an unknown source, is not a
+    revision this build can read, and the caller refuses the entry.
+    """
+    raw = value.get("lines")
+    if raw is None:
+        output = value.get("output")
+        text = records.safe_text(output, cap) if isinstance(output, str) else ""
+        return ({"text": text, "source": LINE_TYPED},) if text.strip() else ()
+    if not isinstance(raw, list) or len(raw) > reading.MAX_OUTCOME_LINES:
+        return None
+    parsed = [_line(item, cap) for item in raw]
+    if any(line is None for line in parsed):
+        return None
+    return tuple(line for line in parsed if line is not None and line["text"].strip())
 
 
 def _revision(value: Any, cap: int) -> Revision | None:
@@ -401,9 +504,10 @@ def _revision(value: Any, cap: int) -> Revision | None:
     # boolean where the shape declares a number.
     if isinstance(number, bool) or not isinstance(number, int) or number < 1:
         return None
-    raw_goal, raw_output = value.get("goal"), value.get("output")
+    raw_goal = value.get("goal")
     provenance = _provenance(value)
-    if provenance is None:
+    lines = _lines(value, cap)
+    if provenance is None or lines is None:
         return None
     return {
         **provenance,
@@ -413,7 +517,7 @@ def _revision(value: Any, cap: int) -> Revision | None:
         # rewrite this file, so a dict here would publish its repr exactly as one
         # arriving over the endpoint would.
         "goal": records.safe_text(raw_goal, cap) if isinstance(raw_goal, str) else "",
-        "output": records.safe_text(raw_output, cap) if isinstance(raw_output, str) else "",
+        "lines": lines,
     }
 
 
@@ -476,15 +580,9 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         or scope not in reading.SCOPE_TEXT
     ):
         return None
-    raw_criteria = value.get("criteria")
-    if not isinstance(raw_criteria, dict) or set(raw_criteria) != set(reading.CONSTRAINTS):
+    criteria = _criteria(value.get("criteria"), cap)
+    if criteria is None:
         return None
-    criteria: dict[str, reading.Criterion] = {}
-    for name, raw in raw_criteria.items():
-        criterion = _criterion(raw, cap)
-        if criterion is None:
-            return None
-        criteria[name] = criterion
     ended = value.get("ended_at_read")
     provenance = _provenance({**value, "at": value.get("revision_read_at")})
     if provenance is None:
@@ -501,8 +599,42 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         # `.get`, so a reading stored before this field reads back as None and
         # the disclosure states the absence rather than blanking.
         "revision_read_at": records.norm_epoch(value.get("revision_read_at")) or None,
+        # `.get`, for the reason above: a reading stored before item 6 of the
+        # ruling `reading.MAX_OUTCOME_LINES` cites reads back as None, which
+        # says how far it read is unknown rather than claiming a time.
+        "evidence_through": records.norm_epoch(value.get("evidence_through")) or None,
         "criteria": criteria,
     }
+
+
+def _criteria(value: Any, cap: int) -> dict[str, reading.Criterion] | None:
+    """A reading's criteria, keyed goal then each line in order, or nothing.
+
+    The keys are the goal and `line_1` to `line_N` with no gap, N at most six:
+    a gap would caption one line's verdict with another's words. A reading
+    stored before the checklist carries `goal` and `output`, and `output`
+    reads back as `line_1`, so the old reading renders rather than being
+    refused. An `output` with no words and no verdict is dropped instead: it
+    is a field nobody typed, which a reading from before `why` existed stored
+    as `not verifiable` with no reason.
+    """
+    if not isinstance(value, dict):
+        return None
+    parsed: dict[str, reading.Criterion] = {}
+    for name, raw in value.items():
+        criterion = _criterion(raw, cap)
+        if criterion is None:
+            return None
+        parsed[str(name)] = criterion
+    if set(parsed) == {reading.CONSTRAINT_GOAL, reading.CONSTRAINT_OUTPUT}:
+        output = parsed.pop(reading.CONSTRAINT_OUTPUT)
+        verdict = output.get("result") in (reading.RESULT_DEPARTURE, reading.RESULT_CONSISTENT)
+        if output["clause"].strip() or output["cites"] or verdict:
+            parsed[reading.outcome_line(1)] = output
+    names = reading.constraints_for(["line"] * (len(parsed) - 1))
+    if len(parsed) - 1 > reading.MAX_OUTCOME_LINES or set(parsed) != set(names):
+        return None
+    return {name: parsed[name] for name in names}
 
 
 def _settlement(value: Any) -> Settlement | None:
@@ -562,7 +694,8 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         return None
     raw = value.get("revisions")
     if not isinstance(raw, list) or any(
-        isinstance(item, dict) and _provenance(item) is None for item in raw
+        isinstance(item, dict) and (_provenance(item) is None or _lines(item, text_cap) is None)
+        for item in raw
     ):
         # Dropping just this revision could restore older typed words and
         # authorize the unasked lane against a baseline we no longer know.
@@ -592,12 +725,20 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         # nothing to show.
         entry["refused"] = True
         entry["refused_raw"] = value["assessment"]
+    return _counters(entry, value)
+
+
+def _counters(entry: Annotation, value: dict[str, Any]) -> Annotation:
+    """The entry's press count, withheld reason and write time, each read on its own."""
     readings = value.get("readings")
     if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
         entry["readings"] = readings
     withheld = _withheld(value.get("withheld"))
     if withheld:
         entry["withheld"] = withheld
+    written = records.norm_epoch(value.get("written"))
+    if written:
+        entry["written"] = float(written)
     return entry
 
 
@@ -612,6 +753,28 @@ def _withheld(value: Any) -> str:
     return value if isinstance(value, str) and value in reading.WITHHELD.values() else ""
 
 
+def _last_written(entry: Annotation) -> float:
+    """When anything was last written to this entry, as far as the entry can say.
+
+    Not its newest revision alone. A settle, a reading and a withheld reason
+    enlarge an entry without minting a revision, and ranking by revision time
+    made the entry being written the first one `_kept` dropped at the cap: the
+    save answered `stored` over words it had just deleted. `written` is set by
+    every mutator; an entry stored before it existed falls back to the newest
+    time it carries.
+    """
+    stamps = [float(entry.get("written") or 0.0), float(entry.get("discarded") or 0.0)]
+    if entry["revisions"]:
+        stamps.append(entry["revisions"][-1]["at"])
+    settled = entry.get("settled")
+    if settled:
+        stamps.append(settled["at"])
+    assessment = entry.get("assessment")
+    if assessment:
+        stamps.append(assessment.get("read_at") or 0.0)
+    return max(stamps)
+
+
 def _eviction_rank(entry: Annotation) -> tuple[int, float]:
     """Where this entry stands in the queue to be dropped. Lowest goes first.
 
@@ -619,17 +782,96 @@ def _eviction_rank(entry: Annotation) -> tuple[int, float]:
     discard record is stamped at the moment of the act, which is later than
     every entry typed before it, so oldest-first would keep a record of a
     deletion and evict words the reader still has. Words outrank a record of
-    their absence, and within each group the oldest goes first.
+    their absence, and within each group the least recently written goes first.
     """
-    if not entry["revisions"]:
-        return (0, float(entry.get("discarded") or 0.0))
-    return (1, entry["revisions"][-1]["at"])
+    return (1 if entry["revisions"] else 0, _last_written(entry))
 
 
 def _bounded(entries: Iterable[Annotation], limit: int) -> tuple[Annotation, ...]:
     """The `limit` entries worth keeping, by `_eviction_rank`."""
     ordered = sorted(entries, key=_eviction_rank)
     return tuple(ordered[-limit:]) if limit > 0 else ()
+
+
+def _on_disk(entry: Annotation) -> dict[str, Any]:
+    """One entry as the file holds it.
+
+    `refused` is a fact about the build that just read the file rather than
+    about the annotation, so it is dropped. The reading it refused is restored
+    under its own name, or a save here would destroy a reading this build
+    merely could not parse.
+    """
+    return {
+        **{name: field for name, field in entry.items() if name not in {"refused", "refused_raw"}},
+        **({"assessment": entry["refused_raw"]} if "refused_raw" in entry else {}),
+        "revisions": [
+            {**rev, "lines": [dict(line) for line in rev["lines"]]} for rev in entry["revisions"]
+        ],
+    }
+
+
+def _kept(
+    config: RuntimeConfig,
+    entries: Iterable[Annotation],
+    *,
+    keep: tuple[str, str] | None = None,
+    raw: Sequence[Any] = (),
+) -> tuple[Annotation, ...] | None:
+    """The entries a write keeps: the count bound, then the read limit.
+
+    Owner ruling, 2026-09-24. `_read` refuses a file over
+    `annotation_read_cap_bytes`, and the next save then wrote only what this
+    process held, so a store over the limit lost every reader's words at once.
+    The count bounds alone allow more than any fixed limit, because
+    `ensure_ascii` writes an astral character as twelve bytes. So the write
+    drops entries by `_eviction_rank` until the file fits, and the next read
+    reads exactly what this write kept.
+
+    `keep` is the entry the caller is writing, and it is never the one
+    dropped: None comes back instead when it cannot fit even alone, and the
+    caller answers `unwritable` and writes nothing. `raw` is what this build
+    could not read (`_Store.kept_raw`), carried verbatim and never dropped.
+
+    Sized from each entry's own serialisation, for `history._store_bytes`'
+    reason: `json.dump` uses the default separators and `ensure_ascii`, so the
+    file is the empty envelope plus each entry plus two bytes between entries,
+    exactly, and one character is one byte.
+    """
+    ordered = sorted(entries, key=_eviction_rank)
+    written = [entry for entry in ordered if (entry["harness"], entry["sid"]) == keep]
+    others = [entry for entry in ordered if (entry["harness"], entry["sid"]) != keep]
+    limit = max(0, config.annotation_max_sessions - len(written))
+    others = others[-limit:] if limit else []
+    sizes = [len(json.dumps(_on_disk(entry))) for entry in others]
+    fixed = [len(json.dumps(_on_disk(entry))) for entry in written]
+    fixed += [len(json.dumps(value)) for value in raw]
+    count = len(sizes) + len(fixed)
+    total = len(json.dumps({"v": SCHEMA_VERSION, "entries": []})) + sum(sizes) + sum(fixed)
+    total += 2 * max(0, count - 1)
+    dropped = 0
+    while dropped < len(others) and total > config.annotation_read_cap_bytes:
+        count -= 1
+        total -= sizes[dropped] + (2 if count > 0 else 0)
+        dropped += 1
+    if keep is not None and total > config.annotation_read_cap_bytes:
+        return None
+    return tuple(sorted([*others[dropped:], *written], key=_eviction_rank))
+
+
+class _Store(NamedTuple):
+    """The file as this build read it.
+
+    `trusted` is False when a file exists and this build could not read it
+    whole: unreadable, over the read limit, not JSON or not a store. That is
+    not a missing file, and it must never be written over, because the next
+    save would keep only what this process holds (owner ruling, 2026-09-24).
+    `kept_raw` holds each entry this build refused, verbatim, so a save puts
+    it back as `refused_raw` does for a reading.
+    """
+
+    entries: tuple[Annotation, ...]
+    kept_raw: tuple[Any, ...]
+    trusted: bool
 
 
 def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
@@ -644,40 +886,72 @@ def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
 
 
 def _read(config: RuntimeConfig) -> tuple[Annotation, ...]:
-    """Every annotation on disk, or none if there is none to trust.
+    """Every annotation on disk, or none if there is none to trust."""
+    return _read_store(config).entries
+
+
+def _refused_entry(value: Any) -> bool:
+    """Whether `_entry` refused this record for revisions it could not read.
+
+    Keyed and holding revisions, so it is somebody's words written by a
+    build this one cannot read: a seventh line or a source it does not know.
+    Anything less keyed is dropped as before.
+    """
+    if not isinstance(value, dict):
+        return False
+    key = _key(value.get("harness"), value.get("sid"))
+    raw = value.get("revisions")
+    return bool(key[0] and key[1] and isinstance(raw, list) and raw)
+
+
+def _envelope(raw: bytes | None, cap: int) -> list[Any] | None:
+    """The file's entry list, or None when the file cannot be trusted whole."""
+    if raw is None or len(raw) > cap:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, RecursionError):
+        return None
+    entries = data.get("entries") if isinstance(data, dict) else None
+    return entries if isinstance(entries, list) else None
+
+
+def _read_store(config: RuntimeConfig) -> _Store:
+    """The file, told apart from no file and from a file this build cannot trust.
 
     Read to a cap with RecursionError caught, for `lifecycle.read_state`'s
     reason: deeply nested JSON blows the recursion limit rather than raising
     ValueError, and a corrupt store must degrade to "no annotations" rather than
-    take down a collection. A malformed record is dropped on its own.
+    take down a collection. A malformed record is dropped on its own, and one
+    refused for revisions this build cannot read is kept raw.
     """
     cap = config.annotation_read_cap_bytes
     try:
         with open(store_path(config), "rb") as handle:
             raw = handle.read(cap + 1)
-        if len(raw) > cap:
-            return ()
-        data = json.loads(raw or b"null")
-    except (OSError, ValueError, RecursionError):
-        return ()
-    if not isinstance(data, dict):
-        return ()
-    entries = data.get("entries")
-    if not isinstance(entries, list):
-        return ()
-    parsed = [
-        entry
-        for entry in (
-            _entry(
-                value,
-                text_cap=config.annotation_text_cap_chars,
-                revision_cap=config.annotation_max_revisions,
-            )
-            for value in entries
+    except (FileNotFoundError, NotADirectoryError):
+        # No file, or a state home that cannot hold one: nothing is there to lose.
+        raw = b""
+    except OSError:
+        raw = None
+    if raw == b"":
+        return _Store((), (), trusted=True)
+    entries = _envelope(raw, cap)
+    if entries is None:
+        return _Store((), (), trusted=False)
+    parsed: list[Annotation] = []
+    refused: list[Any] = []
+    for value in entries:
+        entry = _entry(
+            value,
+            text_cap=config.annotation_text_cap_chars,
+            revision_cap=config.annotation_max_revisions,
         )
-        if entry is not None
-    ]
-    return _bounded(parsed, config.annotation_max_sessions)
+        if entry is not None:
+            parsed.append(entry)
+        elif _refused_entry(value):
+            refused.append(value)
+    return _Store(_bounded(parsed, config.annotation_max_sessions), tuple(refused), trusted=True)
 
 
 def _fsync_directory(path: str) -> None:
@@ -704,14 +978,16 @@ def save(
     entries: Iterable[Annotation],
     *,
     diagnostic_sink: Callable[[str], None] = print,
+    raw: Sequence[Any] = (),
 ) -> bool:
     """Write the store, reporting whether it reached disk.
 
     The flag gate and nothing else. `_write` is the file, for `load`'s reason.
+    `raw` is what the read this write follows refused, put back verbatim.
     """
     if not config.annotations_enabled:
         return False
-    return _write(config, entries, diagnostic_sink=diagnostic_sink)
+    return _write(config, entries, diagnostic_sink=diagnostic_sink, raw=raw)
 
 
 def _write(
@@ -719,6 +995,7 @@ def _write(
     entries: Iterable[Annotation],
     *,
     diagnostic_sink: Callable[[str], None],
+    raw: Sequence[Any] = (),
 ) -> bool:
     """Put these entries on disk, reporting whether they reached it.
 
@@ -728,24 +1005,10 @@ def _write(
     which `SECURITY.md` treats as the same class as the observer sidecar's goal.
     The mode is advisory and Windows ignores it, which SECURITY.md records.
     """
+    kept = _kept(config, entries, raw=raw) or ()
     payload = {
         "v": SCHEMA_VERSION,
-        "entries": [
-            # `refused` is a fact about the build that just read the file
-            # rather than about the annotation, so it is dropped. The reading it
-            # refused is restored under its own name, or a save here would
-            # destroy a reading this build merely could not parse.
-            {
-                **{
-                    name: field
-                    for name, field in entry.items()
-                    if name not in {"refused", "refused_raw"}
-                },
-                **({"assessment": entry["refused_raw"]} if "refused_raw" in entry else {}),
-                "revisions": [dict(rev) for rev in entry["revisions"]],
-            }
-            for entry in _bounded(entries, config.annotation_max_sessions)
-        ],
+        "entries": [*(_on_disk(entry) for entry in kept), *raw],
     }
     target = store_path(config)
     tmp = f"{target}.{os.getpid()}.tmp"
@@ -796,16 +1059,55 @@ def _stored(entries: tuple[Annotation, ...]) -> tuple[dict[str, Any], ...]:
     return cast("tuple[dict[str, Any], ...]", entries)
 
 
+def _commit(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    store: _Store,
+    key: tuple[str, str],
+    entries: Iterable[Annotation],
+    *,
+    diagnostic_sink: Callable[[str], None],
+) -> str:
+    """Write one mutator's result: trimmed, the written entry kept, the refused kept raw.
+
+    Inside the caller's lock, and the cache set before the write, as every
+    mutator did before this was shared. Every raw entry goes back as it was:
+    a mutator refuses a session held raw before it reaches here (`_held`).
+    """
+    raw = store.kept_raw
+    kept = _kept(config, entries, keep=key, raw=raw)
+    if kept is None:
+        return OUTCOME_UNWRITABLE
+    state.annotations = _stored(kept)
+    return (
+        OUTCOME_STORED
+        if save(config, kept, diagnostic_sink=diagnostic_sink, raw=raw)
+        else OUTCOME_UNWRITABLE
+    )
+
+
+def _held(store: _Store, key: tuple[str, str]) -> bool:
+    """Whether this session's own entry is one this build refused on read."""
+    return any(_key(value.get("harness"), value.get("sid")) == key for value in store.kept_raw)
+
+
 def refresh(config: RuntimeConfig, state: RuntimeState) -> tuple[Annotation, ...]:
     """Re-read the store into this process's copy, and return it.
 
     Two dashboards can bind on one machine and the file is the record, so a save
-    made in one is picked up by the other on its next collection.
+    made in one is picked up by the other on its next collection. Whether the
+    file could be read whole is kept beside it, for `store_notice`.
     """
-    entries = load(config)
+    store = _read_store(config) if config.annotations_enabled else _Store((), (), trusted=True)
     with state.annotation_lock:
-        state.annotations = _stored(entries)
-    return entries
+        state.annotations = _stored(store.entries)
+        state.annotations_trusted = store.trusted
+    return store.entries
+
+
+def store_notice(state: RuntimeState) -> str:
+    """The board's sentence while the store cannot be read, or nothing."""
+    return "" if state.annotations_trusted else STORE_UNREADABLE
 
 
 def active(config: RuntimeConfig, state: RuntimeState) -> tuple[Annotation, ...]:
@@ -849,7 +1151,19 @@ def has_typed_words(entry: Annotation | None) -> bool:
     latest: Revision | None = entry["revisions"][-1] if entry and entry["revisions"] else None
     if latest is None:
         return False
-    return bool(str(latest.get("goal") or "").strip() or str(latest.get("output") or "").strip())
+    return bool(str(latest.get("goal") or "").strip() or reading.outcome_lines(latest))
+
+
+def has_typed_goal(entry: Annotation | None) -> bool:
+    """Whether the latest revision holds a goal, the only words the unasked lane reads.
+
+    The lane's own candidate test (`unasked.Lane.consider`), for the sentence
+    that says what the lane checked: counting outcome lines here claimed a
+    check of words it never reads (item 12 of the ruling
+    `reading.MAX_OUTCOME_LINES` cites).
+    """
+    latest: Revision | None = entry["revisions"][-1] if entry and entry["revisions"] else None
+    return bool(latest and str(latest.get("goal") or "").strip())
 
 
 def is_discarded(entry: Annotation | None) -> bool:
@@ -893,16 +1207,16 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
     latest: Revision | None = entry["revisions"][-1] if entry and entry["revisions"] else None
     settled = entry.get("settled") if entry else None
     goal = latest["goal"] if latest else ""
-    output = latest["output"] if latest else ""
+    lines = latest["lines"] if latest else ()
     # The third answer (DRC-4565). Absent, present and discarded render in the
-    # same two slots, and the sentence that says "nobody typed here" over a
+    # same slots, and the sentence that says "nobody typed here" over a
     # session whose words a reader deleted is the false one this replaces.
     discarded = is_discarded(entry)
     return {
         "goal": goal,
         "goal_why": (DISCARDED_GOAL if discarded else NO_GOAL_TYPED) if not goal else "",
-        "output": output,
-        "output_why": (DISCARDED_OUTPUT if discarded else NO_OUTPUT_TYPED) if not output else "",
+        "lines_why": (DISCARDED_LINES if discarded else NO_LINES_TYPED) if not lines else "",
+        **_published_lines(lines),
         # When the act happened, and the record's own sentence. Two keys, for
         # the reason `annotation_at` is not folded into the revision line: the
         # moment is a number a surface renders in its own register, and the
@@ -931,6 +1245,22 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "reading_count": entry.get("readings", 0) if entry else 0,
         "reading_withheld": entry.get("withheld", "") if entry else "",
     }
+
+
+def _published_lines(lines: tuple[OutcomeLine, ...]) -> dict[str, Any]:
+    """Each outcome line as three flat fields, all six slots declared.
+
+    Flat, for the reason `sessions.base_session` gives for every annotation
+    field: the history allowlist admits a field by name, and a name cannot
+    reach inside a list. An empty slot is `""` and `None`, never absent.
+    """
+    fields: dict[str, Any] = {}
+    for k in range(1, reading.MAX_OUTCOME_LINES + 1):
+        line = lines[k - 1] if k <= len(lines) else None
+        fields[f"line_{k}"] = line["text"] if line else ""
+        fields[f"line_{k}_source"] = line["source"] if line else None
+        fields[f"line_{k}_source_id"] = line.get("source_id", "") if line else ""
+    return fields
 
 
 def _key(harness: Any, sid: Any) -> tuple[str, str]:
@@ -1043,7 +1373,10 @@ def _record(
         # From disk under the lock, for `annotate`'s reason: a save made by a
         # second dashboard since this one's last collection is carried forward
         # rather than written away.
-        current = load(config)
+        store = _read_store(config)
+        if not store.trusted:
+            return OUTCOME_UNTRUSTED
+        current = store.entries
         existing = find(current, *key)
         if existing is None or is_discarded(existing):
             # A reading of nothing is not a reading. There is no baseline to
@@ -1069,18 +1402,21 @@ def _record(
             updated["withheld"] = ""
         if spent:
             updated["readings"] = existing.get("readings", 0) + 1
+        updated["written"] = time.time()
         others = [e for e in current if (e["harness"], e["sid"]) != key]
-        bounded = _bounded([*others, _carried(existing, updated)], config.annotation_max_sessions)
-        # Before the write and inside the lock, as every other mutator does.
-        state.annotations = _stored(bounded)
-        return (
-            OUTCOME_STORED
-            if save(config, bounded, diagnostic_sink=diagnostic_sink)
-            else OUTCOME_UNWRITABLE
+        return _commit(
+            config,
+            state,
+            store,
+            key,
+            [*others, _carried(existing, updated)],
+            diagnostic_sink=diagnostic_sink,
         )
 
 
-def annotate(
+# One keyword per field a save may carry, each independent; bundling them would
+# hide which one a caller left alone.
+def annotate(  # noqa: PLR0913
     config: RuntimeConfig,
     state: RuntimeState,
     harness: Any,
@@ -1088,18 +1424,145 @@ def annotate(
     *,
     goal: Any = None,
     output: Any = None,
+    lines: Any = None,
+    expected_revision: Any = None,
+    origins: Any = None,
     now: float | None = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
+    """Save what the reader typed. Returns an `OUTCOMES` token.
+
+    `lines` replaces the whole outcome list, `[]` clears it, and None leaves it
+    alone. Replacing a stored list needs `expected_revision`, the revision the
+    list was drafted against, so a second tab or a page older than the
+    checklist cannot silently undo the first one's edits. `output` is the
+    one-line form such an older page posts: it saves as a list of that one
+    line only where no list is stored yet, and it is refused over any stored
+    list, because that page sends no revision and never showed the lines.
+    `origins`, beside `lines`, names the stored line each posted line came
+    from (or None for a new one), so a line keeps its own entry when two
+    share text; the store checks the text, so it can only keep a source,
+    never claim one.
+    """
+    legacy = lines is None and isinstance(output, str)
+    if legacy:
+        lines = [output]
+    if expected_revision is not None and (
+        isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+    ):
+        return OUTCOME_REFUSED
+    aligned = _aligned_origins(origins, lines, config.annotation_text_cap_chars)
+    if aligned is False:
+        return OUTCOME_REFUSED
+    options: dict[str, Any] = {"legacy_output": legacy, "origins": aligned}
+    if expected_revision is not None:
+        options["expected_revision"] = expected_revision
     return _annotate(
         config,
         state,
         (harness, sid),
         goal=goal,
-        output=output,
+        lines=lines,
         now=now,
+        adoption=options,
         diagnostic_sink=diagnostic_sink,
     )
+
+
+def _aligned_origins(origins: Any, lines: Any, cap: int) -> list[int | None] | bool | None:
+    """`origins` kept beside the lines `_typed_lines` keeps; None if none sent, False if bad."""
+    if origins is None:
+        return None
+    if (
+        not isinstance(origins, list)
+        or not isinstance(lines, (list, tuple))
+        or len(origins) != len(lines)
+        or not all(
+            item is None or (isinstance(item, int) and not isinstance(item, bool) and item >= 0)
+            for item in origins
+        )
+    ):
+        return False
+    return [
+        origin
+        for origin, line in zip(origins, lines, strict=True)
+        if isinstance(line, str) and records.safe_text(line, cap).strip()
+    ]
+
+
+def _typed_lines(value: Any, cap: int) -> list[str] | None:
+    """A posted list as the lines to save, or None when it must be refused.
+
+    Each line goes through `records.safe_text`, so a pasted line break becomes
+    one space and the line stays one line. A line the cap would clip is
+    refused rather than saved clipped: a reader must never find a line saved
+    that is not the line they wrote. The goal still clips, as it always has.
+    Blank lines are dropped, and more than six refuses the save whole.
+    """
+    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value):
+        return None
+    texts: list[str] = []
+    for item in value:
+        text = records.safe_text(item, cap)
+        if text != records.safe_text(item, cap * 16):
+            return None
+        if text.strip():
+            texts.append(text)
+    return texts if len(texts) <= reading.MAX_OUTCOME_LINES else None
+
+
+def _sourced(
+    texts: list[str],
+    previous: tuple[OutcomeLine, ...],
+    origins: Sequence[int | None] | None = None,
+) -> tuple[OutcomeLine, ...]:
+    """The lines to store, each with the source the server gives it.
+
+    The client never names a source. Each `entry` line of the revision before
+    lends its source to one new line with the same text, and only one, so a
+    newly typed duplicate of it is typed; any other line, an edited one
+    included, is typed, as an edited adopted goal is. Which line it lends to
+    is decided by the page's `origins` first, then by position, then by the
+    first line with that text: two lines sharing text each keep their own.
+    """
+    unused = [i for i, line in enumerate(previous) if line["source"] == LINE_ENTRY]
+    out: list[OutcomeLine | None] = [None] * len(texts)
+
+    def take(i: int, j: int | None) -> None:
+        if out[i] is None and j in unused and previous[j]["text"] == texts[i]:
+            out[i] = previous[j]
+            unused.remove(j)
+
+    for i in range(len(texts)):
+        take(i, origins[i] if origins and i < len(origins) else None)
+    for i in range(len(texts)):
+        take(i, i)
+    for i, text in enumerate(texts):
+        take(i, next((j for j in unused if previous[j]["text"] == text), None))
+    return tuple(line or _typed(texts[i]) for i, line in enumerate(out))
+
+
+def _unguarded_replacement(
+    existing: Annotation | None, new_texts: list[str] | None, options: Mapping[str, Any]
+) -> bool:
+    """Whether this save would replace a stored list from a view that cannot name its revision.
+
+    Refused rather than taken: the lines it would write away are the reader's
+    own, and the page that sent it may never have shown them. A page older
+    than the checklist posts one `output` and no revision, so it may type the
+    first line of an empty list and nothing more.
+    """
+    if new_texts is None or existing is None or not existing["revisions"]:
+        return False
+    stored = [line["text"] for line in existing["revisions"][-1]["lines"]]
+    if not stored or new_texts == stored:
+        return False
+    legacy = bool(options.get("legacy_output"))
+    return options.get("expected_revision") is None or (legacy and len(stored) > 1)
+
+
+def _typed(text: str) -> OutcomeLine:
+    return {"text": text, "source": LINE_TYPED}
 
 
 def _annotate(
@@ -1108,15 +1571,15 @@ def _annotate(
     identity: tuple[Any, Any],
     *,
     goal: Any = None,
-    output: Any = None,
+    lines: Any = None,
     now: float | None = None,
     adoption: dict[str, Any] | None = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
     """Append a revision to one session's annotation. Returns an `OUTCOMES` token.
 
-    Both fields are optional and independent, and a save that repeats the last
-    revision verbatim appends nothing: opening the field and closing it is not a
+    The goal and the lines are optional and independent, and a save that
+    repeats the last revision verbatim appends nothing: opening the field and closing it is not a
     change of intent, and burning a revision number on it would let an
     assessment cite one. That save answers `OUTCOME_UNCHANGED`, not
     `OUTCOME_STORED`: the words are on disk either way, and only the second
@@ -1133,35 +1596,45 @@ def _annotate(
     # the store's own floor under that.
     #
     # None means "not sent" and carries the previous revision's value forward.
-    # The empty string means "clear this one field". Collapsing the two would
-    # make a client that posts only the goal silently destroy the expected
-    # output beside it, which is the opposite of the independence the two fields
-    # are documented to have.
+    # The empty string, or an empty list, means "clear this one". Collapsing
+    # the two would make a client that posts only the goal silently destroy
+    # the outcome lines beside it, which is the opposite of the independence
+    # the two are documented to have.
     new_goal = records.safe_text(goal, cap) if isinstance(goal, str) else None
-    new_output = records.safe_text(output, cap) if isinstance(output, str) else None
-    if new_goal is None and new_output is None:
-        return OUTCOME_REFUSED
+    new_texts = None if lines is None else _typed_lines(lines, cap)
     stamp = time.time() if now is None else now
     options = adoption or {}
     source_fields = _provenance({**options, "at": stamp})
-    if source_fields is None:
+    # A list the store will not take refuses the whole save, goal included:
+    # saving half of what the reader pressed save on is not what they asked.
+    if source_fields is None or (new_texts is None and (lines is not None or new_goal is None)):
         return OUTCOME_REFUSED
 
     with state.annotation_lock:
         # From disk under the lock rather than from the cached copy, so a save
         # made by a second dashboard since this one's last collection is carried
         # forward instead of being written away.
-        current = load(config)
+        store = _read_store(config)
+        if not store.trusted or _held(store, key):
+            # A session held raw is refused like an unreadable store: its
+            # words are on disk, this build cannot read them, and a save here
+            # would renumber from 1 over them.
+            return OUTCOME_UNTRUSTED if not store.trusted else OUTCOME_UNREADABLE
+        current = store.entries
         existing = find(current, *key)
         actual_revision = (
             existing["revisions"][-1]["n"] if existing and existing["revisions"] else 0
         )
         expected_revision = options.get("expected_revision")
-        if (expected_revision is not None and expected_revision != actual_revision) or (
-            options.get("empty_goal_only")
-            and existing
-            and existing["revisions"]
-            and existing["revisions"][-1]["goal"]
+        if (
+            (expected_revision is not None and expected_revision != actual_revision)
+            or (
+                options.get("empty_goal_only")
+                and existing
+                and existing["revisions"]
+                and existing["revisions"][-1]["goal"]
+            )
+            or _unguarded_replacement(existing, new_texts, options)
         ):
             return OUTCOME_REFUSED
         if existing is not None and not is_discarded(existing):
@@ -1169,8 +1642,12 @@ def _annotate(
             if new_goal is None:
                 source_fields = _provenance(last) or {}
             text_goal = last["goal"] if new_goal is None else new_goal
-            text_output = last["output"] if new_output is None else new_output
-            if (last["goal"], last["output"]) == (text_goal, text_output) and (
+            text_lines = (
+                last["lines"]
+                if new_texts is None
+                else _sourced(new_texts, last["lines"], options.get("origins"))
+            )
+            if (last["goal"], last["lines"]) == (text_goal, text_lines) and (
                 _provenance(last) or {}
             ) == source_fields:
                 # Unchanged text is not a new request, so it mints no revision.
@@ -1185,7 +1662,7 @@ def _annotate(
                 "n": last["n"] + 1,
                 "at": stamp,
                 "goal": text_goal,
-                "output": text_output,
+                "lines": text_lines,
             }
             kept_revisions = (*existing["revisions"], revision)[-config.annotation_max_revisions :]
             updated: Annotation = {
@@ -1214,21 +1691,18 @@ def _annotate(
                         "n": discarded_revision(existing) + 1,
                         "at": stamp,
                         "goal": new_goal or "",
-                        "output": new_output or "",
+                        "lines": _sourced(new_texts or [], ()),
                     },
                 ),
             }
+        updated["written"] = stamp
         others = [e for e in current if (e["harness"], e["sid"]) != key]
-        bounded = _bounded([*others, updated], config.annotation_max_sessions)
-        state.annotations = _stored(bounded)
         # Inside the lock, not after it. The server is threaded, so two saves on
         # one session both read the pre-write store, both mint revision n+1, and
         # the later write erases the earlier one. Holding the lock across the
         # write costs one file write and closes the whole in-process window.
-        return (
-            OUTCOME_STORED
-            if save(config, bounded, diagnostic_sink=diagnostic_sink)
-            else OUTCOME_UNWRITABLE
+        return _commit(
+            config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
         )
 
 
@@ -1267,7 +1741,10 @@ def settle(
         # From disk under the lock, for `annotate`'s reason: a save made by a
         # second dashboard since this one's last collection is carried forward
         # rather than written away.
-        current = load(config)
+        store = _read_store(config)
+        if not store.trusted:
+            return OUTCOME_UNTRUSTED
+        current = store.entries
         existing = find(current, *key)
         # A discard record has no baseline to answer about, which is the rule
         # the docstring already states; reading its latest revision would also
@@ -1285,17 +1762,15 @@ def settle(
             },
         }
         updated = _carried(existing, updated)
+        updated["written"] = stamp
         others = [e for e in current if (e["harness"], e["sid"]) != key]
-        bounded = _bounded([*others, updated], config.annotation_max_sessions)
-        # Before the write and inside the lock, as `annotate` and `clear` both
-        # do. `active()` serves the cached copy when it is not None, and the
-        # endpoint reads back through it on the same request, so a settle that
-        # skipped this would answer with the mark it had just written missing.
-        state.annotations = _stored(bounded)
-        return (
-            OUTCOME_STORED
-            if save(config, bounded, diagnostic_sink=diagnostic_sink)
-            else OUTCOME_UNWRITABLE
+        # `_commit` sets the cache before the write and inside the lock, as
+        # `annotate` and `clear` do. `active()` serves the cached copy when it
+        # is not None, and the endpoint reads back through it on the same
+        # request, so a settle that skipped this would answer with the mark it
+        # had just written missing.
+        return _commit(
+            config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
         )
 
 
@@ -1335,15 +1810,18 @@ def clear(
         return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
     with state.annotation_lock:
-        current = load(config)
+        store = _read_store(config)
+        if not store.trusted or _held(store, key):
+            return OUTCOME_UNTRUSTED if not store.trusted else OUTCOME_UNREADABLE
+        current = store.entries
         existing = find(current, *key)
         others = tuple(e for e in current if (e["harness"], e["sid"]) != key)
         if existing is None:
-            kept = others
+            kept: list[Annotation] = list(others)
         elif is_discarded(existing):
             # Already recorded, and the stamp does not move: the record says
             # when the words went, and a second press deleted nothing.
-            kept = _bounded([*others, existing], config.annotation_max_sessions)
+            kept = [*others, existing]
         else:
             record: Annotation = {
                 "harness": existing["harness"],
@@ -1352,14 +1830,9 @@ def clear(
                 "discarded": stamp,
                 "discarded_revision": existing["revisions"][-1]["n"],
             }
-            kept = _bounded([*others, record], config.annotation_max_sessions)
-        state.annotations = _stored(kept)
+            kept = [*others, record]
         # Inside the lock, for `annotate`'s reason.
-        return (
-            OUTCOME_STORED
-            if save(config, kept, diagnostic_sink=diagnostic_sink)
-            else OUTCOME_UNWRITABLE
-        )
+        return _commit(config, state, store, key, kept, diagnostic_sink=diagnostic_sink)
 
 
 def forget(config: RuntimeConfig) -> str:
@@ -1386,11 +1859,16 @@ def forget(config: RuntimeConfig) -> str:
     says what a reader typed will be gone, which is the opposite of what this
     failure means: nothing was written, so every record and every word stands.
     """
-    entries = _read(config)
+    store = _read_store(config)
+    if not store.trusted:
+        # A store this build cannot read is never written over: the sweep
+        # would keep only what it could parse, which is nothing.
+        return FORGET_UNTRUSTED
+    entries = store.entries
     kept = tuple(entry for entry in entries if not is_discarded(entry))
     if len(kept) == len(entries):
         return FORGET_NOTHING
-    if _write(config, kept, diagnostic_sink=lambda _line: None):
+    if _write(config, kept, diagnostic_sink=lambda _line: None, raw=store.kept_raw):
         return FORGET_SWEPT
     return FORGET_UNWRITABLE
 
