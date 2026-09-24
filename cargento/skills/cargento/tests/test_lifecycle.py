@@ -1931,3 +1931,207 @@ class ProducerTest(support.RuntimeTestCase):
             thread.join(timeout=2)
         httpd.server_close()
         self.assertTrue(survived, "the loop must survive a failed collection")
+
+
+class ServeOwnsReadingJobsTest(unittest.TestCase):
+    """DRC-4686: what `serve` does for the reading jobs this daemon runs.
+
+    Q5 on the issue: a supervised CLI leads a process group of its own, so a
+    foreground Ctrl-C no longer reaches it and shutdown has to kill it. Q2: a
+    job a stopped dashboard left spent is recorded when the next one starts.
+    """
+
+    def _serve(self, server: Any, events: list[str]) -> Any:
+        from cargento_runtime import reading_jobs, supervise  # noqa: PLC0415
+
+        config = support.make_config()
+
+        def recovered(_application: Any, *, alive: Any) -> int:
+            events.append(f"recover:{alive.func.__name__}")
+            return 0
+
+        with (
+            mock.patch.object(lifecycle, "write_state"),
+            mock.patch.object(lifecycle, "remove_state"),
+            mock.patch.object(lifecycle, "run_producer"),
+            mock.patch.object(supervise, "kill_all", side_effect=lambda: events.append("kill_all")),
+            mock.patch.object(reading_jobs, "recover", side_effect=recovered) as recover,
+        ):
+            lifecycle.serve(
+                config,
+                server,
+                4553,
+                started=1.0,
+                diagnostic_sink=lambda _message: None,
+            )
+        return recover
+
+    def test_shutdown_kills_every_supervised_group_after_serving(self) -> None:
+        events: list[str] = []
+
+        class FakeServer:
+            application = None
+
+            def serve_forever(self) -> None:
+                events.append("serve")
+
+            def server_close(self) -> None:
+                pass
+
+        self._serve(FakeServer(), events)
+        self.assertEqual(["serve", "kill_all"], events)
+
+    def test_a_serving_application_records_what_a_stopped_one_left_spent_first(self) -> None:
+        events: list[str] = []
+        application = mock.Mock()
+
+        class FakeServer:
+            def __init__(self) -> None:
+                self.application = application
+
+            def serve_forever(self) -> None:
+                events.append("serve")
+
+            def server_close(self) -> None:
+                pass
+
+        recover = self._serve(FakeServer(), events)
+        self.assertEqual(["recover:dashboard_alive", "serve", "kill_all"], events)
+        self.assertIs(application, recover.call_args.args[0])
+
+
+@unittest.skipIf(sys.platform == "win32", "terminal hangups are POSIX")
+class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
+    """Verify N1: a server started under `nohup` must survive the hangup it was told to ignore."""
+
+    def _serve_ignoring(self, name: str) -> None:
+        server, number = self._start_ignoring(name)
+        os.kill(server.pid, number)
+        time.sleep(1.0)
+        self.assertIsNone(server.poll(), f"a server that ignored {name} exited on it")
+        server.terminate()
+        self.assertEqual(0, server.wait(timeout=15))
+
+    def _start_ignoring(self, name: str) -> tuple[subprocess.Popen[bytes], int]:
+        number = getattr(signal, name)
+        home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home, True)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = int(listener.getsockname()[1])
+        env = {**os.environ, "CARGENTO_HOME": str(home), "PYTHONNOUSERSITE": "1"}
+        env.pop("PYTHONPATH", None)
+        server = subprocess.Popen(
+            [sys.executable, str(SERVER_PATH), "--port", str(port), "--no-events"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            preexec_fn=lambda: signal.signal(number, signal.SIG_IGN),  # noqa: PLW1509
+        )
+        self.addCleanup(server.kill)
+        state = home / f"cargento-{port}.json"
+        deadline = time.monotonic() + 20
+        while not state.exists() and server.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(state.exists(), "the server never started")
+        return server, number
+
+    def test_a_server_run_under_nohup_survives_a_hangup(self) -> None:
+        self._serve_ignoring("SIGHUP")
+
+    def test_a_server_that_ignores_quit_survives_it(self) -> None:
+        self._serve_ignoring("SIGQUIT")
+
+    def test_a_server_started_ignoring_sigterm_still_stops_on_it(self) -> None:
+        """L1: `kill <pid>` stops the server whatever it inherited, as on main."""
+        server, _ = self._start_ignoring("SIGTERM")
+        os.kill(server.pid, signal.SIGTERM)
+        self.assertEqual(
+            0, server.wait(timeout=15), "an inherited ignore kept SIGTERM from stopping it"
+        )
+
+
+class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
+    """Review F4: a reused pid is not a dashboard unless a state file here names it."""
+
+    def test_a_live_pid_is_a_dashboard_only_when_a_state_file_names_it(self) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        config = support.make_config(state_home=home, state_dir=Path(home))
+        parent = os.getppid()
+        self.assertFalse(lifecycle.dashboard_alive(config, parent))
+        Path(home, "cargento-4599.json").write_text(json.dumps({"pid": parent, "port": 4599}))
+        self.assertTrue(lifecycle.dashboard_alive(config, parent))
+        Path(home, "cargento-4598.json").write_text(json.dumps({"pid": 999_999_9, "port": 4598}))
+        self.assertFalse(lifecycle.dashboard_alive(config, 999_999_9), "a dead pid is no dashboard")
+
+
+_HANGUP_DAEMON = """
+import sys, threading, time
+sys.path.insert(0, sys.argv[1])
+from cargento_runtime import lifecycle, supervise
+
+lifecycle._register_sigterm_exit()
+cli_pid, done = sys.argv[2], sys.argv[3]
+script = "import os, time; open(%r, 'w').write(str(os.getpid())); time.sleep(60)" % cli_pid
+threading.Thread(
+    target=lambda: supervise.run([sys.executable, "-c", script], timeout=60), daemon=True
+).start()
+try:
+    time.sleep(60)
+finally:
+    supervise.kill_all()
+    open(done, "w").write("cleaned up")
+"""
+
+
+@unittest.skipIf(sys.platform == "win32", "terminal hangups are POSIX")
+class ATerminalHangupStillCleansUpTest(unittest.TestCase):
+    """Review F1: closing the terminal of a foreground run must not orphan the CLI.
+
+    A supervised CLI leads its own group, so the terminal's SIGHUP (or a
+    Ctrl-backslash SIGQUIT) reaches only the daemon. Measured before the fix:
+    the daemon died without its `finally` and the CLI ran on, untimed.
+    """
+
+    @staticmethod
+    def _stop(pid: int) -> None:
+        if support.process_alive(pid):
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGKILL)
+
+    def _hang_up(self, sig: int) -> None:
+        home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home, True)
+        cli_pid, done = home / "cli.pid", home / "done"
+        daemon = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _HANGUP_DAEMON,
+                str(Path(__file__).resolve().parents[1]),
+                str(cli_pid),
+                str(done),
+            ],
+            start_new_session=True,
+        )
+        self.addCleanup(daemon.kill)
+        deadline = time.monotonic() + 10
+        while not (cli_pid.exists() and cli_pid.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        pid = int(cli_pid.read_text())
+        self.addCleanup(self._stop, pid)
+        os.killpg(daemon.pid, sig)
+        daemon.wait(timeout=10)
+        self.assertTrue(done.exists(), "the daemon died without running its cleanup")
+        deadline = time.monotonic() + 10
+        while support.process_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(support.process_alive(pid), "the CLI outlived the hangup")
+
+    def test_a_hangup_to_a_foreground_daemons_group_kills_the_cli(self) -> None:
+        self._hang_up(signal.SIGHUP)
+
+    def test_a_quit_from_the_terminal_kills_the_cli(self) -> None:
+        self._hang_up(signal.SIGQUIT)

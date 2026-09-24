@@ -14,6 +14,7 @@ import time
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from . import io as runtime_io
+from . import supervise
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -232,11 +233,18 @@ class GuardedModel:
         clock: Callable[[], float],
         *,
         provider: str = LEGACY_PROVIDER,
+        on_reserved: Callable[[], None] | None = None,
+        before_reserve: Callable[[], None] | None = None,
     ) -> None:
         self.config = config
         self.model = model
         self.clock = clock
         self.provider = provider
+        # A reading job is told the spend is committed (DRC-4686).
+        self.on_reserved = on_reserved
+        # And its marker before the reservation: a hook that raises here
+        # stops the call with nothing spent.
+        self.before_reserve = before_reserve
         # Passed through, so the refusal names the CLI this press would have used.
         self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
 
@@ -244,9 +252,17 @@ class GuardedModel:
         available = getattr(self.model, "available", None)
         if available is not None and not available():
             return "", "unavailable"
+        if supervise.closed():
+            # Cargento is stopping and the call could never be sent, so it is
+            # refused before the reservation rather than charged (verify N4).
+            return "", "closed"
+        if self.before_reserve is not None:
+            self.before_reserve()
         answer = reserve(self.config, now=self.clock(), provider=self.provider)
         if answer["reason"]:
             raise RefusedError(answer)
+        if self.on_reserved is not None:
+            self.on_reserved()
         return self.model(prompt, output_cap_bytes=output_cap_bytes)
 
 

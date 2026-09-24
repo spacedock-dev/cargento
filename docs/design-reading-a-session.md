@@ -1414,11 +1414,75 @@ within the milestone's scope and recorded on the issue.
 - The hint says what an analysis reads: "Reads the session up to <cutoff> against your intent.",
   where the cutoff is now, its end, or its last turn, from the same end kind HOW IT LANDED shows. It
   shows only where a press could read: a provider, no refusal beside it, saved words, and words
-  given before any observed end. "Runs in the background." waits for the background job
-  (DRC-4686).
+  given before any observed end. The background job (DRC-4686) added "Runs in the background."
+  after it.
 - The later-direction floor stays at the save time. By construction no message of the reader's lies
   between the window start and the save, so moving it would change nothing on consistent data and
   would, on a fetch the server missed, turn a message into a later direction.
+
+### What the background build decided, 2026-09-24
+
+DRC-4686 built the background half of item 5; Cancel is DRC-4693. The owner's calls are on the
+issue, and the rest were made within them.
+
+- The press answers `202` with the job before the model is called. Every refusal the press had
+  before stays synchronous and first. A second press answers `409` with the running job and starts
+  nothing; `409` rather than `200`, because a forged press is read by its status.
+- The job registry sits beside the one-in-flight slot in `reading`, under its lock, rather than
+  replacing it. The unasked lane takes the same slot, and with the slot replaced it would either lose
+  its guard or appear as a job the reader never started. A press that meets the lane's slot answers
+  `409` with no job.
+- The job is published board-wide as `reading_jobs`, keyed as the page keys a session, and not as a
+  field on every row. A row field would be declared in three places and would enter history.
+- Each phase begins at a real point: preparing at the press, waiting at the CLI's spawn (after the
+  spend is committed), checking when a reply arrived. A withheld gate ends a job while it prepares
+  and a failed call ends it while it waits; nothing publishes a phase that did not happen. The
+  design's timed steps and its "Analyzing 38 turns" heading are overruled: the heading reads
+  "Analyzing drift", because a Claude Code session has no stable turn identity (item 11).
+- The store is written first, then the job is removed and the slot freed as one step, then one
+  revision is published. Any other order lets a page show a finished box with no result, or a result
+  under a running box.
+- The permission and budget are read again at the model seam inside the job. A refusal there ends
+  the job with nothing written, and the board's published permission already says why.
+- A job lost to a restart is recorded, not dropped. A marker written before the reservation becomes
+  a spent `interrupted` attempt at the next start, so the count stays equal to what the budget
+  charged. Letting it vanish was the alternative, and it leaves a charged attempt nowhere in the
+  count. Written before rather than after, because a marker that fails after the spend leaves the
+  spend uncounted; the cost is that a dashboard dying between the marker and the reservation counts
+  one attempt the budget never charged.
+- One job is one attempt. The outcome is stored under the job's id and a second write for that id
+  counts nothing, and a marker is claimed by an atomic rename before it is recovered. The review
+  measured a double count in up to 36 of 40 runs when the dashboard died between the write and the
+  marker's removal; reordering alone would have traded it for a lost count.
+- A marker's pid means a running dashboard only when a state file on this state directory names it,
+  and this process's own pid means an earlier run: a container's dashboard is PID 1 on every start,
+  and a bare liveness check never recovered its markers.
+- A graceful stop records `interrupted` too. The shutdown kills the call before the next start can
+  find its marker, so without this the job wrote "did not complete" for what was a stop.
+- Every model call, the goal lane's and the unasked lane's included, uses the supervised runner. A
+  timeout that kills only the direct child leaks the grandchild, which those lanes had too.
+- Shutdown kills every supervised group, because a child in its own group no longer receives the
+  terminal's signals. Leaving that to Cancel would have left one layer of the stack with a child
+  that outlives the daemon. SIGHUP and SIGQUIT unwind through the same cleanup as SIGTERM, since a
+  closed terminal otherwise left the CLI running untimed, and the shutdown closes the runner under
+  its spawn lock, since a CLI spawned during the teardown was measured outliving it. A SIGHUP or
+  SIGQUIT the server inherited as ignored stays ignored, or `nohup` would stop protecting it;
+  SIGTERM always gets the handler, so `kill <pid>` stops the server as it did before. A reading not yet
+  sent when the runner closes is refused before the reservation, so a stop never charges for it.
+- On POSIX the group is signalled only while its leader is unreaped: the exit is watched without
+  reaping (`waitid` with `WNOWAIT`, a kqueue exit filter on macOS, which has no `waitid`), the group
+  is swept, and only then is the leader reaped, with the end of signalling marked in the same step
+  under the group's lock. A group id signalled after the reap could name a stranger's group. kqueue
+  reports a registration error as an event, so only ESRCH there counts as an exit; any other error
+  leaves the exit unwatchable, and the call then polls rather than reading it as an exit and killing
+  a running CLI. A helper that leaves the group is not reached, and the docs say so.
+- A spent outcome the store refuses keeps its marker, marked as refused, and the next start records
+  that the analysis ran and its outcome could not be stored, not that Cargento stopped. A refused
+  "interrupted" or "unstopped" keeps its own reason, so "may still be running" is never turned
+  into "ran".
+- A finished step is a filled mark and never a check mark. Item 6's rule is about results, but a
+  check shape beside a reading is close enough to its reason that the design's check circle was
+  not copied.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

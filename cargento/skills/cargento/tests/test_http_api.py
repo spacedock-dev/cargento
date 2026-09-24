@@ -37,8 +37,10 @@ from cargento_runtime import observation as observation_module
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
+from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime import supervise as runtime_supervise
 
 from .support import (
     PAGE_BYTES,
@@ -1540,6 +1542,12 @@ class AskShutdownTest(RuntimeTestCase):
         # Far longer than the assertion window, so a pass cannot be the poll
         # timing out on its own rather than the shutdown declining it.
         changes.setdefault("ask_poll_timeout_sec", 30.0)
+        # `serve` really runs here, and its shutdown closes the model runner
+        # for the life of the process: this test's own, so no later test in
+        # the worker inherits a closed one.
+        patcher = mock.patch.object(runtime_supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
         return make_runtime(state_home=home, state_dir=Path(home), **changes)
 
     def _register(self, state: Any, config: Any) -> str:
@@ -2751,6 +2759,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 mock.patch.object(http_api, "CargentoHTTPServer", CapturingServer),
                 mock.patch.object(lifecycle, "write_state"),
                 mock.patch.object(lifecycle, "remove_state"),
+                # The real one closes this worker's runner for every later test.
+                mock.patch.object(runtime_supervise, "kill_all"),
                 mock.patch.object(runtime_io, "diag"),
                 self.assertRaises(StopServingError),
             ):
@@ -2929,6 +2939,10 @@ class ReadingRouteTest(unittest.TestCase):
     def _runtime(self, **changes: Any) -> Any:
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
+        # An open runner: a `serve` run earlier in this worker closes it.
+        patcher = mock.patch.object(runtime_supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
         changes.setdefault("annotations_enabled", True)
         changes.setdefault("observer_model_enabled", True)
         config, state = make_runtime(state_home=home, state_dir=Path(home), **changes)
@@ -2943,10 +2957,10 @@ class ReadingRouteTest(unittest.TestCase):
             self.assertEqual(403, status)
             self.assertEqual([], calls)
             status, _ = self._post(port, self._press(allow=True))
-            self.assertEqual(200, status)
+            self.assertEqual(202, status)
             self.assertEqual(1, len(calls))
             status, _ = self._post(port, self._press())
-            self.assertEqual(200, status)
+            self.assertEqual(202, status)
             self.assertEqual(2, len(calls))
             status, _ = self._post(port, {"consent": "off", "press": True, "observer_model": 1})
             self.assertEqual(200, status)
@@ -2968,7 +2982,7 @@ class ReadingRouteTest(unittest.TestCase):
                     {"Sec-Fetch-Site": "same-site"},
                     {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"},
                 ):
-                    status, _ = self._post(port, body, **headers)
+                    status, _ = self._post(port, body, headers=headers)
                     self.assertEqual(403, status)
                     self.assertEqual(
                         granted, reading_policy.status(config, now=1_700_000_100.0)["consent"]
@@ -2980,7 +2994,7 @@ class ReadingRouteTest(unittest.TestCase):
         with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
             for _ in range(12):
                 status, _ = self._post(port, self._press(allow=True))
-                self.assertEqual(200, status)
+                self.assertEqual(202, status)
             status, body = self._post(port, self._press(allow=True))
         self.assertEqual(429, status)
         self.assertEqual(12, len(calls))
@@ -3043,28 +3057,63 @@ class ReadingRouteTest(unittest.TestCase):
 
     @contextlib.contextmanager
     def _serving(self, application: Any) -> Any:
+        """The route over a socket, with every outcome a job writes recorded."""
+        self.outcomes: list[dict[str, Any]] = []
+        record_reading = annotation_store.record_reading
+        record_withheld = annotation_store.record_withheld
+
+        def reading_written(*args: Any, **kwargs: Any) -> Any:
+            self.outcomes.append({"produced": True, "reason": ""})
+            return record_reading(*args, **kwargs)
+
+        def withheld_written(*args: Any, **kwargs: Any) -> Any:
+            self.outcomes.append(
+                {"produced": False, "reason": kwargs["reason"], "spent": kwargs["spent"]}
+            )
+            return record_withheld(*args, **kwargs)
+
         httpd = make_server(application=application)
         thread = serve_until_closed(httpd)
         try:
-            yield httpd.server_port
+            with (
+                mock.patch.object(annotation_store, "record_reading", reading_written),
+                mock.patch.object(annotation_store, "record_withheld", withheld_written),
+            ):
+                yield httpd.server_port
+                self._settle()
         finally:
             httpd.shutdown()
             thread.join(timeout=5)
 
-    @staticmethod
-    def _post(port: int, payload: Any, **headers: str) -> tuple[int, bytes]:
+    def _post(
+        self,
+        port: int,
+        payload: Any,
+        *,
+        settle: bool = True,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, bytes]:
+        """One press. A press that started a job is waited out unless told not to.
+
+        The reading runs after the reply now (DRC-4686), so a test asserting
+        what the press did must wait for the job, and `self.outcomes` holds
+        what each finished job wrote.
+        """
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         try:
             conn.request(
                 "POST",
                 "/api/reading",
                 body=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json", **headers},
+                headers={"Content-Type": "application/json", **(headers or {})},
             )
             response = conn.getresponse()
-            return response.status, response.read()
+            status, body = response.status, response.read()
         finally:
             conn.close()
+        if settle and status == 202:
+            self._settle()
+        return status, body
 
     # One entry naming the fixture session, so the ledger is never the reason
     # the model is not reached. Without it `produce` returns `ledger-empty`
@@ -3219,7 +3268,7 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(application) as port,
         ):
             status, _ = self._post(port, self._press())
-        self.assertEqual(200, status)
+        self.assertEqual(202, status)
         self.assertEqual(1, len(calls))
         self.assertIn('<outcome_line n="1">', calls[0])
         self.assertIn('<outcome_line n="2">', calls[0])
@@ -3235,7 +3284,7 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state)) as port,
         ):
             status, _ = self._post(port, self._press())
-        self.assertEqual(200, status)
+        self.assertEqual(202, status)
         self.assertEqual(1, len(calls))
 
     def test_every_closed_gate_refuses_before_the_model_is_reached(self) -> None:
@@ -3286,10 +3335,10 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model() as calls,
             self._serving(application) as port,
         ):
-            status, body = self._post(port, self._press())
+            status, _body = self._post(port, self._press())
 
-        self.assertEqual(200, status)
-        answer = json.loads(body)
+        self.assertEqual(202, status)
+        answer = self.outcomes[-1]
         self.assertFalse(answer["produced"])
         self.assertEqual(runtime_reading.WITHHELD_DISCARDED, answer["reason"])
         self.assertNotEqual(runtime_reading.WITHHELD_NOTHING_TYPED, answer["reason"])
@@ -3315,9 +3364,9 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model() as calls,
             self._serving(application) as port,
         ):
-            _status, body = self._post(port, self._press())
+            _status, _body = self._post(port, self._press())
 
-        self.assertEqual(runtime_reading.WITHHELD_NOTHING_TYPED, json.loads(body)["reason"])
+        self.assertEqual(runtime_reading.WITHHELD_NOTHING_TYPED, self.outcomes[-1]["reason"])
         self.assertEqual([], calls)
 
     def test_a_lured_request_cannot_spend_a_readers_capacity(self) -> None:
@@ -3349,7 +3398,7 @@ class ReadingRouteTest(unittest.TestCase):
                     self._counting_model() as calls,
                     self._serving(self._app(config, state)) as port,
                 ):
-                    status, _ = self._post(port, self._press(), **headers)
+                    status, _ = self._post(port, self._press(), headers=headers)
                 self.assertEqual(403, status, label)
                 self.assertEqual([], calls, label)
 
@@ -3373,50 +3422,289 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state)) as port,
         ):
             status, body = self._post(port, self._press())
-        self.assertEqual(200, status)
+        self.assertEqual(202, status)
         self.assertEqual(1, len(calls), "the open gate did not reach the model")
         self.assertIn("ship the parser", calls[0], "the reader's goal was not sent")
         self.assertTrue(json.loads(body)["ok"])
 
-    def test_a_second_press_while_one_is_in_flight_spends_nothing(self) -> None:
-        """One reading in flight per session, and no retry."""
-        config, state = self._runtime()
-        started, release = threading.Event(), threading.Event()
-        calls: list[str] = []
+    # DRC-4686: the press starts a job the server owns, and the page learns of
+    # it only from the payload, so a reload is indistinguishable from staying.
 
-        class _Blocking:
-            def __init__(self, _config: Any, **_kw: Any) -> None:
-                pass
+    @staticmethod
+    def _data(port: int) -> dict[str, Any]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/data")
+            return dict(json.loads(conn.getresponse().read()))
+        finally:
+            conn.close()
+
+    @contextlib.contextmanager
+    def _delayed_provider(self, config: Any, state: Any, harness: str) -> Any:
+        """A provider that stops at each phase boundary until the test lets it on.
+
+        `prepare` holds the job while it reads the session's record, `spawn`
+        before the CLI exists, `reply` before the CLI answers. `published`
+        is the job's phase at every revision any stream was sent.
+        """
+        gates = {name: threading.Event() for name in ("prepare", "spawn", "reply")}
+        reached = {name: threading.Event() for name in ("prepare", "model")}
+        calls: list[str] = []
+        published: list[str | None] = []
+        key = f"{harness}:s1"
+
+        class _Delayed:
+            unavailable_reason = runtime_reading.WITHHELD_MODEL_UNAVAILABLE
+
+            def __init__(self, _config: Any, *, on_spawn: Any = None, **_kw: Any) -> None:
+                self.on_spawn = on_spawn
+
+            @staticmethod
+            def available() -> bool:
+                return True
 
             def __call__(self, prompt: str, **_kw: Any) -> tuple[str, str]:
                 calls.append(prompt)
-                started.set()
-                release.wait(timeout=5)
+                reached["model"].set()
+                gates["spawn"].wait(5)
+                self.on_spawn(object())
+                gates["reply"].wait(5)
                 return "{}", "ok"
+
+        def facts(*_a: Any, **_k: Any) -> dict[str, Any]:
+            if threading.current_thread().name.startswith(runtime_reading_jobs.THREAD_PREFIX):
+                reached["prepare"].set()
+                gates["prepare"].wait(5)
+            return {
+                "semantic": {
+                    "facts": [{**self.FACT, "source_session": {"harness": harness, "sid": "s1"}}]
+                }
+            }
+
+        publish = state.streams.publish
+
+        def recorded(revision: Any) -> None:
+            job = runtime_reading.published_jobs(config).get(key)
+            published.append(job["phase"] if job else None)
+            publish(revision)
 
         with (
             mock.patch.object(
                 annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
             ),
-            mock.patch.object(runtime_reading, "CodexReadingModel", _Blocking),
-            mock.patch.object(shutil, "which", lambda n: f"/bin/{n}"),
+            self._open_claude(),
+            mock.patch.object(runtime_reading, "CodexReadingModel", _Delayed),
+            mock.patch.object(runtime_reading, "ClaudeReadingModel", _Delayed),
+            mock.patch.object(shutil, "which", lambda n: f"/usr/local/bin/{n}"),
+            mock.patch.object(runtime_project_context, "collect", facts),
+            mock.patch.object(runtime_reading_route, "destination", lambda *_a, **_k: ""),
+            mock.patch.object(state.streams, "publish", recorded),
+        ):
+            try:
+                yield gates, reached, calls, published
+            finally:
+                for gate in gates.values():
+                    gate.set()
+                self._settle()
+
+    def _job_presses(self) -> Any:
+        """The Codex route and the Claude Code route, each pressed as the page would."""
+        return (
+            ("pi", self._press()),
+            ("claude", self._claude_press(provider="claude")),
+        )
+
+    def test_a_press_answers_at_once_with_its_job_and_a_reload_shows_the_same_job(self) -> None:
+        for harness, press in self._job_presses():
+            with self.subTest(harness=harness):
+                config, state = self._runtime()
+                reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+                with (
+                    self._delayed_provider(config, state, harness) as (gates, reached, calls, _),
+                    self._serving(self._app(config, state, harness)) as port,
+                ):
+                    status, body = self._post(port, press, settle=False)
+                    self.assertEqual(202, status, body)
+                    job = json.loads(body)["job"]
+                    self.assertEqual("preparing", job["phase"])
+                    self.assertEqual([], calls, "the press waited on the model")
+                    self.assertTrue(reached["prepare"].wait(5))
+                    reload = self._data(port)["reading_jobs"][f"{harness}:s1"]
+                    self.assertEqual((job["id"], "preparing"), (reload["id"], reload["phase"]))
+                    gates["prepare"].set()
+                    self.assertTrue(reached["model"].wait(5))
+                    gates["spawn"].set()
+                    self.assertTrue(
+                        self._until(lambda c=config, h=harness: self._phase(c, h) == "waiting")
+                    )
+                    reload = self._data(port)["reading_jobs"][f"{harness}:s1"]
+                    self.assertEqual((job["id"], "waiting"), (reload["id"], reload["phase"]))
+                    label = "Claude Code" if harness == "claude" else "Codex"
+                    self.assertEqual(
+                        ["Preparing what is sent", f"Waiting for {label}", "Checking the reply"],
+                        [step["text"] for step in reload["steps"]],
+                    )
+                    self.assertNotIn("group", reload)
+                    gates["reply"].set()
+                    self._settle()
+                    self.assertNotIn(f"{harness}:s1", self._data(port)["reading_jobs"])
+                entry = annotation_store.find(annotation_store.load(config), harness, "s1")
+                assert entry is not None
+                self.assertIn("assessment", entry)
+
+    def test_the_phases_published_are_the_three_real_ones_in_order(self) -> None:
+        for harness, press in self._job_presses():
+            with self.subTest(harness=harness):
+                config, state = self._runtime()
+                reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+                with (
+                    self._delayed_provider(config, state, harness) as (
+                        gates,
+                        reached,
+                        _calls,
+                        published,
+                    ),
+                    self._serving(self._app(config, state, harness)) as port,
+                ):
+                    self._post(port, press, settle=False)
+                    self.assertTrue(reached["prepare"].wait(5))
+                    gates["prepare"].set()
+                    self.assertTrue(reached["model"].wait(5))
+                    gates["spawn"].set()
+                    self.assertTrue(
+                        self._until(lambda c=config, h=harness: self._phase(c, h) == "waiting")
+                    )
+                    gates["reply"].set()
+                    self._settle()
+                # Each phase in its own revision, and once: consecutive repeats
+                # are other collections of an unchanged state.
+                # The press's own collection comes first, before any job existed.
+                runs = [p for i, p in enumerate(published) if i == 0 or published[i - 1] != p]
+                self.assertEqual(
+                    ["preparing", "waiting", "checking", None], runs[runs.index("preparing") :]
+                )
+
+    def test_a_second_press_during_an_analysis_starts_no_second_call(self) -> None:
+        for harness, press in self._job_presses():
+            with self.subTest(harness=harness):
+                config, state = self._runtime()
+                reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+                with (
+                    self._delayed_provider(config, state, harness) as (gates, reached, calls, _),
+                    self._serving(self._app(config, state, harness)) as port,
+                ):
+                    _, body = self._post(port, press, settle=False)
+                    job = json.loads(body)["job"]
+                    self.assertTrue(reached["prepare"].wait(5))
+                    status, again = self._post(port, press, settle=False)
+                    self.assertEqual(409, status)
+                    self.assertEqual(job["id"], json.loads(again)["job"]["id"])
+                    self.assertEqual("in-flight", json.loads(again)["reason"])
+                    gates["prepare"].set()
+                    self.assertTrue(reached["model"].wait(5))
+                    gates["spawn"].set()
+                    self.assertTrue(
+                        self._until(lambda c=config, h=harness: self._phase(c, h) == "waiting")
+                    )
+                    status, again = self._post(port, press, settle=False)
+                    self.assertEqual(409, status)
+                    answer = json.loads(again)
+                    self.assertEqual(
+                        (job["id"], "waiting"), (answer["job"]["id"], answer["job"]["phase"])
+                    )
+                    gates["reply"].set()
+                    self._settle()
+                self.assertEqual(1, len(calls), "a second press started a second call")
+
+    def test_a_press_while_the_unasked_lane_reads_the_session_invents_no_job(self) -> None:
+        config, state = self._runtime()
+        self.assertTrue(runtime_reading.claim(config, "pi:s1"))
+        self.addCleanup(runtime_reading.release, config, "pi:s1")
+        with (
             mock.patch.object(
-                runtime_project_context,
-                "collect",
-                lambda *_a, **_k: {"semantic": {"facts": [self.FACT]}},
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
             ),
+            self._counting_model() as calls,
             self._serving(self._app(config, state)) as port,
         ):
-            out: list[int] = []
-            first = threading.Thread(target=lambda: out.append(self._post(port, self._press())[0]))
-            first.start()
-            self.assertTrue(started.wait(timeout=5), "the first press never reached the model")
-            second, _ = self._post(port, self._press())
-            release.set()
-            first.join(timeout=5)
-        self.assertEqual(409, second)
-        self.assertEqual([200], out)
-        self.assertEqual(1, len(calls), "the refused press spent the reader's capacity anyway")
+            status, body = self._post(port, self._press())
+            payload = self._data(port)
+        self.assertEqual(409, status)
+        answer = json.loads(body)
+        self.assertEqual("in-flight", answer["reason"])
+        self.assertNotIn("job", answer)
+        self.assertEqual({}, payload["reading_jobs"])
+        self.assertEqual([], calls)
+
+    def test_a_refusal_at_the_model_seam_writes_nothing_and_ends_the_job(self) -> None:
+        """Another tab spent the last reading after this press was admitted."""
+        config, state = self._runtime()
+
+        def exhaust() -> None:
+            for _ in range(12):
+                reading_policy.reserve(config, now=1_700_000_100.0)
+
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model(on_collect=exhaust) as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, _ = self._post(port, self._press())
+            payload = self._data(port)
+        self.assertEqual(202, status)
+        self.assertEqual([], calls)
+        self.assertEqual([], self.outcomes, "a refused press wrote an outcome")
+        self.assertEqual({}, payload["reading_jobs"])
+        self.assertEqual("daily-cap", payload["reading"]["reason"])
+
+    def test_a_job_whose_thread_cannot_start_answers_503_and_frees_the_session(self) -> None:
+        """Review F8: without this, every later press answered in-flight until a restart."""
+        config, state = self._runtime()
+        real_start = threading.Thread.start
+        failing = [True]
+
+        def start(thread: threading.Thread) -> None:
+            if failing[0] and thread.name.startswith(runtime_reading_jobs.THREAD_PREFIX):
+                raise RuntimeError("can't start new thread")
+            real_start(thread)
+
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+            mock.patch.object(threading.Thread, "start", start),
+        ):
+            status, _ = self._post(port, self._press())
+            self.assertEqual(503, status)
+            self.assertIsNone(runtime_reading.job(config, "pi:s1"))
+            failing[0] = False
+            status, _ = self._post(port, self._press())
+        self.assertEqual(202, status)
+        self.assertEqual(1, len(calls))
+
+    def _phase(self, config: Any, harness: str) -> str | None:
+        job = runtime_reading.job(config, f"{harness}:s1")
+        return job.phase if job else None
+
+    @staticmethod
+    def _until(predicate: Any, timeout: float = 5.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.01)
+        return bool(predicate())
+
+    def _settle(self) -> None:
+        """Wait out every reading job this test started, and fail if one hangs."""
+        prefix = runtime_reading_jobs.THREAD_PREFIX
+        for thread in [t for t in threading.enumerate() if t.name.startswith(prefix)]:
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), f"reading job {thread.name} never finished")
 
     def test_a_session_nobody_annotated_is_not_confirmed_to_exist(self) -> None:
         """200 and never 404: a harness name is public and a session id is not."""
@@ -3454,7 +3742,7 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state, "claude")) as port,
         ):
             status, body = self._post(port, self._claude_press())
-        self.assertEqual(200, status, body)
+        self.assertEqual(202, status, body)
         self.assertEqual(1, len(calls))
         self.assertEqual(["codex"], self.providers, "a gated Claude Code producer ran")
         self.assertIn(runtime_observer.OBSERVER_MODEL, self._stamp(config, "claude"))
@@ -3526,8 +3814,8 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state, "claude", row=self.WAITING)) as port,
         ):
             status, body = self._post(port, self._claude_press())
-        self.assertEqual(200, status, body)
-        self.assertTrue(json.loads(body)["produced"], body)
+        self.assertEqual(202, status, body)
+        self.assertTrue(self.outcomes[-1]["produced"], body)
         self.assertEqual(1, len(calls))
         entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
         assert entry is not None
@@ -3542,8 +3830,8 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state, "codex", row=self.WAITING)) as port,
         ):
             status, body = self._post(port, self._press(harness="codex"))
-        self.assertEqual(200, status, body)
-        answer = json.loads(body)
+        self.assertEqual(202, status, body)
+        answer = self.outcomes[-1]
         self.assertFalse(answer["produced"])
         self.assertEqual(runtime_reading.WITHHELD_TURN_STOP, answer["reason"])
         self.assertEqual([], calls)
@@ -3646,7 +3934,7 @@ class ReadingRouteTest(unittest.TestCase):
             self.assertEqual("consent-required", json.loads(body)["reading"]["reason"])
             self.assertEqual([], calls)
             status, _ = self._post(port, self._claude_press(provider="claude", allow=True))
-        self.assertEqual(200, status)
+        self.assertEqual(202, status)
         self.assertEqual(["claude"], self.providers)
         self.assertEqual({"codex": True, "claude": True}, self._consents(config))
         self.assertIn(runtime_observer.CLAUDE_READING_MODEL, self._stamp(config, "claude"))
@@ -3662,7 +3950,7 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state, "claude")) as port,
         ):
             status, body = self._post(port, self._claude_press(provider="claude"))
-        self.assertEqual(200, status, body)
+        self.assertEqual(202, status, body)
         self.assertEqual(1, len(calls))
         self.assertEqual(["claude"], self.providers)
         self.assertEqual({"codex": False, "claude": True}, self._consents(config))
@@ -3693,9 +3981,9 @@ class ReadingRouteTest(unittest.TestCase):
             ) as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
-            status, body = self._post(port, self._claude_press(provider="claude"))
-        self.assertEqual(200, status)
-        answer = json.loads(body)
+            status, _body = self._post(port, self._claude_press(provider="claude"))
+        self.assertEqual(202, status)
+        answer = self.outcomes[-1]
         self.assertFalse(answer["produced"])
         self.assertEqual(runtime_reading.WITHHELD_CLAUDE_UNAVAILABLE, answer["reason"])
         self.assertEqual([], calls, "a second provider was asked after the first was missing")
@@ -3709,9 +3997,9 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model(("codex", "claude"), status="failed", harness="claude") as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
-            status, body = self._post(port, self._claude_press(provider="claude"))
-        self.assertEqual(200, status)
-        self.assertEqual(runtime_reading.WITHHELD_MODEL_FAILED, json.loads(body)["reason"])
+            status, _body = self._post(port, self._claude_press(provider="claude"))
+        self.assertEqual(202, status)
+        self.assertEqual(runtime_reading.WITHHELD_MODEL_FAILED, self.outcomes[-1]["reason"])
         self.assertEqual(1, len(calls))
         self.assertEqual(["claude"], self.providers)
         self.assertEqual(1, reading_policy.status(config, now=1_700_000_100.0)["used"])
@@ -3782,7 +4070,7 @@ class ReadingRouteTest(unittest.TestCase):
         status, answer, calls = self._checks_press(
             config, state, self._claude_press(allow=True, tool_output="OpenAI")
         )
-        self.assertEqual(200, status, answer)
+        self.assertEqual(202, status, answer)
         self.assertEqual(["codex"], self.providers)
         self.assertEqual(2, self._checks_sent(calls[0]))
         self.assertIn(json.dumps(self.TAILS["call-0"]), calls[0])
@@ -3790,7 +4078,7 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertTrue(reading_policy.tool_output_allowed(granted, "codex", "OpenAI"))
         # The grant is remembered: the next press needs no second Allow.
         status, _answer, calls = self._checks_press(config, state, self._claude_press())
-        self.assertEqual(200, status)
+        self.assertEqual(202, status)
         self.assertEqual(2, self._checks_sent(calls[0]))
 
     def test_an_allow_for_a_destination_that_has_moved_is_refused_before_anything(self) -> None:
@@ -3829,7 +4117,7 @@ class ReadingRouteTest(unittest.TestCase):
         status, answer, calls = self._checks_press(
             config, state, self._claude_press(), destination=""
         )
-        self.assertEqual(200, status, answer)
+        self.assertEqual(202, status, answer)
         self.assertEqual(0, self._checks_sent(calls[0]))
         self.assertNotIn("FAILED tests/test_retry.py", calls[0])
         entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
@@ -3867,7 +4155,7 @@ class ReadingRouteTest(unittest.TestCase):
         status, answer, calls = self._checks_press(
             config, state, self._claude_press(), on_collect=withdraw
         )
-        self.assertEqual(200, status, answer)
+        self.assertEqual(202, status, answer)
         self.assertEqual(0, self._checks_sent(calls[0]))
         entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
         assert entry is not None
@@ -3902,7 +4190,7 @@ class ReadingRouteTest(unittest.TestCase):
             ),
         ):
             status, _body = self._post(port, self._claude_press())
-        self.assertEqual(200, status)
+        self.assertEqual(202, status)
         self.assertEqual(changed, seen[0].changed_after)
 
     def test_on_the_claude_code_route_the_checks_go_only_after_the_same_allow(self) -> None:
@@ -3923,7 +4211,7 @@ class ReadingRouteTest(unittest.TestCase):
                 self._claude_press(provider="claude", allow=True, tool_output="Anthropic"),
                 destination="Anthropic",
             )
-        self.assertEqual(200, status, answer)
+        self.assertEqual(202, status, answer)
         self.assertEqual(["claude"], self.providers)
         self.assertEqual(2, self._checks_sent(calls[0]))
 
@@ -3934,7 +4222,7 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state)) as port,
         ):
             status, body = self._post(port, self._press())
-        self.assertEqual(200, status, body)
+        self.assertEqual(202, status, body)
         self.assertEqual(1, len(calls))
 
     def test_an_oversized_body_is_refused_before_it_is_read(self) -> None:

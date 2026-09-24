@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import reading, reading_policy
+from cargento_runtime import reading, reading_policy, supervise
 
 from .support import make_runtime
 
@@ -24,6 +25,10 @@ class ReadingPolicyTest(unittest.TestCase):
         self.home = tempfile.TemporaryDirectory()
         self.addCleanup(self.home.cleanup)
         self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+        # An open model runner: GuardedModel refuses once it is shut.
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_answer_survives_a_new_client_and_forget_preserves_spend(self) -> None:
         self.assertFalse(reading_policy.status(self.config, now=100.0)["consent"])
@@ -82,6 +87,55 @@ class ReadingPolicyTest(unittest.TestCase):
         with self.assertRaises(TimeoutError):
             guarded("prompt", output_cap_bytes=100)
         self.assertEqual(1, reading_policy.status(self.config, now=100.0)["used"])
+
+    def test_a_committed_reservation_is_announced_and_a_refused_one_is_not(self) -> None:
+        """DRC-4686: a reading job's restart marker is written from this seam.
+
+        Called after the spend is committed and before the model runs, so a
+        marker never says an attempt was spent when it was not.
+        """
+        used_when_told: list[int] = []
+
+        def reserved() -> None:
+            used_when_told.append(reading_policy.status(self.config, now=100.0)["used"])
+
+        model = mock.Mock(return_value=("{}", "ok"))
+        guarded = reading_policy.GuardedModel(
+            self.config, model, lambda: 100.0, on_reserved=reserved
+        )
+        with self.assertRaises(reading_policy.RefusedError):
+            guarded("prompt", output_cap_bytes=100)
+        self.assertEqual([], used_when_told)
+        model.assert_not_called()
+        reading_policy.set_consent(self.config, True, now=100.0)
+        guarded("prompt", output_cap_bytes=100)
+        self.assertEqual([1], used_when_told)
+        model.available = mock.Mock(return_value=False)
+        self.assertEqual(("", "unavailable"), guarded("prompt", output_cap_bytes=100))
+        self.assertEqual([1], used_when_told)
+
+    def test_a_marker_that_cannot_be_written_stops_the_call_before_it_spends(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0)
+        model = mock.Mock(return_value=("{}", "ok"))
+        guarded = reading_policy.GuardedModel(
+            self.config, model, lambda: 100.0, before_reserve=mock.Mock(side_effect=OSError)
+        )
+        with self.assertRaises(OSError):
+            guarded("prompt", output_cap_bytes=100)
+        self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+        model.assert_not_called()
+
+    def test_a_call_made_while_cargento_stops_is_refused_before_it_spends(self) -> None:
+        """Verify N4: a job still preparing at shutdown must not be charged for nothing."""
+        reading_policy.set_consent(self.config, True, now=100.0)
+        model = mock.Mock(return_value=("{}", "ok"))
+        stopping = threading.Event()
+        stopping.set()
+        with mock.patch.object(supervise, "_SHUTDOWN", stopping):
+            guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0)
+            self.assertEqual(("", "closed"), guarded("prompt", output_cap_bytes=100))
+        self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+        model.assert_not_called()
 
     def test_missing_sqlite_refuses_permission_and_launch(self) -> None:
         with mock.patch.object(runtime_io, "sqlite_module", None):

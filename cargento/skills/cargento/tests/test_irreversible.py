@@ -570,11 +570,11 @@ raise SystemExit(status)
             "import os, re; event_hook.command_shape = lambda _: ("
             "os.write(2, b'regex-entered'), re.fullmatch('(a+)+$', 'a'*30+'!'))[1]"
         )
-        # Its own short limit, deliberately. This is the one caller that wants
-        # the timeout, so a small budget makes the expectation more certain and
-        # keeps the suite from paying the generous default to prove a hang.
+        # Its own limit, below the generous default: the regex never finishes, so
+        # any budget proves the hang. 0.25 s was measured too short on Windows
+        # runners, where the interpreter had not written `regex-entered` yet.
         with self.assertRaises(subprocess.TimeoutExpired) as caught:
-            self.timed_hook(driver, timeout=0.25)
+            self.timed_hook(driver, timeout=3)
         self.assertEqual(b"", caught.exception.output)
         self.assertEqual(b"regex-entered", caught.exception.stderr)
         self.assertEqual([], self.received)

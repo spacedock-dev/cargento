@@ -1373,6 +1373,82 @@ class OneReadingAtATimePerSession(unittest.TestCase):
         self.assertTrue(reading.claim(self.config, "session-a"))
 
 
+class AReadingJobSitsBesideTheSlot(unittest.TestCase):
+    """DRC-4686: the job registry beside `claim`, which the unasked lane shares."""
+
+    class _Config:
+        state_dir = "/tmp/cargento-reading-job-test"
+
+    def setUp(self) -> None:
+        self.config = cast("RuntimeConfig", self._Config())
+        self.addCleanup(reading.end_job, self.config, "claude:s1")
+
+    def _start(self) -> Any:
+        return reading.start_job(
+            self.config, "claude:s1", provider="claude", label="Claude Code", now=10.0
+        )
+
+    def test_a_job_takes_the_slot_and_a_second_start_gets_nothing(self) -> None:
+        job = self._start()
+        assert job is not None
+        self.assertEqual(reading.PHASE_PREPARING, job.phase)
+        self.assertIsNone(self._start())
+        self.assertIs(job, reading.job(self.config, "claude:s1"))
+        self.assertFalse(reading.claim(self.config, "claude:s1"))
+
+    def test_a_slot_the_unasked_lane_holds_starts_no_job_and_invents_none(self) -> None:
+        self.assertTrue(reading.claim(self.config, "claude:s1"))
+        self.assertIsNone(self._start())
+        self.assertIsNone(reading.job(self.config, "claude:s1"))
+        self.assertEqual({}, reading.published_jobs(self.config))
+
+    def test_phases_only_move_forward_and_never_repeat(self) -> None:
+        self._start()
+        self.assertFalse(reading.advance_job(self.config, "claude:s1", "preparing", now=11.0))
+        self.assertTrue(reading.advance_job(self.config, "claude:s1", "waiting", now=12.0))
+        self.assertFalse(reading.advance_job(self.config, "claude:s1", "waiting", now=13.0))
+        self.assertTrue(reading.advance_job(self.config, "claude:s1", "checking", now=14.0))
+        self.assertFalse(reading.advance_job(self.config, "claude:s1", "waiting", now=15.0))
+        self.assertFalse(reading.advance_job(self.config, "claude:s1", "bogus", now=16.0))
+        job = reading.job(self.config, "claude:s1")
+        assert job is not None
+        self.assertEqual(("checking", 14.0), (job.phase, job.phase_at))
+
+    def test_ending_a_job_removes_it_and_gives_the_slot_back(self) -> None:
+        self._start()
+        reading.end_job(self.config, "claude:s1")
+        self.assertIsNone(reading.job(self.config, "claude:s1"))
+        self.assertTrue(reading.claim(self.config, "claude:s1"))
+
+    def test_the_published_job_names_its_real_steps_and_never_its_handle(self) -> None:
+        job = self._start()
+        assert job is not None
+        job.group = object()
+        reading.advance_job(self.config, "claude:s1", "waiting", now=12.0)
+        published = reading.published_jobs(self.config)
+        self.assertEqual(["claude:s1"], list(published))
+        entry = published["claude:s1"]
+        self.assertEqual({"id", "phase", "phase_at", "started_at", "provider", "steps"}, set(entry))
+        self.assertEqual(job.id, entry["id"])
+        self.assertEqual("waiting", entry["phase"])
+        self.assertEqual(
+            [
+                {"phase": "preparing", "text": "Preparing what is sent"},
+                {"phase": "waiting", "text": "Waiting for Claude Code"},
+                {"phase": "checking", "text": "Checking the reply"},
+            ],
+            entry["steps"],
+        )
+
+    def test_another_runtimes_jobs_are_not_this_ones(self) -> None:
+        self._start()
+
+        class _Other:
+            state_dir = "/tmp/cargento-reading-job-other"
+
+        self.assertEqual({}, reading.published_jobs(cast("RuntimeConfig", _Other())))
+
+
 class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
     """`produce`, which had no test of any kind.
 
@@ -1423,7 +1499,46 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
             stamp_text=over.pop("stamp_text", "read at 10:00"),
             model=over.pop("model", self._model()),
             read_lines=True,
+            on_phase=over.pop("on_phase", None),
         )
+
+    def test_a_cli_that_would_not_stop_is_named_and_counted(self) -> None:
+        """Codex review F6: the kill failed, so the reader is told the process may still run."""
+        _a, why, spent = self._produce(model=self._model("", "unstopped"))
+        self.assertEqual(reading.WITHHELD_UNSTOPPED, why)
+        self.assertTrue(spent)
+        self.assertIn("may still be running", reading.WITHHELD[why])
+
+    def test_a_call_refused_because_cargento_is_stopping_spends_nothing(self) -> None:
+        _a, why, spent = self._produce(model=self._model("", "closed"))
+        self.assertEqual(reading.WITHHELD_STOPPING, why)
+        self.assertFalse(spent)
+        self.assertIn("Nothing was sent or spent", reading.WITHHELD[why])
+
+    def test_checking_the_reply_is_announced_only_once_a_reply_arrived(self) -> None:
+        """DRC-4686: the third phase is published from `produce`, so it must be true.
+
+        A withheld gate ends a job while it prepares and a failed call ends it
+        while it waits: neither may say it is checking a reply it never got.
+        """
+        order: list[str] = []
+
+        def model(_prompt: str, **_kw: Any) -> tuple[str, str]:
+            order.append("model")
+            return "{}", "ok"
+
+        _a, why, _spent = self._produce(model=model, on_phase=order.append)
+        self.assertEqual("", why)
+        self.assertEqual(["model", reading.PHASE_CHECKING], order)
+        for label, over in (
+            ("withheld", {"facts": []}),
+            ("failed", {"model": self._model("", "failed")}),
+            ("unavailable", {"model": self._model("", "unavailable")}),
+        ):
+            with self.subTest(label):
+                phases: list[str] = []
+                self._produce(on_phase=phases.append, **over)
+                self.assertEqual([], phases)
 
     def test_reading_age_uses_the_check_time_not_the_goal_time(self) -> None:
         assessment, why, _spent = self._produce(now=9000.0)

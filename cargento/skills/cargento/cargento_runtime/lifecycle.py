@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import ctypes
 import errno
+import functools
 import http.client
 import json
 import math
@@ -21,7 +22,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import config as runtime_config
-from cargento_runtime import http_api
+from cargento_runtime import http_api, reading_jobs, supervise
 from cargento_runtime import interaction_prototype as runtime_interaction
 from cargento_runtime import io as runtime_io
 
@@ -291,6 +292,31 @@ def pid_exists(pid: int) -> bool:
         winerror = getattr(exc, "winerror", None)
         return exc.errno == errno.EPERM or winerror == 5
     return True
+
+
+def dashboard_alive(config: RuntimeConfig, pid: int) -> bool:
+    """Whether `pid` is a running dashboard on this state directory.
+
+    A running process alone is not one: a pid is reused, and a reading-job
+    marker whose pid now names an unrelated process would never be recovered
+    (review F4). A dashboard writes a state file under `cargento_home`, which is
+    this state directory, before it serves, so one of those naming the pid is
+    what makes it a dashboard.
+    """
+    if pid <= 0 or not pid_exists(pid):
+        return False
+    home = cargento_home(config)
+    try:
+        names = os.listdir(home)
+    except OSError:
+        return False
+    for name in names:
+        port = name.removeprefix("cargento-").removesuffix(".json")
+        if name.startswith("cargento-") and name.endswith(".json") and port.isdigit():
+            state = read_state(config, int(port))
+            if state is not None and state.get("pid") == pid:
+                return True
+    return False
 
 
 def sweep_stale_states(config: RuntimeConfig) -> list[int]:
@@ -848,18 +874,44 @@ def run_producer(
             )
 
 
+# Every signal that ends a run without a traceback. SIGHUP is the terminal of a
+# foreground run closing and SIGQUIT is Ctrl-backslash: a supervised CLI leads
+# its own group and receives neither, so unless they unwind through `serve`'s
+# `finally` too, the CLI outlives the daemon untimed (review F1, measured).
+_EXIT_SIGNALS = ("SIGTERM", "SIGHUP", "SIGQUIT")
+
+
 def _register_sigterm_exit() -> Any:
-    """Exit cleanly on SIGTERM so finally blocks can run."""
-    if not hasattr(signal, "SIGTERM") or sys.platform == "win32":
+    """Exit cleanly on SIGTERM, SIGHUP and SIGQUIT so finally blocks can run.
+
+    Returns the handlers it replaced, for `_restore_sigterm`.
+    """
+    if sys.platform == "win32":
         return None
-    with contextlib.suppress(ValueError, AttributeError):
-        return signal.signal(signal.SIGTERM, lambda _sig, _frame: sys.exit(0))
-
-
-def _restore_sigterm(handler: Any) -> None:
-    if handler is not None and hasattr(signal, "SIGTERM"):
+    previous: dict[int, Any] = {}
+    for name in _EXIT_SIGNALS:
+        number = getattr(signal, name, None)
+        if number is None:
+            continue
+        # An ignored hangup or quit stays ignored: `nohup`, and a background
+        # job of a shell without job control, hand the server SIGHUP or SIGQUIT
+        # as SIG_IGN on purpose, and exiting on it would undo that (verify N1).
+        # SIGTERM is not among them: `kill <pid>` stops the server whatever it
+        # inherited, as it always has.
         with contextlib.suppress(ValueError, AttributeError):
-            signal.signal(signal.SIGTERM, handler)
+            if name != "SIGTERM" and signal.getsignal(number) is signal.SIG_IGN:
+                continue
+        with contextlib.suppress(ValueError, AttributeError):
+            previous[number] = signal.signal(number, lambda _sig, _frame: sys.exit(0))
+    return previous or None
+
+
+def _restore_sigterm(handlers: Any) -> None:
+    if not isinstance(handlers, dict):
+        return
+    for number, handler in handlers.items():
+        with contextlib.suppress(ValueError, AttributeError, TypeError):
+            signal.signal(number, handler)
 
 
 def serve(
@@ -907,6 +959,12 @@ def serve(
     # after the fork, so no thread is ever created in a process about to be
     # replaced. The coordinator subsumes the producer's periodic tick, so exactly
     # one of the two runs and they can never both collect.
+    served = getattr(server, "application", None)
+    if served is not None:
+        # In the serving process, after the fork, so the pid a marker is
+        # compared against is a daemon's and never the parent that exits.
+        with contextlib.suppress(Exception):
+            reading_jobs.recover(served, alive=functools.partial(dashboard_alive, config))
     producer_stop = threading.Event()
     producer: threading.Thread | None = None
     if observation is not None:
@@ -920,6 +978,11 @@ def serve(
     try:
         server.serve_forever()
     finally:
+        # First, while the jobs can still write what the kill did to them. A
+        # supervised CLI leads its own group, so a foreground Ctrl-C no longer
+        # reaches it, and without this it would outlive the daemon.
+        with contextlib.suppress(Exception):
+            supervise.kill_all()
         producer_stop.set()
         if producer is not None:
             producer.join(timeout=2)

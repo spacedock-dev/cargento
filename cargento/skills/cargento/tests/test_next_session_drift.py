@@ -608,14 +608,17 @@ console.log(JSON.stringify(keys));
         self.assertIn("codex:focus-1", out[0])
         self.assertIn("codex:focus-2", out[1])
 
-    def test_the_pending_check_says_how_long_it_can_take(self) -> None:
+    def test_a_running_check_says_the_rest_of_the_page_stays_usable(self) -> None:
         out = self.run_fixture(
             ANNOTATED
             + """
 __dashboard.reading_check = "accepted";
 const context = __fetchImpl;
+const __job = {id:"j1", phase:"waiting", started_at:100, phase_at:101, provider:"codex",
+  steps:[{phase:"preparing", text:"Preparing what is sent"},
+    {phase:"waiting", text:"Waiting for Codex"}, {phase:"checking", text:"Checking the reply"}]};
 __fetchImpl = async url => String(url) === "/api/reading"
-  ? new Promise(() => {})
+  ? {ok: true, status: 202, json: async () => ({ok: true, job: __job})}
   : (String(url).startsWith("/api/project-context")
     ? {ok: true, json: async () => ({semantic: __semantic, child_assignments: [], observers: [],
         observer_model: {enabled: true}})}
@@ -627,15 +630,19 @@ await __settle();
 await __settle();
 const session = __dashboard.sessions[0];
 const group = nextProjectGroups().find(row => row.label === "cargento");
-void nextCockpitAskForReading(session, nextCockpitObserverModel(group));
+await nextCockpitAskForReading(session, nextCockpitObserverModel(group));
 await __settle();
 console.log(JSON.stringify(visible_text_source(__els.app.innerHTML)));
 function visible_text_source(html){ return html.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " "); }
 """
         )
         assert isinstance(out, str)
-        self.assertIn("Checking for drift…", out)
-        self.assertIn("This can take up to a minute; the rest of the page stays usable.", out)
+        # DRC-4686: the minute-long wait is gone from the page, and the box
+        # stands in for it until the result arrives with a later payload.
+        self.assertIn("Analyzing drift", out)
+        self.assertIn("Waiting for Codex", out)
+        self.assertIn("You can keep working. The result will appear here.", out)
+        self.assertNotIn("Checking for drift…", out)
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

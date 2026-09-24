@@ -1808,8 +1808,14 @@ const NEXT_READING_NO_WORDS =
 const NEXT_READING_MODEL_UNREAD =
   "Reading availability has not been read, so no reading can be offered. " +
   "Cargento asks again with the next update.";
-const NEXT_READING_PENDING =
-  "Checking for drift. This can take up to a minute; the rest of the page stays usable.";
+/* The analyzing box (DRC-4686). "Analyzing drift" rather than the design's
+   "Analyzing N turns": Claude Code supplies no stable turn identity, so the
+   word is not used for it (item 11 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)). The step names are the server's,
+   one per real phase, so this page never words a phase it did not see. */
+const NEXT_READING_JOB_TITLE = "Analyzing drift";
+const NEXT_READING_JOB_NOTE = "You can keep working. The result will appear here.";
+const NEXT_READING_BACKGROUND = "Runs in the background.";
 const NEXT_READING_MODEL_OFF =
   "Model calls are off for this run. Restart without --no-observer-model or its alias " +
   "--no-harness-usage to allow a reading.";
@@ -2736,6 +2742,43 @@ function nextReadingPolicyReason(policy){
   return "";
 }
 
+/* The running analysis for a session, from the published payload alone: a
+   reload, another tab and this press all read the same job. */
+function nextReadingJob(session){
+  const jobs = nextData && nextData.reading_jobs;
+  const job = jobs && typeof jobs === "object" ? jobs[sessKey(session)] : null;
+  return job && typeof job === "object" && typeof job.id === "string" ? job : null;
+}
+
+/* Each step's state comes from where the published phase sits among them. A
+   finished step is a filled mark, never a check mark: a check beside a
+   reading is the shape item 6 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+   keeps off every result. An unknown phase
+   marks every step still to come rather than guessing which one is running. */
+function nextReadingJobBox(job){
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const at = steps.findIndex(step => step && step.phase === job.phase);
+  const items = steps.map((step, index) => {
+    const state = at < 0 || index > at ? "todo" : index < at ? "done" : "active";
+    return `<li class="next-cockpit-reading-step" data-state="${state}"` +
+      `${state === "active" ? ' aria-current="step"' : ""}>` +
+      '<span class="next-cockpit-reading-step-mark" aria-hidden="true"></span>' +
+      `<span>${esc(String(step && step.text || ""))}</span></li>`;
+  }).join("");
+  /* The header row leaves room for DRC-4693's Cancel, and `data-next-analyzing`
+     is the hook DRC-4680's meter dims on. */
+  return `<div class="next-cockpit-reading-job" role="status" data-next-analyzing="${esc(job.id)}">` +
+    `<div class="next-cockpit-reading-job-head"><span class="next-cockpit-reading-job-title">${esc(NEXT_READING_JOB_TITLE)}</span></div>` +
+    `<ol class="next-cockpit-reading-steps">${items}</ol>` +
+    `<p class="next-cockpit-reading-job-note">${esc(NEXT_READING_JOB_NOTE)}</p></div>`;
+}
+
+function nextReadingJobShown(session, job){
+  if(!nextData || !job || typeof job !== "object") return;
+  nextData.reading_jobs = {...(nextData.reading_jobs || {}), [sessKey(session)]: job};
+}
+
 function nextCockpitReadingControl(session, annotation, model, primary = true){
   const reason = nextPromptReadingRefusal(session, annotation, model);
   const key = sessKey(session);
@@ -2776,8 +2819,10 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     (["latest-prompt", "first-prompt"].includes(annotation.goal_source)
       ? annotation.goal_source_at : annotation.at));
   const endedAt = nextSessionEndedAt(session);
-  const readHint = provider && !reason && String(annotation && annotation.goal || "").trim() &&
+  const hint = provider && !reason && String(annotation && annotation.goal || "").trim() &&
     !(endedAt != null && given != null && given > endedAt) ? nextObservedReadHint(session) : "";
+  const readHint = hint ? `${hint} ${NEXT_READING_BACKGROUND}` : "";
+  const job = nextReadingJob(session);
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
@@ -2789,13 +2834,23 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   /* The disclosure and the button share a row, the disclosure still first in
      reading order: stacked, the disclosure's five sentences pushed the button
      under a 900px first screen, measured on a live board at 1440 wide. */
+  /* While a job runs, the box stands where the button and its hint were, as
+     the design draws it, and the disclosure and the count stay beside it. A
+     refusal is about a new press, which is not offered, so it waits. */
+  if(job){
+    return '<div class="next-cockpit-reading-ask">' + disclosure +
+      (nextReadingAnyConsent()
+        ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
+      '</div>' + nextReadingJobBox(job) +
+      (annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "");
+  }
   return '<div class="next-cockpit-reading-ask">' + disclosure +
     `<button type="button" class="next-action${primary && provider ? " next-action--primary" : ""}" ` +
     `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${reason ? ` aria-describedby="${NEXT_READING_REFUSED_ID}"` : ""}>` +
-    `${pending ? "Checking for drift…" : confirming ? "Allow and check" : "Check for drift"}</button>` +
+    `${confirming ? "Allow and check" : "Check for drift"}</button>` +
     (nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
     '</div>' +
@@ -3261,7 +3316,8 @@ function nextCockpitDriftBlock(group, session, direction, primary){
    durable permission and budget again at the model seam. */
 async function nextCockpitAskForReading(session, model, allow = false){
   const key = sessKey(session);
-  if(nextCockpitReadingRequests.get(key)?.pending) return;
+  /* A running job is the answer to a second press: nothing is sent. */
+  if(nextCockpitReadingRequests.get(key)?.pending || nextReadingJob(session)) return;
   /* This press arrives from states the browser used to swallow, and an
      ungated one spends the reader's own model capacity from a state the page
      calls unavailable. Answered rather than dropped, because a clicked control
@@ -3285,15 +3341,13 @@ async function nextCockpitAskForReading(session, model, allow = false){
     renderNext();
     return;
   }
-  /* Session-scoped state survives polling and navigation while the model
-     runs. Another press must not spend capacity on a duplicate request. */
-  /* The bound is `observer.OBSERVER_MODEL_TIMEOUT_SEC`, sixty seconds, and the
-     sentence says so because a press that goes quiet for a minute otherwise
-     reads as a dead control. Nothing on the page waits on it. */
+  /* Pending only until the server answers with its job, which it does before
+     the model runs (DRC-4686); from then on the job is the state, published
+     over the push, so it survives a reload the way this map never could. */
   const confirmation = nextCockpitReadingRequests.get(key);
   const adoption = allow && confirmation && confirmation.consent
     ? confirmation.adoption : nextImplicitAdoption(session);
-  const request = {pending: true, message: NEXT_READING_PENDING, adoption};
+  const request = {pending: true, message: "", adoption};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
   try{
@@ -3311,6 +3365,14 @@ async function nextCockpitAskForReading(session, model, allow = false){
          the sentence below and the disclosure it points at agree at once. */
       nextData.reading_routes = {...(nextData.reading_routes || {}),
         [String(session.harness || "")]: answer.route};
+    }
+    if(response && response.status === 409 && answer && answer.job){
+      /* Another tab, or an earlier press, already started one: show it, then
+         take the board's word for whether it is still running. */
+      nextReadingJobShown(session, answer.job);
+      renderNext();
+      await refreshNext();
+      return;
     }
     if(response && response.status === 409 && answer && answer.reason === "provider-changed"){
       /* Nothing was sent or saved. The next press starts again, and asks for
@@ -3350,7 +3412,9 @@ async function nextCockpitAskForReading(session, model, allow = false){
       return;
     }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
-    if(!answer || answer.ok !== true || typeof answer.produced !== "boolean"){
+    const started = Boolean(answer && answer.ok === true && answer.job &&
+      typeof answer.job === "object");
+    if(!started && (!answer || answer.ok !== true || typeof answer.produced !== "boolean")){
       throw new Error("reading not confirmed");
     }
     if(allow && nextData.reading){
@@ -3362,7 +3426,18 @@ async function nextCockpitAskForReading(session, model, allow = false){
           [provider]: granted.includes(destination) ? granted : [...granted, destination]};
       }
     }
-    request.message = answer.produced ? "Reading received." : "No new reading was produced.";
+    if(started){
+      /* Drawn now from the reply, then replaced by the board: a job can end
+         before its own reply arrives, and a merged job the board has dropped
+         would stand until the next poll and swallow every press. Every later
+         phase and the result arrive with the revisions the job publishes. */
+      nextReadingJobShown(session, answer.job);
+      renderNext();
+      await refreshNext();
+      return;
+    }
+    /* Answered without a job: no annotated session by that name. */
+    request.message = "No new reading was produced.";
     await refreshNext();
   }catch(_error){
     /* A lost response does not establish that the model never ran. */

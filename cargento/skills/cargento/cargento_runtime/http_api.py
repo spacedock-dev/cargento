@@ -35,6 +35,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import observer as runtime_observer
 from cargento_runtime import project_context as runtime_project_context
 from cargento_runtime import reading as runtime_reading
+from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
@@ -1769,46 +1770,44 @@ class _RequestHandler(BaseHTTPRequestHandler):
             )
             return
         key = f"{harness}:{sid}"
-        if not runtime_reading.claim(config, key):
-            # One in flight per session, and no retry: a second press answers
-            # 409 and calls nothing.
-            self._reject(409)
+        job = runtime_reading.start_job(
+            config, key, provider=route["provider"], label=route["label"], now=application.clock()
+        )
+        if job is None:
+            # One in flight per session, and no retry: a second press starts
+            # nothing and is handed the running job to show. A slot the unasked
+            # lane holds has no job, and none is invented for it.
+            running = runtime_reading.published_jobs(config).get(key)
+            self._send(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "produced": False,
+                        "reason": "in-flight",
+                        **({"job": running} if running else {}),
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+                "application/json",
+                409,
+            )
             return
+        # Taken before the thread starts, which may finish before this reply.
+        started = runtime_reading.published_jobs(config)[key]
+        row, found = rows[0], entry
         try:
-            assessment, why, spent = self._compose_reading(rows[0], entry, route)
-        except reading_policy.RefusedError as exc:
-            self._reading_permission_reply(exc.answer)
+            runtime_reading_jobs.launch(
+                application, job, lambda hooks: self._compose_reading(row, found, route, hooks)
+            )
+        except RuntimeError:
+            # No thread to run it on; `launch` has already freed the slot, so
+            # the next press can start one. Nothing was spent.
+            self._reject(503)
             return
-        finally:
-            runtime_reading.release(config, key)
-        if assessment is not None:
-            annotation_store.record_reading(
-                config,
-                state,
-                harness,
-                sid,
-                assessment=assessment,
-                diagnostic_sink=application.diagnostic_sink,
-            )
-        else:
-            annotation_store.record_withheld(
-                config,
-                state,
-                harness,
-                sid,
-                reason=why,
-                spent=spent,
-                diagnostic_sink=application.diagnostic_sink,
-            )
-        # Dropped rather than waited out, for `_annotate`'s reason: the next
-        # GET would otherwise serve the pre-write payload.
-        state.snapshot.clear()
         self._send(
-            json.dumps(
-                {"ok": True, "produced": assessment is not None, "reason": why},
-                separators=(",", ":"),
-            ).encode(),
+            json.dumps({"ok": True, "job": started}, separators=(",", ":")).encode(),
             "application/json",
+            202,
         )
 
     def _adoption_matches(
@@ -1831,6 +1830,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         row: dict[str, Any],
         entry: annotation_store.Annotation,
         route: runtime_reading_route.Route,
+        hooks: runtime_reading_jobs.Hooks,
     ) -> tuple[runtime_reading.Assessment | None, str, bool]:
         """The model lane, with the observed record it reads.
 
@@ -1853,7 +1853,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # ruling `reading.TURN_STOP_HARNESSES` cites names; the unasked
             # lane keeps the closed default.
             admit_turn_stop=str(row.get("harness")) in runtime_reading.TURN_STOP_HARNESSES,
-            **self._reading_arguments(row, entry, route),
+            # The job's phases, each told where it really begins (DRC-4686).
+            on_phase=hooks.phase,
+            **self._reading_arguments(row, entry, route, hooks),
         )
 
     def _session_facts(self, row: dict[str, Any]) -> list[Any]:
@@ -1878,6 +1880,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         row: dict[str, Any],
         entry: annotation_store.Annotation,
         route: runtime_reading_route.Route,
+        hooks: runtime_reading_jobs.Hooks,
     ) -> dict[str, Any]:
         """Everything `produce` takes beyond the record, from the route that ran."""
         application = self.server.application
@@ -1939,9 +1942,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     runtime_reading.ClaudeReadingModel
                     if route["provider"] == runtime_reading_route.CLAUDE
                     else runtime_reading.CodexReadingModel
-                )(application.config),
+                )(application.config, on_spawn=hooks.spawned),
                 application.clock,
                 provider=route["provider"],
+                on_reserved=hooks.reserved,
+                before_reserve=hooks.before_reserve,
             ),
         }
 

@@ -916,6 +916,10 @@ class Application:
                             str(row.get("harness") or "") for row in out_sessions
                         ),
                         "reading": reading_policy.status(config, now=now),
+                        # The reader's running analyses, board-wide rather than
+                        # per row so a job is never a session field or history
+                        # (DRC-4686). A reload reads the job from here.
+                        "reading_jobs": reading.published_jobs(config),
                         # The discard control's sentences, published for
                         # `reading_routes`' reason and one more: the
                         # success sentence claims something about the
