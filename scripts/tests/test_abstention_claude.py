@@ -272,7 +272,9 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             self.assertEqual(0, score_abstention.main(["--score", "--producer", "claude"]))
         self.assertIsInstance(seen["model"], reading.ClaudeReadingModel)
         self.assertEqual(score_abstention.CLAUDE_SUMMARY_PATH, seen["summary_path"])
-        self.assertTrue(seen["summary_path"].endswith("docs/abstention/claude-results.json"))
+        self.assertEqual(
+            ("docs", "abstention", "claude-results.json"), Path(seen["summary_path"]).parts[-3:]
+        )
         self.assertEqual({**BINDING, "argv_digest": "cd" * 32}, dict(seen["binding"]))
         self.assertEqual(19, seen["max_calls"])
         self.assertEqual(abstention_ledger.LEDGER_PATH, seen["ledger_path"])
