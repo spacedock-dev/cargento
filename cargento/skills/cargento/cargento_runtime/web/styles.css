@@ -1197,8 +1197,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-work-mix{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-work-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-work-source{grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-work-result{grid-column:1/-1;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-work-absent,.next-cockpit-work-limit{margin:0;color:var(--ink-absence);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-work-dropped{margin:0;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
+.next-cockpit-work-checks{margin:0;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
 /* The third treatment, for a model reading: italic Space Grotesk on the
    secondary ink over a dotted rule, so it reads as neither a published string
    nor the board stating a fact. No colour under any result, ever, because

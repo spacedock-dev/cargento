@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import shlex
 import time
 import unittest
 from contextlib import contextmanager
@@ -872,6 +873,55 @@ class RedactSecretsTest(unittest.TestCase):
             with self.subTest(shape=match.lastgroup):
                 self.assertEqual(expected, records.redact_secrets(fake))
         self.assertEqual(listed, covered)
+
+
+def mask(line: str) -> str:
+    """A command line masked the way a check line is: shell words, one by one."""
+    return " ".join(records.mask_words(shlex.split(line)))
+
+
+class MaskCommandTest(unittest.TestCase):
+    def test_the_string_masker_that_split_on_whitespace_is_gone(self) -> None:  # V9
+        # It leaked a quoted value's tail; the check line masks shell words.
+        self.assertFalse(hasattr(records, "mask_command"))
+
+    """The credential forms a shape filter cannot recognise, masked in a command line.
+
+    DEC-23 item 5: a short password matches no credential shape, so a check's
+    command line is masked by FORM before `redact_clip` runs over it. Every
+    value here is synthetic; what matters is that it never survives.
+    """
+
+    VALUE = "hunter2x"
+
+    def test_an_environment_assignment_keeps_its_name_and_loses_its_value(self) -> None:
+        masked = mask(f"PGPASSWORD={self.VALUE} psql -h db pytest")
+        self.assertNotIn(self.VALUE, masked)
+        self.assertIn("PGPASSWORD=", masked)
+
+    def test_a_password_flag_in_every_spelling_loses_its_value(self) -> None:
+        for line in (
+            f"mysql -p {self.VALUE} -e 'select 1'",
+            f"mysql -p{self.VALUE} -e 'select 1'",
+            f"tool --password {self.VALUE} run",
+            f"tool --password={self.VALUE} run",
+        ):
+            with self.subTest(line=line):
+                self.assertNotIn(self.VALUE, mask(line))
+
+    def test_a_url_with_a_user_and_password_keeps_the_user_and_loses_the_password(self) -> None:
+        for line in (
+            f"pytest --db postgres://app:{self.VALUE}@localhost/test",
+            f"pytest --db app:{self.VALUE}@localhost:5432",
+        ):
+            with self.subTest(line=line):
+                masked = mask(line)
+                self.assertNotIn(self.VALUE, masked)
+                self.assertIn("app:", masked)
+
+    def test_a_command_with_nothing_to_mask_reads_as_it_was_typed(self) -> None:
+        line = "python3 -m pytest tests/test_retry.py -q 2>&1 | tail -20"
+        self.assertEqual(line, mask(line))
 
 
 if __name__ == "__main__":

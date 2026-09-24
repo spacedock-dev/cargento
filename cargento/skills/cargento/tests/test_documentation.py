@@ -19,6 +19,8 @@ from cargento_runtime import (
     focus,
     git_status,
     history,
+    project_context,
+    reading,
     semantic_history,
 )
 from cargento_runtime import config as runtime_config
@@ -1384,6 +1386,12 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
             with self.subTest(field=carrier):
                 self.assertNotIn(carrier, history.OBSERVATION_FIELDS)
 
+    def test_the_checks_a_claude_code_session_ran_are_a_named_carrier(self) -> None:
+        # DEC-23 item 6 names the new fact type here, so the comparison above
+        # keeps it out of the store rather than review alone.
+        self.assertIn(reading.TOOL_REPORT_TYPE, history.PROMPT_DERIVED_CARRIERS)
+        self.assertNotIn(reading.TOOL_REPORT_TYPE, history.OBSERVATION_FIELDS)
+
     def test_the_allowlist_holds_baseline_fields_and_the_first_prompt(self) -> None:
         # The two have to agree about the count as well as about the contents.
         # This replaces an emptiness assertion: "nothing yet" was the claim a
@@ -1645,17 +1653,19 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
         # a *new* read nobody wrote into the section. Both spellings are here
         # because Codex writes its plan under `arguments` in one shape and
         # `input` in the other, and the section names both.
+        # Subscripts too: a `block["input"]` read is a read, and the narrower
+        # pattern once let two of them through uncounted (review, 2026-09-24).
+        pattern = r'\.get\("(?:input|arguments)"\)|\["(?:input|arguments)"\]'
         found = {
-            path.name: len(re.findall(r'\.get\("(?:input|arguments)"\)', text))
+            path.name: len(re.findall(pattern, text))
             for path in sorted(self.RUNTIME.rglob("*.py"))
-            if (text := path.read_text(encoding="utf-8"))
-            and re.search(r'\.get\("(?:input|arguments)"\)', text)
+            if (text := path.read_text(encoding="utf-8")) and re.search(pattern, text)
         }
         self.assertEqual(
-            {"claude_data.py": 1, "codex.py": 1, "project_context.py": 3, "transcripts.py": 2},
+            {"claude_data.py": 1, "codex.py": 1, "project_context.py": 4, "transcripts.py": 2},
             found,
         )
-        self.assertIn("seven expressions in `cargento_runtime` reach an input payload", self.FLAT)
+        self.assertIn("eight expressions in `cargento_runtime` reach an input payload", self.FLAT)
         for named in (
             "`claude_data.input_summary`",
             "`transcripts.codex_plan`",
@@ -1663,9 +1673,20 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
             "`project_context._tool_call_events`",
             "`project_context._tool_support`",
             "`project_context.codex_dispatch_events`",
+            "`project_context.claude_tool_reports`",
         ):
             with self.subTest(read=named):
                 self.assertIn(named, self.FLAT)
+
+    def test_the_claude_check_read_is_bounded_to_the_caps_the_section_states(self) -> None:
+        # DEC-23 item 5's bounds, read out of the module rather than restated.
+        for phrase in (
+            f"clipped to {project_context.TOOL_REPORT_LINE_CHARS} characters",
+            f"the last {project_context.TOOL_REPORT_TAIL_CHARS} characters of output",
+            f"At most {project_context.TOOL_REPORT_MAX_ENTRIES} entries are listed",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.FLAT)
 
     def test_the_named_read_is_bounded_to_the_cap_the_section_states(self) -> None:
         config = make_config()

@@ -77,6 +77,10 @@ _SEMANTIC_FACT_TYPES = {
     "decision": "decision",
     "test_result": "result",
     "ask_resolution": "decision",
+    # One fact type for a check and a write; `subject` tells them apart. The
+    # ruling `claude_tool_reports` cites, item 6.
+    "check_run": "tool_report",
+    "path_written": "tool_report",
 }
 _DISPATCH_BUILD_RE = re.compile(r"^\s*spacedock\s+dispatch\s+build(?:\s+(.*))?$", re.IGNORECASE)
 # This is transcript grammar from the dispatch contract, not a location we create or write.
@@ -1174,6 +1178,714 @@ def work_events(
     return _work_evidence(config, transcript_path, harness, sid)[0]
 
 
+# The checks a Claude Code session ran and the files it wrote, as the
+# transcript recorded them. The ruling `claude_tool_reports` cites owns every
+# rule below; the closed runner list and the result patterns are its "The
+# closed lists" section, written out, with the owner's rulings and the review's
+# clarifications of 2026-09-24.
+#
+# Called from `collect` only, never from `_semantic_history_source_events`, so
+# the history store never sees these facts; `semantic_history._FACT_EVENT_TYPES`
+# not naming the type is the second wall (item 6).
+_TOOL_REPORT_KINDS = frozenset({"check_run", "path_written"})
+TOOL_REPORT_MAX_ENTRIES = 12
+TOOL_REPORT_LINE_CHARS = 120
+# The existing ledger cap (`reading.LEDGER_SUMMARY_CAP_CHARS`), which item 5 names.
+TOOL_REPORT_TAIL_CHARS = 180
+TOOL_REPORT_PATH_CHARS = 240
+_WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
+_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_PYTHON_RE = re.compile(r"^python(?:\d+(?:\.\d+)?)?$")
+_DURATION_RE = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
+_REDIRECT_RE = re.compile(r"^(?:\d*>&\d+|&>.*|\d*>>?.+|<.+)$")
+# One shell line in tokens: quoted runs, command substitutions, escapes, the
+# joiners, the redirects (`2>&1`, `>&2`, `&>`) that must not read as a
+# background `&`, and a `#` that may start a comment.
+_SHELL_TOKEN_RE = re.compile(
+    r"""'[^']*'?|"(?:\\.|[^"\\])*"?|\$\((?:[^()]|\([^()]*\))*\)?|`[^`]*`?|\\.|&&|\|\||[;|\n]"""
+    r"""|\d*>&\d*|&>|&|#[^\n]*|[^'"\;|&\n>`$#]+|.""",
+    re.DOTALL,
+)
+_SHELL_JOINERS = frozenset({"&&", "||", ";", "|", "\n", "&"})
+_SUBSTITUTION_RE = re.compile(r"\$\((?:[^()]|\([^()]*\))*\)?|`[^`]*`?")
+_HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+_WRAPPER_PAIRS = (["poetry", "run"], ["pipenv", "run"], ["pnpm", "exec"])
+_UV_VALUE_OPTIONS = frozenset(
+    {"--with", "--with-requirements", "--python", "-p", "--project", "--directory", "--extra",
+     "--group", "--package", "--env-file", "--index"}
+)  # fmt: skip
+# Runners named by their first word, by their first two, and by three.
+_CHECK_WORDS = frozenset(
+    {
+        "pytest", "py.test", "nose2", "tox", "nox", "jest", "vitest", "mocha", "rspec",
+        "phpunit", "ctest", "flake8", "pylint", "eslint", "stylelint", "golangci-lint",
+        "rubocop", "shellcheck", "mypy", "pyright", "tsc",
+    }
+)  # fmt: skip
+_CHECK_PAIRS = frozenset(
+    {
+        ("npm", "test"), ("pnpm", "test"), ("yarn", "test"), ("bun", "test"),
+        ("deno", "test"), ("go", "test"), ("cargo", "test"), ("cargo", "nextest"),
+        ("mvn", "test"), ("gradle", "test"), ("./gradlew", "test"), ("dotnet", "test"),
+        ("rake", "test"), ("swift", "test"), ("make", "test"), ("make", "check"),
+        ("pnpm", "build"), ("yarn", "build"), ("cargo", "build"), ("go", "build"),
+        ("make", "build"), ("mvn", "package"), ("gradle", "build"), ("./gradlew", "build"),
+        ("dotnet", "build"), ("swift", "build"), ("vite", "build"), ("ruff", "check"),
+        ("cargo", "clippy"), ("cargo", "check"), ("go", "vet"),
+    }
+)  # fmt: skip
+_CHECK_TRIPLES = frozenset(
+    {
+        ("bundle", "exec", "rspec"), ("npm", "run", "test"), ("pnpm", "run", "test"),
+        ("npm", "run", "build"), ("pnpm", "run", "build"), ("bun", "run", "build"),
+    }
+)  # fmt: skip
+# Runners that are checks only with `--check` among their words.
+_CHECK_FLAGGED = frozenset({("black",), ("prettier",), ("ruff", "format")})
+# A check that rewrites files is a change too, and ages every pass, its own
+# included (review, 2026-09-24).
+_FIX_FLAGS = frozenset({"--fix", "--write", "--fix-only", "--unsafe-fixes"})
+_INTERPRETERS = frozenset({"node", "bash", "sh", "zsh"})
+_SHELL_BUILTINS = frozenset({"test", "[", "[["})
+_INFO = "\u2139"  # node's summary glyph, written as an escape so review can read it
+# Item 2, source (ii): summary lines. A failure anywhere in the tail wins over a
+# pass, because a run that printed both failed. Matched per line: node prints
+# its pass and fail counts on lines of their own.
+_SUMMARY_FAILED = re.compile(
+    rf"\b[1-9]\d* failed\b|^FAILED \(|^\s*Tests:.*\b[1-9]\d* failed|^{_INFO} fail [1-9]\d*\s*$"
+    r"|^FAIL\b|test result: FAILED|\b[1-9]\d* errors?\b(?! \(\d+ fixed, 0 remaining\))",
+    re.MULTILINE,
+)
+# A pass counts only when nothing else in the tail records a failure (owner,
+# 2026-09-24). Node's pass count alone is not a pass: node prints the fail count
+# on the line after it, so a tail that kept one and lost the other says nothing
+# about failures. Go's `ok  <pkg>` is not a pass either: go passes come from the
+# error flag alone. unittest's `OK` must be the whole line.
+_SUMMARY_PASSED = re.compile(
+    rf"\b\d+ passed\b|^OK\s*$|^\s*Tests:\s.*\b\d+ passed|^{_INFO} fail 0\s*$"
+    r"|test result: ok|^Success: no issues found|^All checks passed!",
+    re.MULTILINE,
+)
+# Source (iii): may record a failure, never a pass. Node's cancelled count is
+# one: a timed-out test prints `fail 0` beside it and exits 1 (measured on node
+# 26, review 2026-09-24).
+_FAILURE_MARKER = re.compile(
+    r"\u2716|failing tests:|AssertionError|ERR_ASSERTION|^FAILED |^ERROR |--- FAIL:|panicked at"
+    rf"|error TS\d*|^{_INFO} cancelled [1-9]\d*\s*$",
+    re.MULTILINE,
+)
+# A pass that ran nothing is not a pass, from the flag or from a summary: it
+# reads "ran, result not recorded". go's `[no test files]` counts only when no
+# package printed `ok`.
+_RAN_NOTHING = re.compile(
+    rf"^{_INFO} pass 0\s*$|(?<![\d.])0 passed\b|^Ran 0 tests\b|\[no tests to run\]",
+    re.MULTILINE,
+)
+_NO_TEST_FILES = re.compile(r"\[no test files\]")
+_GO_OK = re.compile(r"^ok\s", re.MULTILINE)
+_RESULT_ORDER = {"failed": 0, "not-recorded": 1, "passed": 2}
+# A true error flag is a run that exited nonzero only when Claude Code says so;
+# any other flagged result is a call that never ran: a rejection, a cancelled
+# parallel call, a sibling error, a hook block or an input error (measured:
+# 89% of flagged Bash results open this way; verifier, 2026-09-24).
+_EXITED_RE = re.compile(r"\AExit code [1-9]\d*\b")
+# Claude Code moved the call to the background itself: no result is recorded.
+_MOVED_TO_BACKGROUND_RE = re.compile(
+    r"\A(?:Command running in background with ID: "
+    r"|Command did not complete within its \d+s timeout and was moved to the background)"
+)
+# Owner, 2026-09-24: the closed read-only list. A segment that is neither a
+# check nor on it is timed, never kept as text; DRC-4692's levels compare the
+# time with each check's latest pass. Counted, never listed, never drift.
+_READ_ONLY_WORDS = frozenset(
+    {"ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "pwd", "echo", "which", "file",
+     "stat", "tree", "less"}
+)  # fmt: skip
+_READ_ONLY_PAIRS = frozenset({"git status", "git log", "git diff", "git show"})
+# Options that make a read-only command write or run something, per command:
+# `find -o` is an OR and stays read-only, `tree -o` writes a file.
+_WRITING_OPTIONS = {
+    "find": frozenset(
+        {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+    ),
+    "tree": frozenset({"-o"}),
+    "git diff": frozenset({"--output"}),
+    "git log": frozenset({"--output"}),
+    "git show": frozenset({"--output"}),
+}
+_HARMLESS_REDIRECT_RE = re.compile(r"^(?:\d*>&\d+|\d*>/dev/null|&>/dev/null)$")
+
+
+def _without_heredoc_bodies(command: str) -> str:
+    """The command with every heredoc body removed: its lines are data."""
+    kept: list[str] = []
+    end = ""
+    for line in command.split("\n"):
+        if end:
+            end = "" if line.strip() == end else end
+            continue
+        kept.append(line)
+        match = _HEREDOC_RE.search(line)
+        if match:
+            end = match.group(2)
+    return "\n".join(kept)
+
+
+def _command_segments(command: str) -> list[tuple[str, str]]:
+    """`(segment, joiner after it)` for each part of one shell line, outside quotes.
+
+    Joiners are `&&`, `||`, `;`, `|`, a newline, and `&`, which sends the
+    segment before it to the background. `2>&1`, `>&2` and `&>` are
+    redirects. A comment is dropped, a subshell's parentheses are shed, and a
+    heredoc body is not a command.
+    """
+    segments: list[tuple[str, str]] = []
+    current: list[str] = []
+    for match in _SHELL_TOKEN_RE.finditer(_without_heredoc_bodies(command)):
+        token = match.group()
+        if token in _SHELL_JOINERS:
+            segments.append(("".join(current).strip(), token))
+            current = []
+        elif token.startswith("#") and (not current or current[-1][-1:].isspace()):
+            continue
+        else:
+            current.append(token)
+    segments.append(("".join(current).strip(), ""))
+    return [(text.strip("()").strip(), joiner) for text, joiner in segments if text.strip("() ")]
+
+
+def _segment_words(segment: str) -> list[str]:
+    """Shell words of a segment, with every substituted command shown as `$(…)`."""
+    text = _SUBSTITUTION_RE.sub("$(\u2026)", segment)
+    try:
+        return shlex.split(text)
+    except ValueError:
+        return text.split()
+
+
+def _skip_options(words: list[str], takes_value: frozenset[str]) -> list[str]:
+    while words and words[0].startswith("-"):
+        words = words[2:] if words[0] in takes_value else words[1:]
+    return words
+
+
+def _stripped(words: list[str]) -> tuple[list[str], bool]:
+    """Item 3's stripping, and whether `rtk` wrapped the runner (owner, 2026-09-24)."""
+    rtk = False
+    while words:
+        if _ASSIGNMENT_RE.match(words[0]):
+            words = words[1:]
+        elif words[:2] == ["rtk", "proxy"] or words[0] == "rtk":
+            words, rtk = words[2:] if words[1:2] == ["proxy"] else words[1:], True
+        elif words[:2] == ["uv", "run"]:
+            words = _skip_options(words[2:], _UV_VALUE_OPTIONS)
+        elif words[:2] in _WRAPPER_PAIRS:
+            words = words[2:]
+        elif words[0] in ("npx", "bunx", "time"):
+            words = words[1:]
+        elif words[0] == "timeout":
+            # `-s KILL` and `-k 5` carry a value; `--signal=KILL` does not.
+            words = _skip_options(words[1:], frozenset({"-s", "-k", "--signal", "--kill-after"}))
+            words = words[1:] if words and _DURATION_RE.match(words[0]) else words
+        else:
+            break
+    return words, rtk
+
+
+def _strip_runner_prefix(words: list[str]) -> list[str]:
+    return _stripped(words)[0]
+
+
+def _names_a_test_file(word: str) -> bool:
+    """`test` or `tests` as a whole word of a file name, split on `_`, `-` and `.`.
+
+    Owner, 2026-09-24: `run_tests.py` and `test.sh` count, and `runtests.py` and
+    `fetch_latest_creds.py` do not.
+    """
+    name = os.path.basename(word).lower()
+    return bool(set(re.split(r"[_.-]", name)) & {"test", "tests"}) and ("/" in word or "." in name)
+
+
+def _runner_words(words: list[str]) -> list[str]:
+    """The words with an interpreter or runner path shed to its name."""
+    name = os.path.basename(words[0])
+    if "/" in words[0] and (
+        _PYTHON_RE.match(name) or name in _INTERPRETERS or name in _CHECK_WORDS
+    ):
+        return [name, *words[1:]]
+    return words
+
+
+def _is_named_runner(words: list[str]) -> bool:
+    if _PYTHON_RE.match(words[0]):
+        return words[1:3] in (["-m", "pytest"], ["-m", "unittest"])
+    if (
+        words[0] in _CHECK_WORDS
+        or tuple(words[:2]) in _CHECK_PAIRS
+        or tuple(words[:3]) in _CHECK_TRIPLES
+    ):
+        return True
+    flagged = tuple(words[:1]) in _CHECK_FLAGGED or tuple(words[:2]) in _CHECK_FLAGGED
+    return flagged and "--check" in words
+
+
+def _is_test_program(words: list[str]) -> bool:
+    """A program file whose name has `test` or `tests` as a word, run directly or
+    by an interpreter; and `node --test`."""
+    first = words[0]
+    if first == "node" and "--test" in words:
+        return True
+    if _PYTHON_RE.match(first) or first in _INTERPRETERS:
+        return len(words) > 1 and not words[1].startswith("-") and _names_a_test_file(words[1])
+    return _names_a_test_file(first)
+
+
+def _is_check(words: list[str]) -> bool:
+    """Whether a stripped segment's runner is on the ruling's closed list."""
+    if not words or words[0] in _SHELL_BUILTINS:
+        return False
+    words = _runner_words(words)
+    return _is_named_runner(words) or _is_test_program(words)
+
+
+def _reads_only(text: str, words: list[str]) -> bool:
+    """Whether one segment is on the closed read-only list.
+
+    A substituted command, a process substitution or a redirect into a file
+    runs or writes something the list does not name (review, 2026-09-24).
+    """
+    if any(mark in text for mark in ("$(", "`", "<(", ">(")):
+        return False
+    if any(">" in word and not _HARMLESS_REDIRECT_RE.match(word) for word in words):
+        return False
+    writing = _WRITING_OPTIONS.get(words[0]) or _WRITING_OPTIONS.get(" ".join(words[:2]))
+    if writing and writing & {w.split("=", 1)[0] for w in words[1:]}:
+        return False
+    return " ".join(words[:2]) in _READ_ONLY_PAIRS or words[0] in _READ_ONLY_WORDS
+
+
+def _check_identity(directory: str, words: list[str]) -> str:
+    """Item 4's "same check": the directory it ran in and its stripped segment,
+    without redirects (review, 2026-09-24: the directory is part of it)."""
+    return directory + "\0" + " ".join(word for word in words if not _REDIRECT_RE.match(word))
+
+
+def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
+    for record in transcript:
+        if record.get("type") != "user" or record.get("isSidechain") is True:
+            continue
+        content = records.message_dict(record).get("content")
+        for block in content if isinstance(content, list) else ():
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                call_id = block.get("tool_use_id")
+                if isinstance(call_id, str) and call_id:
+                    results[call_id] = block
+    return results
+
+
+def _claude_tool_uses(
+    transcript: list[dict[str, Any]],
+) -> Iterator[tuple[float, str, str, str, dict[str, Any]]]:
+    """`(at, cwd, call id, tool name, input)` for the root session's calls;
+    subagents are DRC-4687's."""
+    for record in transcript:
+        if record.get("type") != "assistant" or record.get("isSidechain") is True:
+            continue
+        content = records.message_dict(record).get("content")
+        at = _record_timestamp(record)
+        if not isinstance(content, list) or at is None:
+            continue
+        cwd = record.get("cwd")
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            call_id, name, tool_input = block.get("id"), block.get("name"), block.get("input")
+            if isinstance(call_id, str) and isinstance(name, str) and isinstance(tool_input, dict):
+                yield at, cwd if isinstance(cwd, str) else "", call_id, name, tool_input
+
+
+def _tool_result_text(block: dict[str, Any]) -> str:
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(part.get("text"))
+            for part in content
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        )
+    return ""
+
+
+def _ran_nothing(tail: str) -> bool:
+    return bool(_RAN_NOTHING.search(tail)) or (
+        bool(_NO_TEST_FILES.search(tail)) and not _GO_OK.search(tail)
+    )
+
+
+def _tail_result(tail: str) -> tuple[str, str] | None:
+    """Sources (ii) and (iii), failure first; a pass needs no failure beside it."""
+    if _SUMMARY_FAILED.search(tail):
+        return "failed", "summary"
+    if _FAILURE_MARKER.search(tail):
+        return "failed", "marker"
+    if _SUMMARY_PASSED.search(tail) and not _ran_nothing(tail):
+        return "passed", "summary"
+    return None
+
+
+def _flag_result(flag: object, *, last: bool, all_and: bool, alone: bool) -> str:
+    """What the call's error flag says about one check in it (review and
+    verifier, 2026-09-24).
+
+    The flag is the whole call's status. A pass through `&&` alone passes every
+    check, and a pass otherwise speaks for the last segment. A failure speaks
+    only for a call of one segment, after `cd`, assignments and wrappers are
+    stripped, since any other stage may be the one that failed.
+    """
+    if not isinstance(flag, bool):
+        return ""
+    if flag:
+        return "failed" if alone else ""
+    return "passed" if last or all_and else ""
+
+
+def _check_line(words: list[str]) -> str:
+    """The runner form and the rest of its own segment, masked, redacted, clipped.
+
+    Its own segment only, never the rest of the shell line (owner, 2026-09-24).
+    Each word is masked before the words are joined and re-quoted.
+    """
+    masked = records.mask_words(words)
+    line = " ".join(shlex.quote(word) if re.search(r"\s", word) else word for word in masked)
+    bounded = records.redact_clip(line, TOOL_REPORT_LINE_CHARS)
+    return records.safe_text(bounded, len(bounded))
+
+
+def _written_path(raw: object, cwd: str) -> str | None:
+    """A written path relative to the working directory, or None outside it."""
+    if not isinstance(raw, str) or not raw.strip() or not cwd:
+        return None
+    base = os.path.normpath(cwd)
+    target = os.path.normpath(raw if os.path.isabs(raw) else os.path.join(base, raw))
+    try:
+        relative = os.path.relpath(target, base)
+    except ValueError:
+        return None
+    if relative == os.curdir or relative.split(os.sep)[0] == os.pardir:
+        return None
+    return relative.replace(os.sep, "/")
+
+
+def _is_fixer(words: list[str]) -> bool:
+    """A formatter or fixer run: a change that ages every pass (verifier,
+    2026-09-24), whether or not it is also a check."""
+    if not words:
+        return False
+    words = _runner_words(words)
+    flags = {word.split("=", 1)[0] for word in words[1:]}
+    if _FIX_FLAGS & flags:
+        return True
+    if words[0] == "black" or words[:2] == ["ruff", "format"]:
+        return "--check" not in flags
+    return words[0] == "prettier" and "-w" in flags
+
+
+class _ShellCall:
+    """One Bash call, split into segments, with the facts every rule reads."""
+
+    def __init__(
+        self, at: float, cwd: str, tool_input: dict[str, Any], *, moved: bool = False
+    ) -> None:
+        command = tool_input.get("command")
+        self.at = at
+        self.segments = _command_segments(command if isinstance(command, str) else "")
+        self.all_background = tool_input.get("run_in_background") is True or moved
+        self.words: list[tuple[list[str], bool]] = [
+            _stripped(_segment_words(text)) for text, _ in self.segments
+        ]
+        self.directories = self._directories(cwd)
+        self.meaningful = [
+            i for i, (words, _rtk) in enumerate(self.words) if words and words[0] != "cd"
+        ]
+        self.checks = [i for i in self.meaningful if _is_check(self.words[i][0])]
+        self.fixers = [i for i in self.meaningful if _is_fixer(self.words[i][0])]
+        self.changing_others = [
+            i
+            for i in self.meaningful
+            if i not in self.checks and not _reads_only(self.segments[i][0], self.words[i][0])
+        ]
+
+    def _directories(self, cwd: str) -> list[str]:
+        """The directory each segment runs in, following the call's `cd`s."""
+        current, found = cwd, []
+        for words, _rtk in self.words:
+            found.append(current)
+            if words[:1] == ["cd"] and len(words) > 1 and words[1] != "-":
+                current = os.path.normpath(os.path.join(current or "/", words[1]))
+        return found
+
+    def background(self, index: int) -> bool:
+        """`&` sends the whole and-or list before it to the background, back to
+        the previous `;`, newline or `&` (verifier, 2026-09-24)."""
+        if self.all_background:
+            return True
+        ends = (joiner for _, joiner in self.segments[index:] if joiner in ("", ";", "\n", "&"))
+        return next(ends, "") == "&"
+
+    def unestablished(self, index: int) -> bool:
+        """Whether a `||` before the segment leaves its execution unknown."""
+        return any(joiner == "||" for _, joiner in self.segments[:index])
+
+    def changes(self) -> bool:
+        """Whether any segment may change files without a recorded write."""
+        return bool(self.fixers or self.changing_others)
+
+    def launches(self) -> int:
+        """Background launches: the call, or each `&`-ended list in it."""
+        return 1 if self.all_background else sum(j == "&" for _, j in self.segments)
+
+
+class _ToolReportTally:
+    """The full scan of one transcript's calls, and the entries chosen from it."""
+
+    def __init__(self, results: dict[str, dict[str, Any]]) -> None:
+        self.results = results
+        self.runs: dict[str, list[dict[str, Any]]] = {}
+        self.writes: dict[str, dict[str, Any]] = {}
+        self.last_write_at = float("-inf")
+        self.scan: dict[str, Any] = {
+            "last_changing_command_at": None,
+            **dict.fromkeys(
+                (
+                    "shell_calls", "check_runs", "distinct_checks", "other_commands",
+                    "read_only_commands", "background", "unknown_flags", "written_paths",
+                    "outside_paths", "write_attempts", "not_run", "failed", "passed",
+                    "not_recorded",
+                    "listed", "more",
+                ),
+                0,
+            ),
+        }  # fmt: skip
+
+    def add(self, at: float, cwd: str, call_id: str, name: str, tool_input: dict[str, Any]) -> None:
+        if name in _WRITE_TOOLS:
+            self._add_write(at, cwd, call_id, name, tool_input)
+        elif name == "Bash":
+            self._add_shell(at, cwd, call_id, tool_input)
+
+    def _add_write(
+        self, at: float, cwd: str, call_id: str, name: str, tool_input: dict[str, Any]
+    ) -> None:
+        result = self.results.get(call_id)
+        if result is None or result.get("is_error") is True:
+            # Not established as written (review, 2026-09-24): an attempt.
+            self.scan["write_attempts"] += 1
+            return
+        # A written file ages every earlier pass wherever it is. Only the path is
+        # read: never `content`, `old_string`, `new_string` or `edits`.
+        self.last_write_at = max(self.last_write_at, at)
+        path = _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd)
+        if path is None:
+            self.scan["outside_paths"] += 1
+            return
+        self.writes[path] = {"at": at, "record_id": call_id, "tool": name}
+
+    def _add_shell(self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any]) -> None:
+        result = self.results.get(call_id)
+        text = _tool_result_text(result) if result is not None else ""
+        if result is not None and result.get("is_error") is True and not _EXITED_RE.match(text):
+            # V3: the call never ran, so it is no run and supersedes nothing.
+            self.scan["not_run"] += 1
+            return
+        self.scan["shell_calls"] += 1
+        call = _ShellCall(at, cwd, tool_input, moved=bool(_MOVED_TO_BACKGROUND_RE.match(text)))
+        if call.changes():
+            self.scan["last_changing_command_at"] = at
+        if call.fixers:
+            self.last_write_at = max(self.last_write_at, at)
+        self.scan["background"] += call.launches()
+        foreground = [i for i in call.meaningful if not call.background(i)]
+        if foreground and not [i for i in call.checks if i in foreground]:
+            self.scan["other_commands"] += 1
+            self.scan["read_only_commands"] += not call.changes()
+        self._add_runs(call, call_id, result, text)
+
+    def _add_runs(
+        self, call: _ShellCall, call_id: str, result: dict[str, Any] | None, text: str
+    ) -> None:
+        flag = result.get("is_error") if result is not None else None
+        # Redaction runs over the whole read window before the tail is cut (item 5).
+        tail = records.redact_secrets(text)[-TOOL_REPORT_TAIL_CHARS:]
+        all_and = all(joiner == "&&" for _, joiner in call.segments[:-1])
+        # V8: output speaks for a check only when it is the call's one check,
+        # background ones counted, and nothing else in the call may print.
+        attributable = len(call.checks) == 1 and not call.changing_others
+        for index in call.checks:
+            words, rtk = call.words[index]
+            background = call.background(index)
+            if background:
+                outcome, source = "not-recorded", ""
+            else:
+                self.scan["check_runs"] += 1
+                if result is None or call.unestablished(index):
+                    outcome, source = "not-recorded", ""
+                else:
+                    outcome, source = self._outcome(
+                        tail,
+                        rtk=rtk,
+                        attributable=attributable,
+                        flag_result=_flag_result(
+                            flag,
+                            last=index == len(call.segments) - 1,
+                            all_and=all_and,
+                            alone=len(call.meaningful) == 1,
+                        ),
+                    )
+                self.scan["unknown_flags"] += (
+                    result is not None and not isinstance(flag, bool) and outcome == "not-recorded"
+                )
+            self.runs.setdefault(_check_identity(call.directories[index], words), []).append(
+                {
+                    "at": call.at,
+                    "record_id": call_id,
+                    "title": _check_line(words),
+                    "result": outcome,
+                    "result_source": source,
+                    "recorded": result is not None,
+                    "background": background,
+                    # V7: a fixer at or after this check in the call ages its pass.
+                    "fixes": any(i >= index for i in call.fixers),
+                }
+            )
+
+    @staticmethod
+    def _outcome(tail: str, *, rtk: bool, attributable: bool, flag_result: str) -> tuple[str, str]:
+        """By item 2's order, as the review rounds narrowed it: a result that
+        cannot be attributed reads "ran, result not recorded"."""
+        failed_summary = bool(_SUMMARY_FAILED.search(tail))
+        failure_text = failed_summary or bool(_FAILURE_MARKER.search(tail))
+        if rtk:
+            # rtk may rewrite output, so its runs read the flag alone (owner),
+            # and failure text beside a passing flag withholds it (V5).
+            if flag_result == "passed" and failure_text:
+                return "not-recorded", ""
+            return (flag_result, "flag") if flag_result else ("not-recorded", "")
+        if flag_result == "passed":
+            # V4: only a failure summary overrides a passing flag; a marker, or
+            # a run of nothing, only withholds it.
+            if failed_summary:
+                return ("failed", "summary") if attributable else ("not-recorded", "")
+            if failure_text or _ran_nothing(tail):
+                return "not-recorded", ""
+        if flag_result:
+            return flag_result, "flag"
+        from_tail = _tail_result(tail) if attributable else None
+        return from_tail if from_tail is not None else ("not-recorded", "")
+
+    def _check_entry(self, history: list[dict[str, Any]]) -> dict[str, Any]:
+        latest = history[-1]
+        if latest["background"]:
+            source = "Claude Bash call run in the background, no result recorded"
+        elif latest["recorded"]:
+            source = "Claude Bash call and paired result"
+        else:
+            source = "Claude Bash call, no result recorded yet"
+        entry: dict[str, Any] = {
+            "kind": "check_run",
+            "subject": "check",
+            "at": latest["at"],
+            "record_id": latest["record_id"],
+            "title": latest["title"],
+            "result": latest["result"],
+            "earlier_failed": any(run["result"] == "failed" for run in history[:-1]),
+            "before_last_change": latest["result"] == "passed"
+            and (latest["fixes"] or self.last_write_at > latest["at"]),
+            "source": source,
+            "rank": _RESULT_ORDER[latest["result"]],
+        }
+        if latest["result_source"]:
+            entry["result_source"] = latest["result_source"]
+        return entry
+
+    def entries(self, sid: str) -> list[dict[str, Any]]:
+        # A check that only ever ran in the background has no run to list
+        # (item 1); a background re-run still supersedes an earlier result.
+        histories = [h for h in self.runs.values() if not all(run["background"] for run in h)]
+        candidates = [self._check_entry(history) for history in histories]
+        for entry in candidates:
+            self.scan[str(entry["result"]).replace("-", "_")] += 1
+        candidates.extend(
+            {
+                "kind": "path_written",
+                "subject": "write",
+                "at": write["at"],
+                "record_id": write["record_id"],
+                "title": records.safe_text(path, TOOL_REPORT_PATH_CHARS),
+                "source": f"Claude {write['tool']} call",
+                "rank": len(_RESULT_ORDER),
+            }
+            for path, write in self.writes.items()
+        )
+        # Item 4: failed, then no recorded result, then passed, then written
+        # paths, newest first within each. The page shows the kept ones in time
+        # order (orchestrator, 2026-09-24).
+        candidates.sort(key=lambda row: (row["rank"], -float(row["at"])))
+        listed = candidates[:TOOL_REPORT_MAX_ENTRIES]
+        self.scan.update(
+            distinct_checks=len(histories),
+            written_paths=len(self.writes),
+            listed=len(listed),
+            more=len(candidates) - len(listed),
+        )
+        return [
+            {**{k: v for k, v in row.items() if k != "rank"}, "harness": "claude", "sid": sid}
+            for row in listed
+        ]
+
+
+def claude_tool_reports(
+    config: RuntimeConfig,
+    transcript_path: str,
+    sid: str,
+    *,
+    max_bytes: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The listed checks and written paths, and the full-scan counts behind them.
+
+    Claude Code only, and published into the observed record only:
+    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
+    """
+    transcript = _work_records(config, transcript_path, max_bytes=max_bytes)
+    tally = _ToolReportTally(_tool_result_blocks(transcript))
+    for call in _claude_tool_uses(transcript):
+        tally.add(*call)
+    return tally.entries(sid), tally.scan
+
+
+def _session_work_evidence(
+    config: RuntimeConfig,
+    transcript_path: str,
+    identity: dict[str, str],
+    events: list[dict[str, Any]],
+    tool_report_scans: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Pi's demonstrated results and Claude Code's checks, appended for `collect`.
+
+    Not for the history source: `_semantic_history_source_events` calls
+    `_work_evidence` alone, which is what keeps the checks out of the store.
+    """
+    harness, sid = identity["harness"], identity["sid"]
+    rows, support = _work_evidence(config, transcript_path, harness, sid)
+    events.extend(rows)
+    if harness == "claude":
+        report_rows, scan = claude_tool_reports(config, transcript_path, sid)
+        events.extend(report_rows)
+        tool_report_scans.append({**identity, **scan})
+    return support
+
+
 def instruction_events(
     config: RuntimeConfig,
     transcript_path: str,
@@ -1426,7 +2138,8 @@ def _timeline_counts(timeline: list[dict[str, Any]]) -> tuple[int, int, int]:
         sum(
             1
             for event in timeline
-            if event["kind"] in {"prepared_dispatch", "task_started", "task_result", "outcome"}
+            if event["kind"]
+            in {"prepared_dispatch", "task_started", "task_result", "outcome", *_TOOL_REPORT_KINDS}
         ),
     )
 
@@ -2009,6 +2722,11 @@ def _semantic_fact_from_event(
         "target_stage",
         "assignment",
         "worker_kind",
+        "subject",
+        "result",
+        "result_source",
+        "earlier_failed",
+        "before_last_change",
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]
@@ -3257,6 +3975,7 @@ def collect(
     history_events: list[dict[str, Any]] = []
     gate_events: list[dict[str, Any]] = []
     history_source_scans: dict[str, dict[str, int]] = {}
+    tool_report_scans: list[dict[str, Any]] = []
     unavailable: list[dict[str, str]] = []
     briefings = 0
     child_assignments: list[dict[str, Any]] = []
@@ -3314,8 +4033,9 @@ def collect(
                 }
             )
         events.extend(instruction_events(config, transcript_path, harness, sid))
-        work_rows, work_support = _work_evidence(config, transcript_path, harness, sid)
-        events.extend(work_rows)
+        work_support = _session_work_evidence(
+            config, transcript_path, identity, events, tool_report_scans
+        )
         backfill_rows, signature = _incremental_history_events(
             config, state, project, transcript_path, harness, sid, now=now
         )
@@ -3411,6 +4131,10 @@ def collect(
             "work": {
                 "live": work_count,
                 "support": support_totals,
+                # Per session, never on a row: every sentence the page writes
+                # about checks reads these full-scan counts, as item 4 of the
+                # ruling `claude_tool_reports` cites requires.
+                "tool_reports": tool_report_scans,
                 "unavailable": unavailable,
                 "omitted": omitted_rows,
             },

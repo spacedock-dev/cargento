@@ -406,6 +406,66 @@ def redact_clip(text: str, limit: int) -> str:
     return marked[:limit]
 
 
+# The command-line forms `redact_secrets` cannot recognise because the value has
+# no shape: a short password is just a word. Masked by FORM instead, for the
+# check lines item 5 of the ruling `mask_words` cites asks for, widened on
+# review (2026-09-24) to the flags below. These named forms and no others:
+# SECURITY.md says so. Over-masking is the accepted direction: `-p` is also
+# `mkdir -p` and `pytest -p`, and losing that word costs a reader nothing.
+_MASK_FLAGS: Final = frozenset(
+    {
+        "--password",
+        "--token",
+        "--api-key",
+        "--apikey",
+        "--api_key",
+        "--secret",
+        "--auth",
+        "-p",
+        "-P",
+    }
+)
+_MASK_WORD_FORMS: Final = (
+    # `--password=value` and the other named flags, `=` joined.
+    re.compile(r"^(['\"]?--(?:password|token|api[-_]?key|apikey|secret|auth)=).+$", re.DOTALL),
+    # `-pvalue` and `-Pvalue`.
+    re.compile(r"^(['\"]?-[pP]).+$", re.DOTALL),
+    # `NAME=value`: `PGPASSWORD=...`, `--env TOKEN=...`.
+    re.compile(r"^(['\"]?[A-Za-z_][A-Za-z0-9_]*=).+$", re.DOTALL),
+    # `Authorization: ...` and `X-Api-Key: ...` header values.
+    re.compile(r"^(['\"]?(?:authorization|x-api-key)\s*:\s*).+$", re.IGNORECASE | re.DOTALL),
+)
+# `user:password@host`, scheme optional, the password running to the LAST `@`
+# so one holding `/` or `@` is masked whole.
+_MASK_USERINFO: Final = re.compile(r"((?:[A-Za-z][A-Za-z0-9+.-]*://)?[^\s:/@'\"]+:)\S*@")
+
+
+def mask_words(words: list[str]) -> list[str]:
+    """Each word of a command with every value a named form carries replaced.
+
+    Per word, before the words are joined and re-quoted, so a quoted value with
+    whitespace in it is masked whole (review, 2026-09-24). A named flag masks
+    the word after it.
+    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
+    """
+    masked: list[str] = []
+    mask_next = False
+    for word in words:
+        if mask_next:
+            masked.append(_SECRET_MARKER)
+            mask_next = False
+            continue
+        if word in _MASK_FLAGS:
+            masked.append(word)
+            mask_next = True
+            continue
+        formed = next(
+            (m.group(1) + _SECRET_MARKER for p in _MASK_WORD_FORMS if (m := p.match(word))), word
+        )
+        masked.append(_MASK_USERINFO.sub(lambda m: m.group(1) + _SECRET_MARKER + "@", formed))
+    return masked
+
+
 def safe_text(value: Any, limit: int) -> str:
     """Untrusted text, safe to put on a row: no control characters, no
     credentials, bounded.
