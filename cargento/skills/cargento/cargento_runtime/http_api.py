@@ -1488,11 +1488,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
         Read from the session's record as the reading route reads it. A save
         is never refused for it: a record that cannot be read opens the window
-        at the save, which is what a build without window starts did.
+        at the save, which is what a build without window starts did. Found in
+        the all-sessions collection, because a reader can save from that view
+        and the default one leaves an aged session out.
         """
         application = self.server.application
         try:
-            _, body = application.collect_json(show_all=False)
+            _, body = application.collect_json(show_all=True)
             rows = [
                 row
                 for row in json.loads(body)["sessions"]

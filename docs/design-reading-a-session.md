@@ -1386,12 +1386,17 @@ within the milestone's scope and recorded on the issue.
   cannot see the gate.
 - A turn stop gets the same eight-second settle as a session end, with its own sentence, since the
   end's sentence says the session ended.
+- Through the last turn means through the observed stop: the reading drops every entry timed after
+  `finished_at`. A resumed turn whose state update lags leaves the row idle at the old stop while the
+  record moves on, and without the cap a check from the new turn was cited in a reading that said it
+  covered the last one.
 - Words typed after a session end are still withheld. Only the turn stop is relaxed, and the
   withholding test still compares the save time, `baseline_at`. The window start moves only the
   evidence.
 - The window start is recomputed on every save, a lines-only save included. For typed words it is
   the latest `user_message` of this session at or before the save, read on the server from the
-  session's record. A permission approval is not a message, so it never moves the window. A record
+  session's record, found in the all-sessions collection so a save from that view on an aged session
+  still finds it. A permission approval is not a message, so it never moves the window. A record
   that cannot be read opens the window at the save and never refuses the save. Adopted words,
   including an adopted goal carried under a lines-only save, open at their source time.
 - A stored window start that is not a moment at or before its own save refuses the entry, as a bad
@@ -1401,10 +1406,16 @@ within the milestone's scope and recorded on the issue.
   result time would move layer 1's published timestamps, so it is filed separately.
 - The page reads the window from the reading, and derives it the old way for a reading stored
   without one. It labels work "from the last turn" only on a Claude Code session waiting at its
-  prompt, between the stored window start and the save, and never on the reader's own messages.
+  prompt, and only the observed last turn inside the window: from the reader's latest message at or
+  before the stop (or the window start, if later) up to the stop, never on the reader's own messages.
+  The first build labelled from the window start to the save. That range is fixed at the save, so
+  the next turn made it name an older one, and a save made mid-turn left the rest of that turn
+  unlabelled.
 - The hint says what an analysis reads: "Reads the session up to <cutoff> against your intent.",
-  where the cutoff is now, its end, or its last turn, from the same end kind HOW IT LANDED shows.
-  "Runs in the background." waits for the background job (DRC-4686).
+  where the cutoff is now, its end, or its last turn, from the same end kind HOW IT LANDED shows. It
+  shows only where a press could read: a provider, no refusal beside it, saved words, and words
+  given before any observed end. "Runs in the background." waits for the background job
+  (DRC-4686).
 - The later-direction floor stays at the save time. By construction no message of the reader's lies
   between the window start and the save, so moving it would change nothing on consistent data and
   would, on a fetch the server missed, turn a message into a later direction.

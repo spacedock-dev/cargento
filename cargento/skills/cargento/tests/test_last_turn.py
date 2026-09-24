@@ -331,6 +331,23 @@ class YourPressOnAWaitingSessionReadsItsLastTurnTest(unittest.TestCase):
         self.assertEqual(reading.RESULT_UNVERIFIABLE, assessment["criteria"]["line_1"]["result"])
         self.assertEqual(SAVE, assessment["window_start"])
 
+    def test_a_check_run_after_the_turn_stopped_is_not_read_into_the_last_turn(self) -> None:
+        assessment, why, _spent = self.produce([_message("m1", PROMPT), _check(STOP + 10)])
+        self.assertEqual("", why)
+        self.assertNotEqual(reading.RESULT_DEPARTURE, assessment["criteria"]["line_1"]["result"])
+        self.assertNotIn("pytest", self.prompts[0])
+        self.assertEqual(PROMPT, assessment["evidence_through"])
+
+    def test_a_resumed_turn_the_row_has_not_caught_up_with_is_left_out(self) -> None:
+        """The row still says idle at the old stop while the record has moved on."""
+        resumed = _message("m2", STOP + 30, summary="now also add structured logging")
+        assessment, _why, _spent = self.produce(
+            [_message("m1", PROMPT), _check(PROMPT + 60), resumed, _check(STOP + 60)]
+        )
+        self.assertNotIn("structured logging", self.prompts[0])
+        self.assertEqual(PROMPT + 60, assessment["evidence_through"])
+        self.assertEqual(reading.SCOPE_LAST_TURN, assessment["scope"])
+
     def test_the_reading_keeps_where_its_window_opened(self) -> None:
         assessment, _why, _spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
         self.assertEqual(PROMPT, assessment["window_start"])
@@ -459,6 +476,20 @@ class YourRevisionKeepsWhereItsWindowOpensTest(_StoreCase):
                 self.write_raw({"n": 1, "at": SAVE, "goal": "G", "lines": [], "window_start": bad})
                 found = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
                 self.assertIsNone(found)
+
+    def test_older_adopted_words_publish_their_prompt_as_where_the_window_opens(self) -> None:
+        self.write_raw(
+            {
+                "n": 1,
+                "at": SAVE,
+                "goal": "G",
+                "lines": [],
+                "goal_source": "first-prompt",
+                "goal_source_at": PROMPT,
+            }
+        )
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        self.assertEqual(PROMPT, annotation_store.published(entry)["window_start"])
 
     def test_the_session_publishes_where_your_window_opens(self) -> None:
         self.assertIsNone(annotation_store.published(None)["window_start"])
@@ -606,9 +637,36 @@ nextData.annotate = true;
 nextData.reading_routes = {
   claude: {provider:"codex", label:"Codex", disclosure:"Codex reads this session."},
   codex: {provider:"codex", label:"Codex", disclosure:"Codex reads this session."}};
-const annotation = {goal:"add retry", revision:1, reading_count:0};
-const hint = session => nextCockpitReadingControl(session, annotation, {enabled:true});
+nextData.reading_check = "accepted";
+const annotation = {goal:"add retry", revision:1, reading_count:0, at:90};
+const hint = (session, words = annotation) =>
+  nextCockpitReadingControl(session, words, {enabled:true});
 """
+
+    def control_with(self, session: str, words: str) -> str:
+        out = self.run_fixture(
+            self.CONTROL + f"console.log(JSON.stringify(hint({session}, {words})));"
+        )
+        assert isinstance(out, str)
+        return out
+
+    WAITING = '{harness:"claude", sid:"s1", state:"idle", finished_at:100, ended_at:null}'
+
+    def test_a_reader_with_no_saved_goal_is_not_promised_a_reading(self) -> None:
+        html = self.control_with(self.WAITING, "{reading_count:0}")
+        self.assertNotIn("Reads the session", html)
+
+    def test_a_refused_control_carries_no_promise_beside_its_refusal(self) -> None:
+        html = self.control_with(self.WAITING, "(nextData.reading_check = 'not-run', annotation)")
+        self.assertIn('id="next-cockpit-reading-refused"', html)
+        self.assertNotIn("Reads the session", html)
+
+    def test_words_saved_after_the_session_ended_are_not_promised_a_reading(self) -> None:
+        html = self.control_with(
+            '{harness:"claude", sid:"s1", state:"idle", finished_at:100, ended_at:120}',
+            "{...annotation, at:500}",
+        )
+        self.assertNotIn("Reads the session", html)
 
     def control(self, session: str) -> str:
         out = self.run_fixture(self.CONTROL + f"console.log(JSON.stringify(hint({session})));")
@@ -622,6 +680,7 @@ const hint = session => nextCockpitReadingControl(session, annotation, {enabled:
             '{harness:"claude", sid:"s1", state:"idle", finished_at:100, ended_at:null}'
         )
         self.assertIn("Reads the session up to its last turn against your intent.", html)
+        self.assertNotIn('id="next-cockpit-reading-refused"', html)
 
     def test_a_reader_of_a_running_session_is_told_it_reads_up_to_now(self) -> None:
         html = self.control('{harness:"claude", sid:"s1", state:"working", finished_at:100}')
@@ -667,6 +726,53 @@ console.log(JSON.stringify({labelled, running: running.includes("from the last t
         self.assertEqual(["Summary during the turn"], out["labelled"])
         self.assertFalse(out["running"], "a running session's work was labelled as a last turn")
         self.assertFalse(out["legacy"], "work was labelled with no stored window start")
+
+    TURNS = """
+const fact = (fact_id, at, type, summary) => ({fact_id, at, type, summary,
+  source_session:{harness:"claude", sid:"s1"}, evidence:{source:"transcript", confidence:"exact"}});
+const facts = {facts:[
+  fact("m0", 40, "user_message", "first prompt"),
+  fact("old", 50, "task_result", "Summary old turn"),
+  fact("m1", 200, "user_message", "second prompt"),
+  fact("new", 250, "task_result", "Summary new turn")]};
+const labelled = over => {
+  const session = {harness:"claude", sid:"s1", state:"idle", finished_at:300,
+    annotation_goal:"g", annotation_revision:1, ...over};
+  const entries = nextCockpitWorkEntries(session, facts);
+  return nextCockpitWorkEvidence(session, {state:"read", entries})
+    .split('<div class="next-cockpit-work-row"').slice(1)
+    .filter(row => row.includes("from the last turn"))
+    .map(row => (row.match(/Summary [a-z ]+/) || [""])[0]);
+};
+"""
+
+    def labels(self, over: str) -> list[str]:
+        out = self.run_fixture(self.TURNS + f"console.log(JSON.stringify(labelled({over})));")
+        assert isinstance(out, list)
+        return out
+
+    def test_words_saved_before_a_later_turn_label_only_that_later_turn(self) -> None:
+        self.assertEqual(
+            ["Summary new turn"],
+            self.labels("{annotation_at:100, annotation_window_start:40}"),
+        )
+
+    def test_a_first_prompt_adopted_after_a_second_turn_labels_only_the_second(self) -> None:
+        for window in ("annotation_window_start:40", "annotation_window_start:40, legacy:true"):
+            with self.subTest(window=window):
+                self.assertEqual(
+                    ["Summary new turn"],
+                    self.labels(
+                        "{annotation_at:310, annotation_goal_source:'first-prompt', "
+                        f"annotation_goal_source_at:40, {window}}}"
+                    ),
+                )
+
+    def test_a_save_made_mid_turn_labels_the_rest_of_that_turn(self) -> None:
+        self.assertEqual(
+            ["Summary new turn"],
+            self.labels("{annotation_at:220, annotation_window_start:200}"),
+        )
 
     READING = """
 const annotation = {goal:"add retry", revision:1, at:1000};

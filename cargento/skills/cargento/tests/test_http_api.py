@@ -2987,7 +2987,7 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(1_700_086_500.0, json.loads(body)["reading"]["retry_at"])
 
     @staticmethod
-    def _one_session_harness(harness: str = "pi", **row_over: Any) -> Any:
+    def _one_session_harness(harness: str = "pi", *, aged: bool = False, **row_over: Any) -> Any:
         """A harness publishing exactly the row the route looks for.
 
         Without it the application collects nothing, `_send_reading` returns at
@@ -3004,7 +3004,11 @@ class ReadingRouteTest(unittest.TestCase):
             # A keyword-only signature raises inside the failure boundary,
             # which swallows it and yields no rows -- and no rows is exactly
             # the state that made this class unfalsifiable.
-            del config, state, now, window_hours, show_all
+            del config, state, now, window_hours
+            # An aged session is outside the normal window, as Claude's
+            # collector leaves one out unless the reader asked for all.
+            if aged and not show_all:
+                return []
             row = runtime_sessions.base_session(harness, "s1", "proj")
             row.update({"state": "working", "active": True, "last_activity": 1_700_000_000.0})
             row.update(row_over)
@@ -3015,7 +3019,13 @@ class ReadingRouteTest(unittest.TestCase):
         )
 
     def _app(
-        self, config: Any, state: Any, harness: str = "pi", row: dict[str, Any] | None = None
+        self,
+        config: Any,
+        state: Any,
+        harness: str = "pi",
+        row: dict[str, Any] | None = None,
+        *,
+        aged: bool = False,
     ) -> Any:
         """An application over that one session, with an annotation on it."""
         annotation_store.annotate(
@@ -3024,7 +3034,7 @@ class ReadingRouteTest(unittest.TestCase):
         return aggregate.Application(
             config,
             state,
-            (self._one_session_harness(harness, **(row or {})),),
+            (self._one_session_harness(harness, aged=aged, **(row or {})),),
             native_notifier=lambda _p: "",
             popup_notifier=lambda _t, _b: None,
             diagnostic_sink=lambda _m: None,
@@ -3578,6 +3588,24 @@ class ReadingRouteTest(unittest.TestCase):
         revision = self._saved_revision(config)
         self.assertEqual(1_700_000_100.0, revision["at"])
         self.assertEqual(1_700_000_040.0, revision["window_start"])
+
+    def test_words_typed_from_the_all_sessions_view_read_from_your_latest_message(self) -> None:
+        config, state = self._runtime()
+        later = {
+            **self.FACT,
+            "fact_id": "f2",
+            "at": 1_700_000_040.0,
+            "source_session": {"harness": "claude", "sid": "s1"},
+        }
+        with (
+            self._counting_model(harness="claude", extra_facts=(later,)),
+            self._serving(self._app(config, state, "claude", row=self.WAITING, aged=True)) as port,
+        ):
+            status, body = self._save(
+                port, {"harness": "claude", "sid": "s1", "goal": "add retry to the webhook"}
+            )
+        self.assertEqual(200, status, body)
+        self.assertEqual(1_700_000_040.0, self._saved_revision(config)["window_start"])
 
     def test_a_save_whose_record_cannot_be_read_still_saves_and_reads_from_the_save(
         self,

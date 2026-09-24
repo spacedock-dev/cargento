@@ -1794,6 +1794,15 @@ def produce(  # noqa: PLR0913
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
     )
+    stopped: float | None = None
+    if scope == SCOPE_LAST_TURN:
+        # Through the last turn means through the observed stop. A resumed turn
+        # whose state update lags leaves the row idle at the old stop while the
+        # record moves on, and a later fact would then be read, and cited, as
+        # part of a turn it was not in. An entry with no time stays: it is
+        # counted apart and can carry no check.
+        stopped = _number(row.get("finished_at")) or 0.0
+        ledger = tuple(entry for entry in ledger if entry["at"] <= stopped)
     if not ledger:
         return None, WITHHELD_LEDGER_EMPTY, False
     prompt, selected = build_prompt(
@@ -1850,7 +1859,7 @@ def produce(  # noqa: PLR0913
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
         "revision_read_at": records.norm_epoch(latest.get("at")) or None,
         "window_start": window_start(latest) or None,
-        "evidence_through": _newest(facts, harness, sid),
+        "evidence_through": _newest(facts, harness, sid, until=stopped),
         "criteria": criteria,
     }
     if latest.get("goal_source") in PROMPT_SOURCES:
@@ -1859,12 +1868,17 @@ def produce(  # noqa: PLR0913
     return assessment, "", True
 
 
-def _newest(facts: Sequence[Any], harness: str, sid: str) -> float | None:
+def _newest(
+    facts: Sequence[Any], harness: str, sid: str, *, until: float | None = None
+) -> float | None:
     """The newest time on any fact naming this session, whatever the prompt carried.
 
     From the facts rather than the ledger, because the ledger leaves out a
     check the press had no grant to send, and that check was in the record
     when the reading ran: counting it later as new work would be false.
+
+    `until` is a last-turn reading's stop. What came after it was not read as
+    that turn, so it is new work since the reading rather than work it covered.
     """
     stamps = [
         at
@@ -1875,6 +1889,7 @@ def _newest(facts: Sequence[Any], harness: str, sid: str) -> float | None:
         == (harness, sid)
         and (at := _number(fact.get("at"))) is not None
         and at > 0
+        and (until is None or at <= until)
     ]
     return max(stamps, default=None)
 

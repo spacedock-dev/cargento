@@ -683,6 +683,7 @@ class TheEntryBeingWrittenIsNeverTheOneTrimmedTest(_StoreCase):
         return {
             "revision_read": 1,
             "revision_read_at": NOW,
+            "window_start": None,
             "read_at": NOW,
             "stamp": "s",
             "cutoff": "c",

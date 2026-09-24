@@ -1579,23 +1579,30 @@ function nextCockpitWorkEntries(session, semantic){
    as the whole record. */
 const NEXT_COCKPIT_WORK_ROWS = 20;
 
-/* The work a reading of a session waiting at its prompt reads as its last
-   turn: from the reader's latest message before the save to the save (item 13
-   of [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
-   Null on every other session, and on words stored with no window start,
+/* The observed last turn of a session waiting at its prompt, inside the
+   evidence window (item 13 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)):
+   from the reader's latest message at or before the stop, or the window start
+   if later, up to the stop. Not from the window start to the save: that range
+   is fixed when the words are saved, so the next turn made it name an older
+   one. Null on every other session and where no message opens the turn,
    because a label nothing measured would be the board authoring a turn. */
-function nextCockpitLastTurn(session){
+function nextCockpitLastTurn(session, entries){
   if(!NEXT_READING_TURN_STOP_HARNESSES.includes(String(session && session.harness || ""))) return null;
   if(nextSessionEndedAt(session) != null) return null;
-  if(!(session.state === "idle" && nextNumber(session.finished_at) > 0)) return null;
-  const from = nextNumber(session.annotation_window_start);
-  const to = nextNumber(session.annotation_at);
-  return from != null && to != null && from < to ? {from, to} : null;
+  const stop = nextNumber(session.finished_at);
+  if(!(session.state === "idle" && stop > 0)) return null;
+  const opened = nextNumber(session.annotation_window_start);
+  const starts = (entries || []).filter(nextReadingPersonAuthored)
+    .map(entry => nextNumber(entry.at)).filter(at => at != null && at > 0 && at <= stop);
+  if(opened == null || !starts.length) return null;
+  const from = Math.max(opened, ...starts);
+  return from <= stop ? {from, to: stop} : null;
 }
 
 function nextCockpitWorkEvidence(session, source){
   const entries = source.entries;
-  const lastTurn = nextCockpitLastTurn(session);
+  const lastTurn = nextCockpitLastTurn(session, entries);
   const rows = entries.map(entry => {
     const at = nextDurationSince(entry.at);
     const stamp = nextNumber(entry.at);
@@ -2761,9 +2768,16 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      below. */
   const disclosure = provider && route.disclosure
     ? `<p class="next-cockpit-reading-why">${esc(route.disclosure)}</p>` : "";
-  /* What an analysis will read, under the control. Only with a provider:
-     without one nothing will read the session, and the refusal says why. */
-  const readHint = provider ? nextObservedReadHint(session) : "";
+  /* What an analysis will read, under the control, and only where a press
+     could read it: a provider, no refusal beside it, saved words, and words
+     given before any observed end, which the server withholds by the same
+     time `nextCockpitConflictCandidates` floors on. */
+  const given = nextNumber(annotation &&
+    (["latest-prompt", "first-prompt"].includes(annotation.goal_source)
+      ? annotation.goal_source_at : annotation.at));
+  const endedAt = nextSessionEndedAt(session);
+  const readHint = provider && !reason && String(annotation && annotation.goal || "").trim() &&
+    !(endedAt != null && given != null && given > endedAt) ? nextObservedReadHint(session) : "";
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
