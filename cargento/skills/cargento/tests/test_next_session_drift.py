@@ -746,8 +746,8 @@ ENDED_NOTE = (
 UNTYPED = """
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_at = null;
@@ -913,7 +913,7 @@ class WhatADiscardSaysAboutAnAdoptedGoalTest(NextPageJsHarness):
     def test_a_discarded_adopted_goal_is_not_called_typed(self) -> None:
         published = self._published_after_discard()
         text = self._page_text(published)
-        for key in ("goal_why", "output_why"):
+        for key in ("goal_why", "lines_why"):
             with self.subTest(field=key):
                 self.assertIn("discarded", published[key].lower())
                 self.assertIn(published[key], text, "the field's sentence did not render")
@@ -937,8 +937,9 @@ class WhatADiscardSaysAboutAnAdoptedGoalTest(NextPageJsHarness):
         for name, published in cases.items():
             with self.subTest(case=name):
                 self.assertNotIn("goal", published["goal_why"].lower())
-                self.assertNotIn("output", published["output_why"].lower())
-                self.assertNotIn("typed", published["goal_why"] + published["output_why"])
+                self.assertNotIn("output", published["lines_why"].lower())
+                self.assertNotIn("outcome", published["lines_why"].lower())
+                self.assertNotIn("typed", published["goal_why"] + published["lines_why"])
 
 
 if __name__ == "__main__":

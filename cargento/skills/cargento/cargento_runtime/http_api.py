@@ -1357,6 +1357,18 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if any(value is not None and not isinstance(value, str) for value in (goal, output)):
             self._reject(400)
             return
+        # The outcome lines are a list of strings and nothing else. A line sent
+        # as an object would be a client naming its own source, which only the
+        # server may do (`annotations._sourced`).
+        lines, expected = payload.get("lines"), payload.get("expected_revision")
+        if lines is not None and (
+            not isinstance(lines, list) or not all(isinstance(line, str) for line in lines)
+        ):
+            self._reject(400)
+            return
+        if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int)):
+            self._reject(400)
+            return
         # The identity is untrusted too, and it reaches `records.safe_text` by
         # the same path the text does. An earlier version checked only the two
         # text fields, which let a dict harness land a store entry keyed on its
@@ -1434,6 +1446,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 sid,
                 goal=goal,
                 output=output,
+                lines=payload.get("lines"),
+                expected_revision=payload.get("expected_revision"),
                 now=application.clock(),
                 diagnostic_sink=application.diagnostic_sink,
             )
@@ -1788,6 +1802,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
             row,
             entry["revisions"],
             facts,
+            # The one caller that reads the outcome lines: the reader pressed
+            # for this reading (item 12 of the ruling
+            # `reading.MAX_OUTCOME_LINES` cites keeps them from
+            # every other).
+            read_lines=True,
             **self._reading_arguments(row, entry, route),
         )
 

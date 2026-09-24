@@ -382,7 +382,7 @@ function nextSessionsDrift(source){
   const raw = source.annotation_assessment;
   if(raw && typeof raw === "object" && !Array.isArray(raw) &&
       Object.keys(raw).every(key => NEXT_READING_ASSESSMENT_KEYS.includes(key)) &&
-      ["goal", "output"].some(key => {
+      Object.keys(raw.criteria || {}).filter(nextReadingNamesConstraint).some(key => {
         const criterion = raw.criteria && raw.criteria[key];
         return criterion && criterion.result === "departure" &&
           Array.isArray(criterion.cites) && criterion.cites.some(cite => typeof cite === "string" && cite.trim());

@@ -232,7 +232,7 @@ console.log(JSON.stringify({html: control(), posts: posts.length}));
             {"claude": NO_READER},
             """
 session.annotation_goal = "";
-session.annotation_output = "";
+session.annotation_line_1 = "";
 session.annotation_revision = null;
 session.instruction = null;
 session.instructions = [];

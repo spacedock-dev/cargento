@@ -154,6 +154,15 @@ reading, stored with the annotation entry and removed with it, never sent and no
 `--forget` (item 10). It also changes when a reading may run: a session waiting at its prompt after
 a turn stop may be read through its last turn (item 13).
 
+The outcome lines cost a downgrade, and this one crosses a shipped release: v0.27.0 stores one
+`output`. A build that old reads a revision holding lines as one with no expected output, and its
+next save writes the lines away. It refuses a reading keyed by line and keeps it verbatim, as it
+refuses any reading it cannot read. The owner accepted the loss on 2026-09-24. Going forward, a
+revision or reading stored with one `output` reads as one typed line and is written back as lines
+by the next save. The history copy carries up to six line fields where it carried one, so an
+annotated session's records are larger and the size cap ages other sessions out sooner. The owner
+accepted that too.
+
 ## DEC-16: Cargento does not write into a session
 
 A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
@@ -1253,10 +1262,19 @@ the later-direction floor (item 9).
    adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome.
 3. The checklist. The expected outcome is up to six lines the reader types, each at most 240
    characters and one line, each read and shown as its own constraint under DEC-17's rules. Each
-   line records its source: typed, or added from entry #n. The ruling requires bounds for the store
-   (six lines of at most 240 characters), the history copy (flat per-line fields), the prompt's
-   share, the reply cap and the annotation body cap. The last four have no figure yet: the layer
-   that first stores or sends outcome lines fixes each one in this section before it ships.
+   line records its source: typed, or added from entry #n. The bounds, fixed by DRC-4685, the layer
+   that first stores and sends outcome lines:
+   - The store holds 6 lines of at most 240 characters on each revision. A seventh line, or a line
+     over 240 characters, is refused rather than clipped. The store's read limit is 16 MiB, and a
+     write trims the oldest entries until the file fits, so the next read reads what the write
+     kept (owner, 2026-09-24).
+   - The history copy is one flat field per line, at most 256 characters each, with a closed
+     source token beside it and no entry id.
+   - The goal and the lines take at most 9,216 of 16,384 bytes of the prompt. Over that share,
+     every line is dropped together as not asked, never some of them.
+   - The reply cap is 8,192 bytes, and a reply cut at the cap keeps each answer that arrived
+     whole.
+   - The annotation request body cap is 8,192 bytes.
 4. A later direction before an analysis. When the record holds an unsettled later direction of the
    reader's, the Drift section asks before the press, naming how many are unsettled. For one it
    says "You gave a later direction at #<n>: "<first line>"."; for several, "You gave <N> later

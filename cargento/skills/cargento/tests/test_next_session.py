@@ -23,7 +23,7 @@ class NextSessionBehaviorTest(NextPageJsHarness):
 __els.app = {innerHTML: ""};
 const base = {generated: 10000, annotate: true, annotate_cap: 240, sessions: [
   {harness: "claude", sid: "a1b2c3d4", project: "recce/cargento", state: "working",
-   annotation_goal: "", annotation_output: ""}
+   annotation_goal: "", annotation_line_1: ""}
 ]};
 nextData = JSON.parse(JSON.stringify(base));
 nextRoute = {view: "session", project: "recce/cargento", harness: "claude", session: "a1b2c3d4"};

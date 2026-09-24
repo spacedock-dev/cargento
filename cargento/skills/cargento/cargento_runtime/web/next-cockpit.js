@@ -86,15 +86,18 @@ function nextCockpitReadMemo(key){
    unannotated row carries its absence sentences. */
 function nextCockpitAnnotation(session){
   if(!session) return null;
-  /* Seventeen published fields, and every one of them is published now:
+  /* Every published field, and every one of them is published now:
      `base_session` declares all three of the reading's. The comment here
      used to say `assessment` was read but never published, which stopped
      being true when a producer landed -- and `TheAnnotationFieldListIsDerivedTest`
      now derives this list from `annotations.published` so it cannot drift
      again. This is a three-defect site, and every defect was the page
      reading a field nothing publishes. */
-  const fields = ["goal", "goal_why", "output", "output_why", "revision",
-    "revision_count", "at", "goal_source", "goal_source_at", "binding_why", "settled_at", "settled_through",
+  const fields = ["goal", "goal_why", "lines_why",
+    "line_1", "line_1_source", "line_1_source_id", "line_2", "line_2_source", "line_2_source_id",
+    "line_3", "line_3_source", "line_3_source_id", "line_4", "line_4_source", "line_4_source_id",
+    "line_5", "line_5_source", "line_5_source_id", "line_6", "line_6_source", "line_6_source_id",
+    "revision", "revision_count", "at", "goal_source", "goal_source_at", "binding_why", "settled_at", "settled_through",
     "settled_revision", "assessment", "reading_count", "reading_withheld",
     "reading_refused", "discarded_at", "discarded_why"];
   const known = fields.some(name => {
@@ -889,8 +892,15 @@ const nextCockpitHeldStates = new Map();
 const NEXT_COCKPIT_HELD_CAP = 240;
 const NEXT_COCKPIT_HELD_FIELDS = [
   ["goal", "TYPED GOAL", "goal", "goal_why", "what you are after, in one line"],
-  ["output", "EXPECTED OUTPUT", "output", "output_why", "what should exist when it is done"],
 ];
+/* The seventh line's refusal, said where the reader meets it: beside the add
+   control, which stays on the page and inert at six, and in the polite region
+   when it is pressed anyway
+   ([NUI-18](docs/design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page)).
+   The owner's ruling for a full list is to replace or merge a line, so the
+   sentence names both. */
+const NEXT_COCKPIT_LINES_FULL =
+  "An expected outcome holds six lines. Replace or merge a line to add another.";
 
 function nextCockpitHeldKey(session, kind){
   return `held:${String(session && session.harness || "")}:` +
@@ -1200,6 +1210,79 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId(kind)}" ` +
       `data-next-cockpit-held-absent="${kind}"` +
       `${draft ? " hidden" : ""}>${esc(why)}</p>` : "") +
+    (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
+}
+
+/* The expected outcome, as a checklist of up to six lines (DRC-4685).
+
+   One draft per session, an array held in `nextCockpitHeldDrafts` under the
+   `lines` key, so adding, removing and typing survive a redraw as the goal's
+   draft does; docs/design-reader-state.md holds the row. The saved list is
+   what the store published. A box a reader emptied is still a box until the
+   save, where the store drops it. With nothing saved and nothing drafted,
+   one empty box is offered rather than none. */
+function nextCockpitSavedLines(annotation){
+  return nextAnnotationLines(annotation).map(line => line.text);
+}
+
+function nextCockpitLinesDraft(session, annotation){
+  const key = nextCockpitHeldKey(session, "lines");
+  return nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key).slice()
+    : nextCockpitSavedLines(annotation);
+}
+
+// What a save would send: the lines with words in them, in order.
+function nextCockpitLinesToSend(draft){
+  return draft.filter(text => String(text || "").trim());
+}
+
+function nextCockpitLinesChanged(draft, annotation){
+  return JSON.stringify(nextCockpitLinesToSend(draft)) !==
+    JSON.stringify(nextCockpitSavedLines(annotation));
+}
+
+function nextCockpitHeldLines(session, annotation, cap){
+  const key = nextCockpitHeldKey(session, "lines");
+  const saved = nextAnnotationLines(annotation);
+  const draft = nextCockpitLinesDraft(session, annotation);
+  const boxes = draft.length ? draft : [""];
+  const full = draft.length >= NEXT_OUTCOME_LINES_MAX;
+  const why = String(annotation && annotation.lines_why || "");
+  const cue = nextCockpitHeldCue(key);
+  const rows = boxes.map((text, index) => {
+    // The source is a fact about saved words, so it shows only while the box
+    // still holds the line saved in that place.
+    const line = saved[index] && saved[index].text === text ? saved[index] : null;
+    return `<li class="next-cockpit-held-line" data-next-cockpit-held-line="${index}">` +
+      `<textarea rows="1" maxlength="${cap}" data-next-cockpit-held-line-index="${index}" ` +
+      `data-next-cockpit-held-lines-key="${esc(key)}" ` +
+      `data-next-cockpit-held-saved="${esc(line ? line.text : "")}" ` +
+      `data-next-focus="${esc(`${key}:${index}`)}" ` +
+      'placeholder="one thing that should exist when it is done">' +
+      `${esc(text)}</textarea>` +
+      `<span class="next-cockpit-held-count" data-next-cockpit-held-line-count="${index}">` +
+      `${String(text).length}/${cap}</span>` +
+      (line ? `<span class="next-cockpit-held-source" data-next-cockpit-held-line-source="${index}">` +
+        `${esc(nextOutcomeLineSource(line))}</span>` : "") +
+      `<button type="button" data-next-cockpit-action="held-line-remove" data-arg="${index}">` +
+      'remove</button></li>';
+  }).join("");
+  const add = '<button type="button" data-next-cockpit-action="held-line-add" data-arg="lines"' +
+    (full ? ' aria-disabled="true" aria-describedby="next-cockpit-held-full"' : "") +
+    ">add a line</button>";
+  return '<div class="next-cockpit-held-field next-cockpit-held-lines" ' +
+    'data-next-cockpit-held-field="lines">' +
+    '<div class="next-cockpit-held-heading">' +
+    '<span class="next-cockpit-held-label">EXPECTED OUTCOME</span></div>' +
+    `<ol class="next-cockpit-held-list">${rows}</ol>` +
+    add +
+    nextCockpitHeldControl("held-save", "save", "lines", nextCockpitLinesChanged(draft, annotation),
+      true, why ? nextCockpitHeldAbsentId("lines") : "") +
+    '<p class="next-cockpit-held-full" id="next-cockpit-held-full" data-next-cockpit-held-full' +
+    `${full ? "" : " hidden"}>${esc(NEXT_COCKPIT_LINES_FULL)}</p>` +
+    (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId("lines")}" ` +
+      `data-next-cockpit-held-absent="lines"` +
+      `${nextCockpitLinesToSend(draft).length ? " hidden" : ""}>${esc(why)}</p>` : "") +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }
 
@@ -1572,12 +1655,38 @@ const NEXT_READING_UNVERIFIABLE = "not verifiable from available evidence";
 const NEXT_READING_RESULTS = [
   NEXT_READING_DEPARTURE, NEXT_READING_CONSISTENT, NEXT_READING_UNVERIFIABLE,
 ];
-// Rule 6: two constraints, each naming itself, never blended. Keyed on
-// identity so rule 7 needs no reading of the clause.
-const NEXT_READING_CONSTRAINTS = [
-  ["goal", "TYPED GOAL"],
-  ["output", "EXPECTED OUTPUT"],
-];
+// Rule 6: the goal and each outcome line, each naming itself, never blended.
+// Keyed on identity so rule 7 needs no reading of the clause. `output` is the
+// single expected output a reading stored before the checklist carries; the
+// store reads it back as `line_1`, and a tab left open across the upgrade can
+// still hold it.
+const NEXT_READING_OUTCOME_LINE = /^line_([1-9][0-9]*)$/;
+
+function nextReadingIsOutcomeLine(key){
+  const match = NEXT_READING_OUTCOME_LINE.exec(String(key));
+  return key === "output" || Boolean(match && Number(match[1]) <= NEXT_OUTCOME_LINES_MAX);
+}
+
+function nextReadingNamesConstraint(key){
+  return key === "goal" || nextReadingIsOutcomeLine(key);
+}
+
+/* The constraints a reading's rows are drawn for, goal first and then each
+   line in order: every constraint the READING read, and beside those the
+   ones typed now, for the reason `nextCockpitReadingShape` gives. */
+function nextReadingConstraints(rows, annotation){
+  // A legacy `output` row is the reading's line 1, so today's lines are not
+  // drawn beside it a second time.
+  const typed = rows && rows.output ? [] : nextAnnotationLines(annotation);
+  const keys = new Set(["goal", ...Object.keys(rows || {}).filter(nextReadingNamesConstraint),
+    ...typed.map(line => `line_${line.k}`)]);
+  const order = key => key === "goal" ? 0 : key === "output" ? 1
+    : Number(NEXT_READING_OUTCOME_LINE.exec(key)[1]);
+  return [...keys].sort((left, right) => order(left) - order(right))
+    .filter(key => (rows && rows[key]) || String(annotation && annotation[key] || "").trim())
+    .map(key => [key, key === "goal" ? "TYPED GOAL" : key === "output" ? "EXPECTED OUTCOME"
+      : `EXPECTED OUTCOME · LINE ${order(key)}`]);
+}
 /* Rule 7 stopped keying on WHO wrote an entry on 2026-09-10 and this sentence
    did not follow it. It told the reader every cited entry was written by the
    agent, directly above an evidence line naming her own message -- self
@@ -1597,7 +1706,7 @@ const NEXT_READING_BASELINE_OPEN =
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
 const NEXT_READING_ASSESSMENT_KEYS = ["goal_source", "goal_source_at", "revision_read", "revision_read_at", "read_at", "stamp", "cutoff",
-  "scope", "scope_text", "ended_at_read", "criteria"];
+  "scope", "scope_text", "ended_at_read", "evidence_through", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a
    constant. It is deliberately narrower than "nothing typed": `_criterion`
@@ -1914,7 +2023,7 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
   const derivedOnly = authors.length > 0 && authors.every(name => name === "derived");
-  if(key === "output" && result !== NEXT_READING_UNVERIFIABLE && !shows.length){
+  if(nextReadingIsOutcomeLine(key) && result !== NEXT_READING_UNVERIFIABLE && !shows.length){
     /* Rule 7, the Expected Output half, as amended. A verdict about the
        deliverable needs an entry that DEMONSTRATES work. The agent saying it
        finished does not, and neither does the reader's own request. */
@@ -2006,11 +2115,23 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
    showing today's text as the clause a past reading judged is the historical
    reading claiming to describe the current request, which is precisely what
    the amber line beside it exists to deny. */
+/* A line's row names where the line came from, but only while the reading
+   read the words shown now: under a reading of an older revision today's
+   source would be a claim about words it never read. */
+function nextCockpitLineLabel(key, label, row, annotation, historical){
+  const match = NEXT_READING_OUTCOME_LINE.exec(String(key));
+  if(!match || historical) return label;
+  const line = nextAnnotationLines(annotation).find(item => item.k === Number(match[1]));
+  const clause = String(row && row.clause || "").trim();
+  if(!line || (clause && clause !== line.text)) return label;
+  return `${label} · ${nextOutcomeLineSource(line).toUpperCase()}`;
+}
+
 function nextCockpitReadingClause(key, row, annotation, historical){
   const carried = String(row && row.clause || "").trim();
   if(carried) return carried;
   if(historical) return "";
-  return String(annotation && annotation[key] || "").trim();
+  return String(annotation && annotation[key === "output" ? "line_1" : key] || "").trim();
 }
 
 /* Built and unexercised, and the tests below are not the contract they look
@@ -2049,12 +2170,13 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
      verdict on either side. */
   const windowStart = nextNumber(["latest-prompt", "first-prompt"].includes(source.goal_source)
     ? source.goal_source_at : source.revision_read_at);
-  const criteria = NEXT_READING_CONSTRAINTS
-    .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
+  const constraints = nextReadingConstraints(rows, annotation);
+  const criteria = constraints
     .map(([key, label]) => nextCockpitReadingCriterion(
       key, key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
-        ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical),
-      rows[key], entries, key === "output" ? limit : "", unsettled, windowStart));
+        ? "GOAL FROM YOUR PROMPT" : nextCockpitLineLabel(key, label, rows[key], annotation, historical),
+      nextCockpitReadingClause(key, rows[key], annotation, historical),
+      rows[key], entries, nextReadingIsOutcomeLine(key) ? limit : "", unsettled, windowStart));
   return {
     criteria,
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
@@ -2067,8 +2189,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
        retained: `_criterion` coerces a missing clause to "", so after a store
        round trip the two are indistinguishable and only one of those sentences
        can be honest. */
-    readClauses: NEXT_READING_CONSTRAINTS
-      .filter(([key]) => rows[key] || String(annotation && annotation[key] || "").trim())
+    readClauses: constraints
       .map(([key, label]) =>
         [key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
           ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
@@ -2108,7 +2229,7 @@ function nextCockpitReadingStates(annotation, model){
     return why ? `${why} ${NEXT_READING_SAVE_STEP}` : NEXT_READING_SAVE_STEP;
   }
   if(!String(annotation && annotation.goal || "").trim() &&
-      !String(annotation && annotation.output || "").trim()){
+      !nextAnnotationLines(annotation).length){
     /* Both sentences are this page's. The route refuses the same state in its
        own words -- `reading.REFUSALS` says "Nothing is typed against this
        session" where this says "has been typed for" -- so unlike the discard
@@ -2796,7 +2917,7 @@ function nextCockpitLanded(observed){
    owns that wording so the two blocks cannot word it differently. */
 function nextCockpitConflict(session, annotation, source){
   const typed = String(annotation && annotation.goal || "").trim() ||
-    String(annotation && annotation.output || "").trim();
+    nextAnnotationLines(annotation).length;
   if(!typed) return "";
   /* What the last settle press is still worth saying. Its own class rather
      than the held fields' cue class, so the tests that read the first held
@@ -2979,7 +3100,8 @@ function nextCockpitDriftBlock(group, session, direction, primary){
      came to render for the two FAILURE cases alone. */
   const discarded = nextAnnotationDiscardAccount(annotation, session.departures)
     .map(said => `<p class="next-cockpit-held-absent">${esc(said)}</p>`).join("");
-  const binding = annotation && annotation.binding_why && (annotation.goal || annotation.output)
+  const binding = annotation && annotation.binding_why &&
+    (annotation.goal || nextAnnotationLines(annotation).length)
     ? `<p class="next-cockpit-held-absent">${esc(annotation.binding_why)}</p>` : "";
   /* An ended session may still be annotated, and the store will keep it. What
      is unsettled is whether anything should then read it, so the line says
@@ -3005,7 +3127,8 @@ function nextCockpitDriftBlock(group, session, direction, primary){
     `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
-      nextCockpitHeldField(session, annotation, spec, cap)).join("") + '</div>' +
+      nextCockpitHeldField(session, annotation, spec, cap)).join("") +
+    nextCockpitHeldLines(session, annotation, cap) + '</div>' +
     '</section>';
   const reading = nextCockpitReadingParts(session, annotation, entries,
     nextCockpitObserverModel(group, session), observed, unsettled, workSource, primary);
@@ -3260,8 +3383,8 @@ async function nextCockpitDiscardAnnotation(session){
       /* The drafts go with the annotation. They are an independent lane, so a
          half-typed box would otherwise sit over an empty store and the next
          save would mint revision 1 of what the reader just discarded. */
-      for(const spec of NEXT_COCKPIT_HELD_FIELDS){
-        nextCockpitHeldDrafts.delete(nextCockpitHeldKey(session, spec[0]));
+      for(const kind of [...NEXT_COCKPIT_HELD_FIELDS.map(spec => spec[0]), "lines"]){
+        nextCockpitHeldDrafts.delete(nextCockpitHeldKey(session, kind));
       }
     }
     nextCockpitHeldMark(key, kind);
@@ -3275,6 +3398,43 @@ async function nextCockpitDiscardAnnotation(session){
   }
 }
 
+/* The whole list in one save, with the revision it was drafted against, so a
+   second tab's older list is refused rather than written over this one's. The
+   store gives each line its source; the page never sends one. */
+async function nextCockpitLinesSave(session){
+  const key = nextCockpitHeldKey(session, "lines");
+  const annotation = nextCockpitAnnotation(session);
+  const draft = nextCockpitLinesDraft(session, annotation);
+  if(!nextCockpitLinesChanged(draft, annotation)) return;
+  const sent = nextCockpitLinesToSend(draft);
+  try{
+    const response = await fetch("/api/annotate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid, goal: null, lines: sent,
+        expected_revision: nextNumber(annotation && annotation.revision) || 0}),
+    });
+    if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
+    const saved = await response.json();
+    if(!saved || saved.ok !== true) throw new Error("save not confirmed");
+    const outcome = String(saved.outcome || "");
+    const kind = NEXT_COCKPIT_HELD_OUTCOME_CUES[outcome] ||
+      (saved.persisted === true ? "saved" : "unpersisted");
+    // The draft goes only where the words are on disk and still match what
+    // was sent, for `nextCockpitHeldSave`'s reasons.
+    const held = nextCockpitHeldDrafts.get(key);
+    if((kind === "saved" || kind === "unchanged") && held &&
+        JSON.stringify(nextCockpitLinesToSend(held)) === JSON.stringify(sent)){
+      nextCockpitHeldDrafts.delete(key);
+    }
+    nextCockpitHeldMark(key, kind);
+    await refreshNext();
+  }catch(_error){
+    nextCockpitHeldMark(key, "error");
+    renderNext({named: key});
+  }
+}
+
 async function nextCockpitHeldSave(session, kind){
   const key = nextCockpitHeldKey(session, kind);
   /* The same expression `nextCockpitHeldField` decides `shown` with, so the
@@ -3284,12 +3444,12 @@ async function nextCockpitHeldSave(session, kind){
   const stored = String(annotation && annotation[kind] || "");
   const typed = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : stored;
   if(typed === stored) return;
-  // Only the field that changed. `null` is "leave this one alone" at the
-  // endpoint, and "" is "clear it": sending both every time would let a stale
-  // draft of one field overwrite a save of the other.
-  const body = {harness: session.harness, sid: session.sid, goal: null, output: null};
+  // Only the field that changed. An absent field is "leave this one alone" at
+  // the endpoint, and "" is "clear it": sending both every time would let a
+  // stale draft of one overwrite a save of the other. The outcome lines save
+  // through `nextCockpitLinesSave`.
   const sent = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : null;
-  body[kind] = sent;
+  const body = {harness: session.harness, sid: session.sid, [kind]: sent};
   try{
     const response = await fetch("/api/annotate", {
       method: "POST",
@@ -4491,11 +4651,67 @@ document.addEventListener("input", event => {
   if(absent) absent.hidden = Boolean(value);
 });
 
+/* A line box, updated in place for the goal field's reason: a keystroke that
+   redraws loses the caret. The store's own scrub is mirrored, so a pasted line
+   break is the one space the store will keep. */
+document.addEventListener("input", event => {
+  const input = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-held-lines-key]") : null;
+  if(!input) return;
+  const key = String(input.dataset.nextCockpitHeldLinesKey || "");
+  const index = Number(input.dataset.nextCockpitHeldLineIndex);
+  const session = nextCockpitFocusedSession(nextCockpitRouteGroup());
+  if(!key || !Number.isInteger(index) || !session) return;
+  const value = String(input.value || "")
+    .replace(NEXT_COCKPIT_HELD_UNSAFE, " ").slice(0, nextCockpitHeldCap());
+  if(value !== input.value) input.value = value;
+  const annotation = nextCockpitAnnotation(session);
+  const draft = nextCockpitLinesDraft(session, annotation);
+  while(draft.length <= index) draft.push("");
+  draft[index] = value;
+  nextCockpitHeldDrafts.set(key, draft);
+  nextCockpitHeldDrop(key);
+  const field = input.closest("[data-next-cockpit-held-field]");
+  if(!field || !field.querySelector) return;
+  const count = field.querySelector(`[data-next-cockpit-held-line-count="${index}"]`);
+  if(count) count.textContent = `${value.length}/${nextCockpitHeldCap()}`;
+  const source = field.querySelector(`[data-next-cockpit-held-line-source="${index}"]`);
+  if(source) source.hidden = value !== String(input.dataset.nextCockpitHeldSaved || "");
+  nextCockpitHeldToggle(field, "held-save", nextCockpitLinesChanged(draft, annotation), true);
+  const absent = field.querySelector("[data-next-cockpit-held-absent]");
+  if(absent) absent.hidden = nextCockpitLinesToSend(draft).length > 0;
+});
+
 document.addEventListener("click", event => {
   const target = nextCockpitActionTarget(event);
   if(!target) return;
   const action = String(target.dataset.nextCockpitAction || "");
   const group = nextCockpitRouteGroup();
+  if(action === "held-line-add" || action === "held-line-remove"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    const key = nextCockpitHeldKey(session, "lines");
+    const draft = nextCockpitLinesDraft(session, nextCockpitAnnotation(session));
+    if(action === "held-line-add" && draft.length >= NEXT_OUTCOME_LINES_MAX){
+      // Refused in place: nothing is added, and the sentence beside the
+      // control is said aloud, because an inert control that goes silent
+      // reads as a dead one.
+      nextCockpitAnnounceCue(key, NEXT_COCKPIT_LINES_FULL, false);
+      return;
+    }
+    if(action === "held-line-add"){
+      // An empty list is drawn as one empty box, so adding to it adds the second.
+      if(!draft.length) draft.push("");
+      draft.push("");
+    }else{
+      draft.splice(Number(target.dataset.arg), 1);
+    }
+    nextCockpitHeldDrafts.set(key, draft);
+    nextCockpitHeldDrop(key);
+    renderNext({named: `${key}:${Math.max(0, draft.length - 1)}`});
+    return;
+  }
   if(action === "tab"){
     const tab = String(target.dataset.arg || "");
     if(!group || nextRoute.view !== "project" || !nextCockpitTabs(nextRoute.focus).includes(tab)) return;
@@ -4564,6 +4780,10 @@ document.addEventListener("click", event => {
     event.preventDefault();
     const kind = String(target.dataset.arg || "");
     const key = nextCockpitHeldKey(session, kind);
+    if(action === "held-save" && kind === "lines"){
+      nextCockpitLinesSave(session);
+      return;
+    }
     if(action === "held-save"){
       nextCockpitHeldSave(session, kind);
       return;
@@ -4652,6 +4872,19 @@ function nextCockpitHandleKeydown(event){
       renderNext({named: key});
       return true;
     }
+  }
+  const lines = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-held-lines-key]") : null;
+  if(event.key === "Escape" && lines){
+    // The whole list goes back to what is saved, added and removed lines
+    // included: the draft is one array, and dropping it is the one place the
+    // render and the store cannot disagree.
+    event.preventDefault();
+    const key = String(lines.dataset.nextCockpitHeldLinesKey || "");
+    nextCockpitHeldDrafts.delete(key);
+    nextCockpitHeldDrop(key);
+    renderNext({named: `${key}:0`});
+    return true;
   }
   const held = event.target && event.target.closest
     ? event.target.closest("[data-next-cockpit-held-key]") : null;

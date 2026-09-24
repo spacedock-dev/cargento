@@ -117,13 +117,13 @@ console.log(JSON.stringify({
 
     @staticmethod
     def _row(**over: Any) -> dict[str, Any]:
-        row = {
+        row: dict[str, Any] = {
             "harness": "codex",
             "sid": "live-1",
             "goal": "Ship the cockpit",
             "goal_why": "",
-            "output": "",
-            "output_why": "No expected output typed.",
+            "lines_why": "No expected outcome typed.",
+            **{f"line_{k}": "" for k in range(1, 7)},
             "revision": 1,
             "revision_count": 1,
             "at": 150,
@@ -162,8 +162,7 @@ console.log(JSON.stringify({
             sid=sid,
             goal="",
             goal_why=annotation_store.DISCARDED_GOAL,
-            output="",
-            output_why=annotation_store.DISCARDED_OUTPUT,
+            lines_why=annotation_store.DISCARDED_LINES,
             revision=None,
             revision_count=0,
             at=None,
@@ -222,12 +221,12 @@ console.log(JSON.stringify({
                 ]
             },
         )
-        out = self.render([self._row(output="An artifact")], board=[row])
+        out = self.render([self._row(line_1="An artifact", lines_why="")], board=[row])
         self.assertEqual(1, out["rows"])
         for phrase in (
             "Typed goal",
             "Ship the cockpit",
-            "Typed expected output",
+            "Expected outcome, line 1",
             "An artifact",
             "Cached deterministic goal",
             "Saved derivation",
@@ -402,7 +401,7 @@ console.log(JSON.stringify({
         visible = out["visible"]
         assert isinstance(visible, str)
         self.assertNotIn("No goal typed for this session.", visible)
-        self.assertNotIn("No expected output typed.", visible)
+        self.assertNotIn("No expected outcome typed.", visible)
         self.assertNotIn("No revision saved yet", visible)
         self.assertNotIn("No reading asked for", visible)
 
@@ -1052,7 +1051,7 @@ class TheIntentLogReadsTheStoreAndNotHistoryTest(unittest.TestCase):
 
     Not a preference. `annotations.clear` removes the entry, because clearing
     the field is withdrawing the request, while `annotation_goal` and
-    `annotation_output` are in history's `OBSERVATION_FIELDS` and an
+    `annotation_line_1` are in history's `OBSERVATION_FIELDS` and an
     observation already appended is never retro-deleted. A log backfilled from
     history would therefore republish, on a permanent surface, words the reader
     took back.
@@ -1061,7 +1060,7 @@ class TheIntentLogReadsTheStoreAndNotHistoryTest(unittest.TestCase):
     def test_history_admits_the_two_fields_the_log_must_not_read_back(self) -> None:
         # Both halves of the hazard, asserted rather than assumed: history
         # holds them, and holds them as prompt text.
-        for field in ("annotation_goal", "annotation_output"):
+        for field in ("annotation_goal", "annotation_line_1"):
             with self.subTest(field=field):
                 self.assertIn(field, history.OBSERVATION_FIELDS)
                 self.assertIn(field, history.PROMPT_TEXT_ALLOWLIST)

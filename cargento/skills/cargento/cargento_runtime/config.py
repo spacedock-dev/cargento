@@ -231,14 +231,18 @@ class RuntimeConfig:
     # no session and no text has nothing large that is legal, and the cap is what
     # says so before the body is read.
     lane_body_cap_bytes: int
-    # The annotation store. The read cap is NOT the dismissal store's: measured,
-    # 256 sessions at 16 revisions of two 240-character fields serialize to about
-    # 2.2 MB, so the 65,536 copied from `dismissal_read_cap_bytes` was 31 times
-    # too small and a store inside its own three other bounds would have been
-    # discarded whole by `load` and then overwritten by the next save. A
-    # dismissal is four scalars; an annotation is prose. 2.5 MiB clears the
-    # worst case the other three bounds permit, and `load` still refuses
-    # anything past it. Two count bounds and no time-to-live, again
+    # The annotation store. The read cap is NOT the dismissal store's: a
+    # dismissal is four scalars; an annotation is prose. 16 MiB, per item 3 of
+    # the ruling `reading.MAX_OUTCOME_LINES` cites: measured, 256 sessions at
+    # 16 revisions of a goal and six 240-character lines, each with a full
+    # seven-criterion reading, serialize to 10.5 to 12.4 MB in ASCII,
+    # depending on the length of the fact ids cited. The 2.5 MiB before it was
+    # already under the 3.0 MB the two old fields permitted, and a store past
+    # the cap was ignored and then overwritten by the next save. No fixed cap
+    # clears every case, because
+    # `ensure_ascii` writes an astral character as twelve bytes, so a write
+    # trims oldest-first until the file fits (`annotations._kept`) and `load`
+    # still refuses anything past it. Two count bounds and no time-to-live, again
     # for `dismissals._bounded`'s reason: a TTL would delete the reader's own
     # words while the session they describe is still on the board. 256 sessions
     # matches `dismissal_max_entries` against the same measured board; 16
@@ -296,8 +300,13 @@ class RuntimeConfig:
     # What a dismissal request may declare. Three short fields, so this is far
     # below even the event cap: nothing else is read from the body.
     dismissal_body_cap_bytes: int
-    # What an annotation request may declare. Two 240-character fields plus
-    # their keys, so 4 KiB is generous and still far below the event cap.
+    # What an annotation request may declare, per item 3 of the ruling
+    # `reading.MAX_OUTCOME_LINES` cites: a goal and six lines of 240 four-byte
+    # characters, a 64-character session id and an expected revision measure
+    # 6,878 bytes as the page's `JSON.stringify` sends them, so 8 KiB holds the
+    # worst the page can send and is still far
+    # below the event cap. `POST /api/reading` shares it, where it is only
+    # generous.
     annotation_body_cap_bytes: int
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
@@ -749,7 +758,7 @@ def build_runtime_config(
         delivery_read_cap_bytes=262_144,
         delivery_max_entries=1_024,
         lane_body_cap_bytes=512,
-        annotation_read_cap_bytes=2_621_440,
+        annotation_read_cap_bytes=16_777_216,
         annotation_max_sessions=256,
         annotation_max_revisions=16,
         annotation_text_cap_chars=240,
@@ -760,7 +769,7 @@ def build_runtime_config(
         departure_max_entries=512,
         end_read_cap_bytes=65_536,
         end_max_entries=512,
-        annotation_body_cap_bytes=4_096,
+        annotation_body_cap_bytes=8_192,
         dismissal_body_cap_bytes=1_024,
         history_retention_sec=history_retention_sec,
         history_max_bytes=history_max_bytes,

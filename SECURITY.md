@@ -73,7 +73,7 @@ The posture rests on two invariants:
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
    which is the delivery completing rather than a change a caller asked for. Four write to disk.
    `POST /api/dismiss` writes the sessions you marked handled,
-   `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected output you typed against a session, and
+   `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected outcome lines you typed against a session, and
    `POST /api/reading` writes a model's reading of that session back into the same annotation
    entry. A press that produces nothing still writes, because the reason and the spend count are
    recorded too. These three routes write Cargento's own state under `~/.cargento` and never a harness
@@ -126,7 +126,7 @@ The posture rests on two invariants:
    names it, so a reader meets that fact where the act happened rather than only here.
    What stays in the annotation store in their place is a
    **discard record**, and it holds four things and no fifth: the harness, the session id, the
-   moment of the act, and the number of the last revision that went. No goal, no expected output,
+   moment of the act, and the number of the last revision that went. No goal, no outcome line,
    no reading, no withheld reason and no press count -- the parser drops every other field of a
    record unread, so a file rewritten by any local process to hang text off one reads back with
    none. It is what lets a surface say a discard happened without restating what was discarded,
@@ -1412,7 +1412,7 @@ output goes; `cargento-dismissals.json`, the sessions the reader marked handled,
 Dismissals below; `observer/<harness>_<sid>.json`, the sidecar `GET /api/observe` records when a
 reader opens that panel for a session, named in invariant 2 above; `cargento-history.json`, the
 history of what this server observed, described in Local history above;
-`cargento-annotations.json`, the typed or explicitly adopted goal, typed expected output and readings taken against
+`cargento-annotations.json`, the typed or explicitly adopted goal, typed expected outcome lines and readings taken against
 them, named in invariant 2 above and turned off by `--no-annotations`;
 `cargento-deliveries.json`, what became of each notification this board raised, described in
 Delivery records below; `cargento-departures.json`, what an unasked reading raised, described in
@@ -1454,10 +1454,12 @@ your session's record to a model with nobody watching. Everything else that read
 model happens because somebody pressed a control and saw a disclosure first. This one happens
 because the operator passed a flag, so the flag's own help text is where that disclosure lives.
 
-What it sends is exactly what `POST /api/reading` sends, on exactly the same path: the goal and
-expected output you typed, and the observed record the reading is allowed to read, to a `codex`
-subprocess running on your own machine under your own capacity. Nothing new leaves the machine that
-did not already leave it when you pressed the control by hand. What is new is that nobody is there
+What it sends is less than `POST /api/reading` sends, on the same path: the goal you typed, and the
+observed record the reading is allowed to read, to a `codex` subprocess running on your own machine
+under your own capacity. Your expected outcome lines are never sent by it, and a session with lines
+and no goal is not read by it at all (item 12 of
+[DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
+Nothing new leaves the machine that did not already leave it when you pressed the control by hand. What is new is that nobody is there
 at the moment it goes.
 
 It is bounded three ways, and the bounds are the posture rather than a preference. One reading runs
@@ -1497,10 +1499,11 @@ and the row is marked withdrawn, so nothing quoting the words you took back surv
 row is what the two caps above count and deleting it would refund the subprocess it spent.
 
 Discarding here means the `clear` field of a `POST /api/annotate` body, which deletes every
-revision. It is reachable from the board as `discard everything`, a control under the two boxes on
-the session page's drift block, offered only where a revision is stored and armed by one press before a second
-performs it. The board's own `clear` control is a different act with the same word on it: it empties
-one box, and the save that follows appends a revision holding an empty string. The words you typed
+revision. It is reachable from the board as `discard everything`, a control under the goal and the
+expected outcome on the session page's drift block, offered only where a revision is stored and armed by one press before a second
+performs it. The board's own `clear` control beside the goal, and `remove` beside an outcome line,
+are a different act: each empties one box or drops one line, and the save that follows appends a
+revision without those words. The words you typed
 are still in the earlier revisions and a raise quoting them is still quoting them, so nothing is
 withdrawn. Naming both is the point, because the shorter name is the one printed on the button, and
 the board now says so where the reader meets the two controls rather than only here.
@@ -1671,8 +1674,14 @@ The allowlist, one line per field:
   store does. Published on every row, redacted by `records.safe_text` inside
   `annotations.annotate` before either bound is applied, and kept so the words a reading was read
   against reopen after a restart and after the live row leaves the board.
-- `annotation_output`, the same field's other half: what the reader typed the session should
-  produce. Same bound, same redaction, same reason.
+- `annotation_line_1`, the first line of the expected outcome: one thing the reader typed the
+  session should produce, at most 240 characters on one line as the annotation store bounds it and
+  at most 256 as this store does. Same redaction and same reason as the goal.
+- `annotation_line_2`, the second outcome line. Same bound, same redaction, same reason.
+- `annotation_line_3`, the third outcome line. Same bound, same redaction, same reason.
+- `annotation_line_4`, the fourth outcome line. Same bound, same redaction, same reason.
+- `annotation_line_5`, the fifth outcome line. Same bound, same redaction, same reason.
+- `annotation_line_6`, the sixth and last outcome line. Same bound, same redaction, same reason.
 - `first_prompt`, the first recorded user prompt offered by DEC-22 so a reader can choose the
   original goal without retyping it. Published for Claude Code and Codex, redacted before clipping
   to 140 characters plus the clipping mark, and scrubbed to the same bound on history reload.
@@ -1687,9 +1696,13 @@ source time to match, and refuses implicit adoption over an existing goal. Adopt
 the revision and the reading that used it; an explicit goal save makes typed words instead.
 Adopted goals never authorize unasked checks, even when the same revision has a typed output.
 
-The history record also keeps `first_prompt_at`, `annotation_goal_source` and
-`annotation_goal_source_at`, scalar provenance for the admitted words. Schema 3 reads versions 1
-and 2 without discarding their observations. Unknown versions still refuse. First prompts come
+The history record also keeps `first_prompt_at`, `annotation_goal_source`,
+`annotation_goal_source_at` and `annotation_line_1_source` to `annotation_line_6_source`, scalar
+provenance for the admitted words: each line's source is the closed token `typed` or `entry`, and
+the entry it came from is not kept here. Schema 4 reads versions 1, 2 and 3 without discarding
+their observations, and a record's one `annotation_output` comes forward as line 1. Six line
+fields make an annotated session's records larger than one did, so the size cap below ages other
+sessions out sooner; the owner accepted that on 2026-09-24. Unknown versions still refuse. First prompts come
 from a bounded two-MiB transcript-prefix scan, excluding generated titles, compaction summaries
 and recognized injected messages. An unread prefix yields no first prompt; it never substitutes
 a later record. Source text is at most 140 characters plus the clipping mark. The page names an

@@ -34,7 +34,7 @@ import math
 import os
 import re
 import threading
-from typing import TYPE_CHECKING, Any, Final, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, Final, NotRequired, TypedDict, cast
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import records
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 # grow a second inert version field is that it already has one: a fourteen-day
 # time series whose reader must tolerate every past shape forever is how a silent
 # mis-parse ships.
-SCHEMA_VERSION: Final = 3
+SCHEMA_VERSION: Final = 4
 
 # Every version this build can read, newest last, and the reason it is a tuple
 # rather than a single number.
@@ -73,7 +73,7 @@ SCHEMA_VERSION: Final = 3
 # An admission therefore bumps `SCHEMA_VERSION` and appends the old value here.
 # It never resets. A version this tuple does not name is still refused, which is
 # the case the header exists to report.
-READABLE_VERSIONS: Final[tuple[int, ...]] = (1, 2, SCHEMA_VERSION)
+READABLE_VERSIONS: Final[tuple[int, ...]] = (1, 2, 3, SCHEMA_VERSION)
 
 STORE_FILENAME: Final = "cargento-history.json"
 
@@ -120,7 +120,18 @@ class Observation(TypedDict):
     state: str
     last_activity: float
     annotation_goal: str
-    annotation_output: str
+    annotation_line_1: NotRequired[str]
+    annotation_line_2: NotRequired[str]
+    annotation_line_3: NotRequired[str]
+    annotation_line_4: NotRequired[str]
+    annotation_line_5: NotRequired[str]
+    annotation_line_6: NotRequired[str]
+    annotation_line_1_source: NotRequired[str | None]
+    annotation_line_2_source: NotRequired[str | None]
+    annotation_line_3_source: NotRequired[str | None]
+    annotation_line_4_source: NotRequired[str | None]
+    annotation_line_5_source: NotRequired[str | None]
+    annotation_line_6_source: NotRequired[str | None]
     annotation_revision: float | None
     first_prompt: NotRequired[str]
     first_prompt_at: NotRequired[float | None]
@@ -138,7 +149,18 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
     "state",
     "last_activity",
     "annotation_goal",
-    "annotation_output",
+    "annotation_line_1",
+    "annotation_line_2",
+    "annotation_line_3",
+    "annotation_line_4",
+    "annotation_line_5",
+    "annotation_line_6",
+    "annotation_line_1_source",
+    "annotation_line_2_source",
+    "annotation_line_3_source",
+    "annotation_line_4_source",
+    "annotation_line_5_source",
+    "annotation_line_6_source",
     "annotation_revision",
     "first_prompt",
     "first_prompt_at",
@@ -165,7 +187,12 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
 PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
     "first_prompt",
     "annotation_goal",
-    "annotation_output",
+    "annotation_line_1",
+    "annotation_line_2",
+    "annotation_line_3",
+    "annotation_line_4",
+    "annotation_line_5",
+    "annotation_line_6",
     "goal",
     "instruction",
     "last_prompt",
@@ -184,11 +211,13 @@ PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
 # publishes, redacted before it is bounded, and inside this store's existing
 # retention and delete.
 #
-# Two entries, and they are the words the reader typed rather than anything a
-# harness or a model produced. DEC-15b admits an outcome baseline so it reopens
-# after a restart, and the baseline is the goal and the expected output the
-# reading was read against. The revision beside them is a number and needs no
-# entry here.
+# The goal and each outcome line are the words the reader typed rather than
+# anything a harness or a model produced. DEC-15b admits an outcome baseline so
+# it reopens after a restart, and the baseline is the goal and the lines the
+# reading was read against, one flat field per line (item 3 of the ruling
+# `reading.MAX_OUTCOME_LINES` cites). The
+# revision and each line's source beside them are a number and closed tokens
+# and need no entry here.
 #
 # `test_documentation` binds this tuple to the contract's own allowlist block
 # and to `OBSERVATION_FIELDS`: an entry with no record behind it fails, and no
@@ -200,7 +229,12 @@ PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
 PROMPT_TEXT_ALLOWLIST: Final[tuple[str, ...]] = (
     "first_prompt",
     "annotation_goal",
-    "annotation_output",
+    "annotation_line_1",
+    "annotation_line_2",
+    "annotation_line_3",
+    "annotation_line_4",
+    "annotation_line_5",
+    "annotation_line_6",
 )
 
 
@@ -233,7 +267,7 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
     if not all(isinstance(x, str) and x for x in (harness, sid, state)):
         return None
     project = row.get("project")
-    return {
+    observed = {
         "harness": str(harness),
         "sid": str(sid),
         # Kept by the [history contract](SECURITY.md#local-history-the-session-history-store):
@@ -254,13 +288,38 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
         # requires. `_text` here only strips reordering characters and applies
         # this store's own cap, which is wider than the annotation's 240.
         "annotation_goal": _annotation_text(row.get("annotation_goal")),
-        "annotation_output": _annotation_text(row.get("annotation_output")),
+        **_line_fields(row),
         "annotation_revision": _finite(row.get("annotation_revision")),
         "first_prompt": _first_prompt_text(row.get("first_prompt")),
         "first_prompt_at": _finite(row.get("first_prompt_at")),
         "annotation_goal_source": _goal_source(row.get("annotation_goal_source")),
         "annotation_goal_source_at": _finite(row.get("annotation_goal_source_at")),
     }
+    return cast("Observation", observed)
+
+
+def _line_fields(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Each outcome line and its source as flat fields, all six slots filled.
+
+    A record written before version 4 carries one `annotation_output`, which
+    comes forward as line 1, typed, so fourteen days of baselines survive the
+    upgrade rather than reading as nothing typed. A line with no text has no
+    source, because a source is a fact about words.
+    """
+    if "annotation_line_1" not in value:
+        value = {
+            "annotation_line_1": value.get("annotation_output"),
+            "annotation_line_1_source": "typed",
+        }
+    fields: dict[str, Any] = {}
+    for k in range(1, 7):
+        text = _annotation_text(value.get(f"annotation_line_{k}"))
+        source = value.get(f"annotation_line_{k}_source")
+        fields[f"annotation_line_{k}"] = text
+        fields[f"annotation_line_{k}_source"] = (
+            source if text and isinstance(source, str) and source in {"typed", "entry"} else None
+        )
+    return fields
 
 
 def _annotation_text(value: Any) -> str:
@@ -343,7 +402,7 @@ def _entry(value: Any) -> Observation | None:
     stamp = _finite(value.get("last_activity"))
     if stamp is None:
         return None
-    return {
+    observed = {
         "harness": _text(harness),
         "sid": _text(sid),
         "project": _text(project),
@@ -353,13 +412,14 @@ def _entry(value: Any) -> Observation | None:
         # are read one at a time and default rather than dropping the record:
         # a v1 entry is a v2 entry with these three empty.
         "annotation_goal": _annotation_text(value.get("annotation_goal")),
-        "annotation_output": _annotation_text(value.get("annotation_output")),
+        **_line_fields(value),
         "annotation_revision": _finite(value.get("annotation_revision")),
         "first_prompt": _first_prompt_text(value.get("first_prompt")),
         "first_prompt_at": _finite(value.get("first_prompt_at")),
         "annotation_goal_source": _goal_source(value.get("annotation_goal_source")),
         "annotation_goal_source_at": _finite(value.get("annotation_goal_source_at")),
     }
+    return cast("Observation", observed)
 
 
 def _payload(entries: Iterable[Observation]) -> bytes:
@@ -551,7 +611,18 @@ def save(
 _TRANSITION_FIELDS: Final[tuple[str, ...]] = (
     "state",
     "annotation_goal",
-    "annotation_output",
+    "annotation_line_1",
+    "annotation_line_2",
+    "annotation_line_3",
+    "annotation_line_4",
+    "annotation_line_5",
+    "annotation_line_6",
+    "annotation_line_1_source",
+    "annotation_line_2_source",
+    "annotation_line_3_source",
+    "annotation_line_4_source",
+    "annotation_line_5_source",
+    "annotation_line_6_source",
     "annotation_revision",
 )
 

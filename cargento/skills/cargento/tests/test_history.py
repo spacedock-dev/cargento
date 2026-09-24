@@ -309,7 +309,8 @@ class TheAnnotationBaselineIsAdmittedAndBoundedTest(HistoryStoreTestCase):
         row.update(
             {
                 "annotation_goal": self.GOAL,
-                "annotation_output": self.OUTPUT,
+                "annotation_line_1": self.OUTPUT,
+                "annotation_line_1_source": "typed",
                 "annotation_revision": 2,
                 **fields,
             }
@@ -322,7 +323,7 @@ class TheAnnotationBaselineIsAdmittedAndBoundedTest(HistoryStoreTestCase):
         kept, reset = history.load(config)
         self.assertIsNone(reset)
         self.assertEqual(self.GOAL, kept[0]["annotation_goal"])
-        self.assertEqual(self.OUTPUT, kept[0]["annotation_output"])
+        self.assertEqual(self.OUTPUT, kept[0]["annotation_line_1"])
         self.assertEqual(2, kept[0]["annotation_revision"])
 
     def test_an_unannotated_row_stores_no_sentence_in_place_of_the_words(self) -> None:
@@ -376,8 +377,8 @@ class TheAnnotationBaselineIsAdmittedAndBoundedTest(HistoryStoreTestCase):
         # The migration, exercised for real now that a bump has happened. A v1
         # record is a v2 record with these three absent, and discarding one
         # would cost a reader fourteen days of history on an upgrade.
-        self.assertEqual(3, history.SCHEMA_VERSION)
-        self.assertEqual((1, 2, 3), history.READABLE_VERSIONS)
+        self.assertEqual(4, history.SCHEMA_VERSION)
+        self.assertEqual((1, 2, 3, 4), history.READABLE_VERSIONS)
         path = os.path.join(self.state_home, history.STORE_FILENAME)
         with open(path, "w") as handle:
             json.dump(
@@ -485,7 +486,6 @@ class EvictionTest(HistoryStoreTestCase):
                 state="working",
                 last_activity=stamp,
                 annotation_goal="",
-                annotation_output="",
                 annotation_revision=None,
             )
             for stamp in stamps
@@ -600,7 +600,6 @@ class OwnerOnlyWriteTest(HistoryStoreTestCase):
                             state="working",
                             last_activity=1_000.0,
                             annotation_goal="",
-                            annotation_output="",
                             annotation_revision=None,
                         )
                     ],
@@ -1529,7 +1528,6 @@ class TheSizeCapCostsOneSerialisationTest(HistoryStoreTestCase):
                 state="working",
                 last_activity=1_000.0 + index,
                 annotation_goal="",
-                annotation_output="",
                 annotation_revision=None,
             )
             for index in range(count)

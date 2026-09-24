@@ -424,8 +424,8 @@ console.log(JSON.stringify({html:__els.app.innerHTML,
         out = self.run_fixture(r"""
 __dashboard.sessions[0].annotation_goal = "Ship the cockpit";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "A merged PR";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "A merged PR";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 2;
 __dashboard.sessions[0].annotation_revision_count = 2;
 __dashboard.sessions[0].annotation_at = 104;
@@ -461,8 +461,8 @@ console.log(JSON.stringify({html:__els.app.innerHTML}));
 __dashboard.sessions[0].instruction = {label:"asked", text:"Ship the cockpit", at:45};
 __dashboard.sessions[0].annotation_goal = "Ship the cockpit";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 104;
@@ -503,8 +503,8 @@ __dashboard.sessions[0].instruction = {label:"asked", text:"Shape the cockpit", 
 __dashboard.sessions[0].last_activity = 90;
 __dashboard.sessions[0].annotation_goal = "Shape the cockpit";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -4309,8 +4309,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "Capture every screen with live sessions";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 2;
 __dashboard.sessions[0].annotation_revision_count = 2;
 __dashboard.sessions[0].annotation_at = 100;
@@ -4340,8 +4340,8 @@ for(const focus of [null, "codex:focus-1"]){
 
     goal: html.includes("Capture every screen with live sessions"),
     revision: html.includes("revision 2 of 2"),
-    absence: html.includes("No expected output typed."),
-    counters: (html.match(/data-next-cockpit-held-count="[a-z]+"/g) || []).length,
+    absence: html.includes("No expected outcome typed."),
+    counters: (html.match(/data-next-cockpit-held(?:-line)?-count="[a-z0-9]+"/g) || []).length,
     clears: (html.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
     saves: (html.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
   };
@@ -4391,8 +4391,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_at = null;
@@ -4403,10 +4403,11 @@ await __settle();
 const html = __els.app.innerHTML;
 console.log(JSON.stringify({
   goalWhy: html.includes("No goal typed for this session."),
-  outputWhy: html.includes("No expected output typed."),
+  outputWhy: html.includes("No expected outcome typed."),
   clears: (html.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
   revision: html.includes("No revision saved yet"),
-  counts: [...html.matchAll(/data-next-cockpit-held-count="[a-z]+">([^<]*)</g)].map(m => m[1]),
+  counts: [...html.matchAll(/data-next-cockpit-held(?:-line)?-count="[a-z0-9]+">([^<]*)</g)]
+    .map(m => m[1]),
 }));
 """
         )
@@ -4435,14 +4436,14 @@ console.log(JSON.stringify({
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const before = __els.renders;
-const box = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const box = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
 box.value = "ship it\\n\\nand the doc";
 __fire("input", {target:box});
 await __settle();
 const field = box.closest("[data-next-cockpit-held-field]");
 console.log(JSON.stringify({
   box: box.value,
-  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
   count: field.querySelector("[data-next-cockpit-held-count]").textContent,
   redraws: __els.renders - before,
 }));
@@ -4476,14 +4477,14 @@ console.log(JSON.stringify({
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const before = __els.renders;
-const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
 input.value = "Six screenshots";
 __fire("input", {target:input});
 await __settle();
 const field = input.closest("[data-next-cockpit-held-field]");
 console.log(JSON.stringify({
   redraws: __els.renders - before,
-  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
   // Updated in place, which is the whole of what replaces the redraw.
   liveCount: field.querySelector("[data-next-cockpit-held-count]").textContent,
   liveSave: field.querySelector('[data-next-cockpit-action="held-save"]').hidden,
@@ -4493,9 +4494,9 @@ console.log(JSON.stringify({
   next: (() => { renderNext();
     const html = __els.app.innerHTML;
     return {
-      count: (html.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
-      save: /data-next-cockpit-action="held-save" data-arg="output">/.test(html),
-      clear: /data-next-cockpit-action="held-clear" data-arg="output">/.test(html),
+      count: (html.match(/data-next-cockpit-held-count="goal">([^<]*)</) || [])[1],
+      save: /data-next-cockpit-action="held-save" data-arg="goal">/.test(html),
+      clear: /data-next-cockpit-action="held-clear" data-arg="goal">/.test(html),
       // The saved value rides on each field, because the handler compares
       // against it without a payload to hand. Both are read: the untouched
       // one carries the store's text, the edited one carries the empty string
@@ -4525,7 +4526,7 @@ console.log(JSON.stringify({
             + """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
-const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
 input.value = "Six screenshots";
 __fire("input", {target:input});
 renderNext();
@@ -4538,11 +4539,11 @@ await __settle();
 const reverted = __els.app.innerHTML;
 console.log(JSON.stringify({
   typedSaves: (typed.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
-  typedCount: (typed.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
+  typedCount: (typed.match(/data-next-cockpit-held-count="goal">([^<]*)</) || [])[1],
   typedClears: (typed.match(/data-next-cockpit-action="held-clear" data-arg="[a-z]+">/g) || []).length,
   revertedSaves: (reverted.match(/data-next-cockpit-action="held-save" data-arg="[a-z]+">/g) || []).length,
-  revertedCount: (reverted.match(/data-next-cockpit-held-count="output">([^<]*)</) || [])[1],
-  draft: nextCockpitHeldDrafts.has("held:codex:focus-1:output"),
+  revertedCount: (reverted.match(/data-next-cockpit-held-count="goal">([^<]*)</) || [])[1],
+  draft: nextCockpitHeldDrafts.has("held:codex:focus-1:goal"),
 }));
 """
         )
@@ -4551,11 +4552,12 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertEqual(1, out["typedSaves"])
         self.assertEqual("15/240", out["typedCount"])
-        self.assertEqual(2, out["typedClears"])
+        # The goal's own clear; the outcome lines are removed one by one instead.
+        self.assertEqual(1, out["typedClears"])
         # Escape drops the draft rather than writing the saved value into it,
         # so the render reads the store and the save goes away with it.
         self.assertEqual(0, out["revertedSaves"])
-        self.assertEqual("0/240", out["revertedCount"])
+        self.assertEqual("39/240", out["revertedCount"])
         self.assertFalse(out["draft"])
 
     def test_a_save_the_store_could_not_write_says_so(self) -> None:
@@ -4591,22 +4593,22 @@ const cue = () => (__els.app.innerHTML
 
 // Given: the store cannot be written.
 persisted = false;
-type("output", "Six screenshots");
+type("goal", "Six screenshots");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 const unwritable = cue();
 // The box, because the cue is only honest if the words are where it says.
-const keptDraft = nextCockpitHeldDrafts.get("held:codex:focus-1:output");
+const keptDraft = nextCockpitHeldDrafts.get("held:codex:focus-1:goal");
 
 // And: a run where it can.
 persisted = true;
-type("output", "Six screenshots again");
+type("goal", "Six screenshots again");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 console.log(JSON.stringify({unwritable, keptDraft, written: cue(),
-  clearedDraft: nextCockpitHeldDrafts.has("held:codex:focus-1:output")}));
+  clearedDraft: nextCockpitHeldDrafts.has("held:codex:focus-1:goal")}));
 """
         )
 
@@ -4993,12 +4995,12 @@ const cue = () => (__els.app.innerHTML
             + self.SAVE_WITH_REPLY
             + """
 reply = {ok:true, persisted:true, outcome:"unchanged", revision:2, revision_count:2};
-type("output", "Six screenshots");
+type("goal", "Six screenshots");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 console.log(JSON.stringify({cue: cue(),
-  kept: nextCockpitHeldDrafts.has("held:codex:focus-1:output")}));
+  kept: nextCockpitHeldDrafts.has("held:codex:focus-1:goal")}));
 """
         )
         assert isinstance(out, dict)
@@ -5025,12 +5027,12 @@ console.log(JSON.stringify({cue: cue(),
             + self.SAVE_WITH_REPLY
             + """
 reply = {ok:true, persisted:false, outcome:"refused", revision:2, revision_count:2};
-type("output", "Six screenshots");
+type("goal", "Six screenshots");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 console.log(JSON.stringify({cue: cue(),
-  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output") || null}));
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal") || null}));
 """
         )
         assert isinstance(out, dict)
@@ -5059,20 +5061,20 @@ console.log(JSON.stringify({cue: cue(),
             + self.SAVE_WITH_REPLY
             + """
 reply = {ok:true, persisted:true, outcome:"stored", revision:2, revision_count:2};
-type("output", "Six screenshots");
+type("goal", "Six screenshots");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 const stored = {cue: cue(),
-  kept: nextCockpitHeldDrafts.has("held:codex:focus-1:output")};
+  kept: nextCockpitHeldDrafts.has("held:codex:focus-1:goal")};
 
 reply = {ok:true, persisted:false, outcome:"unwritable", revision:2, revision_count:2};
-type("output", "Six screenshots and a log");
+type("goal", "Six screenshots and a log");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 console.log(JSON.stringify({stored, unwritable: {cue: cue(),
-  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output") || null}}));
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal") || null}}));
 """
         )
         assert isinstance(out, dict)
@@ -5141,14 +5143,14 @@ __fetchImpl = async (url, init) => {
 };
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
-const input = () => controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const input = () => controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
 const type = value => { const box = input(); box.value = value; __fire("input", {target:box}); };
 
 // Given: the reader saves, then keeps typing while the request is open.
 type("Six screenshots");
 await __settle();
 __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "output"),
+  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal"),
   preventDefault(){}});
 type("Six screenshots, one per screen");
 
@@ -5156,7 +5158,7 @@ type("Six screenshots, one per screen");
 release();
 await __settle();
 console.log(JSON.stringify({
-  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:output"),
+  draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
 }));
 """
         )
@@ -5218,8 +5220,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_binding_why = "Bound by an eight-character prefix.";
@@ -5238,7 +5240,7 @@ console.log(JSON.stringify({
   // paragraph has to be an element the input handler can reach.
   typedHidesReason: /<p class="next-cockpit-held-absent" [^>]*data-next-cockpit-held-absent="goal" hidden>/
     .test(__els.app.innerHTML),
-  typedShowsOtherReason: /data-next-cockpit-held-absent="output">No expected output typed\\./
+  typedShowsOtherReason: /data-next-cockpit-held-absent="lines">No expected outcome typed\\./
     .test(__els.app.innerHTML),
 }));
 """
@@ -5510,10 +5512,12 @@ const save = kind => __fire("click", {target:controls.find(control =>
   control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
   preventDefault(){}});
 
-// When: type into Expected Output alone and save it.
-type("output", "Six screenshots");
+// When: type the expected outcome's first line alone and save the list.
+const line = controls.find(control => control.dataset.nextCockpitHeldLineIndex === "0");
+line.value = "Six screenshots";
+__fire("input", {target:line});
 await __settle();
-save("output");
+save("lines");
 await __settle();
 
 // And: a save the server refuses.
@@ -5539,13 +5543,13 @@ console.log(JSON.stringify({posts,
                     "harness": "codex",
                     "sid": "focus-1",
                     "goal": None,
-                    "output": "Six screenshots",
+                    "lines": ["Six screenshots"],
+                    "expected_revision": 2,
                 },
                 {
                     "harness": "codex",
                     "sid": "focus-1",
                     "goal": "A different goal",
-                    "output": None,
                 },
             ],
             out["posts"],
@@ -5635,7 +5639,7 @@ console.log(JSON.stringify({outcomes,calls}));
 __dashboard.annotate = true;
 __dashboard.reading_check = "accepted";
 Object.assign(__dashboard.sessions[0], {
-  annotation_goal:"do not change the board", annotation_output:"",
+  annotation_goal:"do not change the board", annotation_line_1:"",
   annotation_revision:1, annotation_revision_count:1, annotation_at:100,
   annotation_assessment:{revision_read:1, scope:"mid-flight",
     scope_text:"This covers only the work so far.",
@@ -5699,8 +5703,8 @@ const read = () => {
 // Given: nothing typed.
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_at = null;
@@ -5714,8 +5718,8 @@ const empty = read();
 __dashboard.reading = null;
 __dashboard.sessions[0].annotation_goal = "Ship the cockpit";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -5874,8 +5878,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -5989,8 +5993,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 2;
 __dashboard.sessions[0].annotation_revision_count = 2;
 __dashboard.sessions[0].annotation_at = 100;
@@ -6125,8 +6129,8 @@ __dashboard.annotate_cap = 240;
 __dashboard.reading_check = "accepted";
 __dashboard.sessions[0].annotation_goal = "";
 __dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "No expected output typed.";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_at = null;
@@ -7175,7 +7179,7 @@ const entries = [
   {id:"g1", type:"gate_decision", by:"person:captain", source:"entity gate · exact"},
   {id:"empty", type:"", by:"", source:""}
 ];
-const annotation = {goal:"do not change the board", output:"six screenshots"};
+const annotation = {goal:"do not change the board", line_1:"six screenshots"};
 const shape = (criteria, limit) => nextCockpitReadingShape({criteria}, annotation, entries,
   limit || "");
 const results = (criteria, limit) => Object.fromEntries(
@@ -7193,7 +7197,7 @@ const results = (criteria, limit) => Object.fromEntries(
             self.ENTRIES
             + """
 console.log(JSON.stringify({
-  met: results({goal:{result:"met", cites:["u1"]}, output:{result:"met", cites:["u1"]}}),
+  met: results({goal:{result:"met", cites:["u1"]}, line_1:{result:"met", cites:["u1"]}}),
   invented: results({goal:{result:"mostly on track", cites:["u1"]}}),
   closed: NEXT_READING_RESULTS,
 }));
@@ -7201,7 +7205,7 @@ console.log(JSON.stringify({
         )
         assert isinstance(out, dict)
         unverifiable = "not verifiable from available evidence"
-        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["met"])
+        self.assertEqual({"goal": unverifiable, "line_1": unverifiable}, out["met"])
         self.assertEqual(unverifiable, out["invented"]["goal"])
         self.assertEqual(
             ["departure", "consistent with the evidence read", unverifiable], out["closed"]
@@ -7213,7 +7217,7 @@ console.log(JSON.stringify({
             + """
 console.log(JSON.stringify({
   missing: results({}),
-  garbage: results({goal:"a string, not a row", output:[]}),
+  garbage: results({goal:"a string, not a row", line_1:[]}),
   noReading: nextCockpitReadingShape(null, annotation, entries, "").criteria.map(r => r.result),
   why: shape({}).criteria[0].why,
 }));
@@ -7221,8 +7225,8 @@ console.log(JSON.stringify({
         )
         assert isinstance(out, dict)
         unverifiable = "not verifiable from available evidence"
-        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["missing"])
-        self.assertEqual({"goal": unverifiable, "output": unverifiable}, out["garbage"])
+        self.assertEqual({"goal": unverifiable, "line_1": unverifiable}, out["missing"])
+        self.assertEqual({"goal": unverifiable, "line_1": unverifiable}, out["garbage"])
         self.assertEqual([unverifiable, unverifiable], out["noReading"])
         self.assertEqual(
             "The reading did not return a usable result for this constraint.", out["why"]
@@ -7278,15 +7282,15 @@ console.log(JSON.stringify({
 // is not one. This test is about clauses and revisions, so it cites the
 // entry that lets it be about those.
 const reading = {revision_read:1, criteria:{
-  output:{result:"departure", clause:"six screenshots", detail:"Three exist.", cites:["a1"]}}};
+  line_1:{result:"departure", clause:"six screenshots", detail:"Three exist.", cites:["a1"]}}};
 // Revision 2 cleared that field and changed the goal.
-const now = {goal:"a different goal", output:"", revision:2};
+const now = {goal:"a different goal", line_1:"", revision:2};
 const read = nextCockpitReadingShape(reading, now, entries, "");
 const row = key => read.criteria.find(candidate => candidate.key === key);
 console.log(JSON.stringify({
   keys: read.criteria.map(candidate => candidate.key),
-  clause: row("output").clause,
-  result: row("output").result,
+  clause: row("line_1").clause,
+  result: row("line_1").result,
   departures: read.departures.length,
   // The goal row has no entry in this reading and its clause must not be
   // today's text presented as what a past reading judged.
@@ -7299,7 +7303,7 @@ console.log(JSON.stringify({
         # Then: the cleared constraint keeps its row, its clause and its
         # departure, all as the reading read them.
         assert isinstance(out, dict)
-        self.assertIn("output", out["keys"])
+        self.assertIn("line_1", out["keys"])
         self.assertEqual("six screenshots", out["clause"])
         self.assertEqual("departure", out["result"])
         self.assertEqual(1, out["departures"])
@@ -7331,9 +7335,9 @@ const rows = (criteria, limit) =>
 const row = (key, why, limit) => rows(
     {[key]: {result: unv, cites: [], detail: "", clause: "typed words", why}}, limit)
   .split('<div class="next-cockpit-reading-row">').filter(Boolean)
-  .find(r => r.includes(key === "output" ? "EXPECTED OUTPUT" : "TYPED GOAL"));
+  .find(r => r.includes(key === "line_1" ? "EXPECTED OUTCOME" : "TYPED GOAL"));
 console.log(JSON.stringify({
-  notAsked: row("output", "not-asked", ""),
+  notAsked: row("line_1", "not-asked", ""),
   unreadable: row("goal", "unreadable", ""),
   // The shape `resolve` actually writes for rule 2, measured 2026-09-12:
   // `why` set and no `result` key at all, because rule 2's fallback is an
@@ -7345,7 +7349,7 @@ console.log(JSON.stringify({
     .find(r => r.includes("TYPED GOAL")),
   uncited: row("goal", "uncited", ""),
   stands: row("goal", "", ""),
-  liveLimitWins: row("output", "not-asked", "Codex publishes no demonstrated work results."),
+  liveLimitWins: row("line_1", "not-asked", "Codex publishes no demonstrated work results."),
   future: row("goal", "a-token-from-the-future", ""),
   liveRulesWin: shape({goal: {result: "departure", cites: ["u1"], detail: "drifted",
     clause: "x", why: "uncited"}}).criteria[0].result,
@@ -7433,13 +7437,13 @@ console.log(JSON.stringify({
             + """
 const limit = nextCockpitWorkEvidenceLimit("codex");
 const rows = shape({goal:{result:"consistent with the evidence read", cites:["a1"]},
-  output:{result:"departure", cites:["a1"]}}, limit).criteria;
+  line_1:{result:"departure", cites:["a1"]}}, limit).criteria;
 console.log(JSON.stringify({
   limited: Object.fromEntries(rows.map(row => [row.key, row.result])),
   // Mutually exclusive per row: it states its evidence or states its limit.
   evidence: Object.fromEntries(rows.map(row => [row.key, row.evidence])),
   limits: Object.fromEntries(rows.map(row => [row.key, row.limit])),
-  why: rows.find(row => row.key === "output").why,
+  why: rows.find(row => row.key === "line_1").why,
 }));
 """
         )
@@ -7449,14 +7453,14 @@ console.log(JSON.stringify({
         # deliverables. It bears on Expected Output and not on Goal: a
         # transcript is exactly the evidence a change of direction leaves.
         self.assertEqual(
-            {"goal": "consistent with the evidence read", "output": unverifiable},
+            {"goal": "consistent with the evidence read", "line_1": unverifiable},
             out["limited"],
         )
         self.assertEqual(
-            {"goal": ["result · dispatch artifact · exact"], "output": []}, out["evidence"]
+            {"goal": ["result · dispatch artifact · exact"], "line_1": []}, out["evidence"]
         )
         self.assertEqual("", out["limits"]["goal"])
-        self.assertIn("publishes no demonstrated work results", out["limits"]["output"])
+        self.assertIn("publishes no demonstrated work results", out["limits"]["line_1"])
         # The limit has its own row. Setting `why` to the same string printed
         # the identical sentence twice, the second prefixed `limit ·`.
         self.assertEqual("", out["why"])
@@ -7466,7 +7470,7 @@ console.log(JSON.stringify({
             self.ENTRIES
             + """
 const one = nextCockpitReadingShape({criteria:{goal:{result:"departure", cites:["u1"]}}},
-  {goal:"do not change the board", output:""}, entries, "");
+  {goal:"do not change the board", line_1:""}, entries, "");
 console.log(JSON.stringify({
   both: shape({}).criteria.map(row => [row.key, row.label, row.clause]),
   goalOnly: one.criteria.map(row => row.key),
@@ -7477,7 +7481,7 @@ console.log(JSON.stringify({
         self.assertEqual(
             [
                 ["goal", "TYPED GOAL", "do not change the board"],
-                ["output", "EXPECTED OUTPUT", "six screenshots"],
+                ["line_1", "EXPECTED OUTCOME · LINE 1 · TYPED", "six screenshots"],
             ],
             out["both"],
         )
@@ -7646,8 +7650,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = {at};
@@ -7683,7 +7687,7 @@ __dashboard.sessions[0].annotation_assessment = {revision_read:1, criteria:{
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "";
-__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_line_1 = "";
 __dashboard.sessions[0].annotation_at = null;
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
@@ -7736,8 +7740,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -7825,8 +7829,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -7951,7 +7955,7 @@ console.log(JSON.stringify({{
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
-__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_line_1 = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -7986,7 +7990,7 @@ class CockpitADiscardLeavesARecordOnTheTabTest(NextPageJsHarness):
 
     Measured on the walk: the block was character-for-character the block a
     session nobody ever typed against gets -- "No revision saved yet", "No goal
-    typed for this session.", "No expected output typed." -- with no cue and no
+    typed for this session.", "No expected outcome typed." -- with no cue and no
     control. Three states rendering as two, which is the failure this milestone
     has shipped four times.
     """
@@ -8003,7 +8007,7 @@ class CockpitADiscardLeavesARecordOnTheTabTest(NextPageJsHarness):
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "";
-__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_line_1 = "";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_at = null;
@@ -8014,8 +8018,8 @@ __dashboard.sessions[0].annotation_discarded_at = __dashboard.generated - 60;
 """
         f"__dashboard.sessions[0].annotation_goal_why = "
         f"{json.dumps(annotation_store.DISCARDED_GOAL)};\n"
-        f"__dashboard.sessions[0].annotation_output_why = "
-        f"{json.dumps(annotation_store.DISCARDED_OUTPUT)};\n"
+        f"__dashboard.sessions[0].annotation_lines_why = "
+        f"{json.dumps(annotation_store.DISCARDED_LINES)};\n"
         f"__dashboard.sessions[0].annotation_discarded_why = "
         f"{json.dumps(annotation_store.DISCARD_RECORD)};\n"
         f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
@@ -8028,7 +8032,7 @@ __dashboard.sessions[0].annotation_discarded_at = __dashboard.generated - 60;
 __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "";
-__dashboard.sessions[0].annotation_output = "";
+__dashboard.sessions[0].annotation_line_1 = "";
 __dashboard.sessions[0].annotation_revision = null;
 __dashboard.sessions[0].annotation_revision_count = 0;
 __dashboard.sessions[0].annotation_at = null;
@@ -8038,8 +8042,8 @@ __dashboard.sessions[0].annotation_discarded_why = "";
 """
         f"__dashboard.sessions[0].annotation_goal_why = "
         f"{json.dumps(annotation_store.NO_GOAL_TYPED)};\n"
-        f"__dashboard.sessions[0].annotation_output_why = "
-        f"{json.dumps(annotation_store.NO_OUTPUT_TYPED)};\n"
+        f"__dashboard.sessions[0].annotation_lines_why = "
+        f"{json.dumps(annotation_store.NO_LINES_TYPED)};\n"
         f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
     )
 
@@ -8102,7 +8106,7 @@ console.log(JSON.stringify({
         self.assertNotEqual(never, discarded)
         self.assertIn(annotation_store.NO_GOAL_TYPED, never)
         self.assertNotIn(annotation_store.NO_GOAL_TYPED, discarded)
-        self.assertNotIn(annotation_store.NO_OUTPUT_TYPED, discarded)
+        self.assertNotIn(annotation_store.NO_LINES_TYPED, discarded)
         self.assertIn("No revision saved yet", never)
         self.assertNotIn("No revision saved yet", discarded)
         # And nothing on the never-typed block invents a discard.
@@ -8219,8 +8223,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "Ship the cockpit";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -8454,8 +8458,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -8718,7 +8722,7 @@ console.log(JSON.stringify({scopes: links}));
     def test_the_absence_sentence_goes_as_soon_as_the_box_stops_being_empty(self) -> None:
         """Finding L's remainder, in the one lane that does not redraw.
 
-        The renderer already drops "No expected output typed." once a draft
+        The renderer already drops "No expected outcome typed." once a draft
         exists, and a comment above it says so. But a keystroke deliberately
         does not redraw, and the handler updated the counter and the two
         controls and nothing else, so the sentence sat under the reader's own
@@ -8729,9 +8733,12 @@ console.log(JSON.stringify({scopes: links}));
             + CockpitHeldToTabTest.FOCUS_DOM
             + CockpitHeldToTabTest.ANNOTATED
             + """
+// The goal box empty, so it carries its absence sentence.
+__dashboard.sessions[0].annotation_goal = "";
+__dashboard.sessions[0].annotation_goal_why = "No goal typed for this session.";
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
-const input = controls.find(control => control.dataset.nextCockpitHeldKind === "output");
+const input = controls.find(control => control.dataset.nextCockpitHeldKind === "goal");
 const field = input.closest("[data-next-cockpit-held-field]");
 const absent = () => field.querySelector("[data-next-cockpit-held-absent]");
 const before = {text: absent() && absent().textContent, hidden: absent() && absent().hidden};
@@ -8750,7 +8757,7 @@ console.log(JSON.stringify({before, typing, cleared: absent().hidden}));
             storage_prelude({}) + self.FIXTURE,
         )
         assert isinstance(out, dict)
-        self.assertEqual("No expected output typed.", out["before"]["text"])
+        self.assertEqual("No goal typed for this session.", out["before"]["text"])
         self.assertFalse(out["before"]["hidden"])
         self.assertTrue(out["typing"]["hidden"])
         # In place, not by redrawing: the redraw is the defect this lane was
@@ -9302,8 +9309,8 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].annotation_goal = "do not change the board while '
             'capturing";\n'
             '__dashboard.sessions[0].annotation_goal_why = "";\n'
-            '__dashboard.sessions[0].annotation_output = "";\n'
-            '__dashboard.sessions[0].annotation_output_why = "";\n'
+            '__dashboard.sessions[0].annotation_line_1 = "";\n'
+            '__dashboard.sessions[0].annotation_lines_why = "";\n'
             "__dashboard.sessions[0].annotation_revision = 1;\n"
             "__dashboard.sessions[0].annotation_revision_count = 1;\n"
             "__dashboard.sessions[0].annotation_at = 200;\n"
@@ -9390,8 +9397,8 @@ console.log(JSON.stringify({
             "__dashboard.unasked = true;\n"
             '__dashboard.sessions[0].annotation_goal = "do not change the board";\n'
             '__dashboard.sessions[0].annotation_goal_why = "";\n'
-            '__dashboard.sessions[0].annotation_output = "";\n'
-            '__dashboard.sessions[0].annotation_output_why = "No expected output typed.";\n'
+            '__dashboard.sessions[0].annotation_line_1 = "";\n'
+            '__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";\n'
             "__dashboard.sessions[0].annotation_revision = 1;\n"
             "__dashboard.sessions[0].annotation_revision_count = 1;\n"
             "__dashboard.sessions[0].annotation_at = 100;\n"
@@ -9620,17 +9627,17 @@ const type = (kind, value) => {
   input.value = value;
   __fire("input", {target:input});
 };
-type("output", "Six screenshots");
+type("goal", "Six screenshots");
 await __settle();
-save("output");
+save("goal");
 await __settle();
 /* A second press with nothing typed between them. The mark from the first is
    still standing, and the words and the store are the same, so this is the
    repeat rather than a second attempt. */
-save("output");
+save("goal");
 await __settle();
 persisted = true;
-save("output");
+save("goal");
 await __settle();
 console.log(JSON.stringify({
   polite: wrote("next-cockpit-cue-status"),
@@ -9686,14 +9693,14 @@ const type = (kind, value) => {
   input.value = value;
   __fire("input", {target:input});
 };
-type("output", "Six screenshots");
+type("goal", "Six screenshots");
 await __settle();
-save("output");
+save("goal");
 await __settle();
-type("output", "Six screenshots and a log");
+type("goal", "Six screenshots and a log");
 await __settle();
-const marked = nextCockpitHeldStates.has("held:codex:focus-1:output");
-save("output");
+const marked = nextCockpitHeldStates.has("held:codex:focus-1:goal");
+save("goal");
 await __settle();
 console.log(JSON.stringify({marked, polite: wrote("next-cockpit-cue-status")}));
 """
@@ -9742,9 +9749,12 @@ type("goal", "Ship the cockpit");
 await __settle();
 save("goal");
 await __settle();
-type("output", "Six screenshots");
+// The expected outcome's first line, which saves as the whole list.
+const line = controls.find(control => control.dataset.nextCockpitHeldLineIndex === "0");
+line.value = "Six screenshots";
+__fire("input", {target:line});
 await __settle();
-save("output");
+save("lines");
 await __settle();
 console.log(JSON.stringify({
   polite: wrote("next-cockpit-cue-status"),
@@ -9992,8 +10002,8 @@ __dashboard.annotate = true;
 __dashboard.annotate_cap = 240;
 __dashboard.sessions[0].annotation_goal = "do not change the board";
 __dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_output = "";
-__dashboard.sessions[0].annotation_output_why = "";
+__dashboard.sessions[0].annotation_line_1 = "";
+__dashboard.sessions[0].annotation_lines_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
@@ -10180,7 +10190,7 @@ console.log(JSON.stringify({rows}));
         rows = self.whys(
             "__dashboard.unasked = true;\n"
             '__dashboard.sessions[0].annotation_goal = "";\n'
-            '__dashboard.sessions[0].annotation_output = "";\n'
+            '__dashboard.sessions[0].annotation_line_1 = "";\n'
         )
 
         self.assertEqual(
@@ -11890,8 +11900,8 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
     READING = (
         '__dashboard.sessions[0].annotation_goal = "do not change the board";\n'
         '__dashboard.sessions[0].annotation_goal_why = "";\n'
-        '__dashboard.sessions[0].annotation_output = "";\n'
-        '__dashboard.sessions[0].annotation_output_why = "No expected output typed.";\n'
+        '__dashboard.sessions[0].annotation_line_1 = "";\n'
+        '__dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";\n'
         "__dashboard.sessions[0].annotation_revision = 1;\n"
         "__dashboard.sessions[0].annotation_revision_count = 1;\n"
         "__dashboard.sessions[0].annotation_at = 100;\n"
@@ -11942,7 +11952,7 @@ class HeldToOrderingTest(NextPageJsHarness):
 
     ANNOTATED = (
         '__dashboard.sessions[0].annotation_goal = "Ship the cockpit";\n'
-        '__dashboard.sessions[0].annotation_output = "A green suite";\n'
+        '__dashboard.sessions[0].annotation_line_1 = "A green suite";\n'
         "__dashboard.sessions[0].annotation_revision = 1;\n"
         "__dashboard.sessions[0].annotation_revision_count = 1;\n"
         "__dashboard.sessions[0].annotation_at = 100;\n"
@@ -12163,7 +12173,7 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "late-words": "__dashboard.sessions[0].annotation_at = 200;\n",
         "no-words": (
             '__dashboard.sessions[0].annotation_goal = "";\n'
-            '__dashboard.sessions[0].annotation_output = "";\n'
+            '__dashboard.sessions[0].annotation_line_1 = "";\n'
         ),
         "settle-refused": "",
         "settle-unpersisted": "",
@@ -13187,7 +13197,7 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
             """
 const claude = __dashboard.sessions.find(row => row.sid === "claude-idle");
 Object.assign(claude, {annotation_goal:"add retry", annotation_goal_why:"",
-  annotation_output:"tests pass", annotation_output_why:"", annotation_revision:1,
+  annotation_line_1:"tests pass", annotation_lines_why:"", annotation_revision:1,
   annotation_revision_count:1, annotation_at:100, annotation_binding_why:"",
   annotation_assessment:{revision_read:1, scope:"mid-flight", scope_text:"So far.",
     criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]},

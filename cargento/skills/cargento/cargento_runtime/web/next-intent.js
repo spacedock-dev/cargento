@@ -96,11 +96,14 @@ function nextIntentSources(row, session, retained){
      from the reader's prompt, so the record cannot say they typed it. */
   let html = discarded ? line("Your words", row.discarded_why || "") : "";
   if(typed){
-    html += line(["latest-prompt", "first-prompt"].includes(row.goal_source) ? "Goal from your prompt" : "Typed goal", row.goal || row.goal_why || "No goal typed for this session.") +
-      line("Typed expected output", row.output || row.output_why || "No expected output typed.");
+    html += line(["latest-prompt", "first-prompt"].includes(row.goal_source) ? "Goal from your prompt" : "Typed goal", row.goal || row.goal_why || "No goal typed for this session.");
+    const lines = nextAnnotationLines(row);
+    html += lines.length
+      ? lines.map(item => line(`Expected outcome, line ${item.k}`, item.text)).join("")
+      : line("Expected outcome", row.lines_why || "No expected outcome typed.");
   }else if(!discarded){
     html += line("Typed words", nextData && nextData.annotate === true && nextIntentState === "read"
-      ? "No goal or expected output typed." : "Annotation evidence unavailable.");
+      ? "No goal or expected outcome typed." : "Annotation evidence unavailable.");
   }
   if(goal){
     const at = nextNumber(cached.observed_at);

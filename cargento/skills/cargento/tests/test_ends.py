@@ -588,7 +588,7 @@ class AStoredEndReachesAColdRowTest(ColdRowTestCase):
                     "detail": "",
                     "clause": "",
                 }
-                for name in reading.CONSTRAINTS
+                for name in (reading.CONSTRAINT_GOAL,)
             },
         }
         with self._board() as (app, config):
