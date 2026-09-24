@@ -1344,8 +1344,22 @@ two scored columns, never the case body. Each of those is a closed token or empt
 hand-written, so an entry naming anything else -- a kind, an origin or a harness outside the sets,
 or a key that is not a case id -- is refused rather than copied into the summary.
 
-A violation here is a committed file under `docs/abstention/` carrying a session id, prompt text or
-model prose, or a scoring run that reaches the annotation store or the reading route.
+The drift levels check (DRC-4692) is a second check under the same rules, and `docs/drift-levels/`
+is its committed half. `scripts/levels_cases.py --build` freezes cases from recorded Claude Code
+transcripts into `~/.cargento/drift-levels/cases.json`. Each case holds the session id, the
+transcript path, the working directory, the check lines and written paths layer 1 publishes, and the
+intent the owner set for the case. The build refuses a `CARGENTO_HOME` inside the repository. The
+owner's marks stay beside the cases, and only their sha256 is committed, in `marks-digest.json`,
+before any reading is attached or any result is written. Readings attached afterwards, which carry
+model detail, stay in `~/.cargento/drift-levels/readings.json`. `results.json` carries case ids, closed kind and reason
+tokens, marks, levels, outcomes, the digests and a timestamp. It carries no session id, path,
+command, intent text, fact id or model prose, and a test asserts that none of the local fields
+appears in it. Scoring calls no model and writes to neither the annotation store nor the reading
+route. The [drift levels documentation](docs/drift-levels/README.md) owns its format.
+
+A violation here is a committed file under `docs/abstention/` or `docs/drift-levels/` carrying a
+session id, prompt text, a recorded command or path, or model prose, or a scoring run that reaches
+the annotation store or the reading route.
 
 ### Cockpit dispatch and terminal reads
 

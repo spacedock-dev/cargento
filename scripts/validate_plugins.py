@@ -320,6 +320,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/reading.py",
     "skills/cargento/cargento_runtime/reading_policy.py",
     "skills/cargento/cargento_runtime/reading_route.py",
+    "skills/cargento/cargento_runtime/levels.py",
     "skills/cargento/cargento_runtime/reach.py",
     "skills/cargento/cargento_runtime/semantic_history.py",
     "skills/cargento/cargento_runtime/interaction_prototype.py",
