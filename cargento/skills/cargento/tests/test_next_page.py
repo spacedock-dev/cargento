@@ -1177,6 +1177,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-work-absent,.next-cockpit-work-limit",
         ".next-cockpit-work-derived",
         ".next-cockpit-work-dropped",
+        ".next-cockpit-work-result",
+        ".next-cockpit-work-checks",
         ".next-cockpit-work-mix",
         ".next-cockpit-work-summary",
         ".next-course-episode p,.next-course-episode ul,.next-course-direction p",
@@ -1348,7 +1350,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # selector count by exactly one. DRC-4642 then added one:
         # `.next-departure-reentry-why`, the limit sentence beside a departure.
         # DRC-4637 adds the goal link at the body floor; no selector moved down.
-        self.assertEqual(107, len(above))
+        # DRC-4676 adds two at the body floor: a check's result line and the
+        # sentence that counts the checks from the whole scan.
+        self.assertEqual(109, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

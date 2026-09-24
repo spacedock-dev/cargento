@@ -158,6 +158,10 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
 # nobody has named here is held out by the contract and by review, not by a
 # test. Keeping it in step with what the board publishes is part of adding a
 # published field, which is why the names are here rather than inferred.
+#
+# `tool_report` is tool-derived rather than prompt-derived: a Claude Code
+# session's check lines and written paths. It is named here because item 6 of
+# the ruling `reading.build_ledger` cites holds it to the same rule.
 PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
     "first_prompt",
     "annotation_goal",
@@ -167,6 +171,7 @@ PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
     "last_prompt",
     "state_detail",
     "title",
+    "tool_report",
 )
 
 # [DEC-13](SECURITY.md#local-history-the-session-history-store)'s allowlist, in code, and empty

@@ -874,5 +874,45 @@ class RedactSecretsTest(unittest.TestCase):
         self.assertEqual(listed, covered)
 
 
+class MaskCommandTest(unittest.TestCase):
+    """The credential forms a shape filter cannot recognise, masked in a command line.
+
+    DEC-23 item 5: a short password matches no credential shape, so a check's
+    command line is masked by FORM before `redact_clip` runs over it. Every
+    value here is synthetic; what matters is that it never survives.
+    """
+
+    VALUE = "hunter2x"
+
+    def test_an_environment_assignment_keeps_its_name_and_loses_its_value(self) -> None:
+        masked = records.mask_command(f"PGPASSWORD={self.VALUE} psql -h db pytest")
+        self.assertNotIn(self.VALUE, masked)
+        self.assertIn("PGPASSWORD=", masked)
+
+    def test_a_password_flag_in_every_spelling_loses_its_value(self) -> None:
+        for line in (
+            f"mysql -p {self.VALUE} -e 'select 1'",
+            f"mysql -p{self.VALUE} -e 'select 1'",
+            f"tool --password {self.VALUE} run",
+            f"tool --password={self.VALUE} run",
+        ):
+            with self.subTest(line=line):
+                self.assertNotIn(self.VALUE, records.mask_command(line))
+
+    def test_a_url_with_a_user_and_password_keeps_the_user_and_loses_the_password(self) -> None:
+        for line in (
+            f"pytest --db postgres://app:{self.VALUE}@localhost/test",
+            f"pytest --db app:{self.VALUE}@localhost:5432",
+        ):
+            with self.subTest(line=line):
+                masked = records.mask_command(line)
+                self.assertNotIn(self.VALUE, masked)
+                self.assertIn("app:", masked)
+
+    def test_a_command_with_nothing_to_mask_reads_as_it_was_typed(self) -> None:
+        line = "python3 -m pytest tests/test_retry.py -q 2>&1 | tail -20"
+        self.assertEqual(line, records.mask_command(line))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -80,6 +80,27 @@ class SemanticHistoryTest(unittest.TestCase):
             self.assertNotIn(secret, path.read_text())
             self.assertEqual("person:captain", rewritten["events"][0]["fact"]["by"])
 
+    def test_a_reader_who_restarts_finds_no_check_or_written_path_in_history(self) -> None:
+        # DEC-23 item 6: the checks a Claude Code session ran live in the
+        # observed record only. `collect` never hands them to the history
+        # source; this is the second wall, should a fact reach `update` anyway.
+        check = self._fact("check", 100, "tool_report", "check_run", "pytest -q", None)
+        write = self._fact("write", 101, "tool_report", "path_written", "src/retry.py", None)
+        person = self._fact("steer", 102, "user_message", "steer", "add retry", None)
+        model = {"facts": [check, write, person], "work_items": []}
+        result = semantic_history.update(
+            self.config, build_runtime_state(self.config, started=1), "project", model, [], now=105
+        )
+        restarted = semantic_history.read(
+            self.config, build_runtime_state(self.config, started=106), "project"
+        )
+        stored = json.dumps(result) + json.dumps(restarted)
+        stored += Path(semantic_history.store_path(self.config)).read_text()
+        self.assertIn("add retry", stored)
+        self.assertNotIn("pytest", stored)
+        self.assertNotIn("src/retry.py", stored)
+        self.assertNotIn("tool_report", semantic_history._FACT_EVENT_TYPES)
+
     def test_a_failed_read_repair_retries_and_cleans_other_projects_too(self) -> None:
         secret = "sk-ant-api03-" + "b" * 93
         path = Path(semantic_history.store_path(self.config))

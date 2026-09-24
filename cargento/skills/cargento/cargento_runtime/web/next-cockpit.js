@@ -1213,17 +1213,92 @@ function nextCockpitHeldField(session, annotation, spec, cap){
    type on the way to the screen.
 
    The limit line is unconditional and it is the half a reader cannot infer.
-   Demonstrated work results come from `_work_evidence`, which returns nothing
-   for any harness but Pi, so on Claude and Codex the rows above are
+   Demonstrated work results come from `_work_evidence` on Pi, and on Claude
+   Code from `claude_tool_reports`: the checks a session ran and the files it
+   wrote, each result as the tool reported it. On Codex the rows above are
    instructions, dispatches and gate decisions and never an inspected file,
    test or deliverable. Without the sentence an empty list reads as "no work
    was done" rather than "that path was never taken here". */
 function nextCockpitWorkEvidenceLimit(harness){
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
-  return harness === "pi"
-    ? `${label} publishes demonstrated work results, and they are read here.`
-    : `${label} publishes no demonstrated work results. Cargento reads those on Pi ` +
-      "alone, so nothing above is an inspected file, test or deliverable.";
+  if(harness === "pi") return `${label} publishes demonstrated work results, and they are read here.`;
+  if(harness === "claude"){
+    return `${label} records the checks a session ran and the files it wrote, and they are ` +
+      "listed here. A result is what the tool reported; Cargento inspects no file, test or " +
+      "deliverable.";
+  }
+  return `${label} publishes no demonstrated work results. Cargento reads those on Pi ` +
+    "alone, so nothing above is an inspected file, test or deliverable.";
+}
+
+/* The reading's Expected Output limit, apart from the record's own line. They
+   were one function, and the record now lists Claude Code's checks while a
+   reading may not read them until DRC-4677 admits them, under item 7 of
+   [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work).
+   One sentence for both would either deny the checks beside it or lift the
+   demotion early. */
+function nextReadingOutputLimit(harness){
+  if(harness === "pi") return "";
+  if(harness !== "claude") return nextCockpitWorkEvidenceLimit(harness);
+  const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
+  return `${label} records the checks a session ran, but no reading reads them yet, so a ` +
+    "reading cannot judge an expected output here.";
+}
+
+/* A check's or a written path's own line under its summary: who, what, and
+   what the tool reported, in the design's actor · meta form. The result words
+   say where the result came from, because "passed" from an error flag and
+   "passed" from a summary line are different strengths of the same claim. */
+const NEXT_COCKPIT_CHECK_RESULTS = {
+  "failed flag": "failed, as the tool reported",
+  "passed flag": "passed, as the tool reported",
+  "failed summary": "failed, per its summary line",
+  "passed summary": "passed, per its summary line",
+  "failed marker": "failed, per a failure line in its output",
+};
+
+function nextCockpitToolReportLine(entry){
+  if(entry.subject !== "check") return "Agent · file written";
+  const parts = ["Agent", "check", NEXT_COCKPIT_CHECK_RESULTS[`${entry.result} ${entry.resultSource}`]
+    || "ran, result not recorded"];
+  if(entry.earlierFailed) parts.push("an earlier run failed");
+  if(entry.beforeLastChange) parts.push("before the last change");
+  return parts.join(" · ");
+}
+
+/* What the whole scan found, from the counts `claude_tool_reports` publishes
+   beside the rows. Every figure here is the full scan, never the listed rows:
+   a dropped entry must not turn into "no check" or into a reassurance, as
+   item 4 of the same ruling requires. A background launch is named, because a background run
+   records no result and a sentence that said no check ran would be false. */
+function nextCockpitCheckScan(scan){
+  if(!scan || typeof scan !== "object") return "";
+  const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const runs = nextNumber(scan.check_runs) || 0;
+  const background = nextNumber(scan.background) || 0;
+  const written = nextNumber(scan.written_paths) || 0;
+  const other = nextNumber(scan.other_commands) || 0;
+  const more = nextNumber(scan.more) || 0;
+  if(!runs && !background && !written && !other){
+    return "No check ran in the part of the transcript read.";
+  }
+  const found = [];
+  if(runs){
+    found.push(`${count(runs, "check run", "check runs")} across ` +
+      `${count(nextNumber(scan.distinct_checks) || 0, "distinct check", "distinct checks")}`);
+  } else {
+    found.push("no check in the foreground");
+  }
+  if(written) found.push(count(written, "file written", "files written"));
+  const counted = [];
+  if(background){
+    counted.push(`${count(background, "background launch", "background launches")}, ` +
+      "because a background run records no result");
+  }
+  if(other) counted.push(count(other, "other shell command", "other shell commands"));
+  return `From the part of the transcript read: ${found.join(", ")}.` +
+    (counted.length ? ` Counted and not listed: ${counted.join("; ")}.` : "") +
+    (more ? ` Failures are listed first, and ${more} more are counted and not listed.` : "");
 }
 
 /* The entries, once. The rows below render them and a reading cites them, so
@@ -1261,8 +1336,12 @@ function nextCockpitWorkSource(group, session){
      under rule 3, and the block then printed "the reading raised no
      departure" about one the payload still held. */
   const entries = all.slice(-NEXT_COCKPIT_WORK_ROWS);
+  const reports = entry.data.sources && entry.data.sources.work &&
+    entry.data.sources.work.tool_reports;
+  const scan = (Array.isArray(reports) ? reports : []).find(row => row && sessKey(row) === key)
+    || null;
   if(entries.length){
-    return {entries, all, state: "read", shown: entries.length, total: all.length};
+    return {entries, all, scan, state: "read", shown: entries.length, total: all.length};
   }
   if(entry.error) return {entries, all, state: "error"};
   /* Whether the scan that produces these facts reached this session. The
@@ -1282,11 +1361,11 @@ function nextCockpitWorkSource(group, session){
   const omittedHere = Array.isArray(omittedRows) && omittedRows.some(row =>
     row && sessKey(row) === key);
   if(omittedHere){
-    return {entries, all, state: "partial", scanned: nextNumber(
+    return {entries, all, scan, state: "partial", scanned: nextNumber(
       entry.data.sources.observer && entry.data.sources.observer.live),
       omitted: omittedRows.length};
   }
-  return {entries, all, state: "empty"};
+  return {entries, all, scan, state: "empty"};
 }
 
 function nextCockpitWorkAbsence(source){
@@ -1326,6 +1405,11 @@ function nextCockpitWorkEntries(session, semantic){
         at: fact.at,
         actorClaim: String(fact.actor_claim || ""),
         modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
+        subject: String(fact.subject || ""),
+        result: String(fact.result || ""),
+        resultSource: String(fact.result_source || ""),
+        earlierFailed: fact.earlier_failed === true,
+        beforeLastChange: fact.before_last_change === true,
         source: [evidence.source, evidence.confidence].map(value =>
           String(value == null ? "" : value).trim()).filter(Boolean).join(" · "),
       };
@@ -1351,6 +1435,9 @@ function nextCockpitWorkEvidence(session, source){
     const summary = entry.modelDerived
       ? `<em class="next-cockpit-work-derived">${esc(entry.summary)}</em>`
       : `<span class="next-cockpit-work-summary">${esc(entry.summary)}</span>`;
+    const report = entry.type === "tool_report"
+      ? `<span class="next-cockpit-work-result">${esc(nextCockpitToolReportLine(entry))}</span>`
+      : "";
     return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(entry.type)}">` +
       `<span class="next-cockpit-work-type">${esc(entry.type)}</span>${summary}` +
       `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}` +
@@ -1361,7 +1448,7 @@ function nextCockpitWorkEvidence(session, source){
       `${entry.actorClaim && !entry.source.includes(entry.actorClaim)
         ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
-      '</span></div>';
+      `</span>${report}</div>`;
   }).join("");
   return '<section class="next-cockpit-work" data-next-cockpit-work>' +
     '<header><h2>OBSERVED RECORD</h2></header>' +
@@ -1369,6 +1456,8 @@ function nextCockpitWorkEvidence(session, source){
       `${esc(nextCockpitWorkAbsence(source))}</p>`) +
     (entries.length ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(entries))}</p>`
       : "") +
+    (source.scan ? `<p class="next-cockpit-work-checks">${esc(nextCockpitCheckScan(source.scan))}` +
+      "</p>" : "") +
     (source.shown != null && source.shown < source.total
       ? `<p class="next-cockpit-work-dropped">Showing the ${source.shown} most recent of ` +
         `${source.total} observed entries.</p>` : "") +
@@ -1614,7 +1703,7 @@ function nextReadingPersonAuthored(entry){
    REQUEST is not evidence of one either. Keyed on authorship, citing the
    reader's own words licensed a `consistent` about her own deliverable while
    citing the actual work result demoted. */
-const NEXT_READING_WORK_TYPES = ["work_result", "result"];
+const NEXT_READING_WORK_TYPES = ["work_result", "result", "tool_report"];
 
 function nextReadingDemonstratesWork(entry){
   return NEXT_READING_WORK_TYPES.indexOf(String(entry && entry.type || "")) >= 0;
@@ -2464,8 +2553,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const control = '<div class="next-session-drift-check">' +
     nextCockpitReadingControl(session, annotation, model, primary) + '</div>';
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
-  const limit = String(session.harness || "") === "pi"
-    ? "" : nextCockpitWorkEvidenceLimit(String(session.harness || ""));
+  const limit = nextReadingOutputLimit(String(session.harness || ""));
   const raw = annotation && annotation.assessment;
   const withheld = String(annotation && annotation.reading_withheld || "");
   /* `defined` rather than sniffing the composed body: the no-reading arm

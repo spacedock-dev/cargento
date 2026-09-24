@@ -5475,7 +5475,10 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertEqual(0, out["rows"])
         self.assertEqual("No entry in the observed record names this session.", out["absent"])
-        self.assertIn("Claude publishes no demonstrated work results.", out["limit"])
+        # DRC-4676: Claude Code's record now lists checks, so its line no longer
+        # denies them; an empty record still says so in the sentence above it.
+        self.assertIn("Claude records the checks a session ran", out["limit"])
+        self.assertNotIn("publishes no demonstrated work results", out["limit"])
 
     def test_saving_sends_only_the_field_that_changed_and_keeps_a_refusal(self) -> None:
         out = self.run_fixture(
@@ -12813,3 +12816,201 @@ console.log(JSON.stringify({
         self.assertNotIn("data-next-cockpit-stale-read", out["html"])
         self.assertNotIn("data-next-cockpit-tab-stale", out["html"])
         self.assertNotIn("Refresh has failed since", out["html"])
+
+
+class ClaudeChecksInTheObservedRecordTest(NextPageJsHarness):
+    """DRC-4676: a Claude Code reader sees the checks a session ran and the files it wrote.
+
+    The entries are `project_context.claude_tool_reports`' facts, one type with
+    a `subject`; the sentence about them reads the full-scan counts published
+    on `sources.work.tool_reports`, never the listed rows (DEC-23 item 4).
+    """
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ANNOTATED = CockpitHeldToTabTest.ANNOTATED
+    SESSION = '{harness:"claude", sid:"claude-idle"}'
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def page(self, scan: str, facts: str = "") -> str:
+        return (
+            self.ANNOTATED
+            + f"""
+const __who = {self.SESSION};
+const __tool = (id, at, subject, summary, extra, source) => ({{fact_id:id, at, type:"tool_report",
+  subject, summary, source_session:__who, evidence:{{source, confidence:"exact"}}, ...extra}});
+__semantic.facts.push({
+                facts
+                or '''
+  __tool("w1", 101, "write", "src/retry.py", {}, "Claude Write call"),
+  __tool("c2", 102, "check", "node --test 2>&1", {result:"not-recorded"},
+    "Claude Bash call and paired result"),
+  __tool("c1", 103, "check", "python3 -m pytest tests", {result:"passed", result_source:"flag",
+    earlier_failed:true}, "Claude Bash call and paired result")'''
+            });
+const __scan = {scan};
+__fetchImpl = async url => ({{ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {{semantic: __semantic, child_assignments: [], observers: [],
+        sources: {{work: {{omitted: [], tool_reports: __scan ? [__scan] : []}}}}}}
+    : __dashboard}});
+nextCockpitContexts.clear();
+navigateNext({{view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"}});
+await __settle();
+await __settle();
+const html = __els.app.innerHTML;
+const texts = cls => [...html.matchAll(new RegExp(`class="${{cls}}">([^<]*)<`, "g"))]
+  .map(m => m[1].replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&"));
+"""
+        )
+
+    FULL_SCAN = (
+        '{harness:"claude", sid:"claude-idle", shell_calls:7, check_runs:4, distinct_checks:2,'
+        " other_commands:2, read_only_commands:1, background:1, written_paths:1,"
+        " outside_paths:0, failed:0, passed:1, not_recorded:1, unknown_flags:0, listed:3,"
+        " more:2, last_changing_command_at:null}"
+    )
+
+    def test_a_reader_sees_each_check_with_what_the_tool_reported_in_time_order(self) -> None:
+        out = self.run_fixture(
+            self.page(self.FULL_SCAN)
+            + """
+console.log(JSON.stringify({
+  rows: [...html.matchAll(/data-next-cockpit-work-type="tool_report"/g)].length,
+  summaries: texts("next-cockpit-work-summary"),
+  results: texts("next-cockpit-work-result"),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(3, out["rows"])
+        self.assertEqual(
+            ["src/retry.py", "node --test 2>&1", "python3 -m pytest tests"],
+            [
+                s
+                for s in out["summaries"]
+                if s in ("src/retry.py", "node --test 2>&1", "python3 -m pytest tests")
+            ],
+        )
+        self.assertEqual(
+            [
+                "Agent · file written",
+                "Agent · check · ran, result not recorded",
+                "Agent · check · passed, as the tool reported · an earlier run failed",
+            ],
+            out["results"],
+        )
+
+    def test_a_pass_before_a_later_write_says_so(self) -> None:
+        out = self.run_fixture(
+            self.page(
+                self.FULL_SCAN,
+                facts="""__tool("c1", 103, "check", "pytest", {result:"passed",
+                  result_source:"summary", before_last_change:true},
+                  "Claude Bash call and paired result"),
+                __tool("c3", 104, "check", "mypy src", {result:"failed", result_source:"marker"},
+                  "Claude Bash call and paired result")""",
+            )
+            + 'console.log(JSON.stringify(texts("next-cockpit-work-result")));'
+        )
+        self.assertEqual(
+            [
+                "Agent · check · passed, per its summary line · before the last change",
+                "Agent · check · failed, per a failure line in its output",
+            ],
+            out,
+        )
+
+    def test_the_counts_come_from_the_whole_scan_and_name_what_was_left_out(self) -> None:
+        out = self.run_fixture(
+            self.page(self.FULL_SCAN)
+            + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
+        )
+        assert isinstance(out, list)
+        self.assertEqual(1, len(out))
+        sentence = out[0]
+        self.assertIn("4 check runs across 2 distinct checks", sentence)
+        self.assertIn("1 file written", sentence)
+        self.assertIn("1 background launch", sentence)
+        self.assertIn("2 other shell commands", sentence)
+        self.assertIn("and 2 more", sentence)
+
+    def test_a_background_launch_is_never_read_as_no_check_at_all(self) -> None:
+        scan = (
+            '{harness:"claude", sid:"claude-idle", shell_calls:2, check_runs:0,'
+            " distinct_checks:0, other_commands:1, read_only_commands:1, background:1,"
+            " written_paths:0, outside_paths:0, failed:0, passed:0, not_recorded:0,"
+            " unknown_flags:0, listed:0, more:0, last_changing_command_at:null}"
+        )
+        out = self.run_fixture(
+            self.page(scan, facts="")
+            + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
+        )
+        assert isinstance(out, list)
+        self.assertEqual(1, len(out))
+        self.assertNotIn("No check ran", out[0])
+        self.assertIn("1 background launch", out[0])
+        self.assertIn("records no result", out[0])
+
+    def test_a_session_with_no_check_in_the_scan_says_none_ran(self) -> None:
+        scan = (
+            '{harness:"claude", sid:"claude-idle", shell_calls:0, check_runs:0,'
+            " distinct_checks:0, other_commands:0, read_only_commands:0, background:0,"
+            " written_paths:0, outside_paths:0, failed:0, passed:0, not_recorded:0,"
+            " unknown_flags:0, listed:0, more:0, last_changing_command_at:null}"
+        )
+        out = self.run_fixture(
+            self.page(scan, facts="")
+            + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
+        )
+        self.assertEqual(["No check ran in the part of the transcript read."], out)
+
+    def test_an_unread_scan_says_nothing_about_checks(self) -> None:
+        out = self.run_fixture(
+            self.page("null") + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
+        )
+        self.assertEqual([], out)
+
+    def test_the_limit_line_no_longer_denies_the_checks_it_sits_under(self) -> None:
+        out = self.run_fixture(
+            self.page(self.FULL_SCAN)
+            + """
+console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
+  codex: nextCockpitWorkEvidenceLimit("codex"), pi: nextCockpitWorkEvidenceLimit("pi"),
+  readingClaude: nextReadingOutputLimit("claude"), readingCodex: nextReadingOutputLimit("codex"),
+  readingPi: nextReadingOutputLimit("pi")}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["limit"]))
+        self.assertNotIn("publishes no demonstrated work results", out["limit"][0])
+        self.assertNotIn("nothing above is an inspected file", out["limit"][0])
+        self.assertIn("the checks a session ran", out["limit"][0])
+        # Codex and Pi read exactly what they read before.
+        self.assertEqual(
+            "Codex publishes no demonstrated work results. Cargento reads those on Pi alone,"
+            " so nothing above is an inspected file, test or deliverable.",
+            out["codex"],
+        )
+        self.assertEqual(
+            "Pi publishes demonstrated work results, and they are read here.", out["pi"]
+        )
+        # The reading keeps demoting Expected Output on Claude until DRC-4677,
+        # and says why without denying the checks the record lists.
+        self.assertTrue(out["readingClaude"])
+        self.assertNotIn("publishes no demonstrated work results", out["readingClaude"])
+        self.assertIn("no reading reads them yet", out["readingClaude"])
+        self.assertEqual(out["codex"], out["readingCodex"])
+        self.assertEqual("", out["readingPi"])
+
+    def test_a_check_counts_as_work_in_the_records_own_totals(self) -> None:
+        out = self.run_fixture(
+            self.page(self.FULL_SCAN)
+            + 'console.log(JSON.stringify(texts("next-cockpit-work-mix")));'
+        )
+        assert isinstance(out, list)
+        self.assertIn("3 observed of what it did", out[0])

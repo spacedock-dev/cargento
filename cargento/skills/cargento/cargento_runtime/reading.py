@@ -147,10 +147,11 @@ AUTHOR_PERSON = "person"
 AUTHOR_AGENT = "agent"
 AUTHOR_DERIVED = "derived"
 
-# Only Pi publishes demonstrated work results; `_work_evidence` returns nothing
-# for every other harness. Outside this set the Expected Output constraint is
-# never put to the model, which is what makes a deliverable claim unrenderable
-# rather than rare.
+# Only Pi's demonstrated work results reach a reading; `_work_evidence` returns
+# nothing for every other harness, and Claude Code's checks are dropped by
+# `build_ledger` until DRC-4677. Outside this set the Expected Output constraint
+# is never put to the model, which is what makes a deliverable claim
+# unrenderable rather than rare.
 WORK_EVIDENCE_HARNESSES = ("pi",)
 
 # Which cited entries may carry a verdict about a deliverable. rule 7
@@ -164,7 +165,15 @@ WORK_EVIDENCE_HARNESSES = ("pi",)
 #
 # This only ever narrows what may be said, so it cannot create a reassurance
 # that was not already reachable.
-WORK_EVIDENCE_TYPES = frozenset({"work_result", "result"})
+WORK_EVIDENCE_TYPES = frozenset({"work_result", "result", "tool_report"})
+
+# The checks a Claude Code session ran and the files it wrote, as
+# `project_context` publishes them into the observed record. The reading counts
+# them as work (`WORK_EVIDENCE_TYPES`, held equal to the page's list), but
+# `build_ledger` drops them until DRC-4677 admits them after a fresh Allow that
+# names tool output and its destination (item 7 of the ruling `build_ledger`
+# cites).
+TOOL_REPORT_TYPE = "tool_report"
 
 SCOPE_MID_FLIGHT = "mid-flight"
 SCOPE_FINAL = "final"
@@ -628,6 +637,11 @@ def build_ledger(
     and `"claude/x:y"` join to the same thing, and an empty harness with an
     empty sid matched every fact whose `source_session` was `{}`. Both arms put
     another session's evidence in this session's citable list.
+
+    One deliberate difference from the page: a `TOOL_REPORT_TYPE` entry is
+    listed there and never here, because nothing may carry it to a model yet.
+    The page cannot be cited into it, so the gap costs no citation. Item 7:
+    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
     """
     if not harness.strip() or not sid.strip():
         return ()
@@ -639,6 +653,8 @@ def build_ledger(
         if not isinstance(session, dict):
             continue
         if (session.get("harness"), session.get("sid")) != (harness, sid):
+            continue
+        if fact.get("type") == TOOL_REPORT_TYPE:
             continue
         # Stripped before the emptiness test: a whitespace-only id survives
         # `safe_text` as a single space, which is truthy, so two rows would

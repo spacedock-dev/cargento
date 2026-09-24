@@ -1115,9 +1115,10 @@ no Claude Code reading was run.
 
 ### Tool output in a Claude Code reading
 
-Ruled 2026-09-24 by [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) and not built yet. DRC-4676 builds the record and keeps it off
-every model prompt and the unasked lane; DRC-4677 admits it to a reading. The named-read count under
-Irreversible actions moves in DRC-4676, not before.
+Ruled 2026-09-24 by [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work). The record is built: `project_context.claude_tool_reports`
+reads it into the observed record, and `reading.build_ledger` drops it from every model prompt and
+the unasked lane. DRC-4677 admits it to a reading, and until then nothing in it leaves this machine.
+The named read is listed under Irreversible actions.
 
 The content class is what a Claude Code transcript recorded about the checks a session ran and the
 files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
@@ -1127,7 +1128,9 @@ the forms redaction cannot recognise (`NAME=value`, `-p` and `--password` values
 clipped to 120 characters; the last 180 characters of output, with redaction run over the whole read
 window before the clip; and a written path relative to the working directory. No file content is
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
-rest are counted. The class lives in the observed record only, as its own fact type, kept out of the
+rest are counted. Today the output tail is read only to classify a check's result: the published
+entry carries the check segment, the result and where the result came from, and never the output
+itself. The class lives in the observed record only, as its own fact type, kept out of the
 semantic history store and out of every session row field, and it is named in
 `history.PROMPT_DERIVED_CARRIERS`.
 
@@ -1749,11 +1752,15 @@ The operator-cockpit prototype also reads dispatch evidence:
 - `project_context.codex_dispatch_events` reads `spawn_agent` arguments to join a task name to
   a readable dispatch artifact. Its backward scan is capped at 32 MiB by default; project event
   output is capped at 100 rows and semantic lines at 112 characters.
+- `project_context.claude_tool_reports` reads a Claude Code session's `Bash` calls and the
+  `file_path` of its `Write`, `Edit` and `MultiEdit` calls, for the checks it ran and the files it
+  wrote. Of a `Write` or `Edit` it reads the path and nothing else. [Tool output in a Claude Code
+  reading](#tool-output-in-a-claude-code-reading) states its bounds and where the result may go.
 
-These are evidence reads, not command execution. In total, seven expressions in `cargento_runtime`
+These are evidence reads, not command execution. In total, eight expressions in `cargento_runtime`
 reach an input payload. The counts and module names are checked by `test_documentation`.
-DEC-23 adds a named read for the checks a Claude Code session ran; it arrives with DRC-4676, which
-moves that count, and [its entry](#tool-output-in-a-claude-code-reading) states its bounds.
+DEC-23's named read for the checks a Claude Code session ran is the eighth, and
+[its entry](#tool-output-in-a-claude-code-reading) states its bounds.
 The prototype has no additional switch that disables just these dispatch reads.
 
 A shape match is a different kind of read from those. It happens in the hook, inside
@@ -1843,10 +1850,11 @@ pattern, a hook that returns anything but its harness's no-opinion answer, an en
 document has not named, or a shape identifier in the history store with no published field behind
 it.
 
-DEC-23 scopes the tool-output clause above once DRC-4676 ships. It governs what a hook reports and
-the socket it posts to. The bounded tool output a Claude Code transcript recorded is a separate read
-from the transcript, and it reaches a model only under the destination rule in
-[Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading).
+DEC-23 scopes the command and tool-output clauses above to the hook: they govern what a hook
+reports and the socket it posts to. A Claude Code check line, and the output tail read to classify
+it, are a separate read from the transcript. The check line reaches the page the way other
+transcript text does, bounded and redacted, and neither reaches a model except under the destination
+rule in [Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading).
 
 ## The ask lane (`ask_operator`)
 

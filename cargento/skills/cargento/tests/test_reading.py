@@ -1730,5 +1730,98 @@ class WhatAClaudeCodeReadingCostsAndProduces(unittest.TestCase):
         )
 
 
+class WhatAClaudeCodeCheckMayNotYetReachAModel(unittest.TestCase):
+    """DEC-23 item 7: the checks a Claude Code session ran stay on the machine.
+
+    DRC-4676 publishes them into the observed record and DRC-4677 admits them
+    to a reading after a fresh Allow. Until then `build_ledger` drops them, and
+    every route to a model -- the Codex producer, the Claude Code producer, the
+    fallback route and the unasked lane -- builds its prompt from that ledger.
+    """
+
+    CHECK: ClassVar[dict[str, Any]] = {
+        "fact_id": "check-1",
+        "type": "tool_report",
+        "subject": "check",
+        "result": "failed",
+        "summary": "python3 -m pytest tests/test_retry.py",
+        "at": 95.0,
+        "evidence": {"source": "Claude Bash call and paired result", "confidence": "exact"},
+        "source_session": {"harness": "claude", "sid": "s1"},
+    }
+    WRITE: ClassVar[dict[str, Any]] = {
+        **CHECK,
+        "fact_id": "write-1",
+        "subject": "write",
+        "summary": "src/retry.py",
+        "evidence": {"source": "Claude Write call", "confidence": "exact"},
+    }
+
+    def setUp(self) -> None:
+        self.prompts: list[str] = []
+        state_dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, state_dir, True)
+        self.config = WhatOnePressActuallyCostsAndProduces._Config()
+        self.config.state_dir = state_dir  # type: ignore[attr-defined]
+
+    def _model(self, prompt: str, **_kw: Any) -> tuple[str, str]:
+        self.prompts.append(prompt)
+        return "{}", "ok"
+
+    def _produce(self, facts: list[dict[str, Any]], model: Any) -> Any:
+        return reading.produce(
+            cast("Any", self.config),
+            {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None},
+            [{"n": 1, "at": 50.0, "goal": "add retry to the webhook", "output": "tests pass"}],
+            facts,
+            now=200.0,
+            stamp_text="read at 10:00",
+            model=model,
+        )
+
+    def test_the_type_the_page_lists_is_the_type_the_ledger_drops(self) -> None:
+        self.assertEqual("tool_report", reading.TOOL_REPORT_TYPE)
+
+    def test_a_reader_who_presses_analyze_sends_no_check_or_written_path(self) -> None:
+        person = WhatOnePressActuallyCostsAndProduces.FACT
+        ledger = reading.build_ledger([person, self.CHECK, self.WRITE], "claude", "s1")
+        self.assertEqual(["f1"], [row["id"] for row in ledger])
+
+    def test_no_route_to_a_model_carries_a_check_the_session_ran(self) -> None:
+        person = WhatOnePressActuallyCostsAndProduces.FACT
+        claude_prompts: list[bytes] = []
+
+        def runner(command: list[str], **kwargs: Any) -> Any:
+            claude_prompts.append(kwargs.get("input") or b"")
+            kwargs["stdout"].write(b"{}")
+            return subprocess.CompletedProcess(command, 0)
+
+        routes: dict[str, Any] = {
+            "codex or fallback": self._model,
+            "claude code": reading.ClaudeReadingModel(
+                cast("Any", self.config),
+                runner=runner,
+                binary_resolver=lambda _name: "/usr/local/bin/claude",
+            ),
+        }
+        for name, model in routes.items():
+            with self.subTest(route=name):
+                self._produce([person, self.CHECK, self.WRITE], model)
+        sent = "\n".join(self.prompts) + "".join(
+            chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else str(chunk)
+            for chunk in claude_prompts
+        )
+        self.assertIn("please add a CSV export", sent)
+        self.assertNotIn("pytest", sent)
+        self.assertNotIn("src/retry.py", sent)
+
+    def test_a_session_whose_only_record_is_its_checks_spends_nothing(self) -> None:
+        assessment, why, spent = self._produce([self.CHECK, self.WRITE], self._model)
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
+        self.assertFalse(spent)
+        self.assertEqual([], self.prompts)
+
+
 if __name__ == "__main__":
     unittest.main()
