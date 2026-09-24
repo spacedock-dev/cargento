@@ -1123,9 +1123,9 @@ The named read is listed under Irreversible actions.
 The content class is what a Claude Code transcript recorded about the checks a session ran and the
 files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
-the check's own segment, never the rest of the shell line, after credential redaction and masking of
-the forms redaction cannot recognise (`NAME=value`, `-p` and `--password` values, `user:pass@`),
-clipped to 120 characters; the last 180 characters of output, with redaction run over the whole read
+the check's own segment, never the rest of the shell line, with a substituted command shown as
+`$(…)` and a trailing comment dropped, after credential redaction and masking of the forms
+redaction cannot recognise, clipped to 120 characters; the last 180 characters of output, with redaction run over the whole read
 window before the clip; and a written path relative to the working directory. No file content is
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
 rest are counted. Today the output tail is read only to classify a check's result: the published
@@ -1133,6 +1133,12 @@ entry carries the check segment, the result and where the result came from, and 
 itself. The class lives in the observed record only, as its own fact type, kept out of the
 semantic history store and out of every session row field, and it is named in
 `history.PROMPT_DERIVED_CARRIERS`.
+
+Masking is by named form, word by word, and covers these forms and no others: a `NAME=value`
+assignment; the value after `--password`, `--token`, `--api-key`, `--secret`, `--auth`, `-p` or
+`-P`, joined by `=` or in the next word; an `Authorization:` or `X-Api-Key:` header value; and the
+password in `user:password@`, up to the last `@`, so one holding `/` or `@` is masked whole. A value
+after any other flag is published as typed unless it has a credential shape.
 
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
@@ -1146,8 +1152,8 @@ not remove; whether Codex honours `OPENAI_BASE_URL` there is not measured. A des
 cannot positively name, on either route, is one it cannot name. Where the destination cannot be
 named, tool output is not sent. It is quoted into the prompt as untrusted data, never into an
 instruction Cargento writes. The unasked lane never receives it until DEC-18's rubric thresholds
-exist. The live drift estimate reads it on this machine and publishes a derived level on the session
-payload only, never on a row, in history or in any off-machine payload.
+exist. The live drift estimate (DEC-26, not built yet) will read it on this machine and publish a
+derived level on the session payload only, never on a row, in history or in any off-machine payload.
 
 What it cannot remove: a reported success is what the tool said, not an inspection of the work, and
 a reading labels it that way. The output tail is whatever the runner printed. A traceback, an
@@ -1752,9 +1758,10 @@ The operator-cockpit prototype also reads dispatch evidence:
 - `project_context.codex_dispatch_events` reads `spawn_agent` arguments to join a task name to
   a readable dispatch artifact. Its backward scan is capped at 32 MiB by default; project event
   output is capped at 100 rows and semantic lines at 112 characters.
-- `project_context.claude_tool_reports` reads a Claude Code session's `Bash` calls and the
-  `file_path` of its `Write`, `Edit` and `MultiEdit` calls, for the checks it ran and the files it
-  wrote. Of a `Write` or `Edit` it reads the path and nothing else. [Tool output in a Claude Code
+- `project_context.claude_tool_reports` reads a Claude Code session's `Bash` calls and the path
+  of its `Write`, `Edit`, `MultiEdit` and `NotebookEdit` calls (`file_path`, or `notebook_path`),
+  for the checks it ran and the files it wrote. Of a file-write call it reads the path, and of its
+  result the error flag alone. [Tool output in a Claude Code
   reading](#tool-output-in-a-claude-code-reading) states its bounds and where the result may go.
 
 These are evidence reads, not command execution. In total, eight expressions in `cargento_runtime`

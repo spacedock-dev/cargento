@@ -14,6 +14,7 @@ from cargento_runtime import departures
 from cargento_runtime.web import page as frontend_page
 
 from . import css_cascade
+from . import test_claude_checks as claude_checks
 from .js_literals import emitted_strings, reading_why_sentences
 from .next_harness import NextPageJsHarness, published_routes, storage_prelude
 
@@ -12836,7 +12837,7 @@ class ClaudeChecksInTheObservedRecordTest(NextPageJsHarness):
             storage_prelude({}) + self.FIXTURE,
         )
 
-    def page(self, scan: str, facts: str = "") -> str:
+    def page(self, scan: str, facts: str = "", others: str = "") -> str:
         return (
             self.ANNOTATED
             + f"""
@@ -12856,7 +12857,7 @@ const __scan = {scan};
 __fetchImpl = async url => ({{ok: true, json: async () =>
   String(url).startsWith("/api/project-context")
     ? {{semantic: __semantic, child_assignments: [], observers: [],
-        sources: {{work: {{omitted: [], tool_reports: __scan ? [__scan] : []}}}}}}
+        sources: {{work: {{omitted: [], tool_reports: [{others}...(__scan ? [__scan] : [])]}}}}}}
     : __dashboard}});
 nextCockpitContexts.clear();
 navigateNext({{view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"}});
@@ -12941,8 +12942,8 @@ console.log(JSON.stringify({
 
     def test_a_background_launch_is_never_read_as_no_check_at_all(self) -> None:
         scan = (
-            '{harness:"claude", sid:"claude-idle", shell_calls:2, check_runs:0,'
-            " distinct_checks:0, other_commands:1, read_only_commands:1, background:1,"
+            '{harness:"claude", sid:"claude-idle", shell_calls:1, check_runs:0,'
+            " distinct_checks:0, other_commands:0, read_only_commands:0, background:1,"
             " written_paths:0, outside_paths:0, failed:0, passed:0, not_recorded:0,"
             " unknown_flags:0, listed:0, more:0, last_changing_command_at:null}"
         )
@@ -13006,6 +13007,118 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         self.assertIn("no reading reads them yet", out["readingClaude"])
         self.assertEqual(out["codex"], out["readingCodex"])
         self.assertEqual("", out["readingPi"])
+
+    def test_the_totals_give_the_latest_results_and_the_writes_outside(self) -> None:  # R16, R10
+        scan = self.FULL_SCAN.replace("outside_paths:0", "outside_paths:2")
+        out = self.run_fixture(
+            self.page(scan) + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
+        )
+        assert isinstance(out, list)
+        self.assertIn("latest runs: 0 failed, 1 with no recorded result, 1 passed", out[0])
+        self.assertIn("2 files written outside the working directory", out[0])
+
+    def test_a_listed_failure_is_never_hidden_by_the_recent_window(self) -> None:  # R16
+        directions = ",".join(
+            f'{{fact_id:"d{n}", at:{200 + n}, type:"user_message", summary:"Direction {n}",'
+            ' source_session:__who, evidence:{source:"root transcript", confidence:"exact"}}'
+            for n in range(19)
+        )
+        facts = (
+            '__tool("c1", 150, "check", "pytest tests/api", {result:"failed", result_source:"flag"},'
+            ' "Claude Bash call and paired result"), '
+            + directions
+            + ', __tool("c2", 300, "check", "ruff check .", {result:"passed", result_source:"flag"},'
+            ' "Claude Bash call and paired result")'
+        )
+        out = self.run_fixture(
+            self.page(self.FULL_SCAN, facts=facts)
+            + 'console.log(JSON.stringify({results: texts("next-cockpit-work-result"),'
+            ' dropped: texts("next-cockpit-work-dropped")}));'
+        )
+        assert isinstance(out, dict)
+        self.assertIn("Agent · check · failed, as the tool reported", out["results"])
+        self.assertEqual(2, len(out["results"]))
+
+    def test_the_sentence_reads_this_sessions_scan_not_a_neighbours(self) -> None:  # R17, T6
+        other = self.FULL_SCAN.replace('sid:"claude-idle"', 'sid:"claude-other"').replace(
+            "check_runs:4", "check_runs:9"
+        )
+        out = self.run_fixture(
+            self.page(self.FULL_SCAN, others=other + ",")
+            + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
+        )
+        assert isinstance(out, list)
+        self.assertIn("4 check runs", out[0])
+        self.assertNotIn("9 check runs", out[0])
+
+    def test_the_reading_panel_limit_no_longer_denies_the_checks(self) -> None:  # T9
+        out = self.run_fixture(
+            """
+const claude = __dashboard.sessions.find(row => row.sid === "claude-idle");
+Object.assign(claude, {annotation_goal:"add retry", annotation_goal_why:"",
+  annotation_output:"tests pass", annotation_output_why:"", annotation_revision:1,
+  annotation_revision_count:1, annotation_at:100, annotation_binding_why:"",
+  annotation_assessment:{revision_read:1, scope:"mid-flight", scope_text:"So far.",
+    criteria:{goal:{result:"departure", detail:"It drifted.", cites:["fo-a"]},
+      output:{result:"not verifiable from available evidence", cites:[], detail:"",
+        why:"not-asked"}}}});
+__dashboard.annotate = true;
+__dashboard.annotate_cap = 240;
+navigateNext({view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"});
+await __settle();
+const html = __els.app.innerHTML;
+const reading = html.slice(html.indexOf("<h2>READING</h2>"), html.indexOf("OBSERVED RECORD"));
+console.log(JSON.stringify({reading}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("no reading reads them yet", out["reading"])
+        self.assertNotIn("nothing above is an inspected file", out["reading"])
+
+    def test_a_collected_fact_renders_its_result_source_and_later_write(self) -> None:  # T2
+        # The facts come from a real `collect` over a transcript in the recorded
+        # shapes, so the producer's keys and the page's are compared, not
+        # written twice by hand.
+        case = claude_checks.WhereTheChecksGoOnceCollected(
+            "test_the_result_source_and_later_write_reach_the_published_fact"
+        )
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.session.bash("pytest", "5 passed", is_error=False)
+        case.session.write(case.file("src/retry.py"))
+        case.session.bash("mypy src | tail -1", "Found 2 errors in 1 file", is_error=False)
+        context = case.collect()
+        sid = context["sources"]["work"]["tool_reports"][0]["sid"]
+        facts = json.dumps(context["semantic"]["facts"])
+        scans = json.dumps(context["sources"]["work"]["tool_reports"])
+        out = self.run_fixture(
+            self.ANNOTATED
+            + f"""
+const claude = __dashboard.sessions.find(row => row.sid === "claude-idle");
+claude.sid = {json.dumps(sid)};
+__semantic.facts.push(...{facts});
+__fetchImpl = async url => ({{ok: true, json: async () =>
+  String(url).startsWith("/api/project-context")
+    ? {{semantic: __semantic, child_assignments: [], observers: [],
+        sources: {{work: {{omitted: [], tool_reports: {scans}}}}}}}
+    : __dashboard}});
+nextCockpitContexts.clear();
+navigateNext({{view:"project", project:"cargento", focus:"claude:" + claude.sid, tab:"held-to"}});
+await __settle();
+await __settle();
+const html = __els.app.innerHTML;
+console.log(JSON.stringify([...html.matchAll(/class="next-cockpit-work-result">([^<]*)</g)]
+  .map(m => m[1])));
+"""
+        )
+        self.assertEqual(
+            [
+                "Agent · check · passed, as the tool reported · before the last change",
+                "Agent · file written",
+                "Agent · check · failed, per its summary line",
+            ],
+            out,
+        )
 
     def test_a_check_counts_as_work_in_the_records_own_totals(self) -> None:
         out = self.run_fixture(

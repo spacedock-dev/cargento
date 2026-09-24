@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -558,6 +559,16 @@ class WhereTheChecksGoOnceCollected(ClaudeChecksTestCase):
         self.assertEqual(2, scans[0]["check_runs"])
         self.assertEqual(2, context["sources"]["work"]["live"])
 
+    def test_the_result_source_and_later_write_reach_the_published_fact(self) -> None:  # T2
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.write(self.file("src/retry.py"))
+        self.session.bash("mypy src | tail -1", "Found 2 errors in 1 file", is_error=False)
+        facts = [f for f in self.collect()["semantic"]["facts"] if f.get("subject") == "check"]
+        found = {fact["summary"]: fact for fact in facts}
+        self.assertEqual("flag", found["pytest"]["result_source"])
+        self.assertIs(True, found["pytest"]["before_last_change"])
+        self.assertEqual("summary", found["mypy src"]["result_source"])
+
     def test_a_reader_who_restarts_finds_none_of_them_in_session_history(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)
         self.session.write(self.file("src/retry.py"))
@@ -588,6 +599,364 @@ class WhereTheChecksGoOnceCollected(ClaudeChecksTestCase):
         self.assertFalse(
             [f for f in context["semantic"]["facts"] if f.get("type") == "tool_report"]
         )
+
+
+def results_by_title(events: list[dict[str, Any]]) -> dict[str, str]:
+    return {e["title"]: e["result"] for e in events if e["subject"] == "check"}
+
+
+class WhichCheckAShellCallsResultBelongsTo(ClaudeChecksTestCase):
+    """The correction round's R1 to R5: the flag is the whole call's status.
+
+    Every rule here moves a check toward "ran, result not recorded" or toward
+    a failure, never toward a pass.
+    """
+
+    def test_every_check_in_a_call_is_its_own_run(self) -> None:  # R1, T8
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash(
+            "pytest; ruff check .", "1 failed, 4 passed in 1s\nAll checks passed!", is_error=False
+        )
+        events, scan = self.read()
+        found = results_by_title(events)
+        self.assertEqual({"pytest", "ruff check ."}, set(found))
+        self.assertNotEqual("passed", found["pytest"])
+        self.assertNotEqual("passed", found["ruff check ."])
+        self.assertEqual(3, scan["check_runs"])
+
+    def test_a_passing_flag_through_and_alone_passes_every_check(self) -> None:  # R2, T1, T8
+        self.session.bash("pytest && mypy src && echo ok", "", is_error=False)
+        self.assertEqual(
+            {"pytest": "passed", "mypy src": "passed"}, results_by_title(self.read()[0])
+        )
+
+    def test_a_failing_flag_belongs_only_to_a_check_that_ends_the_call(self) -> None:  # R2, T8
+        for command, expected in (
+            ("pytest && mypy src", {"pytest": "not-recorded", "mypy src": "failed"}),
+            ("pytest && false", {"pytest": "not-recorded"}),
+            ("ruff check . && pytest", {"ruff check .": "not-recorded", "pytest": "failed"}),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=True)
+                self.assertEqual(expected, results_by_title(self.read()[0]))
+
+    def test_the_flag_says_nothing_after_a_later_semicolon_or_pipe(self) -> None:  # R2, T1
+        for command in (
+            "pytest && echo x; true",
+            "pytest && echo x | cat",
+            "pytest; mypy src; true",
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                for title, result in results_by_title(self.read()[0]).items():
+                    self.assertEqual("not-recorded", result, title)
+
+    def test_a_check_after_or_may_not_have_run(self) -> None:  # R2
+        for command in ("pytest || mypy src", "make lint || pytest"):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "5 passed", is_error=False)
+                for title, result in results_by_title(self.read()[0]).items():
+                    self.assertEqual("not-recorded", result, title)
+
+    def test_output_belongs_to_a_check_only_when_the_call_holds_one(self) -> None:  # R3
+        self.session.bash(
+            "pytest -q; mypy src | tail -1", "Found 2 errors in 1 file", is_error=False
+        )
+        self.assertEqual(
+            {"pytest -q": "not-recorded", "mypy src": "not-recorded"},
+            results_by_title(self.read()[0]),
+        )
+
+    def test_a_server_sent_to_the_background_leaves_the_check_after_it_in_front(self) -> None:  # R4
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("python3 -m http.server 8000 & pytest", "1 failed", is_error=True)
+        events, scan = self.read()
+        self.assertEqual({"pytest": "failed"}, results_by_title(events))
+        self.assertEqual(1, scan["background"])
+
+    def test_a_background_rerun_leaves_the_check_without_a_recorded_result(self) -> None:  # R5
+        self.session.bash("pytest", "5 passed", is_error=False)
+        call_id = self.session.call("Bash", {"command": "pytest", "run_in_background": True})
+        self.session.result(call_id, "Command running in background with ID: b3.", is_error=False)
+        check = self.only_check()
+        self.assertEqual("not-recorded", check["result"])
+        self.assertIn("background", check["source"])
+
+
+class WhatAResultMayRestOn(ClaudeChecksTestCase):
+    """R6 to R8, and the negative directions of item 4's two notes (T4)."""
+
+    def test_failure_in_the_output_outranks_a_passing_flag(self) -> None:  # R6
+        for command, output, source in (
+            ("npm test", "Tests: 1 failed, 4 passed, 5 total", "summary"),
+            ("./run_tests.sh", "FAILED tests/test_a.py::test_x - AssertionError", "marker"),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, output, is_error=False)
+                check = self.only_check()
+                self.assertEqual(("failed", source), (check["result"], check["result_source"]))
+
+    def test_a_node_run_with_a_cancelled_test_failed(self) -> None:  # R7
+        output = f"{INFO} tests 1\n{INFO} pass 1\n{INFO} fail 0\n{INFO} cancelled 1"
+        for command, flag in (("node --test 2>&1 | grep pass", False), ("node --test", False)):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, output, is_error=flag)
+                self.assertEqual("failed", self.only_check()["result"])
+
+    def test_a_go_run_with_no_test_files_ran_nothing(self) -> None:  # R8
+        self.session.bash("go test ./...", "?   \texample.com/a\t[no test files]", is_error=False)
+        self.assertEqual("not-recorded", self.only_check()["result"])
+
+    def test_a_lone_failure_does_not_claim_an_earlier_one(self) -> None:  # T4
+        self.session.bash("pytest", "1 failed", is_error=True)
+        self.assertIs(False, self.only_check()["earlier_failed"])
+
+    def test_a_failure_before_a_write_is_not_marked_before_the_last_change(self) -> None:  # T4
+        self.session.bash("pytest", "1 failed", is_error=True)
+        self.session.edit(self.file("src/retry.py"))
+        self.assertIs(False, self.only_check()["before_last_change"])
+
+    def test_the_result_is_read_from_the_last_180_characters_only(self) -> None:  # T11
+        # Item 5's window: a failure scrolled out of the tail is not read.
+        output = "3 failed, 2 passed\n" + "." * 300 + "\nAll checks passed!"
+        self.session.bash("ruff check . | tail -1", output, is_error=False)
+        check = self.only_check()
+        self.assertEqual(("passed", "summary"), (check["result"], check["result_source"]))
+
+    def test_go_fail_and_tsc_errors_are_failures(self) -> None:  # T7
+        for command, output, source in (
+            ("go test ./... | tail -2", "FAIL\texample.com/retry\t0.2s", "summary"),
+            ("tsc --noEmit | tail -1", "src/a.ts(3,1): error TS2322: bad type", "marker"),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, output, is_error=False)
+                check = self.only_check()
+                self.assertEqual(("failed", source), (check["result"], check["result_source"]))
+
+
+class WhatCountsAsAWrite(ClaudeChecksTestCase):
+    """R9 to R11."""
+
+    def test_a_write_with_no_result_yet_is_an_attempt_and_ages_nothing(self) -> None:  # R9
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.call("Write", {"file_path": self.file("a.py"), "content": "x"})
+        call_id = self.session.call("Edit", {"file_path": self.file("b.py")})
+        self.session.result(call_id, "String not found", is_error=True)
+        events, scan = self.read()
+        self.assertEqual([], [e for e in events if e["subject"] == "write"])
+        self.assertEqual(0, scan["written_paths"])
+        self.assertEqual(2, scan["write_attempts"])
+        self.assertIs(False, self.only_check()["before_last_change"])
+
+    def test_a_write_outside_the_working_directory_still_ages_a_pass(self) -> None:  # R10
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.write(str(self.root / "shared" / "lib.py"))
+        _events, scan = self.read()
+        self.assertEqual(1, scan["outside_paths"])
+        self.assertIs(True, self.only_check()["before_last_change"])
+
+    def test_notebook_and_multi_edits_are_writes(self) -> None:  # R11
+        self.session.bash("pytest", "5 passed", is_error=False)
+        call_id = self.session.call("MultiEdit", {"file_path": self.file("a.py"), "edits": []})
+        self.session.result(call_id, "Applied 2 edits")
+        call_id = self.session.call("NotebookEdit", {"notebook_path": self.file("n.ipynb")})
+        self.session.result(call_id, "Updated cell")
+        events, _scan = self.read()
+        writes = sorted(e["title"] for e in events if e["subject"] == "write")
+        self.assertEqual(["a.py", "n.ipynb"], writes)
+        self.assertIs(True, self.only_check()["before_last_change"])
+
+    def test_a_lint_fix_is_a_check_and_a_change(self) -> None:  # R11
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("ruff check --fix .", "All checks passed!", is_error=False)
+        events, scan = self.read()
+        found = {e["title"]: e for e in events if e["subject"] == "check"}
+        self.assertIs(True, found["pytest"]["before_last_change"])
+        self.assertIs(True, found["ruff check --fix ."]["before_last_change"])
+        self.assertIsNotNone(scan["last_changing_command_at"])
+
+
+class WhichFormsAreStripped(ClaudeChecksTestCase):
+    """R12 to R15."""
+
+    def test_an_rtk_check_reads_its_result_from_the_flag_alone(self) -> None:  # R12
+        for command, output, flag, expected in (
+            ("rtk pytest", "", True, "failed"),
+            ("rtk proxy pytest", "", False, "passed"),
+            ("rtk pytest 2>&1 | tail -2", "5 passed", False, "not-recorded"),
+            ("rtk pytest", "1 failed", False, "passed"),
+        ):
+            with self.subTest(command=command, output=output):
+                self.setUp()
+                self.session.bash(command, output, is_error=flag)
+                check = self.only_check()
+                self.assertTrue(check["title"].startswith("pytest"))
+                self.assertEqual(expected, check["result"])
+
+    def test_paths_options_and_subshells_are_stripped(self) -> None:  # R13
+        for command, title in (
+            (".venv/bin/python -m pytest -q", ".venv/bin/python -m pytest -q"),
+            ("uv run --with pytest-cov pytest -q", "pytest -q"),
+            ("(cd api && pytest)", "pytest"),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                self.assertEqual(title, self.only_check()["title"])
+
+    def test_a_heredoc_body_is_not_a_command(self) -> None:  # R13
+        self.session.bash("cat > run.sh <<'EOF'\npytest\nEOF", "", is_error=False)
+        self.assertEqual([], self.checks())
+
+    def test_the_same_runner_in_two_directories_is_two_checks(self) -> None:  # R14
+        self.session.bash("cd frontend && npm test", "", is_error=True)
+        self.session.bash("cd backend && npm test", "", is_error=False)
+        events = self.read()[0]
+        results = sorted(e["result"] for e in events if e["subject"] == "check")
+        self.assertEqual(["failed", "passed"], results)
+
+    def test_a_find_with_an_or_is_still_read_only(self) -> None:  # R15
+        self.session.bash("find . -name '*.py' -o -name '*.js' | head", "", is_error=False)
+        scan = self.read()[1]
+        self.assertEqual(1, scan["read_only_commands"])
+        self.assertIsNone(scan["last_changing_command_at"])
+
+    def test_substitution_redirects_and_tree_output_are_not_read_only(self) -> None:  # R15
+        for command in ("echo $(rm -rf build)", "echo `touch x`", "tree -o out.txt", "ls > f.txt"):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                scan = self.read()[1]
+                self.assertEqual(0, scan["read_only_commands"])
+                self.assertIsNotNone(scan["last_changing_command_at"])
+
+
+class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
+    def test_item_four_keeps_failures_then_unrecorded_then_the_newest_passes(self) -> None:  # T5
+        for n in range(3):
+            self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
+        for n in range(4):
+            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
+        for n in range(8):
+            self.session.bash(f"pytest tests/p{n}.py", "1 passed", is_error=False)
+        events, scan = self.read()
+        titles = [e["title"] for e in events]
+        self.assertEqual(12, len(events))
+        self.assertEqual(
+            ["pytest tests/f2.py", "pytest tests/f1.py", "pytest tests/f0.py"], titles[:3]
+        )
+        self.assertEqual([f"pytest tests/u{n}.py" for n in (3, 2, 1, 0)], titles[3:7])
+        self.assertEqual([f"pytest tests/p{n}.py" for n in (7, 6, 5, 4, 3)], titles[7:])
+        self.assertEqual(3, scan["more"])
+
+
+class WhatAReaderIsNeverShownOfACommandLineEither(ClaudeChecksTestCase):
+    """R19 to R21 and T10."""
+
+    VALUE = "zzsecvalue9"
+
+    def published(self, command: str) -> str:
+        self.setUp()
+        self.session.bash(command, "", is_error=False)
+        return json.dumps(self.read())
+
+    def test_a_masked_form_inside_quotes_is_still_masked(self) -> None:  # R19
+        for command in (
+            f'pytest "--password={self.VALUE} two"',
+            f'pytest --env "TOKEN={self.VALUE} two"',
+            f'pytest "-p{self.VALUE} two"',
+        ):
+            with self.subTest(command=command.split()[1][:8]):
+                published = self.published(command)
+                self.assertNotIn(self.VALUE, published)
+                self.assertNotIn("two", published)
+
+    def test_other_credential_flags_and_headers_are_masked(self) -> None:  # R20
+        for command in (
+            f"pytest --token {self.VALUE}",
+            f"pytest --token={self.VALUE}",
+            f"pytest --api-key {self.VALUE}",
+            f"pytest --secret={self.VALUE}",
+            f"pytest --auth {self.VALUE}",
+            f"mypy -P {self.VALUE}",
+            f'pytest -H "Authorization: Bearer {self.VALUE}"',
+            f'pytest -H "X-Api-Key: {self.VALUE}"',
+            f"pytest --db app:{self.VALUE}/x@localhost",
+            f"pytest --db app:{self.VALUE}@x@localhost",
+        ):
+            with self.subTest(n=command.split()[1]):
+                self.assertNotIn(self.VALUE, self.published(command))
+
+    def test_a_non_leading_password_assignment_is_masked(self) -> None:  # T10
+        published = self.published(f"pytest --env PGPASSWORD={self.VALUE} tests/db")
+        self.assertNotIn(self.VALUE, published)
+        self.assertIn("PGPASSWORD=", published)
+
+    def test_substituted_commands_and_comments_are_not_published(self) -> None:  # R21
+        for command, title in (
+            (f"pytest $(curl -u user:{self.VALUE} http://x)", "pytest $(…)"),
+            (f"pytest `cat {self.VALUE}.txt`", "pytest $(…)"),
+            (f"pytest -q # {self.VALUE}", "pytest -q"),
+        ):
+            with self.subTest(title=title):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                self.assertEqual(title, self.only_check()["title"])
+
+
+class TheClosedListIsTheDocumentsList(ClaudeChecksTestCase):
+    """T7: every runner the ruling names, parsed from the ruling, is a check."""
+
+    DOC = Path(__file__).resolve().parents[4] / "docs" / "design-reading-a-session.md"
+
+    def runners(self) -> list[str]:
+        text = self.DOC.read_text(encoding="utf-8")
+        section = text.split("### The closed lists", 1)[1].split("Read-only commands", 1)[0]
+        body = section.split("Runners, matched", 1)[1]
+        names = re.findall(r"`([^`]+)`", body)
+        skip = {
+            "test",
+            "tests",
+            "[",
+            "_",
+            "-",
+            ".",
+            "runtests.py",
+            "fetch_latest_creds.py",
+            "--noEmit",
+        }
+        return [name for name in names if name not in skip]
+
+    def test_every_runner_the_ruling_names_is_a_check(self) -> None:
+        runners = self.runners()
+        self.assertGreater(len(runners), 60)
+        for runner in runners:
+            with self.subTest(runner=runner):
+                words = project_context._strip_runner_prefix(runner.split())
+                self.assertTrue(project_context._is_check(words), runner)
+
+    def test_every_wrapper_the_ruling_names_is_stripped(self) -> None:
+        for wrapper in (
+            "uv run",
+            "poetry run",
+            "pipenv run",
+            "npx",
+            "pnpm exec",
+            "bunx",
+            "timeout 60",
+            "time",
+            "rtk",
+            "rtk proxy",
+        ):
+            with self.subTest(wrapper=wrapper):
+                words = project_context._strip_runner_prefix([*wrapper.split(), "pytest", "-q"])
+                self.assertEqual(["pytest", "-q"], words)
 
 
 if __name__ == "__main__":

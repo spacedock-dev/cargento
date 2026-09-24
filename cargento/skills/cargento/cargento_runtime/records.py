@@ -408,35 +408,76 @@ def redact_clip(text: str, limit: int) -> str:
 
 # The command-line forms `redact_secrets` cannot recognise because the value has
 # no shape: a short password is just a word. Masked by FORM instead, for the
-# check lines item 5 of the ruling `mask_command` cites asks for. Over-masking
-# is the accepted direction: `-p` is also `mkdir -p` and `pytest -p`, and losing
-# that word costs a reader nothing.
-_COMMAND_VALUE: Final = r"""(?:"[^"]*"|'[^']*'|\S+)"""
-_COMMAND_MASKS: Final = (
-    # `NAME=value`, where a token begins: `PGPASSWORD=...`, `--env TOKEN=...`.
-    (re.compile(r"(?<!\S)([A-Za-z_][A-Za-z0-9_]*=)" + _COMMAND_VALUE), "\\1" + _SECRET_MARKER),
-    # `--password value` and `--password=value`.
-    (re.compile(r"(?<!\S)(--password[= ]\s*)" + _COMMAND_VALUE), "\\1" + _SECRET_MARKER),
-    # `-p value` and `-pvalue`.
-    (re.compile(r"(?<!\S)(-p\s*)" + _COMMAND_VALUE), "\\1" + _SECRET_MARKER),
-    # `user:password@host`, with or without a scheme in front.
-    (
-        re.compile(r"((?:[A-Za-z][A-Za-z0-9+.-]*://)?[^\s:/@]+:)[^\s@/]+@"),
-        "\\1" + _SECRET_MARKER + "@",
-    ),
+# check lines item 5 of the ruling `mask_command` cites asks for, widened on
+# review (2026-09-24) to the flags below. These named forms and no others:
+# SECURITY.md says so. Over-masking is the accepted direction: `-p` is also
+# `mkdir -p` and `pytest -p`, and losing that word costs a reader nothing.
+_MASK_FLAGS: Final = frozenset(
+    {
+        "--password",
+        "--token",
+        "--api-key",
+        "--apikey",
+        "--api_key",
+        "--secret",
+        "--auth",
+        "-p",
+        "-P",
+    }
 )
+_MASK_WORD_FORMS: Final = (
+    # `--password=value` and the other named flags, `=` joined.
+    re.compile(r"^(['\"]?--(?:password|token|api[-_]?key|apikey|secret|auth)=).+$", re.DOTALL),
+    # `-pvalue` and `-Pvalue`.
+    re.compile(r"^(['\"]?-[pP]).+$", re.DOTALL),
+    # `NAME=value`: `PGPASSWORD=...`, `--env TOKEN=...`.
+    re.compile(r"^(['\"]?[A-Za-z_][A-Za-z0-9_]*=).+$", re.DOTALL),
+    # `Authorization: ...` and `X-Api-Key: ...` header values.
+    re.compile(r"^(['\"]?(?:authorization|x-api-key)\s*:\s*).+$", re.IGNORECASE | re.DOTALL),
+)
+# `user:password@host`, scheme optional, the password running to the LAST `@`
+# so one holding `/` or `@` is masked whole.
+_MASK_USERINFO: Final = re.compile(r"((?:[A-Za-z][A-Za-z0-9+.-]*://)?[^\s:/@'\"]+:)\S*@")
+
+
+def mask_words(words: list[str]) -> list[str]:
+    """Each word of a command with every value a named form carries replaced.
+
+    Per word, before the words are joined and re-quoted, so a quoted value with
+    whitespace in it is masked whole (review, 2026-09-24). A named flag masks
+    the word after it.
+    """
+    masked: list[str] = []
+    mask_next = False
+    for word in words:
+        if mask_next:
+            masked.append(_SECRET_MARKER)
+            mask_next = False
+            continue
+        if word in _MASK_FLAGS:
+            masked.append(word)
+            mask_next = True
+            continue
+        formed = next(
+            (m.group(1) + _SECRET_MARKER for p in _MASK_WORD_FORMS if (m := p.match(word))), word
+        )
+        masked.append(_MASK_USERINFO.sub(lambda m: m.group(1) + _SECRET_MARKER + "@", formed))
+    return masked
 
 
 def mask_command(text: str) -> str:
-    """A command line with every value `_COMMAND_MASKS` recognises replaced.
+    """A command line with every value `mask_words` recognises replaced.
 
-    The masked value becomes the marker a redacted credential gets, so the page
-    reads one convention. Run before `redact_clip`, never instead of it.
+    Split on whitespace, keeping it, so a line with nothing to mask reads as it
+    was typed. The check line itself is masked word by word through
+    `mask_words`, after shell splitting. Run before `redact_clip`, never
+    instead of it.
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
     """
-    for pattern, replacement in _COMMAND_MASKS:
-        text = pattern.sub(replacement, text)
-    return text
+    parts = re.split(r"(\s+)", text)
+    words = mask_words(parts[0::2])
+    parts[0::2] = words
+    return "".join(parts)
 
 
 def safe_text(value: Any, limit: int) -> str:

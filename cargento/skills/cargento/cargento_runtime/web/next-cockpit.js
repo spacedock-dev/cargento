@@ -1279,17 +1279,26 @@ function nextCockpitCheckScan(scan){
   const written = nextNumber(scan.written_paths) || 0;
   const other = nextNumber(scan.other_commands) || 0;
   const more = nextNumber(scan.more) || 0;
-  if(!runs && !background && !written && !other){
+  const outside = nextNumber(scan.outside_paths) || 0;
+  if(!runs && !background && !written && !other && !outside){
     return "No check ran in the part of the transcript read.";
   }
   const found = [];
   if(runs){
+    /* The latest results, always: a failure is never left for the listed
+       rows alone to carry (review, 2026-09-24). */
     found.push(`${count(runs, "check run", "check runs")} across ` +
-      `${count(nextNumber(scan.distinct_checks) || 0, "distinct check", "distinct checks")}`);
+      `${count(nextNumber(scan.distinct_checks) || 0, "distinct check", "distinct checks")}; ` +
+      `latest runs: ${nextNumber(scan.failed) || 0} failed, ` +
+      `${nextNumber(scan.not_recorded) || 0} with no recorded result, ` +
+      `${nextNumber(scan.passed) || 0} passed`);
   } else {
     found.push("no check in the foreground");
   }
   if(written) found.push(count(written, "file written", "files written"));
+  if(outside){
+    found.push(`${count(outside, "file", "files")} written outside the working directory`);
+  }
   const counted = [];
   if(background){
     counted.push(`${count(background, "background launch", "background launches")}, ` +
@@ -1335,13 +1344,18 @@ function nextCockpitWorkSource(group, session){
      stopped resolving as the session grew, was demoted to `not verifiable`
      under rule 3, and the block then printed "the reading raised no
      departure" about one the payload still held. */
-  const entries = all.slice(-NEXT_COCKPIT_WORK_ROWS);
+  /* The window bounds the other rows only. A check or a written file is one
+     of at most twelve the reader chose failures first, and trimming them to
+     the most recent would hide a listed failure (review, 2026-09-24). */
+  const others = all.filter(row => row.type !== "tool_report").slice(-NEXT_COCKPIT_WORK_ROWS);
+  const entries = all.filter(row => row.type === "tool_report" || others.includes(row));
+  const otherTotal = all.filter(row => row.type !== "tool_report").length;
   const reports = entry.data.sources && entry.data.sources.work &&
     entry.data.sources.work.tool_reports;
   const scan = (Array.isArray(reports) ? reports : []).find(row => row && sessKey(row) === key)
     || null;
   if(entries.length){
-    return {entries, all, scan, state: "read", shown: entries.length, total: all.length};
+    return {entries, all, scan, state: "read", shown: others.length, total: otherTotal};
   }
   if(entry.error) return {entries, all, state: "error"};
   /* Whether the scan that produces these facts reached this session. The
@@ -1460,7 +1474,9 @@ function nextCockpitWorkEvidence(session, source){
       "</p>" : "") +
     (source.shown != null && source.shown < source.total
       ? `<p class="next-cockpit-work-dropped">Showing the ${source.shown} most recent of ` +
-        `${source.total} observed entries.</p>` : "") +
+        `${source.total} ${entries.some(row => row.type === "tool_report")
+          ? "other observed entries, and every listed check and file" : "observed entries"}` +
+        ".</p>" : "") +
     '<p class="next-cockpit-work-limit">' +
     `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
 }

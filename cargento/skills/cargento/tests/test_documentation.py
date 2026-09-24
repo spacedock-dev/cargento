@@ -1653,11 +1653,13 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
         # a *new* read nobody wrote into the section. Both spellings are here
         # because Codex writes its plan under `arguments` in one shape and
         # `input` in the other, and the section names both.
+        # Subscripts too: a `block["input"]` read is a read, and the narrower
+        # pattern once let two of them through uncounted (review, 2026-09-24).
+        pattern = r'\.get\("(?:input|arguments)"\)|\["(?:input|arguments)"\]'
         found = {
-            path.name: len(re.findall(r'\.get\("(?:input|arguments)"\)', text))
+            path.name: len(re.findall(pattern, text))
             for path in sorted(self.RUNTIME.rglob("*.py"))
-            if (text := path.read_text(encoding="utf-8"))
-            and re.search(r'\.get\("(?:input|arguments)"\)', text)
+            if (text := path.read_text(encoding="utf-8")) and re.search(pattern, text)
         }
         self.assertEqual(
             {"claude_data.py": 1, "codex.py": 1, "project_context.py": 4, "transcripts.py": 2},

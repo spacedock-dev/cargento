@@ -983,9 +983,9 @@ qualifies the producer against it.
    never success. `records.tool_outcome` turns an absent flag into `False` today, and that is the
    reading this item refuses.
 2. A check's result comes from one of three sources, in this order, and otherwise reads "ran,
-   result not recorded". First, the harness's explicit error flag, only when the runner is the
-   last stage of its pipe with nothing but `&&` after it (see the closed lists): a pipe into
-   `tail`, `head` or `grep` reports the last stage. Second,
+   result not recorded". First, the harness's explicit error flag, which is the whole call's status
+   and is attributed as the closed lists set out: a pipe into `tail`, `head` or `grep` reports the
+   last stage. Second,
    a runner summary line in the recorded output tail, from the closed set below. Third, for failure
    only, a failure marker in the recorded output tail, from the closed set below, which may record
    a failure and never a pass. Output text is never read as success any other way.
@@ -1044,8 +1044,10 @@ holds for a Claude Code check; DEC-17 carries the amendment.
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
 runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
 after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
-`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N` and `time`. The list is closed: a runner not
-named here is not a check.
+`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N`, `time` and `rtk`. The list is closed: a runner not
+named here is not a check. The owner ruled `rtk` a wrapper on 2026-09-24, with one rule of its own:
+because rtk may rewrite a runner's output, a check it wraps takes its result from the error flag
+only, never from a summary line or a failure marker.
 
 Runners, matched on the first word or words of a stripped segment:
 
@@ -1070,8 +1072,19 @@ Read-only commands, matched the same way, for segments that are not checks: `git
 `echo`, `which`, `file`, `stat`, `tree` and `less`. Any other segment that is not a check, run after
 any check's latest passing run, is the blocker item 3 names. This list is closed too.
 
-The error flag, source (i), is read only when the runner is the last stage of its pipe. A
-following `&&` keeps the flag honest, because a failure propagates; a following `;`, `|`, `||` or `&` does not.
+The error flag, source (i), is the status of the whole call, not of one segment. The orchestrator
+clarified how it is attributed on 2026-09-24, in the withholding direction, after review found a
+failure credited to a check that never ran and a pass credited to one whose execution was unknown:
+
+- a passing flag with only `&&` joiners in the call passes every check in it, because a chain of
+  `&&` that exits zero ran every stage and each exited zero;
+- a passing flag otherwise speaks only for a check that is the last segment of the call;
+- a failing flag is attributed only to a check that is the last segment of the call, and every
+  other check in that call reads "ran, result not recorded";
+- summary lines and failure markers attribute only when the call holds exactly one check;
+- anything after `||` has unestablished execution, so the flag says nothing about it and it reads
+  "ran, result not recorded";
+- `&` sends only the segment before it to the background.
 
 Summary lines, source (ii), read from the recorded output tail, may record a pass or a failure:
 pytest's `N passed`, `N failed` and `N error` or `N errors`; unittest's `OK`, only as the whole line, and `FAILED (`; jest's
@@ -1082,11 +1095,14 @@ A pass needs a pass pattern and nothing in the same tail that records a failure:
 above zero, a failure summary or a failure marker. So `1 failed, 9 passed` is a failure. go prints
 `ok  <pkg>` once per package, so a later package's `ok` cannot vouch for the run, and it is never
 read as a pass. go's `FAIL` is a failure, and a go pass comes from the error flag alone. A pass whose count
-is zero (`ℹ pass 0`, `0 passed`, `Ran 0 tests`), or a go run reporting `[no tests to run]`, reads
-"ran, result not recorded".
+is zero (`ℹ pass 0`, `0 passed`, `Ran 0 tests`), or a go run reporting `[no tests to run]`, or
+`[no test files]` with no package reporting `ok`, reads "ran, result not recorded". Failure evidence
+outranks a passing flag: when the flag passes and the tail holds a failure summary or a failure
+marker, the check failed, since a script can swallow its runner's exit status.
 
 Failure markers, source (iii), read from the recorded output tail as evidence of failure only:
-node's `✖` test lines and `failing tests:`, `AssertionError`, `ERR_ASSERTION`, pytest's `FAILED ` and `ERROR `,
+node's `✖` test lines, `failing tests:` and `ℹ cancelled N` above zero (a timed-out test prints
+`ℹ fail 0` beside it and exits 1), `AssertionError`, `ERR_ASSERTION`, pytest's `FAILED ` and `ERROR `,
 go's `--- FAIL:`, cargo's `panicked at`, and tsc's `error TS`. tsc prints nothing on success, so
 its pass comes only from the error flag.
 
@@ -1094,6 +1110,9 @@ The owner settled these points on review the same day, as part of the ruling rat
 amendment: a program file counts only when `test` or `tests` stands alone as a word in its name; a
 summary-line pass counts only when nothing in the same tail records a failure, a go pass comes only
 from the error flag, and unittest's `OK` counts only as the whole line; and the read-only list above.
+The orchestrator added, on review the same day and in the withholding direction: the error-flag
+attribution above, failure evidence outranking a passing flag, node's `ℹ cancelled N`, and go's
+`[no test files]`. The owner added `rtk` as a wrapper whose checks read the flag alone.
 
 ### What was measured before the text was fixed
 
