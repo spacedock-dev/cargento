@@ -1059,11 +1059,16 @@ concurrent HTTP refreshes, and a reading takes the same one-in-flight gate per s
 are released on failure. Each invocation has a **60-second**
 timeout, and every model call, the goal lane's, the unasked lane's and a pressed reading's, runs
 through `supervise.run`: the CLI leads a process group of its own (a kill-on-close Job Object on
-Windows, the child held suspended until it is inside the job), a timeout kills that whole group
-rather than only the direct child, and the daemon's own group is never signalled. The call returns
-only after the child is reaped, so its temporary files are removed after, never under, a live
-writer. Because a child in its own group no longer receives a foreground Ctrl-C, daemon shutdown
-kills every supervised group. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
+Windows, the child held suspended until it is inside the job), a timeout kills its process group
+rather than only the direct child, and the daemon's own group is never signalled. The limit on
+POSIX: a helper that leaves the group, by `setsid` or `setpgid`, is not reached; a Job Object has
+no such exit. The group is signalled only while its leader is unreaped, so its id cannot have been
+reused by another process, and the call returns only after the child is reaped, so its temporary
+files are removed after, never under, a live writer. A kill whose child has not exited within five
+seconds ends the call anyway and is recorded as its own withheld reason, which says the process
+may still be running. Because a child in its own group no longer receives the terminal's signals,
+SIGTERM, SIGHUP and SIGQUIT all unwind through the daemon's cleanup, which shuts the runner (a
+spawn after that point is refused) and kills every supervised group. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
 line; a reading returns at most `annotation_text_cap_chars * 8` bytes, 1,920 at the shipped
 value.
 A failed call falls back to local analysis. No raw model stdout or stderr is served or logged.
@@ -1244,11 +1249,14 @@ itself is; the process handle never is. A second press answers `409 in-flight` w
 job and starts nothing. A slot the unasked lane holds answers the same `409` with no job. The
 permission and budget are read again at the model seam inside the job, so a budget another tab
 filled, or an answer withdrawn, after the press was admitted ends the job with nothing written or
-spent. Once the spend is committed, a marker under `reading-jobs/` in the state directory names the
-job (its id, the harness and session id, the pid, the start time, and no content), owner-only; the
-outcome's write removes it. The next dashboard start records any marker whose process is gone as a
-spent `interrupted` attempt, and leaves alone a marker whose process still runs, which is another
-dashboard on the same state directory.
+spent. Before the reservation, a marker under `reading-jobs/` in the state directory names the job
+(its id, the harness and session id, the pid, the start time, and no content), owner-only; a marker
+that cannot be written stops the job with nothing spent. The outcome is stored under the job's id,
+and the marker is removed only once the store holds it. A job the shutdown ends is recorded as a
+spent `interrupted` attempt, and so is any marker the next dashboard start finds whose pid no state
+file of a running dashboard on this state directory names (its own pid counts as an earlier run).
+Each marker is claimed by an atomic rename before it is recorded, and an entry that already holds
+the job's id counts nothing, so one job is one attempt however many dashboards recover it.
 
 The Cancel route, with DRC-4693. Cancel kills the job's process group through the handle the
 supervised runner gives the job, releases the one-in-flight slot only after the child is reaped and

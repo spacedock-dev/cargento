@@ -399,7 +399,7 @@ and while it runs the control is replaced by an "Analyzing drift" box listing it
 marked, with the attempt count and disclosure still beside it. The box comes from the published
 board, so a reload or another tab shows the same analysis at the same step, and a second press
 starts nothing. The result, or why there is none, replaces the box when it is stored; an analysis
-a restart cut short is recorded as an interrupted attempt. A failed request says its result could
+a stop or restart cut short is recorded as an interrupted attempt. A failed request says its result could
 not be confirmed and is never retried automatically. The counter reports recorded model requests, so a refusal before the model runs
 does not increase it.
 

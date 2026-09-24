@@ -1444,15 +1444,32 @@ issue, and the rest were made within them.
   under a running box.
 - The permission and budget are read again at the model seam inside the job. A refusal there ends
   the job with nothing written, and the board's published permission already says why.
-- A job lost to a restart is recorded, not dropped. A marker written once the spend is committed
-  becomes a spent `interrupted` attempt at the next start, so the count stays equal to what the
-  budget charged. Letting it vanish was the alternative, and it leaves a charged attempt nowhere in
-  the count.
+- A job lost to a restart is recorded, not dropped. A marker written before the reservation becomes
+  a spent `interrupted` attempt at the next start, so the count stays equal to what the budget
+  charged. Letting it vanish was the alternative, and it leaves a charged attempt nowhere in the
+  count. Written before rather than after, because a marker that fails after the spend leaves the
+  spend uncounted; the cost is that a dashboard dying between the marker and the reservation counts
+  one attempt the budget never charged.
+- One job is one attempt. The outcome is stored under the job's id and a second write for that id
+  counts nothing, and a marker is claimed by an atomic rename before it is recovered. The review
+  measured a double count in up to 36 of 40 runs when the dashboard died between the write and the
+  marker's removal; reordering alone would have traded it for a lost count.
+- A marker's pid means a running dashboard only when a state file on this state directory names it,
+  and this process's own pid means an earlier run: a container's dashboard is PID 1 on every start,
+  and a bare liveness check never recovered its markers.
+- A graceful stop records `interrupted` too. The shutdown kills the call before the next start can
+  find its marker, so without this the job wrote "did not complete" for what was a stop.
 - Every model call, the goal lane's and the unasked lane's included, uses the supervised runner. A
   timeout that kills only the direct child leaks the grandchild, which those lanes had too.
-- Shutdown kills every supervised group, because a child in its own group no longer receives a
-  foreground Ctrl-C. Leaving that to Cancel would have left one layer of the stack with a child
-  that outlives the daemon.
+- Shutdown kills every supervised group, because a child in its own group no longer receives the
+  terminal's signals. Leaving that to Cancel would have left one layer of the stack with a child
+  that outlives the daemon. SIGHUP and SIGQUIT unwind through the same cleanup as SIGTERM, since a
+  closed terminal otherwise left the CLI running untimed, and the shutdown closes the runner under
+  its spawn lock, since a CLI spawned during the teardown was measured outliving it.
+- On POSIX the group is signalled only while its leader is unreaped: the exit is watched without
+  reaping (`waitid` with `WNOWAIT`, a kqueue exit filter on macOS, which has no `waitid`), the group
+  is swept, and only then is the leader reaped. A group id signalled after the reap could name a
+  stranger's group. A helper that leaves the group is not reached, and the docs say so.
 - A finished step is a filled mark and never a check mark. Item 6's rule is about results, but a
   check shape beside a reading is close enough to its reason that the design's check circle was
   not copied.
