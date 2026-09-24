@@ -16,7 +16,7 @@ from cargento_runtime import annotations as annotation_store
 from cargento_runtime import reading_route
 
 from . import test_next_sessions
-from .next_harness import NextPageJsHarness
+from .next_harness import NextPageJsHarness, named_platform
 
 
 def _route(
@@ -33,7 +33,7 @@ def _route(
         if claude_open
         else annotation_store.ABSTENTION_CHECK_NOT_RUN
     )
-    with mock.patch.object(annotation_store, "CLAUDE_ABSTENTION_CHECK", check):
+    with mock.patch.object(annotation_store, "CLAUDE_ABSTENTION_CHECK", check), named_platform():
         return dict(
             reading_route.resolve(
                 harness,

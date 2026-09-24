@@ -11,7 +11,9 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import platform
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +23,7 @@ from unittest import mock
 from cargento_runtime import aggregate, observer, reading_route, sessions
 from cargento_runtime import annotations as annotation_store
 
+from .next_harness import named_platform
 from .support import make_runtime
 
 HARNESSES = ("claude", "codex", "pi", "gemini")
@@ -459,6 +462,7 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
         )
         self.assertEqual("", self._claude({}))
 
+    @unittest.skipIf(sys.platform == "win32", "Windows has no password file, and names nothing")
     def test_with_no_home_or_user_the_password_file_is_read_instead(self) -> None:
         import pwd  # noqa: PLC0415
 
@@ -526,6 +530,13 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
     def test_windows_policy_is_not_read_so_nothing_is_named_there(self) -> None:
         self.assertEqual("", self._claude({}, system="Windows"))
         self.assertEqual("", self._codex({}, system="Windows"))
+        # And through the route, as a Windows runner resolves it.
+        with mock.patch.object(platform, "system", return_value="Windows"):
+            route = reading_route.resolve(
+                "claude", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
+            )
+        self.assertEqual("", route["destination"])
+        self.assertIn("Tool output is not sent", route["tool_output"])
 
     def test_a_codex_reader_with_no_override_is_told_openai(self) -> None:
         self.assertEqual("OpenAI", self._codex({}))
@@ -551,9 +562,13 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
     the harness whose record lists checks and on no other."""
 
     def test_the_fallback_route_names_tool_output_and_where_it_goes(self) -> None:
-        route = reading_route.resolve(
-            "claude", binary_resolver=_resolver({"codex"}), environ={}, root=Path("/nonexistent")
-        )
+        with named_platform():
+            route = reading_route.resolve(
+                "claude",
+                binary_resolver=_resolver({"codex"}),
+                environ={},
+                root=Path("/nonexistent"),
+            )
         self.assertEqual("OpenAI", route["destination"])
         self.assertIn("tool output", route["tool_output"])
         self.assertIn("to Codex, which reaches OpenAI", route["tool_output"])
