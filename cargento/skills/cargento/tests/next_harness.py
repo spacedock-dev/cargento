@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import platform
+from pathlib import Path
+from typing import Any
+from unittest import mock
 
 from cargento_runtime import reading_route
 from cargento_runtime.web import page as frontend_page
@@ -18,6 +22,16 @@ NEXT_PAGE_TEXT = (
 )
 
 
+def named_platform() -> Any:
+    """Pin the OS the destination resolver reads to one where it can name one.
+
+    On Windows the resolver never names a destination, by design, so a test
+    that means "a machine where the destination can be named" pins Linux and
+    runs the same on every runner.
+    """
+    return mock.patch.object(platform, "system", return_value="Linux")
+
+
 def published_routes(*harnesses: str, installed: tuple[str, ...] = ("codex",)) -> str:
     """The server's own `reading_routes` for these harnesses, as a JS literal.
 
@@ -25,10 +39,16 @@ def published_routes(*harnesses: str, installed: tuple[str, ...] = ("codex",)) -
     shipped gates, so a fixture carries the sentence a reader would see rather
     than one written for the test.
     """
-    routes = reading_route.resolve_all(
-        harnesses,
-        binary_resolver=lambda name: f"/usr/local/bin/{name}" if name in installed else None,
-    )
+    # No endpoint setting and a platform whose settings the resolver reads, so
+    # neither this machine's environment nor its OS (Windows names nothing)
+    # decides what a page fixture says about where tool output goes.
+    with named_platform():
+        routes = reading_route.resolve_all(
+            harnesses,
+            binary_resolver=lambda name: f"/usr/local/bin/{name}" if name in installed else None,
+            environ={},
+            root=Path("/nonexistent-cargento-root"),
+        )
     return json.dumps(routes)
 
 

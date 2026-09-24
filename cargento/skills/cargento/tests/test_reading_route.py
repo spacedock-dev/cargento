@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
+import platform
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +23,7 @@ from unittest import mock
 from cargento_runtime import aggregate, observer, reading_route, sessions
 from cargento_runtime import annotations as annotation_store
 
+from .next_harness import named_platform
 from .support import make_runtime
 
 HARNESSES = ("claude", "codex", "pi", "gemini")
@@ -382,6 +386,223 @@ class TheBuildGateThePageReadsIsEitherProvider(unittest.TestCase):
                 cast("Any", self), ("claude",), {"claude", "codex"}
             )
         self.assertEqual(annotation_store.ABSTENTION_CHECK_NOT_RUN, data["reading_check"])
+
+
+class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
+    """DEC-23 item 7: a reader allowing tool output is told where it goes as
+    configured on this machine, and where that cannot be named, nothing of it
+    is sent. The paths are the ones measured in the live 2.1.281 Claude Code
+    and 0.156.1 Codex binaries on 2026-09-24; each test lays them out under a
+    scratch root so no real machine setting is read."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def _write(self, path: str, text: str) -> None:
+        target = self.root / path.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+
+    def _claude(self, environ: dict[str, str], system: str = "Darwin") -> str:
+        return reading_route.destination(
+            "claude",
+            environ={"HOME": "/Users/r", "USER": "r", **environ},
+            root=self.root,
+            system=system,
+        )
+
+    def _codex(self, environ: dict[str, str], system: str = "Darwin") -> str:
+        return reading_route.destination(
+            "codex",
+            environ={"HOME": "/Users/r", "USER": "r", **environ},
+            root=self.root,
+            system=system,
+        )
+
+    def test_a_reader_with_no_endpoint_setting_is_told_anthropic(self) -> None:
+        self.assertEqual("Anthropic", self._claude({}))
+
+    def test_a_reader_with_a_base_url_is_told_its_host_and_nothing_of_its_secret(self) -> None:
+        named = self._claude(
+            {"ANTHROPIC_BASE_URL": "https://me:hunter2@gw.corp.example:8443/v1?k=z"}
+        )
+        self.assertEqual("gw.corp.example:8443", named)
+
+    def test_a_reader_on_bedrock_or_vertex_is_told_that_cloud(self) -> None:
+        self.assertEqual("Amazon Bedrock", self._claude({"CLAUDE_CODE_USE_BEDROCK": "1"}))
+        self.assertEqual("Google Vertex AI", self._claude({"CLAUDE_CODE_USE_VERTEX": "true"}))
+        self.assertEqual("Anthropic", self._claude({"CLAUDE_CODE_USE_BEDROCK": "0"}))
+
+    def test_a_reader_whose_settings_cannot_be_named_sends_no_tool_output(self) -> None:
+        for environ in (
+            {"CLAUDE_CODE_USE_BEDROCK": "1", "CLAUDE_CODE_USE_VERTEX": "1"},
+            {"CLAUDE_CODE_USE_FOUNDRY": "1"},
+            {"CLAUDE_CODE_USE_BEDROCK": "maybe"},
+            {"CLAUDE_CODE_USE_BEDROCK": "1", "ANTHROPIC_BEDROCK_BASE_URL": "https://x.example"},
+            {"ANTHROPIC_BASE_URL": "not a url"},
+            {"CLAUDE_CODE_MANAGED_SETTINGS_PATH": "/opt/policy"},
+            # M1: a second endpoint variable with no cloud switch, alone or
+            # beside ANTHROPIC_BASE_URL.
+            {"ANTHROPIC_BEDROCK_BASE_URL": "https://bedrock.corp"},
+            {"ANTHROPIC_VERTEX_BASE_URL": "https://v.corp", "ANTHROPIC_BASE_URL": "https://a.corp"},
+            {"ANTHROPIC_BASE_URL": "ftp://gw.corp"},
+            # K4: the FedStart OAuth host and a unix-socket session both move
+            # the API host somewhere this build does not read.
+            {"CLAUDE_CODE_CUSTOM_OAUTH_URL": "https://claude.fedstart.com"},
+            {"ANTHROPIC_UNIX_SOCKET": "/tmp/claude.sock"},
+        ):
+            with self.subTest(environ=environ):
+                self.assertEqual("", self._claude(environ))
+
+    def test_an_oauth_host_in_managed_settings_names_nothing(self) -> None:
+        self._write(
+            "/Library/Application Support/ClaudeCode/managed-settings.json",
+            json.dumps({"env": {"CLAUDE_CODE_CUSTOM_OAUTH_URL": "https://claude.fedstart.com"}}),
+        )
+        self.assertEqual("", self._claude({}))
+
+    @unittest.skipIf(sys.platform == "win32", "Windows has no password file, and names nothing")
+    def test_with_no_home_or_user_the_password_file_is_read_instead(self) -> None:
+        import pwd  # noqa: PLC0415
+
+        entry = pwd.getpwuid(os.getuid())
+        self._write(
+            f"{entry.pw_dir}/.claude/remote-settings.json",
+            json.dumps({"env": {"CLAUDE_CODE_USE_BEDROCK": "1"}}),
+        )
+        named = reading_route.destination("claude", environ={}, root=self.root, system="Darwin")
+        self.assertEqual("Amazon Bedrock", named)
+
+    def test_with_no_home_and_no_password_entry_nothing_is_named(self) -> None:
+        with mock.patch.object(reading_route, "_account", return_value=("", "")):
+            named = reading_route.destination("claude", environ={}, root=self.root, system="Darwin")
+            codex = reading_route.destination("codex", environ={}, root=self.root, system="Darwin")
+        self.assertEqual(("", ""), (named, codex))
+
+    def test_a_proxy_does_not_change_the_vendor_a_reader_is_told(self) -> None:
+        proxy = {"HTTPS_PROXY": "http://proxy.corp.example:3128", "NO_PROXY": "*"}
+        self.assertEqual("Anthropic", self._claude(proxy))
+        self.assertEqual("OpenAI", self._codex(proxy))
+
+    def test_managed_settings_still_apply_so_their_endpoint_is_the_one_named(self) -> None:
+        self._write(
+            "/Library/Application Support/ClaudeCode/managed-settings.json",
+            json.dumps({"env": {"CLAUDE_CODE_USE_BEDROCK": "1"}}),
+        )
+        self.assertEqual("Amazon Bedrock", self._claude({}))
+
+    def test_a_managed_drop_in_moves_the_endpoint_too(self) -> None:
+        self._write(
+            "/etc/claude-code/managed-settings.d/10-gateway.json",
+            json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://gw.example"}}),
+        )
+        self.assertEqual("gw.example", self._claude({}, system="Linux"))
+
+    def test_remote_managed_settings_cached_on_this_machine_count(self) -> None:
+        self._write(
+            "/Users/r/.claude/remote-settings.json",
+            json.dumps({"env": {"CLAUDE_CODE_USE_VERTEX": "1"}}),
+        )
+        self.assertEqual("Google Vertex AI", self._claude({}))
+
+    def test_two_sources_disagreeing_about_the_endpoint_name_nothing(self) -> None:
+        self._write(
+            "/Library/Application Support/ClaudeCode/managed-settings.json",
+            json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://a.example"}}),
+        )
+        self.assertEqual("", self._claude({"ANTHROPIC_BASE_URL": "https://b.example"}))
+
+    def test_an_unreadable_or_unparsable_managed_file_names_nothing(self) -> None:
+        self._write("/Library/Application Support/ClaudeCode/managed-settings.json", "{nope")
+        self.assertEqual("", self._claude({}))
+
+    def test_a_managed_preferences_profile_names_nothing_because_it_is_not_read(self) -> None:
+        for path in (
+            "/Library/Managed Preferences/com.anthropic.claudecode.plist",
+            "/Library/Managed Preferences/r/com.anthropic.claudecode.plist",
+        ):
+            with self.subTest(path=path):
+                self._write(path, "<plist/>")
+                self.assertEqual("", self._claude({}))
+                (self.root / path.lstrip("/")).unlink()
+
+    def test_windows_policy_is_not_read_so_nothing_is_named_there(self) -> None:
+        self.assertEqual("", self._claude({}, system="Windows"))
+        self.assertEqual("", self._codex({}, system="Windows"))
+        # And through the route, as a Windows runner resolves it.
+        with mock.patch.object(platform, "system", return_value="Windows"):
+            route = reading_route.resolve(
+                "claude", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
+            )
+        self.assertEqual("", route["destination"])
+        self.assertIn("Tool output is not sent", route["tool_output"])
+
+    def test_a_codex_reader_with_no_override_is_told_openai(self) -> None:
+        self.assertEqual("OpenAI", self._codex({}))
+
+    def test_a_codex_endpoint_override_or_managed_config_names_nothing(self) -> None:
+        for environ in ({"OPENAI_BASE_URL": "https://gw.example"}, {"OPENAI_API_BASE": "x"}):
+            with self.subTest(environ=environ):
+                self.assertEqual("", self._codex(environ))
+        for path in (
+            "/etc/codex/managed_config.toml",
+            "/etc/codex/config.toml",
+            "/Library/Managed Preferences/com.openai.codex.plist",
+            "/Library/Managed Preferences/r/com.openai.codex.plist",
+        ):
+            with self.subTest(path=path):
+                self._write(path, "")
+                self.assertEqual("", self._codex({}))
+                (self.root / path.lstrip("/")).unlink()
+
+
+class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
+    """The route carries the destination and the sentence that names it, on
+    the harness whose record lists checks and on no other."""
+
+    def test_the_fallback_route_names_tool_output_and_where_it_goes(self) -> None:
+        with named_platform():
+            route = reading_route.resolve(
+                "claude",
+                binary_resolver=_resolver({"codex"}),
+                environ={},
+                root=Path("/nonexistent"),
+            )
+        self.assertEqual("OpenAI", route["destination"])
+        self.assertIn("tool output", route["tool_output"])
+        self.assertIn("to Codex, which reaches OpenAI", route["tool_output"])
+        self.assertIn("only after you allow", route["tool_output"])
+        # K6: the grant sends the written paths too, so the sentence names them.
+        self.assertIn("the paths of the files it wrote", route["tool_output"])
+        self.assertIn(route["tool_output"], route["disclosure"])
+
+    def test_a_destination_that_cannot_be_named_is_said_to_send_no_tool_output(self) -> None:
+        route = reading_route.resolve(
+            "claude",
+            binary_resolver=_resolver({"codex"}),
+            environ={"OPENAI_BASE_URL": "https://gw.example"},
+            root=Path("/nonexistent"),
+        )
+        self.assertEqual("", route["destination"])
+        self.assertIn("not sent", route["tool_output"])
+        self.assertIn("cannot name where Codex would send it", route["tool_output"])
+
+    def test_a_harness_without_checks_carries_no_tool_output_sentence(self) -> None:
+        for harness in ("codex", "pi"):
+            with self.subTest(harness=harness):
+                route = reading_route.resolve(
+                    harness, binary_resolver=_resolver({"codex"}), environ={}, root=Path("/x")
+                )
+                self.assertEqual("", route["tool_output"])
+                self.assertNotIn("tool output", route["disclosure"])
+
+    def test_the_words_disclosure_no_longer_keys_expected_output_on_a_harness(self) -> None:
+        route = reading_route.resolve("pi", binary_resolver=_resolver({"codex"}), environ={})
+        self.assertNotIn("harness that publishes work evidence", route["disclosure"])
+        self.assertIn(
+            "expected output is sent only when an entry sent is work", route["disclosure"]
+        )
 
 
 class TheSentencesReadAsSentences(unittest.TestCase):

@@ -279,6 +279,30 @@ only under a departure. The word list is the second line and it is a judgement r
 measurement. Saying otherwise would be the same overstated claim the rule exists to stop the model
 making.
 
+#### Amended 2026-09-24: a check's own result word is not a verdict (owner ruling)
+
+Owner ruling, 2026-09-24 (DRC-4677 review). Under
+[DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) item 8 the only
+`consistent` Expected Output can carry rests on a cited check whose latest run passed, and the row
+the model read says so in Cargento's own words ("passed, as the tool reported"). A model that
+described that evidence truthfully tripped the success-word half of the backstop, so every such
+reading was withdrawn as a stated verdict, and "no later write" or "not inspected" tripped the
+negator half on its own. The two sentences above still hold everywhere else. For an Expected Output
+`consistent` that rests on a cited check passing item 8:
+
+1. `passed`, `passes` and `passing` are the tool's report, not a verdict, and so is "failed" when
+   the cited row itself says an earlier run failed.
+2. A negator counts only beside a success word that remains, so "not complete" still withdraws it
+   and "no later write" does not. A negated pass word still withdraws it, read in word order before
+   the pass words are set aside: "did not pass" and "no tests passed" are failure statements, and so
+   is a negated "work" or "expected".
+3. Every other success word still withdraws it: met, complete, verified, works, delivered and the
+   rest of the list.
+
+The prompt now asks for `detail` only under a departure, and says a check's result words are
+Cargento's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
+so this adds no prose to the page. Goal verdicts and departures are unchanged.
+
 ### Amended 2026-09-12: rules 3, 4, 5 and 7 are told apart in the stored shape
 
 The seven rules say what a row may conclude and did not say how a row records which rule
@@ -442,9 +466,10 @@ producer that never abstains as one that always does, on three exercised session
 counts for neither side. `unparsed` is kept apart from `abstained` because rule 2's fallback renders
 the same sentence and is a different fact.
 
-The output column is mostly the ruling's. Only a work-evidence harness is asked the Expected
-Output question (`asks_output`), the collector fixes the mark to `abstain` everywhere else, and
-`resolve` answers `not verifiable` there without asking. The scorer records `asks_output` per case
+The output column is mostly the ruling's. Only a case whose record shows work is asked the Expected
+Output question (`asks_output`, which reads the entries the prompt carries; the check never grants
+tool output, so that is a Pi case with a work result), the collector fixes the mark to `abstain`
+everywhere else, and `resolve` answers `not verifiable` there without asking. The scorer records `asks_output` per case
 and the report says how many output columns were never asked, so twenty three abstentions on a
 corpus with no Pi session read as the ruling's answer rather than as the model abstaining twenty
 three times.
@@ -959,8 +984,18 @@ matches a correction you copied is never adopted as a goal.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
-Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt;
-DRC-4677 admits it to a reading under item 7. Nothing below was built on the day it was written.
+Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.
+DRC-4677 builds items 7 to 10 for the single Expected Output constraint: the tool-output grant keyed
+by provider and destination, the destination named or refused, the result-bearing prompt row with
+its output tail quoted as data, the reader's words reserved first in the byte bound, and item 8's
+rules in the resolver and on the page, with the window read from the revision's `baseline_at` until
+DRC-4679 stores the words' own time. A pass that a later command may have changed files after, in
+the same call or a later one, carries no `consistent` either (item 3's blocker, applied to a
+reading). What counts as work is per harness: a work result on Pi and a check on Claude Code, and
+never the agent's own final answer on Claude Code or Codex; on Pi the harness publishes its result as
+work. Per-line outcome lines are DRC-4685's. SECURITY.md's
+[Tool output in a Claude Code reading](../SECURITY.md#tool-output-in-a-claude-code-reading) says
+what is sent and where.
 
 A Claude Code reader who asks whether the session did what they asked gets "not verifiable" every
 time, because the rule 7 amendment found that on Claude and Codex nothing in the record

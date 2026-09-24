@@ -770,9 +770,15 @@ class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
         compared; this is the pair that decides whether a deliverable verdict
         survives.
         """
+        start = self.source.index("const NEXT_READING_WORK_BY_HARNESS = {")
+        body = self.source[start : self.source.index("};", start)]
+        page = {
+            harness: set(re.findall(r'"([a-z_]+)"', types))
+            for harness, types in re.findall(r"([a-z]+): \[([^\]]*)\]", body)
+        }
         self.assertEqual(
-            set(reading.WORK_EVIDENCE_TYPES),
-            self._js_list(self.source, "NEXT_READING_WORK_TYPES"),
+            {harness: set(types) for harness, types in reading.WORK_EVIDENCE_BY_HARNESS.items()},
+            page,
         )
 
     def test_the_page_names_a_sentence_for_every_reason_the_producer_may_store(self) -> None:
@@ -786,6 +792,18 @@ class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
         body = self.source[start : self.source.index("};", start)]
         keys = set(re.findall(r'"([a-z-]+)":', body))
         self.assertEqual(set(reading.WHY_TOKENS) - {reading.WHY_STANDS}, keys)
+
+    def test_the_model_and_the_reader_read_the_same_words_beside_a_check(self) -> None:
+        """A check's result words, as the prompt row carries them and as the
+        activity list shows them, so the model is never told a different
+        strength of result than the reader sees."""
+        start = self.source.index("const NEXT_COCKPIT_CHECK_RESULTS = {")
+        body = self.source[start : self.source.index("};", start)]
+        page = dict(re.findall(r'"([a-z]+ [a-z]+)": "([^"]+)"', body))
+        self.assertEqual(reading.CHECK_RESULT_WORDS, page)
+        self.assertIn(f'|| "{reading.CHECK_NOT_RECORDED}"', self.source)
+        self.assertIn(f'parts.push("{reading.CHECK_EARLIER_FAILED}")', self.source)
+        self.assertIn(f'parts.push("{reading.CHECK_BEFORE_LAST_CHANGE}")', self.source)
 
     def test_the_page_reads_the_revision_key_the_producer_actually_writes(self) -> None:
         # The specific spelling, because this is the pair that fails silently.

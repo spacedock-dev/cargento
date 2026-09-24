@@ -81,14 +81,14 @@ for(const [reason,status,refusal] of [
  ["store-unavailable",503,"Reading permission or its daily budget could not be read or saved."]
 ]){
  nextCockpitReadingRequests.clear();
- nextData.reading = {consent:true,reason:"",used:11,limit:12};
+ nextData.reading = {consent:true,reason:"",used:11,limit:12,tool_output:{codex:["OpenAI"]}};
  const refusedPolicy = reason === "daily-cap"
   ? {consent:true,reason,used:12,limit:12,retry_at:1800000000}
   : {consent:false,reason,used:0,limit:12,retry_at:null};
  __fetchImpl = async () => ({ok:false,status,json:async()=>({ok:false,produced:false,reading:refusedPolicy})});
  await nextCockpitAskForReading(session,null);
  const refused = nextCockpitReadingControl(session,nextCockpitAnnotation(session),null,false);
- nextData.reading = {consent:true,reason:"",used:0,limit:12};
+ nextData.reading = {consent:true,reason:"",used:0,limit:12,tool_output:{codex:["OpenAI"]}};
  const recovered = nextCockpitReadingControl(session,nextCockpitAnnotation(session),null,false);
  results.push({reason,count:refused.split(esc(refusal)).length-1,
   announced:refused.includes('role="status"'),stale:recovered.includes(esc(refusal)),
@@ -109,7 +109,7 @@ console.log(JSON.stringify(results));
         out = self.render("""
 nextData.annotate = true;
 nextData.reading_check = "accepted";
-nextData.reading = {consent:true,reason:"",used:0,limit:12};
+nextData.reading = {consent:true,reason:"",used:0,limit:12,tool_output:{codex:["OpenAI"]}};
 const session = nextData.sessions[0];
 session.annotation_goal = "Ship parser";
 session.annotation_revision = 1;
@@ -117,7 +117,7 @@ __fetchImpl = async () => ({ok:false,status:403,json:async()=>({ok:false,produce
  reading:{consent:false,reason:"consent-required",used:0,limit:12}})});
 await nextCockpitAskForReading(session,null);
 const refused = nextCockpitReadingControl(session,nextCockpitAnnotation(session),null);
-nextData.reading = {consent:true,reason:"",used:0,limit:12};
+nextData.reading = {consent:true,reason:"",used:0,limit:12,tool_output:{codex:["OpenAI"]}};
 const recovered = nextCockpitReadingControl(session,nextCockpitAnnotation(session),null);
 console.log(JSON.stringify({refused,recovered}));
 """)

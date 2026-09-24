@@ -138,9 +138,9 @@ KINDS = (
 # harness may be scored; only these two are required.
 COVERAGE_HARNESSES = ("claude", "codex")
 # What a rubric entry's `harness` may say. Three values rather than the
-# runtime's registry: the two the floor requires, and the one work-evidence
-# harness `reading.WORK_EVIDENCE_HARNESSES` names, which is the only other
-# harness this check has a reason to speak about. Anything else is refused
+# runtime's registry: the two the floor requires, and Pi, whose record
+# publishes demonstrated work results (`project_context._work_evidence`), the
+# only other harness this check has a reason to speak about. Anything else is refused
 # rather than copied, because the field lands in a committed file and the
 # rubric is hand-typed. Add a name here when a case is written for one.
 RUBRIC_HARNESSES = (*COVERAGE_HARNESSES, "pi")
@@ -350,19 +350,22 @@ def score_case(
         )
     criteria = assessment["criteria"] if assessment else {}
     # The producer's own predicate, so the scorer cannot call a column asked
-    # that `resolve` answered without asking. On every harness outside
-    # `WORK_EVIDENCE_HARNESSES` the collector fixed the output mark to
-    # `abstain` and the producer returns `not verifiable` unasked, so that
-    # column is the ruling's answer and the report says so rather than
-    # counting it as the model abstaining.
+    # that `resolve` answered without asking. Where the record the producer
+    # reads holds no work evidence, the output is never posed and the producer
+    # returns `not verifiable` unasked, so that column is the ruling's answer
+    # and the report says so rather than counting it as the model abstaining.
+    # This check never grants tool output, so the ledger is the one `produce`
+    # builds without it; the predicate reads the whole ledger where `produce`
+    # reads its selection, which only differs when the byte bound drops work.
     harness = str((row or {}).get("harness") or case.get("harness") or "")
+    ledger = reading.build_ledger(facts, harness, str((row or {}).get("sid") or ""))
     return {
         "id": str(case.get("id") or ""),
         "harness": str(case.get("harness") or ""),
         "marks": marks,
         "outcomes": {name: outcome(criteria.get(name), why) for name in CONSTRAINTS},
         "reached_model": assessment is not None,
-        "asks_output": row is not None and bool(reading.asks_output(words[1], harness)),
+        "asks_output": row is not None and bool(reading.asks_output(words[1], ledger)),
         "spent": spent,
         # Local-half fields. `summarize` copies none of them.
         "withheld": why,
@@ -602,7 +605,7 @@ def _pair_phrase(name: str, mark: str, got: str, *, asks_output: bool) -> str:
     if got.startswith(WITHHELD_PREFIX):
         return "withheld before the model, proves nothing about it"
     if name == "output" and not asks_output:
-        return "not asked of this harness: the ruling's answer, not a measurement"
+        return "not asked, nothing it read shows work: the ruling's answer, not a measurement"
     if got == OUTCOME_UNPARSED:
         # Named before the marks are consulted, because it answers neither
         # mark: the page renders rule 2's fallback as the abstention sentence,

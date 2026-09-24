@@ -37,12 +37,14 @@ key, or the key records what the code already does. The tool refuses to guess a
 mark, has no default, and has no "mark the rest like that one".
 
 **A question with a fixed answer is not asked.** The Expected Output constraint
-is only ever put to the model on a harness that publishes a demonstrated work
-result, which today is Pi alone. Asking it about a Claude session is asking the
-marker to transcribe a constant, and half of v2's prompts did exactly that. This
-reads `reading.WORK_EVIDENCE_HARNESSES` to know which cases to skip. That is the
-producer's **contract**, not its output, and the two are not the same thing: a
-tool that knows which questions are asked cannot thereby agree with an answer.
+is only ever put to the model when the record it reads holds work evidence
+(`reading.asks_output`), and this tool never grants tool output, so that is a
+Pi session with a demonstrated work result. Asking it about any other session is
+asking the marker to transcribe a constant, and half of v2's prompts did exactly
+that. This reads the producer's own predicate over the case's ledger to know
+which cases to skip. That is the producer's **contract**, not its output, and
+the two are not the same thing: a tool that knows which questions are asked
+cannot thereby agree with an answer.
 
 **A mark is keyed on identity, never on position.** v2 hashed the row's index in
 the board's session list. The board reorders on every state change, so a rebuild
@@ -262,7 +264,7 @@ def _ledger(port: int, row: dict[str, Any]) -> dict[str, Any]:
     # the producer's to do, not this tool's to assume.
     mine = reading.build_ledger(facts, harness, sid)
     citable = [entry for entry in mine if reading._citable(entry)]  # noqa: SLF001 - see above
-    work = [entry for entry in citable if entry["type"] in reading.WORK_EVIDENCE_TYPES]
+    work = [entry for entry in citable if reading.demonstrates_work(entry)]
     return {
         "facts": len(mine),
         "citable": len(citable),
@@ -362,10 +364,6 @@ def build(port: int, *, force: bool = False) -> int:
                 "end_shape": _end_shape(row),
                 "acquisition": row.get("acquisition") or "events",
                 "annotated": bool(row.get("annotation_revision")),
-                # The Expected Output constraint is only ever put to the model
-                # where a demonstrated work result exists. Elsewhere the answer
-                # is fixed by the ruling and asking for it wastes the marker.
-                "asks_output": harness in _reading().WORK_EVIDENCE_HARNESSES,
             }
         )
 
@@ -373,6 +371,10 @@ def build(port: int, *, force: bool = False) -> int:
     print(f"Fetching the evidence ledger for {len(cases)} sessions.")
     for case in cases:
         case.update(_ledger(port, {"project_key": case["project"], **case}))
+        # The Expected Output constraint is only ever put to the model where
+        # the ledger holds work evidence. Elsewhere the answer is fixed by the
+        # ruling and asking for it wastes the marker.
+        case["asks_output"] = bool(case.get("work_results"))
 
     unique = _dedupe(cases)
     dropped = len(cases) - len(unique)
@@ -586,7 +588,10 @@ def _mark_question(body: dict[str, Any], case: dict[str, Any], constraint: str) 
 
 def _mark_asks_output(body: dict[str, Any], case: dict[str, Any]) -> bool:
     if body.get("v") == 4:
-        return bool(_reading().asks_output(str(body.get("output") or ""), case["harness"]))
+        ledger = _reading().build_ledger(
+            case.get("producer_facts") or [], case["harness"], case["sid"]
+        )
+        return bool(_reading().asks_output(str(body.get("output") or ""), ledger))
     return bool(case.get("asks_output"))
 
 

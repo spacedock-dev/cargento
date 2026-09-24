@@ -13,7 +13,7 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from . import claude_data, observer, records, semantic_history, spacedock, transcripts
 from . import io as runtime_io
@@ -1655,6 +1655,10 @@ class _ToolReportTally:
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.writes: dict[str, dict[str, Any]] = {}
         self.last_write_at = float("-inf")
+        # Order of the shell calls that ran, and which of them may change files,
+        # for the press alone (`changed_after`); layer 1's fields are untouched.
+        self.shell_seq = 0
+        self.changing_seqs: list[int] = []
         self.scan: dict[str, Any] = {
             "last_changing_command_at": None,
             **dict.fromkeys(
@@ -1700,7 +1704,10 @@ class _ToolReportTally:
             self.scan["not_run"] += 1
             return
         self.scan["shell_calls"] += 1
+        self.shell_seq += 1
         call = _ShellCall(at, cwd, tool_input, moved=bool(_MOVED_TO_BACKGROUND_RE.match(text)))
+        if call.changes():
+            self.changing_seqs.append(self.shell_seq)
         if call.changes():
             self.scan["last_changing_command_at"] = at
         if call.fixers:
@@ -1755,6 +1762,13 @@ class _ToolReportTally:
                     "result_source": source,
                     "recorded": result is not None,
                     "background": background,
+                    # Held for the press only (`claude_check_tails`); never
+                    # copied onto the published entry.
+                    "tail": tail if result is not None else "",
+                    "seq": self.shell_seq,
+                    "changes_later_in_call": any(
+                        i > index for i in (*call.fixers, *call.changing_others)
+                    ),
                     # V7: a fixer at or after this check in the call ages its pass.
                     "fixes": any(i >= index for i in call.fixers),
                 }
@@ -1843,6 +1857,70 @@ class _ToolReportTally:
             {**{k: v for k, v in row.items() if k != "rank"}, "harness": "claude", "sid": sid}
             for row in listed
         ]
+
+    def tails(self) -> dict[str, str]:
+        """Each check's latest foreground run's redacted output tail, by call id."""
+        latest = (history[-1] for history in self.runs.values())
+        return {
+            run["record_id"]: run["tail"] for run in latest if not run["background"] and run["tail"]
+        }
+
+    def changed_after(self) -> frozenset[tuple[str, str]]:
+        """(call id, check line) for each latest run a later command may have changed.
+
+        In command order: a changing segment after the check in its own call,
+        or any later call that ran and may change files. A change before the
+        check, or a read-only command after it, does not count.
+        """
+        latest = (history[-1] for history in self.runs.values())
+        return frozenset(
+            (run["record_id"], run["title"])
+            for run in latest
+            if run["changes_later_in_call"] or any(seq > run["seq"] for seq in self.changing_seqs)
+        )
+
+
+class PressChecks(NamedTuple):
+    """What a press reads of a session's checks beyond the published facts."""
+
+    tails: dict[str, str]
+    changed_after: frozenset[tuple[str, str]]
+
+
+def claude_check_press(
+    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+) -> PressChecks:
+    """The output tails a press may carry to a model, and the passes a later
+    command may have changed, both keyed by the call's record id.
+
+    Read again at the press rather than published: the owner ruled that the
+    model sees each check's redacted tail (DRC-4677, Q1), and it stays off the
+    fact, the page and history, so only a reading the reader allowed tool
+    output for ever holds it. The same scan and bounds as
+    `claude_tool_reports`, so both belong to the run that fact lists.
+    """
+    transcript = _work_records(config, transcript_path, max_bytes=max_bytes)
+    tally = _ToolReportTally(_tool_result_blocks(transcript))
+    for call in _claude_tool_uses(transcript):
+        tally.add(*call)
+    return PressChecks(tally.tails(), tally.changed_after())
+
+
+def claude_check_tails(
+    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+) -> dict[str, str]:
+    """The output tails `claude_check_press` reads, alone."""
+    return claude_check_press(config, transcript_path, max_bytes=max_bytes).tails
+
+
+def press_checks(config: RuntimeConfig, state: RuntimeState, harness: str, sid: str) -> PressChecks:
+    """`claude_check_press` for one session, found as `collect` finds it; empty elsewhere."""
+    transcript_path = (
+        observer.resolve_transcript(config, state, harness, sid) if harness == "claude" else None
+    )
+    if not transcript_path:
+        return PressChecks({}, frozenset())
+    return claude_check_press(config, transcript_path)
 
 
 def claude_tool_reports(

@@ -7025,6 +7025,135 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class WhatTheBoardShowsOfAReadingThatCitedACheck(NextPageJsHarness):
+    """DEC-23 item 8 on the page, which re-applies the producer's rules over
+    the entries it holds, and DEC-24 item 6's label: a consistent resting on a
+    check is what the tool reported, not an inspection."""
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ENTRIES = """
+const check = (id, result, extra) => ({id, type:"tool_report", by:"", subject:"check",
+  work:true, result, resultSource:"flag", earlierFailed:false, beforeLastChange:false,
+  summary:"python3 -m pytest tests/test_retry.py", at:95,
+  source:"Claude Bash call and paired result · exact", ...(extra || {})});
+const annotation = {goal:"add retry", output:"tests pass"};
+const output = (result, cites, entries) => nextCockpitReadingShape(
+  {revision_read_at: 50, criteria: {output: {result, cites}}}, annotation, entries, "")
+  .criteria.find(row => row.key === "output");
+"""
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + NextCockpitCompositionTest.FIXTURE,
+        )
+
+    def test_a_consistent_resting_on_a_fresh_pass_is_labelled_as_the_tool_reported(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const row = output("consistent with the evidence read", ["c1"], [check("c1", "passed")]);
+console.log(JSON.stringify({result: row.result, narration: row.narration}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("consistent with the evidence read", out["result"])
+        self.assertEqual(
+            'Consistent with the check "python3 -m pytest tests/test_retry.py", as the tool '
+            "reported; not inspected.",
+            out["narration"],
+        )
+
+    def test_a_check_that_does_not_show_the_verdict_is_withdrawn_on_the_page_too(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const unverifiable = "not verifiable from available evidence";
+console.log(JSON.stringify({
+  consistentOnFailure: output("consistent with the evidence read", ["c1"], [check("c1", "failed")]),
+  departureOnPass: output("departure", ["c1"], [check("c1", "passed", {earlierFailed:true})]),
+  consistentOnAgedPass: output("consistent with the evidence read", ["c1"],
+    [check("c1", "passed", {beforeLastChange:true})]),
+  beforeTheWords: output("departure", ["c1"], [check("c1", "failed", {at:40})]),
+  writtenPath: output("consistent with the evidence read", ["w1"],
+    [check("w1", "passed", {subject:"write"})]),
+  departureOnFailure: output("departure", ["c1"], [check("c1", "failed")]),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        unverifiable = "not verifiable from available evidence"
+        sentence = (
+            "The check it cited does not show this: a departure needs its latest run failing, "
+            "and a consistent its latest run passing with no change after it, both after the "
+            "words you saved."
+        )
+        for name in (
+            "consistentOnFailure",
+            "departureOnPass",
+            "consistentOnAgedPass",
+            "beforeTheWords",
+            "writtenPath",
+        ):
+            with self.subTest(case=name):
+                self.assertEqual(unverifiable, out[name]["result"])
+                self.assertEqual(sentence, out[name]["why"])
+        self.assertEqual("departure", out["departureOnFailure"]["result"])
+
+    def test_a_stored_reason_about_checks_has_a_sentence_of_its_own(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const unverifiable = "not verifiable from available evidence";
+const stored = why => nextCockpitReadingShape(
+  {revision_read_at: 50, criteria: {output: {result: unverifiable, cites: [], why}}},
+  annotation, [], "").criteria.find(row => row.key === "output").why;
+console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
+  unread: stored("failed-check-unread"), changed: stored("changed-after-check"),
+  crowded: stored("checks-not-read")}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("does not show this", out["shown"])
+        self.assertEqual(
+            "A check that failed was not read, because the reading had no room for it, so "
+            "nothing here says the output is consistent.",
+            out["unread"],
+        )
+        self.assertEqual(
+            "The check it cited passed, and a later command may have changed files, so it does "
+            "not show this.",
+            out["changed"],
+        )
+        self.assertEqual(
+            "No check this session recorded had room in the reading, so your expected output "
+            "was not put to it.",
+            out["crowded"],
+        )
+
+    def test_an_agents_final_answer_is_work_on_pi_and_not_on_codex(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const fact = harness => ({fact_id:"r1", type:"result", summary:"All done.", at:95,
+  source_session:{harness, sid:"s1"}, evidence:{source:"assistant final-answer record",
+  confidence:"exact"}});
+const entries = harness => nextCockpitWorkEntries({harness, sid:"s1"}, {facts:[fact(harness)]});
+const on = harness => output("consistent with the evidence read", ["r1"], entries(harness));
+console.log(JSON.stringify({
+  codex: entries("codex").map(e => e.work), pi: entries("pi").map(e => e.work),
+  codexResult: on("codex").result, piResult: on("pi").result,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([False], out["codex"])
+        self.assertEqual([True], out["pi"])
+        self.assertEqual("not verifiable from available evidence", out["codexResult"])
+        self.assertEqual("consistent with the evidence read", out["piResult"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class CockpitReadingShapeTest(NextPageJsHarness):
     """DEC-17's seven rules, one case each (DRC-4511 AC4).
 
@@ -7041,7 +7170,8 @@ class CockpitReadingShapeTest(NextPageJsHarness):
     ENTRIES = """
 const entries = [
   {id:"u1", type:"user_message", by:"", source:"root transcript · exact"},
-  {id:"a1", type:"result", by:"", source:"dispatch artifact · exact"},
+  // `work` as `nextCockpitWorkEntries` stamps a Pi work result.
+  {id:"a1", type:"result", by:"", source:"dispatch artifact · exact", work:true},
   {id:"g1", type:"gate_decision", by:"person:captain", source:"entity gate · exact"},
   {id:"empty", type:"", by:"", source:""}
 ];
@@ -13000,11 +13130,11 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         self.assertEqual(
             "Pi publishes demonstrated work results, and they are read here.", out["pi"]
         )
-        # The reading keeps demoting Expected Output on Claude until DRC-4677,
-        # and says why without denying the checks the record lists.
-        self.assertTrue(out["readingClaude"])
-        self.assertNotIn("publishes no demonstrated work results", out["readingClaude"])
-        self.assertIn("no reading reads them yet", out["readingClaude"])
+        # Where the route names where the checks go, a reading can carry them
+        # after the reader allows tool output, so nothing demotes Expected
+        # Output, and the line under the checks says what is sent and to whom.
+        self.assertEqual("", out["readingClaude"])
+        self.assertIn("to Codex, which reaches OpenAI", out["limit"][0])
         self.assertEqual(out["codex"], out["readingCodex"])
         self.assertEqual("", out["readingPi"])
 
@@ -13073,7 +13203,10 @@ console.log(JSON.stringify({reading}));
 """
         )
         assert isinstance(out, dict)
-        self.assertIn("no reading reads them yet", out["reading"])
+        # A reading made without the checks says so from its own stored
+        # reason, and nothing on the panel denies the checks it could read.
+        self.assertNotIn("no reading reads them yet", out["reading"])
+        self.assertIn("This constraint was not put to the reading when it was made", out["reading"])
         self.assertNotIn("nothing above is an inspected file", out["reading"])
 
     def test_a_collected_fact_renders_its_result_source_and_later_write(self) -> None:  # T2
