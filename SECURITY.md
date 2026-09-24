@@ -1345,7 +1345,11 @@ unless every case is marked with closed tokens. The committed summary names the 
 model, the argv digest, the destination, the CLI path with the home directory written `~`, and its
 version. Every call is charged before it runs to one ledger at a fixed path,
 `~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
-cases it was made under. It never follows `CARGENTO_HOME`, stops at nineteen calls across every
+cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
+own, and scoring refuses while `HOME` names another. The committed result records a hash chain
+of the ledger's charge ids, and scoring refuses while the ledger does not begin with it. The scorer
+also re-checks each case's provenance against this machine's transcripts, history and ends, and
+scores any case they do not vouch for as synthetic. The ledger stops at nineteen calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The
 scorer does not pass through the reader's rolling budget, so that ledger is the bound.

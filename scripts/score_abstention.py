@@ -139,7 +139,7 @@ SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "results.json")
 # The Claude Code producer's result is its own file (DRC-4666): the Codex
 # acceptance of 2026-09-14 does not qualify Claude, and one file per producer
 # keeps the one from being read as the other.
-CLAUDE_SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "claude-results.json")
+CLAUDE_SUMMARY_PATH = abstention_ledger.CLAUDE_SUMMARY_PATH
 PRODUCERS = ("claude", "codex")
 # The owner's authorization of 2026-09-24: at most twenty real readings, one of
 # them the browser walk. `abstention_ledger` owns the cap and the one ledger.
@@ -148,7 +148,7 @@ MAX_CALLS = abstention_ledger.MAX_CALLS
 # named for it. A `claude` resolving anywhere else is refused: a PATH stub
 # answered as `claude-sonnet-5` in review, and nothing in the result showed it.
 CLAUDE_VERSIONS_ROOTS = (
-    os.path.join(os.path.expanduser("~"), ".local", "share", "claude", "versions"),
+    os.path.join(abstention_ledger.real_home(), ".local", "share", "claude", "versions"),
 )
 _CLAUDE_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+) \(Claude Code\)$")
 
@@ -330,7 +330,7 @@ class BinaryError(Exception):
 
 
 def _display_path(path: str) -> str:
-    home = os.path.expanduser("~")
+    home = abstention_ledger.real_home()
     return "~" + path[len(home) :] if path == home or path.startswith(home + os.sep) else path
 
 
@@ -1423,6 +1423,39 @@ def _write_halves(
     print(f"Committable summary: {summary_path}.")
 
 
+def _chain_holds(ledger: abstention_ledger.Ledger | None, summary_path: str) -> bool:
+    """Whether the ledger still begins with the chain the committed result recorded (V3)."""
+    committed = abstention_ledger.committed_chain(summary_path) if ledger is not None else None
+    if ledger is None or not committed or abstention_ledger.begins_with(ledger.path, committed):
+        return True
+    print(
+        "Refused: the spend ledger does not begin with the chain the committed result "
+        "recorded. It was deleted or replaced, so the answer key cannot be trusted as frozen."
+    )
+    return False
+
+
+def _default_vouch(
+    vouch: Callable[[Mapping[str, Any]], list[str]] | None, binding: Mapping[str, str] | None
+) -> Callable[[Mapping[str, Any]], list[str]] | None:
+    if vouch is None and (binding or {}).get("producer") == "claude":
+        return mark_abstention.machine_vouch(mark_abstention.STORE_HOME)  # type: ignore[no-any-return]
+    return vouch
+
+
+def _vouched(
+    case: Mapping[str, Any], vouch: Callable[[Mapping[str, Any]], list[str]] | None
+) -> Mapping[str, Any]:
+    """The case, demoted to synthetic when the machine's records do not vouch for it."""
+    if vouch is None or case.get("origin") != ORIGIN_RECORDED:
+        return case
+    reasons = vouch(case)
+    if not reasons:
+        return case
+    print(f"Case {case.get('id')}: not vouched for ({', '.join(reasons)}), scored as synthetic.")
+    return {**case, "origin": ORIGIN_SYNTHETIC, "unconfirmed": list(reasons)}
+
+
 def _binding_refusal(corpus: Corpus, binding: Mapping[str, str] | None) -> str:
     """A Claude Code result is written only from a format 5 packet, to Anthropic (F3, F7)."""
     if (binding or {}).get("producer") != "claude":
@@ -1485,8 +1518,14 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     ledger_path: str | None = None,
     max_calls: int = MAX_CALLS,
     resume: Mapping[str, Any] | None = None,
+    vouch: Callable[[Mapping[str, Any]], list[str]] | None = None,
 ) -> int:
     """Run the producer once per case, write both halves, print the report.
+
+    `vouch` re-checks each case the packet calls recorded against the
+    machine's own records, as the freeze did, and returns why it cannot be,
+    or nothing. The packet is hand-editable, so its word alone never meets the
+    floor (V2). A Claude Code run with none uses the machine's.
 
     `tool_destination` is where the producer sends a Claude Code case's frozen
     checks, `reading_route.destination`'s answer; empty refuses the run, as a
@@ -1507,13 +1546,16 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         else None
     )
     replay = _is_replay(corpus)
-    if not _may_score(corpus, tool_destination, resume, binding, ledger):
+    if not _may_score(corpus, tool_destination, resume, binding, ledger) or not _chain_holds(
+        ledger, summary_path
+    ):
         return 2
     intents = corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
     body = dict(corpus.cases)
     kept = dict((resume or {}).get("records") or {})
+    vouch = _default_vouch(vouch, binding)
     cases = {
-        str(c["id"]): c
+        str(c["id"]): _vouched(c, vouch) if intents else c
         for c in corpus.cases.get("cases") or ()
         if isinstance(c, dict) and c.get("id")
     }
@@ -1553,14 +1595,20 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
             facts,
             mark,
             words=words,
-            revision=mark_abstention.case_revision(case) if intents else None,
+            revision=mark_abstention.case_revision(dict(case)) if intents else None,
             tool_output=_tool_output(case, tool_destination, label, body) if intents else None,
             model=charged(case_id),
             now=case["captured_at"] if replay else now,
         )
         print(case_line(records[case_id]))
     rubric_records = _score_rubric(
-        corpus, records, config=config, words=words, charged=charged, now=now
+        corpus,
+        records,
+        config=config,
+        words=words,
+        charged=charged,
+        now=now,
+        origins={case_id: str(case.get("origin") or "") for case_id, case in cases.items()},
     )
     summary = summarize(
         list(records.values()),
@@ -1574,6 +1622,7 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         summary["inputs_digest"] = _inputs_digest(corpus)
     if ledger is not None:
         summary["spend"] = {"charged": ledger.used(), "cap": ledger.cap}
+        summary["ledger_chain"] = abstention_ledger.chain_of(ledger.path)
         ledger.record_run(abstention_ledger.digest(records))
     _write_halves(records, summary, results_path=results_path, summary_path=summary_path)
     if any(r["withheld"] == WITHHELD_SPEND_CAP for r in records.values()):
@@ -1589,8 +1638,13 @@ def _score_rubric(
     words: tuple[str, str],
     charged: Callable[[str], Callable[..., tuple[str, str]]],
     now: float,
+    origins: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Each rubric entry against its record, scoring an admitted synthesised case here."""
+    """Each rubric entry against its record, scoring an admitted synthesised case here.
+
+    `origins` is each case's origin after the score-time re-check, which wins
+    over both the packet's word and the rubric's.
+    """
     rubric_records: list[dict[str, Any]] = []
     _print_rubric_skipped(corpus.rubric)
     for case_id, entry in _rubric_entries(corpus.rubric).items():
@@ -1609,15 +1663,7 @@ def _score_rubric(
                 model=charged(case_id),
                 now=now,
             )
-        case = next(
-            (
-                c
-                for c in corpus.cases.get("cases") or ()
-                if isinstance(c, dict) and c.get("id") == case_id
-            ),
-            None,
-        )
-        origin = str(case.get("origin") or "") if case is not None else None
+        origin = (origins or {}).get(case_id)
         rubric_records.append(rubric_case(entry, record, case_id, case_origin=origin))
     return rubric_records
 
@@ -1698,6 +1744,14 @@ def _ledger_drift(summary: Mapping[str, Any]) -> str:
         calls = abstention_ledger.read(abstention_ledger.LEDGER_PATH)["calls"]
     except abstention_ledger.LedgerError as error:
         return f"The spend ledger cannot vouch for this result: {error}."
+    held = summary.get("ledger_chain")
+    if isinstance(held, dict) and not abstention_ledger.begins_with(
+        abstention_ledger.LEDGER_PATH, held
+    ):
+        return (
+            "The spend ledger does not begin with the chain this result recorded: it was "
+            "deleted or replaced after the result was written."
+        )
     bound = (summary.get("marks_digest"), summary.get("inputs_digest"))
     other = [c for c in calls if (c["marks_digest"], c["inputs_digest"]) != bound]
     if other:
@@ -1728,7 +1782,11 @@ def results_path_for(producer: str) -> str:
     return RESULTS_PATH
 
 
-def _argument_refusal(args: argparse.Namespace) -> str:
+def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one per line
+    if (args.score or args.probe_argv) and abstention_ledger.home_moved():
+        # V1: every path this check trusts is the account's, so a HOME that
+        # names another directory is a second machine's worth of ledger.
+        return "Refused: HOME names another directory than this account's home. Unset it."
     if args.score and args.probe_argv:
         return "--probe-argv never scores; run it on its own."
     if args.score and not args.producer:
@@ -1850,6 +1908,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         ledger_path=abstention_ledger.LEDGER_PATH,
         max_calls=args.max_calls,
         resume=resume,
+        vouch=mark_abstention.machine_vouch(mark_abstention.STORE_HOME),
     )
 
 

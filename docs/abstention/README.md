@@ -149,6 +149,11 @@ for it does not change that. `unconfirmed` lists why, as closed tokens:
 A Codex case is a recorded history `working` observation frozen at its last activity, because
 Codex has no session-end hook and is never read at a turn stop.
 
+The scorer repeats these checks at score time for every case the packet calls `recorded`, because
+the packet is hand-editable: the transcript found for that sid under `~/.claude/projects`, its
+session id, and the lifecycle in this machine's history and ends stores. A case that fails any of
+them is scored as `synthetic` and never meets the floor, whatever the packet or the rubric says.
+
 The scorer passes each Claude Code case's frozen checks to the producer as a press with a
 tool-output grant would, and reads a Claude Code turn stop as the route does. It refuses to start
 when the destination for those checks cannot be named. The marker shows the intent, each line with
@@ -166,7 +171,10 @@ qualification.
 
 Every model call is charged, before it runs, to one ledger at a fixed path,
 `~/.cargento/drc-4666-spend.json`. It is shared by every producer and every packet directory, and
-it never follows `CARGENTO_HOME`, so a fresh packet directory does not start the count again. It
+it never follows `CARGENTO_HOME`, so a fresh packet directory does not start the count again. Its
+`~`, like every other path this check trusts (the installed CLI, `~/.claude/projects`, the
+dashboard's stores), is the account's home from the password database, never `HOME`, and
+`--score` refuses to run while `HOME` names another directory. It
 holds case ids, times, statuses and two digests per call: the marks file's and the cases and
 rubric's. It stops the run at 19 calls across every run, because the owner authorized twenty and
 the browser walk after a pass is the twentieth. `--max-calls` can lower that and never raise it. A
@@ -178,7 +186,11 @@ case the cap stopped is withheld as `spend-cap`.
 - Once a call is charged, the key is frozen. `mark_abstention.py` refuses to write marks or
   `--reset`, and `--score` refuses a packet whose marks or cases hash differently from the calls
   already charged. A mark written after an output was seen is agreement, not a mark.
-- `--report` flags a result as stale when the ledger holds a call charged under other digests.
+- The committed result records `ledger_chain`: the first charge id, the number of calls and a hash
+  chain over their ids. A later `--score` refuses, and the marker stays frozen, while the ledger
+  does not begin with that chain, so deleting or replacing the ledger does not unfreeze the key.
+- `--report` flags a result as stale when the ledger holds a call charged under other digests, or
+  no longer begins with the result's chain.
 - `--resume` re-reads the local results and re-calls only the cases whose call failed
   (`withheld:model-failed`). It carries the other records over only when they hash to what the
   ledger recorded as the last run, so a hand-edited outcome is refused.

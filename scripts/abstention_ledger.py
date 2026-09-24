@@ -8,8 +8,11 @@ and every producer, and this file is the only thing that counts them.
 Four properties, each closing a bypass the review of 2026-09-24 reproduced:
 
 - **One fixed path.** It never follows `CARGENTO_HOME`: a per-home ledger let a
-  fresh, dated packet directory start again from zero. Nothing reads an
-  environment variable for it, because an override is the same bypass.
+  fresh, dated packet directory start again from zero. Nor does it follow
+  `HOME`: the home is the account's own, from the password database, because
+  `HOME=/tmp/x` gave a fresh ledger with the real CLI in verification (V1).
+  Nothing reads an environment variable for it, because an override is the
+  same bypass.
 - **Fail closed.** A missing file is an empty ledger. A file that cannot be
   read, or reads as anything but this module's own shape, refuses every call:
   treating it as empty overwrote twenty charges with one.
@@ -42,8 +45,34 @@ from typing import IO, TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
-# Under ~/.cargento at a fixed name, and never under CARGENTO_HOME.
-LEDGER_PATH = os.path.join(os.path.expanduser("~"), ".cargento", "drc-4666-spend.json")
+
+def real_home() -> str:
+    """The account's home directory, which no environment variable can move.
+
+    Windows has no password database; the scorer refuses to spend there
+    rather than trust `USERPROFILE`, so its answer only has to be stable.
+    """
+    if sys.platform == "win32":
+        return os.path.expanduser("~")
+    import pwd  # noqa: PLC0415 - POSIX only
+
+    return pwd.getpwuid(os.getuid()).pw_dir
+
+
+def home_moved() -> bool:
+    """Whether `HOME` names another directory than the account's own."""
+    return os.path.realpath(os.path.expanduser("~")) != os.path.realpath(real_home())
+
+
+# Under the account's ~/.cargento at a fixed name, never under CARGENTO_HOME or HOME.
+LEDGER_PATH = os.path.join(real_home(), ".cargento", "drc-4666-spend.json")
+# The committed result whose ledger chain freezes the key even if the ledger is deleted.
+CLAUDE_SUMMARY_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "docs",
+    "abstention",
+    "claude-results.json",
+)
 # Twenty authorized, one of them the AC2 browser walk the scorer cannot see.
 MAX_CALLS = 19
 STATUSES = ("charged", "ok", "failed", "unavailable")
@@ -260,6 +289,55 @@ class Ledger:
     def last_run(self) -> dict[str, Any] | None:
         runs = read(self.path)["runs"]
         return dict(runs[-1]) if runs else None
+
+
+def chain(ids: Any) -> str:
+    """A hash chain over charge ids in order: each link hashes the last with the next id."""
+    link = hashlib.sha256(b"drc-4666").hexdigest()
+    for charge_id in ids:
+        link = hashlib.sha256(f"{link}:{charge_id}".encode()).hexdigest()
+    return link
+
+
+def chain_of(path: str) -> dict[str, Any]:
+    """What a committed result records of the ledger: the first charge, the count, the head."""
+    ids = [call["id"] for call in read(path)["calls"]]
+    return {"first": ids[0] if ids else "", "calls": len(ids), "head": chain(ids)}
+
+
+def begins_with(path: str, committed: Mapping[str, Any]) -> bool:
+    """Whether the ledger still starts with the chain a committed result recorded.
+
+    A deleted or replaced ledger reads as empty or as another run's, and a
+    key re-marked into it would score fresh (V3). The committed chain is what
+    survives the deletion, in git beside the result.
+    """
+    count = committed.get("calls")
+    if not isinstance(count, int) or count <= 0:
+        return True
+    try:
+        ids = [call["id"] for call in read(path)["calls"]]
+    except LedgerError:
+        return False
+    return (
+        len(ids) >= count
+        and ids[0] == committed.get("first")
+        and chain(ids[:count]) == committed.get("head")
+    )
+
+
+def committed_chain(summary_path: str = "") -> dict[str, Any] | None:
+    """The ledger chain a committed Claude Code result recorded, if there is one."""
+    try:
+        with open(summary_path or CLAUDE_SUMMARY_PATH, encoding="utf-8") as handle:
+            body = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, RecursionError):
+        # A result that cannot be read cannot vouch that the key is unfrozen.
+        return {"first": "", "calls": 1, "head": ""}
+    held = body.get("ledger_chain") if isinstance(body, dict) else None
+    return dict(held) if isinstance(held, dict) else None
 
 
 def has_calls(path: str = "") -> bool:

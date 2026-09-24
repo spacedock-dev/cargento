@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -199,6 +200,7 @@ class _Packet(unittest.TestCase):
         cap: int = 19,
         resume: dict[str, Any] | None = None,
         binding: dict[str, str] | None = None,
+        vouch: Any = None,
     ) -> int:
         with (
             mock.patch.object(score_abstention, "_get", side_effect=AssertionError("live read")),
@@ -217,6 +219,9 @@ class _Packet(unittest.TestCase):
                 ledger_path=str(self.ledger_path),
                 max_calls=cap,
                 resume=resume,
+                # The machine's own records are not this test's subject, so every
+                # case is vouched for unless a test says otherwise (V2 tests do).
+                vouch=vouch or (lambda _case: []),
             )
 
     def calls(self) -> list[dict[str, Any]]:
@@ -1149,3 +1154,231 @@ class Q9AResumeTrustsOnlyRecordsTheLedgerVouchesForTest(_Ledgered):
         model = _Model()
         self.assertEqual(2, self.score(model, resume=previous))
         self.assertEqual([], model.prompts)
+
+
+# ------------------------------------------------------------------ DRC-4666 verifier round
+
+
+def _real_home() -> str:
+    import pwd  # noqa: PLC0415 - POSIX only, as the scorer's own check is
+
+    return pwd.getpwuid(os.getuid()).pw_dir
+
+
+@unittest.skipIf(sys.platform == "win32", "the account's home comes from pwd, POSIX only")
+class V1HomeComesFromTheAccountNotTheEnvironmentTest(_Packet):
+    """V1: `HOME=/tmp/x` moved the ledger and the installed-CLI check with it."""
+
+    def test_a_moved_home_moves_neither_the_ledger_nor_the_install_roots(self) -> None:
+        import importlib  # noqa: PLC0415
+
+        fake = str(self.home / "x")
+        with mock.patch.dict("os.environ", {"HOME": fake}):
+            self.assertEqual(fake, os.path.expanduser("~"))
+            ledger = importlib.reload(abstention_ledger).LEDGER_PATH
+            roots = importlib.reload(score_abstention).CLAUDE_VERSIONS_ROOTS
+            marker = importlib.reload(mark_abstention)
+            projects, store = marker.CLAUDE_PROJECTS_ROOT, marker.STORE_HOME
+        importlib.reload(abstention_ledger)
+        importlib.reload(mark_abstention)
+        importlib.reload(score_abstention)
+        _LEDGER_PATCH.stop()
+        _LEDGER_PATCH.start()
+        for path in (ledger, *roots, projects, store):
+            with self.subTest(path=path):
+                self.assertTrue(path.startswith(_real_home()), path)
+                self.assertNotIn(fake, path)
+
+    def test_a_symlinked_versions_directory_under_a_moved_home_is_refused(self) -> None:
+        # The verifier's h4: the real versions directory symlinked into a fake home.
+        installed = self.home / "installed" / "versions"
+        installed.mkdir(parents=True)
+        (installed / "2.1.281").write_text("")
+        fake = self.home / "x"
+        (fake / ".local" / "share" / "claude").mkdir(parents=True)
+        (fake / ".local" / "share" / "claude" / "versions").symlink_to(installed)
+        found = str(fake / ".local" / "share" / "claude" / "versions" / "2.1.281")
+        runner = mock.Mock(return_value=mock.Mock(returncode=0, stdout="2.1.281 (Claude Code)\n"))
+        with (
+            mock.patch.dict("os.environ", {"HOME": str(fake)}),
+            self.assertRaises(score_abstention.BinaryError),
+        ):
+            score_abstention.verify_claude_binary(resolver=lambda _name: found, runner=runner)
+
+    def test_scoring_refuses_when_home_is_not_the_accounts(self) -> None:
+        printed: list[str] = []
+        corpus = score_abstention.Corpus({"v": 5, "cases": [_claude_case()]}, {}, b"", {})
+        with (
+            mock.patch.dict("os.environ", {"HOME": str(self.home / "x")}),
+            mock.patch.object(score_abstention, "_load_corpus", return_value=corpus),
+            mock.patch.object(score_abstention, "score", side_effect=AssertionError("scored")),
+            mock.patch("builtins.print", side_effect=lambda *a, **_k: printed.append(str(a))),
+        ):
+            self.assertEqual(2, score_abstention.main(["--score", "--producer", "claude"]))
+        self.assertIn("HOME", "\n".join(printed))
+
+
+def _invented(harness: str, index: int) -> dict[str, Any]:
+    sid = f"{harness[:2]}{index:06d}-INVENTED"
+    case = {
+        "id": mark_abstention._case_id(harness, sid),
+        "harness": harness,
+        "sid": sid,
+        "origin": "recorded",
+        "captured_at": 200.0,
+        "row_snapshot": {"harness": harness, "sid": sid, "state": "working"},
+        "producer_facts": [_fact(f"f{index}", sid=sid, harness=harness, at=150.0)],
+        "intent": {"goal": GOAL, "lines": [{"text": LINE_ONE}]},
+    }
+    if harness == "claude":
+        case["tool_output"] = {"tails": {}, "changed_after": []}
+    return case
+
+
+class V2TheScorerReChecksProvenanceTest(_Packet):
+    """V2: ten hand-written cases called recorded met the floor and passed."""
+
+    def invented_packet(self) -> None:
+        self.cases = [
+            _invented(harness, i)
+            for i, harness in enumerate(
+                h for h in ("claude", "codex") for _ in score_abstention.KINDS
+            )
+        ]
+        self.marks = {c["id"]: {"goal": "judge", "line_1": "abstain"} for c in self.cases}
+        kinds = list(score_abstention.KINDS) * 2
+        self.rubric = {
+            "cases": {
+                c["id"]: {
+                    "kind": kind,
+                    "origin": "recorded",
+                    "expect": {
+                        "goal": {"result": "unverifiable"},
+                        "line_1": {"result": "unverifiable"},
+                    },
+                }
+                for c, kind in zip(self.cases, kinds, strict=True)
+            }
+        }
+
+    def machine(self, **stores: Any) -> Any:
+        return mark_abstention.make_vouch(
+            observations=stores.get("observations", []),
+            ends=stores.get("ends", []),
+            index=stores.get("index", {}),
+        )
+
+    def test_invented_cases_called_recorded_never_pass(self) -> None:
+        self.invented_packet()
+        reply = _reply(goal=("unverifiable", ()), line_1=("unverifiable", ()))
+        # Trusted, as 1dc5f86b trusted them: the floor is met and it passes.
+        self.score(_Model((reply, "ok")))
+        self.assertEqual("passed", self.committed()["verdict"])
+        self.ledger_path.unlink()
+        self.summary.unlink()
+        rc = self.score(_Model((reply, "ok")), vouch=self.machine())
+        committed: Any = self.committed() if self.summary.exists() else {"verdict": "refused"}
+        self.assertIn(committed["verdict"], ("short", "refused"), rc)
+        self.assertEqual(0, committed.get("coverage", {}).get("claude", {}).get("kinds", 0))
+        origins = {e["origin"] for e in committed.get("rubric", {}).get("cases", {}).values()}
+        self.assertEqual({"synthetic"}, origins)
+
+    def test_a_case_the_machine_vouches_for_stays_recorded(self) -> None:
+        case = _invented("codex", 1)
+        self.cases = [case]
+        self.marks = {case["id"]: {"goal": "judge", "line_1": "abstain"}}
+        self.rubric = {
+            "cases": {
+                case["id"]: {"kind": "legitimate-change", "origin": "recorded",
+                             "expect": {"goal": {"result": "unverifiable"}}}
+            }
+        }  # fmt: skip
+        seen = {"harness": "codex", "sid": case["sid"], "state": "working", "last_activity": 200.0}
+        self.score(_Model(), vouch=self.machine(observations=[seen]))
+        entry = self.committed()["rubric"]["cases"][case["id"]]
+        self.assertEqual("recorded", entry["origin"])
+        self.assertEqual(1, self.committed()["coverage"]["codex"]["kinds"])
+
+    def test_a_claude_case_needs_its_transcript_in_the_index(self) -> None:
+        case = _invented("claude", 2)
+        stop = {"harness": "claude", "sid": case["sid"], "state": "working", "last_activity": 200.0}
+        why = self.machine(observations=[stop])(case)
+        self.assertIn("transcript-missing", why)
+
+    def test_main_builds_the_machines_vouch(self) -> None:
+        seen: dict[str, Any] = {}
+        corpus = score_abstention.Corpus({"v": 5, "cases": [_claude_case()]}, {}, b"", {})
+        with (
+            mock.patch.object(score_abstention, "_load_corpus", return_value=corpus),
+            mock.patch.object(
+                score_abstention, "score", side_effect=lambda *_a, **k: seen.update(k) or 0
+            ),
+            mock.patch.object(score_abstention, "argv_digest", return_value="cd" * 32),
+            mock.patch.object(
+                score_abstention,
+                "verify_claude_binary",
+                return_value=(BINDING["binary"], BINDING["cli_version"], "/abs/claude"),
+            ),
+            mock.patch.object(mark_abstention, "machine_vouch", return_value="VOUCH") as built,
+            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
+            mock.patch("builtins.print"),
+        ):
+            self.assertEqual(0, score_abstention.main(["--score", "--producer", "claude"]))
+        self.assertEqual("VOUCH", seen["vouch"])
+        built.assert_called_once_with(mark_abstention.STORE_HOME)
+
+
+class V3ADeletedLedgerCannotUnfreezeTheKeyTest(_Ledgered):
+    """V3: score, delete the ledger, re-mark, score again. The second run must be refused."""
+
+    def test_the_summary_commits_the_chain_and_a_rescore_after_deletion_is_refused(self) -> None:
+        self.marks[self.cases[0]["id"]] = {
+            "goal": "abstain",
+            "line_1": "abstain",
+            "line_2": "abstain",
+        }
+        reply = _reply(
+            goal=("consistent", (2,)), line_1=("consistent", (2,)), line_2=("consistent", (2,))
+        )
+        self.assertEqual(1, self.score(_Model((reply, "ok"))))
+        committed = self.committed()
+        (call,) = self.calls()
+        self.assertEqual(call["id"], committed["ledger_chain"]["first"])
+        self.assertEqual(1, committed["ledger_chain"]["calls"])
+        self.assertEqual(abstention_ledger.chain([call["id"]]), committed["ledger_chain"]["head"])
+        self.ledger_path.unlink()
+        self.marks[self.cases[0]["id"]] = {"goal": "judge", "line_1": "judge", "line_2": "judge"}
+        model = _Model((reply, "ok"))
+        self.assertEqual(2, self.score(model))
+        self.assertEqual([], model.prompts)
+        self.assertEqual(committed, self.committed())
+
+    def test_the_marker_stays_frozen_once_a_result_committed_a_chain(self) -> None:
+        self.score(_Model())
+        self.ledger_path.unlink()
+        cases, marks = self.home / "cases.json", self.home / "marks.json"
+        cases.write_text(json.dumps({"v": 5, "cases": [_claude_case()]}))
+        marks.write_text("{}")
+        with (
+            mock.patch.object(abstention_ledger, "LEDGER_PATH", str(self.ledger_path)),
+            mock.patch.object(abstention_ledger, "CLAUDE_SUMMARY_PATH", str(self.summary)),
+            mock.patch.object(mark_abstention, "CASES_PATH", str(cases)),
+            mock.patch.object(mark_abstention, "MARKS_PATH", str(marks)),
+            mock.patch.object(mark_abstention, "_ask", side_effect=AssertionError("asked")),
+            mock.patch("builtins.print"),
+        ):
+            self.assertEqual(1, mark_abstention.mark())
+            self.assertEqual(1, mark_abstention.main(["--reset"]))
+
+    def test_report_flags_a_ledger_that_does_not_begin_with_the_committed_chain(self) -> None:
+        self.score(_Model())
+        committed = self.committed()
+        self.ledger_path.unlink()
+        self.precharge(1)
+        printed: list[str] = []
+        with (
+            mock.patch.object(abstention_ledger, "LEDGER_PATH", str(self.ledger_path)),
+            mock.patch("builtins.print", side_effect=lambda *a, **_k: printed.append(str(a))),
+        ):
+            score_abstention.report(self.corpus(), committed)
+        self.assertIn("STALE", "\n".join(printed))

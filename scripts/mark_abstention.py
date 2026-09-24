@@ -128,10 +128,10 @@ INTENT_AT = 1.0
 ORIGIN_SYNTHETIC = "synthetic"
 # Where a recorded session's words can come from. A transcript anywhere else
 # was written by somebody, not recorded by the harness.
-CLAUDE_PROJECTS_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+CLAUDE_PROJECTS_ROOT = os.path.join(abstention_ledger.real_home(), ".claude", "projects")
 # Where the freeze reads the dashboard's own history and ends: the store the
 # lifecycle was observed into, never the packet's directory.
-STORE_HOME = os.path.join(os.path.expanduser("~"), ".cargento")
+STORE_HOME = os.path.join(abstention_ledger.real_home(), ".cargento")
 
 # Cases per (harness, end shape), so the corpus spreads instead of filling up
 # with whichever harness ran most today. v2 had this constant and no bucketing,
@@ -630,6 +630,51 @@ def _frozen_checks(
     }
 
 
+def provenance(
+    case: dict[str, Any], *, observations: Any, ends: Any, index: dict[str, str]
+) -> list[str]:
+    """Why a frozen case cannot be called recorded, from the machine's own records.
+
+    The freeze's checks, repeated at score time, because the packet is
+    hand-editable and the scorer read `origin` as written (V2). `index` maps a
+    Claude Code sid's first eight characters to its transcript, as
+    `_transcript_index` builds it from `CLAUDE_PROJECTS_ROOT`.
+    """
+    snapshot = case.get("row_snapshot")
+    captured = case.get("captured_at")
+    if not isinstance(snapshot, dict) or not _epoch(captured):
+        return ["lifecycle-unconfirmed"]
+    reasons: list[str] = []
+    if not _lifecycle_recorded(snapshot, float(captured), observations, ends):
+        reasons.append("lifecycle-unconfirmed")
+    if case.get("harness") == "claude":
+        sid = str(case.get("sid") or "")
+        transcript = index.get(sid[:8])
+        if not transcript:
+            reasons.append("transcript-missing")
+        else:
+            if not _inside(transcript, CLAUDE_PROJECTS_ROOT):
+                reasons.append("transcript-outside-projects")
+            if not _transcript_is_the_session(transcript, sid):
+                reasons.append("transcript-other-session")
+    return reasons
+
+
+def make_vouch(*, observations: Any, ends: Any, index: dict[str, str]) -> Any:
+    """`provenance` bound to one set of records, for the scorer to call per case."""
+
+    def vouch(case: Any) -> list[str]:
+        return provenance(dict(case), observations=observations, ends=ends, index=index)
+
+    return vouch
+
+
+def machine_vouch(store_home: str) -> Any:
+    """`make_vouch` over this machine's history, ends and Claude Code transcripts."""
+    observations, ends = _observed_stores(store_home)
+    return make_vouch(observations=observations, ends=ends, index=_transcript_index())
+
+
 def freeze_case(
     config: Any,
     entry: dict[str, Any],
@@ -1052,7 +1097,10 @@ def _ledger_refusal() -> bool:
     key is frozen from the first charge (review, F1). An unreadable ledger
     counts as charged: fail closed.
     """
-    if not abstention_ledger.has_calls(abstention_ledger.LEDGER_PATH):
+    committed = abstention_ledger.committed_chain(abstention_ledger.CLAUDE_SUMMARY_PATH)
+    if not abstention_ledger.has_calls(abstention_ledger.LEDGER_PATH) and not (
+        committed and committed.get("calls")
+    ):
         return False
     print("The spend ledger already holds a call, so the answer key is frozen.")
     print("Marks cannot be written or discarded after anything has been spent.")
