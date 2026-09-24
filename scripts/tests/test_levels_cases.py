@@ -466,6 +466,25 @@ class RemarkAfterScoreTest(CaseToolTestCase):
         self.assertEqual(self.mark(Answers("m", "m")), 0)
 
 
+class CommittedDigestTest(CaseToolTestCase):
+    def test_git_is_handed_the_digest_path_with_forward_slashes(self) -> None:
+        # What `HEAD:<path>` needs on Windows, where relpath answers with backslashes.
+        relative = levels_cases._repo_path(str(self.digest_path), str(self.repo))
+        self.assertEqual(relative, "docs/drift-levels/marks-digest.json")
+
+    def test_a_digest_committed_with_crlf_is_the_committed_digest(self) -> None:
+        # Windows with core.autocrlf off commits the bytes as written; the
+        # working copy is read in text mode, so only a line-wise compare agrees.
+        self.marked("h", "h")
+        self.digest_path.write_bytes(self.digest_path.read_bytes().replace(b"\n", b"\r\n"))
+        _git(self.repo, "-c", "core.autocrlf=false", "add", str(self.digest_path))
+        _git(self.repo, "commit", "-q", "-m", "marks digest, CRLF")
+        blob = _git(self.repo, "cat-file", "-s", "HEAD:docs/drift-levels/marks-digest.json")
+        self.assertEqual(int(blob), self.digest_path.stat().st_size)  # the CRLF bytes, kept
+        committed = levels_cases.committed_digest(str(self.repo), str(self.digest_path))
+        self.assertIsInstance(committed, levels_cases.Committed)
+
+
 class AttachReadingsTest(CaseToolTestCase):
     def test_v4_a_reading_for_a_case_not_in_the_committed_marks_is_refused(self) -> None:
         self.build(self.case(), self.case(kind="other", until=None))

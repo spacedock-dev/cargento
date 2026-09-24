@@ -141,7 +141,7 @@ def _write(path: str, body: Any) -> None:
     """Atomically and private: these files name sessions."""
     os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as handle:
+    with open(tmp, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(body, handle, indent=2, sort_keys=True)
         handle.write("\n")
     os.chmod(tmp, 0o600)
@@ -439,7 +439,7 @@ def _publish_digest(
         "marked": marked,
     }
     os.makedirs(os.path.dirname(digest_path), exist_ok=True)
-    with open(digest_path, "w", encoding="utf-8") as handle:
+    with open(digest_path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(body, handle, indent=2, sort_keys=True)
         handle.write("\n")
     return sha
@@ -448,6 +448,18 @@ def _publish_digest(
 def _scored_marker(paths: Mapping[str, str], cases_digest: str) -> str:
     """Where a score of this case set is remembered, outside the repository (V2)."""
     return os.path.join(paths["dir"], f"scored-{cases_digest}.json")
+
+
+def _repo_path(path: str, repo_root: str) -> str:
+    """`path` as git names it in a `<rev>:<path>` argument: relative, with forward slashes.
+
+    `os.path.relpath` answers with backslashes on Windows, and git reads a
+    backslash in `HEAD:docs\\x.json` as part of the name. That reading of the
+    windows-latest failures in test_levels_cases is inferred, not observed there.
+    """
+    return pathlib.PurePath(
+        os.path.relpath(os.path.realpath(path), os.path.realpath(repo_root))
+    ).as_posix()
 
 
 def _history_blobs(repo_root: str, relative: str) -> list[dict[str, Any]]:
@@ -479,10 +491,8 @@ def _marking_closed(
         return f"{results_path} exists, so a score has been seen"
     if os.path.exists(_scored_marker(paths, bound)):
         return "this case set has been scored on this machine"
-    root = os.path.realpath(repo_root)
     for path, what in ((results_path, "a result"), (digest_path, "a marks digest")):
-        relative = os.path.relpath(os.path.realpath(path), root)
-        for body in _history_blobs(repo_root, relative):
+        for body in _history_blobs(repo_root, _repo_path(path, repo_root)):
             if body.get("cases_digest") == bound or (
                 path == results_path and "cases_digest" not in body
             ):
@@ -608,7 +618,7 @@ class Committed:
 
 def committed_digest(repo_root: str, digest_path: str) -> Committed | str:
     """Read from HEAD, never from the working copy the marker rewrites (T2); why not, if not."""
-    relative = os.path.relpath(os.path.realpath(digest_path), os.path.realpath(repo_root))
+    relative = _repo_path(digest_path, repo_root)
     blob = _git(repo_root, "show", f"HEAD:{relative}")
     if blob is None:
         return "the marks digest is not committed"
@@ -617,7 +627,8 @@ def committed_digest(repo_root: str, digest_path: str) -> Committed | str:
             working = handle.read()
     except OSError:
         working = ""
-    if working != blob:
+    # Compared by line: a Windows checkout may hold CRLF where the blob holds LF.
+    if working.splitlines() != blob.splitlines():
         return "the working copy of the marks digest differs from the committed one"
     log = (_git(repo_root, "log", "-1", "--format=%H %ct", "--", relative) or "").split()
     try:
@@ -836,7 +847,7 @@ def score(
         "cases": rows,
     }
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
-    with open(results_path, "w", encoding="utf-8") as handle:
+    with open(results_path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(summary, handle, indent=2, sort_keys=True)
         handle.write("\n")
     _write(
