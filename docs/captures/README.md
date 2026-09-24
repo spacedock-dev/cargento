@@ -18,6 +18,14 @@ nonzero; Codex still emitted `PostToolUse`. The latter cannot establish successf
 The recorder was registered in isolated Claude settings and Codex inline TOML; project Codex
 hook-file discovery was a negative registration probe, not negative payload evidence.
 
+[Claude transcript tool shapes](claude/transcript-tool-shapes-2.1.281-macos.jsonl) is not a hook
+capture either: it records, by field name and type name only, the three transcript records DEC-23
+reads, taken from interactive Claude Code 2.1.281 sessions on Haiku 4.5. A background shell call's
+result carries `toolUseResult.backgroundTaskId` and output that only says the run will report later.
+An error-flagged shell result sets `is_error` and stores `toolUseResult` as a bare string, with no
+separate stdout, stderr or exit code. A file write's result carries no `is_error` field at all, so an
+absent flag there means nothing about success.
+
 ## What is in a record, and what is deliberately not
 
 Each line is one hook invocation, written by `scripts/capture_hook.py`. It records the **names** of
