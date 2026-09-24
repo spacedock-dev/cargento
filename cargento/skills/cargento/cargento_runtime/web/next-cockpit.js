@@ -2775,16 +2775,21 @@ function nextReadingJobBox(job, key){
   /* Cancel sits in the header row beside the title, as the design draws it.
      While a cancel is finishing it keeps its label and is disabled, from the
      published `cancelling` so a reload draws the same; a request of this
-     page's own still in flight disables it too. It takes the press button's
-     focus key, so focus lands on the press again when the box goes.
+     page's own still in flight disables it too. The press button's focus key
+     goes to the title, not to Cancel: on Cancel, a keyboard press followed by
+     a second Enter cancelled the analysis it had just started, which is a
+     spent attempt (S6 review, P-1). Cancel's own key falls back to the press,
+     so focus lands there again when the box goes.
      `data-next-analyzing` is the hook DRC-4680's meter dims on. */
   const held = nextCockpitReadingCancels.get(key);
   const mine = held && held.job === job.id ? held : null;
   const finishing = job.cancelling === true || Boolean(mine && mine.pending);
   return `<div class="next-cockpit-reading-job" role="status" data-next-analyzing="${esc(job.id)}">` +
-    `<div class="next-cockpit-reading-job-head"><span class="next-cockpit-reading-job-title">${esc(NEXT_READING_JOB_TITLE)}</span>` +
+    '<div class="next-cockpit-reading-job-head"><span class="next-cockpit-reading-job-title" ' +
+    `tabindex="-1" data-next-focus="reading:${esc(key)}">${esc(NEXT_READING_JOB_TITLE)}</span>` +
     '<button type="button" class="next-action" data-next-cockpit-action="reading-cancel" ' +
-    `data-next-focus="reading:${esc(key)}"${finishing ? ' aria-disabled="true"' : ""}>Cancel</button></div>` +
+    `data-next-focus="reading-cancel:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"` +
+    `${finishing ? ' aria-disabled="true"' : ""}>Cancel</button></div>` +
     `<ol class="next-cockpit-reading-steps">${items}</ol>` +
     `<p class="next-cockpit-reading-job-note">${esc(NEXT_READING_JOB_NOTE)}</p>` +
     (mine && mine.failed && !finishing
