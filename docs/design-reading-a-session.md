@@ -1414,11 +1414,48 @@ within the milestone's scope and recorded on the issue.
 - The hint says what an analysis reads: "Reads the session up to <cutoff> against your intent.",
   where the cutoff is now, its end, or its last turn, from the same end kind HOW IT LANDED shows. It
   shows only where a press could read: a provider, no refusal beside it, saved words, and words
-  given before any observed end. "Runs in the background." waits for the background job
-  (DRC-4686).
+  given before any observed end. The background job (DRC-4686) added "Runs in the background."
+  after it.
 - The later-direction floor stays at the save time. By construction no message of the reader's lies
   between the window start and the save, so moving it would change nothing on consistent data and
   would, on a fetch the server missed, turn a message into a later direction.
+
+### What the background build decided, 2026-09-24
+
+DRC-4686 built the background half of item 5; Cancel is DRC-4693. The owner's calls are on the
+issue, and the rest were made within them.
+
+- The press answers `202` with the job before the model is called. Every refusal the press had
+  before stays synchronous and first. A second press answers `409` with the running job and starts
+  nothing; `409` rather than `200`, because a forged press is read by its status.
+- The job registry sits beside the one-in-flight slot in `reading`, under its lock, rather than
+  replacing it. The unasked lane takes the same slot, and with the slot replaced it would either lose
+  its guard or appear as a job the reader never started. A press that meets the lane's slot answers
+  `409` with no job.
+- The job is published board-wide as `reading_jobs`, keyed as the page keys a session, and not as a
+  field on every row. A row field would be declared in three places and would enter history.
+- Each phase begins at a real point: preparing at the press, waiting at the CLI's spawn (after the
+  spend is committed), checking when a reply arrived. A withheld gate ends a job while it prepares
+  and a failed call ends it while it waits; nothing publishes a phase that did not happen. The
+  design's timed steps and its "Analyzing 38 turns" heading are overruled: the heading reads
+  "Analyzing drift", because a Claude Code session has no stable turn identity (item 11).
+- The store is written first, then the job is removed and the slot freed as one step, then one
+  revision is published. Any other order lets a page show a finished box with no result, or a result
+  under a running box.
+- The permission and budget are read again at the model seam inside the job. A refusal there ends
+  the job with nothing written, and the board's published permission already says why.
+- A job lost to a restart is recorded, not dropped. A marker written once the spend is committed
+  becomes a spent `interrupted` attempt at the next start, so the count stays equal to what the
+  budget charged. Letting it vanish was the alternative, and it leaves a charged attempt nowhere in
+  the count.
+- Every model call, the goal lane's and the unasked lane's included, uses the supervised runner. A
+  timeout that kills only the direct child leaks the grandchild, which those lanes had too.
+- Shutdown kills every supervised group, because a child in its own group no longer receives a
+  foreground Ctrl-C. Leaving that to Cancel would have left one layer of the stack with a child
+  that outlives the daemon.
+- A finished step is a filled mark and never a check mark. Item 6's rule is about results, but a
+  check shape beside a reading is close enough to its reason that the design's check circle was
+  not copied.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

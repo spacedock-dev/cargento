@@ -1057,7 +1057,13 @@ not the CLI's added protocol or system instructions. Redaction recognizes creden
 it does not remove arbitrary private prose. One call per session may be in flight, including
 concurrent HTTP refreshes, and a reading takes the same one-in-flight gate per session; both slots
 are released on failure. Each invocation has a **60-second**
-timeout. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
+timeout, and every model call, the goal lane's, the unasked lane's and a pressed reading's, runs
+through `supervise.run`: the CLI leads a process group of its own (a kill-on-close Job Object on
+Windows, the child held suspended until it is inside the job), a timeout kills that whole group
+rather than only the direct child, and the daemon's own group is never signalled. The call returns
+only after the child is reaped, so its temporary files are removed after, never under, a live
+writer. Because a child in its own group no longer receives a foreground Ctrl-C, daemon shutdown
+kills every supervised group. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
 line; a reading returns at most `annotation_text_cap_chars * 8` bytes, 1,920 at the shipped
 value.
 A failed call falls back to local analysis. No raw model stdout or stderr is served or logged.
@@ -1107,7 +1113,8 @@ environment, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_U
 The process runs in a fresh owner-only (0700) empty directory under the state directory. Stdout
 goes to an owner-only temp file, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
 it are read. Stderr is discarded. The timeout is the shared **60 seconds**. The directory and the
-file are removed on every path, including a timeout or an OS error. An absent or relative
+file are removed on every path, including a timeout or an OS error, and only once the CLI and
+anything it started have been killed and reaped. An absent or relative
 `shutil.which("claude")` spends nothing and creates nothing. The prompt is the reading prompt Codex
 receives: redacted, then clipped to 16 KiB. The same remembered answer, now per provider, and the
 same rolling cap apply.
@@ -1220,7 +1227,7 @@ the live estimate only classifies them on this machine, by time.
 
 ### Analyze drift, Cancel and copied corrections
 
-Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy) and not built yet. Each part arrives with the layer named
+Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy). The background job is built; each other part arrives with the layer named
 beside it, and the route counts in Scope move in those layers, not here.
 
 The labels. "Check for drift" becomes "Analyze drift", and "Allow and check" becomes "Allow and
@@ -1229,10 +1236,24 @@ that an allow given before the disclosure named tool output does not cover it
 ([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). "Keep my intent
 and analyze" counts as the allow when the disclosure beside it has not been allowed yet.
 
-The Cancel route, with DRC-4693. An analysis runs as a job the server owns, in its own process group
-(a Job Object on Windows), so Cancel never signals the daemon's group. Cancel kills that group,
-releases the one-in-flight slot only after the child is reaped and its temporary files are removed,
-records a "cancelled" withheld reason as a spent attempt, and discards a reply that arrives after it.
+The background job, built with DRC-4686. An admitted press answers `202` with a job the server
+owns, before the model is called, and the reading runs on a thread of its own under the
+supervised runner above. The job's id, its phase, the three step names and when it started are
+published board-wide under `reading_jobs` in the payload, to any loopback client, as the board
+itself is; the process handle never is. A second press answers `409 in-flight` with the running
+job and starts nothing. A slot the unasked lane holds answers the same `409` with no job. The
+permission and budget are read again at the model seam inside the job, so a budget another tab
+filled, or an answer withdrawn, after the press was admitted ends the job with nothing written or
+spent. Once the spend is committed, a marker under `reading-jobs/` in the state directory names the
+job (its id, the harness and session id, the pid, the start time, and no content), owner-only; the
+outcome's write removes it. The next dashboard start records any marker whose process is gone as a
+spent `interrupted` attempt, and leaves alone a marker whose process still runs, which is another
+dashboard on the same state directory.
+
+The Cancel route, with DRC-4693. Cancel kills the job's process group through the handle the
+supervised runner gives the job, releases the one-in-flight slot only after the child is reaped and
+its temporary files are removed, records a "cancelled" withheld reason as a spent attempt, and
+discards a reply that arrives after it.
 A forged cancel needs the job id, which the push publishes to any loopback client, and like every
 route that can authorize a model call it is refused to a non-loopback peer and cross-site. It
 discards a reading the reader started and records it as a cancelled, spent attempt, as though the
@@ -2302,8 +2323,9 @@ remembered answer too, including the tool-output grant for the destination the b
 sends a Claude Code session's checks only to the reader's own configured vendor. The rolling cap of twelve attempts across tabs and processes bounds that
 exposure. One reading per session may be in flight, and the explicit model off switch refuses all
 calls. The
-route reads nothing back to the caller beyond whether a reading was produced: an unknown session is
-the same 200 as any other, never a 404, so it is not an oracle for which sessions the board holds.
+route reads nothing back to the caller beyond the job it started or found running, which the payload
+already publishes: an unknown session answers 200 with no job, never a 404, so the route tells a
+caller nothing about which sessions exist that `GET /api/data` does not.
 
 Having nothing to click is not the whole question for those two, because both hold a socket open,
 and that half was measured on 2026-09-07 in Chrome. Eight frames pointed at `/api/stream` from a

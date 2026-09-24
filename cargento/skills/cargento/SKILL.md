@@ -393,10 +393,14 @@ reader-requested reading or the optional unasked lane. With nothing typed the bl
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control, `Check for drift`. When it cannot run it stays on the page, refuses the press, and
 names one next step. The accepted case review enables that control; the evidence stays readable
-whether or not you ask for a reading. A press says a check can take up to a minute, the rest of the
-page stays usable meanwhile, and it prevents another press in this tab until it finishes. The response says whether a reading arrived or none
-was produced; a failed request says its result could not be confirmed and is never retried
-automatically. The counter reports recorded model requests, so a refusal before the model runs
+whether or not you ask for a reading. A press starts an analysis the server runs in the background,
+and while it runs the control is replaced by an "Analyzing drift" box listing its real steps
+(preparing what is sent, waiting for the named provider, checking the reply), the one under way
+marked, with the attempt count and disclosure still beside it. The box comes from the published
+board, so a reload or another tab shows the same analysis at the same step, and a second press
+starts nothing. The result, or why there is none, replaces the box when it is stored; an analysis
+a restart cut short is recorded as an interrupted attempt. A failed request says its result could
+not be confirmed and is never retried automatically. The counter reports recorded model requests, so a refusal before the model runs
 does not increase it.
 
 ## Notifications
