@@ -678,6 +678,55 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
         self.assertIn("flex:1 1 100%", rule(".next-cockpit-reading-ask>p"))
         self.assertIn("margin:0 0 0 auto", rule(".next-session-controls"))
 
+    def test_a_box_at_rest_shows_whole_rows_and_grows_to_the_full_text_on_focus(self) -> None:
+        """Owner, 2026-09-24: "one clean row, expand on focus". A saved line longer than its box
+        showed a half-cut second row, and the goal box a half-cut third. At rest a line is one
+        unwrapped row with its overflow faded, and the goal exactly two whole rows; on focus
+        both grow to the full text. Pure CSS, so focus carries it through a redraw and no
+        reader-state row is owed."""
+        line_rest = rule(".next-session-panel .next-cockpit-held-line textarea:not(:focus)")
+        for part in (
+            "height:calc(var(--fs-body)*1.55 + 16px)",
+            "white-space:nowrap",
+            "overflow:hidden",
+        ):
+            with self.subTest(line_rest=part):
+                self.assertIn(part, line_rest)
+        self.assertRegex(line_rest, r"(?:text-overflow:ellipsis|mask-image:)")
+        goal_rest = rule(".next-session-panel .next-cockpit-held-field>textarea:not(:focus)")
+        for part in (
+            "height:calc(var(--fs-body)*1.55*2 + 9px)",
+            "padding-bottom:0",
+            "overflow:hidden",
+        ):
+            with self.subTest(goal_rest=part):
+                self.assertIn(part, goal_rest)
+        for selector in (
+            ".next-session-panel .next-cockpit-held-line textarea:focus",
+            ".next-session-panel .next-cockpit-held-field>textarea:focus",
+        ):
+            with self.subTest(focus=selector):
+                # Focus takes the at-rest height, wrap and clip away (they are `:not(:focus)`)
+                # and sizes the box to its text; it declares no overflow of its own, so it adds
+                # no scroll container.
+                lifted = rule(selector)
+                self.assertIn("field-sizing:content", lifted)
+                self.assertNotIn("overflow", lifted)
+                self.assertNotIn("height:calc", lifted)
+        self.assertIn(
+            "white-space:pre-wrap",
+            rule(".next-session-panel .next-cockpit-held-line textarea:focus"),
+        )
+        self.assertIn("resize:none", rule(".next-session-panel .next-cockpit-held-field textarea"))
+        # The selectors reach the markup: the goal box is a direct child of its field, each line
+        # box is inside its line, and the whole text stays the box's value.
+        html = self.page(setup=THREE_LINES)
+        self.assertRegex(
+            html, r'data-next-cockpit-held-field="goal">(?:(?!</div>)[\s\S])*</div><textarea '
+        )
+        self.assertIn(">The toggle writes the choice to the settings store</textarea>", html)
+        self.assertIn('data-next-cockpit-held-line-count="0">50/240<', html)
+
     def test_the_sentences_in_the_controls_slot_say_analyze_not_check(self) -> None:
         """Review C-6: "check" also names a tool check on this page, so the sentences that stand
         in for the renamed control, or refuse it, use its verb."""

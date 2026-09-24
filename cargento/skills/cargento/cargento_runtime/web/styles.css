@@ -824,6 +824,22 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-panel .next-cockpit-held{gap:6px;padding:0}
 .next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:8px}
 .next-session-panel .next-cockpit-held-list{gap:2px}
+/* One clean row at rest, the whole text on focus (owner, DRC-4680). A line
+   box wrapped and showed a half-cut second row, and the goal box a half-cut
+   third. At rest a line is one unwrapped row with an ellipsis where it runs
+   on; the goal is exactly two whole rows, with no bottom padding for a third
+   to show through. Focus lifts both to the full text. CSS alone, so focus
+   carries it through a redraw and there is no held state
+   (docs/design-reader-state.md gains no row). The at-rest rules take
+   `:not(:focus)` so focus gives the box back its own overflow rather than
+   declaring a scroll container. `resize` is off because a dragged height is
+   an inline style the redraw puts back over the focus rule.
+   The value and its count are the whole text either way. */
+.next-session-panel .next-cockpit-held-field textarea{resize:none}
+.next-session-panel .next-cockpit-held-line textarea:not(:focus){height:calc(var(--fs-body)*1.55 + 16px);min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
+.next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
+.next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
 .next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 /* Two rows: state, name and id; then the measured line with the controls on

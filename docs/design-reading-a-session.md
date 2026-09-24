@@ -1595,6 +1595,19 @@ the analysis's recommendation.
   Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's bottom at 788
   (Claude Code) and 820 (Codex); six lines put the Drift heading's bottom at 900 on both, with no
   margin, because the six-line notice ("An expected outcome holds six lines...") appears only then.
+- The heading-row move is an owner-approved departure from C1's placement (2026-09-24): each
+  field's count and controls sit beside the field's name rather than under its box.
+- One clean row, expand on focus (owner, 2026-09-24). A saved line longer than its box wrapped and
+  showed a half-cut second row, and the goal box a half-cut third. At rest a line box is one
+  unwrapped row ending in an ellipsis, and the goal box exactly two whole rows, with no bottom
+  padding for a third to show through. On focus each grows to its full text (`field-sizing:
+  content`) and returns on blur. It is CSS alone, so the expansion follows focus through a redraw
+  and the reader-state inventory gains no row; resizing is off, because a dragged height is an
+  inline style the redraw would restore over the focus rule. The value and its count stay the
+  whole text. Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's
+  bottom at 781 (Claude Code) and 813 (Codex), and six lines put the Drift heading's bottom at 893.
+  A focused 102-character line grows to its full text at 1440, 375 and 320 with no horizontal
+  overflow.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
