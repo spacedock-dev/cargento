@@ -49,8 +49,10 @@ if TYPE_CHECKING:
 def real_home() -> str:
     """The account's home directory, which no environment variable can move.
 
-    Windows has no password database; the scorer refuses to spend there
-    rather than trust `USERPROFILE`, so its answer only has to be stable.
+    Windows has no password database, so there this falls back to
+    `expanduser("~")`, which `USERPROFILE` moves, and `home_moved` is always
+    False. The V1 protection holds on POSIX only; nothing refuses to score on
+    Windows, where this qualification is not run.
     """
     if sys.platform == "win32":
         return os.path.expanduser("~")
@@ -291,18 +293,24 @@ class Ledger:
         return dict(runs[-1]) if runs else None
 
 
-def chain(ids: Any) -> str:
-    """A hash chain over charge ids in order: each link hashes the last with the next id."""
+def chain(calls: Any) -> str:
+    """A hash chain over charges in order: each link hashes the last with the next charge.
+
+    A charge is its id and the two digests it was charged under, so rewriting a
+    call's `marks_digest` in place breaks the chain as surely as replacing the
+    call (V3e): with ids alone, a re-marked key and a re-digested ledger agreed.
+    """
     link = hashlib.sha256(b"drc-4666").hexdigest()
-    for charge_id in ids:
-        link = hashlib.sha256(f"{link}:{charge_id}".encode()).hexdigest()
+    for call in calls:
+        part = f"{call['id']}|{call['marks_digest']}|{call['inputs_digest']}"
+        link = hashlib.sha256(f"{link}:{part}".encode()).hexdigest()
     return link
 
 
 def chain_of(path: str) -> dict[str, Any]:
     """What a committed result records of the ledger: the first charge, the count, the head."""
-    ids = [call["id"] for call in read(path)["calls"]]
-    return {"first": ids[0] if ids else "", "calls": len(ids), "head": chain(ids)}
+    calls = read(path)["calls"]
+    return {"first": calls[0]["id"] if calls else "", "calls": len(calls), "head": chain(calls)}
 
 
 def begins_with(path: str, committed: Mapping[str, Any]) -> bool:
@@ -316,18 +324,23 @@ def begins_with(path: str, committed: Mapping[str, Any]) -> bool:
     if not isinstance(count, int) or count <= 0:
         return True
     try:
-        ids = [call["id"] for call in read(path)["calls"]]
+        calls = read(path)["calls"]
     except LedgerError:
         return False
     return (
-        len(ids) >= count
-        and ids[0] == committed.get("first")
-        and chain(ids[:count]) == committed.get("head")
+        len(calls) >= count
+        and calls[0]["id"] == committed.get("first")
+        and chain(calls[:count]) == committed.get("head")
     )
 
 
 def committed_chain(summary_path: str = "") -> dict[str, Any] | None:
-    """The ledger chain a committed Claude Code result recorded, if there is one."""
+    """The ledger chain a committed Claude Code result recorded.
+
+    None only when there is no result at all. A result with no chain reads as
+    `{}`, which the scorer refuses (V3d): every result this scorer writes
+    carries one, so a result without one was edited.
+    """
     try:
         with open(summary_path or CLAUDE_SUMMARY_PATH, encoding="utf-8") as handle:
             body = json.load(handle)
@@ -337,7 +350,7 @@ def committed_chain(summary_path: str = "") -> dict[str, Any] | None:
         # A result that cannot be read cannot vouch that the key is unfrozen.
         return {"first": "", "calls": 1, "head": ""}
     held = body.get("ledger_chain") if isinstance(body, dict) else None
-    return dict(held) if isinstance(held, dict) else None
+    return dict(held) if isinstance(held, dict) else {}
 
 
 def has_calls(path: str = "") -> bool:

@@ -1098,9 +1098,7 @@ def _ledger_refusal() -> bool:
     counts as charged: fail closed.
     """
     committed = abstention_ledger.committed_chain(abstention_ledger.CLAUDE_SUMMARY_PATH)
-    if not abstention_ledger.has_calls(abstention_ledger.LEDGER_PATH) and not (
-        committed and committed.get("calls")
-    ):
+    if not abstention_ledger.has_calls(abstention_ledger.LEDGER_PATH) and committed is None:
         return False
     print("The spend ledger already holds a call, so the answer key is frozen.")
     print("Marks cannot be written or discarded after anything has been spent.")

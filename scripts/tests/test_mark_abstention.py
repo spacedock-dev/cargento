@@ -30,8 +30,10 @@ _LEDGER_PATCH: Any = None
 def setUpModule() -> None:
     """Never the real spend ledger: the marker refuses to write once it holds a call."""
     global _LEDGER_PATCH  # noqa: PLW0603
-    _LEDGER_PATCH = mock.patch.object(
-        abstention_ledger, "LEDGER_PATH", str(Path(tempfile.mkdtemp(), "never-real.json"))
+    _LEDGER_PATCH = mock.patch.multiple(
+        abstention_ledger,
+        LEDGER_PATH=str(Path(tempfile.mkdtemp(), "never-real.json")),
+        CLAUDE_SUMMARY_PATH=str(Path(tempfile.mkdtemp(), "never-committed.json")),
     )
     _LEDGER_PATCH.start()
 

@@ -152,7 +152,9 @@ Codex has no session-end hook and is never read at a turn stop.
 The scorer repeats these checks at score time for every case the packet calls `recorded`, because
 the packet is hand-editable: the transcript found for that sid under `~/.claude/projects`, its
 session id, and the lifecycle in this machine's history and ends stores. A case that fails any of
-them is scored as `synthetic` and never meets the floor, whatever the packet or the rubric says.
+them becomes `synthetic`, is withheld as `not-recorded` without a model call, and never meets the
+floor, whatever the packet or the rubric says. `--report` runs the same check and counts only the
+cases it confirms.
 
 The scorer passes each Claude Code case's frozen checks to the producer as a press with a
 tool-output grant would, and reads a Claude Code turn stop as the route does. It refuses to start
@@ -187,8 +189,11 @@ case the cap stopped is withheld as `spend-cap`.
   `--reset`, and `--score` refuses a packet whose marks or cases hash differently from the calls
   already charged. A mark written after an output was seen is agreement, not a mark.
 - The committed result records `ledger_chain`: the first charge id, the number of calls and a hash
-  chain over their ids. A later `--score` refuses, and the marker stays frozen, while the ledger
-  does not begin with that chain, so deleting or replacing the ledger does not unfreeze the key.
+  chain over each charge's id and the two digests it was charged under. A later `--score` refuses
+  while the ledger does not begin with that chain, reading the result at
+  `docs/abstention/claude-results.json` as well as any `--out`, and refuses a committed result
+  with no chain at all. Deleting, replacing or rewriting the ledger therefore does not unfreeze the
+  key, and once a result is committed the marker stays frozen.
 - `--report` flags a result as stale when the ledger holds a call charged under other digests, or
   no longer begins with the result's chain.
 - `--resume` re-reads the local results and re-calls only the cases whose call failed

@@ -155,8 +155,10 @@ def setUpModule() -> None:
     """Never the real ledger: every test here charges a throwaway one."""
     global _LEDGER_PATCH  # noqa: PLW0603
     folder = tempfile.mkdtemp()
-    _LEDGER_PATCH = mock.patch.object(
-        abstention_ledger, "LEDGER_PATH", str(Path(folder, "never-real.json"))
+    _LEDGER_PATCH = mock.patch.multiple(
+        abstention_ledger,
+        LEDGER_PATH=str(Path(folder, "never-real.json")),
+        CLAUDE_SUMMARY_PATH=str(Path(folder, "never-committed.json")),
     )
     _LEDGER_PATCH.start()
 
@@ -1345,7 +1347,7 @@ class V3ADeletedLedgerCannotUnfreezeTheKeyTest(_Ledgered):
         (call,) = self.calls()
         self.assertEqual(call["id"], committed["ledger_chain"]["first"])
         self.assertEqual(1, committed["ledger_chain"]["calls"])
-        self.assertEqual(abstention_ledger.chain([call["id"]]), committed["ledger_chain"]["head"])
+        self.assertEqual(abstention_ledger.chain([call]), committed["ledger_chain"]["head"])
         self.ledger_path.unlink()
         self.marks[self.cases[0]["id"]] = {"goal": "judge", "line_1": "judge", "line_2": "judge"}
         model = _Model((reply, "ok"))
@@ -1382,3 +1384,104 @@ class V3ADeletedLedgerCannotUnfreezeTheKeyTest(_Ledgered):
         ):
             score_abstention.report(self.corpus(), committed)
         self.assertIn("STALE", "\n".join(printed))
+
+
+# ------------------------------------------------------------------ DRC-4666 second re-check
+
+
+class V3bTheCommittedResultIsReadWhereverOutPoints(_Ledgered):
+    """V3b: deleting the ledger and scoring with `--out` elsewhere reset the cap."""
+
+    def test_a_rescore_to_another_out_after_deletion_is_refused(self) -> None:
+        with mock.patch.object(abstention_ledger, "CLAUDE_SUMMARY_PATH", str(self.summary)):
+            self.score(_Model())
+            self.ledger_path.unlink()
+            self.marks[self.cases[0]["id"]]["line_2"] = "judge"
+            self.summary_elsewhere = self.home / "elsewhere.json"
+            self.summary, committed = self.summary_elsewhere, self.summary
+            model = _Model()
+            self.assertEqual(2, self.score(model))
+        self.assertEqual([], model.prompts)
+        self.assertFalse(self.summary_elsewhere.exists())
+        self.assertTrue(committed.exists())
+
+
+class V3dACommittedResultWithoutAChainIsRefused(_Ledgered):
+    """V3d: a committed result stripped of its chain was skipped, not refused."""
+
+    def strip_chain(self) -> None:
+        body = json.loads(self.summary.read_text())
+        body.pop("ledger_chain")
+        self.summary.write_text(json.dumps(body))
+
+    def test_stripped_with_the_ledger_kept_is_refused(self) -> None:
+        self.score(_Model())
+        self.strip_chain()
+        model = _Model()
+        self.assertEqual(2, self.score(model))
+        self.assertEqual([], model.prompts)
+
+    def test_stripped_with_the_ledger_deleted_is_refused(self) -> None:
+        self.score(_Model())
+        self.strip_chain()
+        self.ledger_path.unlink()
+        model = _Model()
+        self.assertEqual(2, self.score(model))
+        self.assertEqual([], model.prompts)
+
+
+class V3eTheChainCoversTheMarksEachCallWasChargedUnder(_Ledgered):
+    """V3e: rewriting the ledger's digests in place kept the id-only chain intact."""
+
+    def test_rewriting_marks_digests_in_place_breaks_the_chain(self) -> None:
+        self.score(_Model())
+        committed = self.committed()
+        self.marks[self.cases[0]["id"]]["line_2"] = "judge"
+        rewritten = score_abstention.marks_digest(self.corpus())
+        body = json.loads(self.ledger_path.read_text())
+        for entry in (*body["calls"], *body["runs"]):
+            entry["marks_digest"] = rewritten
+        self.ledger_path.write_text(json.dumps(body))
+        model = _Model()
+        self.assertEqual(2, self.score(model))
+        self.assertEqual([], model.prompts)
+        printed: list[str] = []
+        with (
+            mock.patch.object(abstention_ledger, "LEDGER_PATH", str(self.ledger_path)),
+            mock.patch("builtins.print", side_effect=lambda *a, **_k: printed.append(str(a))),
+        ):
+            score_abstention.report(self.corpus(), committed)
+        self.assertIn("STALE", "\n".join(printed))
+
+
+def _collect_into(sink: list[str]) -> Any:
+    def record(*args: Any, **_kwargs: Any) -> None:
+        sink.append(" ".join(map(str, args)))
+
+    return record
+
+
+class N3AnUnconfirmedCaseIsNeverCharged(_Ledgered):
+    """N3: demoted cases still spent calls on a run that could only be short."""
+
+    def test_a_case_the_machine_does_not_vouch_for_spends_nothing(self) -> None:
+        model = _Model()
+        self.score(model, vouch=lambda _case: ["lifecycle-unconfirmed"])
+        self.assertEqual([], model.prompts)
+        self.assertFalse(self.ledger_path.exists() and self.calls())
+        case = self.local()["cases"][self.cases[0]["id"]]
+        self.assertEqual("not-recorded", case["withheld"])
+
+    def test_the_pre_run_report_counts_only_confirmed_cases(self) -> None:
+        self.rubric = {
+            "cases": {self.cases[0]["id"]: {"kind": "misleading-completion", "origin": "recorded"}}
+        }
+        for vouch, want in (
+            (lambda _case: ["transcript-missing"], "claude: 0 confirmed recorded, 0 kind-tagged"),
+            (lambda _case: [], "claude: 1 confirmed recorded, 1 kind-tagged"),
+        ):
+            printed: list[str] = []
+            with mock.patch("builtins.print", side_effect=_collect_into(printed)):
+                score_abstention.report(self.corpus(), None, vouch=vouch)
+            with self.subTest(want=want):
+                self.assertIn(want, "\n".join(printed))

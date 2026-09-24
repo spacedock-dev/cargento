@@ -198,6 +198,9 @@ WITHHELD_PREFIX = "withheld:"
 WITHHELD_ROW_ABSENT = "row-absent"
 # Ours too: the spend ledger was full, so the case never reached the model.
 WITHHELD_SPEND_CAP = "spend-cap"
+# Ours: the machine's records do not vouch for the case, so no call is spent on
+# it. It could only have been scored as synthetic, and the floor ignores those (N3).
+WITHHELD_NOT_RECORDED = "not-recorded"
 
 # What a judged constraint rests on, from the entries it cites. A Goal
 # `consistent` resting on the agent's own account is DRC-4666's named case and
@@ -537,6 +540,7 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
     words: tuple[str, str] = ("", ""),
     revision: Mapping[str, Any] | None = None,
     tool_output: Any = None,
+    withhold: str = "",
 ) -> dict[str, Any]:
     """One producer call, classified. The only place the model is reached.
 
@@ -550,8 +554,8 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
     names = CONSTRAINTS if revision is None else tuple(reading.constraints_for(lines))
     marks = {name: str(mark.get(name) or "") for name in names}
     harness = str((row or {}).get("harness") or case.get("harness") or "")
-    if row is None:
-        assessment, why, spent = None, WITHHELD_ROW_ABSENT, False
+    if withhold or row is None:
+        assessment, why, spent = None, withhold or WITHHELD_ROW_ABSENT, False
     else:
         try:
             assessment, why, spent = reading.produce(
@@ -1424,15 +1428,30 @@ def _write_halves(
 
 
 def _chain_holds(ledger: abstention_ledger.Ledger | None, summary_path: str) -> bool:
-    """Whether the ledger still begins with the chain the committed result recorded (V3)."""
-    committed = abstention_ledger.committed_chain(summary_path) if ledger is not None else None
-    if ledger is None or not committed or abstention_ledger.begins_with(ledger.path, committed):
+    """Whether the ledger still begins with every committed result's chain (V3).
+
+    The committed Claude Code result at its fixed path is always read, and the
+    one at `--out` too when that is elsewhere: reading only `--out` let a
+    deleted ledger and a fresh `--out` reset the cap (V3b). A result without a
+    chain is refused rather than skipped (V3d).
+    """
+    if ledger is None:
         return True
-    print(
-        "Refused: the spend ledger does not begin with the chain the committed result "
-        "recorded. It was deleted or replaced, so the answer key cannot be trusted as frozen."
-    )
-    return False
+    paths = dict.fromkeys((abstention_ledger.CLAUDE_SUMMARY_PATH, summary_path))
+    for path in paths:
+        committed = abstention_ledger.committed_chain(path)
+        if committed is None:
+            continue
+        if not committed:
+            print(f"Refused: the committed result at {path} records no ledger chain.")
+            return False
+        if not abstention_ledger.begins_with(ledger.path, committed):
+            print(
+                f"Refused: the spend ledger does not begin with the chain the result at {path} "
+                "recorded. It was deleted, replaced or rewritten, so the key is not frozen."
+            )
+            return False
+    return True
 
 
 def _default_vouch(
@@ -1596,6 +1615,9 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
             mark,
             words=words,
             revision=mark_abstention.case_revision(dict(case)) if intents else None,
+            withhold=WITHHELD_NOT_RECORDED
+            if intents and case.get("origin") != ORIGIN_RECORDED
+            else "",
             tool_output=_tool_output(case, tool_destination, label, body) if intents else None,
             model=charged(case_id),
             now=case["captured_at"] if replay else now,
@@ -1686,8 +1708,41 @@ def _evidence_bearing(
     return any(reading._citable(entry) for entry in ledger)  # noqa: SLF001
 
 
-def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
-    """Where the corpus stands, and what the last run said. Spends nothing."""
+def _coverage_line(
+    corpus: Corpus,
+    cases: Sequence[Mapping[str, Any]],
+    harness: str,
+    tagged: set[str],
+    vouch: Callable[[Mapping[str, Any]], list[str]] | None,
+) -> str:
+    mine = [c for c in cases if c.get("harness") == harness]
+    total = len(mine)
+    if vouch is not None:
+        mine = [c for c in mine if c.get("origin") == ORIGIN_RECORDED and not vouch(c)]
+    evidence = sum(
+        1 for c in mine if _evidence_bearing(c, replay=_is_replay(corpus), body=corpus.cases)
+    )
+    kinds = sum(1 for c in mine if str(c.get("id")) in tagged)
+    if vouch is None:
+        return f"  {harness}: {evidence} evidence-bearing, {kinds} kind-tagged, of {total}"
+    return (
+        f"  {harness}: {len(mine)} confirmed recorded, {kinds} kind-tagged, "
+        f"{evidence} evidence-bearing, of {total}"
+    )
+
+
+def report(
+    corpus: Corpus,
+    summary: Mapping[str, Any] | None,
+    *,
+    vouch: Callable[[Mapping[str, Any]], list[str]] | None = None,
+) -> int:
+    """Where the corpus stands, and what the last run said. Spends nothing.
+
+    With `vouch`, the machine's check the scorer will run, a case counts only
+    when it is confirmed recorded: the packet's word alone read as a met
+    floor before a run that could only be short (N3).
+    """
     cases = [c for c in corpus.cases.get("cases") or () if isinstance(c, dict)]
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     live = {str(c.get("id")) for c in cases}
@@ -1706,12 +1761,7 @@ def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
         if e.get("kind") in KINDS and str(e.get("origin") or ORIGIN_RECORDED) == ORIGIN_RECORDED
     }
     for harness in COVERAGE_HARNESSES:
-        mine = [c for c in cases if c.get("harness") == harness]
-        evidence = sum(
-            1 for c in mine if _evidence_bearing(c, replay=_is_replay(corpus), body=corpus.cases)
-        )
-        kinds = sum(1 for c in mine if str(c.get("id")) in tagged)
-        print(f"  {harness}: {evidence} evidence-bearing, {kinds} kind-tagged, of {len(mine)}")
+        print(_coverage_line(corpus, cases, harness, tagged, vouch))
     if summary is None:
         print("No scoring run has been recorded, so nothing here says what the producer did.")
         return 0
@@ -1868,7 +1918,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         return 1
     if not args.score:
         summary = mark_abstention._load(out) if os.path.exists(out) else None  # noqa: SLF001
-        return report(corpus, summary or None)
+        vouch = (
+            mark_abstention.machine_vouch(mark_abstention.STORE_HOME)
+            if corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
+            else None
+        )
+        return report(corpus, summary or None, vouch=vouch)
     destination = reading_route.destination("claude")
     if destination != reading_route.VENDORS["claude"]:
         where = destination or "an unnamed host"
