@@ -1131,8 +1131,11 @@ window before the clip; and a written path relative to the working directory. No
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
 rest are counted. The published entry carries the check segment, the result and where the result
 came from, and never the output itself. The output tail is read again at the press
-(`project_context.claude_check_tails`), keyed by the call, and carried into that one prompt only,
-never onto the fact, a row, the page or history. The class lives in the observed record only, as
+(`project_context.claude_check_press`), keyed by the call, and carried into that one prompt only:
+Cargento never writes it onto the fact, a row, the page or history. A departure's explanation is
+model prose, and the model may quote a line of the tail in it; that explanation is stored with the
+reading and shown on the page with credential-shape redaction only, so a shapeless source line or
+assertion diff can appear there. The class lives in the observed record only, as
 its own fact type, kept out of the semantic history store and out of every session row field, and
 it is named in `history.PROMPT_DERIVED_CARRIERS`.
 
@@ -1168,7 +1171,11 @@ tool output was named does not cover it. What is built:
   does not know; a switch holds a value that is neither on nor off; a base URL sits beside a cloud
   switch, or any `ANTHROPIC_*_BASE_URL` other than `ANTHROPIC_BASE_URL` is set; two sources set one
   endpoint variable differently; a settings file cannot be read or parsed;
-  `CLAUDE_CODE_MANAGED_SETTINGS_PATH` is set; a macOS managed-preferences profile
+  `CLAUDE_CODE_MANAGED_SETTINGS_PATH` is set; `CLAUDE_CODE_CUSTOM_OAUTH_URL` is set in any source,
+  because an approved custom OAuth host replaces the first-party API host; `ANTHROPIC_UNIX_SOCKET`
+  is set, because every request then goes to a local socket whose far end forwards under another
+  machine's settings; neither `HOME` and `USER` nor the password-file entry gives a home and a user
+  to look under; a macOS managed-preferences profile
   (`/Library/Managed Preferences/com.anthropic.claudecode.plist`, or its per-user copy) exists,
   because the build does not read it; or the machine is Windows, whose policy lives in the registry
   and under `C:\Program Files\ClaudeCode`, neither of which is read. On the Codex route, which
@@ -1178,7 +1185,11 @@ tool output was named does not cover it. What is built:
   `com.openai.codex` managed-preferences profile, each measured in the live 0.156.1 binary; and on
   Windows.
 - A proxy variable does not change the destination named: it carries the call, and the vendor that
-  answers it is the same (owner, 2026-09-24).
+  answers it is the same (owner, 2026-09-24). A `CLAUDE_CODE_USE_*` switch that is not a provider
+  switch but is on (`CLAUDE_CODE_USE_POWERSHELL_TOOL` is one) also names nothing today. That fails
+  closed, costs the reader tool output, and is left as it is.
+- A pass that a later command may have changed files after, in the same call or a later one, does
+  not let a reading say the output is consistent, and its reason says so.
 - Where the destination cannot be named, the reading still runs on the reader's words, and its
   cutoff sentence says the checks were not sent and why.
 
@@ -2268,7 +2279,8 @@ it. `POST /api/reading` carries no capability token. The precedent is the quota 
 event ingress: the harm is a side effect on the operator's Codex balance rather than a forged claim
 about a session, and what holds it is the same-origin check and the refusal of a document
 navigation, neither of which a local process sends headers for. A local process can grant the
-remembered answer too. The rolling cap of twelve attempts across tabs and processes bounds that
+remembered answer too, including the tool-output grant for the destination the board names, which
+sends a Claude Code session's checks only to the reader's own configured vendor. The rolling cap of twelve attempts across tabs and processes bounds that
 exposure. One reading per session may be in flight, and the explicit model off switch refuses all
 calls. The
 route reads nothing back to the caller beyond whether a reading was produced: an unknown session is

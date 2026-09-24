@@ -41,7 +41,12 @@ NEXT_LINE = "\u0085"
 
 
 def entry(**overrides: Any) -> reading.LedgerEntry:
-    """One ledger entry, in the shape `build_ledger` produces."""
+    """One ledger entry, in the shape `build_ledger` produces.
+
+    `work` is stamped as a ledger of a session whose harness counts the type
+    as work (Pi for a work result, Claude Code for a tool report) would stamp
+    it, unless a test says otherwise.
+    """
     row: reading.LedgerEntry = {
         "id": "f1",
         "type": "tool_use",
@@ -52,6 +57,7 @@ def entry(**overrides: Any) -> reading.LedgerEntry:
         "source": "transcript · high",
     }
     row.update(cast("Any", overrides))
+    row.setdefault("work", row["type"] in {"work_result", "result", "tool_report"})
     return row
 
 
@@ -822,7 +828,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                 self.assertIn(expected, reading.WHY_TOKENS)
                 seen.add(expected)
         self.assertEqual(4, len(seen))
-        self.assertEqual(10, len(reading.WHY_TOKENS))
+        self.assertEqual(12, len(reading.WHY_TOKENS))
         self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
 
 
@@ -2000,23 +2006,29 @@ class YourOwnWordsAreAlwaysInThePrompt(unittest.TestCase):
         chosen = {row["id"] for row in selection.entries}
         self.assertNotIn("check-0", chosen)
         self.assertEqual(("check-0",), tuple(row["id"] for row in selection.unread_failures))
-        consistent = {"output": {"token": "consistent", "cites": (1,), "detail": ""}}
-        work = [i for i, row in selection.by_index().items() if row["type"] == "tool_report"]
-        if work:
-            consistent["output"]["cites"] = (work[0],)
+        self.assertEqual(12, len(selection.unread_checks))
+        self.assertFalse(selection.asked_output)
         row = reading.resolve(
-            consistent,
+            {"output": {"token": "consistent", "cites": (1,), "detail": ""}},
             selection,
             goal="add retry",
             output="tests pass",
             detail_cap_chars=200,
             window_start=0.0,
         )["output"]
+        # The reader typed an expected output and allowed tool output, and no
+        # check had room: the stored reason says so, not "never asked".
         self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-        self.assertIn(row["why"], {reading.WHY_FAILED_CHECK_UNREAD, reading.WHY_NOT_ASKED})
+        self.assertEqual(reading.WHY_CHECKS_NOT_READ, row["why"])
         self.assertIn("please add a CSV export", prompt)
 
-    def test_a_failed_check_left_out_withdraws_a_consistent_resting_on_a_pass(self) -> None:
+    def test_defensive_a_failed_check_left_out_withdraws_a_consistent_resting_on_a_pass(
+        self,
+    ) -> None:
+        """Defensive, and unreachable through `build_prompt` today: selection
+        takes every failed check before any passed one and stops at the first
+        row that does not fit, so a prompt holding a pass never leaves a failure
+        out. The rule stays so a later selection order cannot make it so."""
         passed = reading.build_ledger(
             [WORDS_FACT, check_fact(result="passed")], "claude", "s1", tool_output={}
         )
@@ -2115,12 +2127,19 @@ class ACheckRowSaysWhatTheToolReported(unittest.TestCase):
     the session."""
 
     def test_a_long_check_is_clipped_and_keeps_its_result_words(self) -> None:
-        long = check_fact(summary="pytest " + "a" * 113, earlier_failed=True)
+        long = check_fact(
+            summary="pytest " + "a" * 113,
+            result="passed",
+            before_last_change=True,
+            earlier_failed=True,
+        )
+        words = "(passed, as the tool reported; an earlier run failed; before the last change)"
+        # The command and the words together are over the cap, so this clips.
+        self.assertGreater(len("pytest " + "a" * 113) + 1 + len(words), 180)
         (row,) = reading.build_ledger([long], "claude", "s1", tool_output={})
         self.assertLessEqual(len(row["summary"]), reading.LEDGER_SUMMARY_CAP_CHARS)
-        self.assertTrue(
-            row["summary"].endswith("(failed, as the tool reported; an earlier run failed)")
-        )
+        self.assertTrue(row["summary"].startswith("pytest aaa"))
+        self.assertTrue(row["summary"].endswith(words), row["summary"])
 
     def test_each_result_names_where_it_came_from(self) -> None:
         cases = {
@@ -2138,6 +2157,276 @@ class ACheckRowSaysWhatTheToolReported(unittest.TestCase):
                     tool_output={},
                 )
                 self.assertTrue(row["summary"].endswith(words), row["summary"])
+
+
+CODEX_FINAL: dict[str, Any] = {
+    "fact_id": "final-1",
+    "type": "result",
+    "by": "",
+    "summary": "Done: added retry with backoff and all tests pass.",
+    "at": 99.0,
+    "actor_claim": "assistant final-answer record",
+    "evidence": {"source": "assistant final-answer record", "confidence": "exact"},
+    "source_session": {"harness": "codex", "sid": "s1"},
+}
+
+
+class AToolReportedPassIsNotAStatedVerdict(AClaudeCodeReadingProducer):
+    """Owner ruling, 2026-09-24 (K1): a consistent resting on a check that
+    passes item 8 is not withdrawn for naming the tool's own result word, and
+    every other success word still withdraws it."""
+
+    def _consistent(self, detail: str, **check: Any) -> Any:
+        answer = json.dumps({"output": {"result": "consistent", "cites": [2], "detail": detail}})
+        assessment, why, _spent = self._produce(
+            [WORDS_FACT, check_fact(result="passed", **check)],
+            model=self._model(answer),
+            tool_output=ADMITTED,
+        )
+        self.assertEqual("", why)
+        return assessment["criteria"]["output"]
+
+    def test_a_reading_that_says_the_check_passed_keeps_its_consistent(self) -> None:
+        for detail in (
+            "The latest pytest run passed after the last change.",
+            "python3 -m pytest tests/test_retry.py passed inside the window.",
+            "The latest run of the retry test is passing, as the tool reported.",
+            "The latest pytest run exited 0 with no later write.",
+            "The tool reported the retry suite passed; not inspected.",
+        ):
+            with self.subTest(detail=detail):
+                row = self._consistent(detail)
+                self.assertEqual(reading.RESULT_CONSISTENT, row["result"], row)
+
+    def test_restating_that_an_earlier_run_failed_keeps_it_when_the_row_says_so(self) -> None:
+        row = self._consistent("The retry test passed; an earlier run failed.", earlier_failed=True)
+        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+        row = self._consistent("The retry test passed; an earlier run failed.")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_VERDICT_STATED, row["why"])
+
+    def test_any_other_success_word_still_withdraws_it(self) -> None:
+        for detail in (
+            "The latest pytest run passed after the last change, and the feature is complete.",
+            "The tests passed, so the expected output is met.",
+            "Verified: the retry works.",
+            "The retry work is delivered.",
+            "The tests passed but the feature is not complete.",
+        ):
+            with self.subTest(detail=detail):
+                row = self._consistent(detail)
+                self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+                self.assertEqual(reading.WHY_VERDICT_STATED, row["why"])
+
+    def test_the_exemption_is_only_for_a_consistent_resting_on_a_passing_check(self) -> None:
+        # The agent's own words under a Goal consistent still withdraw on "passed".
+        answer = json.dumps(
+            {"goal": {"result": "consistent", "cites": [2], "detail": "the tests passed"}}
+        )
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, AGENT_FACT], model=self._model(answer), tool_output=ADMITTED
+        )
+        self.assertEqual(reading.WHY_VERDICT_STATED, assessment["criteria"]["goal"]["why"])
+
+    def test_the_prompt_asks_for_detail_only_under_a_departure(self) -> None:
+        self._produce([WORDS_FACT, check_fact()], tool_output=ADMITTED)
+        (prompt,) = self.prompts
+        self.assertIn("leave `detail` empty for any other token", prompt)
+        self.assertIn(reading.TOOL_OUTPUT_NOTE, prompt)
+        self.assertIn("result words are Cargento's", reading.TOOL_OUTPUT_NOTE)
+
+
+class TheAgentsFinalAnswerIsNotWorkOnAnyHarness(AClaudeCodeReadingProducer):
+    """K2: work evidence is per harness. A Codex final answer (`result`) is the
+    agent's own account, so Expected Output is not posed and the typed words
+    are not sent, as before this layer."""
+
+    def _codex(self, facts: list[dict[str, Any]], answer: str) -> Any:
+        return reading.produce(
+            cast("Any", self.config),
+            {"harness": "codex", "sid": "s1", "state": "working", "ended_at": None},
+            [{"n": 1, "at": 50.0, "goal": "add retry", "output": "SENTINEL_OUTPUT"}],
+            facts,
+            now=200.0,
+            stamp_text="read at 10:00",
+            model=self._model(answer),
+        )
+
+    def test_a_codex_final_answer_alone_leaves_expected_output_not_asked(self) -> None:
+        words = {**WORDS_FACT, "source_session": {"harness": "codex", "sid": "s1"}}
+        answer = json.dumps({"output": {"result": "consistent", "cites": [2], "detail": ""}})
+        assessment, _why, _spent = self._codex([words, CODEX_FINAL], answer)
+        row = assessment["criteria"]["output"]
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_NOT_ASKED, row["why"])
+        self.assertNotIn("SENTINEL_OUTPUT", self.prompts[0])
+
+    def test_a_claude_code_final_answer_cited_as_consistent_shows_no_work(self) -> None:
+        final = {**CODEX_FINAL, "source_session": {"harness": "claude", "sid": "s1"}}
+        answer = json.dumps({"output": {"result": "consistent", "cites": [3], "detail": ""}})
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, check_fact(result="passed"), final],
+            model=self._model(answer),
+            tool_output=ADMITTED,
+        )
+        self.assertEqual(reading.WHY_NO_WORK_SHOWN, assessment["criteria"]["output"]["why"])
+
+    def test_the_ledger_marks_work_by_harness(self) -> None:
+        pi = [
+            {
+                **WORDS_FACT,
+                "fact_id": f"p{n}",
+                "type": kind,
+                "source_session": {"harness": "pi", "sid": "s1"},
+            }
+            for n, kind in enumerate(("work_result", "result", "user_message"))
+        ]
+        self.assertEqual(
+            [True, True, False], [row["work"] for row in reading.build_ledger(pi, "pi", "s1")]
+        )
+        codex = [{**CODEX_FINAL, "fact_id": "c1"}]
+        self.assertEqual(
+            [False], [row["work"] for row in reading.build_ledger(codex, "codex", "s1")]
+        )
+
+
+class ALaterCommandMayHaveChangedFiles(AClaudeCodeReadingProducer):
+    """K3: a pass followed by a command that may change files, in the same
+    call or a later one, does not let a consistent stand."""
+
+    def test_a_consistent_on_a_pass_a_later_command_may_have_changed_is_withheld(self) -> None:
+        changed = reading.ToolOutput(
+            destination="OpenAI",
+            label="Codex",
+            tails={"call-1": TAIL},
+            changed_after=frozenset({("call-1", "python3 -m pytest tests/test_retry.py")}),
+        )
+        answer = json.dumps({"output": {"result": "consistent", "cites": [2], "detail": ""}})
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, check_fact(result="passed")],
+            model=self._model(answer),
+            tool_output=changed,
+        )
+        row = assessment["criteria"]["output"]
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_CHANGED_AFTER_CHECK, row["why"])
+
+    def test_a_departure_on_a_failure_still_stands_after_a_later_command(self) -> None:
+        changed = reading.ToolOutput(
+            destination="OpenAI",
+            label="Codex",
+            changed_after=frozenset({("call-1", "python3 -m pytest tests/test_retry.py")}),
+        )
+        answer = json.dumps({"output": {"result": "departure", "cites": [2], "detail": "x"}})
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, check_fact()], model=self._model(answer), tool_output=changed
+        )
+        self.assertEqual(reading.RESULT_DEPARTURE, assessment["criteria"]["output"]["result"])
+
+
+class WhatTheReaderIsToldWhenChecksWereNotSent(AClaudeCodeReadingProducer):
+    """L3, L7 and K7: the cutoff says why checks were not sent, and never says
+    it about checks that do not exist."""
+
+    def test_no_check_recorded_means_no_sentence_about_checks(self) -> None:
+        unnamed = reading.ToolOutput(destination="", label="Codex")
+        assessment, _why, _spent = self._produce([WORDS_FACT], tool_output=unnamed)
+        self.assertNotIn("checks this session recorded", assessment["cutoff"])
+
+    def test_a_grant_withdrawn_before_the_reading_ran_is_said_so(self) -> None:
+        withdrawn = reading.ToolOutput(destination="", label="Codex", allowed=False)
+        assessment, _why, _spent = self._produce([WORDS_FACT, check_fact()], tool_output=withdrawn)
+        self.assertIn(
+            "The checks this session recorded were not sent, because tool output was not "
+            "allowed when the reading ran.",
+            assessment["cutoff"],
+        )
+
+    def test_checks_with_no_room_are_counted_in_the_cutoff(self) -> None:
+        big = [
+            {**WORDS_FACT, "fact_id": f"u{n}", "summary": "w" * 170, "at": 60.0 + n}
+            for n in range(200)
+        ]
+        assessment, _why, _spent = self._produce([*big, check_fact()], tool_output=ADMITTED)
+        self.assertIn(
+            "1 check this session recorded was not read, because the prompt had no room for it.",
+            assessment["cutoff"],
+        )
+        self.assertEqual(reading.WHY_CHECKS_NOT_READ, assessment["criteria"]["output"]["why"])
+
+
+class TheToolOutputNoteAndNumbering(unittest.TestCase):
+    """L4, L5: the note is carried exactly when a check is, and rows numbered
+    10 and above are sized at their real width."""
+
+    def test_the_note_is_carried_only_with_a_check(self) -> None:
+        with_check = reading.build_ledger(
+            [WORDS_FACT, check_fact()], "claude", "s1", tool_output={"call-1": TAIL}
+        )
+        without = reading.build_ledger([WORDS_FACT, check_fact()], "claude", "s1")
+        on, _ = reading.build_prompt(with_check, goal="g", output="o", max_bytes=8000)
+        off, _ = reading.build_prompt(without, goal="g", output="o", max_bytes=8000)
+        self.assertIn(reading.TOOL_OUTPUT_NOTE, on)
+        self.assertNotIn(reading.TOOL_OUTPUT_NOTE, off)
+
+    def test_a_prompt_numbering_ten_or_more_rows_stays_inside_its_budget(self) -> None:
+        facts = [{**WORDS_FACT, "fact_id": f"u{n}", "at": 60.0 + n} for n in range(40)]
+        ledger = reading.build_ledger(facts, "claude", "s1")
+        full, selection = reading.build_prompt(ledger, goal="g", output="", max_bytes=1_000_000)
+        self.assertEqual(40, len(selection.entries))
+        for cut in range(60):
+            budget = len(full.encode()) - cut
+            prompt, chosen = reading.build_prompt(ledger, goal="g", output="", max_bytes=budget)
+            self.assertLessEqual(len(prompt.encode()), budget)
+        self.assertGreaterEqual(len(chosen.entries), 10)
+
+
+class TheRetagNamesTheCheck(AClaudeCodeReadingProducer):
+    """L2: a consistent citing the agent and a failed check stores the check reason."""
+
+    def test_a_consistent_on_the_agent_and_a_failed_check_says_the_check_does_not_show_it(
+        self,
+    ) -> None:
+        answer = json.dumps({"output": {"result": "consistent", "cites": [2, 3], "detail": ""}})
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, check_fact(at=95.0), {**AGENT_FACT, "at": 99.0}],
+            model=self._model(answer),
+            tool_output=ADMITTED,
+        )
+        self.assertEqual(
+            reading.WHY_CHECK_DOES_NOT_SHOW_IT, assessment["criteria"]["output"]["why"]
+        )
+
+
+class TheResolverTakesTheQuestionFromThePrompt(unittest.TestCase):
+    """K8: whether Expected Output was posed travels on the Selection from the
+    header the prompt actually used, so a verdict volunteered on a clause the
+    model never saw is never published."""
+
+    def test_an_expected_output_the_header_had_no_room_for_is_not_answered(self) -> None:
+        ledger = reading.build_ledger(
+            [WORDS_FACT, check_fact(result="passed")], "claude", "s1", tool_output={}
+        )
+        output = "tests pass " * 200
+        for budget in range(900, 2400, 20):
+            prompt, selection = reading.build_prompt(
+                ledger, goal="add retry", output=output, max_bytes=budget
+            )
+            checks = [i for i, row in selection.by_index().items() if row["type"] == "tool_report"]
+            if checks and "<expected_output>" not in prompt:
+                break
+        else:
+            self.fail("no budget left the check in and the question out")
+        self.assertFalse(selection.asked_output)
+        row = reading.resolve(
+            {"output": {"token": "consistent", "cites": (checks[0],), "detail": ""}},
+            selection,
+            goal="add retry",
+            output=output,
+            detail_cap_chars=200,
+            window_start=0.0,
+        )["output"]
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
 
 
 if __name__ == "__main__":

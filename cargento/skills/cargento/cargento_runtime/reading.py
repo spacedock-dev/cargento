@@ -135,6 +135,14 @@ WHY_CHECK_DOES_NOT_SHOW_IT = "check-does-not-show-it"
 # A failed check in the window that the prompt had no room for: the model never
 # saw it, so it could not judge whether it bears on the output.
 WHY_FAILED_CHECK_UNREAD = "failed-check-unread"
+# The cited pass was followed by a command that may have changed files, in the
+# same call after it or in a later call, which the record does not show as a
+# write (the blocker item 3 of the ruling `build_ledger` cites, applied to a reading).
+WHY_CHANGED_AFTER_CHECK = "changed-after-check"
+# The reader typed an expected output and allowed tool output, and no check had
+# room in the prompt, so Expected Output was not posed for want of room rather
+# than for want of work.
+WHY_CHECKS_NOT_READ = "checks-not-read"
 WHY_TOKENS = (
     WHY_STANDS,
     WHY_NOT_ASKED,
@@ -146,6 +154,8 @@ WHY_TOKENS = (
     WHY_VERDICT_STATED,
     WHY_CHECK_DOES_NOT_SHOW_IT,
     WHY_FAILED_CHECK_UNREAD,
+    WHY_CHANGED_AFTER_CHECK,
+    WHY_CHECKS_NOT_READ,
 )
 
 # Rule 7 turns on who wrote an evidence entry, so the answer is a closed
@@ -168,11 +178,21 @@ AUTHOR_DERIVED = "derived"
 #
 # This only ever narrows what may be said, so it cannot create a reassurance
 # that was not already reachable.
-WORK_EVIDENCE_TYPES = frozenset({"work_result", "result", "tool_report"})
+#
+# Per harness, because a type means different things on different harnesses:
+# `result` is Pi's demonstrated work result, and on Codex it is the agent's own
+# final answer (`semantic_history._final_output_events`), which is self-report.
+# Keyed on the type alone, removing the harness gate let that final answer pose
+# Expected Output and carry a `consistent` (review, 2026-09-24). Held equal to
+# the page's `NEXT_READING_WORK_BY_HARNESS`.
+WORK_EVIDENCE_BY_HARNESS = {
+    "pi": frozenset({"work_result", "result"}),
+    "claude": frozenset({"tool_report"}),
+}
 
 # The checks a Claude Code session ran and the files it wrote, as
 # `project_context` publishes them into the observed record. The reading counts
-# them as work (`WORK_EVIDENCE_TYPES`, held equal to the page's list), and
+# them as work on Claude Code (`WORK_EVIDENCE_BY_HARNESS`), and
 # `build_ledger` admits them only when the press carries a tool-output grant
 # for a named destination (item 7 of the ruling `build_ledger` cites).
 TOOL_REPORT_TYPE = "tool_report"
@@ -192,6 +212,10 @@ CHECK_RESULT_WORDS = {
 }
 CHECK_NOT_RECORDED = "ran, result not recorded"
 CHECK_EARLIER_FAILED = "an earlier run failed"
+# The tool's own result words, as the row the model read carries them. Owner
+# ruling, 2026-09-24: under a consistent that rests on a check passing item 8
+# they are the tool's report, not the model stating that the work landed.
+CHECK_REPORT_WORDS = frozenset({"passed", "passes", "passing"})
 CHECK_BEFORE_LAST_CHANGE = "before the last change"
 PATH_WRITTEN = "file written"
 # Priority inside the byte bound, after the reader's own messages: the tool
@@ -214,6 +238,13 @@ class ToolOutput:
     destination: str
     label: str
     tails: Mapping[str, str] = field(default_factory=dict)
+    # (record id, check line) for each check whose latest run a later command
+    # may have changed files after: in the same call after it, or in a later
+    # call. Read at the press with the tails.
+    changed_after: frozenset[tuple[str, str]] = frozenset()
+    # False when a destination was named and the grant was gone by the time
+    # the reading ran, so the cutoff says which of the two kept checks back.
+    allowed: bool = True
 
 
 SCOPE_MID_FLIGHT = "mid-flight"
@@ -443,6 +474,11 @@ def _words(text: str) -> set[str]:
 # handle for the model to cite, not the evidence itself, and a long summary
 # crowds out entries that would otherwise fit.
 LEDGER_SUMMARY_CAP_CHARS = 180
+# How much of the cutoff sentence the store keeps. It was the annotation text
+# cap, 240, and the counted sentence alone runs to about 180, so the clauses
+# saying the checks were not sent, or had no room, were cut off in the store
+# (review, 2026-09-24). Composed by the code from counts, never model prose.
+CUTOFF_CAP_CHARS = 640
 
 
 class LedgerEntry(TypedDict):
@@ -465,7 +501,12 @@ class LedgerEntry(TypedDict):
     subject: NotRequired[str]
     result: NotRequired[str]
     stale: NotRequired[bool]
+    earlier_failed: NotRequired[bool]
+    changed_after: NotRequired[bool]
     tail: NotRequired[str]
+    # Whether this entry demonstrates work on its session's harness, stamped by
+    # `build_ledger` from `WORK_EVIDENCE_BY_HARNESS`.
+    work: NotRequired[bool]
 
 
 @dataclass(frozen=True)
@@ -484,6 +525,18 @@ class Selection:
     # Failed checks the budget left out. The model never saw them, so a
     # `consistent` on Expected Output cannot rest on its silence about them.
     unread_failures: tuple[LedgerEntry, ...] = ()
+    # Every check the budget left out, failed or not.
+    unread_checks: tuple[LedgerEntry, ...] = ()
+    # Whether the prompt this selection came from posed Expected Output, set by
+    # `build_prompt` from the header it actually used, so `resolve` never
+    # re-derives it. A hand-built selection (tests) takes it from its entries.
+    asked_output: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.asked_output is None:
+            object.__setattr__(
+                self, "asked_output", any(demonstrates_work(entry) for entry in self.entries)
+            )
 
     def by_index(self) -> dict[int, LedgerEntry]:
         """Menu number to entry, exactly as the prompt printed them."""
@@ -605,8 +658,12 @@ def author_of(fact: Mapping[str, Any]) -> str:
 
 
 def demonstrates_work(entry: Mapping[str, Any]) -> bool:
-    """Whether this entry is evidence that work happened, not that it was asked for."""
-    return str(entry.get("type") or "") in WORK_EVIDENCE_TYPES
+    """Whether this entry is evidence that work happened, not that it was asked for.
+
+    Read from the `work` stamp `build_ledger` puts on each row from its
+    session's harness, never from the type alone.
+    """
+    return entry.get("work") is True
 
 
 def asks_goal(goal: str) -> bool:
@@ -710,6 +767,7 @@ def build_ledger(
     *,
     cap_chars: int = LEDGER_SUMMARY_CAP_CHARS,
     tool_output: Mapping[str, str] | None = None,
+    changed_after: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[LedgerEntry, ...]:
     """Every entry naming this session, oldest first.
 
@@ -775,17 +833,20 @@ def build_ledger(
             "at": stamp if stamp is not None and stamp > 0 else 0.0,
             "author": author_of(fact),
             "source": _menu_field(records.safe_text(source, 160)),
+            "work": fact.get("type") in WORK_EVIDENCE_BY_HARNESS.get(harness, frozenset()),
         }
         if is_report and tool_output is not None:
             row["summary"] = _tool_report_summary(fact, cap_chars)
             row["subject"] = str(fact.get("subject") or "")
             row["result"] = str(fact.get("result") or "")
             row["stale"] = fact.get("before_last_change") is True
+            row["earlier_failed"] = fact.get("earlier_failed") is True
             branch = fact.get("branch")
             record_id = branch.get("record_id") if isinstance(branch, dict) else None
             tail = tool_output.get(record_id) if isinstance(record_id, str) else None
             if row["subject"] == CHECK_SUBJECT and tail:
                 row["tail"] = _tail_field(tail)
+            row["changed_after"] = (record_id, fact.get("summary")) in changed_after
         rows.append(row)
     rows.sort(key=lambda row: row["at"])
     return tuple(rows)
@@ -935,8 +996,9 @@ def _header(goal_text: str, output_text: str, *, tool_note: bool) -> str:
         'Use "unverifiable" whenever the entries below do not settle the question. '
         "Every <int> is an entry number from the list below; never cite a number that "
         "is not listed, and never name an entry any other way.\n"
-        "`detail` is one plain sentence saying what departed. Do not state whether the "
-        "work was met, complete, delivered or verified: that is not yours to say.\n\n"
+        "`detail` is one plain sentence saying what departed under a departure; leave "
+        "`detail` empty for any other token. Do not state whether the work was met, "
+        "complete, delivered or verified: that is not yours to say.\n\n"
     )
     if ask_goal:
         header += f"<goal>\n{goal_text}\n</goal>\n"
@@ -992,23 +1054,28 @@ def build_prompt(
     tool_note = any(entry["type"] == TOOL_REPORT_TYPE for entry in ledger)
     without = _header(goal_text, "", tool_note=tool_note)
     header = _header(goal_text, output_text, tool_note=tool_note)
+    posed = bool(output_text.strip())
     if len(header.encode("utf-8", "replace")) > budget:
-        header = without
+        header, posed = without, False
     head_size = len(header.encode("utf-8", "replace"))
     citable = [entry for entry in ledger if _citable(entry)]
-    failures = [
+    checks = [
         entry
         for entry in citable
-        if entry["type"] == TOOL_REPORT_TYPE
-        and entry.get("subject") == CHECK_SUBJECT
-        and entry.get("result") == RESULT_FAILED
+        if entry["type"] == TOOL_REPORT_TYPE and entry.get("subject") == CHECK_SUBJECT
     ]
+    failures = [entry for entry in checks if entry.get("result") == RESULT_FAILED]
     if head_size > budget:
         # Nothing fits beside the two fields the reader typed. Return what
         # there is and no entries at all: `cutoff_text` then says none of the
         # record could be read, which is the true sentence and a different one
         # from the record being empty.
-        return header, Selection((), unread_failures=tuple(failures))
+        return header, Selection(
+            (),
+            unread_failures=tuple(failures),
+            unread_checks=tuple(checks),
+            asked_output=posed,
+        )
 
     def row_text(index: int, row: LedgerEntry) -> str:
         tail = row.get("tail", "")
@@ -1038,12 +1105,16 @@ def build_prompt(
         used += sizes[i]
         chosen.append(i)
     selected = tuple(citable[i] for i in sorted(chosen))
-    if header is not without and not asks_output(output_text, selected):
-        header = without
+    if posed and not asks_output(output_text, selected):
+        header, posed = without, False
     body = "".join(row_text(index, row) for index, row in enumerate(selected, start=1))
     taken = {id(row) for row in selected}
-    unread = tuple(entry for entry in failures if id(entry) not in taken)
-    return header + body, Selection(selected, unread_failures=unread)
+    return header + body, Selection(
+        selected,
+        unread_failures=tuple(entry for entry in failures if id(entry) not in taken),
+        unread_checks=tuple(entry for entry in checks if id(entry) not in taken),
+        asked_output=posed,
+    )
 
 
 def parse_reply(raw: str) -> dict[str, dict[str, Any]]:
@@ -1117,7 +1188,9 @@ def _indices(value: Any) -> tuple[int, ...]:
     return tuple(seen)
 
 
-def _states_a_verdict(detail: str, result: str) -> bool:
+def _states_a_verdict(
+    detail: str, result: str, *, reported: bool = False, earlier_failed: bool = False
+) -> bool:
     """Whether this prose states a verdict the model is not allowed to state.
 
     Run on the model's WHOLE detail, before any truncation. The scan used to
@@ -1125,10 +1198,22 @@ def _states_a_verdict(detail: str, result: str) -> bool:
     depending on where an unrelated length constant fell -- and truncation is
     not neutral, because model prose puts the qualifier last, so the cut
     preferentially removes the negative clause and publishes the positive one.
+
+    `reported` is a consistent on Expected Output resting on a check that
+    passes item 8. Owner ruling, 2026-09-24: there the tool's own result words
+    are not a verdict, nor is "failed" when the cited row says an earlier run
+    failed, and a negator counts only beside a success word that remains.
+    Every other success word still withdraws it. See
+    [DEC-17](docs/design-reading-a-session.md#amended-2026-09-24-a-checks-own-result-word-is-not-a-verdict-owner-ruling).
     """
     words = _words(detail)
+    if reported:
+        words -= CHECK_REPORT_WORDS
+        if earlier_failed:
+            words -= {RESULT_FAILED}
     claims_success = bool(words & SUCCESS_WORDS)
-    claims_failure = bool(words & FAILURE_WORDS) or bool(words & NEGATORS)
+    negated = bool(words & NEGATORS) and (claims_success or not reported)
+    claims_failure = bool(words & FAILURE_WORDS) or negated
     if claims_success and not claims_failure:
         return True
     # Either half alone says the work did NOT land, which a departure is
@@ -1157,8 +1242,19 @@ def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -
     if result == RESULT_DEPARTURE:
         return entry.get("result") == RESULT_FAILED
     if result == RESULT_CONSISTENT:
-        return entry.get("result") == RESULT_PASSED and entry.get("stale") is not True
+        return (
+            entry.get("result") == RESULT_PASSED
+            and entry.get("stale") is not True
+            and entry.get("changed_after") is not True
+        )
     return False
+
+
+def _changed_after_pass(entry: Mapping[str, Any], window_start: float) -> bool:
+    """A check that would carry a consistent but for a later command."""
+    return entry.get("changed_after") is True and check_supports(
+        {**entry, "changed_after": False}, RESULT_CONSISTENT, window_start
+    )
 
 
 def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> str:
@@ -1213,13 +1309,20 @@ def _evidence_rules(
     if dropped and why in {WHY_NO_WORK_SHOWN, WHY_UNCORROBORATED}:
         why = WHY_CHECK_DOES_NOT_SHOW_IT
     if (
+        why == WHY_CHECK_DOES_NOT_SHOW_IT
+        and result == RESULT_CONSISTENT
+        and any(_changed_after_pass(entry, window_start) for entry in cited)
+    ):
+        why = WHY_CHANGED_AFTER_CHECK
+    if (
         not why
         and name == CONSTRAINT_OUTPUT
         and result == RESULT_CONSISTENT
         and any(check_supports(entry, RESULT_DEPARTURE, window_start) for entry in unread_failures)
     ):
         why = WHY_FAILED_CHECK_UNREAD
-    return ([] if why == WHY_CHECK_DOES_NOT_SHOW_IT else supporting), why
+    withdrawn = why in {WHY_CHECK_DOES_NOT_SHOW_IT, WHY_CHANGED_AFTER_CHECK}
+    return ([] if withdrawn else supporting), why
 
 
 def _resolve_one(
@@ -1269,11 +1372,24 @@ def _resolve_one(
     # never CREATES a result: a reply carrying no usable token keeps rule 2's
     # absence, and a verdict word in its prose must not turn that into a
     # finding.
+    reported = [
+        entry
+        for entry in cited
+        if name == CONSTRAINT_OUTPUT
+        and result == RESULT_CONSISTENT
+        and entry["type"] == TOOL_REPORT_TYPE
+        and check_supports(entry, RESULT_CONSISTENT, window_start)
+    ]
     if (
         result
         and result != RESULT_UNVERIFIABLE
         and raw_detail
-        and _states_a_verdict(raw_detail, result)
+        and _states_a_verdict(
+            raw_detail,
+            result,
+            reported=bool(reported),
+            earlier_failed=any(entry.get("earlier_failed") is True for entry in reported),
+        )
     ):
         result, why = RESULT_UNVERIFIABLE, WHY_VERDICT_STATED
     detail = records.safe_text(raw_detail, detail_cap_chars)
@@ -1333,7 +1449,9 @@ def resolve(
     by_index = _numbered(selection)
     asked = {
         CONSTRAINT_GOAL: asks_goal(goal),
-        CONSTRAINT_OUTPUT: asks_output(output, selection.entries),
+        # From the prompt, never re-derived: the header it used is the question
+        # the model was asked.
+        CONSTRAINT_OUTPUT: bool(output.strip()) and selection.asked_output is True,
     }
     clauses = {CONSTRAINT_GOAL: goal, CONSTRAINT_OUTPUT: output}
     out: dict[str, Criterion] = {}
@@ -1347,12 +1465,18 @@ def resolve(
         # Not asked is not answered. The constraint the prompt never posed has
         # no token to resolve, whatever the reply volunteered.
         if not asked[name]:
+            crowded = (
+                name == CONSTRAINT_OUTPUT
+                and bool(output.strip())
+                and bool(selection.unread_checks)
+                and not any(demonstrates_work(entry) for entry in selection.entries)
+            )
             out[name] = {
                 "result": RESULT_UNVERIFIABLE,
                 "cites": (),
                 "detail": "",
                 "clause": clause,
-                "why": WHY_NOT_ASKED,
+                "why": WHY_CHECKS_NOT_READ if crowded else WHY_NOT_ASKED,
             }
             continue
         out[name] = _resolve_one(
@@ -1443,7 +1567,13 @@ def produce(  # noqa: PLR0913
     harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
     tails = tool_output.tails if tool_output is not None and tool_output.destination else None
     admitted = tails is not None
-    ledger = build_ledger(facts, harness, sid, tool_output=tails)
+    ledger = build_ledger(
+        facts,
+        harness,
+        sid,
+        tool_output=tails,
+        changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
+    )
     if not ledger:
         return None, WITHHELD_LEDGER_EMPTY, False
     prompt, selected = build_prompt(
@@ -1472,8 +1602,18 @@ def produce(  # noqa: PLR0913
     cutoff = cutoff_text(selected.entries, len(ledger), now)
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
         cutoff += (
-            " The checks this session recorded were not sent, because Cargento cannot name "
-            f"where {tool_output.label or 'the reading model'} would send them."
+            " The checks this session recorded were not sent, because tool output was not "
+            "allowed when the reading ran."
+            if not tool_output.allowed
+            else " The checks this session recorded were not sent, because Cargento cannot "
+            f"name where {tool_output.label or 'the reading model'} would send them."
+        )
+    unread = len(selected.unread_checks)
+    if unread:
+        cutoff += (
+            f" {unread} check{'s' if unread != 1 else ''} this session recorded "
+            f"{'were' if unread != 1 else 'was'} not read, because the prompt had no room "
+            f"for {'them' if unread != 1 else 'it'}."
         )
     revision = latest.get("n")
     assessment: Assessment = {

@@ -3145,8 +3145,10 @@ class ReadingRouteTest(unittest.TestCase):
             mock.patch.object(runtime_reading_route, "destination", lambda *_a, **_k: destination),
             mock.patch.object(
                 runtime_project_context,
-                "press_check_tails",
-                lambda *_a, **_k: dict(tails or {}),
+                "press_checks",
+                lambda *_a, **_k: runtime_project_context.PressChecks(
+                    dict(tails or {}), frozenset()
+                ),
             ),
         ):
             yield calls
@@ -3661,7 +3663,12 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertNotIn("FAILED tests/test_retry.py", calls[0])
         entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
         assert entry is not None
-        self.assertIn("were not sent", entry["assessment"]["cutoff"])
+        # Whole, as stored: the store once clipped the cutoff at 240 characters,
+        # which cut this clause off after "were not sent".
+        self.assertIn(
+            "were not sent, because Cargento cannot name where Codex would send them.",
+            entry["assessment"]["cutoff"],
+        )
 
     def test_turning_readings_off_withdraws_the_tool_output_grant(self) -> None:
         config, state = self._runtime()
@@ -3691,6 +3698,41 @@ class ReadingRouteTest(unittest.TestCase):
         )
         self.assertEqual(200, status, answer)
         self.assertEqual(0, self._checks_sent(calls[0]))
+        entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+        assert entry is not None
+        self.assertIn(
+            "tool output was not allowed when the reading ran", entry["assessment"]["cutoff"]
+        )
+
+    def test_the_press_hands_the_reading_the_passes_a_later_command_may_have_changed(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+        )
+        changed = frozenset({("call-1", "python3 -m pytest tests/test_parser.py")})
+        seen: list[Any] = []
+        real = runtime_reading.produce
+
+        def produce(*args: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs.get("tool_output"))
+            return real(*args, **kwargs)
+
+        with (
+            mock.patch.object(runtime_reading, "produce", produce),
+            self._counting_model(("codex", "claude"), harness="claude", destination="OpenAI"),
+            self._serving(self._app(config, state, "claude")) as port,
+            # After `_counting_model`, so this press reads a changed pass.
+            mock.patch.object(
+                runtime_project_context,
+                "press_checks",
+                lambda *_a, **_k: runtime_project_context.PressChecks({}, changed),
+            ),
+        ):
+            status, _body = self._post(port, self._claude_press())
+        self.assertEqual(200, status)
+        self.assertEqual(changed, seen[0].changed_after)
 
     def test_on_the_claude_code_route_the_checks_go_only_after_the_same_allow(self) -> None:
         config, state = self._runtime()

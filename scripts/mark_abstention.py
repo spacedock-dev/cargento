@@ -264,7 +264,7 @@ def _ledger(port: int, row: dict[str, Any]) -> dict[str, Any]:
     # the producer's to do, not this tool's to assume.
     mine = reading.build_ledger(facts, harness, sid)
     citable = [entry for entry in mine if reading._citable(entry)]  # noqa: SLF001 - see above
-    work = [entry for entry in citable if entry["type"] in reading.WORK_EVIDENCE_TYPES]
+    work = [entry for entry in citable if reading.demonstrates_work(entry)]
     return {
         "facts": len(mine),
         "citable": len(citable),

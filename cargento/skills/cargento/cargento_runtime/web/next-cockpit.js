@@ -1431,6 +1431,7 @@ function nextCockpitWorkEntries(session, semantic){
         actorClaim: String(fact.actor_claim || ""),
         modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
         subject: String(fact.subject || ""),
+        work: nextReadingWorkOn(session && session.harness, fact.type),
         result: String(fact.result || ""),
         resultSource: String(fact.result_source || ""),
         earlierFailed: fact.earlier_failed === true,
@@ -1706,6 +1707,15 @@ const NEXT_READING_CHECK_DOES_NOT_SHOW_IT =
   "consistent its latest run passing with no change after it, both after the words you saved.";
 /* Only the producer knows which failed checks the prompt had no room for, so
    this one is read from the store and never re-derived. */
+/* A pass a later command may have changed files after (`changed-after-check`),
+   and an expected output not put to the reading because no check had room
+   (`checks-not-read`). Both known only to the producer, so read from the store. */
+const NEXT_READING_CHANGED_AFTER_CHECK =
+  "The check it cited passed, and a later command may have changed files, so it does not " +
+  "show this.";
+const NEXT_READING_CHECKS_NOT_READ =
+  "No check this session recorded had room in the reading, so your expected output was not " +
+  "put to it.";
 const NEXT_READING_FAILED_CHECK_UNREAD =
   "A check that failed was not read, because the reading had no room for it, so nothing here " +
   "says the output is consistent.";
@@ -1726,6 +1736,8 @@ const NEXT_READING_STORED_WHY = {
   "verdict-stated": NEXT_READING_VERDICT_STATED,
   "check-does-not-show-it": NEXT_READING_CHECK_DOES_NOT_SHOW_IT,
   "failed-check-unread": NEXT_READING_FAILED_CHECK_UNREAD,
+  "changed-after-check": NEXT_READING_CHANGED_AFTER_CHECK,
+  "checks-not-read": NEXT_READING_CHECKS_NOT_READ,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
@@ -1745,10 +1757,18 @@ function nextReadingPersonAuthored(entry){
    REQUEST is not evidence of one either. Keyed on authorship, citing the
    reader's own words licensed a `consistent` about her own deliverable while
    citing the actual work result demoted. */
-const NEXT_READING_WORK_TYPES = ["work_result", "result", "tool_report"];
+/* Per harness, as `reading.WORK_EVIDENCE_BY_HARNESS` says and
+   `ReadingVocabularyIsSpeltOnceTest` compares: `result` is Pi's work result
+   and, on Codex, the agent's own final answer, which is self-report. */
+const NEXT_READING_WORK_BY_HARNESS = {pi: ["work_result", "result"], claude: ["tool_report"]};
+
+function nextReadingWorkOn(harness, type){
+  const types = NEXT_READING_WORK_BY_HARNESS[String(harness || "")];
+  return Array.isArray(types) && types.includes(String(type || ""));
+}
 
 function nextReadingDemonstratesWork(entry){
-  return NEXT_READING_WORK_TYPES.indexOf(String(entry && entry.type || "")) >= 0;
+  return Boolean(entry && entry.work === true);
 }
 
 /* `reading.check_supports`, spelt for the entries the page holds: a cited

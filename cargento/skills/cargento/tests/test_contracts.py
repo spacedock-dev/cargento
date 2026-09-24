@@ -770,9 +770,15 @@ class ReadingVocabularyIsSpeltOnceTest(unittest.TestCase):
         compared; this is the pair that decides whether a deliverable verdict
         survives.
         """
+        start = self.source.index("const NEXT_READING_WORK_BY_HARNESS = {")
+        body = self.source[start : self.source.index("};", start)]
+        page = {
+            harness: set(re.findall(r'"([a-z_]+)"', types))
+            for harness, types in re.findall(r"([a-z]+): \[([^\]]*)\]", body)
+        }
         self.assertEqual(
-            set(reading.WORK_EVIDENCE_TYPES),
-            self._js_list(self.source, "NEXT_READING_WORK_TYPES"),
+            {harness: set(types) for harness, types in reading.WORK_EVIDENCE_BY_HARNESS.items()},
+            page,
         )
 
     def test_the_page_names_a_sentence_for_every_reason_the_producer_may_store(self) -> None:

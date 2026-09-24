@@ -642,6 +642,42 @@ class WhatAReadingMayCarryOfACheckAtThePress(WhereTheChecksGoOnceCollected):
         self.assertEqual({}, project_context.claude_check_tails(self.config, str(self.path)))
 
 
+class WhichPassesALaterCommandMayHaveChanged(ClaudeChecksTestCase):
+    """K3 of the DRC-4677 review: a pass followed by a command that may change
+    files, later in the same call or in a later call, is read at the press as
+    changed after, in command order. Layer 1's published fact is unchanged."""
+
+    def changed(self) -> frozenset[tuple[str, str]]:
+        self.session.save(self.path)
+        return project_context.claude_check_press(self.config, str(self.path)).changed_after
+
+    def test_a_touch_after_the_pass_in_the_same_call_changes_it(self) -> None:
+        call = self.session.bash("pytest && touch changed.py", "5 passed", is_error=False)
+        self.assertEqual(frozenset({(call, "pytest")}), self.changed())
+
+    def test_a_touch_in_a_later_call_changes_it(self) -> None:
+        call = self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("touch changed.py", "", is_error=False)
+        self.assertEqual(frozenset({(call, "pytest")}), self.changed())
+
+    def test_a_command_before_the_pass_or_a_read_after_it_does_not(self) -> None:
+        self.session.bash("touch changed.py && pytest", "5 passed", is_error=False)
+        self.session.bash("git status", "clean", is_error=False)
+        self.assertEqual(frozenset(), self.changed())
+
+    def test_a_call_that_never_ran_changes_nothing(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        call = self.session.call("Bash", {"command": "touch changed.py"})
+        self.session.result(call, "The user rejected this tool use", is_error=True)
+        self.assertEqual(frozenset(), self.changed())
+
+    def test_the_press_carries_the_tails_it_always_did(self) -> None:
+        call = self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.save(self.path)
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual({call: "5 passed"}, press.tails)
+
+
 def results_by_title(events: list[dict[str, Any]]) -> dict[str, str]:
     return {e["title"]: e["result"] for e in events if e["subject"] == "check"}
 

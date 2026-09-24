@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -438,9 +439,42 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
             {"CLAUDE_CODE_USE_BEDROCK": "1", "ANTHROPIC_BEDROCK_BASE_URL": "https://x.example"},
             {"ANTHROPIC_BASE_URL": "not a url"},
             {"CLAUDE_CODE_MANAGED_SETTINGS_PATH": "/opt/policy"},
+            # M1: a second endpoint variable with no cloud switch, alone or
+            # beside ANTHROPIC_BASE_URL.
+            {"ANTHROPIC_BEDROCK_BASE_URL": "https://bedrock.corp"},
+            {"ANTHROPIC_VERTEX_BASE_URL": "https://v.corp", "ANTHROPIC_BASE_URL": "https://a.corp"},
+            {"ANTHROPIC_BASE_URL": "ftp://gw.corp"},
+            # K4: the FedStart OAuth host and a unix-socket session both move
+            # the API host somewhere this build does not read.
+            {"CLAUDE_CODE_CUSTOM_OAUTH_URL": "https://claude.fedstart.com"},
+            {"ANTHROPIC_UNIX_SOCKET": "/tmp/claude.sock"},
         ):
             with self.subTest(environ=environ):
                 self.assertEqual("", self._claude(environ))
+
+    def test_an_oauth_host_in_managed_settings_names_nothing(self) -> None:
+        self._write(
+            "/Library/Application Support/ClaudeCode/managed-settings.json",
+            json.dumps({"env": {"CLAUDE_CODE_CUSTOM_OAUTH_URL": "https://claude.fedstart.com"}}),
+        )
+        self.assertEqual("", self._claude({}))
+
+    def test_with_no_home_or_user_the_password_file_is_read_instead(self) -> None:
+        import pwd  # noqa: PLC0415
+
+        entry = pwd.getpwuid(os.getuid())
+        self._write(
+            f"{entry.pw_dir}/.claude/remote-settings.json",
+            json.dumps({"env": {"CLAUDE_CODE_USE_BEDROCK": "1"}}),
+        )
+        named = reading_route.destination("claude", environ={}, root=self.root, system="Darwin")
+        self.assertEqual("Amazon Bedrock", named)
+
+    def test_with_no_home_and_no_password_entry_nothing_is_named(self) -> None:
+        with mock.patch.object(reading_route, "_account", return_value=("", "")):
+            named = reading_route.destination("claude", environ={}, root=self.root, system="Darwin")
+            codex = reading_route.destination("codex", environ={}, root=self.root, system="Darwin")
+        self.assertEqual(("", ""), (named, codex))
 
     def test_a_proxy_does_not_change_the_vendor_a_reader_is_told(self) -> None:
         proxy = {"HTTPS_PROXY": "http://proxy.corp.example:3128", "NO_PROXY": "*"}
@@ -524,6 +558,8 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         self.assertIn("tool output", route["tool_output"])
         self.assertIn("to Codex, which reaches OpenAI", route["tool_output"])
         self.assertIn("only after you allow", route["tool_output"])
+        # K6: the grant sends the written paths too, so the sentence names them.
+        self.assertIn("the paths of the files it wrote", route["tool_output"])
         self.assertIn(route["tool_output"], route["disclosure"])
 
     def test_a_destination_that_cannot_be_named_is_said_to_send_no_tool_output(self) -> None:

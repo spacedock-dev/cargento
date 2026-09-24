@@ -1819,12 +1819,21 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # a stored grant for exactly this provider and destination admits
             # the checks, and their output tails are read here, at the press,
             # never from the published record.
+            press = runtime_project_context.press_checks(
+                application.config, application.state, harness, sid
+            )
             tool_output = runtime_reading.ToolOutput(
                 destination=where,
                 label=route["label"],
-                tails=runtime_project_context.press_check_tails(
-                    application.config, application.state, harness, sid
-                ),
+                tails=press.tails,
+                changed_after=press.changed_after,
+            )
+        elif harness in runtime_reading_route.TOOL_OUTPUT_HARNESSES:
+            # Named, and the grant was gone by the time the reading ran (turned
+            # off in another tab): the words are read and the cutoff says why
+            # the checks were not.
+            tool_output = runtime_reading.ToolOutput(
+                destination="", label=route["label"], allowed=False
             )
         return {
             "tool_output": tool_output,

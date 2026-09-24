@@ -319,7 +319,7 @@ its absence sentence is one of four that used to arrive before you reached the r
 published it, and states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
 the tool reported it and counted from the whole transcript read. A reading sends those checks, with
-the last 180 characters each printed, only after you allow tool output for the destination named
+the last 180 characters each printed and the paths of the files written, only after you allow tool output for the destination named
 beside the button, and sends none where Cargento cannot name that destination. On every other harness those
 entries are instructions, dispatches and gate decisions and never an inspected file, test or
 deliverable. Your words also appear beside the goal the harness published,

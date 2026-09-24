@@ -156,6 +156,25 @@ def _env_block(path: Path) -> dict[str, str]:
     return env
 
 
+def _account(environ: Mapping[str, str]) -> tuple[str, str]:
+    """(home, user) as the CLI finds them: the environment, else the password file.
+
+    Node's `os.homedir()` and `os.userInfo()` fall back to the password entry,
+    so a daemon started without `HOME` or `USER` still has a remote settings
+    file and a per-user profile the CLI reads (review, 2026-09-24).
+    """
+    home, user = environ.get("HOME", ""), environ.get("USER", "")
+    if home and user:
+        return home, user
+    try:
+        import pwd  # noqa: PLC0415 - absent on Windows, which names nothing anyway
+
+        entry = pwd.getpwuid(os.getuid())
+    except (ImportError, KeyError, OSError):
+        return home, user
+    return home or entry.pw_dir, user or entry.pw_name
+
+
 def _claude_sources(environ: Mapping[str, str], root: Path, system: str) -> list[Mapping[str, str]]:
     managed = CLAUDE_MANAGED_DIRS.get(system)
     if managed is None or environ.get("CLAUDE_CODE_MANAGED_SETTINGS_PATH"):
@@ -173,17 +192,26 @@ def _claude_sources(environ: Mapping[str, str], root: Path, system: str) -> list
         except OSError as exc:
             raise _UnnamedError from exc
         sources.extend(_env_block(drop_ins / name) for name in names)
+    home, user = _account(environ)
+    if not home or not user:
+        # Where the CLI would look cannot be known, so what it reads cannot be.
+        raise _UnnamedError
     if system == "Darwin" and any(
         _present(_under(root, f"{MANAGED_PREFERENCES_DIR}/{prefix}{CLAUDE_MANAGED_PREFERENCES}"))
-        for prefix in ("", f"{environ.get('USER', '')}/" if environ.get("USER") else "")
+        for prefix in ("", f"{user}/")
     ):
         raise _UnnamedError
-    config_dir = environ.get("CLAUDE_CONFIG_DIR") or (
-        f"{environ['HOME']}/.claude" if environ.get("HOME") else ""
-    )
-    if config_dir:
-        sources.append(_env_block(_under(root, config_dir) / "remote-settings.json"))
+    config_dir = environ.get("CLAUDE_CONFIG_DIR") or f"{home}/.claude"
+    sources.append(_env_block(_under(root, config_dir) / "remote-settings.json"))
     return sources
+
+
+# Two settings measured in the 2.1.281 binary that move the API host without a
+# base URL: an approved custom OAuth host replaces the first-party base
+# (FedStart), and a unix socket sends every API request to a local socket whose
+# far end forwards under another machine's configuration (review, 2026-09-24).
+_OAUTH_HOST = "CLAUDE_CODE_CUSTOM_OAUTH_URL"
+_MOVES_HOST = (_OAUTH_HOST, "ANTHROPIC_UNIX_SOCKET")
 
 
 def _endpoint_env(sources: list[Mapping[str, str]]) -> dict[str, str]:
@@ -191,7 +219,7 @@ def _endpoint_env(sources: list[Mapping[str, str]]) -> dict[str, str]:
     merged: dict[str, str] = {}
     for source in sources:
         for key, value in source.items():
-            if not key.startswith(("ANTHROPIC_", "CLAUDE_CODE_USE_")):
+            if not key.startswith(("ANTHROPIC_", "CLAUDE_CODE_USE_", _OAUTH_HOST)):
                 continue
             if key in merged and merged[key] != value:
                 raise _UnnamedError
@@ -217,6 +245,8 @@ def _clouds(merged: Mapping[str, str]) -> list[str]:
 
 def _claude_destination(sources: list[Mapping[str, str]]) -> str:
     merged = _endpoint_env(sources)
+    if any(merged.get(key, "").strip() for key in _MOVES_HOST):
+        raise _UnnamedError
     clouds = _clouds(merged)
     base_urls = [
         key for key, value in merged.items() if key.endswith("_BASE_URL") and value.strip()
@@ -253,10 +283,11 @@ def _codex_destination(environ: Mapping[str, str], root: Path, system: str) -> s
         raise _UnnamedError
     paths = list(CODEX_MANAGED_FILES)
     if system == "Darwin":
-        user = environ.get("USER", "")
+        _home, user = _account(environ)
+        if not user:
+            raise _UnnamedError
         paths.append(f"{MANAGED_PREFERENCES_DIR}/{CODEX_MANAGED_PREFERENCES}")
-        if user:
-            paths.append(f"{MANAGED_PREFERENCES_DIR}/{user}/{CODEX_MANAGED_PREFERENCES}")
+        paths.append(f"{MANAGED_PREFERENCES_DIR}/{user}/{CODEX_MANAGED_PREFERENCES}")
     # Present at all is enough: these can move the endpoint and the build does
     # not parse them.
     if any(_present(_under(root, path)) for path in paths):
@@ -305,6 +336,7 @@ def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
     return (
         "For this session a reading can also send tool output: each check's command, the result "
         f"the tool reported and the last {TOOL_OUTPUT_TAIL_CHARS} characters of what it printed, "
+        "with the paths of the files it wrote relative to its folder, "
         f"to {label}, which reaches {where}, and only after you allow tool output. That output "
         "is sent as the runner printed it, with credential shapes redacted."
     )

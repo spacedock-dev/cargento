@@ -279,6 +279,28 @@ only under a departure. The word list is the second line and it is a judgement r
 measurement. Saying otherwise would be the same overstated claim the rule exists to stop the model
 making.
 
+#### Amended 2026-09-24: a check's own result word is not a verdict (owner ruling)
+
+Owner ruling, 2026-09-24 (DRC-4677 review). Under
+[DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) item 8 the only
+`consistent` Expected Output can carry rests on a cited check whose latest run passed, and the row
+the model read says so in Cargento's own words ("passed, as the tool reported"). A model that
+described that evidence truthfully tripped the success-word half of the backstop, so every such
+reading was withdrawn as a stated verdict, and "no later write" or "not inspected" tripped the
+negator half on its own. The two sentences above still hold everywhere else. For an Expected Output
+`consistent` that rests on a cited check passing item 8:
+
+1. `passed`, `passes` and `passing` are the tool's report, not a verdict, and so is "failed" when
+   the cited row itself says an earlier run failed.
+2. A negator counts only beside a success word that remains, so "not complete" still withdraws it
+   and "no later write" does not.
+3. Every other success word still withdraws it: met, complete, verified, works, delivered and the
+   rest of the list.
+
+The prompt now asks for `detail` only under a departure, and says a check's result words are
+Cargento's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
+so this narrows nothing on the page. Goal verdicts and departures are unchanged.
+
 ### Amended 2026-09-12: rules 3, 4, 5 and 7 are told apart in the stored shape
 
 The seven rules say what a row may conclude and did not say how a row records which rule
@@ -965,7 +987,10 @@ DRC-4677 builds items 7 to 10 for the single Expected Output constraint: the too
 by provider and destination, the destination named or refused, the result-bearing prompt row with
 its output tail quoted as data, the reader's words reserved first in the byte bound, and item 8's
 rules in the resolver and on the page, with the window read from the revision's `baseline_at` until
-DRC-4679 stores the words' own time. Per-line outcome lines are DRC-4685's. SECURITY.md's
+DRC-4679 stores the words' own time. A pass that a later command may have changed files after, in
+the same call or a later one, carries no `consistent` either (item 3's blocker, applied to a
+reading). What counts as work is per harness: a work result on Pi and a check on Claude Code, and
+never the agent's own final answer, which on Codex shares the `result` type with Pi's work result. Per-line outcome lines are DRC-4685's. SECURITY.md's
 [Tool output in a Claude Code reading](../SECURITY.md#tool-output-in-a-claude-code-reading) says
 what is sent and where.
 

@@ -407,9 +407,15 @@ class TheEvidenceCountIsTheOneTheProducerWouldReadTest(unittest.TestCase):
     def test_a_work_result_is_counted_only_while_it_stays_citable(self) -> None:
         # The OUTPUT question turns on this number, and a thin work_result is
         # no more citable than a thin user_message.
-        thin = self._fact(type="work_result", evidence={"confidence": "low"})
-        self.assertEqual(0, self._count([thin])["work_results"])
-        self.assertEqual(1, self._count([self._fact(type="work_result")])["work_results"])
+        # A work result is work on Pi, the harness that publishes one.
+        pi = {"harness": "pi", "sid": "s1"}
+        thin = self._fact(type="work_result", evidence={"confidence": "low"}, source_session=pi)
+        work = self._fact(type="work_result", source_session=pi)
+        with mock.patch.object(self, "SESSION", pi):
+            self.assertEqual(0, self._count([thin])["work_results"])
+            self.assertEqual(1, self._count([work])["work_results"])
+        # On Claude Code the same type is not work: its work is a tool report.
+        self.assertEqual(0, self._count([self._fact(type="work_result")])["work_results"])
 
 
 class TheDocstringDoesNotClaimWhatTheCodeLacksTest(unittest.TestCase):

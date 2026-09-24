@@ -7033,7 +7033,7 @@ class WhatTheBoardShowsOfAReadingThatCitedACheck(NextPageJsHarness):
     FIXTURE = NextCockpitCompositionTest.FIXTURE
     ENTRIES = """
 const check = (id, result, extra) => ({id, type:"tool_report", by:"", subject:"check",
-  result, resultSource:"flag", earlierFailed:false, beforeLastChange:false,
+  work:true, result, resultSource:"flag", earlierFailed:false, beforeLastChange:false,
   summary:"python3 -m pytest tests/test_retry.py", at:95,
   source:"Claude Bash call and paired result · exact", ...(extra || {})});
 const annotation = {goal:"add retry", output:"tests pass"};
@@ -7075,6 +7075,8 @@ console.log(JSON.stringify({
   consistentOnAgedPass: output("consistent with the evidence read", ["c1"],
     [check("c1", "passed", {beforeLastChange:true})]),
   beforeTheWords: output("departure", ["c1"], [check("c1", "failed", {at:40})]),
+  writtenPath: output("consistent with the evidence read", ["w1"],
+    [check("w1", "passed", {subject:"write"})]),
   departureOnFailure: output("departure", ["c1"], [check("c1", "failed")]),
 }));
 """
@@ -7091,6 +7093,7 @@ console.log(JSON.stringify({
             "departureOnPass",
             "consistentOnAgedPass",
             "beforeTheWords",
+            "writtenPath",
         ):
             with self.subTest(case=name):
                 self.assertEqual(unverifiable, out[name]["result"])
@@ -7106,7 +7109,8 @@ const stored = why => nextCockpitReadingShape(
   {revision_read_at: 50, criteria: {output: {result: unverifiable, cites: [], why}}},
   annotation, [], "").criteria.find(row => row.key === "output").why;
 console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
-  unread: stored("failed-check-unread")}));
+  unread: stored("failed-check-unread"), changed: stored("changed-after-check"),
+  crowded: stored("checks-not-read")}));
 """
         )
         assert isinstance(out, dict)
@@ -7116,6 +7120,37 @@ console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
             "nothing here says the output is consistent.",
             out["unread"],
         )
+        self.assertEqual(
+            "The check it cited passed, and a later command may have changed files, so it does "
+            "not show this.",
+            out["changed"],
+        )
+        self.assertEqual(
+            "No check this session recorded had room in the reading, so your expected output "
+            "was not put to it.",
+            out["crowded"],
+        )
+
+    def test_an_agents_final_answer_is_work_on_pi_and_not_on_codex(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const fact = harness => ({fact_id:"r1", type:"result", summary:"All done.", at:95,
+  source_session:{harness, sid:"s1"}, evidence:{source:"assistant final-answer record",
+  confidence:"exact"}});
+const entries = harness => nextCockpitWorkEntries({harness, sid:"s1"}, {facts:[fact(harness)]});
+const on = harness => output("consistent with the evidence read", ["r1"], entries(harness));
+console.log(JSON.stringify({
+  codex: entries("codex").map(e => e.work), pi: entries("pi").map(e => e.work),
+  codexResult: on("codex").result, piResult: on("pi").result,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([False], out["codex"])
+        self.assertEqual([True], out["pi"])
+        self.assertEqual("not verifiable from available evidence", out["codexResult"])
+        self.assertEqual("consistent with the evidence read", out["piResult"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -7135,7 +7170,8 @@ class CockpitReadingShapeTest(NextPageJsHarness):
     ENTRIES = """
 const entries = [
   {id:"u1", type:"user_message", by:"", source:"root transcript · exact"},
-  {id:"a1", type:"result", by:"", source:"dispatch artifact · exact"},
+  // `work` as `nextCockpitWorkEntries` stamps a Pi work result.
+  {id:"a1", type:"result", by:"", source:"dispatch artifact · exact", work:true},
   {id:"g1", type:"gate_decision", by:"person:captain", source:"entity gate · exact"},
   {id:"empty", type:"", by:"", source:""}
 ];
