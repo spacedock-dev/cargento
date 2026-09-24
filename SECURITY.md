@@ -993,8 +993,10 @@ stated here rather than implied.
 ### Reader-requested permission and rolling budget
 
 [DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask) replaces
-the startup flag for reader-requested readings (DRC-4640). The first "Check for drift" presents the
-reading disclosure and "Allow and check". The answer lives under `CARGENTO_HOME` (by default
+the startup flag for reader-requested readings (DRC-4640). The first "Analyze drift" presents the
+reading disclosure and "Allow and analyze" (named "Check for drift" and "Allow and check" until
+DRC-4680). The disclosure renders before "Allow and analyze", so the press that gives consent
+follows the text naming the receiver. The answer lives under `CARGENTO_HOME` (by default
 `~/.cargento`) in `cargento-reading-permission.sqlite3`, shared by tabs and respawned daemons.
 "Turn off readings" and `--forget` revoke it. Goal summaries keep `--observer-model` and their
 separate browser consent. The explicit model off switch overrides both permissions.
@@ -1012,7 +1014,7 @@ manually can reset its budget, as can any other modification by the owning local
 bounds requests through the HTTP route, not a hostile owner editing their own files.
 
 The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
-not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and check".
+not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and analyze".
 An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
 `--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
 legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
@@ -1174,8 +1176,8 @@ after any other flag is published as typed unless it has a credential shape.
 
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
-fresh Allow whose disclosure names tool output and the receiving vendor. The page's button still
-reads "Allow and check" until DRC-4680 renames it "Allow and analyze". A permission given before
+fresh Allow whose disclosure names tool output and the receiving vendor. The page's button reads
+"Allow and analyze" (DRC-4680). A permission given before
 tool output was named does not cover it. What is built:
 
 - The grant is its own table, `tool_output_permission` in the reading permission store, keyed by
@@ -1244,8 +1246,9 @@ the live estimate only classifies them on this machine, by time.
 Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy). The background job and Cancel are built; each other part arrives with the
 layer named beside it, and the route counts in Scope move in those layers, not here.
 
-The labels. "Check for drift" becomes "Analyze drift", and "Allow and check" becomes "Allow and
-analyze", with DRC-4680. The permission and rolling budget above are otherwise unchanged, except
+The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
+analyze", with DRC-4680. Before the first press the disclosure sits under "Analyze drift", which
+sends nothing; at the confirming press it sits before "Allow and analyze". The permission and rolling budget above are otherwise unchanged, except
 that an allow given before the disclosure named tool output does not cover it
 ([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). "Keep my intent
 and analyze" counts as the allow when the disclosure beside it has not been allowed yet.
@@ -1311,7 +1314,7 @@ not reached by `--forget`. It is never sent, never counted and never entered int
 
 ### The abstention check
 
-The `Check for drift` control (named `Ask for a reading` until DRC-4639) is enabled by the captain's acceptance of the recorded case review
+The `Analyze drift` control (named `Ask for a reading` until DRC-4639 and `Check for drift` until DRC-4680) is enabled by the captain's acceptance of the recorded case review
 on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
 [DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
 The acceptance record under `docs/abstention/` carries only marks, hashes and decision metadata.

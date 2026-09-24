@@ -105,13 +105,18 @@ requires both interaction flags and registration from inside the selected sessio
 and accepts no input. Its xterm assets are vendored and served from loopback.
 
 Exact session detail is reachable from Sessions, cockpit session links and the Intent log. Under
-the session's name it leads with a **DRIFT** block: the goal and the expected outcome lines you typed, the
-agent's current activity beside them, the `Check for drift` control with what a check sends beside
-it, the reading, any direction you gave after you saved those words (labelled "Conflict to settle",
-which asks a question and records no finding), and every departure on record, asked for or not. A
-session waiting on you shows its question first. Below the block come the recorded request, tasks,
-subagents, token measurements, how the session landed and the observed record. The page has at most
-one primary control, `Check for drift`. No answer option is ever emphasised: a session blocked on
+the session's name and its state (working, needs input or idle), a session waiting on you shows its
+question first. Below that the page has two columns, one above the other on a narrow screen. The
+**Intent and drift** panel comes first: an **Intent** section with the goal and the expected
+outcome lines you typed, then a **Drift** section with the `Analyze drift` control, what an
+analysis reads and sends under it, the reading, any direction you gave after you saved those words
+(labelled "Conflict to settle", which asks a question and records no finding), and every departure
+on record, asked for or not. The **Session activity** column beside it holds the agent's current
+activity, the recorded request, tasks, subagents, token measurements, how the session landed and
+the observed record. On a harness other than Claude Code or Pi the Drift section says "Cargento
+can't read work from this harness" where a drift level will go; `Analyze drift` stays wherever a
+reader is named. With no reader on this machine, the reason stands where the control would be. The
+page has at most one primary control, `Analyze drift`. No answer option is ever emphasised: a session blocked on
 you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
 while its question is open.
 Beside `COPY ID`, `COPY LINK` copies the page's own address, which reopens the same session after
@@ -391,7 +396,7 @@ off the slot has no link and there is no Drift mark; the screen explains that on
 Nothing here evaluates on a cadence. Drift marks show departures already on record, from a
 reader-requested reading or the optional unasked lane. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
-one control, `Check for drift`. When it cannot run it stays on the page, refuses the press, and
+one control, `Analyze drift`. When it cannot run it stays on the page, refuses the press, and
 names one next step. The accepted case review enables that control; the evidence stays readable
 whether or not you ask for a reading. A press starts an analysis the server runs in the background,
 and while it runs the control is replaced by an "Analyzing drift" box listing its real steps
@@ -589,7 +594,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session, Check for drift adopts the published latest prompt when its source time is available. The goal field also offers the first prompt and adoption without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Check for drift presents its disclosure and Allow and check. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session and a 60-second timeout. Quota consent authorizes neither path. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session, Analyze drift adopts the published latest prompt when its source time is available. The goal field also offers the first prompt and adoption without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session and a 60-second timeout. Quota consent authorizes neither path. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
@@ -606,7 +611,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The session-end store is neither read nor written, since the coordinator is its only writer, so a session that ended before this run reads as quiet. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
-| `--no-annotations` | For this run, do not read or write the goal and expected outcome lines you typed against a session: nothing is shown, nothing is saved, and the session page's drift block offers no field; its `Check for drift` control stays on the page, inert, and says why. The rollback switch for the one store holding prose you composed. |
+| `--no-annotations` | For this run, do not read or write the goal and expected outcome lines you typed against a session: nothing is shown, nothing is saved, and the session page's Intent and drift panel offers no field; its `Analyze drift` control stays on the page, inert, and says why. The rollback switch for the one store holding prose you composed. |
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |

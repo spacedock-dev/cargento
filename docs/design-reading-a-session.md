@@ -425,7 +425,7 @@ suite stays green, because the fixtures bypass the rebuild.
 The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
 recorded case review to enable the control.
 
-The reading is built now. The `Ask for a reading` control (`Check for drift` since DRC-4639, `Analyze drift` once DRC-4680 ships) is not enabled until an abstention check
+The reading is built now. The `Ask for a reading` control (`Check for drift` from DRC-4639, `Analyze drift` since DRC-4680) is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
 Codex, with a person other than whoever writes the reading prompt marking each constraint in advance
 with one binary expectation. Should this abstain, or not. No severity, no expected judgement text,
@@ -1542,6 +1542,41 @@ new strings on the issue; the other calls were made within them.
   sentence is the ruling's addition.
 - "Turn off readings" does not cancel a running job in this layer: a withdrawal after the spawn does
   not stop a call already sent, and that is a separate decision.
+
+### What the panel build decided, 2026-09-24
+
+DRC-4680 built items 1 and 14 on the session page: the Intent and drift panel beside the session's
+activity. The owner ruled the first three calls below on the issue; the orchestrator made the rest on
+the analysis's recommendation.
+
+- The harness limit replaces only the level and meter. "Cargento can't read work from this harness"
+  stands in the level's slot on every harness except Claude Code and Pi, and `Analyze drift` stays
+  wherever the route names a reader, because DEC-21 item 4 still lets Codex read a Codex session.
+  Never on Pi, whose work results are read, so the sentence would be false there. The observed
+  record's old line "Cargento reads those on Pi alone" is retired for the same reason: Claude Code's
+  checks are read too.
+- With no reader on this machine, the route's reason replaces the button. The four no-producer
+  tokens and an unpublished route draw no inert button, which narrows NUI-18 for this one case
+  ([An inert control is present and refusing](design-next-ui.md#an-inert-control-is-present-and-refusing-never-absent)).
+- Idle, the button comes first and the DEC-21 disclosure follows it with the hint, and the button is
+  described by it. Confirming, the disclosure stays before "Allow and analyze", so the press that
+  gives consent still follows the text naming the receiver.
+- No meter, no header pill and no "Not checked yet" before a level exists (DRC-4695, DRC-4696). The
+  design's idle title becomes false the moment a reading is stored, and a grey scale drawn with no
+  level behind it reads the same on every session whether or not anything was read.
+- The header shows the state in Cargento's own words (working, needs input, idle), not the design's
+  "Running", which would rename a state across the product from one page.
+- The panel is not a scroll container and is not sticky; the page scrolls as one document, so the
+  reader-state inventory gains no row. The panel comes first in the markup and the stylesheet places
+  it in the second track, so it leads the single column below 1100px with no reordering trick.
+- CURRENT ACTIVITY leads the activity column rather than sitting in the panel. The ask block stays
+  full width above both columns, because the reader's answer outranks the check.
+- The reading offer said "the observed record below", which was true of the markup and false to the
+  eye once the record moved to the other column. It now names the column.
+- One primary per stage: `Analyze drift` when idle and under a stored reading (DRC-4695 and DRC-4681
+  change that later), "Allow and analyze" while confirming, none while analyzing and none with no
+  reader.
+- No Stop session control (DEC-16).
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
