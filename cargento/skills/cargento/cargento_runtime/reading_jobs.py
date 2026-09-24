@@ -45,6 +45,10 @@ _CLAIMS: set[str] = set()
 _CLAIMS_LOCK = threading.Lock()
 
 
+# The reasons a kept marker carries as they were, rather than as "unstored".
+_KEPT_REASONS = (reading.WITHHELD_INTERRUPTED, reading.WITHHELD_UNSTOPPED)
+
+
 class UnrecordedError(OSError):
     """The restart marker could not be written, so the job may not spend."""
 
@@ -107,12 +111,17 @@ class Hooks:
         """The spend is committed."""
         self.spent = True
 
-    def mark_unstored(self) -> None:
-        """Rewrite the kept marker to say its outcome ran and was not stored."""
+    def mark_unstored(self, why: str) -> None:
+        """Rewrite the kept marker with the reason its next start should record.
+
+        "unstored" for an outcome that ran; a stop or a kill that could not be
+        confirmed keeps its own reason, so "may still be running" is never
+        turned into "ran".
+        """
         path = _marker(self._application.config, self._job.id)
         with contextlib.suppress(OSError, ValueError):
             marker = json.loads(path.read_text(encoding="utf-8"))
-            marker["reason"] = reading.WITHHELD_UNSTORED
+            marker["reason"] = why if why in _KEPT_REASONS else reading.WITHHELD_UNSTORED
             runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
 
     def spawned(self, group: Any) -> None:
@@ -186,7 +195,7 @@ def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], 
         else:
             # Kept, and told why, so the next start says the store refused the
             # outcome rather than that Cargento stopped (verify N6).
-            hooks.mark_unstored()
+            hooks.mark_unstored(outcome[1] if outcome is not None else "")
         # After the write and only then: a page that sees the job gone sees
         # its result with it, never a finished box beside no result.
         reading.end_job(config, f"{job.harness}:{job.sid}")
@@ -277,9 +286,10 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
         try:
             marker = json.loads(claimed.read_text(encoding="utf-8"))
             harness, sid, job_id = marker["harness"], marker["sid"], str(marker["id"])
+            kept = marker.get("reason")
             reason = (
-                reading.WITHHELD_UNSTORED
-                if marker.get("reason") == reading.WITHHELD_UNSTORED
+                kept
+                if kept in (*_KEPT_REASONS, reading.WITHHELD_UNSTORED)
                 else reading.WITHHELD_INTERRUPTED
             )
         except (OSError, ValueError, KeyError, TypeError):

@@ -1069,8 +1069,8 @@ seconds ends the call anyway and is recorded as its own withheld reason, which s
 may still be running. Because a child in its own group no longer receives the terminal's signals,
 SIGTERM, SIGHUP and SIGQUIT all unwind through the daemon's cleanup, which shuts the runner (a
 spawn after that point is refused, and a reading not yet sent is refused before it is charged) and
-kills every supervised group. A signal the server was started ignoring, as `nohup` ignores SIGHUP,
-stays ignored. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
+kills every supervised group. A SIGHUP or SIGQUIT the server was started ignoring, as `nohup`
+ignores SIGHUP, stays ignored; SIGTERM always stops it. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
 line; a reading returns at most `annotation_text_cap_chars * 8` bytes, 1,920 at the shipped
 value.
 A failed call falls back to local analysis. No raw model stdout or stderr is served or logged.
@@ -1255,7 +1255,8 @@ spent. Before the reservation, a marker under `reading-jobs/` in the state direc
 (its id, the harness and session id, the pid, the start time, and no content), owner-only; a marker
 that cannot be written stops the job with nothing spent. The outcome is stored under the job's id,
 and a spent attempt keeps its marker until the store holds it; a store that refused the outcome
-leaves the marker saying so, and the next start records the attempt with that sentence. A job the
+leaves the marker saying so, and the next start records the attempt with that sentence, or with
+the stop's or the unconfirmed kill's own sentence when that was the refused outcome. A job the
 shutdown ends is recorded as a spent `interrupted` attempt, unless its kill could not be confirmed,
 which keeps the "may still be running" sentence. So is any marker the next dashboard start finds
 whose pid no state file of a running dashboard on this state directory names (its own pid counts

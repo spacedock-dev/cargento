@@ -238,6 +238,28 @@ class ReadingJobTest(unittest.TestCase):
         self.assertEqual(reading.WITHHELD[reading.WITHHELD_UNSTORED], entry.get("withheld"))
         self.assertEqual(1, entry.get("readings"))
 
+    def test_a_kept_marker_keeps_a_stop_or_an_unconfirmed_kill_as_its_reason(self) -> None:
+        """L3: a refused "interrupted" or "unstopped" must not recover as "ran"."""
+        for reason in (reading.WITHHELD_INTERRUPTED, reading.WITHHELD_UNSTOPPED):
+            with self.subTest(reason=reason):
+                annotation_store.annotate(
+                    self.config, self.state, "claude", "s1", goal=f"g {reason}", output="", now=11.0
+                )
+
+                def compose(hooks: reading_jobs.Hooks, *, why: str = reason) -> Any:
+                    hooks.before_reserve()
+                    hooks.reserved()
+                    return None, why, True
+
+                with mock.patch.object(
+                    annotation_store, "_record", return_value=annotation_store.OUTCOME_UNWRITABLE
+                ):
+                    self._run(compose)
+                reading_jobs.recover(self.application, alive=lambda _pid: False)
+                entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+                assert entry is not None
+                self.assertEqual(reading.WITHHELD[reason], entry.get("withheld"))
+
     def test_a_marker_that_cannot_be_written_stops_the_job_before_anything_is_spent(
         self,
     ) -> None:

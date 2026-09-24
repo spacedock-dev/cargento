@@ -893,11 +893,13 @@ def _register_sigterm_exit() -> Any:
         number = getattr(signal, name, None)
         if number is None:
             continue
-        # An ignored signal stays ignored: `nohup`, and a background job of a
-        # shell without job control, hand the server SIGHUP or SIGQUIT as
-        # SIG_IGN on purpose, and exiting on it would undo that (verify N1).
+        # An ignored hangup or quit stays ignored: `nohup`, and a background
+        # job of a shell without job control, hand the server SIGHUP or SIGQUIT
+        # as SIG_IGN on purpose, and exiting on it would undo that (verify N1).
+        # SIGTERM is not among them: `kill <pid>` stops the server whatever it
+        # inherited, as it always has.
         with contextlib.suppress(ValueError, AttributeError):
-            if signal.getsignal(number) is signal.SIG_IGN:
+            if name != "SIGTERM" and signal.getsignal(number) is signal.SIG_IGN:
                 continue
         with contextlib.suppress(ValueError, AttributeError):
             previous[number] = signal.signal(number, lambda _sig, _frame: sys.exit(0))

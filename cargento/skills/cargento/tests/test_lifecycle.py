@@ -2005,6 +2005,14 @@ class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
     """Verify N1: a server started under `nohup` must survive the hangup it was told to ignore."""
 
     def _serve_ignoring(self, name: str) -> None:
+        server, number = self._start_ignoring(name)
+        os.kill(server.pid, number)
+        time.sleep(1.0)
+        self.assertIsNone(server.poll(), f"a server that ignored {name} exited on it")
+        server.terminate()
+        self.assertEqual(0, server.wait(timeout=15))
+
+    def _start_ignoring(self, name: str) -> tuple[subprocess.Popen[bytes], int]:
         number = getattr(signal, name)
         home = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, home, True)
@@ -2027,17 +2035,21 @@ class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
         while not state.exists() and server.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertTrue(state.exists(), "the server never started")
-        os.kill(server.pid, number)
-        time.sleep(1.0)
-        self.assertIsNone(server.poll(), f"a server that ignored {name} exited on it")
-        server.terminate()
-        self.assertEqual(0, server.wait(timeout=15))
+        return server, number
 
     def test_a_server_run_under_nohup_survives_a_hangup(self) -> None:
         self._serve_ignoring("SIGHUP")
 
     def test_a_server_that_ignores_quit_survives_it(self) -> None:
         self._serve_ignoring("SIGQUIT")
+
+    def test_a_server_started_ignoring_sigterm_still_stops_on_it(self) -> None:
+        """L1: `kill <pid>` stops the server whatever it inherited, as on main."""
+        server, _ = self._start_ignoring("SIGTERM")
+        os.kill(server.pid, signal.SIGTERM)
+        self.assertEqual(
+            0, server.wait(timeout=15), "an inherited ignore kept SIGTERM from stopping it"
+        )
 
 
 class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
