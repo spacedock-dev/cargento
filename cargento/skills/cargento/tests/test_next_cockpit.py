@@ -5562,40 +5562,86 @@ console.log(JSON.stringify({posts,
         self.assertTrue(out["cue"])
         self.assertEqual(1, out["stillOffersSave"])
 
-    def test_a_reading_press_shows_progress_and_survives_redraws(self) -> None:
-        out = self.run_fixture(r"""
+    # DRC-4686: the press starts a job the server owns. The box is drawn from
+    # the published job alone, so a reload draws the same one.
+    JOB_STEPS = (
+        '[{phase:"preparing", text:"Preparing what is sent"},'
+        ' {phase:"waiting", text:"Waiting for Codex"},'
+        ' {phase:"checking", text:"Checking the reply"}]'
+    )
+
+    def test_a_press_shows_the_running_job_and_a_second_press_sends_nothing(self) -> None:
+        out = self.run_fixture(
+            r"""
 __dashboard.reading_check = "accepted";
 __dashboard.annotate = true;
+__dashboard.reading_jobs = {};
 const session = __dashboard.sessions[0];
-// The gate reads the published annotation, which is where the renderer
-// gets its copy too, so the fixture has to carry the same words as the
-// literal below rather than only the literal.
 session.annotation_goal = "ship it";
 const annotation = {goal:"ship it", reading_count:0};
 const control = () => nextCockpitReadingControl(session, annotation, {enabled:true});
-const releases = [];
 let calls = 0;
 const upstream = __fetchImpl;
+const job = {id:"j1", phase:"preparing", started_at:100, phase_at:100, provider:"codex",
+  steps:"""
+            + self.JOB_STEPS
+            + r"""};
 __fetchImpl = (url, init) => String(url) === "/api/reading"
-  ? (calls++, new Promise(resolve => { releases.push(resolve); })) : upstream(url, init);
-const pending = nextCockpitAskForReading(session, {enabled:true});
-await __settle();
+  ? (calls++, Promise.resolve({ok:true, status:202, json:async()=>({ok:true, job})}))
+  : upstream(url, init);
+const before = control();
+await nextCockpitAskForReading(session, {enabled:true});
 renderNext();
 const during = control();
-const duplicate = nextCockpitAskForReading(session, {enabled:true});
+await nextCockpitAskForReading(session, {enabled:true});
 const other = nextCockpitReadingControl(__dashboard.sessions[1], annotation, {enabled:true});
-for(const release of releases) release({ok:true, json:async()=>({ok:true, produced:true, reason:""})});
-await Promise.all([pending, duplicate]);
-console.log(JSON.stringify({during, other, after:control(), calls}));
-""")
+console.log(JSON.stringify({before, during, other, calls}));
+"""
+        )
         assert isinstance(out, dict)
-        self.assertIn("Checking for drift", out["during"])
-        self.assertIn("0 model requests recorded", out["during"])
-        self.assertRegex(out["during"], r'reading-ask"[^>]*disabled')
-        self.assertNotIn("Checking for drift", out["other"])
-        self.assertEqual(1, out["calls"])
-        self.assertIn("Reading received", out["after"])
-        self.assertNotRegex(out["after"], r'reading-ask"[^>]*disabled')
+        self.assertEqual(1, out["calls"], "a second press while a job runs sent another")
+        self.assertIn("Runs in the background.", out["before"])
+        during = out["during"]
+        self.assertIn("Analyzing drift", during)
+        self.assertIn('role="status"', during)
+        for text in ("Preparing what is sent", "Waiting for Codex", "Checking the reply"):
+            self.assertIn(text, during)
+        self.assertRegex(during, r'data-state="active"[^>]*>(?:(?!</li>).)*Preparing what is sent')
+        self.assertIn("You can keep working. The result will appear here.", during)
+        self.assertNotIn('data-next-cockpit-action="reading-ask"', during)
+        self.assertIn("0 model requests recorded", during)
+        self.assertNotIn("Analyzing drift", out["other"])
+
+    def test_a_reload_draws_the_same_box_from_the_published_job_alone(self) -> None:
+        out = self.run_fixture(
+            r"""
+__dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
+const session = __dashboard.sessions[0];
+session.annotation_goal = "ship it";
+__dashboard.reading_jobs = {"codex:focus-1": {id:"j1", phase:"waiting", started_at:100,
+  phase_at:101, provider:"codex", steps:"""
+            + self.JOB_STEPS
+            + r"""}};
+nextData = __dashboard;
+const html = nextCockpitReadingControl(session, {goal:"ship it", reading_count:2}, {enabled:true});
+__dashboard.reading_jobs = {};
+const after = nextCockpitReadingControl(session, {goal:"ship it", reading_count:3}, {enabled:true});
+console.log(JSON.stringify({html, after}));
+"""
+        )
+        assert isinstance(out, dict)
+        states = re.findall(r'data-state="([a-z]+)"', out["html"])
+        self.assertEqual(["done", "active", "todo"], states)
+        self.assertRegex(out["html"], r'data-state="active"[^>]*aria-current="step"')
+        self.assertIn("Waiting for Codex", out["html"])
+        self.assertIn("2 model requests recorded", out["html"])
+        # A finished step is marked by its state, never by a check mark (DEC-24 item 6).
+        for glyph in ("✓", "✔", "☑", "✅"):
+            self.assertNotIn(glyph, out["html"])
+        self.assertNotIn("Analyzing drift", out["after"])
+        self.assertIn('data-next-cockpit-action="reading-ask"', out["after"])
+        self.assertIn("3 model requests recorded", out["after"])
 
     def test_a_reading_press_reports_refusal_and_failure_without_retrying(self) -> None:
         out = self.run_fixture(r"""

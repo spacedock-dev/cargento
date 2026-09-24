@@ -1168,6 +1168,10 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading",
         ".next-cockpit-reading-stale,.next-session-departure-stale",
         ".next-cockpit-reading-why",
+        # DRC-4686: the analyzing box's title, steps and keep-working line.
+        ".next-cockpit-reading-job-title",
+        ".next-cockpit-reading-step",
+        ".next-cockpit-reading-job-note",
         ".next-cockpit-recovery .next-project-goal-text",
         ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
@@ -1354,7 +1358,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # DRC-4676 adds two at the body floor: a check's result line and the
         # sentence that counts the checks from the whole scan. DRC-4685 adds
         # one: the sentence saying why a seventh outcome line is refused.
-        self.assertEqual(110, len(above))
+        # DRC-4686 adds three at the body floor: the analyzing box's title, its
+        # steps and the line saying the page stays usable.
+        self.assertEqual(113, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
