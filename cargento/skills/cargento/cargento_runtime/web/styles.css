@@ -816,17 +816,24 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    markup and placed in the second track, so it leads a single column without
    a reordering trick. The page scrolls as one document: no scroll container
    and nothing sticky, so docs/design-reader-state.md gains no row. */
-.next-session-detail{margin:20px 0 0;padding:0 0 34px;box-shadow:none}
+.next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
 .next-session-columns{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:var(--sp-5);align-items:start}
-.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-4);min-width:0}
+.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-3);min-width:0}
 .next-session-activity{grid-column:1;grid-row:1;min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-panel .next-cockpit-held{padding:0}
 .next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr)}
-.next-session-state{display:inline-block;margin:0 0 var(--sp-2);padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
-.next-session-detail-header{padding:20px 0}
+.next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
+.next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+/* Two rows: state, name and id; then the measured line with the controls on
+   its right. One element per line took 205px and pushed Analyze drift to
+   978-1022px at 1440x900 (DRC-4680 walk). */
+.next-session-detail-header{display:flex;flex-direction:column;gap:6px;padding:8px 0 14px}
+.next-session-detail-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;min-width:0}
+.next-session-detail-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.next-session-detail-bar>.next-session-detail-meta{flex:1 1 16rem}
 .next-session-section>h2,.next-session-ask-callout>span{display:block;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
-.next-session-detail h1{margin:0 0 10px;font-size:var(--fs-value);font-weight:600;letter-spacing:-.015em;overflow-wrap:anywhere}
+.next-session-detail h1{margin:0;font-size:var(--fs-value);font-weight:600;letter-spacing:-.015em;overflow-wrap:anywhere}
 .next-session-detail-instruction{margin:0 0 10px;overflow-wrap:anywhere;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-instruction-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
@@ -834,10 +841,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The Drift section: one card holding the control, the reading, any later
    direction, the caveats and the departures. */
 .next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
-.next-session-drift-head{padding:14px 16px 14px}
+.next-session-drift-head{padding:12px 16px 10px}
 .next-session-drift-heading{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-drift-sub{margin:4px 0 0;color:var(--ink2);font-size:var(--fs-label)}
-.next-session-drift-limit{margin:0 16px 14px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-session-drift-limit{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-session-drift>.next-cockpit-conflict{margin:0 16px 14px}
 /* The control with its hint and send disclosure, first in the Drift section,
    and the caveats on the reader's words below the reading (DRC-4639). */
@@ -885,7 +892,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-current>strong{font-size:var(--fs-body);font-weight:600}
 .next-session-detail .next-session-absent{color:var(--ink-absence);font-family:var(--sans)}
 .next-session-identity{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
-.next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 10px}
+.next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 0 auto}
 .next-session-controls .next-session-copy,.next-session-controls .next-session-raise{margin:0}
 .next-session-controls .next-session-raise{font-weight:700}
 .next-session-section[data-next-session-section="ask"]{padding:13px 16px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
@@ -1187,7 +1194,9 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    counter, source and remove, inside the field's own grid. */
 .next-cockpit-held-list{grid-column:1/-1;display:grid;gap:6px;margin:0;padding:0;list-style:none}
 .next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:2px 8px}
-.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px}
+/* A line's box, count and remove share one row, so each line costs one
+   control height rather than two in the panel's narrow column. */
+.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px;grid-column:auto}
 .next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-source[hidden]{display:none}
 .next-cockpit-held-full{grid-column:1/-1;margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}

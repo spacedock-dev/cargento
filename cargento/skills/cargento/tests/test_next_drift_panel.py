@@ -107,8 +107,9 @@ def drift_of(html: str) -> str:
     return aside[aside.index('id="next-session-drift-heading"') :]
 
 
-@unittest.skipUnless(shutil.which("node"), "node not available")
-class IntentAndDriftPanelTest(NextPageJsHarness):
+class PanelPage(NextPageJsHarness):
+    """Renders the session page on a named harness; holds no tests of its own."""
+
     def page(
         self,
         harness: str = "claude",
@@ -149,6 +150,9 @@ await __settle();
 """,
         )
 
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class IntentAndDriftPanelTest(PanelPage):
     def stages(self) -> dict[str, str]:
         no_reader = routes(installed=())
         return {
@@ -358,6 +362,116 @@ __dashboard.asks = [{id:"ask-1", harness:"claude", session_id:"focus-1", project
         self.assertEqual("Analyze drift", visible_text(control.group(1)).strip())
         self.assertIn('aria-disabled="true"', control.group(0))
         self.assertEqual(1, html.count("Annotations are off for this run"))
+
+
+STYLES = Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "styles.css"
+
+
+def rule(selector: str) -> str:
+    """The declarations of the first rule whose selector is exactly `selector`: the default
+    viewport's, since the sheet puts every media query after the rules it narrows."""
+    css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
+    found = [
+        body for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css) if sel.strip() == selector
+    ]
+    assert found, selector
+    return str(found[0])
+
+
+def children(markup: str) -> list[str]:
+    """The top-level elements of `markup`, each with its whole subtree, void tags aside."""
+    out: list[str] = []
+    depth, start = 0, 0
+    for tag in re.finditer(r"<(/?)([a-z0-9]+)\b[^>]*>", markup):
+        if tag.group(2) in {"br", "img", "input", "hr", "meta", "link"}:
+            continue
+        if tag.group(1):
+            depth -= 1
+            if depth == 0:
+                out.append(markup[start : tag.end()])
+        else:
+            if depth == 0:
+                start = tag.start()
+            depth += 1
+    return out
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
+    """The structure the 1440x900 fold rests on (DRC-4680 walk).
+
+    Measured on a live board: with one element per header line the header took 205px and
+    Analyze drift's bottom sat at 1022 (Claude Code) and 1085 (Codex). With the two-row header,
+    the one-line revision stamp and a line's box sharing a row with its count, it sat at 820 and
+    879. The pixels are the walk's to measure; these tests hold the structure that bought them.
+    """
+
+    def test_the_header_is_two_rows_state_name_and_id_then_the_measured_line_and_controls(
+        self,
+    ) -> None:
+        html = self.page()
+        start = html.index('<header class="next-session-detail-header">')
+        header = html[start : html.index("</header>", start)]
+        title = re.search(r'<div class="next-session-detail-title">([\s\S]*?)</div>', header)
+        assert title is not None
+        for part in ('class="next-session-state"', "<h1", 'class="next-session-identity"'):
+            with self.subTest(part=part):
+                self.assertIn(part, title.group(1))
+        # The header's children are exactly the two rows, and the controls are in the second.
+        rows = children(header[len('<header class="next-session-detail-header">') :])
+        self.assertEqual(
+            ['<div class="next-session-detail-title">', '<div class="next-session-detail-bar">'],
+            [row[: row.index(">") + 1] for row in rows],
+        )
+        bar = rows[1]
+        self.assertLess(
+            bar.index('class="next-session-detail-meta"'),
+            bar.index('class="next-session-controls"'),
+        )
+        self.assertIn("flex-direction:column", rule(".next-session-detail-header"))
+        self.assertIn("flex-wrap:wrap", rule(".next-session-detail-title"))
+        self.assertIn("flex-wrap:wrap", rule(".next-session-detail-bar"))
+
+    def test_the_intent_section_is_heading_lede_one_stamp_line_then_the_fields(self) -> None:
+        aside = aside_of(self.page())
+        intent = aside[aside.index(">Intent</h2>") : aside.index(">Drift</h2>")]
+        order = [
+            intent.index(mark)
+            for mark in (
+                'class="next-cockpit-held-lede"',
+                'class="next-cockpit-held-stamp"',
+                'class="next-cockpit-held-fields"',
+            )
+        ]
+        self.assertEqual(sorted(order), order)
+        stamp = re.search(r'<div class="next-cockpit-held-stamp">([\s\S]*?)</div>', intent)
+        assert stamp is not None
+        self.assertIn('class="next-cockpit-held-revision"', stamp.group(1))
+        self.assertIn("Each save is a revision.", stamp.group(1))
+        self.assertIn("flex-wrap:wrap", rule(".next-cockpit-held-stamp"))
+        # A line's box shares its row with the count and remove.
+        self.assertIn(
+            "grid-column:auto", rule(".next-cockpit-held-field .next-cockpit-held-line textarea")
+        )
+
+    def test_the_columns_put_the_panel_in_a_460px_track_that_is_neither_scrolled_nor_sticky(
+        self,
+    ) -> None:
+        columns = rule(".next-session-columns")
+        self.assertIn("grid-template-columns:minmax(0,1fr) 460px", columns)
+        panel = rule(".next-session-panel")
+        self.assertIn("grid-column:2", panel)
+        for never in ("overflow", "sticky", "max-height"):
+            with self.subTest(never=never):
+                self.assertNotIn(never, panel)
+                self.assertNotIn(never, columns)
+        # And nothing between the header and the panel's first section but the ask block.
+        html = self.page()
+        between = html[
+            html.index("</header>", html.index("next-session-detail-header")) + len("</header>") :
+        ]
+        between = between[: between.index("<aside")]
+        self.assertEqual('<div class="next-session-columns">', between.strip())
 
 
 if __name__ == "__main__":

@@ -656,10 +656,16 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const missingReentry = reentryLimit.resume + (nextSessionRaiseControl(session) ? "" : reentryLimit.raise);
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;
-  const identity = `<header class="next-session-detail-header">${stateLabel}` +
+  /* Two rows at most, as C1's one-row header comes out in Cargento's type:
+     the state, name and id, then the measured line with the controls beside
+     it. Stacked one per line it took 205px at 1440x900 and put Analyze drift
+     under the fold (DRC-4680 walk). */
+  const identity = '<header class="next-session-detail-header">' +
+    `<div class="next-session-detail-title">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
     `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
-    `<div class="next-session-controls">${controls}</div>${metaLine}</header>`;
+    '</div><div class="next-session-detail-bar">' +
+    `${metaLine}<div class="next-session-controls">${controls}</div></div></header>`;
   const assignment = nextSessionInstruction(session, "asked")
     ? nextSessionCommandFact("assignment", "ASSIGNMENT",
       nextInstructionLine(session, "", "next-session-command-context")) : "";

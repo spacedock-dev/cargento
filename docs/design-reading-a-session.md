@@ -1577,6 +1577,13 @@ the analysis's recommendation.
   change that later), "Allow and analyze" while confirming, none while analyzing and none with no
   reader.
 - No Stop session control (DEC-16).
+- The fold, measured on a live board at 1440x900: the first build stacked the header one element
+  per line (205px) and put Analyze drift's bottom at 1022 on a Claude Code session and 1085 on a
+  Codex one, about 115px lower than the one-column page. Following C1's compact header, the header
+  is now two rows (state, name and id; then the measured line with the copy controls), the
+  revision stamp and "Each save is a revision." share one line, and an outcome line's box shares
+  its row with its count and remove. That put the bottom at 820 and 879 with nothing removed. C1
+  gives the aside no visible heading, only its "Intent and drift" label, so none was added.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

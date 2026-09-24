@@ -3344,8 +3344,10 @@ function nextCockpitDriftBlock(group, session, primary){
     lede +
     (nextCockpitStoreUnreadable()
       ? `<p class="next-cockpit-held-absent">${esc(nextCockpitStoreUnreadable())}</p>` : "") +
+    /* One line, the stamp and what it means, rather than two (DRC-4680 fold). */
+    '<div class="next-cockpit-held-stamp">' +
     `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
-    `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
+    `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span></div>` +
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") +
