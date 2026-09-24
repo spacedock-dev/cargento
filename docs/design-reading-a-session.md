@@ -359,7 +359,8 @@ Recorded here because it had no durable home. The goal and the expected output a
 single line by the same control character scrub that stops a pasted private key body surviving into
 a published string, and it runs server side on write and again on read back. Admitting newlines
 means relaxing that scrub for two fields that a reader pastes into, which is the wrong two fields to
-relax it for. The browser collapses on input as well, so the reader watches it happen rather than
+relax it for. Since DEC-24 item 3 the expected output is a checklist, and each of its lines is held
+to the same rule: one line, the same scrub, on write and on read back. The browser collapses on input as well, so the reader watches it happen rather than
 finding out afterwards.
 
 ### What the contract does not remove

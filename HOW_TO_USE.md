@@ -435,7 +435,7 @@ asking for the file to go does what it says. The discard-record sweep follows th
 same reason: `--no-annotations` is a switch for one run, not a statement about the file. The
 session-end store goes with it, because both are the machine's memory of what it observed, and a
 session whose end was recorded then reads as quiet again. Nothing over the loopback port can delete
-history; this is the only way. It deletes nothing you typed: the goal and the expected output you wrote against a
+history; this is the only way. It deletes nothing you typed: the goal and the expected outcome lines you wrote against a
 session, and any reading made against them, go when you discard that session's words on its
 session page. The one thing it takes out of that store is the record of a discard, which holds when the act
 happened and no text, and is the machine's memory of something it did rather than anything you
@@ -475,7 +475,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-tripwires` | Workflow stage conditions and every read or write of their saved store |
 | `--no-git` | The end-of-session git probe. No git command runs inside any repository |
 | `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
-| `--no-annotations` | The goal and expected output you typed against a session. Nothing is shown or saved, and the page offers no field |
+| `--no-annotations` | The goal and expected outcome lines you typed against a session. Nothing is shown or saved, and the page offers no field |
 | `--no-focus` | Raising a session's terminal. No focus command runs, no terminal identity is recorded, and the page is offered no raise control. `--no-events` turns it off as well |
 | `--no-observer-model` | Model goal summaries, and the readings that use the same lane, unasked checks included. It overrides `--observer-model` and `--unasked-readings`, so nothing reaches the Codex CLI for this run |
 | `--no-reach` | Off-machine reach nudges. Outbound webhook nudges are disabled for this run |

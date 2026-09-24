@@ -43,7 +43,7 @@ below it. Above the rows it carries at most one sentence: while the annotation s
 session has been checked for drift, it says so, with no count. **Projects**, one click away, groups
 sessions by the label their harness publishes. **Intent log** lists every
 current board session and retained annotation/discard record once, including sessions without a
-project or a goal. It labels typed goal and expected output, cached deterministic goal, and each
+project or a goal. It labels the typed goal and each expected outcome line, cached deterministic goal, and each
 published workflow goal separately. A missing workflow title supplies no goal. Saved deterministic
 evidence is bounded and scrubbed; every line says its currentness has not been checked and gives
 its observation time or says that time is unknown. Opening the log never derives a new goal.
@@ -105,7 +105,7 @@ requires both interaction flags and registration from inside the selected sessio
 and accepts no input. Its xterm assets are vendored and served from loopback.
 
 Exact session detail is reachable from Sessions, cockpit session links and the Intent log. Under
-the session's name it leads with a **DRIFT** block: the goal and expected output you typed, the
+the session's name it leads with a **DRIFT** block: the goal and the expected outcome lines you typed, the
 agent's current activity beside them, the `Check for drift` control with what a check sends beside
 it, the reading, any direction you gave after you saved those words (labelled "Conflict to settle",
 which asks a question and records no finding), and every departure on record, asked for or not. A
@@ -256,7 +256,7 @@ running, or that the port belongs to some other process — in which case it cha
 The server writes ten files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
 detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
-`cargento-annotations.json`, the goal and expected output you typed against a session, plus a
+`cargento-annotations.json`, the goal and expected outcome lines you typed against a session, plus a
 text-free record of any session you discarded everything for;
 `cargento-deliveries.json`, what became of each notification the board raised;
 `cargento-departures.json`, what an unasked reading raised, written only with `--unasked-readings`;
@@ -281,16 +281,23 @@ counts until anything in it writes again; a subagent write counts. Marks live in
 
 ### Recording what a session should achieve
 
-You can record a goal and an expected output against one session, in your own words. Both are
-optional and set independently, bounded at 240 characters each, and saving one leaves the other
-alone. Open the session's page: the two fields are the first thing in its drift block, for a
-session with or without a project. A line above the fields says what typing buys: a check happens
-when you ask for one, and Cargento never writes into the session. Each field shows
-how many of its 240 characters you have used as you type, offers `clear` only when there is text and `save`
-only when the box differs from what is stored, and Escape puts the stored value back.
+You can record a goal and an expected outcome against one session, in your own words. The
+expected outcome is a checklist of up to six lines, each one line of at most 240 characters, and
+the goal is one line of at most 240. Both are optional and set independently, and saving one
+leaves the other alone. Open the session's page: the fields are the first thing in its drift
+block, for a session with or without a project. A line above them says what typing buys: a check
+happens when you ask for one, and Cargento never writes into the session. Each box shows how many
+of its 240 characters you have used as you type. The goal offers `clear` only when there is text;
+each outcome line has `remove`, and `add a line` adds another until there are six, where it stays
+on the page, refuses a seventh and says why (replace or merge a line instead). `save` appears only
+when what you typed differs from what is stored, the list saves as a whole, and Escape puts the
+stored words back. Each saved line shows where it came from: typed, or added from an entry. A
+reading reads each line on its own and shows one row per line.
 
-`POST /api/annotate` with a harness, a session id and either field does the same thing without the
-page. It writes a numbered revision; an earlier revision is never edited, so anything citing
+`POST /api/annotate` with a harness, a session id and `goal` or `lines` (a list of strings, the
+whole checklist) does the same thing without the page; `expected_revision` refuses a list saved
+from a view of an older revision, and a seventh line or a line over 240 characters is refused
+rather than clipped. It writes a numbered revision; an earlier revision is never edited, so anything citing
 revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely,
 or `settle_through` with a timestamp to mark the directions given up to that moment as settled
 against the current baseline. The reply says what happened: `persisted` is whether the words are
@@ -412,7 +419,8 @@ raise a departure while you are away. Off by default, behind `--unasked-readings
 `--no-observer-model` whatever else is set, and it is the only thing here that spends your model
 capacity with nobody watching. It checks on an observed state
 change rather than every turn, it raises a departure and never a reassurance, and it stops at a
-per-session and a per-day limit. A spent limit is said out loud: a session nobody checked and a
+per-session and a per-day limit. It reads your typed goal alone, never your expected outcome
+lines, and a session with lines and no goal is not checked this way. A spent limit is said out loud: a session nobody checked and a
 session checked and found clean are different sentences on the board, because you were not there to
 know which one you are looking at. Turning it off stops new checks and retracts nothing: what was
 already raised still shows on the session, in the review and in the Intent log, under a line saying
@@ -588,7 +596,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The session-end store is neither read nor written, since the coordinator is its only writer, so a session that ended before this run reads as quiet. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty. Empty means no reading available: never attempted (including refused), attempted without a usable result, or a reading retired after resumed work. It does not mean a clean tree. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
-| `--no-annotations` | For this run, do not read or write the goal and expected output you typed against a session: nothing is shown, nothing is saved, and the session page's drift block offers no field; its `Check for drift` control stays on the page, inert, and says why. The rollback switch for the one store holding prose you composed. |
+| `--no-annotations` | For this run, do not read or write the goal and expected outcome lines you typed against a session: nothing is shown, nothing is saved, and the session page's drift block offers no field; its `Check for drift` control stays on the page, inert, and says why. The rollback switch for the one store holding prose you composed. |
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
@@ -607,9 +615,9 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
 | `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
 | `POST /api/tripwire` | Save, Remove or Rearm one workflow stage condition. Requires `action`, opaque `id`, declared `stage` and `expected_revision`; stale revisions return 409, failed writes 503. Disabled by `--no-tripwires`. |
-| `POST /api/annotate` | Record a goal or expected output against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
+| `POST /api/annotate` | Record a goal or the expected outcome checklist against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused` or `unwritable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
-| `/api/annotations` | Every session you have typed a goal or an expected output against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
+| `/api/annotations` | Every session you have typed a goal or an expected outcome line against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
 | `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true`, which allows that provider only. `{"consent":"off","press":true,"observer_model":1}` revokes permission. Bodies are capped at 4096 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
 
 ## Interpretation notes (share with the user if asked)

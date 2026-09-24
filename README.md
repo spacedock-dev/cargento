@@ -145,7 +145,7 @@ and unimplemented. See [SECURITY.md](SECURITY.md) for all three, and before you 
 The dashboard opens on Sessions. Projects, one click away, groups sessions by the label their
 harness publishes, and each project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
-type the goal and the expected output you are holding that session to, check it for drift with one
+type the goal and the expected outcome, a checklist of up to six lines, you are holding that session to, check it for drift with one
 press, and read back what has been raised about that session and what became of the raise. Its
 `COPY LINK` control copies a link that reopens that page.
 Console collects delegation, waiting requests,

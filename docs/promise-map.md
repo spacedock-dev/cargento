@@ -85,7 +85,7 @@ Backed by the current-turn elapsed and ETA estimate with its progress bar, the w
 when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its
 measured elapsed, its own model and its own liveness, with a teammate that has finished or gone
 quiet still listed rather than dropped, session detail that leads with a drift block setting your goal beside the agent's current activity, the recent token output rate, the model each
-session is running on, desktop notifications on a state change, and a goal and an expected output
+session is running on, desktop notifications on a state change, and a goal and an expected outcome checklist
 you can type against one session and read back beside the goal its harness published, each on its
 own row with its own source, alongside every observed entry naming that session. Course also saves
 one stage-entry condition per observed Spacedock workflow, with rule management in Projects after
