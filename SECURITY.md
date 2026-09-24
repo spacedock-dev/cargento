@@ -1261,8 +1261,12 @@ shutdown ends is recorded as a spent `interrupted` attempt, unless its kill coul
 which keeps the "may still be running" sentence. So is any marker the next dashboard start finds
 whose pid no state file of a running dashboard on this state directory names (its own pid counts
 as an earlier run).
-Each marker is claimed by an atomic rename before it is recorded, and an entry that already holds
-the job's id counts nothing, so one job is one attempt however many dashboards recover it.
+A recovery pass holds an OS lock on `reading-jobs.lock` beside that directory (`flock` on POSIX,
+`msvcrt.locking` on Windows), each marker is claimed by a rename before it is recorded, and an entry
+that already holds the job's id counts nothing, so one job is one attempt however many dashboards
+recover it. The lock is there because the rename is atomic on POSIX and not exclusive on Windows. A
+claimed marker that cannot be read is left in place for the next start, and only a malformed one is
+deleted.
 
 The Cancel route, with DRC-4693. Cancel kills the job's process group through the handle the
 supervised runner gives the job, releases the one-in-flight slot only after the child is reaped and

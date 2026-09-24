@@ -8,14 +8,16 @@ observable rather than inferred from a final state.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
@@ -24,7 +26,52 @@ from cargento_runtime import reading, reading_jobs, reading_policy, supervise
 
 from .support import make_runtime
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 KEY = "claude:s1"
+
+
+@contextlib.contextmanager
+def _windows_rename() -> Iterator[None]:
+    """`Path.rename` and `Path.read_text` as a Windows MoveFileEx meets them.
+
+    MoveFileEx opens its source by path for DELETE, sharing everything, and then
+    renames through that handle: a second rename follows the file wherever the
+    first moved it, and a plain read while such a handle is open fails with a
+    sharing violation. Inferred from the runner's failure, not observed there.
+    """
+    held: dict[int, int] = {}
+    guard = threading.Lock()
+    rename, read_text = Path.rename, Path.read_text
+
+    def moved(path: Path, target: Any) -> Any:
+        inode = path.stat().st_ino
+        with guard:
+            held[inode] = held.get(inode, 0) + 1
+        try:
+            time.sleep(0.002)
+            current = next((p for p in path.parent.iterdir() if p.stat().st_ino == inode), None)
+            if current is None:
+                raise PermissionError(13, "deleted under the handle")
+            return rename(current, target)
+        finally:
+            with guard:
+                held[inode] -= 1
+
+    def read(path: Path, *args: Any, **kwargs: Any) -> str:
+        try:
+            inode = path.stat().st_ino
+        except OSError:
+            inode = -1
+        with guard:
+            busy = held.get(inode, 0) > 0
+        if busy:
+            raise PermissionError(32, "sharing violation")
+        return read_text(path, *args, **kwargs)
+
+    with mock.patch.object(Path, "rename", moved), mock.patch.object(Path, "read_text", read):
+        yield
 
 
 class _Application:
@@ -426,6 +473,32 @@ class ARestartRecordsTheAttemptItInterruptedTest(unittest.TestCase):
                     thread.join(10)
                 self.assertEqual(before + 1, self._entry().get("readings"))
                 self.assertEqual([], list(self.markers.iterdir()))
+
+    def test_two_dashboards_count_it_once_where_the_rename_is_not_exclusive(self) -> None:
+        """The Windows shape, emulated: the recovery lock holds without the rename.
+
+        Measured against the build before the lock: every one of the 20
+        subtests lost the attempt, the `before + 1 != before` shape the
+        windows-latest runner reported for the test above in 3 of 20.
+        """
+        with _windows_rename():
+            self.test_two_dashboards_recovering_one_marker_count_it_once()
+
+    def test_a_claim_that_cannot_be_read_is_left_rather_than_deleted(self) -> None:
+        self._marker(
+            "abc", json.dumps({"id": "abc", "harness": "claude", "sid": "s1", "pid": 4242})
+        )
+        real = Path.read_text
+
+        def refuse(path: Path, *args: Any, **kwargs: Any) -> str:
+            if ".claim-" in path.name:
+                raise PermissionError(32, "sharing violation")
+            return real(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", refuse):
+            self.assertEqual(0, reading_jobs.recover(self.application, alive=lambda _pid: False))
+        self.assertIsNone(self._entry().get("readings"))
+        self.assertEqual(["abc.json.claim-"], [p.name[:15] for p in self.markers.iterdir()])
 
     def test_a_marker_naming_this_process_is_an_earlier_run(self) -> None:
         """Review F4: a container's dashboard is PID 1 on every start."""

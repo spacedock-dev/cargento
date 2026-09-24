@@ -19,16 +19,23 @@ import contextlib
 import json
 import os
 import secrets
+import sys
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 from . import annotations as annotation_store
 from . import io as runtime_io
 from . import reading, reading_policy, supervise
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from .config import RuntimeConfig
     from .state import RuntimeState
@@ -43,6 +50,16 @@ _CLAIM = ".claim-"
 # thread's claim for one an earlier process with the same pid left behind.
 _CLAIMS: set[str] = set()
 _CLAIMS_LOCK = threading.Lock()
+# A recovery pass holds an OS lock on this file, beside the marker directory
+# rather than in it. The rename alone is not exclusive on Windows: two
+# recoverers on the windows-latest runner lost 3 attempts in 20 uncounted. The
+# mechanism is inferred, not observed: a MoveFileEx holds its source open for
+# DELETE, so the other recoverer's plain read of its claim fails with a sharing
+# violation. An OS lock dies with its process, so it needs no stale-holder rule.
+RECOVERY_LOCK = "reading-jobs.lock"
+# How long a start waits for another dashboard's pass before leaving the
+# markers to the next start, which loses nothing: they stay on disk.
+_RECOVERY_WAIT_SECONDS = 10.0
 
 
 # The reasons a kept marker carries as they were, rather than as "unstored".
@@ -273,10 +290,20 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
     lifecycle). A marker such a dashboard holds is its running job and is left
     alone. This process's own pid is an earlier run that happened to get it
     back, as a container's PID 1 does on every start: this process has started
-    no job yet. Each marker is claimed by an atomic rename before it is
-    recorded, and recorded under its job's id, so two dashboards recovering
-    together, or a dashboard that died after the write, count it once.
+    no job yet. A pass holds `RECOVERY_LOCK`, each marker is claimed by a
+    rename before it is recorded, and it is recorded under its job's id, so two
+    dashboards recovering together, or a dashboard that died after the write,
+    count it once. The rename is atomic on POSIX and is not exclusive on
+    Windows, which is why the lock is there.
     """
+    config = application.config
+    if not any((Path(config.state_dir) / MARKER_DIR).glob("*.json*")):
+        return 0
+    with _recovering(Path(config.state_dir) / RECOVERY_LOCK) as held:
+        return _recover(application, alive) if held else 0
+
+
+def _recover(application: Application, alive: Callable[[int], bool]) -> int:
     config, state = application.config, application.state
     recorded = 0
     for path in sorted((Path(config.state_dir) / MARKER_DIR).glob("*.json*")):
@@ -284,7 +311,14 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
         if claimed is None:
             continue
         try:
-            marker = json.loads(claimed.read_text(encoding="utf-8"))
+            text = claimed.read_text(encoding="utf-8")
+        except OSError:
+            # Not a malformed marker, so not deleted as one. A file that is gone
+            # was taken by another claimer; any other error is left named for
+            # this process, which the next start reads as an earlier run's.
+            continue
+        try:
+            marker = json.loads(text)
             harness, sid, job_id = marker["harness"], marker["sid"], str(marker["id"])
             kept = marker.get("reason")
             reason = (
@@ -292,7 +326,7 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
                 if kept in (*_KEPT_REASONS, reading.WITHHELD_UNSTORED)
                 else reading.WITHHELD_INTERRUPTED
             )
-        except (OSError, ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError):
             with contextlib.suppress(OSError):
                 claimed.unlink()
             continue
@@ -312,6 +346,61 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
         with contextlib.suppress(OSError):
             claimed.unlink()
     return recorded
+
+
+@contextlib.contextmanager
+def _recovering(path: Path) -> Iterator[bool]:
+    """Hold the recovery lock for one pass. Yields whether the pass may run.
+
+    False only while another pass holds the lock past the wait. A lock file
+    that cannot be opened or locked for any other reason yields True: the
+    rename claim still holds on POSIX, and refusing would strand every marker.
+    """
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError:
+        yield True
+        return
+    try:
+        held = _lock(fd)
+        try:
+            yield held is not False
+        finally:
+            if held:
+                _unlock(fd)
+    finally:
+        os.close(fd)
+
+
+def _lock(fd: int) -> bool | None:
+    """Lock `fd`, waiting a bounded time. None when this file cannot be locked."""
+    deadline = time.monotonic() + _RECOVERY_WAIT_SECONDS
+    while True:
+        try:
+            if sys.platform == "win32":
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, PermissionError):
+            # Held elsewhere: `flock` raises the first, `msvcrt.locking` the
+            # second (EACCES), each for this and nothing else.
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+        except OSError:
+            return None
+        else:
+            return True
+
+
+def _unlock(fd: int) -> None:
+    with contextlib.suppress(OSError):
+        if sys.platform == "win32":
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 def _claim(path: Path, alive: Callable[[int], bool]) -> Path | None:
