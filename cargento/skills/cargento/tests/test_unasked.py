@@ -62,6 +62,7 @@ def _assessment(*results: str) -> reading.Assessment:
     return {
         "revision_read": 4,
         "revision_read_at": 10.0,
+        "window_start": None,
         "read_at": None,
         "stamp": "a stamp",
         # Prose, which is what the producer actually writes: `cutoff_text`

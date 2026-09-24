@@ -133,6 +133,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "annotation_at",
         "annotation_goal_source",
         "annotation_goal_source_at",
+        "annotation_window_start",
         "annotation_binding_why",
         "annotation_discarded_at",
         "annotation_discarded_why",

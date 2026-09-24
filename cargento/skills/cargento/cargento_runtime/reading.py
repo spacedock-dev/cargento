@@ -150,6 +150,7 @@ ASSESSMENT_KEYS = (
     "goal_source_at",
     "revision_read",
     "revision_read_at",
+    "window_start",
     "read_at",
     "stamp",
     "cutoff",
@@ -309,6 +310,7 @@ class ToolOutput:
 SCOPE_MID_FLIGHT = "mid-flight"
 SCOPE_FINAL = "final"
 SCOPE_WITHDRAWN = "withdrawn"
+SCOPE_LAST_TURN = "last-turn"
 SCOPE_TEXT = {
     # Past tense, deliberately. A reading is stored and describes the moment
     # it was taken, so a present-tense claim about the session expires the
@@ -325,7 +327,17 @@ SCOPE_TEXT = {
         "The session end this reading rested on is no longer published, so its claim "
         "to be final is withdrawn."
     ),
+    SCOPE_LAST_TURN: (
+        "A turn stop was observed and no session end was, so this covers the work through "
+        "the last turn. It is not a reading of how the session ended."
+    ),
 }
+
+# The harnesses a reader may have read at a turn stop: Claude Code only, by the
+# owner's ruling for this milestone and item 13 of the checklist ruling in
+# `docs/design-reading-a-session.md`. The page's
+# `NEXT_READING_TURN_STOP_HARNESSES` is the same list, compared by a test.
+TURN_STOP_HARNESSES = ("claude",)
 
 # Why there is no reading. One sentence per cause and never a shared one: the
 # same collapse `nextCockpitWorkAbsence` already refused, where folding three
@@ -335,6 +347,7 @@ WITHHELD_TURN_STOP = "turn-stop"
 WITHHELD_IDLE_UNKNOWN = "idle-unknown"
 WITHHELD_UNOBSERVABLE = "unobservable"
 WITHHELD_SETTLING = "settling"
+WITHHELD_STOP_SETTLING = "stop-settling"
 WITHHELD_REVISION_AFTER_END = "revision-after-end"
 WITHHELD_LEDGER_EMPTY = "ledger-empty"
 WITHHELD_RECORD_UNREAD = "record-unread"
@@ -360,6 +373,12 @@ WITHHELD = {
     WITHHELD_SETTLING: (
         "This session ended moments ago and its record is still settling. Ask again in "
         "a few seconds."
+    ),
+    # Its own sentence, because the one above says the session ended and a
+    # turn stop is exactly the case where it has not.
+    WITHHELD_STOP_SETTLING: (
+        "This session stopped its turn moments ago and its record is still settling. Ask "
+        "again in a few seconds."
     ),
     WITHHELD_REVISION_AFTER_END: (
         "You saved these words after this session ended, so there is no work after them "
@@ -668,6 +687,10 @@ class Assessment(TypedDict):
     # reading already carries its own clause text through that eviction; the
     # time travels the same way. `None` on a reading written before this field.
     revision_read_at: float | None
+    # Where the evidence window opened, carried for `revision_read_at`'s reason,
+    # so the page applies the window the producer applied. `None` on a reading
+    # written before this field, and the page then derives it as it used to.
+    window_start: float | None
     # Missing on legacy records: a clock-only display stamp cannot establish age.
     read_at: float | None
     stamp: str
@@ -972,6 +995,7 @@ def eligibility(
     latest_revision_at: float,
     now: float,
     settle_sec: float,
+    admit_turn_stop: bool = False,
 ) -> tuple[str, str]:
     """(scope, withheld reason), exactly one of which is set.
 
@@ -985,10 +1009,19 @@ def eligibility(
     reorderable, so a reading composed on the instant of the end can be
     contradicted by a `turn_started` already in flight. The measurement is the
     5.581; the headroom above it is judgement.
+
+    `admit_turn_stop` is the reader's press on a harness in
+    `TURN_STOP_HARNESSES`, and nothing else turns it on: the unasked lane fires
+    on every working-to-idle change, which is every turn stop. A turn stop reads
+    through the last turn and a goal saved after the stop does not withhold it,
+    so `latest_revision_at` is not compared here. It still is for a session
+    end: words typed after an end stay hindsight.
     """
     kind = end_kind(row)
     if kind == "running":
         return SCOPE_MID_FLIGHT, ""
+    if kind == "turn-stop" and admit_turn_stop:
+        return _last_turn(row, now=now, settle_sec=settle_sec)
     if kind != "session-end":
         return "", kind
     ended = _number(row.get("ended_at"))
@@ -998,13 +1031,24 @@ def eligibility(
     # walked through both guards below into a final verdict. `norm_epoch`
     # passes one through and `annotations._revision` accepts one, and the
     # on-disk store is exactly the tampering those type checks exist to close.
-    if ended is None or moment is None or stamp is None:
-        return "", WITHHELD_SETTLING
-    if moment - ended < settle_sec:
+    if ended is None or moment is None or stamp is None or moment - ended < settle_sec:
         return "", WITHHELD_SETTLING
     if stamp > ended:
         return "", WITHHELD_REVISION_AFTER_END
     return SCOPE_FINAL, ""
+
+
+def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tuple[str, str]:
+    """A turn stop the reader pressed on: read through it once it has settled.
+
+    The same settle as an end, for the same in-flight `turn_started`, and the
+    same NaN guard, since a comparison against one is always False.
+    """
+    stopped = _number(row.get("finished_at"))
+    moment = _number(now)
+    if stopped is None or moment is None or moment - stopped < settle_sec:
+        return "", WITHHELD_STOP_SETTLING
+    return SCOPE_LAST_TURN, ""
 
 
 def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
@@ -1597,8 +1641,8 @@ def resolve(
     One criterion per constraint: the goal, then each outcome line in order,
     each resolved on its own through the same rules (rule 6).
 
-    `window_start` is where the evidence window opens, `baseline_at` of the
-    revision read until DRC-4679 stores the words' own time.
+    `window_start` is where the evidence window opens: `window_start` of the
+    revision read.
     """
     by_index = _numbered(selection)
     texts = [line for line in lines if line.strip()]
@@ -1651,6 +1695,7 @@ def _readable(
     now: float,
     discarded: bool = False,
     read_lines: bool = False,
+    admit_turn_stop: bool = False,
 ) -> tuple[str, tuple[str, ...], str, str]:
     """(goal, lines, scope, withheld). A withheld reason means stop here.
 
@@ -1683,6 +1728,7 @@ def _readable(
         latest_revision_at=baseline_at(latest),
         now=now,
         settle_sec=config.reading_settle_sec,
+        admit_turn_stop=admit_turn_stop,
     )
     return goal, lines, scope, withheld
 
@@ -1701,6 +1747,7 @@ def produce(  # noqa: PLR0913
     discarded: bool = False,
     tool_output: ToolOutput | None = None,
     read_lines: bool = False,
+    admit_turn_stop: bool = False,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -1721,9 +1768,17 @@ def produce(  # noqa: PLR0913
     `read_lines` is the reading route's to give as well: every other caller,
     the unasked lane among them, reads the goal alone (item 12 of the ruling
     `MAX_OUTCOME_LINES` cites), so no outcome line reaches a reading nobody pressed for.
+
+    `admit_turn_stop` is the reading route's too, for `eligibility`'s reason.
     """
     goal, lines, scope, withheld = _readable(
-        config, row, revisions, now=now, discarded=discarded, read_lines=read_lines
+        config,
+        row,
+        revisions,
+        now=now,
+        discarded=discarded,
+        read_lines=read_lines,
+        admit_turn_stop=admit_turn_stop,
     )
     if withheld:
         return None, withheld, False
@@ -1766,7 +1821,7 @@ def produce(  # noqa: PLR0913
         goal=goal,
         lines=selected.lines,
         detail_cap_chars=config.annotation_text_cap_chars,
-        window_start=baseline_at(latest),
+        window_start=window_start(latest),
     )
     cutoff = cutoff_text(selected.entries, len(ledger), now)
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
@@ -1794,6 +1849,7 @@ def produce(  # noqa: PLR0913
         "scope_text": SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
         "revision_read_at": records.norm_epoch(latest.get("at")) or None,
+        "window_start": window_start(latest) or None,
         "evidence_through": _newest(facts, harness, sid),
         "criteria": criteria,
     }
@@ -1924,3 +1980,46 @@ def baseline_at(revision: Mapping[str, Any]) -> float:
     # silently settle later directions and refuse an already-ended session.
     field = "goal_source_at" if revision.get("goal_source") in PROMPT_SOURCES else "at"
     return valid_prompt_time(revision.get(field)) or 0.0
+
+
+def window_start(revision: Mapping[str, Any]) -> float:
+    """Where the evidence window opens for this revision: the words' own time.
+
+    The stored start when it is a moment at or before the save, else
+    `baseline_at`, which is what a build that did not store one used: the
+    source time for adopted words, the save time for typed ones (item 13 of the
+    ruling `TURN_STOP_HARNESSES` cites). `baseline_at` stays the floor for
+    `revision-after-end` and later directions; only the evidence moves.
+    """
+    stored = valid_prompt_time(revision.get("window_start"))
+    saved = valid_prompt_time(revision.get("at"))
+    if stored is not None and saved is not None and stored <= saved:
+        return stored
+    return baseline_at(revision)
+
+
+def typed_window_start(
+    facts: Iterable[Mapping[str, Any]], harness: str, sid: str, saved_at: float
+) -> float:
+    """The time of your latest message in this session at or before the save, else the save.
+
+    A `user_message` only. `author_of` also counts a person's gate decision,
+    and approving a permission mid-turn is not new words: counting it would
+    move the window past the prompt that started the run.
+    """
+    latest = saved_at
+    found = False
+    for fact in facts:
+        if not isinstance(fact, dict) or fact.get("type") != "user_message":
+            continue
+        session = fact.get("source_session")
+        if not isinstance(session, dict):
+            continue
+        if (session.get("harness"), session.get("sid")) != (harness, sid):
+            continue
+        at = valid_prompt_time(fact.get("at"))
+        if at is None or at > saved_at:
+            continue
+        latest = at if not found else max(latest, at)
+        found = True
+    return latest

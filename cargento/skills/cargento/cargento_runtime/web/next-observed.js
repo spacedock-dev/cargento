@@ -77,6 +77,27 @@ function nextObservedLanding(source, ended, stopped){
   };
 }
 
+/* The harnesses whose turn stop a reader may have analyzed, spelt once on
+   this side: `reading.TURN_STOP_HARNESSES` is the same list, and a test
+   compares the two. */
+const NEXT_READING_TURN_STOP_HARNESSES = ["claude"];
+
+/* What an analysis will read, said before the press, from the same end kind
+   HOW IT LANDED shows so the two cannot disagree. Empty where the server
+   would withhold whatever was pressed: no end observed, or a turn stop on a
+   harness it does not read there. */
+function nextObservedReadHint(source){
+  const ended = nextSessionEndedAt(source) != null;
+  const stopped = source.state === "idle" && nextNumber(source.finished_at) > 0;
+  const cutoff = {
+    "running": "now",
+    "session-end": "its end",
+    "turn-stop": NEXT_READING_TURN_STOP_HARNESSES.includes(String(source.harness || ""))
+      ? "its last turn" : "",
+  }[nextObservedLanding(source, ended, stopped).endKind] || "";
+  return cutoff ? `Reads the session up to ${cutoff} against your intent.` : "";
+}
+
 function nextObservedOwnGoal(source){
   const goal = nextObservedGoal(source);
   return {

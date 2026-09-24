@@ -1207,6 +1207,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-work-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-work-source{grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-work-result{grid-column:1/-1;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
+.next-cockpit-work-turn{grid-column:1/-1;color:var(--ink-label);font:var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-cockpit-work-absent,.next-cockpit-work-limit{margin:0;color:var(--ink-absence);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-work-dropped{margin:0;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-work-checks{margin:0;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}

@@ -2987,7 +2987,7 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(1_700_086_500.0, json.loads(body)["reading"]["retry_at"])
 
     @staticmethod
-    def _one_session_harness(harness: str = "pi") -> Any:
+    def _one_session_harness(harness: str = "pi", **row_over: Any) -> Any:
         """A harness publishing exactly the row the route looks for.
 
         Without it the application collects nothing, `_send_reading` returns at
@@ -3007,13 +3007,16 @@ class ReadingRouteTest(unittest.TestCase):
             del config, state, now, window_hours, show_all
             row = runtime_sessions.base_session(harness, "s1", "proj")
             row.update({"state": "working", "active": True, "last_activity": 1_700_000_000.0})
+            row.update(row_over)
             return [row]
 
         return aggregate.HarnessSpec(
             key=harness, label=harness.title(), discover=lambda *_: True, collect=collect
         )
 
-    def _app(self, config: Any, state: Any, harness: str = "pi") -> Any:
+    def _app(
+        self, config: Any, state: Any, harness: str = "pi", row: dict[str, Any] | None = None
+    ) -> Any:
         """An application over that one session, with an annotation on it."""
         annotation_store.annotate(
             config, state, harness, "s1", goal="ship the parser", output="", now=10.0
@@ -3021,7 +3024,7 @@ class ReadingRouteTest(unittest.TestCase):
         return aggregate.Application(
             config,
             state,
-            (self._one_session_harness(harness),),
+            (self._one_session_harness(harness, **(row or {})),),
             native_notifier=lambda _p: "",
             popup_notifier=lambda _t, _b: None,
             diagnostic_sink=lambda _m: None,
@@ -3494,6 +3497,108 @@ class ReadingRouteTest(unittest.TestCase):
                 self.assertEqual([], calls)
                 self.assertEqual({"codex": False, "claude": False}, self._consents(config))
                 self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
+    # DRC-4679: a session waiting at its prompt, and where typed words start reading work.
+
+    WAITING: ClassVar[dict[str, Any]] = {
+        "state": "idle",
+        "active": False,
+        "finished_at": 1_700_000_050.0,
+        "acquisition": "event",
+    }
+
+    def test_a_claude_code_reader_pressing_on_a_session_waiting_at_its_prompt_gets_its_last_turn(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude", row=self.WAITING)) as port,
+        ):
+            status, body = self._post(port, self._claude_press())
+        self.assertEqual(200, status, body)
+        self.assertTrue(json.loads(body)["produced"], body)
+        self.assertEqual(1, len(calls))
+        entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+        assert entry is not None
+        self.assertEqual(runtime_reading.SCOPE_LAST_TURN, entry["assessment"]["scope"])
+
+    def test_a_codex_session_waiting_at_its_prompt_is_still_withheld_and_spends_nothing(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model(harness="codex") as calls,
+            self._serving(self._app(config, state, "codex", row=self.WAITING)) as port,
+        ):
+            status, body = self._post(port, self._press(harness="codex"))
+        self.assertEqual(200, status, body)
+        answer = json.loads(body)
+        self.assertFalse(answer["produced"])
+        self.assertEqual(runtime_reading.WITHHELD_TURN_STOP, answer["reason"])
+        self.assertEqual([], calls)
+
+    @staticmethod
+    def _save(port: int, payload: dict[str, Any]) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/api/annotate",
+                body=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def _saved_revision(self, config: Any) -> Any:
+        entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+        assert entry is not None
+        return entry["revisions"][-1]
+
+    def test_typed_words_read_work_from_your_latest_message_before_you_saved(self) -> None:
+        config, state = self._runtime()
+        later = {
+            **self.FACT,
+            "fact_id": "f2",
+            "at": 1_700_000_040.0,
+            "source_session": {"harness": "claude", "sid": "s1"},
+        }
+        after = {**later, "fact_id": "f3", "at": 1_700_000_200.0}
+        with (
+            self._counting_model(harness="claude", extra_facts=(later, after)),
+            self._serving(self._app(config, state, "claude", row=self.WAITING)) as port,
+        ):
+            status, body = self._save(
+                port, {"harness": "claude", "sid": "s1", "goal": "add retry to the webhook"}
+            )
+        self.assertEqual(200, status, body)
+        revision = self._saved_revision(config)
+        self.assertEqual(1_700_000_100.0, revision["at"])
+        self.assertEqual(1_700_000_040.0, revision["window_start"])
+
+    def test_a_save_whose_record_cannot_be_read_still_saves_and_reads_from_the_save(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+
+        def broken() -> Any:
+            message = "the record could not be read"
+            raise OSError(message)
+
+        with (
+            self._counting_model(harness="claude", on_collect=broken),
+            self._serving(self._app(config, state, "claude", row=self.WAITING)) as port,
+        ):
+            status, body = self._save(
+                port, {"harness": "claude", "sid": "s1", "goal": "add retry to the webhook"}
+            )
+        self.assertEqual(200, status, body)
+        self.assertEqual("stored", json.loads(body)["outcome"])
+        revision = self._saved_revision(config)
+        self.assertEqual(1_700_000_100.0, revision["window_start"])
 
     def _open_claude(self) -> Any:
         return mock.patch.object(

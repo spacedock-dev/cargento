@@ -336,6 +336,10 @@ class Provenance(TypedDict, total=False):
     goal_source_at: float
 
 
+class Window(TypedDict, total=False):
+    window_start: float
+
+
 class OutcomeLine(TypedDict):
     """One line of the expected outcome: one line of text and where it came from.
 
@@ -361,6 +365,10 @@ class Revision(TypedDict):
 
     goal_source: NotRequired[str]
     goal_source_at: NotRequired[float]
+    # Where this revision's evidence window opens, beside the save (item 13 of
+    # the ruling `reading.TURN_STOP_HARNESSES` cites). Absent on a revision an
+    # older build saved, which then opens at `reading.baseline_at`.
+    window_start: NotRequired[float]
     n: int
     at: float
     goal: str
@@ -507,10 +515,12 @@ def _revision(value: Any, cap: int) -> Revision | None:
     raw_goal = value.get("goal")
     provenance = _provenance(value)
     lines = _lines(value, cap)
-    if provenance is None or lines is None:
+    window = _window(value)
+    if provenance is None or lines is None or window is None:
         return None
     return {
         **provenance,
+        **window,
         "n": number,
         "at": records.norm_epoch(value.get("at")),
         # Type-checked here as well as on the way in. Any local process can
@@ -587,6 +597,18 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
     provenance = _provenance({**value, "at": value.get("revision_read_at")})
     if provenance is None:
         return None
+    # A null is a reading with no window to state, as `produce` writes one for
+    # a revision with no usable time. Anything else present must be a moment
+    # at or before the revision it read, or the page would apply a window the
+    # producer never did.
+    window: float | None = None
+    if value.get("window_start") is not None:
+        window_fields = _window(
+            {"window_start": value["window_start"], "at": value.get("revision_read_at")}
+        )
+        if not window_fields:
+            return None
+        window = window_fields["window_start"]
     return {
         **provenance,
         "revision_read": revision,
@@ -599,6 +621,7 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         # `.get`, so a reading stored before this field reads back as None and
         # the disclosure states the absence rather than blanking.
         "revision_read_at": records.norm_epoch(value.get("revision_read_at")) or None,
+        "window_start": window,
         # `.get`, for the reason above: a reading stored before item 6 of the
         # ruling `reading.MAX_OUTCOME_LINES` cites reads back as None, which
         # says how far it read is unknown rather than claiming a time.
@@ -694,7 +717,8 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         return None
     raw = value.get("revisions")
     if not isinstance(raw, list) or any(
-        isinstance(item, dict) and (_provenance(item) is None or _lines(item, text_cap) is None)
+        isinstance(item, dict)
+        and (_provenance(item) is None or _lines(item, text_cap) is None or _window(item) is None)
         for item in raw
     ):
         # Dropping just this revision could restore older typed words and
@@ -1228,6 +1252,9 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "at": latest["at"] if latest else None,
         "goal_source": latest.get("goal_source", "typed") if latest else None,
         "goal_source_at": latest.get("goal_source_at") if latest else None,
+        # Where the evidence opens for these words, as the producer reads it:
+        # the page labels the last turn by it and the live estimate reads from it.
+        "window_start": (reading.window_start(latest) or None) if latest else None,
         "binding_why": binding_why,
         "reading_refused": bool(entry.get("refused")) if entry else False,
         # Three scalars and no prose, which is what keeps this out of DEC-15b's
@@ -1428,6 +1455,7 @@ def annotate(  # noqa: PLR0913
     expected_revision: Any = None,
     origins: Any = None,
     now: float | None = None,
+    window_start: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
     """Save what the reader typed. Returns an `OUTCOMES` token.
@@ -1443,6 +1471,10 @@ def annotate(  # noqa: PLR0913
     from (or None for a new one), so a line keeps its own entry when two
     share text; the store checks the text, so it can only keep a source,
     never claim one.
+
+    `window_start` is the server's `reading.typed_window_start` for this save,
+    computed from the session's record at `now`; None, or anything that is not
+    a moment at or before the save, opens the window at the save.
     """
     legacy = lines is None and isinstance(output, str)
     if legacy:
@@ -1465,6 +1497,7 @@ def annotate(  # noqa: PLR0913
         lines=lines,
         now=now,
         adoption=options,
+        window_start=window_start,
         diagnostic_sink=diagnostic_sink,
     )
 
@@ -1565,7 +1598,7 @@ def _typed(text: str) -> OutcomeLine:
     return {"text": text, "source": LINE_TYPED}
 
 
-def _annotate(
+def _annotate(  # noqa: PLR0913
     config: RuntimeConfig,
     state: RuntimeState,
     identity: tuple[Any, Any],
@@ -1574,6 +1607,7 @@ def _annotate(
     lines: Any = None,
     now: float | None = None,
     adoption: dict[str, Any] | None = None,
+    window_start: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
     """Append a revision to one session's annotation. Returns an `OUTCOMES` token.
@@ -1659,6 +1693,7 @@ def _annotate(
                 return OUTCOME_UNCHANGED
             revision: Revision = {
                 **source_fields,
+                **_opened(source_fields, window_start, stamp),
                 "n": last["n"] + 1,
                 "at": stamp,
                 "goal": text_goal,
@@ -1688,6 +1723,7 @@ def _annotate(
                 "revisions": (
                     {
                         **source_fields,
+                        **_opened(source_fields, window_start, stamp),
                         "n": discarded_revision(existing) + 1,
                         "at": stamp,
                         "goal": new_goal or "",
@@ -1882,6 +1918,38 @@ def _provenance(value: Mapping[str, Any]) -> Provenance | None:
     if source not in reading.PROMPT_SOURCES or at is None or saved is None or at > saved:
         return None
     return {"goal_source": source, "goal_source_at": at}
+
+
+def _window(value: Mapping[str, Any]) -> Window | None:
+    """A stored window start, `{}` when there is none, or None when it must be refused.
+
+    Refused rather than dropped, for `_entry`'s reason: a start that is not a
+    moment at or before its own save is a rewritten file, and reading around it
+    would open the window somewhere nobody chose.
+    """
+    if "window_start" not in value:
+        return {}
+    at = reading.valid_prompt_time(value.get("window_start"))
+    saved = reading.valid_prompt_time(value.get("at"))
+    if at is None or saved is None or at > saved:
+        return None
+    return {"window_start": at}
+
+
+def _opened(provenance: Mapping[str, Any], typed: Any, stamp: float) -> Window:
+    """The window start a new revision stores: the words' own time.
+
+    Adopted words, including an adopted goal carried under a lines-only save,
+    open at their source time. Typed words open at `typed`, recomputed on every
+    save as item 13 says, else at the save. A stamp that is not itself a moment
+    stores nothing, so the revision still reads back.
+    """
+    saved = reading.valid_prompt_time(stamp)
+    if saved is None:
+        return {}
+    source_at = provenance.get("goal_source_at")
+    at = reading.valid_prompt_time(typed if source_at is None else source_at)
+    return {"window_start": at if at is not None and at <= saved else saved}
 
 
 def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | None]:

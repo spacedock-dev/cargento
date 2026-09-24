@@ -642,6 +642,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_at": None,
         "annotation_goal_source": None,
         "annotation_goal_source_at": None,
+        "annotation_window_start": None,
         "annotation_binding_why": "",
         # The third answer a discard made possible (DRC-4565). None on every
         # row nothing was discarded on, which is what the two states above
