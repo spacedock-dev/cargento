@@ -5586,8 +5586,10 @@ const job = {id:"j1", phase:"preparing", started_at:100, phase_at:100, provider:
   steps:"""
             + self.JOB_STEPS
             + r"""};
+// The server holds the job from the press on, so the refresh after it keeps it.
 __fetchImpl = (url, init) => String(url) === "/api/reading"
-  ? (calls++, Promise.resolve({ok:true, status:202, json:async()=>({ok:true, job})}))
+  ? (calls++, __dashboard.reading_jobs = {"codex:focus-1": job},
+     Promise.resolve({ok:true, status:202, json:async()=>({ok:true, job})}))
   : upstream(url, init);
 const before = control();
 await nextCockpitAskForReading(session, {enabled:true});
@@ -5611,6 +5613,38 @@ console.log(JSON.stringify({before, during, other, calls}));
         self.assertNotIn('data-next-cockpit-action="reading-ask"', during)
         self.assertIn("0 model requests recorded", during)
         self.assertNotIn("Analyzing drift", out["other"])
+
+    def test_a_job_that_ended_before_its_reply_arrived_is_not_brought_back(self) -> None:
+        """Review F9: the end revision can beat the 202 to the page."""
+        out = self.run_fixture(
+            r"""
+__dashboard.reading_check = "accepted";
+__dashboard.annotate = true;
+__dashboard.reading_jobs = {};
+const session = __dashboard.sessions[0];
+session.annotation_goal = "ship it";
+const job = {id:"j1", phase:"preparing", started_at:100, phase_at:100, provider:"codex",
+  steps:"""
+            + self.JOB_STEPS
+            + r"""};
+const upstream = __fetchImpl;
+// The board the server publishes: the job already ended there.
+const board = JSON.parse(JSON.stringify(__dashboard));
+__fetchImpl = (url, init) => String(url) === "/api/reading"
+  ? Promise.resolve({ok:true, status:202, json:async()=>({ok:true, job})})
+  : String(url).startsWith("/api/data")
+    ? Promise.resolve({ok:true, status:200, json:async()=>board})
+    : upstream(url, init);
+await nextCockpitAskForReading(session, {enabled:true});
+await __settle();
+renderNext();
+console.log(JSON.stringify(
+  nextCockpitReadingControl(session, {goal:"ship it", reading_count:1}, {enabled:true})));
+"""
+        )
+        assert isinstance(out, str)
+        self.assertNotIn("Analyzing drift", out)
+        self.assertIn('data-next-cockpit-action="reading-ask"', out)
 
     def test_a_reload_draws_the_same_box_from_the_published_job_alone(self) -> None:
         out = self.run_fixture(

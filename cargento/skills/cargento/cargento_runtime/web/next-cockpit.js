@@ -3367,8 +3367,11 @@ async function nextCockpitAskForReading(session, model, allow = false){
         [String(session.harness || "")]: answer.route};
     }
     if(response && response.status === 409 && answer && answer.job){
-      /* Another tab, or an earlier press, already started one: show it. */
+      /* Another tab, or an earlier press, already started one: show it, then
+         take the board's word for whether it is still running. */
       nextReadingJobShown(session, answer.job);
+      renderNext();
+      await refreshNext();
       return;
     }
     if(response && response.status === 409 && answer && answer.reason === "provider-changed"){
@@ -3424,9 +3427,13 @@ async function nextCockpitAskForReading(session, model, allow = false){
       }
     }
     if(started){
-      /* Drawn now from the reply; every later phase and the result arrive with
-         the payload revisions the job publishes. */
+      /* Drawn now from the reply, then replaced by the board: a job can end
+         before its own reply arrives, and a merged job the board has dropped
+         would stand until the next poll and swallow every press. Every later
+         phase and the result arrive with the revisions the job publishes. */
       nextReadingJobShown(session, answer.job);
+      renderNext();
+      await refreshNext();
       return;
     }
     /* Answered without a job: no annotated session by that name. */
