@@ -11,6 +11,12 @@ A spend the dashboard was stopped in the middle of is not lost. Once the spend
 is committed, a small marker names the job; the outcome's write removes it,
 and the next start turns any marker whose process is gone into a spent
 `interrupted` attempt (Q2 on the issue). The marker holds identifiers only.
+
+A Cancel (DRC-4693) marks the job, kills its CLI's group, and lets this thread
+finish as it would have: the reap, the file removal, the write, and only then
+the slot. The outcome is decided at the seal, just before the write, so a
+Cancel either lands before it and discards whatever came back, or after it and
+changes nothing.
 """
 
 from __future__ import annotations
@@ -63,7 +69,16 @@ _RECOVERY_WAIT_SECONDS = 10.0
 
 
 # The reasons a kept marker carries as they were, rather than as "unstored".
-_KEPT_REASONS = (reading.WITHHELD_INTERRUPTED, reading.WITHHELD_UNSTOPPED)
+# A refused `cancelled` recovered as "The analysis ran" would be false.
+_KEPT_REASONS = (
+    reading.WITHHELD_INTERRUPTED,
+    reading.WITHHELD_UNSTOPPED,
+    reading.WITHHELD_CANCELLED,
+)
+# Held across every read-and-rewrite and removal of a marker, because a Cancel
+# rewrites one from a request thread while the job's own thread may remove it:
+# unheld, a rewrite could land after the removal and leave a marker behind.
+_MARKER_LOCK = threading.Lock()
 
 
 class UnrecordedError(OSError):
@@ -108,19 +123,22 @@ class Hooks:
         charged, and the next start counts it.
         """
         config = self._application.config
+        marker: dict[str, Any] = {
+            "id": self._job.id,
+            "harness": self._job.harness,
+            "sid": self._job.sid,
+            "pid": os.getpid(),
+            "started_at": self._job.started_at,
+        }
         try:
-            runtime_io.atomic_write_owner_only(
-                str(_marker(config, self._job.id)),
-                json.dumps(
-                    {
-                        "id": self._job.id,
-                        "harness": self._job.harness,
-                        "sid": self._job.sid,
-                        "pid": os.getpid(),
-                        "started_at": self._job.started_at,
-                    }
-                ),
-            )
+            with _MARKER_LOCK:
+                # A Cancel that came after the seam's own check still spends,
+                # and a restart must say it was cancelled.
+                if reading.job_cancelled(self._job):
+                    marker["reason"] = reading.WITHHELD_CANCELLED
+                runtime_io.atomic_write_owner_only(
+                    str(_marker(config, self._job.id)), json.dumps(marker)
+                )
         except OSError as exc:
             raise UnrecordedError(str(exc)) from exc
 
@@ -136,15 +154,24 @@ class Hooks:
         turned into "ran".
         """
         path = _marker(self._application.config, self._job.id)
-        with contextlib.suppress(OSError, ValueError):
+        with _MARKER_LOCK, contextlib.suppress(OSError, ValueError):
             marker = json.loads(path.read_text(encoding="utf-8"))
             marker["reason"] = why if why in _KEPT_REASONS else reading.WITHHELD_UNSTORED
             runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
 
     def spawned(self, group: Any) -> None:
-        """The CLI exists, so the job is waiting on the provider now."""
-        self._job.group = group
+        """The CLI exists, so the job is waiting on the provider now.
+
+        A Cancel that came before the handover found no group to kill, so it
+        is killed here, at once.
+        """
+        if reading.hand_over(self._job, group):
+            group.cancel()
         self.phase(reading.PHASE_WAITING)
+
+    def cancelled(self) -> bool:
+        """Whether a reader's Cancel was accepted for this job."""
+        return reading.job_cancelled(self._job)
 
     def phase(self, phase: str) -> None:
         if reading.advance_job(
@@ -193,6 +220,32 @@ def launch(
     return thread
 
 
+def cancel(application: Application, session_key: str, job_id: str) -> bool:
+    """A reader's Cancel. True when the named job was running and is now ending.
+
+    Never waits for the reap: the job's own thread does that, so a request
+    thread is never held for `supervise.REAP_TIMEOUT_SEC`.
+    """
+    accepted, group = reading.cancel_job(
+        application.config, session_key, job_id, now=application.clock()
+    )
+    if not accepted:
+        return False
+    # So a dashboard that dies before the outcome is stored says at its next
+    # start that the attempt was cancelled. A marker that already carries a
+    # reason keeps it: "may still be running" is never overwritten.
+    path = _marker(application.config, job_id)
+    with _MARKER_LOCK, contextlib.suppress(OSError, ValueError):
+        marker = json.loads(path.read_text(encoding="utf-8"))
+        if "reason" not in marker:
+            marker["reason"] = reading.WITHHELD_CANCELLED
+            runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
+    if group is not None:
+        group.cancel()
+    _publish(application)
+    return True
+
+
 def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], Outcome]) -> None:
     config = application.config
     hooks = Hooks(application, job)
@@ -200,6 +253,8 @@ def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], 
     try:
         _publish(application)
         outcome = _outcome(application, compose, hooks)
+        if reading.seal_job(job) and outcome is not None:
+            outcome = _cancelled(job, outcome, spent=hooks.spent)
         if outcome is not None:
             durable = _record(application, job, outcome)
     finally:
@@ -207,7 +262,7 @@ def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], 
         # only record that the attempt was charged, and the next start counts
         # it. Anything else has been stored, or never spent.
         if durable or not hooks.spent:
-            with contextlib.suppress(OSError):
+            with _MARKER_LOCK, contextlib.suppress(OSError):
                 _marker(config, job.id).unlink(missing_ok=True)
         else:
             # Kept, and told why, so the next start says the store refused the
@@ -245,6 +300,24 @@ def _outcome(
         # was, as the next start would have said it (review F5).
         return None, reading.WITHHELD_INTERRUPTED, True
     return outcome
+
+
+def _cancelled(job: reading.Job, outcome: Outcome, *, spent: bool) -> Outcome:
+    """The outcome of a job a Cancel reached before its seal.
+
+    "May still be running" outranks the cancel, as it outranks a stop (verify
+    N5). A cancel made after the shutdown began leaves the stop's own word.
+    Anything else, a reply included, becomes the cancel: spent from the
+    reservation on, and unspent before it.
+    """
+    _assessment, why, was_spent = outcome
+    if why == reading.WITHHELD_UNSTOPPED:
+        return outcome
+    if job.cancelled_after_close and why == reading.WITHHELD_INTERRUPTED:
+        return outcome
+    if was_spent or spent:
+        return None, reading.WITHHELD_CANCELLED, True
+    return None, reading.WITHHELD_CANCELLED_UNSENT, False
 
 
 def _record(application: Application, job: reading.Job, outcome: Outcome) -> bool:

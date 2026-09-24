@@ -362,6 +362,8 @@ WITHHELD_UNSTOPPED = "unstopped"
 WITHHELD_JOB_UNRECORDED = "job-unrecorded"
 WITHHELD_STOPPING = "stopping"
 WITHHELD_UNSTORED = "unstored"
+WITHHELD_CANCELLED = "cancelled"
+WITHHELD_CANCELLED_UNSENT = "cancelled-unsent"
 WITHHELD = {
     WITHHELD_TURN_STOP: (
         "A turn stop was observed and no session end was, so there is no end for a "
@@ -444,6 +446,20 @@ WITHHELD = {
     WITHHELD_UNSTORED: (
         "The analysis ran, but Cargento could not store its outcome at the time. Nothing is "
         "shown from it, the attempt still counts, and a fresh press is the only retry."
+    ),
+    # A Cancel from the reservation on: the charge was committed before the
+    # spawn and whether the provider billed a killed call is unknowable, so it
+    # is never refunded. "Nothing is shown from it" rather than "nothing was
+    # produced", because a reply may have arrived and been discarded; and no
+    # "you cancelled", because a forged local cancel reads the same (SECURITY.md).
+    WITHHELD_CANCELLED: (
+        "The analysis was cancelled before it finished. Nothing is shown from it, the "
+        "attempt still counts, and a fresh press is the only retry."
+    ),
+    # A Cancel that landed before anything was reserved: counting it would be a
+    # charge the budget never made (the DEC-24 item 5 amendment).
+    WITHHELD_CANCELLED_UNSENT: (
+        "The analysis was cancelled before anything was sent. Nothing was sent or spent."
     ),
     WITHHELD_NOTHING_TYPED: (
         "Nothing is typed against this session, so there is nothing to read it against."
@@ -796,9 +812,16 @@ class Job:
     phase: str
     started_at: float
     phase_at: float
-    # The supervised CLI once it exists: DRC-4693's cancel handle. Never
-    # published, because a handle is not a thing a page may be shown.
+    # The supervised CLI once it exists: the cancel handle. Never published,
+    # because a handle is not a thing a page may be shown.
     group: Any = None
+    # When a Cancel was accepted, and whether the runner was already shut by
+    # then: a cancel the reader made first is not retold as the stop.
+    cancelled_at: float | None = None
+    cancelled_after_close: bool = False
+    # Set just before the outcome is written. A Cancel after it is refused,
+    # because the result it would discard is already being stored.
+    sealed: bool = False
 
 
 # Beside `_IN_FLIGHT` and under its lock rather than in a registry of its own:
@@ -844,13 +867,54 @@ def advance_job(config: RuntimeConfig, session_key: str, phase: str, *, now: flo
     """
     with _FLIGHT_LOCK:
         running = _JOBS.get((str(config.state_dir), session_key))
-        if running is None or phase not in PHASES:
+        # A cancelled job never lights a later step: "Checking the reply" after
+        # Cancel was pressed would say the reply is being used.
+        if running is None or phase not in PHASES or running.cancelled_at is not None:
             return False
         if PHASES.index(phase) <= PHASES.index(running.phase):
             return False
         running.phase = phase
         running.phase_at = now
         return True
+
+
+def cancel_job(
+    config: RuntimeConfig, session_key: str, job_id: str, *, now: float
+) -> tuple[bool, Any]:
+    """Mark the named running job cancelled. Returns (accepted, its group or None).
+
+    Refused for no job, another job's id, or a sealed job, all alike, so the
+    answer tells a caller nothing about which. The flag and the group are read
+    in one step with `hand_over`'s, so a Cancel that lands between the spawn
+    and the handover is seen by the one or the other and never by neither.
+    """
+    with _FLIGHT_LOCK:
+        running = _JOBS.get((str(config.state_dir), session_key))
+        if running is None or running.id != job_id or running.sealed:
+            return False, None
+        if running.cancelled_at is None:
+            running.cancelled_at = now
+            running.cancelled_after_close = supervise.closed()
+        return True, running.group
+
+
+def hand_over(job: Job, group: Any) -> bool:
+    """Give the job its CLI's group. True when a Cancel already asked for it."""
+    with _FLIGHT_LOCK:
+        job.group = group
+        return job.cancelled_at is not None
+
+
+def job_cancelled(job: Job) -> bool:
+    with _FLIGHT_LOCK:
+        return job.cancelled_at is not None
+
+
+def seal_job(job: Job) -> bool:
+    """Refuse every later Cancel, and say whether one came first."""
+    with _FLIGHT_LOCK:
+        job.sealed = True
+        return job.cancelled_at is not None
 
 
 def end_job(config: RuntimeConfig, session_key: str) -> None:
@@ -877,6 +941,9 @@ def published_jobs(config: RuntimeConfig) -> dict[str, dict[str, Any]]:
                 "phase_at": found.phase_at,
                 "started_at": found.started_at,
                 "provider": found.provider,
+                # A Cancel was accepted and the job is finishing: the page keeps
+                # the box and disables its Cancel, and a reload draws the same.
+                "cancelling": found.cancelled_at is not None,
                 "steps": [
                     {"phase": phase, "text": PHASE_TEXT[phase].format(label=found.label)}
                     for phase in PHASES
@@ -2035,6 +2102,8 @@ def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[st
         return WITHHELD_UNSTOPPED, True
     if status == "closed":
         return WITHHELD_STOPPING, False
+    if status == "cancelled":
+        return WITHHELD_CANCELLED_UNSENT, False
     if status != "ok":
         return WITHHELD_MODEL_FAILED, True
     return None

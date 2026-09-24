@@ -1428,7 +1428,9 @@ class AReadingJobSitsBesideTheSlot(unittest.TestCase):
         published = reading.published_jobs(self.config)
         self.assertEqual(["claude:s1"], list(published))
         entry = published["claude:s1"]
-        self.assertEqual({"id", "phase", "phase_at", "started_at", "provider", "steps"}, set(entry))
+        self.assertEqual(
+            {"id", "phase", "phase_at", "started_at", "provider", "cancelling", "steps"}, set(entry)
+        )
         self.assertEqual(job.id, entry["id"])
         self.assertEqual("waiting", entry["phase"])
         self.assertEqual(
