@@ -261,7 +261,8 @@ class GuardedModel:
         # stops the call with nothing spent.
         self.before_reserve = before_reserve
         # A reader's Cancel, asked here so one that lands before the
-        # reservation spends nothing (the DEC-24 item 5 amendment).
+        # reservation spends nothing (owner, 2026-09-24; see the Cancel
+        # section of docs/design-reading-a-session.md).
         self.cancelled = cancelled
         # Passed through, so the refusal names the CLI this press would have used.
         self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)

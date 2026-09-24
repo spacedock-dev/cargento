@@ -457,7 +457,8 @@ WITHHELD = {
         "attempt still counts, and a fresh press is the only retry."
     ),
     # A Cancel that landed before anything was reserved: counting it would be a
-    # charge the budget never made (the DEC-24 item 5 amendment).
+    # charge the budget never made (owner, 2026-09-24, recorded under
+    # "What the Cancel build decided" in docs/design-reading-a-session.md).
     WITHHELD_CANCELLED_UNSENT: (
         "The analysis was cancelled before anything was sent. Nothing was sent or spent."
     ),

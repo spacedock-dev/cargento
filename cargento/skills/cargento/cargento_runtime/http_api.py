@@ -1604,6 +1604,54 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         self._reading_adoption(harness, sid, payload, route)
 
+    def _reading_cancel(self) -> None:
+        """Cancel the named running analysis (DRC-4693).
+
+        Guarded as the reading route is, by `_reading_refusal`, so a lured
+        navigation, a cross-site fetch and a non-loopback peer are refused
+        alike. The job id is required and must be the running job's, so a
+        stale tab cannot cancel a newer press. No job, another job's id, a
+        sealed job and an unknown session all answer one `409 not-running`
+        body, so the route is not an existence oracle. It writes no consent
+        and reserves nothing, and it never waits for the reap: the job's own
+        thread does that.
+        """
+        config = self.server.application.config
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        refusal = self._reading_refusal(payload)
+        if refusal is not None:
+            self._reject(refusal)
+            return
+        harness, sid, job_id = payload.get("harness"), payload.get("sid"), payload.get("job")
+        if not all(isinstance(part, str) and part for part in (harness, sid, job_id)):
+            self._reject(400)
+            return
+        accepted = runtime_reading_jobs.cancel(
+            self.server.application, f"{harness}:{sid}", str(job_id)
+        )
+        self._send(
+            json.dumps(
+                {"ok": True, "cancelling": True}
+                if accepted
+                else {"ok": False, "reason": "not-running"},
+                separators=(",", ":"),
+            ).encode(),
+            "application/json",
+            202 if accepted else 409,
+        )
+
     def _reading_permission(
         self, payload: dict[str, Any], route: runtime_reading_route.Route
     ) -> reading_policy.Status:
@@ -1947,6 +1995,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 provider=route["provider"],
                 on_reserved=hooks.reserved,
                 before_reserve=hooks.before_reserve,
+                cancelled=hooks.cancelled,
             ),
         }
 
@@ -2092,6 +2141,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/tripwire": self._tripwire,
             "/api/annotate": self._annotate,
             "/api/reading": self._reading,
+            "/api/reading/cancel": self._reading_cancel,
             "/api/focus": self._focus,
             "/api/ask": self._ask,
             "/api/ask/withdraw": self._withdraw,
