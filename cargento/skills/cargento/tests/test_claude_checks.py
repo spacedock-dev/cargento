@@ -1177,3 +1177,34 @@ class WhatTheVerifierFoundAfterTheFirstRound(ClaudeChecksTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AChangeAfterAPassIsPublishedPerCheck(ClaudeChecksTestCase):
+    """DRC-4692 L1: the live level reads, per check, whether a command that may change files
+    followed its latest run, in the same call or a later one, from the same order the press uses.
+    """
+
+    def test_a_changing_segment_later_in_the_same_call_marks_the_pass(self) -> None:
+        self.session.bash("pytest tests && rm -rf src", "5 passed", is_error=False)
+        self.assertIs(True, self.only_check()["changed_after"])
+
+    def test_a_changing_command_in_a_later_call_marks_the_pass(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("python migrate.py", "done", is_error=False)
+        self.assertIs(True, self.only_check()["changed_after"])
+
+    def test_a_read_only_command_after_it_does_not(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("git status", "clean", is_error=False)
+        self.assertIs(False, self.only_check()["changed_after"])
+
+    def test_a_change_before_the_pass_does_not(self) -> None:
+        self.session.bash("python migrate.py", "done", is_error=False)
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.assertIs(False, self.only_check()["changed_after"])
+
+    def test_the_flag_reaches_the_published_fact(self) -> None:
+        self.session.bash("pytest tests && rm -rf src", "5 passed", is_error=False)
+        entry = self.only_check()
+        fact = project_context._semantic_fact_from_event(entry, entry["kind"], "tool_report", "")
+        self.assertIs(True, fact["changed_after"])

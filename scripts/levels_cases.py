@@ -35,6 +35,7 @@ import hashlib
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 from typing import TYPE_CHECKING, Any
@@ -105,6 +106,9 @@ VERDICT_STALE = "stale"
 VERDICT_UNMARKED = "unmarked"
 
 _SCALE = ("none_or_low", "medium", "high", "extreme")
+# An analysis has no "no live level": that answers only a draft, on the live side.
+ANALYSIS_LEVELS = frozenset(LABELS) - {"no_live_level"}
+VERDICT_REFUSED = "refused"
 
 
 def _paths(home: str) -> dict[str, str]:
@@ -114,6 +118,7 @@ def _paths(home: str) -> dict[str, str]:
         "cases": os.path.join(base, "cases.json"),
         "marks": os.path.join(base, "marks.json"),
         "sha": os.path.join(base, "marks.sha256"),
+        "readings": os.path.join(base, "readings.json"),
     }
 
 
@@ -183,7 +188,6 @@ def _refusal(entry: Any) -> str:
         return "not an object"
     transcript = entry.get("transcript")
     until = entry.get("until", False)
-    reading = entry.get("reading")
     checks = (
         (entry.get("kind") in KINDS, f"kind must be one of {', '.join(KINDS)}"),
         (
@@ -202,7 +206,10 @@ def _refusal(entry: Any) -> str:
             _count_ok(entry.get("unsettled_directions")),
             "unsettled_directions must be a count, written by hand",
         ),
-        (reading is None or isinstance(reading, dict), "reading must be a stored reading object"),
+        (
+            "reading" not in entry,
+            "a reading is attached after the marks are committed, with --attach-readings",
+        ),
     )
     return next((why for holds, why in checks if not holds), "")
 
@@ -245,6 +252,7 @@ def _freeze(config: Any, entry: Mapping[str, Any], scratch: str) -> dict[str, An
         for row in rows
     ]
     captured = until if until is not None else max((float(r["at"]) for r in rows), default=None)
+    cwd = next((str(r["cwd"]) for r in _records(path) if isinstance(r.get("cwd"), str)), "")
     intent = entry["intent"]
     return {
         "id": case_id(sid, until, str(entry["kind"])),
@@ -262,8 +270,21 @@ def _freeze(config: Any, entry: Mapping[str, Any], scratch: str) -> dict[str, An
             "lines": list(intent["lines"]),
         },
         "unsettled_directions": entry["unsettled_directions"],
-        "reading": entry.get("reading"),
+        "cwd": cwd,
     }
+
+
+def _records(path: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict):
+                found.append(record)
+    return found
 
 
 def _config() -> Any:
@@ -343,6 +364,9 @@ def _show(case: Mapping[str, Any], position: str, say: Any) -> None:
         ago = captured - (_number(fact.get("at")) or captured)
         if fact.get("subject") == "check":
             extra = ", passed before a later change" if fact.get("before_last_change") else ""
+            extra += (
+                ", a command after it may have changed files" if fact.get("changed_after") else ""
+            )
             line = _clip(fact.get("summary"), 90)
             say(f"    -{ago:6.0f}s  check  {fact.get('result')}{extra}: {line}")
         else:
@@ -353,14 +377,6 @@ def _show(case: Mapping[str, Any], position: str, say: Any) -> None:
     changed = _number(scan.get("last_changing_command_at"))
     if changed is not None:
         say(f"  Last shell command that may change files: {captured - changed:.0f}s before the cut")
-    reading = case.get("reading")
-    if isinstance(reading, dict):
-        say("\n  STORED READING, PER LINE")
-        for name, row in sorted((reading.get("criteria") or {}).items()):
-            if isinstance(row, dict):
-                why = f" ({row['why']})" if row.get("why") else ""
-                cited = len(row.get("cites") or [])
-                say(f"    {name}: {row.get('result', 'no result')}{why}, cites {cited}")
 
 
 def _ask(ask: Any, prompt: str) -> str | None:
@@ -390,7 +406,10 @@ def _question(source: str) -> str:
             "\n  What should the LIVE ESTIMATE say here? It reads checks and file paths,\n"
             "  not what the intent says.\n" + _MENU
         )
-    return "\n  And what should the level derived from the STORED READING say?\n" + _MENU
+    return (
+        "\n  And what should an ANALYSIS read, taking each line of the intent against\n"
+        "  this evidence? (No reading is shown: it is attached after the marks.)\n" + _MENU
+    )
 
 
 def _marks(body: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -398,7 +417,9 @@ def _marks(body: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         k: v
         for k, v in (raw.items() if isinstance(raw, dict) else ())
-        if isinstance(v, dict) and v.get("live") in LABELS
+        if isinstance(v, dict)
+        and v.get("live") in LABELS
+        and (v.get("analysis") is None or v.get("analysis") in ANALYSIS_LEVELS)
     }
 
 
@@ -416,9 +437,17 @@ def _publish_digest(paths: Mapping[str, str], digest_path: str, cases: int, mark
     return sha
 
 
-def mark(*, home: str, digest_path: str, ask: Any = input, say: Any = print) -> int:
-    """Ask the owner for each unmarked case's level, per source, and write the key."""
+def mark(
+    *, home: str, digest_path: str, results_path: str, ask: Any = input, say: Any = print
+) -> int:
+    """Ask the owner for each unmarked case's level, per source, and write the key.
+
+    Refused once any result exists: a mark written after a result is agreement.
+    """
     paths = _paths(home)
+    if os.path.exists(results_path):
+        say(f"{results_path} exists, so a score has been seen. Marks are not taken after one.")
+        return 1
     body = _load(paths["cases"])
     cases = body.get("cases") if isinstance(body.get("cases"), list) else None
     if not cases:
@@ -459,14 +488,17 @@ def _mark_cases(
         if live == "skip":
             continue
         analysis: str | None = None
-        if isinstance(case.get("reading"), dict):
+        if (case.get("intent") or {}).get("lines"):
             analysis = _ask(ask, _question("analysis"))
             if analysis is None:
                 return
             if analysis == "skip":
                 continue
+            if analysis == "no_live_level":
+                say("  No live level answers a draft only; this case's analysis is not marked.")
+                continue
         else:
-            say("  No stored reading in this case, so there is no analysis level to mark.")
+            say("  The intent has no outcome line, so there is no analysis level to mark.")
         entries[str(case["id"])] = {"live": live, "analysis": analysis}
 
 
@@ -492,16 +524,197 @@ def judge(got: str, marked: str) -> str:
     return CAUTIOUS if _SCALE.index(got) > _SCALE.index(marked) else FAILED
 
 
-def _level_row(level: Any, marked: str | None) -> dict[str, Any]:
+def _git(repo_root: str, *args: str) -> str | None:
+    """Git's answer, or None when the repository cannot give one."""
+    try:
+        done = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["git", "-C", repo_root, *args],  # noqa: S607 - the operator's git on PATH
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return done.stdout.decode("utf-8", "replace") if done.returncode == 0 else None
+
+
+class Committed:
+    """The marks digest as committed, the commit that holds it, and when it was made."""
+
+    def __init__(self, marks_digest: str, commit: str, committed_at: float) -> None:
+        self.marks_digest = marks_digest
+        self.commit = commit
+        self.committed_at = committed_at
+
+
+def committed_digest(repo_root: str, digest_path: str) -> Committed | str:
+    """Read from HEAD, never from the working copy the marker rewrites (T2); why not, if not."""
+    relative = os.path.relpath(os.path.realpath(digest_path), os.path.realpath(repo_root))
+    blob = _git(repo_root, "show", f"HEAD:{relative}")
+    if blob is None:
+        return "the marks digest is not committed"
+    try:
+        with open(digest_path, encoding="utf-8") as handle:
+            working = handle.read()
+    except OSError:
+        working = ""
+    if working != blob:
+        return "the working copy of the marks digest differs from the committed one"
+    log = (_git(repo_root, "log", "-1", "--format=%H %ct", "--", relative) or "").split()
+    try:
+        body = json.loads(blob)
+    except ValueError:
+        return "the committed marks digest is not JSON"
+    if len(log) != 2 or not isinstance(body, dict) or not isinstance(body.get("marks_digest"), str):
+        return "the committed marks digest cannot be read"
+    return Committed(body["marks_digest"], log[0], float(log[1]))
+
+
+def _marks_sha(paths: Mapping[str, str]) -> str:
+    try:
+        with open(paths["marks"], "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _admit(config: Any, value: Any) -> Any:
+    """A reading the store would keep, or None: the store's own validator, not a copy of it."""
+    if _SKILL not in sys.path:
+        sys.path.insert(0, _SKILL)
+    from cargento_runtime import annotations  # noqa: PLC0415
+
+    return annotations._assessment(value, config.annotation_text_cap_chars)  # noqa: SLF001
+
+
+def attach_readings(
+    spec_path: str | os.PathLike[str],
+    *,
+    home: str,
+    repo_root: str,
+    digest_path: str,
+    now: float,
+    say: Any = print,
+) -> int:
+    """Add readings after the marks, stamped with the committed digest they came after (T1)."""
+    paths = _paths(home)
+    committed = committed_digest(repo_root, digest_path)
+    if isinstance(committed, str):
+        say(f"Refused: {committed}. Mark, commit the digest, then attach readings.")
+        return 1
+    if committed.marks_digest != _marks_sha(paths):
+        say("Refused: the local marks no longer hash to the committed digest.")
+        return 1
+    cases = {str(c.get("id")) for c in _load(paths["cases"]).get("cases") or []}
+    raw = _load(str(spec_path))
+    readings = raw.get("readings") if raw.get("v") == 1 else None
+    if not isinstance(readings, dict) or not readings:
+        say(f"No readings in {spec_path}: it wants {{'v': 1, 'readings': {{case id: reading}}}}.")
+        return 1
+    config = _config()
+    problems = []
+    for key, value in readings.items():
+        admitted = _admit(config, value) if key in cases else None
+        read_at = _number(value.get("read_at")) if isinstance(value, dict) else None
+        if key not in cases:
+            problems.append(f"{key}: no such case")
+        elif admitted is None:
+            problems.append(f"{key}: the annotation store would refuse this reading")
+        elif read_at is None or read_at <= committed.committed_at:
+            problems.append(f"{key}: made before the marks digest was committed")
+    for problem in problems:
+        say(f"  {problem}")
+    if problems:
+        say("Nothing was attached.")
+        return 1
+    _write(
+        paths["readings"],
+        {
+            "v": 1,
+            "marks_digest": committed.marks_digest,
+            "digest_commit": committed.commit,
+            "attached_at": now,
+            "readings": readings,
+        },
+    )
+    say(f"Attached {len(readings)} readings under digest commit {committed.commit[:12]}.")
+    return 0
+
+
+def _reading_for(
+    case: Mapping[str, Any], attached: Mapping[str, Any], committed: Committed, config: Any
+) -> tuple[Any, str]:
+    """The reading to score for a case, or a refusal token (T1 item 5), or neither."""
+    if "reading" in case:
+        return None, "reading-in-cases"
+    value = (attached.get("readings") or {}).get(str(case["id"]))
+    if value is None:
+        return None, ""
+    if (
+        attached.get("marks_digest") != committed.marks_digest
+        or attached.get("digest_commit") != committed.commit
+    ):
+        return None, "other-digest"
+    read_at = _number(value.get("read_at")) if isinstance(value, dict) else None
+    if read_at is None or read_at <= committed.committed_at:
+        return None, "predates-marks"
+    admitted = _admit(config, value)
+    return (admitted, "") if admitted is not None else (None, "malformed")
+
+
+def _level_row(level: Any, marked: str) -> dict[str, Any]:
     return {
         "level": level.level,
         "reasons": list(level.reasons),
-        "outcome": judge(level.level, marked) if marked else "unmarked",
+        "outcome": judge(level.level, marked),
     }
 
 
-def score(*, home: str, digest_path: str, results_path: str, now: float, say: Any = print) -> int:
-    """Both functions against the marks; the summary holds expectations and results only."""
+def _score_case(
+    levels: Any, case: Mapping[str, Any], marked: Mapping[str, Any], reading: tuple[Any, str]
+) -> dict[str, Any]:
+    intent = case.get("intent") or {}
+    lines = tuple(str(x) for x in intent.get("lines") or ())
+    evidence = levels.Evidence(
+        facts=tuple(case.get("facts") or ()),
+        scan=case.get("scan") or {},
+        unsettled_directions=int(case.get("unsettled_directions") or 0),
+        cwd=str(case.get("cwd") or ""),
+    )
+    live = levels.live_level(
+        evidence,
+        levels.Intent(
+            saved=intent.get("saved") is True, goal=str(intent.get("goal") or ""), lines=lines
+        ),
+    )
+    value, refusal = reading
+    analysis: dict[str, Any] | None = None
+    if refusal:
+        analysis = {"level": None, "reasons": [], "outcome": f"refused:{refusal}"}
+    elif value is not None and marked.get("analysis"):
+        level = levels.analysis_level(value, evidence, outcome_lines=len(lines))
+        analysis = _level_row(level, str(marked["analysis"]))
+    return {
+        "kind": case["kind"] if case.get("kind") in KINDS else "other",
+        "marks": {"live": marked["live"], "analysis": marked.get("analysis")},
+        "live": _level_row(live, str(marked["live"])),
+        "analysis": analysis,
+    }
+
+
+def score(
+    *,
+    home: str,
+    repo_root: str,
+    digest_path: str,
+    results_path: str,
+    now: float,
+    say: Any = print,
+) -> int:
+    """Both functions against the marks; the summary holds expectations and results only.
+
+    Writes nothing when the marks do not hash to the committed digest, or when any
+    case is unmarked (T3, T4): a level written for either can be read, then marked.
+    """
     _config_mod, _project_context, levels = _runtime()
     paths = _paths(home)
     body = _load(paths["cases"])
@@ -511,70 +724,59 @@ def score(*, home: str, digest_path: str, results_path: str, now: float, say: An
         return 1
     saved = _load(paths["marks"])
     entries = _marks(saved)
-    try:
-        with open(paths["marks"], "rb") as handle:
-            marks_sha = hashlib.sha256(handle.read()).hexdigest()
-    except OSError:
-        marks_sha = ""
-    committed = str(_load(digest_path).get("marks_digest") or "")
-    rows: dict[str, Any] = {}
-    for case in cases:
-        evidence = levels.Evidence(
-            facts=tuple(case.get("facts") or ()),
-            scan=case.get("scan") or {},
-            unsettled_directions=int(case.get("unsettled_directions") or 0),
+    committed = committed_digest(repo_root, digest_path)
+    if isinstance(committed, str):
+        say(f"Not scored: {committed}. Nothing was written.")
+        return 1
+    if committed.marks_digest != _marks_sha(paths) or saved.get("cases_digest") != digest(body):
+        say("Not scored: the marks do not hash to the committed digest. Nothing was written.")
+        return 1
+    unmarked = [c for c in cases if str(c.get("id")) not in entries]
+    if unmarked:
+        say(f"Not scored: {len(unmarked)} cases are unmarked. Nothing was written.")
+        return 1
+    attached = _load(paths["readings"])
+    config = _config()
+    rows = {
+        str(case["id"]): _score_case(
+            levels,
+            case,
+            entries[str(case["id"])],
+            _reading_for(case, attached, committed, config),
         )
-        intent = case.get("intent") or {}
-        live = levels.live_level(
-            evidence,
-            levels.Intent(
-                saved=intent.get("saved") is True,
-                goal=str(intent.get("goal") or ""),
-                lines=tuple(str(x) for x in intent.get("lines") or ()),
-            ),
-        )
-        marked = entries.get(str(case["id"])) or {}
-        reading = case.get("reading")
-        rows[str(case["id"])] = {
-            "kind": case["kind"] if case.get("kind") in KINDS else "other",
-            "marks": {"live": marked.get("live"), "analysis": marked.get("analysis")},
-            "live": _level_row(live, marked.get("live")),
-            "analysis": (
-                _level_row(levels.analysis_level(reading, evidence), marked.get("analysis"))
-                if isinstance(reading, dict)
-                else None
-            ),
-        }
+        for case in cases
+    }
     outcomes = [
         row[source]["outcome"]
         for row in rows.values()
         for source in ("live", "analysis")
         if row[source] is not None
     ]
-    if not marks_sha or marks_sha != committed or saved.get("cases_digest") != digest(body):
-        verdict = VERDICT_STALE
-    elif "unmarked" in outcomes:
-        verdict = VERDICT_UNMARKED
+    if any(o.startswith("refused:") for o in outcomes):
+        verdict = VERDICT_REFUSED
     elif FAILED in outcomes:
         verdict = VERDICT_FAILED
     else:
         verdict = VERDICT_PASSED
+    counts = {o: outcomes.count(o) for o in (MATCH, CAUTIOUS, FAILED)}
+    counts["refused"] = sum(o.startswith("refused:") for o in outcomes)
+    counts["no_reading"] = sum(
+        1 for key, row in rows.items() if row["analysis"] is None and entries[key].get("analysis")
+    )
     summary = {
         "v": 1,
         "scored_at": now,
-        "marks_digest": marks_sha,
-        "committed_digest": committed,
+        "marks_digest": committed.marks_digest,
+        "digest_commit": committed.commit,
         "verdict": verdict,
-        "counts": {o: outcomes.count(o) for o in (MATCH, CAUTIOUS, FAILED, "unmarked")},
+        "counts": counts,
         "cases": rows,
     }
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
     with open(results_path, "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2, sort_keys=True)
         handle.write("\n")
-    say(f"Drift levels scored: {verdict}. {summary['counts']}")
-    if verdict == VERDICT_STALE:
-        say("The marks do not hash to the committed digest, so this is not a pass.")
+    say(f"Drift levels scored: {verdict}. {counts}")
     return 0 if verdict == VERDICT_PASSED else 1
 
 
@@ -599,20 +801,38 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Freeze, mark and score drift-level cases.")
     parser.add_argument("--build", metavar="SPEC", help="freeze the cases a local spec names")
     parser.add_argument("--report", action="store_true", help="how far through the key you are")
+    parser.add_argument(
+        "--attach-readings", metavar="SPEC", help="add readings after the digest is committed"
+    )
     parser.add_argument("--score", action="store_true", help="run both functions; calls no model")
     args = parser.parse_args(argv)
-    if sum(map(bool, (args.build, args.report, args.score))) > 1:
-        print("Run one of --build, --report and --score at a time.")
+    chosen = (args.build, args.report, args.attach_readings, args.score)
+    if sum(map(bool, chosen)) > 1:
+        print("Run one of --build, --report, --attach-readings and --score at a time.")
         return 2
+    import time  # noqa: PLC0415
+
     if args.build:
         return build(args.build, home=HOME, repo_root=_ROOT, say=print)
     if args.report:
         return report(home=HOME)
+    if args.attach_readings:
+        return attach_readings(
+            args.attach_readings,
+            home=HOME,
+            repo_root=_ROOT,
+            digest_path=DIGEST_PATH,
+            now=time.time(),
+        )
     if args.score:
-        import time  # noqa: PLC0415
-
-        return score(home=HOME, digest_path=DIGEST_PATH, results_path=RESULTS_PATH, now=time.time())
-    return mark(home=HOME, digest_path=DIGEST_PATH)
+        return score(
+            home=HOME,
+            repo_root=_ROOT,
+            digest_path=DIGEST_PATH,
+            results_path=RESULTS_PATH,
+            now=time.time(),
+        )
+    return mark(home=HOME, digest_path=DIGEST_PATH, results_path=RESULTS_PATH)
 
 
 if __name__ == "__main__":

@@ -1578,17 +1578,34 @@ part of what the owner's marks validate.
   folders. An analysis reads no folder, so it never reads Extreme. A first draft reached Extreme
   from an analysis when a failure came with departures on most lines. Its own failed-check case then
   read Extreme on a one-line intent, and the rule was one nobody had ruled, so it was dropped.
-- A folder is a path-shaped word in the goal or a line: `server/`, `./web`, `src/app`, or a file
-  path's own folder. A bare word, a URL and an absolute path name none. A write outside the working
-  directory counts as outside every folder.
+- A folder is a word in the goal or a line that has one of three shapes: a trailing `/`
+  (`server/`, `.github/`), a leading `./` (`./web`), or a last part with a file extension, which
+  names its folder (`src/retry.py` names `src`). Prose with a slash, such as "client/server" or
+  "and/or", names nothing, and neither does a bare word or a URL. An absolute path inside the
+  session's working directory is read relative to it. One outside it stays a named folder, and
+  since written paths are published relative to the working directory, no write is ever inside it.
+- A write outside the working directory counts as outside every folder, and so does a write the
+  twelve-entry listing dropped. Review found that counting only the listed writes made the share a
+  lower bound reported as the share, so a capped listing could lower the level.
+- Layer 1 publishes `changed_after` on each check, from the command order the press already used:
+  whether a command that may change files followed the check's latest run, in the same call or a
+  later one. The live floor blocks on it. Across calls, a changing command whose recorded time
+  equals the pass's is read as after it, because the times cannot say which ran first.
 - The live floor also withholds when the scan counts a background launch, because a check only ever
   run in the background is neither listed nor counted (DEC-23 item 1) and the launch count cannot
-  tell it from a server. It also withholds when the twelve listed entries cannot place every pass,
-  or, where folders are named, every write.
-- An analysis line is shown only by a `consistent` with no `why` that cites a passing check with no
-  later change. A line demoted because its cited pass was followed by a change reads Medium, as a
-  pass followed by a write does on the live side. A failed check anywhere in the reading's window
-  reads High whether or not the reading cited it.
+  tell it from a server. It also withholds when the listed entries cannot place every pass, and
+  when the scan is missing any count, which reads as too little rather than as zero.
+- An analysis needs at least one outcome line, whatever its Goal says, and a reading whose rows are
+  not all objects, or whose keys are not exactly the Goal and `line_1` to `line_N` for the intent it
+  read, reads "Not enough recorded yet". An outcome line is shown only by a `consistent` with no
+  `why` that cites a passing check. A cited pass that was followed by a change, when read or since,
+  reads Medium, as a pass followed by a write does on the live side. A failed check in the reading's
+  window reads High whether or not the reading cited it, and a check with no time counts as inside
+  the window. A failed check before the window still blocks "None or low".
+- The case tool takes the marks before any reading exists. Cases are built without readings, both
+  levels are marked from the evidence and the intent alone, the digest is committed, and readings
+  are attached afterwards, stamped with that commit. The first build showed a stored reading on the
+  marking screen, which let the reading shape the key.
 - A level passes the owner's mark when it matches or reassures less. "Not enough recorded yet" is
   more cautious than "None or low" only. Said of a case marked Medium or higher, it hides drift the
   owner saw.

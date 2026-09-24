@@ -11,8 +11,10 @@ import datetime as dt
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Any
@@ -103,6 +105,49 @@ class Answers:
         return self.replies.pop(0)
 
 
+def _git(repo: Path, *args: str) -> str:
+    """Git in the throwaway repository, isolated from the operator's hooks and signing."""
+    done = subprocess.run(
+        [  # noqa: S607 - git on PATH, as the tool itself uses it
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            *args,
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return done.stdout
+
+
+def a_reading(read_at: float, **criteria: dict[str, Any]) -> dict[str, Any]:
+    """A stored reading in the store's own shape, as `annotations._assessment` admits it."""
+    return {
+        "revision_read": 1,
+        "revision_read_at": read_at - 600,
+        "window_start": None,
+        "read_at": read_at,
+        "stamp": "03:10",
+        "cutoff": "",
+        "scope": "mid-flight",
+        "scope_text": "",
+        "ended_at_read": None,
+        "evidence_through": None,
+        "criteria": {
+            name: {"cites": [], "detail": "", "clause": "", "why": "", **row}
+            for name, row in {"goal": {}, **criteria}.items()
+        },
+    }
+
+
 class CaseToolTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -111,6 +156,10 @@ class CaseToolTestCase(unittest.TestCase):
         self.home = self.root / "home" / ".cargento"
         self.repo = self.root / "repo"
         (self.repo / "docs" / "drift-levels").mkdir(parents=True)
+        _git(self.repo, "init", "-q")
+        (self.repo / "README.md").write_text("repo\n", encoding="utf-8")
+        _git(self.repo, "add", "README.md")
+        _git(self.repo, "commit", "-q", "-m", "init")
         self.digest_path = self.repo / "docs" / "drift-levels" / "marks-digest.json"
         self.results_path = self.repo / "docs" / "drift-levels" / "results.json"
         self.cwd = str(self.root / "work" / "ttt")
@@ -152,19 +201,54 @@ class CaseToolTestCase(unittest.TestCase):
         body = json.loads((self.home / "drift-levels" / "cases.json").read_text(encoding="utf-8"))
         return list(body["cases"])
 
+    def marks(self) -> dict[str, Any]:
+        path = self.home / "drift-levels" / "marks.json"
+        return dict(json.loads(path.read_text(encoding="utf-8"))["marks"])
+
     def mark(self, answers: Answers) -> int:
         return levels_cases.mark(
-            home=str(self.home), digest_path=str(self.digest_path), ask=answers, say=self.say
+            home=str(self.home),
+            digest_path=str(self.digest_path),
+            results_path=str(self.results_path),
+            ask=answers,
+            say=self.say,
+        )
+
+    def commit_digest(self) -> None:
+        _git(self.repo, "add", str(self.digest_path))
+        _git(self.repo, "commit", "-q", "-m", "marks digest")
+
+    def attach(self, readings: dict[str, Any]) -> int:
+        path = self.home / "drift-levels" / "readings-spec.json"
+        path.write_text(json.dumps({"v": 1, "readings": readings}), encoding="utf-8")
+        return levels_cases.attach_readings(
+            path,
+            home=str(self.home),
+            repo_root=str(self.repo),
+            digest_path=str(self.digest_path),
+            now=time.time() + 120,
+            say=self.say,
         )
 
     def score(self) -> int:
         return levels_cases.score(
             home=str(self.home),
+            repo_root=str(self.repo),
             digest_path=str(self.digest_path),
             results_path=str(self.results_path),
-            now=_epoch(10_000),
+            now=time.time() + 300,
             say=self.say,
         )
+
+    def marked(self, *replies: str) -> str:
+        """Build one failed-check case, mark it, commit the digest; the case id."""
+        self.build(self.case())
+        self.mark(Answers(*replies))
+        self.commit_digest()
+        return str(self.cases()[0]["id"])
+
+    def results(self) -> dict[str, Any]:
+        return dict(json.loads(self.results_path.read_text(encoding="utf-8")))
 
 
 class BuildTest(CaseToolTestCase):
@@ -190,6 +274,10 @@ class BuildTest(CaseToolTestCase):
             frozen["intent"], {"saved": True, "goal": GOAL, "lines": ["node --test passes"]}
         )
         self.assertEqual(frozen["unsettled_directions"], 0)
+
+    def test_the_working_directory_is_frozen_for_the_folder_rule(self) -> None:
+        self.build(self.case())
+        self.assertEqual(self.cases()[0]["cwd"], self.cwd)
 
     def test_no_file_content_is_frozen(self) -> None:
         self.build(self.case())
@@ -220,46 +308,61 @@ class BuildTest(CaseToolTestCase):
     def test_a_kind_outside_the_closed_set_is_refused(self) -> None:
         self.assertEqual(self.build(self.case(kind="Failed check")), 1)
 
+    def test_a_reading_in_the_spec_is_refused_because_marks_come_first(self) -> None:
+        # T1: a case built with its reading lets the reading shape the key.
+        self.assertEqual(self.build(self.case(reading=a_reading(1.0))), 1)
+        self.assertFalse((self.home / "drift-levels" / "cases.json").exists())
+
     def test_the_same_session_under_two_kinds_is_two_cases(self) -> None:
         self.build(self.case(), self.case(kind="intent-names-no-folder"))
         self.assertEqual(len({c["id"] for c in self.cases()}), 2)
 
     def test_a_rebuild_that_would_orphan_marks_is_refused(self) -> None:
         self.build(self.case())
-        self.mark(Answers("h"))
+        self.mark(Answers("h", "h"))
         self.assertEqual(self.build(self.case(kind="other")), 1)
 
 
 class MarkTest(CaseToolTestCase):
     def test_the_tool_refuses_to_guess_and_has_no_default(self) -> None:
         self.build(self.case())
-        answers = Answers("", "maybe", "h")
+        answers = Answers("", "maybe", "h", "", "h")
         self.assertEqual(self.mark(answers), 0)
-        # Two replies that were not a level were asked again, not defaulted.
-        self.assertEqual(len(answers.prompts), 3)
-        marks = json.loads((self.home / "drift-levels" / "marks.json").read_text(encoding="utf-8"))
-        self.assertEqual(list(marks["marks"].values()), [{"live": "high", "analysis": None}])
+        # Replies that were not a level were asked again, not defaulted.
+        self.assertEqual(len(answers.prompts), 5)
+        self.assertEqual(list(self.marks().values()), [{"live": "high", "analysis": "high"}])
 
     def test_stopping_keeps_nothing_it_was_not_told(self) -> None:
         self.build(self.case(), self.case(kind="other", until=None))
-        self.mark(Answers("h", "q"))
-        marks = json.loads((self.home / "drift-levels" / "marks.json").read_text(encoding="utf-8"))
-        self.assertEqual(len(marks["marks"]), 1)
+        self.mark(Answers("h", "h", "q"))
+        self.assertEqual(len(self.marks()), 1)
 
-    def test_the_analysis_is_asked_only_where_the_case_holds_a_reading(self) -> None:
-        stored = {"read_at": _epoch(400), "window_start": _epoch(0), "criteria": {}}
-        self.build(self.case(reading=stored))
+    def test_both_levels_are_asked_for_every_case_with_an_outcome_line(self) -> None:
+        # T1: the analysis mark is asked from the evidence and intent, with no reading in hand.
+        self.build(self.case())
         answers = Answers("h", "x")
         self.mark(answers)
-        marks = json.loads((self.home / "drift-levels" / "marks.json").read_text(encoding="utf-8"))
-        self.assertEqual(
-            list(marks["marks"].values()), [{"live": "high", "analysis": "not_enough"}]
-        )
+        self.assertEqual(list(self.marks().values()), [{"live": "high", "analysis": "not_enough"}])
         self.assertEqual(len(answers.prompts), 2)
+
+    def test_no_outcome_line_means_no_analysis_question(self) -> None:
+        intent = {"saved": True, "goal": GOAL, "lines": []}
+        self.build(self.case(intent=intent))
+        answers = Answers("x")
+        self.mark(answers)
+        self.assertEqual(list(self.marks().values()), [{"live": "not_enough", "analysis": None}])
+        self.assertEqual(len(answers.prompts), 1)
+
+    def test_the_marking_screen_shows_no_reading_or_model_output(self) -> None:
+        self.build(self.case())
+        self.mark(Answers("h", "h"))
+        screen = "\n".join(self.out)
+        for word in ("READING", "departure", "consistent", "not verifiable"):
+            self.assertNotIn(word, screen)
 
     def test_the_marks_and_their_sha256_are_written_and_the_digest_is_committable(self) -> None:
         self.build(self.case())
-        self.mark(Answers("h"))
+        self.mark(Answers("h", "h"))
         raw = (self.home / "drift-levels" / "marks.json").read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
         self.assertEqual(
@@ -268,17 +371,60 @@ class MarkTest(CaseToolTestCase):
         )
         committed = json.loads(self.digest_path.read_text(encoding="utf-8"))
         self.assertEqual(committed["marks_digest"], digest)
-        self.assertNotIn(SID, self.digest_path.read_text(encoding="utf-8"))
         self.assertNotIn(SID[:8], json.dumps(committed))
 
     def test_marks_for_a_different_case_set_are_refused(self) -> None:
         self.build(self.case())
-        self.mark(Answers("h"))
+        self.mark(Answers("h", "h"))
         cases_path = self.home / "drift-levels" / "cases.json"
         body = json.loads(cases_path.read_text(encoding="utf-8"))
         body["cases"][0]["unsettled_directions"] = 3
         cases_path.write_text(json.dumps(body), encoding="utf-8")
-        self.assertEqual(self.mark(Answers("m")), 1)
+        self.assertEqual(self.mark(Answers("m", "m")), 1)
+
+    def test_marking_is_refused_once_any_result_exists(self) -> None:
+        # T2: re-marking after seeing a result is agreement, not a mark.
+        self.build(self.case(), self.case(kind="other", until=None))
+        self.mark(Answers("h", "h", "q"))
+        self.results_path.write_text("{}", encoding="utf-8")
+        self.assertEqual(self.mark(Answers("e", "e")), 1)
+        self.assertEqual(len(self.marks()), 1)
+
+
+class AttachReadingsTest(CaseToolTestCase):
+    def test_a_reading_attaches_after_the_committed_digest(self) -> None:
+        case_id = self.marked("h", "h")
+        body = a_reading(time.time() + 60, line_1={"result": "departure"})
+        self.assertEqual(self.attach({case_id: body}), 0)
+        saved = json.loads((self.home / "drift-levels" / "readings.json").read_text("utf-8"))
+        committed = json.loads(self.digest_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["marks_digest"], committed["marks_digest"])
+        self.assertEqual(saved["digest_commit"], _git(self.repo, "rev-parse", "HEAD").strip())
+        self.assertIn(case_id, saved["readings"])
+
+    def test_nothing_attaches_before_the_digest_is_committed(self) -> None:
+        self.build(self.case())
+        self.mark(Answers("h", "h"))
+        case_id = self.cases()[0]["id"]
+        body = a_reading(time.time() + 60, line_1={"result": "departure"})
+        self.assertEqual(self.attach({case_id: body}), 1)
+        self.assertFalse((self.home / "drift-levels" / "readings.json").exists())
+
+    def test_a_reading_made_before_the_digest_was_committed_is_refused(self) -> None:
+        case_id = self.marked("h", "h")
+        body = a_reading(time.time() - 3600, line_1={"result": "departure"})
+        self.assertEqual(self.attach({case_id: body}), 1)
+
+    def test_a_reading_the_store_would_refuse_is_refused(self) -> None:
+        case_id = self.marked("h", "h")
+        body = a_reading(time.time() + 60, line_1={"result": "departure"})
+        body["surprise"] = "field"
+        self.assertEqual(self.attach({case_id: body}), 1)
+
+    def test_a_reading_for_an_unknown_case_is_refused(self) -> None:
+        self.marked("h", "h")
+        body = a_reading(time.time() + 60, line_1={"result": "departure"})
+        self.assertEqual(self.attach({"0" * 16: body}), 1)
 
 
 class JudgeTest(unittest.TestCase):
@@ -311,56 +457,121 @@ class JudgeTest(unittest.TestCase):
 
 
 class ScoreTest(CaseToolTestCase):
-    def results(self) -> dict[str, Any]:
-        return dict(json.loads(self.results_path.read_text(encoding="utf-8")))
-
-    def test_a_case_matching_its_mark_passes(self) -> None:
-        self.build(self.case())
-        self.mark(Answers("h"))
+    def test_a_case_matching_its_mark_passes_and_names_the_digest_commit(self) -> None:
+        case_id = self.marked("h", "h")
+        self.attach({case_id: a_reading(time.time() + 60, line_1={"result": "departure"})})
         self.assertEqual(self.score(), 0)
         body = self.results()
         self.assertEqual(body["verdict"], levels_cases.VERDICT_PASSED)
-        (row,) = body["cases"].values()
+        self.assertEqual(body["digest_commit"], _git(self.repo, "rev-parse", "HEAD").strip())
+        row = body["cases"][case_id]
         self.assertEqual(row["live"]["level"], "high")
         self.assertEqual(row["live"]["outcome"], levels_cases.MATCH)
+        self.assertEqual(row["analysis"]["level"], "high")
         self.assertIn("failed-check", row["live"]["reasons"])
 
     def test_a_case_marked_higher_than_it_scores_fails(self) -> None:
         self.build(self.case(until=None, kind="other"))
-        self.mark(Answers("e"))
+        self.mark(Answers("e", "e"))
+        self.commit_digest()
         self.assertEqual(self.score(), 1)
         self.assertEqual(self.results()["verdict"], levels_cases.VERDICT_FAILED)
 
-    def test_marks_that_moved_since_the_committed_digest_refuse_a_pass(self) -> None:
-        self.build(self.case())
-        self.mark(Answers("h"))
+    def test_an_analysis_mark_with_no_reading_attached_is_not_scored(self) -> None:
+        case_id = self.marked("h", "h")
+        self.assertEqual(self.score(), 0)
+        self.assertEqual(self.results()["cases"][case_id]["analysis"], None)
+        self.assertEqual(self.results()["counts"]["no_reading"], 1)
+
+    def test_marks_that_moved_since_the_committed_digest_write_nothing(self) -> None:
+        self.marked("h", "h")
         marks_path = self.home / "drift-levels" / "marks.json"
         body = json.loads(marks_path.read_text(encoding="utf-8"))
         marks_path.write_text(json.dumps(body, indent=4), encoding="utf-8")
         self.assertEqual(self.score(), 1)
-        self.assertEqual(self.results()["verdict"], levels_cases.VERDICT_STALE)
+        self.assertFalse(self.results_path.exists())
 
-    def test_no_committed_digest_refuses_a_pass(self) -> None:
+    def test_an_uncommitted_digest_refuses_the_score(self) -> None:
+        # T2: the working copy the marker rewrites is not the committed digest.
         self.build(self.case())
-        self.mark(Answers("h"))
-        self.digest_path.unlink()
+        self.mark(Answers("h", "h"))
         self.assertEqual(self.score(), 1)
-        self.assertEqual(self.results()["verdict"], levels_cases.VERDICT_STALE)
+        self.assertFalse(self.results_path.exists())
 
-    def test_an_unmarked_case_refuses_a_pass(self) -> None:
-        self.build(self.case(), self.case(kind="other", until=None))
-        self.mark(Answers("h", "q"))
+    def test_a_working_copy_that_differs_from_the_commit_refuses_the_score(self) -> None:
+        self.marked("h", "h")
+        self.digest_path.write_text('{"marks_digest": "0"}\n', encoding="utf-8")
         self.assertEqual(self.score(), 1)
-        self.assertEqual(self.results()["verdict"], levels_cases.VERDICT_UNMARKED)
+        self.assertFalse(self.results_path.exists())
+
+    def test_an_unmarked_case_refuses_the_score_and_writes_nothing(self) -> None:
+        # T3: a level written for an unmarked case can be read and then marked.
+        self.build(self.case(), self.case(kind="other", until=None))
+        self.mark(Answers("h", "h", "q"))
+        self.commit_digest()
+        self.assertEqual(self.score(), 1)
+        self.assertFalse(self.results_path.exists())
+
+    def test_an_analysis_mark_outside_the_closed_set_is_not_a_mark(self) -> None:
+        # T4
+        self.build(self.case())
+        self.mark(Answers("h", "h"))
+        marks_path = self.home / "drift-levels" / "marks.json"
+        body = json.loads(marks_path.read_text(encoding="utf-8"))
+        (key,) = body["marks"]
+        body["marks"][key]["analysis"] = "SESSION TEXT"
+        marks_path.write_text(json.dumps(body), encoding="utf-8")
+        levels_cases._publish_digest(
+            levels_cases._paths(str(self.home)),
+            str(self.digest_path),
+            1,
+            1,
+        )
+        self.commit_digest()
+        self.assertEqual(self.score(), 1)
+        self.assertFalse(self.results_path.exists())
+
+    def test_a_reading_stored_in_the_case_file_is_refused(self) -> None:
+        case_id = self.marked("h", "h")
+        cases_path = self.home / "drift-levels" / "cases.json"
+        body = json.loads(cases_path.read_text(encoding="utf-8"))
+        body["cases"][0]["reading"] = a_reading(time.time() + 60, line_1={"result": "departure"})
+        cases_path.write_text(json.dumps(body), encoding="utf-8")
+        # Editing the case file also unbinds the marks, so this is refused before it is read.
+        self.assertEqual(self.score(), 1)
+        self.assertFalse(self.results_path.exists())
+        committed = levels_cases.committed_digest(str(self.repo), str(self.digest_path))
+        assert isinstance(committed, levels_cases.Committed)
+        got = levels_cases._reading_for(body["cases"][0], {}, committed, None)
+        self.assertEqual(got, (None, "reading-in-cases"))
+        del case_id
+
+    def test_a_reading_attached_under_another_digest_is_refused(self) -> None:
+        case_id = self.marked("h", "h")
+        self.attach({case_id: a_reading(time.time() + 60, line_1={"result": "departure"})})
+        path = self.home / "drift-levels" / "readings.json"
+        body = json.loads(path.read_text(encoding="utf-8"))
+        body["marks_digest"] = "f" * 64
+        path.write_text(json.dumps(body), encoding="utf-8")
+        self.assertEqual(self.score(), 1)
+        row = self.results()["cases"][case_id]
+        self.assertEqual(row["analysis"]["outcome"], "refused:other-digest")
+
+    def test_a_reading_stamped_with_another_digest_commit_is_refused(self) -> None:
+        case_id = self.marked("h", "h")
+        self.attach({case_id: a_reading(time.time() + 60, line_1={"result": "departure"})})
+        path = self.home / "drift-levels" / "readings.json"
+        body = json.loads(path.read_text(encoding="utf-8"))
+        body["digest_commit"] = "0" * 40
+        path.write_text(json.dumps(body), encoding="utf-8")
+        self.assertEqual(self.score(), 1)
+        row = self.results()["cases"][case_id]
+        self.assertEqual(row["analysis"]["outcome"], "refused:other-digest")
 
     def test_the_results_hold_expectations_and_results_only(self) -> None:
-        stored = {
-            "read_at": _epoch(400),
-            "window_start": _epoch(0),
-            "criteria": {"line_1": {"result": "departure", "cites": [], "detail": "MODEL PROSE"}},
-        }
-        self.build(self.case(reading=stored))
-        self.mark(Answers("h", "h"))
+        case_id = self.marked("h", "h")
+        body = a_reading(time.time() + 60, line_1={"result": "departure", "detail": "MODEL PROSE"})
+        self.attach({case_id: body})
         self.score()
         raw = self.results_path.read_text(encoding="utf-8")
         frozen = self.cases()[0]
@@ -376,7 +587,7 @@ class ScoreTest(CaseToolTestCase):
             *(f["fact_id"] for f in frozen["facts"]),
         ):
             self.assertNotIn(local, raw, local)
-        self.assertIn(frozen["id"], raw)
+        self.assertIn(case_id, raw)
 
 
 if __name__ == "__main__":

@@ -69,6 +69,8 @@ REASON_NO_READING = "no-reading"
 REASON_NO_OUTCOME_LINE = "no-outcome-line"
 REASON_DEPARTURE = "departure"
 REASON_LINE_NOT_SHOWN = "line-not-shown-by-a-check"
+REASON_READING_MALFORMED = "reading-malformed"
+REASON_SCAN_INCOMPLETE = "scan-incomplete"
 REASONS = (
     REASON_DRAFT_UNSAVED,
     REASON_FAILED_CHECK,
@@ -87,6 +89,8 @@ REASONS = (
     REASON_NO_OUTCOME_LINE,
     REASON_DEPARTURE,
     REASON_LINE_NOT_SHOWN,
+    REASON_READING_MALFORMED,
+    REASON_SCAN_INCOMPLETE,
 )
 
 _NOT_RECORDED = "not-recorded"
@@ -107,6 +111,7 @@ class Evidence:
     facts: tuple[Mapping[str, Any], ...]
     scan: Mapping[str, Any]
     unsettled_directions: int
+    cwd: str = ""
 
 
 @dataclass(frozen=True)
@@ -140,43 +145,77 @@ class Level:
 
 
 # A path-shaped word: one or more `/`-joined parts. A URL is refused before
-# this runs, and a part with a dot in its last place names a file, whose
-# folder is what is kept.
+# this runs. Only three shapes name a folder (DRC-4692, L8): a trailing `/`, a
+# leading `./`, or a last part with a file extension, which names its folder.
+# "client/server" and "and/or" are prose, and name nothing.
 _PATH_WORD = re.compile(r"^(?:\./)?[\w.-]+(?:/[\w.-]+)*/?$")
+_EXTENSION = re.compile(r"^[^.].*\.[A-Za-z0-9]+$")
 _TRIM = "`'\"()[]{}<>,;:!?"
 
 
-def named_folders(intent: Intent) -> tuple[str, ...]:
-    """The folders the intent names, relative and without a trailing slash.
+def _folder_of(word: str) -> str:
+    """The folder one path-shaped word names, or empty."""
+    marked = word.endswith("/")
+    parts = [part for part in word.split("/") if part and part != "."]
+    if not parts or ".." in parts:
+        return ""
+    if not marked:
+        if _EXTENSION.match(parts[-1]):
+            parts = parts[:-1]
+        elif not word.startswith("./"):
+            return ""
+    return "/".join(parts)
 
-    A word names a folder when it holds a `/` and is path-shaped: `server/`,
-    `./web`, `src/app`. A file path names its folder (`web/app.js` names
-    `web`). A bare word does not, since "the tests" is not a folder, and a
-    URL does not. Absolute paths are dropped: written paths are published
-    relative to the working directory, so one could never be compared.
+
+def named_folders(intent: Intent, cwd: str = "") -> tuple[str, ...]:
+    """The folders the intent names, without a trailing slash.
+
+    `server/`, `.github/` and `./web` name themselves, and `src/retry.py` names
+    `src`. An absolute path inside the working directory is read relative to
+    it (L9); one outside it stays absolute, so no relative written path is
+    ever inside it. A bare word, prose with a slash, a URL and `~` name none.
     """
+    base = cwd.rstrip("/")
     found: set[str] = set()
     for text in (intent.goal, *intent.lines):
         for raw in str(text).split():
-            word = raw.strip(_TRIM).rstrip(".")
-            if "/" not in word or "://" in word or word.startswith(("/", "~")):
+            word = raw.strip(_TRIM)
+            word = word if word.endswith("/") else word.rstrip(".")
+            if "/" not in word or "://" in word or word.startswith("~"):
                 continue
-            if not _PATH_WORD.match(word):
+            absolute = word.startswith("/")
+            if absolute and base and word.startswith(base + "/"):
+                word, absolute = word[len(base) + 1 :], False
+            if not _PATH_WORD.match(word.lstrip("/")):
                 continue
-            word = word.removeprefix("./").rstrip("/")
-            parts = [part for part in word.split("/") if part and part != "."]
-            if not parts or ".." in parts:
-                continue
-            if "." in parts[-1]:
-                parts = parts[:-1]
-            if parts:
-                found.add("/".join(parts))
+            folder = _folder_of(word.lstrip("/") if absolute else word)
+            if folder:
+                found.add(f"/{folder}" if absolute else folder)
     return tuple(sorted(found))
 
 
 def inside(path: str, folders: Iterable[str]) -> bool:
     """Whether a written path is one of the folders or below one."""
     return any(path == folder or path.startswith(f"{folder}/") for folder in folders)
+
+
+# Every count the rules read. A scan missing one reads "Not enough recorded
+# yet", never zero (L6): layer 1 always writes them all, so a missing key is a
+# scan from somewhere else.
+SCAN_KEYS = (
+    "failed",
+    "passed",
+    "not_recorded",
+    "background",
+    "written_paths",
+    "outside_paths",
+    "more",
+    "last_changing_command_at",
+)
+
+
+def scan_complete(scan: Mapping[str, Any]) -> bool:
+    return all(key in scan for key in SCAN_KEYS)
 
 
 def _count(scan: Mapping[str, Any], key: str) -> int:
@@ -220,17 +259,19 @@ def _folder_share(evidence: Evidence, folders: tuple[str, ...]) -> _Folders:
 
     A write outside the working directory is outside every folder, since it
     has no relative path to compare. A write the listing dropped cannot be
-    placed, so it counts toward neither side and withholds the floor.
+    placed either, so it counts as outside (L2): a lower bound reported as
+    the share would let the cap on listed entries lower the level.
     """
     scan = evidence.scan
     listed = _writes(evidence)
     outside_listed = [f for f in listed if not inside(str(f.get("summary") or ""), folders)]
     beyond_cwd = _count(scan, "outside_paths")
     total = _count(scan, "written_paths") + beyond_cwd
+    unlisted = max(0, _count(scan, "written_paths") - len(listed))
     return _Folders(
-        outside=len(outside_listed) + beyond_cwd,
+        outside=len(outside_listed) + beyond_cwd + unlisted,
         total=total,
-        unlisted=max(0, _count(scan, "written_paths") - len(listed)),
+        unlisted=unlisted,
         cites=_ids(outside_listed),
     )
 
@@ -252,18 +293,20 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
     passes = [f for f in checks if f.get("result") == reading.RESULT_PASSED]
     aged = [f for f in passes if f.get("before_last_change") is True]
 
-    folders = named_folders(intent)
+    folders = named_folders(intent, evidence.cwd)
     share = _folder_share(evidence, folders) if folders else None
     some_outside = share is not None and share.outside > 0
     most_outside = share is not None and share.outside * 2 > share.total
 
-    failing = _count(scan, "failed") > 0
+    # A listed failure the counts miss still reads High (L6).
+    failing = _count(scan, "failed") > 0 or bool(failed)
     signals: tuple[tuple[str, bool, list[str]], ...] = (
         (REASON_FAILED_CHECK, failing, _ids(failed)),
         (REASON_MOST_OUTSIDE, most_outside, share.cites if share else []),
         (REASON_SOME_OUTSIDE, some_outside and not most_outside, share.cites if share else []),
         (REASON_PASS_THEN_WRITE, bool(aged), _ids(aged)),
         (REASON_NO_FOLDER, share is None, []),
+        (REASON_UNLISTED, share is not None and share.unlisted > 0, []),
     )
     reasons = [reason for reason, holds, _ in signals if holds]
     cites = [fid for _, holds, ids in signals if holds for fid in ids]
@@ -276,7 +319,7 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
     elif aged or some_outside:
         level = MEDIUM
     else:
-        blockers = _live_floor_blockers(evidence, passes, share)
+        blockers = _live_floor_blockers(evidence, passes)
         reasons.extend(blockers or [REASON_FLOOR_MET])
         cites.extend(_ids(passes))
         level = NOT_ENOUGH if blockers else NONE_OR_LOW
@@ -290,12 +333,12 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
     )
 
 
-def _live_floor_blockers(
-    evidence: Evidence, passes: list[Mapping[str, Any]], share: _Folders | None
-) -> list[str]:
+def _live_floor_blockers(evidence: Evidence, passes: list[Mapping[str, Any]]) -> list[str]:
     """Every clause of the live floor that does not hold, in the ruling's order."""
     scan = evidence.scan
     blockers: list[str] = []
+    if not scan_complete(scan):
+        blockers.append(REASON_SCAN_INCOMPLETE)
     passed = _count(scan, "passed")
     if not passed:
         # Zero is too little: at least one check whose latest run passed.
@@ -308,18 +351,20 @@ def _live_floor_blockers(
         # A background server launch withholds the floor too; that is the
         # cautious side of a count that cannot tell the two apart.
         blockers.append(REASON_BACKGROUND_RUN)
-    unlisted_pass = passed > len(passes) or any(_at(f) is None for f in passes)
-    unlisted_write = share is not None and share.unlisted > 0
-    if unlisted_pass or unlisted_write:
+    if passed > len(passes) or any(_at(f) is None for f in passes):
         blockers.append(REASON_UNLISTED)
     changed_at = scan.get("last_changing_command_at")
     pass_times = [t for t in (_at(f) for f in passes) if t is not None]
-    if (
+    # Layer 1 orders the call's own segments (`changed_after`); across calls a
+    # tie in recorded time is read as a change, since it cannot say which ran
+    # first (L1).
+    later = (
         isinstance(changed_at, (int, float))
         and not isinstance(changed_at, bool)
-        and pass_times
-        and changed_at > min(pass_times)
-    ):
+        and bool(pass_times)
+        and changed_at >= min(pass_times)
+    )
+    if later or any(f.get("changed_after") is not False for f in passes):
         blockers.append(REASON_CHANGING_COMMAND)
     if evidence.unsettled_directions > 0:
         blockers.append(REASON_LATER_DIRECTION)
@@ -354,63 +399,95 @@ class _LineTally:
             return
         cited = [self.by_id[c] for c in _cites(row) if c in self.by_id]
         passes = [f for f in cited if f.get("result") == reading.RESULT_PASSED]
-        stale = any(f.get("before_last_change") is True for f in passes)
-        if why == reading.WHY_CHANGED_AFTER_CHECK or (
-            why == reading.WHY_CHECK_DOES_NOT_SHOW_IT and stale
-        ):
+        # A cited pass aged now, or said to have aged when read, is a pass
+        # followed by a change, whatever `why` the reading stored (L5).
+        stale = [
+            f
+            for f in passes
+            if f.get("before_last_change") is True or f.get("changed_after") is True
+        ]
+        if stale or why == reading.WHY_CHANGED_AFTER_CHECK:
             self.aged = True
-            self.cites.extend(_ids(passes))
+            self.cites.extend(_ids(stale or passes))
             self.not_shown += 1
             return
-        support = [f for f in passes if f.get("before_last_change") is not True]
-        if result == reading.RESULT_CONSISTENT and not why and support:
-            self.shown.extend(_ids(support))
+        if result == reading.RESULT_CONSISTENT and not why and passes:
+            self.shown.extend(_ids(passes))
         else:
             self.not_shown += 1
 
 
-def analysis_level(reading_row: Mapping[str, Any] | None, evidence: Evidence) -> Level:
+def _well_formed(criteria: Any, outcome_lines: int) -> bool:
+    """Every row an object, every key a constraint of this intent, no line missing (L4).
+
+    A reading the page would refuse whole is refused here too, rather than
+    leveled from whichever rows happened to parse.
+    """
+    if not isinstance(criteria, dict) or not all(isinstance(v, dict) for v in criteria.values()):
+        return False
+    keys = set(criteria) - {reading.CONSTRAINT_GOAL}
+    wanted = set(reading.constraints_for(["x"] * outcome_lines)) - {reading.CONSTRAINT_GOAL}
+    legacy = outcome_lines == 1 and keys == {reading.CONSTRAINT_OUTPUT}
+    if keys != wanted and not legacy:
+        return False
+    return all("result" not in row or row["result"] in reading.RESULTS for row in criteria.values())
+
+
+def analysis_level(
+    reading_row: Mapping[str, Any] | None, evidence: Evidence, *, outcome_lines: int
+) -> Level:
     """The analysis level, derived from a stored reading's per-line results.
 
-    No model call and no new model output: each line's stored result, and
-    what its citations point at in `evidence.facts`. A citation that is not a
-    tool-reported check there (a message, the agent's own account) never
-    shows an outcome line, so it never reaches the floor.
+    `outcome_lines` is how many outcome lines the intent it read holds, so a
+    line the reading did not answer is seen as missing. No model call and no
+    new model output: each line's stored result, and what its citations point
+    at in `evidence.facts`. A citation that is not a tool-reported check there
+    (a message, the agent's own account) never shows an outcome line, so it
+    never reaches the floor.
 
-    Medium: a departure, or a line whose cited pass was followed by a change.
-    High: a failed check in the evidence window, cited or not. Never Extreme:
-    that needs both of High's conditions, and the other one, most writes
-    outside the named folders, is the live estimate's to read. An analysis
-    reads each line against its citations and no folder, so a starting
-    definition that reached Extreme here would be one nobody ruled.
+    Zero outcome lines is too little whatever the Goal says (L7). Medium: a
+    departure, or a line whose cited pass was followed by a change. High: a
+    failed check in the evidence window, cited or not, where a check with no
+    time counts as inside it (L3). A failed check outside the window still
+    blocks the floor. Never Extreme: that needs both of High's conditions, and
+    the other one, most writes outside the named folders, is the live
+    estimate's to read. An analysis reads each line against its citations and
+    no folder, so a starting definition that reached Extreme here would be one
+    nobody ruled.
     """
     if not reading_row:
         return Level(NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_NO_READING,))
-    raw = reading_row.get("criteria")
-    rows = {k: v for k, v in (raw.items() if isinstance(raw, dict) else ()) if isinstance(v, dict)}
-    lines = [k for k in rows if reading.is_outcome_line(k)]
+    computed_at = _number(reading_row.get("read_at"))
+    if outcome_lines < 1:
+        return Level(
+            NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_NO_OUTCOME_LINE,), computed_at=computed_at
+        )
+    criteria = reading_row.get("criteria")
+    if not _well_formed(criteria, outcome_lines):
+        return Level(
+            NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_READING_MALFORMED,), computed_at=computed_at
+        )
+    rows: Mapping[str, Mapping[str, Any]] = criteria if isinstance(criteria, dict) else {}
     tally = _LineTally({str(f.get("fact_id")): f for f in evidence.facts if f.get("fact_id")})
     for name, row in rows.items():
-        tally.read(row, outcome_line=name in lines)
-    window = _number(reading_row.get("window_start"))
-    failed = [
-        f
-        for f in _checks(evidence)
-        if f.get("result") == reading.RESULT_FAILED
-        and (window is None or (_at(f) or 0.0) >= window)
-    ]
+        tally.read(row, outcome_line=reading.is_outcome_line(name))
 
+    window = _number(reading_row.get("window_start"))
+    failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
+    in_window = [f for f in failed if window is None or (_at(f) or window) >= window]
+    # A failure the counts hold and the listing dropped has no time to place.
+    unplaced = _count(evidence.scan, "failed") > len(failed)
     reasons = [
         reason
         for reason, holds in (
-            (REASON_FAILED_CHECK, failed),
+            (REASON_FAILED_CHECK, failed or unplaced),
             (REASON_DEPARTURE, tally.departed),
             (REASON_PASS_THEN_WRITE, tally.aged),
         )
         if holds
     ]
-    cites = [*_ids(failed), *tally.cites]
-    if failed:
+    cites = [*_ids(in_window or failed), *tally.cites]
+    if in_window or unplaced:
         level = HIGH
     elif tally.departed or tally.aged:
         level = MEDIUM
@@ -418,22 +495,18 @@ def analysis_level(reading_row: Mapping[str, Any] | None, evidence: Evidence) ->
         blockers = [
             reason
             for reason, holds in (
-                (REASON_NO_OUTCOME_LINE, not lines),
+                (REASON_SCAN_INCOMPLETE, not scan_complete(evidence.scan)),
                 (REASON_LINE_NOT_SHOWN, tally.not_shown),
                 (REASON_LATER_DIRECTION, evidence.unsettled_directions > 0),
             )
             if holds
         ]
-        reasons.extend(blockers or [REASON_FLOOR_MET])
+        if failed and REASON_FAILED_CHECK not in blockers:
+            blockers.insert(0, REASON_FAILED_CHECK)
+        reasons.extend(r for r in (blockers or [REASON_FLOOR_MET]) if r not in reasons)
         cites.extend(tally.shown)
-        level = NOT_ENOUGH if blockers else NONE_OR_LOW
-    return Level(
-        level,
-        SOURCE_ANALYSIS,
-        tuple(reasons),
-        _ordered(cites),
-        computed_at=_number(reading_row.get("read_at")),
-    )
+        level = NOT_ENOUGH if blockers or failed else NONE_OR_LOW
+    return Level(level, SOURCE_ANALYSIS, tuple(reasons), _ordered(cites), computed_at=computed_at)
 
 
 def _cites(row: Mapping[str, Any]) -> list[str]:

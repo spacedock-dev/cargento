@@ -1816,6 +1816,11 @@ class _ToolReportTally:
             "earlier_failed": any(run["result"] == "failed" for run in history[:-1]),
             "before_last_change": latest["result"] == "passed"
             and (latest["fixes"] or self.last_write_at > latest["at"]),
+            # Whether a command that may change files followed this run, in its
+            # own call or a later one, in command order: the press's
+            # `changed_after`, published so the live level can block on it
+            # (DRC-4692). Timestamps cannot order two segments of one call.
+            "changed_after": self._changed_after(latest),
             "source": source,
             "rank": _RESULT_ORDER[latest["result"]],
         }
@@ -1865,6 +1870,11 @@ class _ToolReportTally:
             run["record_id"]: run["tail"] for run in latest if not run["background"] and run["tail"]
         }
 
+    def _changed_after(self, run: dict[str, Any]) -> bool:
+        return bool(run["changes_later_in_call"]) or any(
+            seq > run["seq"] for seq in self.changing_seqs
+        )
+
     def changed_after(self) -> frozenset[tuple[str, str]]:
         """(call id, check line) for each latest run a later command may have changed.
 
@@ -1874,9 +1884,7 @@ class _ToolReportTally:
         """
         latest = (history[-1] for history in self.runs.values())
         return frozenset(
-            (run["record_id"], run["title"])
-            for run in latest
-            if run["changes_later_in_call"] or any(seq > run["seq"] for seq in self.changing_seqs)
+            (run["record_id"], run["title"]) for run in latest if self._changed_after(run)
         )
 
 
@@ -2816,6 +2824,7 @@ def _semantic_fact_from_event(
         "result_source",
         "earlier_failed",
         "before_last_change",
+        "changed_after",
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]

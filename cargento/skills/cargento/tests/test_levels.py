@@ -20,7 +20,9 @@ if TYPE_CHECKING:
 SAVE = 1_800_000_000.0
 
 
-def check(fid: str, at: float, result: str, *, stale: bool = False) -> dict[str, Any]:
+def check(
+    fid: str, at: float | None, result: str, *, stale: bool = False, changed: bool = False
+) -> dict[str, Any]:
     """A check's latest run, as layer 1 publishes it into the observed record."""
     return {
         "fact_id": fid,
@@ -29,6 +31,7 @@ def check(fid: str, at: float, result: str, *, stale: bool = False) -> dict[str,
         "summary": "node --test",
         "result": result,
         "before_last_change": stale,
+        "changed_after": changed,
         "at": at,
     }
 
@@ -58,9 +61,25 @@ def scan(**counts: Any) -> dict[str, Any]:
 
 
 def evidence(
-    facts: Sequence[Mapping[str, Any]], counts: Mapping[str, Any], *, directions: int = 0
+    facts: Sequence[Mapping[str, Any]],
+    counts: Mapping[str, Any],
+    *,
+    directions: int = 0,
+    cwd: str = "",
 ) -> levels.Evidence:
-    return levels.Evidence(facts=tuple(facts), scan=counts, unsettled_directions=directions)
+    return levels.Evidence(
+        facts=tuple(facts), scan=counts, unsettled_directions=directions, cwd=cwd
+    )
+
+
+def analyze(
+    row: Mapping[str, Any] | None, facts: levels.Evidence, *, lines: int | None = None
+) -> levels.Level:
+    """The analysis level, told how many outcome lines the intent holds (by default, as many as
+    the reading answers, so only the tests about a missing line pass a different count)."""
+    criteria = (row or {}).get("criteria") or {}
+    count = sum(1 for k in criteria if reading.is_outcome_line(k)) if lines is None else lines
+    return levels.analysis_level(row, facts, outcome_lines=count)
 
 
 def intent(
@@ -103,15 +122,13 @@ class FailedCheckTest(unittest.TestCase):
         self.assertEqual(got.source, levels.SOURCE_LIVE)
 
     def test_an_analysis_departing_on_that_failure_is_high(self) -> None:
-        got = levels.analysis_level(
-            a_reading(line_1=criterion(reading.RESULT_DEPARTURE, "c1")), self.FACTS
-        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_DEPARTURE, "c1")), self.FACTS)
         self.assertEqual(got.level, levels.HIGH)
         self.assertIn(levels.REASON_FAILED_CHECK, got.reasons)
         self.assertEqual(got.source, levels.SOURCE_ANALYSIS)
 
     def test_a_failure_the_analysis_did_not_cite_still_keeps_it_high(self) -> None:
-        got = levels.analysis_level(
+        got = analyze(
             a_reading(line_1=criterion(reading.RESULT_UNVERIFIABLE, why="failed-check-unread")),
             self.FACTS,
         )
@@ -151,17 +168,13 @@ class CheckWithNoRecordedResultTest(unittest.TestCase):
 
     def test_an_analysis_citing_it_reads_not_enough(self) -> None:
         facts = evidence([check("c1", SAVE + 20, "not-recorded")], scan(not_recorded=1))
-        got = levels.analysis_level(
-            a_reading(line_1=criterion(reading.RESULT_UNVERIFIABLE, "c1")), facts
-        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_UNVERIFIABLE, "c1")), facts)
         self.assertEqual(got.level, levels.NOT_ENOUGH)
         self.assertIn(levels.REASON_LINE_NOT_SHOWN, got.reasons)
 
     def test_a_consistent_resting_on_it_is_not_counted_as_shown(self) -> None:
         facts = evidence([check("c1", SAVE + 20, "not-recorded")], scan(not_recorded=1))
-        got = levels.analysis_level(
-            a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts
-        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
         self.assertEqual(got.level, levels.NOT_ENOUGH)
 
 
@@ -180,7 +193,7 @@ class PassFollowedByWriteTest(unittest.TestCase):
         self.assertIn("c1", got.cites)
 
     def test_an_analysis_demoting_the_aged_pass_is_medium(self) -> None:
-        got = levels.analysis_level(
+        got = analyze(
             a_reading(
                 line_1=criterion(
                     reading.RESULT_UNVERIFIABLE, "c1", why=reading.WHY_CHECK_DOES_NOT_SHOW_IT
@@ -192,7 +205,7 @@ class PassFollowedByWriteTest(unittest.TestCase):
         self.assertIn(levels.REASON_PASS_THEN_WRITE, got.reasons)
 
     def test_a_pass_a_later_command_may_have_changed_is_medium_too(self) -> None:
-        got = levels.analysis_level(
+        got = analyze(
             a_reading(
                 line_1=criterion(
                     reading.RESULT_UNVERIFIABLE, "c1", why=reading.WHY_CHANGED_AFTER_CHECK
@@ -218,7 +231,7 @@ class OwnAccountOnlyTest(unittest.TestCase):
         self.assertEqual(got.source_line, levels.LIVE_SOURCE_LINE)
 
     def test_an_outcome_line_on_the_agents_account_reads_not_enough(self) -> None:
-        got = levels.analysis_level(
+        got = analyze(
             a_reading(
                 goal=criterion(reading.RESULT_CONSISTENT, "c1"),
                 line_1=criterion(reading.RESULT_UNVERIFIABLE, "m1", why=reading.WHY_NO_WORK_SHOWN),
@@ -228,13 +241,11 @@ class OwnAccountOnlyTest(unittest.TestCase):
         self.assertEqual(got.level, levels.NOT_ENOUGH)
 
     def test_a_consistent_citing_only_a_message_is_never_the_floor(self) -> None:
-        got = levels.analysis_level(
-            a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "m1")), PASSING
-        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "m1")), PASSING)
         self.assertEqual(got.level, levels.NOT_ENOUGH)
 
     def test_the_goal_may_rest_on_the_sessions_own_account(self) -> None:
-        got = levels.analysis_level(SUPPORTED, PASSING)
+        got = analyze(SUPPORTED, PASSING)
         self.assertEqual(got.level, levels.NONE_OR_LOW)
         self.assertEqual(got.source_line, levels.ANALYSIS_SOURCE_LINE)
         self.assertEqual(got.computed_at, SAVE + 600)
@@ -283,7 +294,7 @@ class IntentNamesNoFolderTest(unittest.TestCase):
         self.assertEqual(got.level, levels.HIGH)
 
     def test_the_analysis_does_not_read_folders_at_all(self) -> None:
-        self.assertEqual(levels.analysis_level(SUPPORTED, self.SPREAD).level, levels.NONE_OR_LOW)
+        self.assertEqual(analyze(SUPPORTED, self.SPREAD).level, levels.NONE_OR_LOW)
 
 
 class UnsavedDraftTest(unittest.TestCase):
@@ -297,7 +308,7 @@ class UnsavedDraftTest(unittest.TestCase):
         self.assertEqual(got.cites, ())
 
     def test_with_no_reading_the_analysis_has_too_little(self) -> None:
-        got = levels.analysis_level(None, PASSING)
+        got = analyze(None, PASSING)
         self.assertEqual(got.level, levels.NOT_ENOUGH)
         self.assertEqual(got.reasons, (levels.REASON_NO_READING,))
 
@@ -312,9 +323,7 @@ class FloorTest(unittest.TestCase):
         self.assertIn(levels.REASON_NO_PASSING_CHECK, got.reasons)
 
     def test_an_intent_with_no_outcome_line_is_too_little_for_an_analysis(self) -> None:
-        got = levels.analysis_level(
-            a_reading(goal=criterion(reading.RESULT_CONSISTENT, "c1")), PASSING
-        )
+        got = analyze(a_reading(goal=criterion(reading.RESULT_CONSISTENT, "c1")), PASSING)
         self.assertEqual(got.level, levels.NOT_ENOUGH)
         self.assertIn(levels.REASON_NO_OUTCOME_LINE, got.reasons)
 
@@ -323,7 +332,7 @@ class FloorTest(unittest.TestCase):
         got = levels.live_level(with_direction, intent("Tests pass"))
         self.assertEqual(got.level, levels.NOT_ENOUGH)
         self.assertIn(levels.REASON_LATER_DIRECTION, got.reasons)
-        self.assertEqual(levels.analysis_level(SUPPORTED, with_direction).level, levels.NOT_ENOUGH)
+        self.assertEqual(analyze(SUPPORTED, with_direction).level, levels.NOT_ENOUGH)
 
     def test_a_later_direction_does_not_raise_a_level(self) -> None:
         failed = evidence([check("c1", SAVE + 20, "failed")], scan(failed=1), directions=2)
@@ -353,10 +362,12 @@ class FloorTest(unittest.TestCase):
             scan(passed=1, written_paths=2, more=1),
         )
         got = levels.live_level(facts, intent("Only touch web/"))
-        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        # The unplaced write counts as outside (L2), so one of two is outside.
+        self.assertEqual(got.level, levels.MEDIUM)
+        self.assertIn(levels.REASON_UNLISTED, got.reasons)
 
     def test_an_analysis_with_every_line_supported_meets_the_floor(self) -> None:
-        got = levels.analysis_level(SUPPORTED, PASSING)
+        got = analyze(SUPPORTED, PASSING)
         self.assertEqual(got.level, levels.NONE_OR_LOW)
         self.assertEqual(got.cites, ("c1",))
 
@@ -375,7 +386,7 @@ class ExtremeTest(unittest.TestCase):
 
     def test_an_analysis_never_reads_extreme_because_it_reads_no_folder(self) -> None:
         facts = evidence([check("c1", SAVE + 20, "failed")], scan(failed=1))
-        got = levels.analysis_level(
+        got = analyze(
             a_reading(
                 line_1=criterion(reading.RESULT_DEPARTURE, "c1"),
                 line_2=criterion(reading.RESULT_DEPARTURE, "m1"),
@@ -386,9 +397,7 @@ class ExtremeTest(unittest.TestCase):
         self.assertEqual(got.level, levels.HIGH)
 
     def test_a_departure_on_no_failed_check_is_medium(self) -> None:
-        got = levels.analysis_level(
-            a_reading(line_1=criterion(reading.RESULT_DEPARTURE, "m1")), PASSING
-        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_DEPARTURE, "m1")), PASSING)
         self.assertEqual(got.level, levels.MEDIUM)
         self.assertIn(levels.REASON_DEPARTURE, got.reasons)
 
@@ -399,13 +408,31 @@ class NamedFoldersTest(unittest.TestCase):
     def test_the_forms_that_name_a_folder(self) -> None:
         self.assertEqual(
             levels.named_folders(intent("Work in `src/app/` and ./web, then tests/unit.")),
-            ("src/app", "tests/unit", "web"),
+            ("src/app", "web"),
         )
+
+    def test_prose_with_a_slash_names_nothing(self) -> None:
+        # L8: "and/or" and "client/server" are words, not paths.
+        self.assertEqual(
+            levels.named_folders(intent("Fix the client/server split and/or the input/output")), ()
+        )
+
+    def test_a_trailing_slash_marks_a_folder_even_with_a_dot(self) -> None:
+        self.assertEqual(levels.named_folders(intent("Only touch `.github/`")), (".github",))
+
+    def test_an_absolute_folder_inside_the_working_directory_reads_as_relative(self) -> None:
+        # L9
+        got = levels.named_folders(intent("Only edit /work/ttt/web/"), cwd="/work/ttt")
+        self.assertEqual(got, ("web",))
+
+    def test_an_absolute_folder_outside_it_is_still_named(self) -> None:
+        got = levels.named_folders(intent("Only edit /elsewhere/lib/"), cwd="/work/ttt")
+        self.assertEqual(got, ("/elsewhere/lib",))
 
     def test_a_trailing_slash_names_a_single_folder(self) -> None:
         self.assertEqual(levels.named_folders(intent("Only touch server/")), ("server",))
 
-    def test_urls_files_and_bare_words_name_none(self) -> None:
+    def test_urls_and_bare_words_name_none(self) -> None:
         self.assertEqual(
             levels.named_folders(intent("See https://example.com/a/b and edit index.html")), ()
         )
@@ -417,6 +444,144 @@ class NamedFoldersTest(unittest.TestCase):
         self.assertTrue(levels.inside("web/app.js", ("web",)))
         self.assertTrue(levels.inside("web", ("web",)))
         self.assertFalse(levels.inside("website/app.js", ("web",)))
+
+
+class CorrectionRoundTest(unittest.TestCase):
+    """DRC-4692's review round. Every correction moves toward a higher level or Not enough."""
+
+    def test_l1_a_change_later_in_the_passing_call_blocks_the_floor(self) -> None:
+        facts = evidence([check("c1", SAVE + 20, "passed", changed=True)], scan(passed=1))
+        got = levels.live_level(facts, intent("Tests pass"))
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_CHANGING_COMMAND, got.reasons)
+
+    def test_l1_a_changing_command_at_the_same_time_as_the_pass_blocks_the_floor(self) -> None:
+        facts = evidence(
+            [check("c1", SAVE + 20, "passed")], scan(passed=1, last_changing_command_at=SAVE + 20)
+        )
+        self.assertEqual(levels.live_level(facts, intent("Tests pass")).level, levels.NOT_ENOUGH)
+
+    def test_l2_an_unplaced_write_counts_as_outside(self) -> None:
+        facts = evidence(
+            [check("c1", SAVE + 20, "passed"), wrote("w1", SAVE + 5, "src/a.py")],
+            scan(passed=1, written_paths=3, more=2),
+        )
+        got = levels.live_level(facts, intent("Only touch web/"))
+        self.assertEqual(got.level, levels.HIGH)
+        self.assertEqual((got.writes_outside, got.writes_total), (3, 3))
+        self.assertIn(levels.REASON_UNLISTED, got.reasons)
+
+    def test_l2_unplaced_writes_can_make_a_listed_inside_write_a_minority(self) -> None:
+        facts = evidence(
+            [check("c1", SAVE + 20, "passed"), wrote("w1", SAVE + 5, "web/a.js")],
+            scan(passed=1, written_paths=3, more=2),
+        )
+        self.assertEqual(levels.live_level(facts, intent("Only touch web/")).level, levels.HIGH)
+
+    def test_l3_a_failure_before_the_window_still_blocks_the_floor(self) -> None:
+        facts = evidence(
+            [check("f1", SAVE - 100, "failed"), check("c1", SAVE + 20, "passed")],
+            scan(failed=1, passed=1),
+        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_FAILED_CHECK, got.reasons)
+
+    def test_l3_a_failure_with_no_time_counts_as_inside_the_window(self) -> None:
+        facts = evidence(
+            [check("f1", None, "failed"), check("c1", SAVE + 20, "passed")],
+            scan(failed=1, passed=1),
+        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(got.level, levels.HIGH)
+
+    def test_l4_a_row_that_is_not_an_object_is_malformed(self) -> None:
+        row = a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1"))
+        row["criteria"]["line_2"] = "garbage"
+        got = analyze(row, PASSING, lines=2)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_READING_MALFORMED, got.reasons)
+
+    def test_l4_a_key_outside_the_constraints_is_malformed(self) -> None:
+        row = a_reading(
+            line_1=criterion(reading.RESULT_CONSISTENT, "c1"),
+            notes=criterion(reading.RESULT_CONSISTENT, "c1"),
+        )
+        self.assertEqual(analyze(row, PASSING, lines=1).level, levels.NOT_ENOUGH)
+
+    def test_l4_a_gap_in_the_lines_is_malformed(self) -> None:
+        row = a_reading(
+            line_1=criterion(reading.RESULT_CONSISTENT, "c1"),
+            line_3=criterion(reading.RESULT_CONSISTENT, "c1"),
+        )
+        self.assertEqual(analyze(row, PASSING, lines=3).level, levels.NOT_ENOUGH)
+
+    def test_l4_a_line_the_reading_did_not_answer_is_missing(self) -> None:
+        row = a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1"))
+        got = analyze(row, PASSING, lines=2)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_READING_MALFORMED, got.reasons)
+
+    def test_l4_a_result_outside_the_three_is_malformed(self) -> None:
+        row = a_reading(line_1=criterion("done", "c1"))
+        self.assertEqual(analyze(row, PASSING).level, levels.NOT_ENOUGH)
+
+    def test_l5_a_cited_pass_that_aged_after_the_reading_is_medium(self) -> None:
+        facts = evidence([check("c1", SAVE + 20, "passed", stale=True)], scan(passed=1))
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(got.level, levels.MEDIUM)
+        self.assertIn(levels.REASON_PASS_THEN_WRITE, got.reasons)
+
+    def test_l5_a_cited_pass_a_command_later_changed_is_medium(self) -> None:
+        facts = evidence([check("c1", SAVE + 20, "passed", changed=True)], scan(passed=1))
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(got.level, levels.MEDIUM)
+
+    def test_l6_a_scan_missing_its_keys_is_too_little(self) -> None:
+        facts = evidence(list(PASSING.facts), {"passed": 1})
+        got = levels.live_level(facts, intent("Tests pass"))
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_SCAN_INCOMPLETE, got.reasons)
+
+    def test_l6_a_listed_failure_the_counts_miss_still_reads_high(self) -> None:
+        facts = evidence([check("f1", SAVE + 20, "failed")], scan(passed=1))
+        self.assertEqual(levels.live_level(facts, intent("Tests pass")).level, levels.HIGH)
+
+    def test_l6_the_analysis_withholds_on_an_incomplete_scan_too(self) -> None:
+        facts = evidence(list(PASSING.facts), {"passed": 1})
+        self.assertEqual(analyze(SUPPORTED, facts).level, levels.NOT_ENOUGH)
+
+    def test_l7_a_goal_departure_with_no_outcome_line_is_too_little(self) -> None:
+        got = analyze(a_reading(goal=criterion(reading.RESULT_DEPARTURE, "m1")), PASSING)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_NO_OUTCOME_LINE, got.reasons)
+
+    def test_l8_a_file_path_no_longer_widens_to_prose(self) -> None:
+        # "change src/retry.py" names src/; a write elsewhere is outside it.
+        facts = evidence(
+            [wrote("w1", SAVE + 5, "lib/other.py"), check("c1", SAVE + 20, "passed")],
+            scan(passed=1, written_paths=1),
+        )
+        self.assertEqual(levels.live_level(facts, intent("Change src/retry.py")).level, levels.HIGH)
+
+    def test_l8_a_dotted_folder_keeps_its_boundary(self) -> None:
+        facts = evidence(
+            [wrote("w1", SAVE + 5, "src/app.py"), check("c1", SAVE + 20, "passed")],
+            scan(passed=1, written_paths=1),
+        )
+        self.assertEqual(
+            levels.live_level(facts, intent("Only touch `.github/`")).level, levels.HIGH
+        )
+
+    def test_l9_an_absolute_folder_inside_the_cwd_places_relative_writes(self) -> None:
+        facts = evidence(
+            [wrote("w1", SAVE + 5, "web/a.js"), check("c1", SAVE + 20, "passed")],
+            scan(passed=1, written_paths=1),
+            cwd="/work/ttt",
+        )
+        got = levels.live_level(facts, intent("Only edit /work/ttt/web/"))
+        self.assertEqual(got.level, levels.NONE_OR_LOW)
+        self.assertEqual((got.writes_outside, got.writes_total), (0, 1))
 
 
 if __name__ == "__main__":
