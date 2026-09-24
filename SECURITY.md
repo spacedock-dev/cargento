@@ -80,6 +80,10 @@ The posture rests on two invariants:
    store, so the read-only rule above stands unchanged. What the first holds and how to clear it is
    in Dismissals; the other two share one file,
    `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
+   and by a 16 MiB read limit that every write trims to, dropping the least recently written
+   entries and never the one being written. A store file that exists and cannot be read whole is
+   never written over: every save answers `untrusted` until it can be, because a write would keep
+   only what this build could read. It is
    redacted on the way in like every other prompt-derived string, written owner-only through a temp
    file and a rename -- the file synced before the rename and the directory synced after it, so
    that rename is trusted only once both are on disk; where the directory cannot be synced, as on
