@@ -181,7 +181,9 @@ AUTHOR_DERIVED = "derived"
 #
 # Per harness, because a type means different things on different harnesses:
 # `result` is Pi's demonstrated work result, and on Codex it is the agent's own
-# final answer (`semantic_history._final_output_events`), which is self-report.
+# final answer (`semantic_history._final_output_events`), which is self-report:
+# never the agent's own final answer on Claude Code or Codex; on Pi the harness
+# publishes its result as work.
 # Keyed on the type alone, removing the harness gate let that final answer pose
 # Expected Output and carry a `consistent` (review, 2026-09-24). Held equal to
 # the page's `NEXT_READING_WORK_BY_HARNESS`.
@@ -463,11 +465,32 @@ NEGATORS = frozenset(
 _WORD_RE = re.compile(r"[^\W\d_]+")
 
 
-def _words(text: str) -> set[str]:
-    """Every word in this prose, as the two verdict lists need to see it."""
+def _word_list(text: str) -> list[str]:
+    """Every word in this prose, in order, folded as the verdict lists need it."""
     folded = unicodedata.normalize("NFKC", text)
     folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Cf")
-    return set(_WORD_RE.findall(folded.casefold()))
+    return _WORD_RE.findall(folded.casefold())
+
+
+def _words(text: str) -> set[str]:
+    """Every word in this prose, as the two verdict lists need to see it."""
+    return set(_word_list(text))
+
+
+# Under the owner ruling below, the pass words are the tool's report and are
+# set aside, so a negation of them is read in word order first: "did not pass"
+# and "no tests passed" are failure statements (verifier, 2026-09-24). A
+# negated "work" or "expected" says the output is not what was asked.
+_PASS_FORMS = frozenset({"pass", *CHECK_REPORT_WORDS})
+_OUTCOME_FORMS = frozenset({"work", "expected"})
+
+
+def _negated(words: list[str], targets: frozenset[str], reach: int) -> bool:
+    """Whether a negator stands within `reach` words before any target word."""
+    return any(
+        word in targets and any(prior in NEGATORS for prior in words[max(0, i - reach) : i])
+        for i, word in enumerate(words)
+    )
 
 
 # How much of one ledger entry's summary the prompt carries. A menu row is a
@@ -1206,6 +1229,10 @@ def _states_a_verdict(
     Every other success word still withdraws it. See
     [DEC-17](docs/design-reading-a-session.md#amended-2026-09-24-a-checks-own-result-word-is-not-a-verdict-owner-ruling).
     """
+    if reported:
+        ordered = _word_list(detail)
+        if _negated(ordered, _PASS_FORMS, 2) or _negated(ordered, _OUTCOME_FORMS, 3):
+            return True
     words = _words(detail)
     if reported:
         words -= CHECK_REPORT_WORDS

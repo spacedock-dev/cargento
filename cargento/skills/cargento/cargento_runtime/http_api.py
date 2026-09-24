@@ -1829,9 +1829,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 changed_after=press.changed_after,
             )
         elif harness in runtime_reading_route.TOOL_OUTPUT_HARNESSES:
-            # Named, and the grant was gone by the time the reading ran (turned
-            # off in another tab): the words are read and the cutoff says why
-            # the checks were not.
+            # Named, and no grant for it when the reading ran: never given, or
+            # withdrawn in another tab after the press was admitted. The words
+            # are read and the cutoff says the checks were not sent and why.
             tool_output = runtime_reading.ToolOutput(
                 destination="", label=route["label"], allowed=False
             )

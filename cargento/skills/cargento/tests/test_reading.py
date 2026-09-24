@@ -2212,6 +2212,13 @@ class AToolReportedPassIsNotAStatedVerdict(AClaudeCodeReadingProducer):
             "Verified: the retry works.",
             "The retry work is delivered.",
             "The tests passed but the feature is not complete.",
+            # A negated pass word is a failure statement, and so is a negated
+            # "work" or "expected" (verifier, 2026-09-24).
+            "No tests passed.",
+            "pytest has not passed",
+            "pytest did not pass",
+            "pytest passed; the feature does not work.",
+            "pytest passed but the output is not what you expected.",
         ):
             with self.subTest(detail=detail):
                 row = self._consistent(detail)

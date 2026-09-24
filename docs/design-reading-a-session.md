@@ -293,13 +293,15 @@ negator half on its own. The two sentences above still hold everywhere else. For
 1. `passed`, `passes` and `passing` are the tool's report, not a verdict, and so is "failed" when
    the cited row itself says an earlier run failed.
 2. A negator counts only beside a success word that remains, so "not complete" still withdraws it
-   and "no later write" does not.
+   and "no later write" does not. A negated pass word still withdraws it, read in word order before
+   the pass words are set aside: "did not pass" and "no tests passed" are failure statements, and so
+   is a negated "work" or "expected".
 3. Every other success word still withdraws it: met, complete, verified, works, delivered and the
    rest of the list.
 
 The prompt now asks for `detail` only under a departure, and says a check's result words are
 Cargento's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
-so this narrows nothing on the page. Goal verdicts and departures are unchanged.
+so this adds no prose to the page. Goal verdicts and departures are unchanged.
 
 ### Amended 2026-09-12: rules 3, 4, 5 and 7 are told apart in the stored shape
 
@@ -990,7 +992,8 @@ rules in the resolver and on the page, with the window read from the revision's 
 DRC-4679 stores the words' own time. A pass that a later command may have changed files after, in
 the same call or a later one, carries no `consistent` either (item 3's blocker, applied to a
 reading). What counts as work is per harness: a work result on Pi and a check on Claude Code, and
-never the agent's own final answer, which on Codex shares the `result` type with Pi's work result. Per-line outcome lines are DRC-4685's. SECURITY.md's
+never the agent's own final answer on Claude Code or Codex; on Pi the harness publishes its result as
+work. Per-line outcome lines are DRC-4685's. SECURITY.md's
 [Tool output in a Claude Code reading](../SECURITY.md#tool-output-in-a-claude-code-reading) says
 what is sent and where.
 
