@@ -7,7 +7,7 @@
    answering the same question twice in two places.
 
    Retained typed words come from the annotation store alone. Session history
-   keeps a copy of the same two fields for fourteen days, and reading the log
+   keeps a copy of the goal and each outcome line for fourteen days, and reading the log
    out of that instead would resurrect words a reader withdrew: `clear` removes
    the entry, because clearing the field is withdrawing the request, while an
    observation already appended to history is never retro-deleted. So the bound
@@ -386,7 +386,7 @@ function nextIntentView(){
     (available && rows.length ? `<p class="next-intent-note">${lead}The annotation store ` +
       `keeps the newest 256 and sixteen revisions each. ${evicts} ` +
       "These limits apply only to retained annotation records. Session history keeps a " +
-      "fourteen-day copy of the same two fields; this list does not recover saved words from " +
+      "fourteen-day copy of the goal and each outcome line; this list does not recover saved words from " +
       "that copy. Removal by the annotation store is an eviction and not an expiry.</p>" : "") +
     group("On the board", board) + group("Retained after leaving the board", departed) +
     (available ? nextIntentClose(ordered, total)

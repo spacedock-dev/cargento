@@ -20,17 +20,20 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import cli, history, observer, reading, unasked
+from cargento_runtime import cli, departures, history, observer, reading, unasked
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
 from .support import make_config, make_runtime, make_server, serve_until_closed
 from .support import os_name as support_os_name
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 NOW = 1_800_000_000.0
 REPO = pathlib.Path(__file__).resolve().parents[4]
@@ -174,14 +177,16 @@ class SixLinesAreKeptAndShownOneByOneTest(_StoreCase):
     def test_an_empty_list_clears_every_line(self) -> None:
         annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=SIX, now=NOW)
 
-        annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=[], now=NOW + 1)
+        annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", lines=[], expected_revision=1, now=NOW + 1
+        )
 
         self.assertEqual((), self.entry()["revisions"][-1]["lines"])
 
     def test_a_stale_list_from_a_second_tab_is_refused(self) -> None:
         annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=["a"], now=NOW)
         annotation_store.annotate(
-            self.config, self.state, "claude", "s-1", lines=["b"], now=NOW + 1
+            self.config, self.state, "claude", "s-1", lines=["b"], expected_revision=1, now=NOW + 1
         )
 
         stale = annotation_store.annotate(
@@ -263,6 +268,7 @@ class ALineKeepsItsSourceTest(_StoreCase):
             "claude",
             "s-1",
             lines=["from the record", "typed one", "a third"],
+            expected_revision=1,
             now=NOW + 1,
         )
 
@@ -280,6 +286,7 @@ class ALineKeepsItsSourceTest(_StoreCase):
             "claude",
             "s-1",
             lines=["from the record, edited", "typed one"],
+            expected_revision=1,
             now=NOW + 1,
         )
 
@@ -646,6 +653,401 @@ class TheStoreNeverOutgrowsItsReadLimitTest(_StoreCase):
         self.assertEqual(["s-0001", "s-0002"], [entry["sid"] for entry in kept])
 
 
+class TheEntryBeingWrittenIsNeverTheOneTrimmedTest(_StoreCase):
+    """D1: the trim drops by last write, and never drops the entry it was asked to write."""
+
+    def seed(self, count: int, char: str) -> None:
+        for i in range(count):
+            annotation_store.annotate(
+                self.config,
+                self.state,
+                "claude",
+                f"s-{i}",
+                goal=char * 200,
+                lines=[char * 200] * 6,
+                now=NOW + i,
+            )
+
+    def tight(self) -> RuntimeConfig:
+        size = os.path.getsize(annotation_store.store_path(self.config))
+        return dataclasses.replace(self.config, annotation_read_cap_bytes=size + 40)
+
+    def assessment(self, char: str) -> reading.Assessment:
+        criterion: reading.Criterion = {
+            "result": reading.RESULT_UNVERIFIABLE,
+            "cites": (),
+            "detail": "",
+            "clause": char * 200,
+            "why": "",
+        }
+        return {
+            "revision_read": 1,
+            "revision_read_at": NOW,
+            "read_at": NOW,
+            "stamp": "s",
+            "cutoff": "c",
+            "scope": "mid-flight",
+            "scope_text": reading.SCOPE_TEXT["mid-flight"],
+            "ended_at_read": None,
+            "evidence_through": None,
+            "criteria": {"goal": criterion, "line_1": cast("reading.Criterion", dict(criterion))},
+        }
+
+    def test_a_settle_on_the_oldest_entry_keeps_it_and_drops_the_next_oldest(self) -> None:
+        for char in ("中", "\U0001f600"):
+            with self.subTest(text=char):
+                shutil.rmtree(self.root / "state", ignore_errors=True)
+                self.seed(3, char)
+                config = self.tight()
+
+                outcome = annotation_store.settle(
+                    config, self.state, "claude", "s-0", through=NOW, now=NOW + 10
+                )
+
+                kept = [e["sid"] for e in annotation_store.load(config)]
+                self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+                self.assertEqual(["s-0", "s-2"], sorted(kept))
+
+    def test_a_withheld_reason_and_a_reading_on_the_oldest_entry_keep_it(self) -> None:
+        for char in ("中", "\U0001f600"):
+            for kind in ("withheld", "reading"):
+                with self.subTest(text=char, kind=kind):
+                    shutil.rmtree(self.root / "state", ignore_errors=True)
+                    self.seed(3, char)
+                    config = self.tight()
+                    if kind == "withheld":
+                        outcome = annotation_store.record_withheld(
+                            config,
+                            self.state,
+                            "claude",
+                            "s-0",
+                            reason=reading.WITHHELD_MODEL_FAILED,
+                            spent=True,
+                        )
+                    else:
+                        outcome = annotation_store.record_reading(
+                            config, self.state, "claude", "s-0", assessment=self.assessment(char)
+                        )
+
+                    kept = [e["sid"] for e in annotation_store.load(config)]
+                    self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+                    self.assertEqual(["s-0", "s-2"], sorted(kept))
+
+    def test_an_entry_that_cannot_fit_alone_is_refused_and_nothing_is_written(self) -> None:
+        self.seed(1, "a")
+        with open(annotation_store.store_path(self.config), "rb") as handle:
+            before = handle.read()
+        # The stored entry still fits; the one being written cannot, even with it dropped.
+        config = dataclasses.replace(self.config, annotation_read_cap_bytes=len(before) + 10)
+
+        outcome = annotation_store.annotate(
+            config, self.state, "claude", "s-9", goal="b" * 240, lines=["b" * 240] * 6, now=NOW + 50
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, outcome)
+        with open(annotation_store.store_path(self.config), "rb") as handle:
+            self.assertEqual(before, handle.read())
+
+    def test_the_cache_is_what_the_file_holds_after_every_mutator(self) -> None:
+        # T2: the mutators trim their own copy the way the write trims the file.
+        actions: dict[str, Callable[[RuntimeConfig], str]] = {
+            "annotate": lambda config: annotation_store.annotate(
+                config, self.state, "claude", "s-new", goal="g" * 240, now=NOW + 99
+            ),
+            "unchanged": lambda config: annotation_store.annotate(
+                config, self.state, "claude", "s-2", goal="中" * 200, now=NOW + 99
+            ),
+            "settle": lambda config: annotation_store.settle(
+                config, self.state, "claude", "s-2", through=NOW, now=NOW + 99
+            ),
+            "clear": lambda config: annotation_store.clear(
+                config, self.state, "claude", "s-2", now=NOW + 99
+            ),
+        }
+        for name, act in actions.items():
+            with self.subTest(mutator=name):
+                shutil.rmtree(self.root / "state", ignore_errors=True)
+                self.seed(3, "中")
+                entries = list(annotation_store.load(self.config))
+                # A cap the seeded store just fits, so any write that grows it trims.
+                config = self.tight()
+                self.state.annotations = cast("Any", tuple(entries))
+
+                act(config)
+
+                cached = [e["sid"] for e in (self.state.annotations or ())]
+                self.assertEqual([e["sid"] for e in annotation_store.load(config)], cached)
+
+
+class AStoreThatCannotBeReadIsNeverOverwrittenTest(_StoreCase):
+    """D2: missing is not unreadable. Every write refuses over a store this build cannot trust."""
+
+    def seed(self) -> bytes:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="keep me", now=NOW)
+        with open(annotation_store.store_path(self.config), "rb") as handle:
+            return handle.read()
+
+    def untrusted(self) -> dict[str, Callable[[], object]]:
+        path = annotation_store.store_path(self.config)
+        return {
+            "truncated": lambda: pathlib.Path(path).write_bytes(
+                pathlib.Path(path).read_bytes()[:-1]
+            ),
+            "over the cap": lambda: pathlib.Path(path).write_bytes(
+                pathlib.Path(path).read_bytes() + b" " * self.config.annotation_read_cap_bytes
+            ),
+            "not an object": lambda: pathlib.Path(path).write_bytes(b"[1, 2]"),
+        }
+
+    def test_every_write_is_refused_and_the_file_is_left_alone(self) -> None:
+        writes: dict[str, Callable[[], str]] = {
+            "annotate": lambda: annotation_store.annotate(
+                self.config, self.state, "claude", "s-2", goal="new", now=NOW + 1
+            ),
+            "settle": lambda: annotation_store.settle(
+                self.config, self.state, "claude", "s-1", through=NOW, now=NOW + 1
+            ),
+            "clear": lambda: annotation_store.clear(self.config, self.state, "claude", "s-1"),
+            "withheld": lambda: annotation_store.record_withheld(
+                self.config,
+                self.state,
+                "claude",
+                "s-1",
+                reason=reading.WITHHELD_MODEL_FAILED,
+                spent=True,
+            ),
+        }
+        for damage_name, damage in self.untrusted().items():
+            for write_name, write in writes.items():
+                with self.subTest(store=damage_name, write=write_name):
+                    shutil.rmtree(self.root / "state", ignore_errors=True)
+                    self.seed()
+                    damage()
+                    with open(annotation_store.store_path(self.config), "rb") as handle:
+                        before = handle.read()
+
+                    outcome = write()
+
+                    self.assertEqual(annotation_store.OUTCOME_UNTRUSTED, outcome)
+                    with open(annotation_store.store_path(self.config), "rb") as handle:
+                        self.assertEqual(before, handle.read())
+
+    def test_forget_leaves_an_untrusted_store_alone(self) -> None:
+        self.seed()
+        self.untrusted()["truncated"]()
+        with open(annotation_store.store_path(self.config), "rb") as handle:
+            before = handle.read()
+
+        self.assertEqual(annotation_store.FORGET_UNWRITABLE, annotation_store.forget(self.config))
+        with open(annotation_store.store_path(self.config), "rb") as handle:
+            self.assertEqual(before, handle.read())
+
+    def test_a_missing_store_is_simply_empty_and_takes_the_first_save(self) -> None:
+        outcome = annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", goal="first", now=NOW
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+
+    def test_the_page_has_a_sentence_for_the_refusal(self) -> None:
+        source = (
+            REPO
+            / "cargento"
+            / "skills"
+            / "cargento"
+            / "cargento_runtime"
+            / "web"
+            / "next-cockpit.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('untrusted: "untrusted"', source)
+        self.assertIn(annotation_store.OUTCOME_UNTRUSTED, annotation_store.OUTCOMES)
+        self.assertIn("untrusted", annotation_store.DISCARD_SENTENCES)
+
+    def test_the_ruling_discloses_the_downgrade_over_a_large_store(self) -> None:
+        text = (REPO / "docs" / "design-reading-a-session.md").read_text(encoding="utf-8")
+        flat = re.sub(r"\s+", " ", text)
+        self.assertIn("over 2.5 MiB", flat)
+        self.assertIn("every session's saved words", flat)
+
+
+class AStaleOrOlderPageCannotReplaceTheListTest(_StoreCase):
+    """D3: the legacy one-line alias, and any replacement, need the revision they were drafted on."""
+
+    def test_an_older_page_posting_one_output_over_a_list_is_refused(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=SIX[:3], now=NOW)
+
+        for output in ("older text", ""):
+            with self.subTest(output=output):
+                outcome = annotation_store.annotate(
+                    self.config, self.state, "claude", "s-1", output=output, now=NOW + 1
+                )
+
+                self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+                lines = self.entry()["revisions"][-1]["lines"]
+                self.assertEqual(SIX[:3], [line["text"] for line in lines])
+
+    def test_an_older_page_is_refused_over_one_line_too_without_a_revision(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=["one"], now=NOW)
+
+        outcome = annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", output="other", now=NOW + 1
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+
+    def test_an_older_page_may_still_type_the_first_line_of_an_empty_list(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="G", now=NOW)
+
+        outcome = annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", output="a CSV", now=NOW + 1
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+
+    def test_replacing_a_list_without_the_revision_it_was_drafted_on_is_refused(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=["a"], now=NOW)
+
+        outcome = annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", lines=["b"], now=NOW + 1
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+        self.assertEqual(["a"], [line["text"] for line in self.entry()["revisions"][-1]["lines"]])
+
+
+class AnEntryThisBuildCannotReadIsKeptTest(_StoreCase):
+    """D4: an entry refused on read goes back to disk as it was, like a refused reading."""
+
+    FUTURE: dict[str, Any] = {  # noqa: RUF012
+        "harness": "claude",
+        "sid": "from-a-later-build",
+        "revisions": [
+            {"n": 1, "at": NOW, "goal": "G", "lines": [{"text": "x", "source": "model"}]}
+        ],
+    }
+
+    def seed(self) -> None:
+        self.write_raw({"v": 3, "entries": [dict(self.FUTURE)]})
+
+    def on_disk(self) -> list[dict[str, Any]]:
+        with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
+            return list(json.load(handle)["entries"])
+
+    def test_a_save_to_another_session_keeps_it_verbatim(self) -> None:
+        self.seed()
+
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="mine", now=NOW)
+
+        self.assertIn(self.FUTURE, self.on_disk())
+        self.assertIsNone(
+            annotation_store.find(
+                annotation_store.load(self.config), "claude", "from-a-later-build"
+            )
+        )
+
+    def test_forget_keeps_it_verbatim(self) -> None:
+        self.seed()
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="mine", now=NOW)
+        annotation_store.clear(self.config, self.state, "claude", "s-1", now=NOW + 1)
+
+        self.assertEqual(annotation_store.FORGET_SWEPT, annotation_store.forget(self.config))
+        self.assertIn(self.FUTURE, self.on_disk())
+
+
+class AnEntryLineKeepsItsSourceOnceTest(_StoreCase):
+    """D5: sources match one to one, so a typed duplicate of an entry line is typed."""
+
+    def test_a_newly_typed_duplicate_of_an_entry_line_is_typed(self) -> None:
+        self.write_raw(
+            {
+                "v": 2,
+                "entries": [
+                    {
+                        "harness": "claude",
+                        "sid": "s-1",
+                        "revisions": [
+                            {
+                                "n": 1,
+                                "at": NOW,
+                                "goal": "G",
+                                "lines": [{"text": "same", "source": "entry", "source_id": "f-9"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "claude",
+            "s-1",
+            lines=["same", "same"],
+            expected_revision=1,
+            now=NOW + 1,
+        )
+
+        lines = self.entry()["revisions"][-1]["lines"]
+        self.assertEqual(["entry", "typed"], [line["source"] for line in lines])
+
+
+class TheStoresOwnEdgeRulesTest(_StoreCase):
+    """Tests F10 and F11: rules the store holds on its own, without the route in front."""
+
+    def test_the_file_version_is_two(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", goal="G", now=NOW)
+        with open(annotation_store.store_path(self.config), encoding="utf-8") as handle:
+            self.assertEqual(2, json.load(handle)["v"])
+
+    def test_a_goal_beside_a_list_the_store_refuses_is_not_saved_either(self) -> None:
+        outcome = annotation_store.annotate(
+            self.config, self.state, "claude", "s-1", goal="G", lines=["y" * 241], now=NOW
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+        self.assertEqual((), annotation_store.load(self.config))
+
+    def test_a_boolean_revision_is_refused_by_the_store_itself(self) -> None:
+        # `True == 1`, so over revision 1 only the type check tells it apart.
+        annotation_store.annotate(self.config, self.state, "claude", "s-1", lines=["a"], now=NOW)
+
+        outcome = annotation_store.annotate(
+            self.config,
+            self.state,
+            "claude",
+            "s-1",
+            lines=["b"],
+            expected_revision=True,
+            now=NOW + 1,
+        )
+
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+
+    def test_an_entry_line_with_no_entry_named_refuses_the_whole_entry(self) -> None:
+        self.write_raw(
+            {
+                "v": 2,
+                "entries": [
+                    {
+                        "harness": "claude",
+                        "sid": "s-1",
+                        "revisions": [
+                            {
+                                "n": 1,
+                                "at": NOW,
+                                "goal": "G",
+                                "lines": [{"text": "x", "source": "entry"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual((), annotation_store.load(self.config))
+
+
 # --------------------------------------------------------------------------------- producer
 
 
@@ -860,7 +1262,7 @@ class TheReplyAndThePromptHaveRoomForSevenTest(_ProducerCase):
         cut = raw[: raw.index('"line_5"') + 40]
         names = ["goal", *(f"line_{k}" for k in range(1, 7))]
 
-        parsed = reading.parse_reply(cut, names)
+        parsed = reading.parse_reply(cut, names, salvage=True)
 
         self.assertEqual(["departure"] * 5 + ["", ""], [parsed[name]["token"] for name in names])
 
@@ -886,6 +1288,22 @@ class TheReplyAndThePromptHaveRoomForSevenTest(_ProducerCase):
         self.assertLessEqual(size, reading.INTENT_SHARE_BYTES)
         self.assertEqual(9_216, reading.INTENT_SHARE_BYTES)
         self.assertGreaterEqual(observer.OBSERVER_MODEL_MAX_PROMPT_BYTES - size, 7_168)
+
+    def test_an_intent_between_its_share_and_the_budget_still_drops_every_line(self) -> None:
+        # Past 9,216 bytes and under 16,384, so only the share can be what refuses it.
+        wide = "\U0001f600" * 500
+        ledger = reading.build_ledger([_pi_fact("f1", 100.0)], "pi", "p1")
+        header = reading._header("G", (wide,) * 6, tool_note=False)
+        size = len(header.encode("utf-8"))
+        self.assertGreater(size, reading.INTENT_SHARE_BYTES)
+        self.assertLess(size, observer.OBSERVER_MODEL_MAX_PROMPT_BYTES)
+
+        prompt, selection = reading.build_prompt(
+            ledger, goal="G", lines=(wide,) * 6, max_bytes=observer.OBSERVER_MODEL_MAX_PROMPT_BYTES
+        )
+
+        self.assertNotIn("<outcome_line", prompt)
+        self.assertIs(False, selection.asked_output)
 
     def test_an_intent_over_its_share_drops_every_line_together(self) -> None:
         huge = "\U0001f600" * 2_000
@@ -917,6 +1335,48 @@ class AReadingSaysHowFarItsEvidenceRanTest(_ProducerCase):
         assert assessment is not None
         self.assertNotIn("wrote the retry loop", self.prompts[0])
         self.assertEqual(900.0, assessment["evidence_through"])
+
+    def test_evidence_through_counts_a_check_that_was_not_sent(self) -> None:
+        # A Claude Code check with no tool-output grant is left out of the ledger, and it was
+        # still in the record when the reading ran.
+        row = {"harness": "claude", "sid": "c1", "state": "working", "ended_at": None}
+        facts = [
+            {
+                "fact_id": "m1",
+                "type": "user_message",
+                "by": "person:jared",
+                "summary": "harden the ingest",
+                "at": 100.0,
+                "evidence": {"source": "transcript", "confidence": "exact"},
+                "source_session": {"harness": "claude", "sid": "c1"},
+            },
+            {
+                "fact_id": "c9",
+                "type": reading.TOOL_REPORT_TYPE,
+                "subject": reading.CHECK_SUBJECT,
+                "result": "failed",
+                "by": "agent",
+                "summary": "pytest",
+                "at": 300.0,
+                "evidence": {"source": "transcript", "confidence": "exact"},
+                "source_session": {"harness": "claude", "sid": "c1"},
+            },
+            {**_pi_fact("x", 900.0), "source_session": {"harness": "claude", "sid": "other"}},
+        ]
+
+        assessment, _why, _spent = reading.produce(
+            cast("Any", _Config()),
+            row,
+            [{"n": 1, "at": 10.0, "goal": "G", "lines": []}],
+            facts,
+            now=500.0,
+            stamp_text="read",
+            model=self.model(_reply(["goal"])),
+            read_lines=True,
+        )
+
+        assert assessment is not None
+        self.assertEqual(300.0, assessment["evidence_through"])
 
     def test_a_record_with_no_usable_time_says_so_with_none(self) -> None:
         assessment, _why, _spent = self.produce(_reply(["goal"]), facts=[_pi_fact("f1", 0.0)])
@@ -1068,6 +1528,42 @@ class HistoryKeepsEachLineOnItsOwnTest(unittest.TestCase):
         self.assertEqual(256, len(stored))
         self.assertNotIn("\u202e", stored)
 
+    def test_editing_any_one_line_is_a_transition(self) -> None:
+        for k in range(1, 7):
+            with self.subTest(line=k):
+                shutil.rmtree(self.home.name, ignore_errors=True)
+                os.makedirs(self.home.name, exist_ok=True)
+                before = list(SIX)
+                after = list(SIX)
+                after[k - 1] = "edited"
+                history.record(self.config, [self.row(before)], now=1_000.0)
+                history.record(self.config, [self.row(after)], now=1_001.0)
+
+                entries, _reset = history.load(self.config)
+
+                self.assertEqual(2, len(entries))
+
+    def test_a_change_of_source_alone_is_a_transition(self) -> None:
+        history.record(self.config, [self.row(["one"])], now=1_000.0)
+        moved = self.row(["one"])
+        moved["annotation_line_1_source"] = "entry"
+        history.record(self.config, [moved], now=1_001.0)
+
+        entries, _reset = history.load(self.config)
+
+        self.assertEqual(["typed", "entry"], [e["annotation_line_1_source"] for e in entries])
+
+    def test_a_source_is_a_closed_token_and_only_beside_words(self) -> None:
+        row = self.row(["one"])
+        row["annotation_line_1_source"] = "model"
+        row["annotation_line_2_source"] = "typed"
+        history.record(self.config, [row], now=1_000.0)
+
+        entries, _reset = history.load(self.config)
+
+        self.assertIsNone(entries[0]["annotation_line_1_source"])
+        self.assertIsNone(entries[0]["annotation_line_2_source"])
+
     def test_editing_a_line_is_a_transition(self) -> None:
         history.record(self.config, [self.row(["one"])], now=1_000.0)
         history.record(self.config, [self.row(["two"], activity=1_000.0)], now=1_001.0)
@@ -1189,15 +1685,33 @@ class TheAnnotateRouteTakesAListTest(unittest.TestCase):
 
         self.assertEqual(400, status)
 
-    def test_the_body_cap_is_8192_bytes(self) -> None:
-        self.assertEqual(8_192, self.config.annotation_body_cap_bytes)
+    def test_the_body_cap_is_12288_bytes(self) -> None:
+        self.assertEqual(12_288, self.config.annotation_body_cap_bytes)
         base = {"harness": "claude", "sid": "s-1", "lines": ["a"], "pad": ""}
-        spare = 8_192 - len(json.dumps(base).encode())
+        spare = 12_288 - len(json.dumps(base).encode())
         with self.serving() as port:
             fits, _ = self.post(port, json.dumps({**base, "pad": "p" * spare}).encode())
             over, _ = self.post(port, json.dumps({**base, "pad": "p" * (spare + 1)}).encode())
 
         self.assertEqual((200, 413), (fits, over))
+
+    def test_six_lines_of_pasted_control_characters_fit_the_body_the_page_sends(self) -> None:
+        # `JSON.stringify` writes each C0 control character as six bytes, and the page's box
+        # counts characters, so this is the widest body a paste can produce before the store
+        # collapses the characters to spaces.
+        pasted = "\x01" * 240
+        body = json.dumps(
+            {
+                "harness": "claude",
+                "sid": "x" * 64,
+                "goal": pasted,
+                "lines": [pasted] * 6,
+                "expected_revision": 123456,
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        self.assertLessEqual(len(body), self.config.annotation_body_cap_bytes)
 
     def test_six_astral_lines_and_a_goal_fit_the_body_the_page_sends(self) -> None:
         astral = "\U0001f600" * 240
@@ -1214,6 +1728,129 @@ class TheAnnotateRouteTakesAListTest(unittest.TestCase):
         ).encode()
 
         self.assertLessEqual(len(body), self.config.annotation_body_cap_bytes)
+
+
+class TheUnaskedSentenceSaysWhatTheLaneReadTest(unittest.TestCase):
+    """C1: the lane reads a typed goal alone, so only a goal is something it has checked."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _config(Path(self.temp.name), unasked_enabled=True)
+
+    def entry(self, goal: str) -> annotation_store.Annotation:
+        return cast(
+            "annotation_store.Annotation",
+            {
+                "harness": "claude",
+                "sid": "s-1",
+                "revisions": (
+                    {
+                        "n": 2,
+                        "at": 10.0,
+                        "goal": goal,
+                        "lines": ({"text": "A exists", "source": "typed"},),
+                    },
+                ),
+            },
+        )
+
+    def check(self) -> Any:
+        return {
+            "harness": "claude",
+            "sid": "s-1",
+            "at": 4_000.0,
+            "constraint": "",
+            "clause": "",
+            "reading": "",
+            "evidence": "",
+            "revision": 1,
+            "cutoff": 4_000.0,
+            "cutoff_text": "",
+            "withdrawn": False,
+        }
+
+    def published(self, goal: str) -> dict[str, Any]:
+        return unasked.published(
+            self.config,
+            (self.check(),),
+            {"harness": "claude", "sid": "s-1"},
+            entries=(self.entry(goal),),
+            now=5_000.0,
+        )
+
+    def test_a_clean_check_says_it_read_the_goal_and_not_the_lines(self) -> None:
+        said = self.published("G")
+
+        self.assertTrue(said["departure_checked"])
+        self.assertIn("your goal", said["departure_why"])
+        self.assertIn("do not read your expected outcome", said["departure_why"])
+
+    def test_lines_with_no_goal_are_never_called_checked(self) -> None:
+        said = self.published("")
+
+        self.assertFalse(said["departure_checked"])
+        self.assertEqual(departures.NEVER_CHECKED, said["departure_why"])
+
+    def test_the_intent_log_uses_the_same_goal_only_test(self) -> None:
+        source = (
+            REPO / "cargento" / "skills" / "cargento" / "cargento_runtime" / "http_api.py"
+        ).read_text(encoding="utf-8")
+        start = source.index('"departure_why": departures.why(')
+        self.assertIn("has_typed_goal(entry)", source[start : start + 400])
+
+
+class OnlyACutReplyIsSalvagedTest(unittest.TestCase):
+    """C3: recovery is for a reply the cap cut, never for prose around an answer."""
+
+    NAMES = ("goal", "line_1", "line_2")
+
+    def test_prose_around_an_answer_is_unreadable_under_the_cap(self) -> None:
+        draft = '{"goal": {"result": "consistent", "cites": [1]}, "line_2": {"result": "consistent", "cites": [1]}}'
+        final = '{"goal": {"result": "consistent", "cites": [1]}, "line_2": {"result": "departure", "cites": [1]}}'
+        for raw in (f"Sure: {final}", f"Draft: {draft}\nFinal: {final}", f"{final} trailing words"):
+            with self.subTest(raw=raw[:20]):
+                parsed = reading.parse_reply(
+                    raw, self.NAMES, salvage=len(raw) >= reading.REPLY_CAP_BYTES
+                )
+
+                self.assertEqual(["", "", ""], [parsed[name]["token"] for name in self.NAMES])
+
+    def test_produce_salvages_only_at_the_cap(self) -> None:
+        case = _ProducerCase()
+        case.setUp()
+        body = '{"goal": {"result": "departure", "cites": [1], "detail": "x"}, "line_1": {"result'
+        assessment, _why, _spent = case.produce(body, lines=SIX[:1])
+
+        assert assessment is not None
+        self.assertNotIn("result", assessment["criteria"]["goal"])
+
+
+class ThePromptAndTheResolverNumberTheSameLinesTest(_ProducerCase):
+    """C5: one filter decides which lines exist, for the prompt and for the answers."""
+
+    def test_a_line_that_scrubs_to_nothing_takes_no_number(self) -> None:
+        raw = _reply(
+            ["goal", "line_1"], line_1={"result": "consistent", "cites": [1], "detail": ""}
+        )
+
+        assessment, _why, _spent = self.produce(raw, lines=["\u200b", "B must exist"])
+
+        assert assessment is not None
+        self.assertIn('<outcome_line n="1">\nB must exist\n</outcome_line>', self.prompts[0])
+        self.assertEqual(["goal", "line_1"], list(assessment["criteria"]))
+        self.assertEqual("B must exist", assessment["criteria"]["line_1"]["clause"])
+
+
+class TheConsentNamesTheOutcomeLinesTest(unittest.TestCase):
+    """C6: the disclosure names the field the reader now sees."""
+
+    def test_the_consent_sentence_says_expected_outcome_lines(self) -> None:
+        source = (
+            REPO / "cargento" / "skills" / "cargento" / "cargento_runtime" / "reading_route.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("expected outcome lines", source)
+        self.assertNotIn("Your expected output is sent", source)
 
 
 # -------------------------------------------------------------------------------------- docs

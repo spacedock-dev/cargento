@@ -210,7 +210,9 @@ class AnnotationStoreTest(unittest.TestCase):
         )
 
         # An explicit empty string is a clear of that one field.
-        annotation_store.annotate(self.config, self.state, "pi", "s", output="", now=self.NOW + 2)
+        annotation_store.annotate(
+            self.config, self.state, "pi", "s", lines=[], expected_revision=2, now=self.NOW + 2
+        )
         entry = annotation_store.find(annotation_store.active(self.config, self.state), "pi", "s")
         assert entry is not None
         self.assertEqual(
@@ -861,7 +863,7 @@ class DiscardingIsNotTheClearBesideTheBoxTest(unittest.TestCase):
         said = set(annotation_store.DISCARD_SENTENCES.values())
 
         self.assertEqual(len(annotation_store.DISCARD_SENTENCES), len(said))
-        self.assertEqual(10, len(said))
+        self.assertEqual(11, len(said))
         self.assertNotIn("Saved as a new revision.", said)
         for sentence in said:
             with self.subTest(sentence=sentence[:32]):
@@ -2145,7 +2147,7 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, unwritable)
         # The vocabulary is closed and every token is a distinct string, so no
         # two outcomes can render as one sentence by accident.
-        self.assertEqual(4, len(set(annotation_store.OUTCOMES)))
+        self.assertEqual(5, len(set(annotation_store.OUTCOMES)))
         self.assertNotIn(True, annotation_store.OUTCOMES)
         self.assertNotIn(False, annotation_store.OUTCOMES)
 

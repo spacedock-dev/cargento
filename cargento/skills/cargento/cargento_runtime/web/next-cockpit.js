@@ -1032,6 +1032,13 @@ const NEXT_COCKPIT_HELD_CUES = {
      class and the second one its by-hand sweep missed. */
   "settle-refused": "Not settled. The store refused the mark, so the question below still " +
     "stands as it did.",
+  /* The store exists and the server could not read it, so it wrote nothing:
+     writing would keep only what it can read and lose every other session's
+     words (`annotations.OUTCOME_UNTRUSTED`). The remedy is the file, not a retry. */
+  untrusted: "Not saved. The annotation store on disk could not be read, so nothing was " +
+    "written to it, and what you typed is still in the box.",
+  "settle-untrusted": "Not settled. The annotation store on disk could not be read, so " +
+    "nothing was written and the later direction is still unsettled.",
   "settle-unpersisted": "Not settled. The store could not be written, so the mark has " +
     "already been dropped and the question below still stands.",
 };
@@ -1050,6 +1057,7 @@ const NEXT_COCKPIT_SETTLE_LANDED = "Settled. A direction given after this will r
    `persisted`, which keeps its meaning across builds. */
 const NEXT_COCKPIT_HELD_OUTCOME_CUES = {
   stored: "saved", unchanged: "unchanged", refused: "error", unwritable: "unpersisted",
+  untrusted: "untrusted",
 };
 
 /* The stamped kind, or nothing once it has expired. Split out from the cue
@@ -1672,14 +1680,12 @@ function nextReadingNamesConstraint(key){
 }
 
 /* The constraints a reading's rows are drawn for, goal first and then each
-   line in order: every constraint the READING read, and beside those the
-   ones typed now, for the reason `nextCockpitReadingShape` gives. */
+   line in order: the constraints the READING read, from its own criteria,
+   and never today's lines. A line typed after the reading was never asked,
+   and drawing it made the row say the reading failed on it. The goal alone
+   falls back to today's words, because every reading asks it. */
 function nextReadingConstraints(rows, annotation){
-  // A legacy `output` row is the reading's line 1, so today's lines are not
-  // drawn beside it a second time.
-  const typed = rows && rows.output ? [] : nextAnnotationLines(annotation);
-  const keys = new Set(["goal", ...Object.keys(rows || {}).filter(nextReadingNamesConstraint),
-    ...typed.map(line => `line_${line.k}`)]);
+  const keys = new Set(["goal", ...Object.keys(rows || {}).filter(nextReadingNamesConstraint)]);
   const order = key => key === "goal" ? 0 : key === "output" ? 1
     : Number(NEXT_READING_OUTCOME_LINE.exec(key)[1]);
   return [...keys].sort((left, right) => order(left) - order(right))
@@ -2551,7 +2557,7 @@ function nextCockpitReadingDepartures(shape, source, session = null){
     /* Zero and not unmeasured: the reading was read, and it raised nothing.
        The sentence beside the figure is what says the nothing is worth
        nothing. */
-    return nothing("This reading verified neither constraint, so it raised nothing and " +
+    return nothing("This reading verified none of the constraints it read, so it raised nothing and " +
       "confirmed nothing.", 0);
   }
   const rows = shape.departures.map(row =>
@@ -3318,7 +3324,8 @@ async function nextCockpitConflictSettle(session, through){
     const settleKey = nextCockpitHeldKey(session, "settle");
     if(saved.persisted !== true){
       nextCockpitHeldMark(settleKey,
-        String(saved.outcome || "") === "refused" ? "settle-refused" : "settle-unpersisted");
+        {refused: "settle-refused", untrusted: "settle-untrusted"}[String(saved.outcome || "")] ||
+        "settle-unpersisted");
     }else{
       /* Cleared rather than left alone. A press that failed and a press that
          landed share one lane and one key, so a failure cue outlived its
@@ -3365,7 +3372,7 @@ async function nextCockpitDiscardAnnotation(session){
     /* The store's own token, with `persisted` as the fallback an older or
        newer server leaves: one bit cannot carry three sentences, which is
        what `NEXT_COCKPIT_HELD_CUES` records about the save path. */
-    const answered = ["stored", "refused", "unwritable"].includes(outcome)
+    const answered = ["stored", "refused", "unwritable", "untrusted"].includes(outcome)
       ? `discard-${outcome}`
       : (answer.persisted === true ? "discard-stored" : "discard-unwritable");
     /* A discard is one act over two stores and the second half fails on its

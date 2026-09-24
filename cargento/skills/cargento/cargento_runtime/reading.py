@@ -99,6 +99,10 @@ _OUTCOME_LINE = re.compile(r"line_([1-9][0-9]*)")
 # the only guard.
 INTENT_SHARE_BYTES = 9_216
 REPLY_CAP_BYTES = 8_192
+# How far under the cap a reply may come back and still count as cut: the
+# exec layer strips trailing whitespace, and an indented reply cut inside its
+# indentation loses that run.
+REPLY_CUT_SLACK_BYTES = 64
 
 
 def outcome_line(k: int) -> str:
@@ -607,6 +611,9 @@ class Selection:
     # `build_prompt` from the header it actually used, so `resolve` never
     # re-derives it. A hand-built selection (tests) takes it from its entries.
     asked_output: bool | None = None
+    # The outcome lines as `build_prompt` numbered them, posed or not, so the
+    # answers are read and resolved against the same numbering the prompt used.
+    lines: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.asked_output is None:
@@ -668,11 +675,11 @@ class Assessment(TypedDict):
     scope: str
     scope_text: str
     ended_at_read: float | None
-    # The newest time in the record this reading was built from, including
-    # entries the prompt had no room for, so a later entry is new work rather
-    # than one the budget left out. None on a reading stored before the field,
-    # and where no entry carried a usable time (item 6 of the ruling
-    # `MAX_OUTCOME_LINES` cites).
+    # The newest time on any fact naming the session when it was read,
+    # including entries the prompt had no room for or was not allowed to send,
+    # so a later entry is new work rather than one the budget left out. None
+    # on a reading stored before the field, and where no entry carried a
+    # usable time (item 6 of the ruling `MAX_OUTCOME_LINES` cites).
     evidence_through: float | None
     criteria: dict[str, Criterion]
 
@@ -1164,6 +1171,7 @@ def build_prompt(
             unread_failures=tuple(failures),
             unread_checks=tuple(checks),
             asked_output=posed,
+            lines=line_texts,
         )
 
     def row_text(index: int, row: LedgerEntry) -> str:
@@ -1203,6 +1211,7 @@ def build_prompt(
         unread_failures=tuple(entry for entry in failures if id(entry) not in taken),
         unread_checks=tuple(entry for entry in checks if id(entry) not in taken),
         asked_output=posed,
+        lines=line_texts,
     )
 
 
@@ -1249,14 +1258,19 @@ def _members(text: str) -> dict[str, Any]:
     return members
 
 
-def parse_reply(raw: str, names: Sequence[str] = (CONSTRAINT_GOAL,)) -> dict[str, dict[str, Any]]:
+def parse_reply(
+    raw: str, names: Sequence[str] = (CONSTRAINT_GOAL,), *, salvage: bool = False
+) -> dict[str, dict[str, Any]]:
     """One model reply, reduced to tokens and integers.
 
     Always returns every name asked. An unparseable, empty, non-JSON or
     wrong-shaped answer yields a constraint with no token and no citations,
     which becomes a criterion with no `result` key -- rule 2's fallback made
     structural, so there is no arm in which a bad reply becomes a verdict.
-    A reply cut short keeps each answer that arrived whole (`_members`).
+    `salvage` is the caller saying the reply reached the cap: only then, and
+    only for a reply that opens as the object it was asked for, does it keep
+    each answer that arrived whole (`_members`). Prose around an answer, or a
+    draft before a final one, stays unreadable as it always was.
 
     Keys outside `{result, cites, detail}` are dropped rather than carried:
     the four fields the model must not author are exactly the ones a reply
@@ -1273,7 +1287,7 @@ def parse_reply(raw: str, names: Sequence[str] = (CONSTRAINT_GOAL,)) -> dict[str
     try:
         payload = json.loads(text)
     except (ValueError, RecursionError):
-        payload = _members(text)
+        payload = _members(text) if salvage and text.lstrip().startswith("{") else None
     if not isinstance(payload, dict):
         return empty
     for name in names:
@@ -1736,6 +1750,10 @@ def produce(  # noqa: PLR0913
     if not selected.entries:
         return None, WITHHELD_LEDGER_EMPTY, False
     raw, status = model(prompt, output_cap_bytes=REPLY_CAP_BYTES)
+    # A reply that reached the cap is the one a cut can explain. The exec layer
+    # decodes with "replace" and strips, so a cut reply can come back a little
+    # under the cap: the slack is a run of indentation, not a second budget.
+    cut = len(raw.encode("utf-8", "replace")) >= REPLY_CAP_BYTES - REPLY_CUT_SLACK_BYTES
     if status == "unavailable":
         # Named for the CLI the page promised, never the other one: each model
         # says which sentence its own absence gets.
@@ -1743,10 +1761,10 @@ def produce(  # noqa: PLR0913
     if status != "ok":
         return None, WITHHELD_MODEL_FAILED, True
     criteria = resolve(
-        parse_reply(raw, constraints_for(lines)),
+        parse_reply(raw, constraints_for(selected.lines), salvage=cut),
         selected,
         goal=goal,
-        lines=lines,
+        lines=selected.lines,
         detail_cap_chars=config.annotation_text_cap_chars,
         window_start=baseline_at(latest),
     )
@@ -1776,13 +1794,33 @@ def produce(  # noqa: PLR0913
         "scope_text": SCOPE_TEXT[scope],
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
         "revision_read_at": records.norm_epoch(latest.get("at")) or None,
-        "evidence_through": max((entry["at"] for entry in ledger if entry["at"] > 0), default=None),
+        "evidence_through": _newest(facts, harness, sid),
         "criteria": criteria,
     }
     if latest.get("goal_source") in PROMPT_SOURCES:
         assessment["goal_source"] = str(latest["goal_source"])
         assessment["goal_source_at"] = baseline_at(latest)
     return assessment, "", True
+
+
+def _newest(facts: Sequence[Any], harness: str, sid: str) -> float | None:
+    """The newest time on any fact naming this session, whatever the prompt carried.
+
+    From the facts rather than the ledger, because the ledger leaves out a
+    check the press had no grant to send, and that check was in the record
+    when the reading ran: counting it later as new work would be false.
+    """
+    stamps = [
+        at
+        for fact in facts
+        if isinstance(fact, dict)
+        and isinstance(fact.get("source_session"), dict)
+        and (fact["source_session"].get("harness"), fact["source_session"].get("sid"))
+        == (harness, sid)
+        and (at := _number(fact.get("at"))) is not None
+        and at > 0
+    ]
+    return max(stamps, default=None)
 
 
 def _has_reports(facts: Sequence[Any], harness: str, sid: str) -> bool:

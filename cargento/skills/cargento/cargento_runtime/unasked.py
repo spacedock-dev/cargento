@@ -458,7 +458,8 @@ def published(
     harness = str(row.get("harness") or "")
     sid = str(row.get("sid") or "")
     entry = annotation_store.find(entries, harness, sid)
-    has_words = annotation_store.has_typed_words(entry)
+    # The goal alone, because it is all the lane reads.
+    has_words = annotation_store.has_typed_goal(entry)
     return {
         "departures": departures.published(stored, harness, sid),
         # Absence, presence and discarded are three answers and not two

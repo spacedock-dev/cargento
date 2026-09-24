@@ -81,8 +81,9 @@ const __escape = index => __fire("keydown", {key:"Escape", preventDefault(){},
 """
 
 
-@unittest.skipUnless(shutil.which("node"), "node not available")
-class TheExpectedOutcomeIsAChecklistTest(NextPageJsHarness):
+class _ChecklistPage(NextPageJsHarness):
+    """The session page with the drift block's checklist on it, and a reading to put under it."""
+
     def page(self, setup: str = "", after: str = "") -> Any:
         return self._run_page_js(
             "await __settle();\nawait __settle();\n"
@@ -95,6 +96,17 @@ class TheExpectedOutcomeIsAChecklistTest(NextPageJsHarness):
             storage_prelude({}) + FIXTURE,
         )
 
+    def reading(self, criteria: str, extra: str = "") -> str:
+        return (
+            "__dashboard.sessions[0].annotation_at = 106;\n"
+            "__dashboard.sessions[0].annotation_reading_count = 1;\n"
+            "__dashboard.sessions[0].annotation_assessment = {revision_read:2, "
+            f"evidence_through: 105, {extra} criteria:{{{criteria}}}}};\n"
+        )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheExpectedOutcomeIsAChecklistTest(_ChecklistPage):
     def test_six_saved_lines_render_as_six_boxes_each_saying_where_it_came_from(self) -> None:
         html = self.page(lines_setup(SIX, ["typed", "typed", "entry", "typed", "typed", "typed"]))
 
@@ -224,14 +236,6 @@ console.log(JSON.stringify({removed, saveShown, restored}));
         self.assertIn(annotation_store.NO_LINES_TYPED, visible_text(html))
         self.assertNotIn('data-next-cockpit-held-line-source="0"', html)
 
-    def reading(self, criteria: str, extra: str = "") -> str:
-        return (
-            "__dashboard.sessions[0].annotation_at = 106;\n"
-            "__dashboard.sessions[0].annotation_reading_count = 1;\n"
-            "__dashboard.sessions[0].annotation_assessment = {revision_read:2, "
-            f"evidence_through: 105, {extra} criteria:{{{criteria}}}}};\n"
-        )
-
     def test_a_reading_of_six_lines_shows_six_rows_each_with_its_line_and_source(self) -> None:
         unverifiable = (
             f'result:"{reading.RESULT_UNVERIFIABLE}", cites:[], detail:"", why:"not-asked"'
@@ -309,6 +313,136 @@ console.log(JSON.stringify(nextIntentSources(row, null, true)));
         )
 
         self.assertIn("Expected outcome: No expected outcome typed.", visible_text(out))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheCorrectionRoundOnThePageTest(_ChecklistPage):
+    """The review's page findings, each a sentence about what the reader sees."""
+
+    UNV = f'result:"{reading.RESULT_UNVERIFIABLE}", cites:[], detail:"", why:""'
+
+    def reading_block(self, html: str) -> str:
+        return visible_text(html[html.index("<h2>READING</h2>") :])
+
+    def test_a_line_typed_after_a_reading_gets_no_row_under_it(self) -> None:
+        # The reading read revision 1, which had one line. Revision 2 holds three.
+        criteria = f'goal:{{{self.UNV}, clause:"G"}}, line_1:{{{self.UNV}, clause:"A"}}'
+
+        html = self.page(
+            lines_setup(["A", "B", "C"])
+            + self.reading(criteria).replace("revision_read:2", "revision_read:1")
+        )
+
+        text = self.reading_block(html)
+        self.assertIn("LINE 1", text)
+        self.assertNotIn("LINE 2", text)
+        self.assertNotIn("LINE 3", text)
+
+    def test_no_source_is_claimed_under_a_reading_of_an_older_revision(self) -> None:
+        criteria = f'goal:{{{self.UNV}, clause:"G"}}, line_1:{{{self.UNV}, clause:"A"}}'
+
+        html = self.page(
+            lines_setup(["A"])
+            + self.reading(criteria).replace("revision_read:2", "revision_read:1")
+        )
+
+        self.assertNotIn("· TYPED", self.reading_block(html))
+
+    def test_no_source_is_claimed_for_words_the_reading_did_not_read(self) -> None:
+        criteria = (
+            f'goal:{{{self.UNV}, clause:"G"}}, line_1:{{{self.UNV}, clause:"A"}}, '
+            f'line_2:{{{self.UNV}, clause:"different words"}}'
+        )
+
+        html = self.page(lines_setup(["A", "B"]) + self.reading(criteria))
+
+        text = self.reading_block(html)
+        self.assertIn("LINE 1 · TYPED", text)
+        self.assertIn("LINE 2", text)
+        self.assertNotIn("LINE 2 · TYPED", text)
+
+    def test_a_reading_from_before_the_checklist_is_not_drawn_twice(self) -> None:
+        criteria = f'goal:{{{self.UNV}, clause:"G"}}, output:{{{self.UNV}, clause:"a CSV export"}}'
+
+        html = self.page(lines_setup(["a CSV export"]) + self.reading(criteria))
+
+        self.assertNotIn("LINE 1", self.reading_block(html))
+
+    def test_a_line_resting_only_on_narration_is_not_verifiable_on_the_page(self) -> None:
+        consistent = 'result:"consistent with the evidence read", detail:""'
+        criteria = (
+            f'goal:{{{self.UNV}, clause:"G"}}, line_1:{{{self.UNV}, clause:"A"}}, '
+            f'line_2:{{{consistent}, cites:["task-a"], clause:"B"}}'
+        )
+
+        out = self.page(
+            lines_setup(["A", "B"]) + self.reading(criteria),
+            """
+const session = nextCockpitFocusedSession(nextCockpitRouteGroup());
+const annotation = nextCockpitAnnotation(session);
+const source = nextCockpitWorkSource(nextCockpitRouteGroup(), session);
+const shape = nextCockpitReadingShape(annotation.assessment, annotation,
+  source.all || source.entries, "", false);
+console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result])));
+""",
+        )
+
+        self.assertEqual(["line_2", reading.RESULT_UNVERIFIABLE], out[-1])
+
+    def test_pressing_add_at_six_says_why_aloud(self) -> None:
+        out = self.page(
+            lines_setup(SIX),
+            """
+const said = [];
+nextCockpitAnnounceCue = (key, sentence, assertive) => said.push([sentence, assertive]);
+__press("held-line-add");
+await __settle();
+console.log(JSON.stringify(said));
+""",
+        )
+
+        self.assertEqual([[FULL, False]], out)
+
+    def test_discarding_everything_drops_a_half_typed_line(self) -> None:
+        out = self.page(
+            lines_setup(SIX[:1]),
+            """
+__fetchImpl = url => String(url) === "/api/annotate"
+  ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted:true, outcome:"stored",
+      withdrew:true})})
+  : new Promise(() => {});
+__type(0, "half typed");
+const before = nextCockpitHeldDrafts.has("held:codex:focus-1:lines");
+nextCockpitDiscardAnnotation(nextCockpitFocusedSession(nextCockpitRouteGroup()));
+await __settle();
+await __settle();
+console.log(JSON.stringify({before, after: nextCockpitHeldDrafts.has("held:codex:focus-1:lines")}));
+""",
+        )
+
+        self.assertEqual({"before": True, "after": False}, out)
+
+    def test_a_save_over_a_store_the_server_cannot_read_says_so(self) -> None:
+        out = self.page(
+            lines_setup(SIX[:1]),
+            """
+__fetchImpl = url => String(url) === "/api/annotate"
+  ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted:false, outcome:"untrusted"})})
+  : new Promise(() => {});
+__type(0, "edited");
+__press("held-save", "lines");
+await __settle();
+await __settle();
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+        )
+
+        self.assertIn(
+            "Not saved. The annotation store on disk could not be read, so nothing was written to "
+            "it, and what you typed is still in the box.",
+            visible_text(out),
+        )
 
 
 class ThePageAndTheStoreAgreeOnSixTest(unittest.TestCase):

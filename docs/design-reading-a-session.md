@@ -163,6 +163,13 @@ by the next save. The history copy carries up to six line fields where it carrie
 annotated session's records are larger and the size cap ages other sessions out sooner. The owner
 accepted that too.
 
+The larger store costs a second downgrade, and the owner ruled on it on 2026-09-24: the read limit
+stays at 16 MiB. A build that old refuses a store over 2.5 MiB as unreadable, and its next save
+writes every session's saved words away, not only the lines. This build does the opposite: a store
+it cannot read whole, whether unreadable, over its limit or not JSON, is never written over, and
+every save answers `untrusted` until the file is readable again. A missing store is not that
+state; it is empty and takes the first save.
+
 ## DEC-16: Cargento does not write into a session
 
 A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
@@ -1267,15 +1274,18 @@ the later-direction floor (item 9).
    that first stores and sends outcome lines:
    - The store holds 6 lines of at most 240 characters on each revision. A seventh line, or a line
      over 240 characters, is refused rather than clipped. The store's read limit is 16 MiB, and a
-     write trims the oldest entries until the file fits, so the next read reads what the write
-     kept (owner, 2026-09-24).
+     write trims the least recently written entries until the file fits, so the next read reads
+     what the write kept (owner, 2026-09-24). The entry being written is never the one trimmed:
+     when it cannot fit even alone, nothing is written and the save answers `unwritable`.
    - The history copy is one flat field per line, at most 256 characters each, with a closed
      source token beside it and no entry id.
    - The goal and the lines take at most 9,216 of 16,384 bytes of the prompt. Over that share,
      every line is dropped together as not asked, never some of them.
    - The reply cap is 8,192 bytes, and a reply cut at the cap keeps each answer that arrived
      whole.
-   - The annotation request body cap is 8,192 bytes.
+   - The annotation request body cap is 12,288 bytes. The widest body the page can send is a
+     goal and six lines pasted as control characters, which the browser writes as six bytes each
+     before the store collapses them: 10,238 bytes with a 64-character session id.
 4. A later direction before an analysis. When the record holds an unsettled later direction of the
    reader's, the Drift section asks before the press, naming how many are unsettled. For one it
    says "You gave a later direction at #<n>: "<first line>"."; for several, "You gave <N> later

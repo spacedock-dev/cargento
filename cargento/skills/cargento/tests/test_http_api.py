@@ -3177,6 +3177,43 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(503, status)
         self.assertEqual([], calls, "the model ran behind a closed gate")
 
+    def test_a_press_reads_every_outcome_line_the_reader_typed(self) -> None:
+        """DRC-4685: the reading route is the one caller that reads the lines.
+
+        `produce` defaults to the goal alone, which is the unasked lane's guard,
+        so the route's own `read_lines=True` is the half that must be bound here.
+        """
+        config, state = self._runtime()
+        application = self._app(config, state)
+        annotation_store.annotate(
+            config,
+            state,
+            "pi",
+            "s1",
+            lines=["the parser rejects bad input", "a regression test covers it"],
+            expected_revision=1,
+            now=11.0,
+        )
+        work = {
+            **self.FACT,
+            "fact_id": "w1",
+            "type": "work_result",
+            "summary": "wrote the parser",
+            "by": "agent",
+        }
+        with (
+            self._counting_model(extra_facts=(work,)) as calls,
+            self._serving(application) as port,
+        ):
+            status, _ = self._post(port, self._press())
+        self.assertEqual(200, status)
+        self.assertEqual(1, len(calls))
+        self.assertIn('<outcome_line n="1">', calls[0])
+        self.assertIn('<outcome_line n="2">', calls[0])
+        entry = annotation_store.find(annotation_store.load(config), "pi", "s1")
+        assert entry is not None
+        self.assertEqual({"goal", "line_1", "line_2"}, set(entry["assessment"]["criteria"]))
+
     def test_the_accepted_case_review_allows_one_explicit_reading(self) -> None:
         self.assertEqual("accepted", annotation_store.ABSTENTION_CHECK)
         config, state = self._runtime()

@@ -7225,9 +7225,11 @@ console.log(JSON.stringify({
         )
         assert isinstance(out, dict)
         unverifiable = "not verifiable from available evidence"
-        self.assertEqual({"goal": unverifiable, "line_1": unverifiable}, out["missing"])
+        # A reading draws only the constraints it carries, so a reading with
+        # no criteria draws the goal it always asks and no outcome line.
+        self.assertEqual({"goal": unverifiable}, out["missing"])
         self.assertEqual({"goal": unverifiable, "line_1": unverifiable}, out["garbage"])
-        self.assertEqual([unverifiable, unverifiable], out["noReading"])
+        self.assertEqual([unverifiable], out["noReading"])
         self.assertEqual(
             "The reading did not return a usable result for this constraint.", out["why"]
         )
@@ -7413,17 +7415,14 @@ console.log(JSON.stringify({
 """
         )
         assert isinstance(out, dict)
-        # Two rows per case, goal then output. The output row has no producer
-        # entry in any of the three, so it lands on the fallback each time.
+        # One row per case: each reading carries the goal alone, and a reading
+        # draws only the constraints it read.
         unverifiable = "not verifiable from available evidence"
         self.assertEqual(
             [
                 unverifiable,
-                unverifiable,
                 "departure",
-                unverifiable,
                 "consistent with the evidence read",
-                unverifiable,
             ],
             out["resultStrings"],
         )
@@ -7472,7 +7471,8 @@ console.log(JSON.stringify({
 const one = nextCockpitReadingShape({criteria:{goal:{result:"departure", cites:["u1"]}}},
   {goal:"do not change the board", line_1:""}, entries, "");
 console.log(JSON.stringify({
-  both: shape({}).criteria.map(row => [row.key, row.label, row.clause]),
+  both: shape({goal:{result:"departure", cites:["u1"]}, line_1:{result:"departure",
+    cites:["u1"]}}).criteria.map(row => [row.key, row.label, row.clause]),
   goalOnly: one.criteria.map(row => row.key),
 }));
 """
@@ -9412,7 +9412,8 @@ console.log(JSON.stringify({
         self.assertIn("CONFLICT TO SETTLE", out["html"])
         self.assertNotIn("It changed the board.", out["block"])
         self.assertIn(
-            "This reading verified neither constraint, so it raised nothing and confirmed nothing.",
+            "This reading verified none of the constraints it read, so it raised nothing and "
+            "confirmed nothing.",
             out["visible"],
         )
 

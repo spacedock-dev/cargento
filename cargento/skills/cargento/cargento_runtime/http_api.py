@@ -998,7 +998,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         someone opens the log.
 
         The store's rows and only the store's. Session history keeps a copy of
-        the same two fields for fourteen days, and reading the log out of that
+        the goal and each outcome line for fourteen days, and reading the log out of that
         instead would resurrect words a reader withdrew: `annotations.clear`
         removes the entry because clearing the field is withdrawing the request,
         while a history observation already appended is never retro-deleted.
@@ -1058,7 +1058,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     raised,
                     entry["harness"],
                     entry["sid"],
-                    has_words=annotation_store.has_typed_words(entry),
+                    has_words=annotation_store.has_typed_goal(entry),
                     discarded=annotation_store.is_discarded(entry),
                     now=now,
                 ),

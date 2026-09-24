@@ -86,8 +86,12 @@ _WRITE_LOCK: Final = threading.Lock()
 # the second amendment of the ruling cited at the top of this file: the
 # reader is by construction not present, so
 # "nothing departed" and "nothing was checked" must never render alike.
+# It names the goal because the goal is all an unasked check reads: the
+# outcome lines never reach it (item 12 of the ruling
+# `reading.MAX_OUTCOME_LINES` cites).
 NOTHING_DEPARTED: Final = (
-    "Cargento has checked this session against what you asked for and found nothing to raise."
+    "Cargento has checked this session against your goal and found nothing to raise. Unasked "
+    "checks do not read your expected outcome."
 )
 NEVER_CHECKED: Final = (
     "Cargento has not checked this session against what you asked for. Nothing here says whether "

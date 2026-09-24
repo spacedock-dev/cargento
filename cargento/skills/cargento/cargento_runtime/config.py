@@ -301,12 +301,12 @@ class RuntimeConfig:
     # below even the event cap: nothing else is read from the body.
     dismissal_body_cap_bytes: int
     # What an annotation request may declare, per item 3 of the ruling
-    # `reading.MAX_OUTCOME_LINES` cites: a goal and six lines of 240 four-byte
-    # characters, a 64-character session id and an expected revision measure
-    # 6,878 bytes as the page's `JSON.stringify` sends them, so 8 KiB holds the
-    # worst the page can send and is still far
-    # below the event cap. `POST /api/reading` shares it, where it is only
-    # generous.
+    # `reading.MAX_OUTCOME_LINES` cites. The widest body the page can send is a
+    # paste of control characters, which `JSON.stringify` writes as six bytes
+    # each before the store collapses them: a goal and six lines of 240 of them,
+    # a 64-character session id and an expected revision measure 10,238 bytes,
+    # so 12 KiB holds it and is still far below the event cap. `POST
+    # /api/reading` shares it, where it is only generous.
     annotation_body_cap_bytes: int
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
@@ -769,7 +769,7 @@ def build_runtime_config(
         departure_max_entries=512,
         end_read_cap_bytes=65_536,
         end_max_entries=512,
-        annotation_body_cap_bytes=8_192,
+        annotation_body_cap_bytes=12_288,
         dismissal_body_cap_bytes=1_024,
         history_retention_sec=history_retention_sec,
         history_max_bytes=history_max_bytes,
