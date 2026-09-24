@@ -153,7 +153,8 @@ The scorer repeats these checks at score time for every case the packet calls `r
 the packet is hand-editable: the transcript found for that sid under `~/.claude/projects`, its
 session id, and the lifecycle in this machine's history and ends stores. A case that fails any of
 them becomes `synthetic`, is withheld as `not-recorded` without a model call, and never meets the
-floor, whatever the packet or the rubric says. `--report` runs the same check and counts only the
+floor, whatever the packet or the rubric says. A case the packet itself calls `synthetic` is
+different: it is sent, charged and scored, so it can fail the run, and it never meets the floor. `--report` runs the same check and counts only the
 cases it confirms.
 
 The scorer passes each Claude Code case's frozen checks to the producer as a press with a

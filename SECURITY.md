@@ -1350,7 +1350,7 @@ own, and scoring refuses while `HOME` names another. The committed result record
 over the ledger's charges and their digests, and scoring refuses while the ledger does not begin
 with it, reading the committed result at its fixed path whatever `--out` says. The scorer also
 re-checks each case's provenance against this machine's transcripts, history and ends, and spends
-nothing on a case they do not vouch for. On Windows the home falls back to `USERPROFILE`, so the
+nothing on a case that claims recorded and is not vouched for. On Windows the home falls back to `USERPROFILE`, so the
 `HOME` protection is POSIX only. The ledger stops at nineteen calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The

@@ -1485,3 +1485,87 @@ class N3AnUnconfirmedCaseIsNeverCharged(_Ledgered):
                 score_abstention.report(self.corpus(), None, vouch=vouch)
             with self.subTest(want=want):
                 self.assertIn(want, "\n".join(printed))
+
+
+# ------------------------------------------------------------------ DRC-4666 round 3 riders
+
+
+class N4OnlyAWellFormedChainIsAccepted(_Ledgered):
+    """N4: a committed chain whose count was not a positive int was waved through."""
+
+    def test_every_malformed_chain_refuses_a_rescore_after_deletion(self) -> None:
+        self.score(_Model())
+        good = self.committed()
+        empty = abstention_ledger.chain([])
+        for bad in (
+            {"calls": 0, "first": "x", "head": empty},
+            {"calls": 0, "first": "", "head": "0" * 64},
+            {"calls": -1, "first": "", "head": empty},
+            {"calls": "1", "first": good["ledger_chain"]["first"], "head": empty},
+            {"calls": 1.0, "first": good["ledger_chain"]["first"], "head": empty},
+            {"calls": True, "first": good["ledger_chain"]["first"], "head": empty},
+            {"calls": 1, "first": None, "head": good["ledger_chain"]["head"]},
+            {"calls": 1, "head": good["ledger_chain"]["head"]},
+        ):
+            with self.subTest(bad=bad):
+                self.summary.write_text(json.dumps({**good, "ledger_chain": bad}))
+                if self.ledger_path.exists():
+                    self.ledger_path.unlink()
+                model = _Model()
+                self.assertEqual(2, self.score(model))
+                self.assertEqual([], model.prompts)
+
+    def test_a_genuine_zero_call_result_is_accepted_and_still_guards(self) -> None:
+        refuse = lambda _case: ["lifecycle-unconfirmed"]  # noqa: E731
+        self.score(_Model(), vouch=refuse)
+        chain = self.committed()["ledger_chain"]
+        self.assertEqual({"first": "", "calls": 0, "head": abstention_ledger.chain([])}, chain)
+        self.assertNotEqual(2, self.score(_Model(), vouch=refuse))
+        self.precharge(1)
+        model = _Model()
+        self.assertEqual(2, self.score(model))
+        self.assertEqual([], model.prompts)
+
+
+class ADeclaredSyntheticCaseIsScoredAndCanFail(_Ledgered):
+    """The 1dc5f86b contract: a synthetic case is marked and scored, never counted.
+
+    89a5ec26 withheld it with the unconfirmed ones, so it could no longer fail
+    a run. Only a case that claims recorded and is not confirmed is withheld.
+    """
+
+    def test_it_is_sent_charged_and_can_fail_but_never_covers(self) -> None:
+        self.cases[0]["origin"] = "synthetic"
+        self.marks[self.cases[0]["id"]] = {
+            "goal": "abstain",
+            "line_1": "abstain",
+            "line_2": "abstain",
+        }
+        self.rubric = {
+            "cases": {
+                self.cases[0]["id"]: {
+                    "kind": "misleading-completion",
+                    "origin": "recorded",
+                    "expect": {n: {"result": "unverifiable"} for n in ("goal", "line_1", "line_2")},
+                }
+            }
+        }
+        reply = _reply(
+            goal=("consistent", (2,)), line_1=("consistent", (2,)), line_2=("consistent", (2,))
+        )
+        model = _Model((reply, "ok"))
+        self.assertEqual(1, self.score(model, vouch=lambda _case: ["transcript-missing"]))
+        self.assertEqual(1, len(model.prompts))
+        self.assertEqual(1, len(self.calls()))
+        committed = self.committed()
+        self.assertEqual("failed", committed["verdict"])
+        self.assertEqual(0, committed["coverage"]["claude"]["kinds"])
+        self.assertEqual("synthetic", committed["rubric"]["cases"][self.cases[0]["id"]]["origin"])
+
+    def test_a_demoted_recorded_claim_says_it_was_withheld(self) -> None:
+        printed: list[str] = []
+        with mock.patch("builtins.print", side_effect=_collect_into(printed)):
+            score_abstention._vouched(self.cases[0], lambda _case: ["transcript-missing"])
+        said = "\n".join(printed)
+        self.assertIn("withheld without a model call", said)
+        self.assertNotIn("scored as synthetic", said)

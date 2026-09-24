@@ -198,8 +198,8 @@ WITHHELD_PREFIX = "withheld:"
 WITHHELD_ROW_ABSENT = "row-absent"
 # Ours too: the spend ledger was full, so the case never reached the model.
 WITHHELD_SPEND_CAP = "spend-cap"
-# Ours: the machine's records do not vouch for the case, so no call is spent on
-# it. It could only have been scored as synthetic, and the floor ignores those (N3).
+# Ours: the case claims recorded and the machine's records do not vouch for it,
+# so no call is spent on it (N3). A case the packet calls synthetic is not this.
 WITHHELD_NOT_RECORDED = "not-recorded"
 
 # What a judged constraint rests on, from the entries it cites. A Goal
@@ -1471,8 +1471,11 @@ def _vouched(
     reasons = vouch(case)
     if not reasons:
         return case
-    print(f"Case {case.get('id')}: not vouched for ({', '.join(reasons)}), scored as synthetic.")
-    return {**case, "origin": ORIGIN_SYNTHETIC, "unconfirmed": list(reasons)}
+    print(
+        f"Case {case.get('id')}: claims recorded and is not vouched for ({', '.join(reasons)}): "
+        "withheld without a model call, and never counted toward coverage."
+    )
+    return {**case, "origin": ORIGIN_SYNTHETIC, "unconfirmed": list(reasons), "demoted": True}
 
 
 def _binding_refusal(corpus: Corpus, binding: Mapping[str, str] | None) -> str:
@@ -1615,9 +1618,10 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
             mark,
             words=words,
             revision=mark_abstention.case_revision(dict(case)) if intents else None,
-            withhold=WITHHELD_NOT_RECORDED
-            if intents and case.get("origin") != ORIGIN_RECORDED
-            else "",
+            # Only a demoted claim is withheld. A case the packet itself calls
+            # synthetic is scored and can fail the run, and never covers (the
+            # README's format 5 contract as of 1dc5f86b).
+            withhold=WITHHELD_NOT_RECORDED if intents and case.get("demoted") else "",
             tool_output=_tool_output(case, tool_destination, label, body) if intents else None,
             model=charged(case_id),
             now=case["captured_at"] if replay else now,

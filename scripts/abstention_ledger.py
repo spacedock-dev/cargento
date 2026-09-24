@@ -320,18 +320,39 @@ def begins_with(path: str, committed: Mapping[str, Any]) -> bool:
     key re-marked into it would score fresh (V3). The committed chain is what
     survives the deletion, in git beside the result.
     """
-    count = committed.get("calls")
-    if not isinstance(count, int) or count <= 0:
-        return True
+    if not well_formed(committed):
+        return False
+    count = committed["calls"]
     try:
         calls = read(path)["calls"]
     except LedgerError:
         return False
+    if count == 0:
+        # A result that spent nothing covers no charge, so a ledger holding one
+        # holds a run that result never saw.
+        return not calls
     return (
         len(calls) >= count
         and calls[0]["id"] == committed.get("first")
         and chain(calls[:count]) == committed.get("head")
     )
+
+
+def well_formed(committed: Mapping[str, Any]) -> bool:
+    """Whether a committed chain is one `chain_of` could have written (N4).
+
+    A count that is not a non-negative int was once read as "nothing to check",
+    so a chain edited to 0, -1, "1" or 1.0 unfroze the key. A zero count is
+    accepted only as the empty chain itself.
+    """
+    count, first, head = committed.get("calls"), committed.get("first"), committed.get("head")
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        return False
+    if not isinstance(first, str) or not isinstance(head, str):
+        return False
+    if count == 0:
+        return first == "" and head == chain([])
+    return bool(first)
 
 
 def committed_chain(summary_path: str = "") -> dict[str, Any] | None:
