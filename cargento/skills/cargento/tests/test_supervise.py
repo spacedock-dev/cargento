@@ -9,7 +9,9 @@ never the one signalled.
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -382,6 +384,59 @@ class SupervisedRunTest(unittest.TestCase):
         finally:
             with contextlib.suppress(OSError):
                 os.kill(escaped, signal.SIGKILL)
+
+    # Final round (verify N2): an exit that cannot be observed is never read as one.
+
+    @unittest.skipUnless(hasattr(select, "kqueue") and not hasattr(os, "waitid"), "kqueue path")
+    def test_a_kqueue_error_other_than_esrch_is_unknown_not_an_exit(self) -> None:
+        class _Queue:
+            def __init__(self, data: int) -> None:
+                self.data = data
+
+            def control(self, *_a: Any) -> list[Any]:
+                return [mock.Mock(flags=select.KQ_EV_ERROR, data=self.data)]
+
+            def close(self) -> None:
+                pass
+
+        for data, expected in ((errno.EPERM, "unknown"), (errno.ESRCH, "exited")):
+            with (
+                self.subTest(errno=data),
+                mock.patch.object(select, "kqueue", lambda d=data: _Queue(d)),
+            ):
+                self.assertEqual(expected, supervise._state(os.getpid(), 0.0))
+
+    @unittest.skipIf(sys.platform == "win32", "process groups are POSIX")
+    def test_a_child_whose_exit_cannot_be_watched_is_never_killed_early(self) -> None:
+        killed: list[int] = []
+        real_killpg = os.killpg
+
+        def killpg(pgid: int, sig: int) -> None:
+            killed.append(pgid)
+            real_killpg(pgid, sig)
+
+        with (
+            mock.patch.object(supervise, "_state", return_value="unknown"),
+            mock.patch.object(os, "killpg", killpg),
+        ):
+            result = supervise.run(
+                [sys.executable, "-c", "import time; time.sleep(0.3)"],
+                input="",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            self.assertEqual(0, result.returncode, "a running child was killed as if it had exited")
+            self.assertEqual([], killed)
+            with self.assertRaises(subprocess.TimeoutExpired):
+                supervise.run(
+                    [sys.executable, "-c", "import time; time.sleep(60)"],
+                    input="",
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=1,
+                )
+        self.assertEqual(1, len(killed), "the timeout no longer killed the group")
 
 
 if __name__ == "__main__":

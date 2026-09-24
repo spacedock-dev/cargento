@@ -1542,6 +1542,12 @@ class AskShutdownTest(RuntimeTestCase):
         # Far longer than the assertion window, so a pass cannot be the poll
         # timing out on its own rather than the shutdown declining it.
         changes.setdefault("ask_poll_timeout_sec", 30.0)
+        # `serve` really runs here, and its shutdown closes the model runner
+        # for the life of the process: this test's own, so no later test in
+        # the worker inherits a closed one.
+        patcher = mock.patch.object(runtime_supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
         return make_runtime(state_home=home, state_dir=Path(home), **changes)
 
     def _register(self, state: Any, config: Any) -> str:
@@ -2753,6 +2759,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 mock.patch.object(http_api, "CargentoHTTPServer", CapturingServer),
                 mock.patch.object(lifecycle, "write_state"),
                 mock.patch.object(lifecycle, "remove_state"),
+                # The real one closes this worker's runner for every later test.
+                mock.patch.object(runtime_supervise, "kill_all"),
                 mock.patch.object(runtime_io, "diag"),
                 self.assertRaises(StopServingError),
             ):

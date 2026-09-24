@@ -893,6 +893,12 @@ def _register_sigterm_exit() -> Any:
         number = getattr(signal, name, None)
         if number is None:
             continue
+        # An ignored signal stays ignored: `nohup`, and a background job of a
+        # shell without job control, hand the server SIGHUP or SIGQUIT as
+        # SIG_IGN on purpose, and exiting on it would undo that (verify N1).
+        with contextlib.suppress(ValueError, AttributeError):
+            if signal.getsignal(number) is signal.SIG_IGN:
+                continue
         with contextlib.suppress(ValueError, AttributeError):
             previous[number] = signal.signal(number, lambda _sig, _frame: sys.exit(0))
     return previous or None

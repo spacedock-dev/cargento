@@ -1465,11 +1465,18 @@ issue, and the rest were made within them.
   terminal's signals. Leaving that to Cancel would have left one layer of the stack with a child
   that outlives the daemon. SIGHUP and SIGQUIT unwind through the same cleanup as SIGTERM, since a
   closed terminal otherwise left the CLI running untimed, and the shutdown closes the runner under
-  its spawn lock, since a CLI spawned during the teardown was measured outliving it.
+  its spawn lock, since a CLI spawned during the teardown was measured outliving it. A signal the
+  server inherited as ignored stays ignored, or `nohup` would stop protecting it. A reading not yet
+  sent when the runner closes is refused before the reservation, so a stop never charges for it.
 - On POSIX the group is signalled only while its leader is unreaped: the exit is watched without
   reaping (`waitid` with `WNOWAIT`, a kqueue exit filter on macOS, which has no `waitid`), the group
-  is swept, and only then is the leader reaped. A group id signalled after the reap could name a
-  stranger's group. A helper that leaves the group is not reached, and the docs say so.
+  is swept, and only then is the leader reaped, with the end of signalling marked in the same step
+  under the group's lock. A group id signalled after the reap could name a stranger's group. kqueue
+  reports a registration error as an event, so only ESRCH there counts as an exit; any other error
+  leaves the exit unwatchable, and the call then polls rather than reading it as an exit and killing
+  a running CLI. A helper that leaves the group is not reached, and the docs say so.
+- A spent outcome the store refuses keeps its marker, marked as refused, and the next start records
+  that the analysis ran and its outcome could not be stored, not that Cargento stopped.
 - A finished step is a filled mark and never a check mark. Item 6's rule is about results, but a
   check shape beside a reading is close enough to its reason that the design's check circle was
   not copied.

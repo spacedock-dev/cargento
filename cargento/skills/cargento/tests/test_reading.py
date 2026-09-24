@@ -1509,6 +1509,12 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         self.assertTrue(spent)
         self.assertIn("may still be running", reading.WITHHELD[why])
 
+    def test_a_call_refused_because_cargento_is_stopping_spends_nothing(self) -> None:
+        _a, why, spent = self._produce(model=self._model("", "closed"))
+        self.assertEqual(reading.WITHHELD_STOPPING, why)
+        self.assertFalse(spent)
+        self.assertIn("Nothing was sent or spent", reading.WITHHELD[why])
+
     def test_checking_the_reply_is_announced_only_once_a_reply_arrived(self) -> None:
         """DRC-4686: the third phase is published from `produce`, so it must be true.
 

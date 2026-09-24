@@ -207,6 +207,37 @@ class ReadingJobTest(unittest.TestCase):
             self._run(compose)
         self.assertIn(("withheld", reading.WITHHELD_INTERRUPTED, True), self.events)
 
+    def test_a_shutdown_keeps_the_unstopped_reason(self) -> None:
+        """Verify N5: "may still be running" is the one sentence a stop must not hide."""
+
+        def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
+            hooks.reserved()
+            supervise._SHUTDOWN.set()
+            return None, reading.WITHHELD_UNSTOPPED, True
+
+        self._run(compose)
+        self.assertIn(("withheld", reading.WITHHELD_UNSTOPPED, True), self.events)
+
+    def test_a_kept_marker_recovers_as_a_refused_write_not_as_a_stop(self) -> None:
+        """Verify N6: the analysis finished; the store refused its outcome."""
+
+        def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
+            hooks.reserved()
+            return None, reading.WITHHELD_MODEL_FAILED, True
+
+        with mock.patch.object(
+            annotation_store, "_record", return_value=annotation_store.OUTCOME_UNWRITABLE
+        ):
+            job = self._run(compose)
+        self.assertEqual([f"{job.id}.json"], [p.name for p in self._markers()])
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_UNSTORED], entry.get("withheld"))
+        self.assertEqual(1, entry.get("readings"))
+
     def test_a_marker_that_cannot_be_written_stops_the_job_before_anything_is_spent(
         self,
     ) -> None:

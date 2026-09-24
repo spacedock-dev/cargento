@@ -14,6 +14,7 @@ import time
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from . import io as runtime_io
+from . import supervise
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -251,6 +252,10 @@ class GuardedModel:
         available = getattr(self.model, "available", None)
         if available is not None and not available():
             return "", "unavailable"
+        if supervise.closed():
+            # Cargento is stopping and the call could never be sent, so it is
+            # refused before the reservation rather than charged (verify N4).
+            return "", "closed"
         if self.before_reserve is not None:
             self.before_reserve()
         answer = reserve(self.config, now=self.clock(), provider=self.provider)

@@ -21,6 +21,7 @@ This module imports nothing from the runtime.
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
 import select
 import signal
@@ -46,7 +47,7 @@ _SHUTDOWN = threading.Event()
 # kill never reached, and waiting longer would hang the reading instead.
 REAP_TIMEOUT_SEC = 5.0
 
-_RUNNING, _EXITED, _REAPED = "running", "exited", "reaped"
+_RUNNING, _EXITED, _REAPED, _UNKNOWN = "running", "exited", "reaped", "unknown"
 
 
 class ClosedError(OSError):
@@ -83,23 +84,35 @@ def _state(pid: int, timeout: float) -> str:
     """Whether a child is running, has exited, or is already reaped. Never reaps.
 
     `waitid` with `WNOWAIT` where it exists (Linux), and a kqueue exit filter
-    where it does not (macOS, whose `os` has no `waitid`). Leaving the child
-    unreaped is what keeps its pid, and so its group id, from being reused
-    while a signal might still be sent to it.
+    where it does not (macOS, whose `os` has no `waitid`). This only observes:
+    what keeps a group from being signalled after its leader is reaped is
+    `Group._reaped`, set under the group's lock in the same step as the reap.
+
+    kqueue reports a registration it cannot make as an event flagged
+    `EV_ERROR`, not as an exception. ESRCH there means the process has exited
+    (a zombie cannot be registered either, and only `run` reaps, so it has not
+    been reaped), and any other error means the exit cannot be watched:
+    `_UNKNOWN`, which callers never read as an exit (verify N2).
     """
-    if hasattr(os, "waitid"):
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                info = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
-            except ChildProcessError:
-                return _REAPED
-            if info is not None:
-                return _EXITED
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return _RUNNING
-            time.sleep(min(0.02, remaining))
+    return _state_waitid(pid, timeout) if hasattr(os, "waitid") else _state_kqueue(pid, timeout)
+
+
+def _state_waitid(pid: int, timeout: float) -> str:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            info = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)  # type: ignore[attr-defined,unused-ignore]
+        except ChildProcessError:
+            return _REAPED
+        if info is not None:
+            return _EXITED
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return _RUNNING
+        time.sleep(min(0.02, remaining))
+
+
+def _state_kqueue(pid: int, timeout: float) -> str:
     queue = select.kqueue()
     try:
         event = select.kevent(
@@ -109,11 +122,18 @@ def _state(pid: int, timeout: float) -> str:
             fflags=select.KQ_NOTE_EXIT,
         )
         try:
-            return _EXITED if queue.control([event], 1, max(timeout, 0.0)) else _RUNNING
+            events = queue.control([event], 1, max(timeout, 0.0))
         except ProcessLookupError:
-            return _REAPED
+            return _EXITED
+        except OSError:
+            return _UNKNOWN
     finally:
         queue.close()
+    if not events:
+        return _RUNNING
+    if events[0].flags & select.KQ_EV_ERROR:
+        return _EXITED if events[0].data == errno.ESRCH else _UNKNOWN
+    return _EXITED
 
 
 class Group:
@@ -134,12 +154,40 @@ class Group:
         return self._process.pid
 
     def running(self) -> bool:
-        """Whether the CLI still runs. Never reaps it, so any thread may ask."""
+        """Whether the CLI still runs. Never reaps a leader it could still signal."""
         if sys.platform == "win32":
             # A handle, not a pid: polling it cannot free an id for reuse.
             return self._process.poll() is None
         with self._lock:
-            return not self._reaped and _state(self._process.pid, 0.0) == _RUNNING
+            if self._reaped:
+                return False
+            state = _state(self._process.pid, 0.0)
+            if state != _UNKNOWN:
+                return state == _RUNNING
+            # Unwatchable: reap if it has exited, marked in the same step, so
+            # no kill can follow the reap.
+            if self._process.poll() is None:
+                return True
+            self._reaped = True
+            return False
+
+    def _await_exit(self, timeout: float) -> bool:
+        """For an exit `_state` cannot watch: poll, reaping and marking in one step.
+
+        True once the leader has exited (and is reaped, so its helpers are not
+        swept), False on the timeout, with the leader still unreaped for the
+        kill that follows.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                if self._process.poll() is not None:
+                    self._reaped = True
+                    return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.02, remaining))
 
     def kill(self) -> bool:
         """Kill the group. Safe from any thread and more than once; False if it failed."""
@@ -156,22 +204,21 @@ class Group:
 
         After a normal exit the leader is a zombie still holding the group id,
         so the sweep reaches the helpers it left behind and nothing else. After
-        a timeout it is the kill itself. The bound is on the exit, which is the
-        one sign a kill worked: `killpg`'s answer is not (EPERM on macOS for a
-        group of one zombie).
+        a timeout it is the kill itself. The reap is bounded: whether it comes
+        is the one sign a kill worked, since `killpg`'s answer is not (EPERM on
+        macOS for a group of one zombie).
         """
         with self._lock:
             if self._reaped:
                 return
             if _state(self._process.pid, 0.0) != _REAPED:
                 self._kill()
-                if _state(self._process.pid, REAP_TIMEOUT_SEC) == _RUNNING:
-                    # Never signalled again: it is not reaped, so not ours to
-                    # free, and a later signal could outlive its id.
-                    self._reaped = True
-                    raise UnstoppedError(self._process.pid)
+            # No signal after this point, whatever the reap does.
             self._reaped = True
-            self._process.wait()
+            try:
+                self._process.wait(timeout=REAP_TIMEOUT_SEC)
+            except subprocess.TimeoutExpired as exc:
+                raise UnstoppedError(self._process.pid) from exc
 
     def close(self) -> None:
         if sys.platform == "win32" and self._job:
@@ -327,7 +374,14 @@ def _run_posix(
         if data is not None and process.stdin is not None:
             threading.Thread(target=_feed, args=(process.stdin, data), daemon=True).start()
         limit = 1e9 if timeout is None else timeout
-        timed_out = _state(process.pid, limit) == _RUNNING
+        state = _state(process.pid, limit)
+        # An exit that cannot be watched is waited on by polling, never read
+        # as an exit: that would kill a running CLI at once.
+        timed_out = (
+            not group._await_exit(limit)  # noqa: SLF001
+            if state == _UNKNOWN
+            else state == _RUNNING
+        )
     except BaseException:
         # The timeout, a failing `on_spawn`, or an interrupt: kill before
         # reaping, reap with a bound, then let it propagate.

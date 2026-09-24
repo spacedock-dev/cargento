@@ -1654,11 +1654,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
-        # A durable permission/budget leaf: config names its store, io owns
-        # optional SQLite loading. It reaches no session or model producer.
+        # The durable permission and budget: config names its store, io owns
+        # optional SQLite loading, and the runner says whether Cargento is
+        # stopping. It reaches no session or model producer.
         "cargento_runtime.reading_policy": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            # Whether Cargento is stopping, so a call it cannot send is not charged.
+            "cargento_runtime.supervise",
         },
         "cargento_runtime.reading": {
             "cargento_runtime.config",

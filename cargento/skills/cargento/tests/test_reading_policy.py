@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import reading, reading_policy
+from cargento_runtime import reading, reading_policy, supervise
 
 from .support import make_runtime
 
@@ -24,6 +25,10 @@ class ReadingPolicyTest(unittest.TestCase):
         self.home = tempfile.TemporaryDirectory()
         self.addCleanup(self.home.cleanup)
         self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+        # An open model runner: GuardedModel refuses once it is shut.
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_answer_survives_a_new_client_and_forget_preserves_spend(self) -> None:
         self.assertFalse(reading_policy.status(self.config, now=100.0)["consent"])
@@ -117,6 +122,18 @@ class ReadingPolicyTest(unittest.TestCase):
         )
         with self.assertRaises(OSError):
             guarded("prompt", output_cap_bytes=100)
+        self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+        model.assert_not_called()
+
+    def test_a_call_made_while_cargento_stops_is_refused_before_it_spends(self) -> None:
+        """Verify N4: a job still preparing at shutdown must not be charged for nothing."""
+        reading_policy.set_consent(self.config, True, now=100.0)
+        model = mock.Mock(return_value=("{}", "ok"))
+        stopping = threading.Event()
+        stopping.set()
+        with mock.patch.object(supervise, "_SHUTDOWN", stopping):
+            guarded = reading_policy.GuardedModel(self.config, model, lambda: 100.0)
+            self.assertEqual(("", "closed"), guarded("prompt", output_cap_bytes=100))
         self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
         model.assert_not_called()
 

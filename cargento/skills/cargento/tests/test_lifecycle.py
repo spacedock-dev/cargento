@@ -2000,6 +2000,46 @@ class ServeOwnsReadingJobsTest(unittest.TestCase):
         self.assertIs(application, recover.call_args.args[0])
 
 
+@unittest.skipIf(sys.platform == "win32", "terminal hangups are POSIX")
+class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
+    """Verify N1: a server started under `nohup` must survive the hangup it was told to ignore."""
+
+    def _serve_ignoring(self, name: str) -> None:
+        number = getattr(signal, name)
+        home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home, True)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = int(listener.getsockname()[1])
+        env = {**os.environ, "CARGENTO_HOME": str(home), "PYTHONNOUSERSITE": "1"}
+        env.pop("PYTHONPATH", None)
+        server = subprocess.Popen(
+            [sys.executable, str(SERVER_PATH), "--port", str(port), "--no-events"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            preexec_fn=lambda: signal.signal(number, signal.SIG_IGN),  # noqa: PLW1509
+        )
+        self.addCleanup(server.kill)
+        state = home / f"cargento-{port}.json"
+        deadline = time.monotonic() + 20
+        while not state.exists() and server.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(state.exists(), "the server never started")
+        os.kill(server.pid, number)
+        time.sleep(1.0)
+        self.assertIsNone(server.poll(), f"a server that ignored {name} exited on it")
+        server.terminate()
+        self.assertEqual(0, server.wait(timeout=15))
+
+    def test_a_server_run_under_nohup_survives_a_hangup(self) -> None:
+        self._serve_ignoring("SIGHUP")
+
+    def test_a_server_that_ignores_quit_survives_it(self) -> None:
+        self._serve_ignoring("SIGQUIT")
+
+
 class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
     """Review F4: a reused pid is not a dashboard unless a state file here names it."""
 

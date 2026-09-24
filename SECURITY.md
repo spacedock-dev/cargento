@@ -1068,7 +1068,9 @@ files are removed after, never under, a live writer. A kill whose child has not 
 seconds ends the call anyway and is recorded as its own withheld reason, which says the process
 may still be running. Because a child in its own group no longer receives the terminal's signals,
 SIGTERM, SIGHUP and SIGQUIT all unwind through the daemon's cleanup, which shuts the runner (a
-spawn after that point is refused) and kills every supervised group. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
+spawn after that point is refused, and a reading not yet sent is refused before it is charged) and
+kills every supervised group. A signal the server was started ignoring, as `nohup` ignores SIGHUP,
+stays ignored. A goal call returns at most `observer_goal_cap_chars * 4` bytes for a 200-character goal
 line; a reading returns at most `annotation_text_cap_chars * 8` bytes, 1,920 at the shipped
 value.
 A failed call falls back to local analysis. No raw model stdout or stderr is served or logged.
@@ -1252,9 +1254,12 @@ filled, or an answer withdrawn, after the press was admitted ends the job with n
 spent. Before the reservation, a marker under `reading-jobs/` in the state directory names the job
 (its id, the harness and session id, the pid, the start time, and no content), owner-only; a marker
 that cannot be written stops the job with nothing spent. The outcome is stored under the job's id,
-and the marker is removed only once the store holds it. A job the shutdown ends is recorded as a
-spent `interrupted` attempt, and so is any marker the next dashboard start finds whose pid no state
-file of a running dashboard on this state directory names (its own pid counts as an earlier run).
+and a spent attempt keeps its marker until the store holds it; a store that refused the outcome
+leaves the marker saying so, and the next start records the attempt with that sentence. A job the
+shutdown ends is recorded as a spent `interrupted` attempt, unless its kill could not be confirmed,
+which keeps the "may still be running" sentence. So is any marker the next dashboard start finds
+whose pid no state file of a running dashboard on this state directory names (its own pid counts
+as an earlier run).
 Each marker is claimed by an atomic rename before it is recorded, and an entry that already holds
 the job's id counts nothing, so one job is one attempt however many dashboards recover it.
 

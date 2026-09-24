@@ -360,6 +360,8 @@ WITHHELD_DISCARDED = "discarded"
 WITHHELD_INTERRUPTED = "interrupted"
 WITHHELD_UNSTOPPED = "unstopped"
 WITHHELD_JOB_UNRECORDED = "job-unrecorded"
+WITHHELD_STOPPING = "stopping"
+WITHHELD_UNSTORED = "unstored"
 WITHHELD = {
     WITHHELD_TURN_STOP: (
         "A turn stop was observed and no session end was, so there is no end for a "
@@ -433,6 +435,15 @@ WITHHELD = {
         "The reading was stopped, but Cargento could not confirm its process ended, so it may "
         "still be running. Nothing was produced, the attempt counts, and a fresh press is the "
         "only retry."
+    ),
+    WITHHELD_STOPPING: (
+        "The analysis did not run, because Cargento was stopping. Nothing was sent or spent."
+    ),
+    # Recorded at the next start for a spent attempt whose outcome the store
+    # refused when it ran: the analysis finished, so it is not called a stop.
+    WITHHELD_UNSTORED: (
+        "The analysis ran, but Cargento could not store its outcome at the time. Nothing is "
+        "shown from it, the attempt still counts, and a fresh press is the only retry."
     ),
     WITHHELD_NOTHING_TYPED: (
         "Nothing is typed against this session, so there is nothing to read it against."
@@ -2022,6 +2033,8 @@ def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[st
         return getattr(model, "unavailable_reason", None) or WITHHELD_MODEL_UNAVAILABLE, False
     if status == "unstopped":
         return WITHHELD_UNSTOPPED, True
+    if status == "closed":
+        return WITHHELD_STOPPING, False
     if status != "ok":
         return WITHHELD_MODEL_FAILED, True
     return None

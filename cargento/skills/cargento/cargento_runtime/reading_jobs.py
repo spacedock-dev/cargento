@@ -107,6 +107,14 @@ class Hooks:
         """The spend is committed."""
         self.spent = True
 
+    def mark_unstored(self) -> None:
+        """Rewrite the kept marker to say its outcome ran and was not stored."""
+        path = _marker(self._application.config, self._job.id)
+        with contextlib.suppress(OSError, ValueError):
+            marker = json.loads(path.read_text(encoding="utf-8"))
+            marker["reason"] = reading.WITHHELD_UNSTORED
+            runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
+
     def spawned(self, group: Any) -> None:
         """The CLI exists, so the job is waiting on the provider now."""
         self._job.group = group
@@ -175,6 +183,10 @@ def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], 
         if durable or not hooks.spent:
             with contextlib.suppress(OSError):
                 _marker(config, job.id).unlink(missing_ok=True)
+        else:
+            # Kept, and told why, so the next start says the store refused the
+            # outcome rather than that Cargento stopped (verify N6).
+            hooks.mark_unstored()
         # After the write and only then: a page that sees the job gone sees
         # its result with it, never a finished box beside no result.
         reading.end_job(config, f"{job.harness}:{job.sid}")
@@ -200,8 +212,9 @@ def _outcome(
             application.diagnostic_sink,
         )
         outcome = None, reading.WITHHELD_MODEL_FAILED, hooks.spent
-    assessment, _why, spent = outcome
-    if assessment is None and spent and supervise.closed():
+    assessment, why, spent = outcome
+    # "May still be running" is the one sentence a stop must not hide (verify N5).
+    if assessment is None and spent and supervise.closed() and why != reading.WITHHELD_UNSTOPPED:
         # The dashboard is stopping and killed the call: said as the stop it
         # was, as the next start would have said it (review F5).
         return None, reading.WITHHELD_INTERRUPTED, True
@@ -264,6 +277,11 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
         try:
             marker = json.loads(claimed.read_text(encoding="utf-8"))
             harness, sid, job_id = marker["harness"], marker["sid"], str(marker["id"])
+            reason = (
+                reading.WITHHELD_UNSTORED
+                if marker.get("reason") == reading.WITHHELD_UNSTORED
+                else reading.WITHHELD_INTERRUPTED
+            )
         except (OSError, ValueError, KeyError, TypeError):
             with contextlib.suppress(OSError):
                 claimed.unlink()
@@ -273,7 +291,7 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
             state,
             harness,
             sid,
-            reason=reading.WITHHELD_INTERRUPTED,
+            reason=reason,
             spent=True,
             diagnostic_sink=application.diagnostic_sink,
             job_id=job_id,
