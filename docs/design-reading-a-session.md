@@ -710,7 +710,8 @@ the state table and the primary-control paragraph.
 Item 2: on the session page, a session with no saved goal shows the reader's first prompt as an
 unsaved draft marked "from your prompt" (DEC-24 item 2). Expected Output becomes a checklist of up
 to six lines, and on Claude Code a line may now be read against a check the session ran (DEC-23).
-The row's goal slot still shows "your latest prompt": DEC-24 rules the session page only (item 14).
+The row's goal slot still shows "your latest prompt": DEC-24 drafts on the session page only (item 2, as
+DEC-22's 2026-09-24 amendment scopes it).
 
 Item 3: answers name departures and never say "no drift" (DEC-24 item 1). The word drift may now
 also name a level, in the Drift section and the session header pill only. "None or low" is a level
@@ -983,19 +984,20 @@ qualifies the producer against it.
    reading this item refuses.
 2. A check's result comes from one of three sources, in this order, and otherwise reads "ran,
    result not recorded". First, the harness's explicit error flag, only when the runner is the
-   final stage of the command: a pipe into `tail`, `head` or `grep` reports the last stage. Second,
+   last stage of its pipe with nothing but `&&` after it (see the closed lists): a pipe into
+   `tail`, `head` or `grep` reports the last stage. Second,
    a runner summary line in the recorded output tail, from the closed set below. Third, for failure
    only, a failure marker in the recorded output tail, from the closed set below, which may record
    a failure and never a pass. Output text is never read as success any other way.
-3. A check is a shell command whose runner is on the closed list below, matched per `&&`, `;` and
-   `|` segment after stripping `cd ...`, `NAME=value` assignments and the wrappers the list names.
+3. A check is a shell command whose runner is on the closed list below, matched per segment, split on
+   `&&`, `||`, `;`, `|`, `&` and newlines, after stripping `cd ...`, `NAME=value` assignments and the wrappers the list names.
    The shell's `test` and `[` builtins are never checks. Among shell commands, only checks can
    support a departure or be cited in a correction (DEC-24 item 7); a person's or the agent's own
-   words keep what DEC-17 and DEC-24 item 7 let them support. Other commands and probes, such as a
+   words keep what DEC-17 and DEC-24 items 6 and 9 let them support. Other commands and probes, such as a
    `grep` with no match or an `ls` of a missing path, are counted and not listed. A segment that is
    neither a check nor on the closed read-only list below may change files without the transcript
-   recording a write, so one run after the last passing check blocks the live estimate's "None or
-   low" (DEC-26 item 1). It is never counted as drift. The owner ruled this on review the same day,
+   recording a write, so one run after any check's latest passing run blocks the live estimate's
+   "None or low" (DEC-26 item 1). It is never counted as drift. The owner ruled this on review the same day,
    as part of this ruling.
 4. For each distinct check only its latest run is listed and counts, and it says when an earlier
    run of the same check failed without listing that run. A file write after a passing run marks
@@ -1008,8 +1010,9 @@ qualifies the producer against it.
    shell line (the owner narrowed this on review the same day, as part of this ruling), after
    credential redaction and masking of the forms redaction cannot recognise (`NAME=value`, `-p` and
    `--password` values, `user:pass@`), clipped to 120 characters; the last 180 characters of
-   output, the existing ledger cap, with redaction run over the whole read window first; and a
-   written path relative to the working directory. No file content is read as a field, and never an
+   output, the existing ledger cap, with redaction run over the whole read window first; a
+   written path relative to the working directory; and, for a segment that is neither a check nor
+   on the read-only list, its time only, never its text, used on this machine. No file content is read as a field, and never an
    Edit or Write result body; the output tail is whatever the runner printed.
 6. Where it lives: the observed record only, as a new fact type the reading counts as work. It is
    kept out of the semantic history store and out of every session row field, and it is named in
@@ -1039,7 +1042,7 @@ holds for a Claude Code check; DEC-17 carries the amendment.
 ### The closed lists
 
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
-runners) and leaves the list to this section. Each segment, split on `&&`, `;` and `|`, is matched
+runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
 after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
 `pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N` and `time`. The list is closed: a runner not
 named here is not a check.
@@ -1065,23 +1068,25 @@ Runners, matched on the first word or words of a stripped segment:
 Read-only commands, matched the same way, for segments that are not checks: `git status`,
 `git log`, `git diff`, `git show`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `wc`, `pwd`,
 `echo`, `which`, `file`, `stat`, `tree` and `less`. Any other segment that is not a check, run after
-the last passing check, is the blocker item 3 names. This list is closed too.
+any check's latest passing run, is the blocker item 3 names. This list is closed too.
 
 The error flag, source (i), is read only when the runner is the last stage of its pipe. A
-following `&&` keeps the flag honest, because a failure propagates; a following `;` or `|` does not.
+following `&&` keeps the flag honest, because a failure propagates; a following `;`, `|`, `||` or `&` does not.
 
 Summary lines, source (ii), read from the recorded output tail, may record a pass or a failure:
-pytest's `N passed` and `N failed`; unittest's `OK`, only as the whole line, and `FAILED (`; jest's
+pytest's `N passed`, `N failed` and `N error` or `N errors`; unittest's `OK`, only as the whole line, and `FAILED (`; jest's
 and vitest's `Tests:` line with its passed and failed counts; node's `ℹ pass N` and `ℹ fail N`
 lines, where `ℹ fail 0` is a pass; cargo's `test result: ok` and `test result: FAILED`; mypy's
 `Success: no issues found` and `Found N errors`; ruff's `All checks passed!` and `Found N errors`.
 A pass needs a pass pattern and nothing in the same tail that records a failure: a failed count
 above zero, a failure summary or a failure marker. So `1 failed, 9 passed` is a failure. go prints
 `ok  <pkg>` once per package, so a later package's `ok` cannot vouch for the run, and it is never
-read as a pass. go's `FAIL` is a failure, and a go pass comes from the error flag alone.
+read as a pass. go's `FAIL` is a failure, and a go pass comes from the error flag alone. A pass whose count
+is zero (`ℹ pass 0`, `0 passed`, `Ran 0 tests`), or a go run reporting `[no tests to run]`, reads
+"ran, result not recorded".
 
 Failure markers, source (iii), read from the recorded output tail as evidence of failure only:
-node's `✖` test lines and `failing tests:`, `AssertionError`, `ERR_ASSERTION`, pytest's `FAILED `,
+node's `✖` test lines and `failing tests:`, `AssertionError`, `ERR_ASSERTION`, pytest's `FAILED ` and `ERROR `,
 go's `--- FAIL:`, cargo's `panicked at`, and tsc's `error TS`. tsc prints nothing on success, so
 its pass comes only from the error flag.
 
@@ -1277,11 +1282,12 @@ Six sub-questions were ruled the same day, each as recommended.
    measures what else is too little. A write here is a file-write tool call the transcript
    recorded. A file a shell command changes is not seen (DEC-23's capture), so "nothing was written
    after that pass" means no recorded write, not that nothing changed. The shell-command blocker
-   narrows that gap, and a read-only command such as `echo` with a redirect is still not seen.
+   narrows that gap, and a read-only command that changes files, such as `echo` with a redirect or `find` with
+   `-delete` or `-exec`, is still not seen.
 2. Two sources, labelled. "Live estimate" is computed without a model after each turn, from DEC-23's
    evidence and the reader's saved intent: failed checks, passes followed by writes, and the share
    of writes outside the folders the intent names. An unsettled later direction, and a shell command
-   after the last passing check that is neither a check nor read-only, only block "None or low".
+   after any check's latest passing run that is neither a check nor read-only, only block "None or low".
    The folder signal is not used when the intent names no folder, so it is never read as 0%. Over
    an unsaved draft there is no live level: the Drift section reads "Save your intent to see a live
    estimate" and the pill is hidden. "Analysis" derives the level from a reading's per-line
@@ -1303,8 +1309,8 @@ Six sub-questions were ruled the same day, each as recommended.
    the analysis says it read each line of the intent against the checks and messages it cited.
 
 The owner answered two questions from review the same day, and both answers are part of this ruling
-rather than an amendment. A shell command that is neither a check nor read-only, run after the last
-passing check, blocks the live estimate's "None or low" and is never drift (item 1, and DEC-23 item
+rather than an amendment. A shell command that is neither a check nor read-only, run after any
+check's latest passing run, blocks the live estimate's "None or low" and is never drift (item 1, and DEC-23 item
 3; the read-only list is in DEC-23's closed lists). The analysis level has its own source line, and
 the line "reads checks and file paths, not what the intent says" is the live estimate's alone (items
 1 and 6).

@@ -1151,7 +1151,8 @@ a reading labels it that way. The output tail is whatever the runner printed. A 
 assertion diff or a printed setting can carry source lines, file content or a secret that has no
 recognisable shape, and output gets credential-shape redaction only, because the command-line masks
 do not apply to it. It leaves the machine under the destination rule above. The command field is
-the check's own segment, so other commands on the same line are not read.
+the check's own segment, so other commands on the same line are never recorded as a field or sent;
+the live estimate only classifies them on this machine, by time.
 
 ### Analyze drift, Cancel and copied corrections
 
