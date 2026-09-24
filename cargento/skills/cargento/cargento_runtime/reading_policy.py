@@ -233,15 +233,17 @@ class GuardedModel:
         *,
         provider: str = LEGACY_PROVIDER,
         on_reserved: Callable[[], None] | None = None,
+        before_reserve: Callable[[], None] | None = None,
     ) -> None:
         self.config = config
         self.model = model
         self.clock = clock
         self.provider = provider
-        # A reading job's restart marker is written here: after the spend is
-        # committed, before the model runs, so it never claims a spend that
-        # did not happen (DRC-4686).
+        # A reading job is told the spend is committed (DRC-4686).
         self.on_reserved = on_reserved
+        # And its marker before the reservation: a hook that raises here
+        # stops the call with nothing spent.
+        self.before_reserve = before_reserve
         # Passed through, so the refusal names the CLI this press would have used.
         self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
 
@@ -249,6 +251,8 @@ class GuardedModel:
         available = getattr(self.model, "available", None)
         if available is not None and not available():
             return "", "unavailable"
+        if self.before_reserve is not None:
+            self.before_reserve()
         answer = reserve(self.config, now=self.clock(), provider=self.provider)
         if answer["reason"]:
             raise RefusedError(answer)

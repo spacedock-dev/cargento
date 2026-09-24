@@ -19,7 +19,8 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import reading, reading_jobs, reading_policy
+from cargento_runtime import io as runtime_io
+from cargento_runtime import reading, reading_jobs, reading_policy, supervise
 
 from .support import make_runtime
 
@@ -60,6 +61,12 @@ class ReadingJobTest(unittest.TestCase):
         self.events: list[Any] = []
         self.application: Any = _Application(self.config, self.state, self.events)
         self.addCleanup(reading.end_job, self.config, KEY)
+        # A dashboard's shutdown closes the runner for the life of its process,
+        # and an earlier test that ran `serve` in this worker would leave it
+        # closed: every outcome here would then read as a stop.
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _run(self, compose: Any) -> reading.Job:
         job = reading.start_job(
@@ -100,6 +107,7 @@ class ReadingJobTest(unittest.TestCase):
 
     def test_each_real_phase_is_published_once_and_in_order(self) -> None:
         def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
             hooks.reserved()
             hooks.spawned(object())
             hooks.phase(reading.PHASE_CHECKING)
@@ -136,6 +144,7 @@ class ReadingJobTest(unittest.TestCase):
 
                 def compose(hooks: reading_jobs.Hooks, *, spend: bool = reserved) -> Any:
                     if spend:
+                        hooks.before_reserve()
                         hooks.reserved()
                     raise RuntimeError("the record could not be read")
 
@@ -160,6 +169,7 @@ class ReadingJobTest(unittest.TestCase):
         during: list[list[dict[str, Any]]] = []
 
         def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
             hooks.reserved()
             during.append([json.loads(p.read_text()) for p in self._markers()])
             return None, reading.WITHHELD_MODEL_FAILED, True
@@ -180,6 +190,67 @@ class ReadingJobTest(unittest.TestCase):
 
         self._run(compose)
         self.assertEqual([0], during)
+
+    # Correction round.
+
+    def test_a_graceful_shutdown_records_the_attempt_as_interrupted(self) -> None:
+        """Review F5: a job the shutdown killed is "interrupted", as the docs say."""
+        from cargento_runtime import supervise  # noqa: PLC0415
+
+        def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
+            hooks.reserved()
+            supervise._SHUTDOWN.set()
+            return None, reading.WITHHELD_MODEL_FAILED, True
+
+        with mock.patch.object(supervise, "_SHUTDOWN", threading.Event()):
+            self._run(compose)
+        self.assertIn(("withheld", reading.WITHHELD_INTERRUPTED, True), self.events)
+
+    def test_a_marker_that_cannot_be_written_stops_the_job_before_anything_is_spent(
+        self,
+    ) -> None:
+        """Codex review: a spend no marker records could be lost to a restart."""
+        spent: list[bool] = []
+
+        def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
+            spent.append(True)
+            return None, reading.WITHHELD_MODEL_FAILED, True
+
+        with mock.patch.object(runtime_io, "atomic_write_owner_only", side_effect=OSError("full")):
+            self._run(compose)
+        self.assertEqual([], spent, "the job went on to spend with no marker")
+        self.assertIn(("withheld", reading.WITHHELD_JOB_UNRECORDED, False), self.events)
+
+    def test_a_store_that_refuses_a_spent_outcome_keeps_the_marker(self) -> None:
+        """Codex review: the marker is the only record of the spend until the store has it."""
+        for outcome in (annotation_store.OUTCOME_UNWRITABLE, annotation_store.OUTCOME_UNTRUSTED):
+            with self.subTest(outcome=outcome):
+
+                def compose(hooks: reading_jobs.Hooks) -> Any:
+                    hooks.before_reserve()
+                    hooks.reserved()
+                    return None, reading.WITHHELD_MODEL_FAILED, True
+
+                with mock.patch.object(annotation_store, "_record", return_value=outcome):
+                    job = self._run(compose)
+                self.assertEqual([f"{job.id}.json"], [p.name for p in self._markers()])
+                for marker in self._markers():
+                    marker.unlink()
+
+    def test_a_thread_that_cannot_start_frees_the_job_and_the_slot(self) -> None:
+        """Review F8: a failed start would otherwise answer every later press 409."""
+        job = reading.start_job(self.config, KEY, provider="claude", label="Claude Code", now=1.0)
+        assert job is not None
+        with (
+            mock.patch.object(threading.Thread, "start", side_effect=RuntimeError("no thread")),
+            self.assertRaises(RuntimeError),
+        ):
+            reading_jobs.launch(self.application, job, lambda _h: (None, "", False))
+        self.assertIsNone(reading.job(self.config, KEY))
+        self.assertTrue(reading.claim(self.config, KEY))
+        reading.release(self.config, KEY)
 
 
 class ARestartRecordsTheAttemptItInterruptedTest(unittest.TestCase):
@@ -204,9 +275,8 @@ class ARestartRecordsTheAttemptItInterruptedTest(unittest.TestCase):
         return path
 
     def _entry(self) -> Any:
-        return annotation_store.find(
-            annotation_store.active(self.config, self.state), "claude", "s1"
-        )
+        # From disk: a second dashboard's write never reaches this state's cache.
+        return annotation_store.find(annotation_store.load(self.config), "claude", "s1")
 
     def test_a_marker_left_by_a_process_that_is_gone_becomes_a_spent_interrupted_attempt(
         self,
@@ -241,9 +311,80 @@ class ARestartRecordsTheAttemptItInterruptedTest(unittest.TestCase):
         record.assert_not_called()
         self.assertFalse(marker.exists())
 
+    def test_an_outcome_already_stored_for_the_job_is_not_counted_again(self) -> None:
+        """Review F3: the process died after the write and before the marker went."""
+        annotation_store.record_withheld(
+            self.config,
+            self.state,
+            "claude",
+            "s1",
+            reason=reading.WITHHELD_MODEL_FAILED,
+            spent=True,
+            job_id="abc",
+        )
+        marker = self._marker(
+            "abc", json.dumps({"id": "abc", "harness": "claude", "sid": "s1", "pid": 4242})
+        )
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
+        self.assertEqual(1, self._entry().get("readings"))
+        self.assertFalse(marker.exists())
+
+    def test_recording_one_job_twice_counts_it_once(self) -> None:
+        for _ in range(2):
+            annotation_store.record_withheld(
+                self.config,
+                self.state,
+                "claude",
+                "s1",
+                reason=reading.WITHHELD_MODEL_FAILED,
+                spent=True,
+                job_id="abc",
+            )
+        self.assertEqual(1, self._entry().get("readings"))
+
+    def test_two_dashboards_recovering_one_marker_count_it_once(self) -> None:
+        for attempt in range(20):
+            with self.subTest(attempt=attempt):
+                job_id = f"job{attempt}"
+                self._marker(
+                    job_id,
+                    json.dumps({"id": job_id, "harness": "claude", "sid": "s1", "pid": 4242}),
+                )
+                before = self._entry().get("readings", 0)
+                _, other_state = make_runtime(
+                    state_home=str(self.config.state_dir),
+                    state_dir=Path(self.config.state_dir),
+                    annotations_enabled=True,
+                )
+                other: Any = _Application(self.config, other_state, [])
+                gate = threading.Barrier(2)
+
+                def recover(app: Any, gate: threading.Barrier = gate) -> None:
+                    gate.wait(5)
+                    reading_jobs.recover(app, alive=lambda _pid: False)
+
+                threads = [
+                    threading.Thread(target=recover, args=(app,))
+                    for app in (self.application, other)
+                ]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(10)
+                self.assertEqual(before + 1, self._entry().get("readings"))
+                self.assertEqual([], list(self.markers.iterdir()))
+
+    def test_a_marker_naming_this_process_is_an_earlier_run(self) -> None:
+        """Review F4: a container's dashboard is PID 1 on every start."""
+        self._marker(
+            "abc", json.dumps({"id": "abc", "harness": "claude", "sid": "s1", "pid": os.getpid()})
+        )
+        self.assertEqual(1, reading_jobs.recover(self.application, alive=lambda _pid: True))
+        self.assertEqual(1, self._entry().get("readings"))
+
     def test_the_interrupted_sentence_says_the_attempt_counted(self) -> None:
         sentence = reading.WITHHELD[reading.WITHHELD_INTERRUPTED]
-        self.assertIn("restarted", sentence)
+        self.assertIn("stopped before it finished", sentence)
         self.assertIn("fresh press is the only retry", sentence)
 
 

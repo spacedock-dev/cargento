@@ -177,7 +177,8 @@ def codex_exec(
     """One bounded, ephemeral Codex call. Returns the output and a status.
 
     `unavailable` when no absolute `codex` resolves, `failed` on a non-zero
-    exit, a timeout or an OS error, `ok` otherwise. What an EMPTY output means
+    exit, a timeout or an OS error, `unstopped` when a killed CLI would not
+    exit, `ok` otherwise. What an EMPTY output means
     is the caller's to decide, because a goal line and a reading disagree
     about it.
 
@@ -249,6 +250,10 @@ def codex_exec(
             .decode("utf-8", "replace")
             .strip()
         ), "ok"
+    except supervise.UnstoppedError:
+        # Killed and not gone within the bound: said as its own status, since
+        # "did not complete" would hide that the CLI may still be running.
+        return "", "unstopped"
     except (OSError, subprocess.SubprocessError):
         return "", "failed"
     finally:
@@ -389,6 +394,10 @@ def claude_exec(
             .decode("utf-8", "replace")
             .strip()
         ), "ok"
+    except supervise.UnstoppedError:
+        # Killed and not gone within the bound: said as its own status, since
+        # "did not complete" would hide that the CLI may still be running.
+        return "", "unstopped"
     except (OSError, subprocess.SubprocessError):
         return "", "failed"
     finally:

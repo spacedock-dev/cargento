@@ -1947,7 +1947,7 @@ class ServeOwnsReadingJobsTest(unittest.TestCase):
         config = support.make_config()
 
         def recovered(_application: Any, *, alive: Any) -> int:
-            events.append(f"recover:{alive.__name__}")
+            events.append(f"recover:{alive.func.__name__}")
             return 0
 
         with (
@@ -1996,5 +1996,90 @@ class ServeOwnsReadingJobsTest(unittest.TestCase):
                 pass
 
         recover = self._serve(FakeServer(), events)
-        self.assertEqual(["recover:pid_exists", "serve", "kill_all"], events)
+        self.assertEqual(["recover:dashboard_alive", "serve", "kill_all"], events)
         self.assertIs(application, recover.call_args.args[0])
+
+
+class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
+    """Review F4: a reused pid is not a dashboard unless a state file here names it."""
+
+    def test_a_live_pid_is_a_dashboard_only_when_a_state_file_names_it(self) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        config = support.make_config(state_home=home, state_dir=Path(home))
+        parent = os.getppid()
+        self.assertFalse(lifecycle.dashboard_alive(config, parent))
+        Path(home, "cargento-4599.json").write_text(json.dumps({"pid": parent, "port": 4599}))
+        self.assertTrue(lifecycle.dashboard_alive(config, parent))
+        Path(home, "cargento-4598.json").write_text(json.dumps({"pid": 999_999_9, "port": 4598}))
+        self.assertFalse(lifecycle.dashboard_alive(config, 999_999_9), "a dead pid is no dashboard")
+
+
+_HANGUP_DAEMON = """
+import sys, threading, time
+sys.path.insert(0, sys.argv[1])
+from cargento_runtime import lifecycle, supervise
+
+lifecycle._register_sigterm_exit()
+cli_pid, done = sys.argv[2], sys.argv[3]
+script = "import os, time; open(%r, 'w').write(str(os.getpid())); time.sleep(60)" % cli_pid
+threading.Thread(
+    target=lambda: supervise.run([sys.executable, "-c", script], timeout=60), daemon=True
+).start()
+try:
+    time.sleep(60)
+finally:
+    supervise.kill_all()
+    open(done, "w").write("cleaned up")
+"""
+
+
+@unittest.skipIf(sys.platform == "win32", "terminal hangups are POSIX")
+class ATerminalHangupStillCleansUpTest(unittest.TestCase):
+    """Review F1: closing the terminal of a foreground run must not orphan the CLI.
+
+    A supervised CLI leads its own group, so the terminal's SIGHUP (or a
+    Ctrl-backslash SIGQUIT) reaches only the daemon. Measured before the fix:
+    the daemon died without its `finally` and the CLI ran on, untimed.
+    """
+
+    @staticmethod
+    def _stop(pid: int) -> None:
+        if support.process_alive(pid):
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGKILL)
+
+    def _hang_up(self, sig: int) -> None:
+        home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home, True)
+        cli_pid, done = home / "cli.pid", home / "done"
+        daemon = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _HANGUP_DAEMON,
+                str(Path(__file__).resolve().parents[1]),
+                str(cli_pid),
+                str(done),
+            ],
+            start_new_session=True,
+        )
+        self.addCleanup(daemon.kill)
+        deadline = time.monotonic() + 10
+        while not (cli_pid.exists() and cli_pid.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        pid = int(cli_pid.read_text())
+        self.addCleanup(self._stop, pid)
+        os.killpg(daemon.pid, sig)
+        daemon.wait(timeout=10)
+        self.assertTrue(done.exists(), "the daemon died without running its cleanup")
+        deadline = time.monotonic() + 10
+        while support.process_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(support.process_alive(pid), "the CLI outlived the hangup")
+
+    def test_a_hangup_to_a_foreground_daemons_group_kills_the_cli(self) -> None:
+        self._hang_up(signal.SIGHUP)
+
+    def test_a_quit_from_the_terminal_kills_the_cli(self) -> None:
+        self._hang_up(signal.SIGQUIT)

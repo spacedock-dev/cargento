@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import ctypes
 import errno
+import functools
 import http.client
 import json
 import math
@@ -291,6 +292,31 @@ def pid_exists(pid: int) -> bool:
         winerror = getattr(exc, "winerror", None)
         return exc.errno == errno.EPERM or winerror == 5
     return True
+
+
+def dashboard_alive(config: RuntimeConfig, pid: int) -> bool:
+    """Whether `pid` is a running dashboard on this state directory.
+
+    A running process alone is not one: a pid is reused, and a reading-job
+    marker whose pid now names an unrelated process would never be recovered
+    (review F4). A dashboard writes a state file under `cargento_home`, which is
+    this state directory, before it serves, so one of those naming the pid is
+    what makes it a dashboard.
+    """
+    if pid <= 0 or not pid_exists(pid):
+        return False
+    home = cargento_home(config)
+    try:
+        names = os.listdir(home)
+    except OSError:
+        return False
+    for name in names:
+        port = name.removeprefix("cargento-").removesuffix(".json")
+        if name.startswith("cargento-") and name.endswith(".json") and port.isdigit():
+            state = read_state(config, int(port))
+            if state is not None and state.get("pid") == pid:
+                return True
+    return False
 
 
 def sweep_stale_states(config: RuntimeConfig) -> list[int]:
@@ -848,18 +874,36 @@ def run_producer(
             )
 
 
+# Every signal that ends a run without a traceback. SIGHUP is the terminal of a
+# foreground run closing and SIGQUIT is Ctrl-backslash: a supervised CLI leads
+# its own group and receives neither, so unless they unwind through `serve`'s
+# `finally` too, the CLI outlives the daemon untimed (review F1, measured).
+_EXIT_SIGNALS = ("SIGTERM", "SIGHUP", "SIGQUIT")
+
+
 def _register_sigterm_exit() -> Any:
-    """Exit cleanly on SIGTERM so finally blocks can run."""
-    if not hasattr(signal, "SIGTERM") or sys.platform == "win32":
+    """Exit cleanly on SIGTERM, SIGHUP and SIGQUIT so finally blocks can run.
+
+    Returns the handlers it replaced, for `_restore_sigterm`.
+    """
+    if sys.platform == "win32":
         return None
-    with contextlib.suppress(ValueError, AttributeError):
-        return signal.signal(signal.SIGTERM, lambda _sig, _frame: sys.exit(0))
-
-
-def _restore_sigterm(handler: Any) -> None:
-    if handler is not None and hasattr(signal, "SIGTERM"):
+    previous: dict[int, Any] = {}
+    for name in _EXIT_SIGNALS:
+        number = getattr(signal, name, None)
+        if number is None:
+            continue
         with contextlib.suppress(ValueError, AttributeError):
-            signal.signal(signal.SIGTERM, handler)
+            previous[number] = signal.signal(number, lambda _sig, _frame: sys.exit(0))
+    return previous or None
+
+
+def _restore_sigterm(handlers: Any) -> None:
+    if not isinstance(handlers, dict):
+        return
+    for number, handler in handlers.items():
+        with contextlib.suppress(ValueError, AttributeError, TypeError):
+            signal.signal(number, handler)
 
 
 def serve(
@@ -912,7 +956,7 @@ def serve(
         # In the serving process, after the fork, so the pid a marker is
         # compared against is a daemon's and never the parent that exits.
         with contextlib.suppress(Exception):
-            reading_jobs.recover(served, alive=pid_exists)
+            reading_jobs.recover(served, alive=functools.partial(dashboard_alive, config))
     producer_stop = threading.Event()
     producer: threading.Thread | None = None
     if observation is not None:

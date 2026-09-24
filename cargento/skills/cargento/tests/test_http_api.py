@@ -40,6 +40,7 @@ from cargento_runtime import reading as runtime_reading
 from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime import supervise as runtime_supervise
 
 from .support import (
     PAGE_BYTES,
@@ -2930,6 +2931,10 @@ class ReadingRouteTest(unittest.TestCase):
     def _runtime(self, **changes: Any) -> Any:
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
+        # An open runner: a `serve` run earlier in this worker closes it.
+        patcher = mock.patch.object(runtime_supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
         changes.setdefault("annotations_enabled", True)
         changes.setdefault("observer_model_enabled", True)
         config, state = make_runtime(state_home=home, state_dir=Path(home), **changes)
@@ -3645,6 +3650,33 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual([], self.outcomes, "a refused press wrote an outcome")
         self.assertEqual({}, payload["reading_jobs"])
         self.assertEqual("daily-cap", payload["reading"]["reason"])
+
+    def test_a_job_whose_thread_cannot_start_answers_503_and_frees_the_session(self) -> None:
+        """Review F8: without this, every later press answered in-flight until a restart."""
+        config, state = self._runtime()
+        real_start = threading.Thread.start
+        failing = [True]
+
+        def start(thread: threading.Thread) -> None:
+            if failing[0] and thread.name.startswith(runtime_reading_jobs.THREAD_PREFIX):
+                raise RuntimeError("can't start new thread")
+            real_start(thread)
+
+        with (
+            mock.patch.object(
+                annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+            ),
+            self._counting_model() as calls,
+            self._serving(self._app(config, state)) as port,
+            mock.patch.object(threading.Thread, "start", start),
+        ):
+            status, _ = self._post(port, self._press())
+            self.assertEqual(503, status)
+            self.assertIsNone(runtime_reading.job(config, "pi:s1"))
+            failing[0] = False
+            status, _ = self._post(port, self._press())
+        self.assertEqual(202, status)
+        self.assertEqual(1, len(calls))
 
     def _phase(self, config: Any, harness: str) -> str | None:
         job = runtime_reading.job(config, f"{harness}:s1")

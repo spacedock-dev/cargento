@@ -1795,9 +1795,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # Taken before the thread starts, which may finish before this reply.
         started = runtime_reading.published_jobs(config)[key]
         row, found = rows[0], entry
-        runtime_reading_jobs.launch(
-            application, job, lambda hooks: self._compose_reading(row, found, route, hooks)
-        )
+        try:
+            runtime_reading_jobs.launch(
+                application, job, lambda hooks: self._compose_reading(row, found, route, hooks)
+            )
+        except RuntimeError:
+            # No thread to run it on; `launch` has already freed the slot, so
+            # the next press can start one. Nothing was spent.
+            self._reject(503)
+            return
         self._send(
             json.dumps({"ok": True, "job": started}, separators=(",", ":")).encode(),
             "application/json",
@@ -1940,6 +1946,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 application.clock,
                 provider=route["provider"],
                 on_reserved=hooks.reserved,
+                before_reserve=hooks.before_reserve,
             ),
         }
 

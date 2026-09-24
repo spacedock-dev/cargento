@@ -358,6 +358,8 @@ WITHHELD_MODEL_FAILED = "model-failed"
 WITHHELD_NOTHING_TYPED = "nothing-typed"
 WITHHELD_DISCARDED = "discarded"
 WITHHELD_INTERRUPTED = "interrupted"
+WITHHELD_UNSTOPPED = "unstopped"
+WITHHELD_JOB_UNRECORDED = "job-unrecorded"
 WITHHELD = {
     WITHHELD_TURN_STOP: (
         "A turn stop was observed and no session end was, so there is no end for a "
@@ -416,8 +418,21 @@ WITHHELD = {
     # dashboard stopped (DRC-4686, Q2). The attempt counts because it was
     # charged, and a silent loss would leave the count short of the budget.
     WITHHELD_INTERRUPTED: (
-        "The analysis stopped because Cargento restarted before it finished. Nothing was "
+        "The analysis stopped because Cargento stopped before it finished. Nothing was "
         "produced, the attempt still counts, and a fresh press is the only retry."
+    ),
+    # Nothing was spent: the job stops before the reservation when it cannot
+    # write the marker that keeps a spent attempt counted across a restart.
+    WITHHELD_JOB_UNRECORDED: (
+        "The analysis did not start, because Cargento could not write the record that keeps "
+        "a spent attempt counted. Nothing was sent or spent."
+    ),
+    # The kill that ended the call could not be confirmed within its bound, so
+    # the one thing a reader must hear is that the CLI may outlive the attempt.
+    WITHHELD_UNSTOPPED: (
+        "The reading was stopped, but Cargento could not confirm its process ended, so it may "
+        "still be running. Nothing was produced, the attempt counts, and a fresh press is the "
+        "only retry."
     ),
     WITHHELD_NOTHING_TYPED: (
         "Nothing is typed against this session, so there is nothing to read it against."
@@ -2005,6 +2020,8 @@ def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[st
         # Named for the CLI the page promised, never the other one: each model
         # says which sentence its own absence gets.
         return getattr(model, "unavailable_reason", None) or WITHHELD_MODEL_UNAVAILABLE, False
+    if status == "unstopped":
+        return WITHHELD_UNSTOPPED, True
     if status != "ok":
         return WITHHELD_MODEL_FAILED, True
     return None

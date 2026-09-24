@@ -18,13 +18,14 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import secrets
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from . import annotations as annotation_store
 from . import io as runtime_io
-from . import reading, reading_policy
+from . import reading, reading_policy, supervise
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -34,6 +35,19 @@ if TYPE_CHECKING:
 
 MARKER_DIR = "reading-jobs"
 THREAD_PREFIX = "cargento-reading-"
+# A marker being recovered is renamed to `<id>.json.claim-<pid>-<nonce>` first.
+# The rename is atomic, so of two dashboards recovering one marker exactly one
+# records it; the claim names its process, so a claimer that died is re-claimed.
+_CLAIM = ".claim-"
+# The claims this process made, so a thread of this process never takes another
+# thread's claim for one an earlier process with the same pid left behind.
+_CLAIMS: set[str] = set()
+_CLAIMS_LOCK = threading.Lock()
+
+
+class UnrecordedError(OSError):
+    """The restart marker could not be written, so the job may not spend."""
+
 
 Outcome = tuple["reading.Assessment | None", str, bool]
 
@@ -62,11 +76,18 @@ class Hooks:
         # exception after it still records a spent attempt.
         self.spent = False
 
-    def reserved(self) -> None:
-        """The spend is committed: leave the marker a restart would find."""
-        self.spent = True
+    def before_reserve(self) -> None:
+        """Leave the marker a restart would find, before anything is spent.
+
+        Before and not after the reservation: a marker that cannot be written
+        stops the job with nothing spent, where one written after could fail
+        with the spend already made and nothing left to count it. The price is
+        the other side of that line: a dashboard that dies between this write
+        and the reservation leaves a marker for an attempt the budget never
+        charged, and the next start counts it.
+        """
         config = self._application.config
-        with contextlib.suppress(OSError):
+        try:
             runtime_io.atomic_write_owner_only(
                 str(_marker(config, self._job.id)),
                 json.dumps(
@@ -79,6 +100,12 @@ class Hooks:
                     }
                 ),
             )
+        except OSError as exc:
+            raise UnrecordedError(str(exc)) from exc
+
+    def reserved(self) -> None:
+        """The spend is committed."""
+        self.spent = True
 
     def spawned(self, group: Any) -> None:
         """The CLI exists, so the job is waiting on the provider now."""
@@ -115,25 +142,39 @@ def _publish(application: Application) -> None:
 def launch(
     application: Application, job: reading.Job, compose: Callable[[Hooks], Outcome]
 ) -> threading.Thread:
-    """Run one job on a daemon thread and return it."""
+    """Run one job on a daemon thread and return it.
+
+    A thread that cannot start ends the job and frees the slot before the
+    error propagates, or every later press would answer `in-flight` until the
+    dashboard restarted (review F8).
+    """
     thread = threading.Thread(
         target=_run, args=(application, job, compose), name=f"{THREAD_PREFIX}{job.id}", daemon=True
     )
-    thread.start()
+    try:
+        thread.start()
+    except BaseException:
+        reading.end_job(application.config, f"{job.harness}:{job.sid}")
+        raise
     return thread
 
 
 def _run(application: Application, job: reading.Job, compose: Callable[[Hooks], Outcome]) -> None:
     config = application.config
     hooks = Hooks(application, job)
+    durable = True
     try:
         _publish(application)
         outcome = _outcome(application, compose, hooks)
         if outcome is not None:
-            _record(application, job, outcome)
+            durable = _record(application, job, outcome)
     finally:
-        with contextlib.suppress(OSError):
-            _marker(config, job.id).unlink(missing_ok=True)
+        # A spend the store would not take keeps its marker: it is then the
+        # only record that the attempt was charged, and the next start counts
+        # it. Anything else has been stored, or never spent.
+        if durable or not hooks.spent:
+            with contextlib.suppress(OSError):
+                _marker(config, job.id).unlink(missing_ok=True)
         # After the write and only then: a page that sees the job gone sees
         # its result with it, never a finished box beside no result.
         reading.end_job(config, f"{job.harness}:{job.sid}")
@@ -145,35 +186,45 @@ def _outcome(
 ) -> Outcome | None:
     """The reading's result, or None when the model seam refused it."""
     try:
-        return compose(hooks)
+        outcome = compose(hooks)
     except reading_policy.RefusedError:
         # Another tab filled the budget, or consent was withdrawn, after the
         # press was admitted. Nothing ran and nothing is written: the board's
         # published permission already says why.
         return None
+    except UnrecordedError:
+        return None, reading.WITHHELD_JOB_UNRECORDED, False
     except Exception as exc:  # noqa: BLE001 (a failed job must still free its slot)
         runtime_io.diag(
             f"Cargento: a reading job failed ({exc.__class__.__name__}).",
             application.diagnostic_sink,
         )
-        return None, reading.WITHHELD_MODEL_FAILED, hooks.spent
+        outcome = None, reading.WITHHELD_MODEL_FAILED, hooks.spent
+    assessment, _why, spent = outcome
+    if assessment is None and spent and supervise.closed():
+        # The dashboard is stopping and killed the call: said as the stop it
+        # was, as the next start would have said it (review F5).
+        return None, reading.WITHHELD_INTERRUPTED, True
+    return outcome
 
 
-def _record(application: Application, job: reading.Job, outcome: Outcome) -> None:
+def _record(application: Application, job: reading.Job, outcome: Outcome) -> bool:
+    """Write the outcome under the job's id. True when the store holds it."""
     assessment, why, spent = outcome
     config, state = application.config, application.state
     try:
         if assessment is not None:
-            annotation_store.record_reading(
+            answer = annotation_store.record_reading(
                 config,
                 state,
                 job.harness,
                 job.sid,
                 assessment=assessment,
                 diagnostic_sink=application.diagnostic_sink,
+                job_id=job.id,
             )
         else:
-            annotation_store.record_withheld(
+            answer = annotation_store.record_withheld(
                 config,
                 state,
                 job.harness,
@@ -181,36 +232,43 @@ def _record(application: Application, job: reading.Job, outcome: Outcome) -> Non
                 reason=why,
                 spent=spent,
                 diagnostic_sink=application.diagnostic_sink,
+                job_id=job.id,
             )
     except Exception as exc:  # noqa: BLE001 (the slot is freed whatever the store did)
         runtime_io.diag(
             f"Cargento: a reading's outcome could not be stored ({exc.__class__.__name__}).",
             application.diagnostic_sink,
         )
+        return False
+    return answer not in {annotation_store.OUTCOME_UNWRITABLE, annotation_store.OUTCOME_UNTRUSTED}
 
 
 def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
     """Record every job a stopped dashboard left spent. Returns how many.
 
-    `alive` is `lifecycle.pid_exists`, injected so this module never imports
-    the lifecycle. A marker whose process still runs belongs to another
-    dashboard on this state directory, on another port, and is left alone. A
-    reused pid leaves a marker for a later start rather than recording a live
-    job as interrupted.
+    `alive` answers whether a pid is a dashboard serving this state directory
+    now (`lifecycle.dashboard_alive`, injected so this module never imports the
+    lifecycle). A marker such a dashboard holds is its running job and is left
+    alone. This process's own pid is an earlier run that happened to get it
+    back, as a container's PID 1 does on every start: this process has started
+    no job yet. Each marker is claimed by an atomic rename before it is
+    recorded, and recorded under its job's id, so two dashboards recovering
+    together, or a dashboard that died after the write, count it once.
     """
     config, state = application.config, application.state
     recorded = 0
-    for path in sorted((Path(config.state_dir) / MARKER_DIR).glob("*.json")):
+    for path in sorted((Path(config.state_dir) / MARKER_DIR).glob("*.json*")):
+        claimed = _claim(path, alive)
+        if claimed is None:
+            continue
         try:
-            marker = json.loads(path.read_text(encoding="utf-8"))
-            harness, sid, pid = marker["harness"], marker["sid"], int(marker["pid"])
+            marker = json.loads(claimed.read_text(encoding="utf-8"))
+            harness, sid, job_id = marker["harness"], marker["sid"], str(marker["id"])
         except (OSError, ValueError, KeyError, TypeError):
             with contextlib.suppress(OSError):
-                path.unlink()
+                claimed.unlink()
             continue
-        if pid == os.getpid() or alive(pid):
-            continue
-        annotation_store.record_withheld(
+        answer = annotation_store.record_withheld(
             config,
             state,
             harness,
@@ -218,8 +276,46 @@ def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
             reason=reading.WITHHELD_INTERRUPTED,
             spent=True,
             diagnostic_sink=application.diagnostic_sink,
+            job_id=job_id,
         )
-        recorded += 1
+        if answer in {annotation_store.OUTCOME_UNWRITABLE, annotation_store.OUTCOME_UNTRUSTED}:
+            continue
+        recorded += answer == annotation_store.OUTCOME_STORED
         with contextlib.suppress(OSError):
-            path.unlink()
+            claimed.unlink()
     return recorded
+
+
+def _claim(path: Path, alive: Callable[[int], bool]) -> Path | None:
+    """Take a marker, or a dead recoverer's claim on one, for this process."""
+    name = path.name
+    base, _, claimant = name.partition(_CLAIM)
+    if not base.endswith(".json"):
+        return None
+    with _CLAIMS_LOCK:
+        if name in _CLAIMS:
+            return None
+    pid = _holder(path, claimant)
+    if pid is None or (pid and pid != os.getpid() and alive(pid)):
+        return None
+    target = path.with_name(f"{base}{_CLAIM}{os.getpid()}-{secrets.token_hex(4)}")
+    with _CLAIMS_LOCK:
+        _CLAIMS.add(target.name)
+    try:
+        path.rename(target)
+    except OSError:
+        return None
+    return target
+
+
+def _holder(path: Path, claimant: str) -> int | None:
+    """The pid that holds a marker or a claim, 0 when none can be read, None to skip."""
+    if claimant:
+        try:
+            return int(claimant.split("-", maxsplit=1)[0])
+        except ValueError:
+            return None
+    try:
+        return int(json.loads(path.read_text(encoding="utf-8"))["pid"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0

@@ -109,6 +109,17 @@ class ReadingPolicyTest(unittest.TestCase):
         self.assertEqual(("", "unavailable"), guarded("prompt", output_cap_bytes=100))
         self.assertEqual([1], used_when_told)
 
+    def test_a_marker_that_cannot_be_written_stops_the_call_before_it_spends(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0)
+        model = mock.Mock(return_value=("{}", "ok"))
+        guarded = reading_policy.GuardedModel(
+            self.config, model, lambda: 100.0, before_reserve=mock.Mock(side_effect=OSError)
+        )
+        with self.assertRaises(OSError):
+            guarded("prompt", output_cap_bytes=100)
+        self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
+        model.assert_not_called()
+
     def test_missing_sqlite_refuses_permission_and_launch(self) -> None:
         with mock.patch.object(runtime_io, "sqlite_module", None):
             self.assertEqual(

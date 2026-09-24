@@ -31,6 +31,7 @@ from cargento_runtime import (
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime import supervise as runtime_supervise
 
 from . import support
 
@@ -2116,6 +2117,7 @@ class WiringTest(unittest.TestCase):
             mock.patch.object(http_api, "CargentoHTTPServer", server_class),
             mock.patch.object(lifecycle, "write_state"),
             mock.patch.object(lifecycle, "remove_state"),
+            mock.patch.object(runtime_supervise, "kill_all"),
             mock.patch.object(runtime_io, "diag"),
             contextlib.suppress(KeyboardInterrupt),
         ):
@@ -2150,6 +2152,8 @@ class WiringTest(unittest.TestCase):
             mock.patch.object(lifecycle, "write_state"),
             mock.patch.object(lifecycle, "remove_state"),
             mock.patch.object(lifecycle, "run_producer") as producer,
+            # The real one closes this worker's runner for every later test.
+            mock.patch.object(runtime_supervise, "kill_all"),
         ):
             lifecycle.serve(
                 config,
@@ -2179,6 +2183,8 @@ class WiringTest(unittest.TestCase):
             mock.patch.object(lifecycle, "write_state"),
             mock.patch.object(lifecycle, "remove_state"),
             mock.patch.object(lifecycle, "run_producer") as producer,
+            # The real one closes this worker's runner for every later test.
+            mock.patch.object(runtime_supervise, "kill_all"),
         ):
             lifecycle.serve(
                 config,

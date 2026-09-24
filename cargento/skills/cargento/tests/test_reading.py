@@ -1502,6 +1502,13 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
             on_phase=over.pop("on_phase", None),
         )
 
+    def test_a_cli_that_would_not_stop_is_named_and_counted(self) -> None:
+        """Codex review F6: the kill failed, so the reader is told the process may still run."""
+        _a, why, spent = self._produce(model=self._model("", "unstopped"))
+        self.assertEqual(reading.WITHHELD_UNSTOPPED, why)
+        self.assertTrue(spent)
+        self.assertIn("may still be running", reading.WITHHELD[why])
+
     def test_checking_the_reply_is_announced_only_once_a_reply_arrived(self) -> None:
         """DRC-4686: the third phase is published from `produce`, so it must be true.
 

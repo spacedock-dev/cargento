@@ -1676,6 +1676,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.reading",
             "cargento_runtime.reading_policy",
             "cargento_runtime.state",
+            # Whether the runner is shut, so a stop records `interrupted`.
+            "cargento_runtime.supervise",
         },
         # The supervised runner every model call uses: a leaf on purpose, so
         # the kill guard it holds depends on nothing in the runtime.

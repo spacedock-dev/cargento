@@ -34,6 +34,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import time
 from typing import TYPE_CHECKING, Any, Final, NamedTuple, NotRequired, TypedDict, cast
 
@@ -278,6 +279,10 @@ DISCARD_SENTENCES: Final[dict[str, str]] = {
 # job and two answers. The tokens go over the wire as `/api/annotate`'s
 # `outcome`, so they are spelled for a reader of the reply.
 OUTCOME_STORED = "stored"
+# How many reading-job ids an entry remembers. Only the newest few can still
+# meet a restart marker, since a marker names one job and is gone once recorded.
+RECORDED_JOBS_CAP = 32
+_JOB_ID = re.compile(r"[0-9a-f]{1,64}")
 OUTCOME_UNCHANGED = "unchanged"
 OUTCOME_REFUSED = "refused"
 OUTCOME_UNWRITABLE = "unwritable"
@@ -424,6 +429,10 @@ class Annotation(TypedDict):
     harness: str
     sid: str
     revisions: tuple[Revision, ...]
+    # The reading jobs whose outcome this entry already holds, newest last, so
+    # an outcome written twice for one job (a restart recovering a marker whose
+    # write had landed) counts once. Ids only, bounded by `RECORDED_JOBS_CAP`.
+    jobs: NotRequired[list[str]]
     settled: NotRequired[Settlement]
     assessment: NotRequired[reading.Assessment]
     # Set on read-back when a stored reading was refused whole, never written
@@ -754,6 +763,11 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
 
 def _counters(entry: Annotation, value: dict[str, Any]) -> Annotation:
     """The entry's press count, withheld reason and write time, each read on its own."""
+    jobs = value.get("jobs")
+    if isinstance(jobs, list):
+        kept = [job for job in jobs if isinstance(job, str) and _JOB_ID.fullmatch(job)]
+        if kept:
+            entry["jobs"] = kept[-RECORDED_JOBS_CAP:]
     readings = value.get("readings")
     if isinstance(readings, int) and not isinstance(readings, bool) and readings > 0:
         entry["readings"] = readings
@@ -1306,7 +1320,7 @@ def _carried(existing: Annotation, updated: Annotation) -> Annotation:
     silently discards the reader's reading, and nothing about the row would
     look wrong afterwards.
     """
-    for name in ("settled", "assessment", "readings", "withheld"):
+    for name in ("settled", "assessment", "readings", "withheld", "jobs"):
         if name not in updated and name in existing:
             updated[name] = existing[name]
     return updated
@@ -1320,6 +1334,7 @@ def record_reading(
     *,
     assessment: reading.Assessment,
     diagnostic_sink: Callable[[str], None] = print,
+    job_id: str = "",
 ) -> str:
     """Store one reading beside the words it read. Returns an `OUTCOMES` token.
 
@@ -1337,6 +1352,7 @@ def record_reading(
         withheld="",
         spent=True,
         diagnostic_sink=diagnostic_sink,
+        job_id=job_id,
     )
 
 
@@ -1349,8 +1365,13 @@ def record_withheld(
     reason: str,
     spent: bool,
     diagnostic_sink: Callable[[str], None] = print,
+    job_id: str = "",
 ) -> str:
     """Store why there is no reading. Returns an `OUTCOMES` token.
+
+    `job_id` names the reading job this outcome ends. An entry that already
+    holds it answers `unchanged` and counts nothing, so one job is one attempt
+    however many times its outcome reaches the store.
 
     `spent` is the difference between a press that reached the model and one
     that never could. A missing Codex CLI costs nothing and must not count
@@ -1372,10 +1393,17 @@ def record_withheld(
         withheld=reading.WITHHELD[reason],
         spent=spent,
         diagnostic_sink=diagnostic_sink,
+        job_id=job_id,
     )
 
 
-def _record(
+def _recorded_job(updated: Annotation, existing: Annotation, job_id: str) -> None:
+    """Add this job to the ids the entry remembers, when an outcome names one."""
+    if job_id:
+        updated["jobs"] = [*existing.get("jobs", ()), job_id][-RECORDED_JOBS_CAP:]
+
+
+def _record(  # noqa: PLR0913 (the two callers' fields, one keyword each)
     config: RuntimeConfig,
     state: RuntimeState,
     harness: Any,
@@ -1385,6 +1413,7 @@ def _record(
     withheld: str,
     spent: bool,
     diagnostic_sink: Callable[[str], None] = print,
+    job_id: str = "",
 ) -> str:
     """The shared write behind `record_reading` and `record_withheld`.
 
@@ -1415,11 +1444,14 @@ def _record(
             # sentence and `readings` a count, and hanging either off a record
             # would make it an entry with something in it (DRC-4565).
             return OUTCOME_REFUSED
+        if job_id and job_id in existing.get("jobs", ()):
+            return OUTCOME_UNCHANGED
         updated: Annotation = {
             "harness": existing["harness"],
             "sid": existing["sid"],
             "revisions": existing["revisions"],
         }
+        _recorded_job(updated, existing, job_id)
         if assessment is not None:
             updated["assessment"] = assessment
         if withheld:

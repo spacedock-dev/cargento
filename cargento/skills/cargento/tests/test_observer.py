@@ -2213,10 +2213,36 @@ class SupervisedModelCallTest(unittest.TestCase):
     runner with `subprocess.run`'s signature valid.
     """
 
+    def setUp(self) -> None:
+        from cargento_runtime import supervise  # noqa: PLC0415
+
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _config(self) -> Any:
         state_dir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, state_dir, True)
         return dataclasses.replace(make_config(), state_dir=state_dir)
+
+    def test_a_child_that_would_not_die_is_its_own_status_and_not_a_failure(self) -> None:
+        """Codex review F6: a kill that failed is surfaced, never read as an ordinary failure."""
+        from cargento_runtime import supervise  # noqa: PLC0415
+
+        def runner(_command: Any, **_kwargs: Any) -> Any:
+            raise supervise.UnstoppedError(4242)
+
+        config = self._config()
+        for call in (observer.codex_exec, observer.claude_exec):
+            with self.subTest(call=call.__name__):
+                _, status = call(
+                    config,
+                    "p",
+                    output_cap_bytes=64,
+                    runner=runner,
+                    binary_resolver=lambda name: f"/usr/local/bin/{name}",
+                )
+                self.assertEqual("unstopped", status)
 
     def test_every_model_caller_defaults_to_the_supervised_runner(self) -> None:
         import inspect  # noqa: PLC0415
