@@ -409,7 +409,7 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
-To check for drift, press **Analyze drift** on the session page, then read the disclosure and
+To analyze drift, press **Analyze drift** on the session page, then read the disclosure and
 choose **Allow and analyze**. With no saved goal, the check adopts the latest permitted Claude Code
 or Codex prompt. The goal field lets you choose the first prompt or adopt without checking; you
 can also type your own goal. Adopted words say "from your prompt", and editing them makes a typed
@@ -417,7 +417,7 @@ goal. An unavailable prompt time means you must type a goal instead. The permiss
 Use **Turn off readings** on a session page to revoke it. Checks spend your Codex capacity, including
 when the session belongs to another harness. A Claude Code session is read by Codex too, because
 Claude Code checks are built but not yet qualified; the text under the button names who reads each
-session, and without Codex installed that reason takes the button's place and says no check can run. Permission is kept per provider, and
+session, and without Codex installed that reason takes the button's place and says no analysis can run. Permission is kept per provider, and
 Turn off readings revokes all of them. Twelve attempts are allowed in a rolling twenty-four
 hours; a refused check names when capacity under that limit becomes available again. Goal summaries
 in Console still require their separate startup flag and consent.

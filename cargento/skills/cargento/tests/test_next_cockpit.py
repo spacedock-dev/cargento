@@ -12639,6 +12639,19 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "settle-refused": "",
         "settle-unpersisted": "",
         "model": "",
+        # An Expected Output row in the panel (DRC-4680 review, C-5): on Codex its limit line
+        # names the record, which is in the activity column beside the panel, so it may not
+        # point "above" at it. Without this arm no render drew that row.
+        "reading-row": (
+            '__dashboard.sessions[0].annotation_line_1 = "a CSV export";\n'
+            '__dashboard.sessions[0].annotation_line_1_source = "typed";\n'
+            "__dashboard.sessions[0].annotation_at = 106;\n"
+            "__dashboard.sessions[0].annotation_reading_count = 1;\n"
+            "__dashboard.sessions[0].annotation_assessment = {revision_read:2, criteria:{"
+            'goal:{result:"not verifiable from available evidence", cites:[], detail:""},'
+            'line_1:{result:"not verifiable from available evidence", cites:[], detail:"",'
+            ' clause:"a CSV export"}}};\n'
+        ),
     }
 
     def arm(self, name: str) -> str:
@@ -13607,7 +13620,15 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         # Output, and the line under the checks says what is sent and to whom.
         self.assertEqual("", out["readingClaude"])
         self.assertIn("to Codex, which reaches OpenAI", out["limit"][0])
-        self.assertEqual(out["codex"], out["readingCodex"])
+        # The reading row has its own sentence since the DRC-4680 review (C-5): it sits in the
+        # panel, beside the record rather than under it, so it names the record instead of
+        # pointing "above" at it.
+        self.assertEqual(
+            "Codex publishes no demonstrated work results, so nothing in this session\u2019s "
+            "observed record is an inspected file, test or deliverable.",
+            out["readingCodex"],
+        )
+        self.assertNotRegex(out["readingCodex"], r"\b(?:above|below)\b")
         self.assertEqual("", out["readingPi"])
 
     def test_the_totals_give_the_latest_results_and_the_writes_outside(self) -> None:  # R16, R10

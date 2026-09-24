@@ -1218,15 +1218,19 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     '<div class="next-cockpit-held-heading">' +
     `<span class="next-cockpit-held-label">${esc(label)}</span>` +
     (kind === "goal" ? nextPromptSourceLine(annotation) + nextPromptAdoptControls(session) : "") +
-    '</div>' +
-    `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
-    `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
-    `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
+    /* The field's count and controls share its heading row, before the box in
+       reading order as they are on screen: under the box they cost a second
+       44px row in the panel's column (DRC-4680 fold). */
     `<span class="next-cockpit-held-count" data-next-cockpit-held-count="${kind}">` +
     `${draft.length}/${cap}</span>` +
+    '<span class="next-cockpit-held-tools">' +
     nextCockpitHeldControl("held-clear", "clear", kind, Boolean(draft), false) +
     nextCockpitHeldControl("held-save", "save", kind, draft !== saved, true,
       why ? nextCockpitHeldAbsentId(kind) : "") +
+    '</span></div>' +
+    `<textarea maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
+    `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
+    `data-next-focus="${esc(key)}" placeholder="${esc(placeholder)}">${esc(draft)}</textarea>` +
     /* The absence sentence answers "why is this empty", so it goes when the
        box stops being empty. It read the SERVER value alone, which put "No
        goal typed for this session." directly under the sentence the reader
@@ -1322,11 +1326,12 @@ function nextCockpitHeldLines(session, annotation, cap){
   return '<div class="next-cockpit-held-field next-cockpit-held-lines" ' +
     'data-next-cockpit-held-field="lines">' +
     '<div class="next-cockpit-held-heading">' +
-    '<span class="next-cockpit-held-label">Expected outcome</span></div>' +
-    `<ol class="next-cockpit-held-list">${rows}</ol>` +
-    add +
+    '<span class="next-cockpit-held-label">Expected outcome</span>' +
+    /* In the heading row, as the goal's are (DRC-4680 fold). */
+    '<span class="next-cockpit-held-tools">' + add +
     nextCockpitHeldControl("held-save", "save", "lines", nextCockpitLinesChanged(draft, annotation),
-      true, why ? nextCockpitHeldAbsentId("lines") : "") +
+      true, why ? nextCockpitHeldAbsentId("lines") : "") + '</span></div>' +
+    `<ol class="next-cockpit-held-list">${rows}</ol>` +
     '<p class="next-cockpit-held-full" id="next-cockpit-held-full" data-next-cockpit-held-full' +
     `${full ? "" : " hidden"}>${esc(NEXT_COCKPIT_LINES_FULL)}</p>` +
     (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId("lines")}" ` +
@@ -1378,8 +1383,14 @@ function nextCockpitWorkEvidenceLimit(harness){
    Where it cannot name that, no check is sent and the demotion stays. */
 function nextReadingOutputLimit(harness){
   if(harness === "pi") return "";
-  if(harness !== "claude") return nextCockpitWorkEvidenceLimit(harness);
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
+  /* Its own sentence, not the record's: this row is in the panel and the
+     record is in the activity column beside it, so the record line's "above"
+     would point the wrong way here (DRC-4680 review, C-5). */
+  if(harness !== "claude"){
+    return `${label} publishes no demonstrated work results, so nothing in this session\u2019s ` +
+      "observed record is an inspected file, test or deliverable.";
+  }
   const route = nextReadingRoute({harness});
   if(route && route.provider && route.destination) return "";
   if(route && route.provider){
@@ -1849,7 +1860,7 @@ const NEXT_READING_ANNOTATIONS_OFF =
    payload without one names no receiver, and a press under no named receiver
    is the one this disclosure exists to prevent, so the page offers none. */
 const NEXT_READING_ROUTE_UNREAD =
-  "Who would read this session is not published, so no check is offered. " +
+  "Who would read this session is not published, so no analysis is offered. " +
   "Cargento asks again with the next update.";
 const NEXT_READING_PROVIDER_CHANGED =
   "The reader for this session changed since this page was drawn, so nothing was sent; " +
@@ -2743,7 +2754,7 @@ function nextReadingRouteRefusal(session){
 function nextReadingPolicyReason(policy){
   if(!policy) return NEXT_READING_MODEL_UNREAD;
   if(policy.reason === "run-disabled") return NEXT_READING_MODEL_OFF;
-  if(policy.reason === "store-unavailable") return "Reading permission or its daily budget could not be read or saved. Restore access to the Cargento store before checking.";
+  if(policy.reason === "store-unavailable") return "Reading permission or its daily budget could not be read or saved. Restore access to the Cargento store before analyzing drift.";
   if(policy.reason === "daily-cap"){
     const at = nextNumber(policy.retry_at);
     return at == null ? "The daily reading limit is reached. Wait for the next update."
@@ -2836,7 +2847,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      pays. Where it sits is the owner's ruling (DRC-4680): idle, under the
      button with the hint, as item 5 of
      [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
-     draws it, because that press sends nothing yet; confirming, before
+     draws it: that press either opens the confirming step or runs under an
+     Allow already given after this same disclosure; confirming, before
      "Allow and analyze", because that press is the consent. Either way the
      button is described by it, unless a refusal is what describes it. */
   const disclosure = provider && route.disclosure
@@ -2859,12 +2871,20 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   /* Only from a published annotation: with the store off there is no count
      to read, and "0 requests" would be a default standing in for one. */
   const counted = annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "";
-  /* While a job runs, the box stands where the button and its hint were, as
-     the design draws it, and the disclosure and the count stay beside it. A
-     refusal is about a new press, which is not offered, so it waits. */
+  /* What the last press or withdrawal came to, announced. Every arm prints
+     it: a failed "Turn off readings" that says nothing leaves the reader
+     believing a permission is gone that is still on record (review C-1). */
+  const answered = request && request.message && !request.refusal ? String(request.message) : "";
+  const said = text => text
+    ? '<p class="next-cockpit-reading-why" role="status"' +
+      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(text))}>${esc(text)}</p>` : "";
+  /* While a job runs, the box stands where the button was, as the design
+     draws it, with the disclosure and the count after it in the idle order.
+     A refusal is about a new press, which is not offered, so it waits. */
   if(job){
-    return '<div class="next-cockpit-reading-ask">' + disclosure + off + '</div>' +
-      nextReadingJobBox(job, key) + counted;
+    return nextReadingJobBox(job, key) +
+      (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
+      disclosure + said(answered) + counted;
   }
   /* No reader on this machine: the route's reason stands where the button
      would be, and no inert button is drawn, because there is no press to
@@ -2874,11 +2894,13 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      control and its sentence. `--no-annotations` is one of those, so the
      store's state is checked first. */
   const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
+  /* The reason takes the button's focus key, so a reader whose focus was on
+     Analyze drift when the reader went away lands on why, not on the page. */
   if(noReader){
     return '<div class="next-cockpit-reading-ask next-cockpit-reading-ask--none">' +
-      `<p class="next-cockpit-reading-why" data-next-reading-no-reader` +
-      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(noReader))}>${esc(noReader)}</p>` +
-      off + '</div>' + counted;
+      `<p class="next-cockpit-reading-why" tabindex="-1" data-next-focus="reading:${esc(key)}" ` +
+      `data-next-reading-no-reader${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(noReader))}>` +
+      `${esc(noReader)}</p>` + off + '</div>' + said(answered === noReader ? "" : answered) + counted;
   }
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
@@ -2899,11 +2921,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
   return '<div class="next-cockpit-reading-ask">' + (confirming ? disclosure : "") + button + off +
     '</div>' +
     (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "") +
-    (confirming ? "" : disclosure) +
-    (request && request.message && !request.refusal
-      ? '<p class="next-cockpit-reading-why" role="status"' +
-        `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
-        `${esc(request.message)}</p>` : "") +
+    (confirming ? "" : disclosure) + said(answered) +
     counted +
     /* The announcement and the description are one node while a refusal
        stands. Printing the stored message and the reason separately rendered
@@ -3471,7 +3489,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       return;
     }
     if(answer && answer.adoption_refused){
-      request.message = "The prompt or saved goal changed. Review the current goal before checking again.";
+      request.message = "The prompt or saved goal changed. Review the current goal before analyzing again.";
       await refreshNext();
       return;
     }

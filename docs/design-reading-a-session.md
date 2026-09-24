@@ -1584,6 +1584,17 @@ the analysis's recommendation.
   revision stamp and "Each save is a revision." share one line, and an outcome line's box shares
   its row with its count and remove. That put the bottom at 820 and 879 with nothing removed. C1
   gives the aside no visible heading, only its "Intent and drift" label, so none was added.
+- The fold criterion, reworded by the owner after review: "Analyze drift sits above the fold at
+  1440x900 with a goal and up to three outcome lines (the design's textarea footprint); with more
+  lines the Drift heading stays above the fold." The owner's fix for the lines themselves: every
+  saved line is one row of about one control height. The line grid had three tracks for four items
+  (box, count, source, remove), so a saved line's source pushed remove onto a second row and each
+  line cost 85px; it now has a track per item. That alone left a goal and three lines at 926 on a
+  Codex session and six lines' Drift heading at 1018, so each field's count and controls moved into
+  its heading row (before the box, in reading order as on screen) and the panel's gaps tightened.
+  Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's bottom at 788
+  (Claude Code) and 820 (Codex); six lines put the Drift heading's bottom at 900 on both, with no
+  margin, because the six-line notice ("An expected outcome holds six lines...") appears only then.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

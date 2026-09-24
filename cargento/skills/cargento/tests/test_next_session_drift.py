@@ -203,6 +203,9 @@ await refreshNext();
         self.assertLess(check, html.index("</aside>"))
         self.assertLess(html.index("</aside>"), workers)
         self.assertLess(check, workers)
+        # And the agent's direction stays ahead of the worker list in its own column, as it was
+        # beside the reader's words before DRC-4680: 31 workers above it put it at 2019px.
+        self.assertLess(html.index("CURRENT ACTIVITY"), workers)
         for index in range(31):
             self.assertEqual(1, html.count(f"historical-worker-{index:02}"))
 

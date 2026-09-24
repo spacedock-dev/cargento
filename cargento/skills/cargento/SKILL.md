@@ -328,9 +328,9 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields the drift block runs in reading order: the agent's current activity, the
-check, the reading, a later direction and the notes about your saved words, and the departures on
-record. The departures section appears only with `--unasked-readings` on, or once a reading or a
+Below the two fields the Drift section runs in reading order: `Analyze drift`, the reading, a
+later direction and the notes about your saved words, and the departures on record. The agent's
+current activity leads the Session activity column beside it. The departures section appears only with `--unasked-readings` on, or once a reading or a
 departure is on record. How it landed and the observed record follow
 the session's own facts further down. The record is last because it is the longest block here and
 its absence sentence is one of four that used to arrive before you reached the reading. It lists every observed entry naming that session with its own type and the source that
@@ -397,7 +397,8 @@ Nothing here evaluates on a cadence. Drift marks show departures already on reco
 reader-requested reading or the optional unasked lane. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control, `Analyze drift`. When it cannot run it stays on the page, refuses the press, and
-names one next step. The accepted case review enables that control; the evidence stays readable
+names one next step, except where no reader is available on this machine: then the reason stands
+where the control would be. The accepted case review enables that control; the evidence stays readable
 whether or not you ask for a reading. A press starts an analysis the server runs in the background,
 and while it runs the control is replaced by an "Analyzing drift" box listing its real steps
 (preparing what is sent, waiting for the named provider, checking the reply), the one under way

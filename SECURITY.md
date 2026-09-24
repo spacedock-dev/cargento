@@ -1247,8 +1247,9 @@ Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent
 layer named beside it, and the route counts in Scope move in those layers, not here.
 
 The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
-analyze", with DRC-4680. Before the first press the disclosure sits under "Analyze drift", which
-sends nothing; at the confirming press it sits before "Allow and analyze". The permission and rolling budget above are otherwise unchanged, except
+analyze", with DRC-4680. When idle the disclosure sits under "Analyze drift", whose press either
+asks for the Allow first or runs under one already given after this same disclosure; at the
+confirming press it sits before "Allow and analyze". The permission and rolling budget above are otherwise unchanged, except
 that an allow given before the disclosure named tool output does not cover it
 ([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). "Keep my intent
 and analyze" counts as the allow when the disclosure beside it has not been allowed yet.

@@ -818,11 +818,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    and nothing sticky, so docs/design-reader-state.md gains no row. */
 .next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
 .next-session-columns{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:var(--sp-5);align-items:start}
-.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-3);min-width:0}
+.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
 .next-session-activity{grid-column:1;grid-row:1;min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.next-session-panel .next-cockpit-held{padding:0}
-.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr)}
+.next-session-panel .next-cockpit-held{gap:6px;padding:0}
+.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:8px}
+.next-session-panel .next-cockpit-held-list{gap:2px}
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
 .next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 /* Two rows: state, name and id; then the measured line with the controls on
@@ -841,7 +842,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The Drift section: one card holding the control, the reading, any later
    direction, the caveats and the departures. */
 .next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
-.next-session-drift-head{padding:12px 16px 10px}
+.next-session-drift-head{padding:8px 16px 10px}
 .next-session-drift-heading{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-drift-sub{margin:4px 0 0;color:var(--ink2);font-size:var(--fs-label)}
 .next-session-drift-limit{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
@@ -1177,6 +1178,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--rule)}
 .next-cockpit-held-heading{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+/* The field's controls sit at the end of its heading row. */
+.next-cockpit-held-tools{display:flex;align-items:center;gap:4px 8px;margin-left:auto}
+.next-cockpit-held-heading>.next-cockpit-held-count{margin-left:auto}
+.next-cockpit-held-heading>.next-cockpit-held-count+.next-cockpit-held-tools{margin-left:0}
 .next-cockpit-held-adopt,.next-cockpit-prompt-choices{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .next-cockpit-held-adopt>summary,.next-cockpit-prompt-choices>summary{min-height:44px;align-content:center;cursor:pointer}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
@@ -1193,7 +1198,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The expected outcome's checklist: one row per line, each its own box,
    counter, source and remove, inside the field's own grid. */
 .next-cockpit-held-list{grid-column:1/-1;display:grid;gap:6px;margin:0;padding:0;list-style:none}
-.next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:2px 8px}
+/* Four tracks for a saved line's four items (box, count, source, remove):
+   with three, the source pushed remove onto a second row and each line cost
+   85px instead of one control height (owner, DRC-4680). */
+.next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:baseline;gap:2px 8px}
 /* A line's box, count and remove share one row, so each line costs one
    control height rather than two in the panel's narrow column. */
 .next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px;grid-column:auto}

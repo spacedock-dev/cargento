@@ -454,6 +454,28 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
             "grid-column:auto", rule(".next-cockpit-held-field .next-cockpit-held-line textarea")
         )
 
+    def test_each_fields_count_and_controls_share_its_heading_row(self) -> None:
+        """Owner-reworded fold (DRC-4680 review): under the box the goal's count, clear and save,
+        and the outcome's add and save, each cost a second 44px row in the panel's column. In the
+        heading row they also come before the box in reading order, as they are on screen."""
+        html = self.page(setup=THREE_LINES)
+        for kind, inside in (
+            ("goal", ("data-next-cockpit-held-count", "held-clear", "held-save")),
+            ("lines", ("held-line-add", "held-save")),
+        ):
+            with self.subTest(field=kind):
+                start = html.index(f'data-next-cockpit-held-field="{kind}"')
+                field = html[start:]
+                heading = re.search(
+                    r'<div class="next-cockpit-held-heading">((?:(?!<textarea|<ol)[\s\S])*?)</div>',
+                    field,
+                )
+                assert heading is not None
+                for part in inside:
+                    self.assertIn(part, heading.group(1))
+                box = field.index("<textarea")
+                self.assertLess(field.index(heading.group(1)), box)
+
     def test_the_columns_put_the_panel_in_a_460px_track_that_is_neither_scrolled_nor_sticky(
         self,
     ) -> None:
@@ -472,6 +494,214 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
         ]
         between = between[: between.index("<aside")]
         self.assertEqual('<div class="next-session-columns">', between.strip())
+
+
+def media_rule(query: str, selector: str) -> str:
+    """The declarations of `selector` inside the `@media(<query>)` block."""
+    css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
+    for block in re.finditer(
+        r"@media\(" + re.escape(query) + r"\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css
+    ):
+        for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", block.group(1)):
+            if sel.strip() == selector:
+                return str(body)
+    msg = f"{selector} not in @media({query})"
+    raise AssertionError(msg)
+
+
+def tracks(template: str) -> int:
+    """How many tracks a `grid-template-columns` value names, parentheses kept whole."""
+    depth, count, token = 0, 0, False
+    for char in template.strip():
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == " " and depth == 0:
+            token = False
+        elif not token:
+            token, count = True, count + 1
+    return count
+
+
+THREE_LINES = (
+    "\n".join(
+        f"__dashboard.sessions[0].annotation_line_{k} = {json.dumps(text)};\n"
+        f"__dashboard.sessions[0].annotation_line_{k}_source = {json.dumps(source)};\n"
+        f'__dashboard.sessions[0].annotation_line_{k}_source_id = "";'
+        for k, text, source in (
+            (1, "The toggle writes the choice to the settings store", "typed"),
+            (2, "A reload opens in the saved mode", "typed"),
+            (3, "Unit tests cover the read and the write", "entry"),
+        )
+    )
+    + '\n__dashboard.sessions[0].annotation_lines_why = "";\n'
+)
+
+OFF_FAILS = """
+const offUpstream = __fetchImpl;
+__fetchImpl = async (url, init) => init && init.method === "POST"
+  ? {ok:false, status:500, json:async()=>({ok:false})} : offUpstream(url, init);
+await nextCockpitReadingOff();
+await __settle();
+"""
+OFF_SENTENCE = "Could not confirm readings are off. Try turning them off again."
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ThePanelReviewRoundTest(PanelPage):
+    """The two review lenses' findings on DRC-4680, each held by the test that failed first."""
+
+    def test_every_saved_line_is_one_row_the_grid_has_a_track_per_item(self) -> None:
+        """Owner, 2026-09-24: a saved line is one row of about one control height. The source
+        tag was a fourth item in a three-track grid, which pushed remove onto a second row."""
+        html = self.page(setup=THREE_LINES)
+        lines = re.findall(r'<li class="next-cockpit-held-line"[^>]*>([\s\S]*?)</li>', html)
+        self.assertEqual(3, len(lines))
+        template = re.search(r"grid-template-columns:([^;}]+)", rule(".next-cockpit-held-line"))
+        assert template is not None
+        for line in lines:
+            with self.subTest(line=visible_text(line)[:30]):
+                items = children(line)
+                self.assertIn('class="next-cockpit-held-source"', "".join(items))
+                self.assertEqual(len(items), tracks(template.group(1)), items)
+
+    def test_a_failed_turn_off_is_said_with_no_reader_and_while_analyzing(self) -> None:
+        for name, kwargs in (
+            ("no reader", {"routed": routes(installed=())}),
+            ("analyzing", {"setup": JOB}),
+        ):
+            with self.subTest(state=name):
+                html = self.page(**kwargs, after=OFF_FAILS)
+                drift = drift_of(html)
+                self.assertEqual(1, drift.count(OFF_SENTENCE))
+                self.assertIn('role="status"', drift[: drift.index(OFF_SENTENCE)][-200:])
+
+    def test_the_header_says_ended_once_the_session_ended_and_nothing_waits(self) -> None:
+        for state in ("working", "idle"):
+            with self.subTest(state=state):
+                html = self.page(
+                    setup=f'__dashboard.sessions[0].state = "{state}";\n'
+                    "__dashboard.sessions[0].ended_at = 104;\n"
+                )
+                self.assertIn(
+                    '<span class="next-session-state"><span class="next-visually-hidden">'
+                    "State: </span>ended</span>",
+                    html,
+                )
+                self.assertIn(f'data-next-session-state="{state}"', html)
+        # A question still waiting keeps the state word: the session is not done with you.
+        waiting = self.page(
+            setup="""
+__dashboard.ask = true;
+__dashboard.sessions[0].state = "needs_input";
+__dashboard.sessions[0].ended_at = 104;
+__dashboard.asks = [{id:"ask-1", harness:"claude", session_id:"focus-1", project:"cargento",
+  question:"Ship it?", options:["Yes", "Not yet"]}];
+"""
+        )
+        self.assertIn("State: </span>needs input</span>", waiting)
+
+    def test_while_analyzing_the_box_comes_first_and_the_disclosure_once_after_it(self) -> None:
+        disclosure = routes()["claude"]["disclosure"][:60]
+        drift = drift_of(self.page(setup=JOB))
+        self.assertEqual(1, drift.count(disclosure))
+        self.assertLess(drift.index("data-next-analyzing"), drift.index(disclosure))
+
+    def test_the_disclosure_renders_once_idle_and_confirming(self) -> None:
+        disclosure = routes()["claude"]["disclosure"][:60]
+        for name, html in (("idle", self.page()), ("confirming", self.confirming())):
+            with self.subTest(stage=name):
+                self.assertEqual(1, drift_of(html).count(disclosure))
+
+    def test_the_no_reader_slot_keeps_turn_off_the_count_and_its_absence_kind(self) -> None:
+        drift = drift_of(self.page(routed=routes(installed=())))
+        self.assertIn('data-next-cockpit-action="reading-off"', drift)
+        self.assertRegex(visible_text(drift), r"\d+ model requests? recorded for this session\.")
+        unread = drift_of(self.page(routed={}))
+        self.assertRegex(
+            unread, r'<p [^>]*data-next-reading-no-reader[^>]*data-absence="not-observed"'
+        )
+        self.assertIn("so no analysis is offered", visible_text(unread))
+        for token_note in (routes(installed=())["claude"]["note"],):
+            self.assertIn("so no analysis can run for this session", token_note)
+
+    def test_a_reader_leaving_under_a_focused_analyze_keeps_focus_on_its_reason(self) -> None:
+        # The stub's element scan reads focusable spans only; a paragraph with `tabindex` joins it.
+        stub = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
+        self.assertIn("(button|a|textarea|", stub)
+        focus_dom = stub.replace(
+            "(button|a|textarea|", "(button|a|textarea|p(?=[^>]*\\btabindex=)|", 1
+        )
+        gone = json.dumps(routes(installed=()))
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + focus_dom
+            + ANNOTATED
+            + f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
+            + f"__dashboard.reading_routes = {json.dumps(routes())};\n"
+            + '__dashboard.sessions[0].harness = "claude";\n'
+            + "await refreshNext();\nawait __settle();\n"
+            + "navigateNext({view:'session', project:'cargento', harness:'claude', session:'focus-1'});\n"
+            + "await __settle();\n"
+            + f"""
+const press = controls.find(c => c.dataset.nextCockpitAction === "reading-ask");
+if(press) press.focus();
+__dashboard.reading_routes = {gone};
+renderNext();
+await __settle();
+const active = document.activeElement;
+console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName : null,
+  key: active && active.dataset ? active.dataset.nextFocus || "" : null,
+  reason: __els.app.innerHTML.includes("data-next-reading-no-reader")}}));
+""",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["found"])
+        self.assertTrue(out["reason"])
+        self.assertEqual("P", out["tag"])
+        self.assertEqual("reading:claude:focus-1", out["key"])
+
+    def test_the_stack_and_the_track_placement_hold(self) -> None:
+        stacked = media_rule("max-width:1100px", ".next-session-columns")
+        self.assertIn("grid-template-columns:minmax(0,1fr)", stacked)
+        placed = media_rule("max-width:1100px", ".next-session-panel,.next-session-activity")
+        self.assertIn("grid-column:1", placed)
+        self.assertIn("grid-row:auto", placed)
+        for selector, column in ((".next-session-panel", 2), (".next-session-activity", 1)):
+            with self.subTest(selector=selector):
+                body = rule(selector)
+                self.assertIn(f"grid-column:{column}", body)
+                self.assertIn("grid-row:1", body)
+                self.assertIn("min-width:0", body)
+        self.assertIn("flex:1 1 100%", rule(".next-cockpit-reading-ask>p"))
+        self.assertIn("margin:0 0 0 auto", rule(".next-session-controls"))
+
+    def test_the_sentences_in_the_controls_slot_say_analyze_not_check(self) -> None:
+        """Review C-6: "check" also names a tool check on this page, so the sentences that stand
+        in for the renamed control, or refuse it, use its verb."""
+        web = STYLES.parent
+        cockpit = (web / "next-cockpit.js").read_text(encoding="utf-8")
+        route = (web.parent / "reading_route.py").read_text(encoding="utf-8")
+        for stale in ("so no check is offered", "before checking"):
+            with self.subTest(stale=stale):
+                self.assertNotIn(stale, cockpit)
+        self.assertNotIn("so no check can run", route)
+        self.assertIn("so no analysis can run for this session.", route)
+
+    def test_current_activity_leads_the_activity_column_ahead_of_the_workers(self) -> None:
+        html = self.page(
+            setup="""
+__dashboard.sessions[0].subagents = [{name:"worker-a", state:"ended", model:"m",
+  started_at:80, completed_at:90}];
+"""
+        )
+        column = html[html.index("data-next-session-activity") :]
+        self.assertLess(column.index(">Session activity</h2>"), column.index("CURRENT ACTIVITY"))
+        self.assertLess(
+            column.index("CURRENT ACTIVITY"), column.index("data-next-session-subagents")
+        )
 
 
 if __name__ == "__main__":

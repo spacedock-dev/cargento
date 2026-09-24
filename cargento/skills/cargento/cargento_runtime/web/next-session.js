@@ -637,8 +637,12 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const stateAttr = state ? ` data-next-session-state="${state.token}"` : "";
   /* Visible, in the words the Sessions rows use, rather than the design's
      "Running": renaming a state on one page would rename it for the product. */
+  /* An observed end retires the state word, as it does on the Sessions rows,
+     unless a question is still waiting on the reader: "working" beside
+     "ended 1s ago" contradicts the line under it (review C-2). */
+  const ended = nextSessionEndedAt(session) != null && !observed.askKnown;
   const stateLabel = state ? '<span class="next-session-state">' +
-    `<span class="next-visually-hidden">State: </span>${state.label}</span>` : "";
+    `<span class="next-visually-hidden">State: </span>${ended ? "ended" : state.label}</span>` : "";
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
