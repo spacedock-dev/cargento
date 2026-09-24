@@ -491,6 +491,18 @@ class YourRevisionKeepsWhereItsWindowOpensTest(_StoreCase):
         entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
         self.assertEqual(PROMPT, annotation_store.published(entry)["window_start"])
 
+    def test_a_save_over_an_entry_held_for_a_bad_window_start_writes_nothing(self) -> None:
+        self.write_raw({"n": 1, "at": SAVE, "goal": "G", "lines": [], "window_start": SAVE + 1})
+        path = annotation_store.store_path(self.config)
+        with open(path, "rb") as handle:
+            before = handle.read()
+        outcome = annotation_store.annotate(
+            self.config, self.state, "claude", "s1", goal="new words", now=NOW, window_start=PROMPT
+        )
+        self.assertEqual(annotation_store.OUTCOME_UNREADABLE, outcome)
+        with open(path, "rb") as handle:
+            self.assertEqual(before, handle.read())
+
     def test_the_session_publishes_where_your_window_opens(self) -> None:
         self.assertIsNone(annotation_store.published(None)["window_start"])
         annotation_store.annotate(
