@@ -145,24 +145,42 @@ class Level:
 
 
 # A path-shaped word: one or more `/`-joined parts. A URL is refused before
-# this runs. Only three shapes name a folder (DRC-4692, L8): a trailing `/`, a
-# leading `./`, or a last part with a file extension, which names its folder.
-# "client/server" and "and/or" are prose, and name nothing.
+# this runs. A word of two or more parts names a folder, as a trailing `/` and
+# a leading `./` do; a last part with a dot names its folder instead, unless a
+# trailing `/` marks the word itself as the folder (`.github/`). Only a closed
+# list of prose pairs is refused (DRC-4692, V1): refusing every unmarked
+# multi-part word made "only touch web/app" name nothing and read lower.
 _PATH_WORD = re.compile(r"^(?:\./)?[\w.-]+(?:/[\w.-]+)*/?$")
-_EXTENSION = re.compile(r"^[^.].*\.[A-Za-z0-9]+$")
+_PROSE = frozenset(
+    {
+        "and/or",
+        "either/or",
+        "client/server",
+        "input/output",
+        "read/write",
+        "true/false",
+        "yes/no",
+        "on/off",
+        "before/after",
+    }
+)
 _TRIM = "`'\"()[]{}<>,;:!?"
 
 
-def _folder_of(word: str) -> str:
-    """The folder one path-shaped word names, or empty."""
+def _folder_of(word: str, *, explicit: bool = False) -> str:
+    """The folder one path-shaped word names, or empty.
+
+    `explicit` is a word that was an absolute path inside the working
+    directory, which names a folder even when one part is left of it.
+    """
     marked = word.endswith("/")
     parts = [part for part in word.split("/") if part and part != "."]
     if not parts or ".." in parts:
         return ""
     if not marked:
-        if _EXTENSION.match(parts[-1]):
+        if "." in parts[-1]:
             parts = parts[:-1]
-        elif not word.startswith("./"):
+        elif len(parts) < 2 and not word.startswith("./") and not explicit:
             return ""
     return "/".join(parts)
 
@@ -170,10 +188,11 @@ def _folder_of(word: str) -> str:
 def named_folders(intent: Intent, cwd: str = "") -> tuple[str, ...]:
     """The folders the intent names, without a trailing slash.
 
-    `server/`, `.github/` and `./web` name themselves, and `src/retry.py` names
-    `src`. An absolute path inside the working directory is read relative to
-    it (L9); one outside it stays absolute, so no relative written path is
-    ever inside it. A bare word, prose with a slash, a URL and `~` name none.
+    `server/`, `.github/`, `./web`, `src/components` and `web/app` name
+    themselves, and `src/retry.py` names `src`. An absolute path inside the
+    working directory is read relative to it (L9); one outside it stays
+    absolute, so no relative written path is ever inside it. A bare word, a
+    URL, `~` and the prose pairs in `_PROSE` name none.
     """
     base = cwd.rstrip("/")
     found: set[str] = set()
@@ -183,12 +202,14 @@ def named_folders(intent: Intent, cwd: str = "") -> tuple[str, ...]:
             word = word if word.endswith("/") else word.rstrip(".")
             if "/" not in word or "://" in word or word.startswith("~"):
                 continue
-            absolute = word.startswith("/")
+            if word.lower() in _PROSE:
+                continue
+            absolute, explicit = word.startswith("/"), False
             if absolute and base and word.startswith(base + "/"):
-                word, absolute = word[len(base) + 1 :], False
+                word, absolute, explicit = word[len(base) + 1 :], False, True
             if not _PATH_WORD.match(word.lstrip("/")):
                 continue
-            folder = _folder_of(word.lstrip("/") if absolute else word)
+            folder = _folder_of(word.lstrip("/") if absolute else word, explicit=explicit)
             if folder:
                 found.add(f"/{folder}" if absolute else folder)
     return tuple(sorted(found))
@@ -382,6 +403,7 @@ class _LineTally:
     """What a reading's rows say, row by row, before a level is chosen."""
 
     by_id: Mapping[str, Mapping[str, Any]]
+    window: float | None = None
     departed: bool = False
     aged: bool = False
     not_shown: int = 0
@@ -411,8 +433,15 @@ class _LineTally:
             self.cites.extend(_ids(stale or passes))
             self.not_shown += 1
             return
-        if result == reading.RESULT_CONSISTENT and not why and passes:
-            self.shown.extend(_ids(passes))
+        # A pass shows a line only inside the reading's window, as
+        # `reading.check_supports` requires (V5); one with no time cannot.
+        inside_window = [
+            f
+            for f in passes
+            if (at := _at(f)) is not None and (self.window is None or at >= self.window)
+        ]
+        if result == reading.RESULT_CONSISTENT and not why and inside_window:
+            self.shown.extend(_ids(inside_window))
         else:
             self.not_shown += 1
 
@@ -468,11 +497,13 @@ def analysis_level(
             NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_READING_MALFORMED,), computed_at=computed_at
         )
     rows: Mapping[str, Mapping[str, Any]] = criteria if isinstance(criteria, dict) else {}
-    tally = _LineTally({str(f.get("fact_id")): f for f in evidence.facts if f.get("fact_id")})
+    window = _number(reading_row.get("window_start"))
+    tally = _LineTally(
+        {str(f.get("fact_id")): f for f in evidence.facts if f.get("fact_id")}, window
+    )
     for name, row in rows.items():
         tally.read(row, outcome_line=reading.is_outcome_line(name))
 
-    window = _number(reading_row.get("window_start"))
     failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
     in_window = [f for f in failed if window is None or (_at(f) or window) >= window]
     # A failure the counts hold and the listing dropped has no time to place.

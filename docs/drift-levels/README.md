@@ -73,15 +73,27 @@ A mark written after seeing an output is agreement, not a mark, so the tool enfo
    rules concluded. It asks what the live estimate should read and, for every case whose intent has
    an outcome line, what an analysis should read. It takes `n`, `m`, `h`, `e`, `x` (Not enough
    recorded yet), `d` (no live level, live only), `s` to skip and `q` to stop. Any other reply,
-   including an empty one, is asked again. Marking is refused once `results.json` exists.
+   including an empty one, is asked again.
+
+   Marking is closed for a case set once it has been scored, however the files that showed the
+   result were removed. It is refused when `results.json` exists, when the local marker
+   `~/.cargento/drift-levels/scored-<case set digest>.json` exists, or when git history on any ref
+   already holds a result or a marks digest for this case set. `marks-digest.json` and
+   `results.json` carry the case set's digest so that history can be matched, and the marks digest is
+   committed once per case set.
 
 3. Commit `marks-digest.json`.
 
 4. Attach readings. `--attach-readings` takes `{"v": 1, "readings": {"<case id>": <reading>}}`,
    where each reading is a stored reading in the annotation store's own shape. It refuses every one
-   unless the digest is committed and the local marks still hash to it, each case id is known, the
+   unless the digest is committed and the local marks still hash to it, each case id is in those
+   committed marks, the
    store's own validator (`annotations._assessment`) admits the reading, and its `read_at` is after
    the digest's commit. It writes `readings.json` stamped with that digest and its commit.
+
+   This check trusts two times it cannot verify: the reading's own `read_at` and the digest
+   commit's committer date. It catches a reading made before the marks by mistake. It does not prove
+   the order against someone who edits `read_at` forward or rewrites the commit's date.
 
 5. Score. `--score` writes nothing when the digest is not committed, when the working copy differs
    from `HEAD`, when the marks no longer hash to it, or when any case is unmarked. A reading found in

@@ -408,8 +408,38 @@ class NamedFoldersTest(unittest.TestCase):
     def test_the_forms_that_name_a_folder(self) -> None:
         self.assertEqual(
             levels.named_folders(intent("Work in `src/app/` and ./web, then tests/unit.")),
-            ("src/app", "web"),
+            ("src/app", "tests/unit", "web"),
         )
+
+    def test_v1_a_multi_part_path_names_a_folder(self) -> None:
+        # V1: the verifier's inputs, which L8 had made name nothing.
+        for words, folder in (
+            ("only touch web/app", "web/app"),
+            ("edit src/components", "src/components"),
+            ("keep to cargento_runtime/web", "cargento_runtime/web"),
+            ("src/foo_bar", "src/foo_bar"),
+            ("touch web/Makefile", "web/Makefile"),
+            ("touch web/.env", "web"),
+        ):
+            self.assertEqual(levels.named_folders(intent(words)), (folder,), words)
+
+    def test_v1_an_absolute_folder_inside_the_cwd_needs_no_slash(self) -> None:
+        got = levels.named_folders(intent("only touch /work/ttt/web"), cwd="/work/ttt")
+        self.assertEqual(got, ("web",))
+
+    def test_v1_only_the_closed_prose_list_is_refused(self) -> None:
+        prose = "and/or either/or client/server input/output read/write true/false yes/no"
+        prose += " on/off before/after And/Or"
+        self.assertEqual(levels.named_folders(intent(prose)), ())
+
+    def test_v1_a_named_multi_part_folder_reads_writes_outside_it(self) -> None:
+        facts = evidence(
+            [wrote("w1", SAVE + 5, "src/x.py"), check("c1", SAVE + 20, "passed")],
+            scan(passed=1, written_paths=1),
+        )
+        got = levels.live_level(facts, intent("only touch web/app"))
+        self.assertEqual(got.level, levels.HIGH)
+        self.assertIn(levels.REASON_MOST_OUTSIDE, got.reasons)
 
     def test_prose_with_a_slash_names_nothing(self) -> None:
         # L8: "and/or" and "client/server" are words, not paths.
@@ -536,6 +566,17 @@ class CorrectionRoundTest(unittest.TestCase):
         facts = evidence([check("c1", SAVE + 20, "passed", changed=True)], scan(passed=1))
         got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
         self.assertEqual(got.level, levels.MEDIUM)
+
+    def test_v5_a_cited_pass_before_the_window_does_not_show_a_line(self) -> None:
+        facts = evidence([check("c1", SAVE - 50, "passed")], scan(passed=1))
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_LINE_NOT_SHOWN, got.reasons)
+
+    def test_v5_a_cited_pass_with_no_time_does_not_show_a_line(self) -> None:
+        facts = evidence([check("c1", None, "passed")], scan(passed=1))
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
 
     def test_l6_a_scan_missing_its_keys_is_too_little(self) -> None:
         facts = evidence(list(PASSING.facts), {"passed": 1})

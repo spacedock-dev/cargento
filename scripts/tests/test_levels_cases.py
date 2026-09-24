@@ -210,6 +210,7 @@ class CaseToolTestCase(unittest.TestCase):
             home=str(self.home),
             digest_path=str(self.digest_path),
             results_path=str(self.results_path),
+            repo_root=str(self.repo),
             ask=answers,
             say=self.say,
         )
@@ -391,7 +392,90 @@ class MarkTest(CaseToolTestCase):
         self.assertEqual(len(self.marks()), 1)
 
 
+class RemarkAfterScoreTest(CaseToolTestCase):
+    """V2: a result seen is a key closed, however the files that showed it were removed."""
+
+    def scored(self) -> None:
+        self.marked("h", "h")
+        self.assertEqual(self.score(), 0)
+
+    def forget_locally(self) -> None:
+        self.results_path.unlink()
+        (self.home / "drift-levels" / "marks.json").unlink()
+
+    def test_deleting_the_result_and_the_marks_does_not_reopen_marking(self) -> None:
+        self.scored()
+        self.forget_locally()
+        self.assertEqual(self.mark(Answers("e", "e")), 1)
+        self.assertFalse((self.home / "drift-levels" / "marks.json").exists())
+
+    def test_the_scored_marker_is_local_and_keyed_by_the_case_set(self) -> None:
+        self.scored()
+        markers = list((self.home / "drift-levels").glob("scored-*.json"))
+        self.assertEqual(len(markers), 1)
+        body = json.loads((self.home / "drift-levels" / "cases.json").read_text("utf-8"))
+        self.assertIn(levels_cases.digest(body), markers[0].name)
+        self.assertFalse(list(self.repo.rglob("scored-*.json")))
+
+    def test_deleting_the_marker_too_is_caught_by_the_committed_digest(self) -> None:
+        self.scored()
+        self.forget_locally()
+        for marker in (self.home / "drift-levels").glob("scored-*.json"):
+            marker.unlink()
+        self.assertEqual(self.mark(Answers("e", "e")), 1)
+
+    def test_a_result_once_committed_and_removed_still_closes_marking(self) -> None:
+        self.scored()
+        _git(self.repo, "add", str(self.results_path))
+        _git(self.repo, "commit", "-q", "-m", "results")
+        _git(self.repo, "rm", "-q", str(self.results_path), str(self.digest_path))
+        _git(self.repo, "commit", "-q", "-m", "gone")
+        (self.home / "drift-levels" / "marks.json").unlink()
+        for marker in (self.home / "drift-levels").glob("scored-*.json"):
+            marker.unlink()
+        self.assertEqual(self.mark(Answers("e", "e")), 1)
+
+    def test_the_local_marker_holds_when_history_was_rewritten(self) -> None:
+        self.scored()
+        _git(self.repo, "reset", "-q", "--hard", "HEAD~1")
+        _git(self.repo, "reflog", "expire", "--expire=now", "--all")
+        self.results_path.unlink(missing_ok=True)
+        (self.home / "drift-levels" / "marks.json").unlink()
+        self.assertEqual(self.mark(Answers("e", "e")), 1)
+
+    def test_a_committed_result_with_no_case_digest_closes_marking(self) -> None:
+        self.build(self.case())
+        self.results_path.write_text('{"v": 1}\n', encoding="utf-8")
+        _git(self.repo, "add", str(self.results_path))
+        _git(self.repo, "commit", "-q", "-m", "a result from before the case digest")
+        _git(self.repo, "rm", "-q", str(self.results_path))
+        _git(self.repo, "commit", "-q", "-m", "gone")
+        self.assertEqual(self.mark(Answers("h", "h")), 1)
+
+    def test_an_earlier_committed_digest_for_this_case_set_closes_marking(self) -> None:
+        self.build(self.case(), self.case(kind="other", until=None))
+        self.mark(Answers("h", "h", "q"))
+        self.commit_digest()
+        self.assertEqual(self.mark(Answers("m", "m")), 1)
+
+    def test_another_case_set_may_still_be_marked(self) -> None:
+        self.scored()
+        (self.home / "drift-levels" / "marks.json").unlink()
+        self.results_path.unlink()
+        self.build(self.case(kind="other", until=None))
+        self.assertEqual(self.mark(Answers("m", "m")), 0)
+
+
 class AttachReadingsTest(CaseToolTestCase):
+    def test_v4_a_reading_for_a_case_not_in_the_committed_marks_is_refused(self) -> None:
+        self.build(self.case(), self.case(kind="other", until=None))
+        self.mark(Answers("h", "h", "q"))
+        self.commit_digest()
+        unmarked = self.cases()[1]["id"]
+        body = a_reading(time.time() + 60, line_1={"result": "departure"})
+        self.assertEqual(self.attach({unmarked: body}), 1)
+        self.assertFalse((self.home / "drift-levels" / "readings.json").exists())
+
     def test_a_reading_attaches_after_the_committed_digest(self) -> None:
         case_id = self.marked("h", "h")
         body = a_reading(time.time() + 60, line_1={"result": "departure"})
@@ -526,6 +610,7 @@ class ScoreTest(CaseToolTestCase):
             str(self.digest_path),
             1,
             1,
+            cases_digest=body["cases_digest"],
         )
         self.commit_digest()
         self.assertEqual(self.score(), 1)

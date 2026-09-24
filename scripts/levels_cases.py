@@ -423,13 +423,21 @@ def _marks(body: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _publish_digest(paths: Mapping[str, str], digest_path: str, cases: int, marked: int) -> str:
+def _publish_digest(
+    paths: Mapping[str, str], digest_path: str, cases: int, marked: int, *, cases_digest: str
+) -> str:
     """Hash the marks as written, beside them and in the committable file."""
     with open(paths["marks"], "rb") as handle:
         sha = hashlib.sha256(handle.read()).hexdigest()
     with open(paths["sha"], "w", encoding="utf-8") as handle:
         handle.write(f"{sha}  marks.json\n")
-    body = {"v": 1, "marks_digest": sha, "cases": cases, "marked": marked}
+    body = {
+        "v": 1,
+        "marks_digest": sha,
+        "cases_digest": cases_digest,
+        "cases": cases,
+        "marked": marked,
+    }
     os.makedirs(os.path.dirname(digest_path), exist_ok=True)
     with open(digest_path, "w", encoding="utf-8") as handle:
         json.dump(body, handle, indent=2, sort_keys=True)
@@ -437,17 +445,65 @@ def _publish_digest(paths: Mapping[str, str], digest_path: str, cases: int, mark
     return sha
 
 
+def _scored_marker(paths: Mapping[str, str], cases_digest: str) -> str:
+    """Where a score of this case set is remembered, outside the repository (V2)."""
+    return os.path.join(paths["dir"], f"scored-{cases_digest}.json")
+
+
+def _history_blobs(repo_root: str, relative: str) -> list[dict[str, Any]]:
+    """Every version of one file git has ever held, on any ref, deleted ones included."""
+    shas = (_git(repo_root, "log", "--all", "--format=%H", "--", relative) or "").split()
+    found = []
+    for sha in shas:
+        blob = _git(repo_root, "show", f"{sha}:{relative}")
+        try:
+            body = json.loads(blob) if blob is not None else None
+        except ValueError:
+            body = None
+        if isinstance(body, dict):
+            found.append(body)
+    return found
+
+
+def _marking_closed(
+    paths: Mapping[str, str], repo_root: str, digest_path: str, results_path: str, bound: str
+) -> str:
+    """Why this case set can no longer be marked, or empty.
+
+    A result seen closes the key however the files that showed it were
+    removed: the local marker survives deleting the result and the marks, and
+    git history survives deleting the marker. A marks digest already committed
+    for this case set closes it too, since the digest is committed once.
+    """
+    if os.path.exists(results_path):
+        return f"{results_path} exists, so a score has been seen"
+    if os.path.exists(_scored_marker(paths, bound)):
+        return "this case set has been scored on this machine"
+    root = os.path.realpath(repo_root)
+    for path, what in ((results_path, "a result"), (digest_path, "a marks digest")):
+        relative = os.path.relpath(os.path.realpath(path), root)
+        for body in _history_blobs(repo_root, relative):
+            if body.get("cases_digest") == bound or (
+                path == results_path and "cases_digest" not in body
+            ):
+                return f"git history already holds {what} for it"
+    return ""
+
+
 def mark(
-    *, home: str, digest_path: str, results_path: str, ask: Any = input, say: Any = print
+    *,
+    home: str,
+    digest_path: str,
+    results_path: str,
+    repo_root: str,
+    ask: Any = input,
+    say: Any = print,
 ) -> int:
     """Ask the owner for each unmarked case's level, per source, and write the key.
 
     Refused once any result exists: a mark written after a result is agreement.
     """
     paths = _paths(home)
-    if os.path.exists(results_path):
-        say(f"{results_path} exists, so a score has been seen. Marks are not taken after one.")
-        return 1
     body = _load(paths["cases"])
     cases = body.get("cases") if isinstance(body.get("cases"), list) else None
     if not cases:
@@ -456,6 +512,10 @@ def mark(
     saved = _load(paths["marks"])
     entries = _marks(saved)
     bound = digest(body)
+    closed = _marking_closed(paths, repo_root, digest_path, results_path, bound)
+    if closed:
+        say(f"Marking is closed for this case set: {closed}. Nothing was changed.")
+        return 1
     if entries and saved.get("cases_digest") != bound:
         say("These marks belong to a different case set. Nothing was changed.")
         return 1
@@ -469,7 +529,7 @@ def mark(
         say("Nothing marked.")
         return 0
     _write(paths["marks"], {"v": 1, "cases_digest": bound, "marks": entries})
-    sha = _publish_digest(paths, digest_path, len(cases), len(entries))
+    sha = _publish_digest(paths, digest_path, len(cases), len(entries), cases_digest=bound)
     left = len(cases) - len(entries)
     say(f"\nSaved {len(entries)} marks, {left} left. sha256 {sha}")
     say(f"Commit {digest_path} before any score is run.")
@@ -604,7 +664,9 @@ def attach_readings(
     if committed.marks_digest != _marks_sha(paths):
         say("Refused: the local marks no longer hash to the committed digest.")
         return 1
-    cases = {str(c.get("id")) for c in _load(paths["cases"]).get("cases") or []}
+    # Only the committed marks' cases (V4): the marks hash to the committed
+    # digest, checked above, so these are exactly the committed ones.
+    cases = set(_marks(_load(paths["marks"])))
     raw = _load(str(spec_path))
     readings = raw.get("readings") if raw.get("v") == 1 else None
     if not isinstance(readings, dict) or not readings:
@@ -616,7 +678,7 @@ def attach_readings(
         admitted = _admit(config, value) if key in cases else None
         read_at = _number(value.get("read_at")) if isinstance(value, dict) else None
         if key not in cases:
-            problems.append(f"{key}: no such case")
+            problems.append(f"{key}: not a case in the committed marks")
         elif admitted is None:
             problems.append(f"{key}: the annotation store would refuse this reading")
         elif read_at is None or read_at <= committed.committed_at:
@@ -765,6 +827,7 @@ def score(
     )
     summary = {
         "v": 1,
+        "cases_digest": digest(body),
         "scored_at": now,
         "marks_digest": committed.marks_digest,
         "digest_commit": committed.commit,
@@ -776,6 +839,10 @@ def score(
     with open(results_path, "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2, sort_keys=True)
         handle.write("\n")
+    _write(
+        _scored_marker(paths, digest(body)),
+        {"v": 1, "cases_digest": digest(body), "scored_at": now, "digest_commit": committed.commit},
+    )
     say(f"Drift levels scored: {verdict}. {counts}")
     return 0 if verdict == VERDICT_PASSED else 1
 
@@ -832,7 +899,7 @@ def main(argv: list[str] | None = None) -> int:
             results_path=RESULTS_PATH,
             now=time.time(),
         )
-    return mark(home=HOME, digest_path=DIGEST_PATH, results_path=RESULTS_PATH)
+    return mark(home=HOME, digest_path=DIGEST_PATH, results_path=RESULTS_PATH, repo_root=_ROOT)
 
 
 if __name__ == "__main__":

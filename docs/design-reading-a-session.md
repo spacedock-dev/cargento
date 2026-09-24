@@ -1578,12 +1578,17 @@ part of what the owner's marks validate.
   folders. An analysis reads no folder, so it never reads Extreme. A first draft reached Extreme
   from an analysis when a failure came with departures on most lines. Its own failed-check case then
   read Extreme on a one-line intent, and the rule was one nobody had ruled, so it was dropped.
-- A folder is a word in the goal or a line that has one of three shapes: a trailing `/`
-  (`server/`, `.github/`), a leading `./` (`./web`), or a last part with a file extension, which
-  names its folder (`src/retry.py` names `src`). Prose with a slash, such as "client/server" or
-  "and/or", names nothing, and neither does a bare word or a URL. An absolute path inside the
-  session's working directory is read relative to it. One outside it stays a named folder, and
-  since written paths are published relative to the working directory, no write is ever inside it.
+- A folder is a path-shaped word in the goal or a line: two or more parts joined by `/`
+  (`web/app`, `src/components`), a trailing `/` (`server/`, `.github/`), or a leading `./` (`./web`).
+  A last part with a dot names its folder instead (`src/retry.py` names `src`, `web/.env` names
+  `web`), unless a trailing `/` marks the word itself. A closed list of prose pairs names nothing:
+  and/or, either/or, client/server, input/output, read/write, true/false, yes/no, on/off and
+  before/after. A bare word and a URL name nothing either. An absolute path inside the session's
+  working directory is read relative to it, even with one part left. One outside it stays a named
+  folder, and since written paths are published relative to the working directory, no write is ever
+  inside it. A review round first refused every multi-part word without a marker, to keep prose out,
+  and that made "only touch web/app" name nothing and read lower, so it was reverted to the closed
+  list.
 - A write outside the working directory counts as outside every folder, and so does a write the
   twelve-entry listing dropped. Review found that counting only the listed writes made the share a
   lower bound reported as the share, so a capped listing could lower the level.
@@ -1599,7 +1604,8 @@ part of what the owner's marks validate.
   not all objects, or whose keys are not exactly the Goal and `line_1` to `line_N` for the intent it
   read, reads "Not enough recorded yet". An outcome line is shown only by a `consistent` with no
   `why` that cites a passing check. A cited pass that was followed by a change, when read or since,
-  reads Medium, as a pass followed by a write does on the live side. A failed check in the reading's
+  reads Medium, as a pass followed by a write does on the live side. The cited pass must also be
+  inside the reading's window, as `reading.check_supports` requires. A failed check in the reading's
   window reads High whether or not the reading cited it, and a check with no time counts as inside
   the window. A failed check before the window still blocks "None or low".
 - The case tool takes the marks before any reading exists. Cases are built without readings, both
