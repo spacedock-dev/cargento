@@ -173,6 +173,17 @@ session's entry that this build cannot read, such as seven lines or an unknown s
 build, is kept as it was: it is written back unchanged, and a save, adoption or discard of that
 session answers `unreadable` rather than renumbering it from revision 1.
 
+The window start (DRC-4679) costs less, because the revision field is optional. A build without it
+drops `window_start` from a revision on its next save, and that revision then opens at its save
+time, which is what every build did before. A reading is different: it carries the key
+`window_start` and may carry the scope token `last-turn`, and a build that knows neither refuses
+the reading whole and keeps it verbatim, the existing refusal. It lands in the same release as the
+outcome lines, so a reader stepping back meets that refusal once. A withheld reason this build adds
+("This session stopped its turn moments ago...") reads back as no reason on an older build. The
+session publishes `annotation_window_start`, a scalar time, and it is not admitted to
+`history.OBSERVATION_FIELDS`: nothing in history reads it yet, so it stays out, as `settled_at`
+does.
+
 ## DEC-16: Cargento does not write into a session
 
 A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
@@ -1008,8 +1019,8 @@ Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every
 DRC-4677 builds items 7 to 10 for the single Expected Output constraint: the tool-output grant keyed
 by provider and destination, the destination named or refused, the result-bearing prompt row with
 its output tail quoted as data, the reader's words reserved first in the byte bound, and item 8's
-rules in the resolver and on the page, with the window read from the revision's `baseline_at` until
-DRC-4679 stores the words' own time. A pass that a later command may have changed files after, in
+rules in the resolver and on the page, with the window read from the revision's stored window start
+(DEC-24 item 13, built by DRC-4679), or from its `baseline_at` on a revision saved before it stored one. A pass that a later command may have changed files after, in
 the same call or a later one, carries no `consistent` either (item 3's blocker, applied to a
 reading). What counts as work is per harness: a work result on Pi and a check on Claude Code, and
 never the agent's own final answer on Claude Code or Codex; on Pi the harness publishes its result as
@@ -1361,6 +1372,42 @@ the later-direction floor (item 9).
     process states, never answers. All of it is session-page only: never on a row, a total or a
     notification. Elsewhere than Claude Code the panel states the harness limit ("Cargento can't
     read work from this harness"). "Stop session" is not offered (DEC-16, SECURITY.md).
+
+### What the last-turn build decided, 2026-09-24
+
+DRC-4679 built item 13. These are the calls the ruling left open, each made by the orchestrator
+within the milestone's scope and recorded on the issue.
+
+- Only Claude Code is read at a turn stop. `eligibility` takes an `admit_turn_stop` switch that is
+  off by default, and only the reading route turns it on, for a harness in
+  `reading.TURN_STOP_HARNESSES`. The unasked lane fires on every working-to-idle change, which is
+  every turn stop, so it keeps the closed default. The test for that runs the lane with the real
+  `reading.produce` and a model that counts its calls, because a lane test built on a fake producer
+  cannot see the gate.
+- A turn stop gets the same eight-second settle as a session end, with its own sentence, since the
+  end's sentence says the session ended.
+- Words typed after a session end are still withheld. Only the turn stop is relaxed, and the
+  withholding test still compares the save time, `baseline_at`. The window start moves only the
+  evidence.
+- The window start is recomputed on every save, a lines-only save included. For typed words it is
+  the latest `user_message` of this session at or before the save, read on the server from the
+  session's record. A permission approval is not a message, so it never moves the window. A record
+  that cannot be read opens the window at the save and never refuses the save. Adopted words,
+  including an adopted goal carried under a lines-only save, open at their source time.
+- A stored window start that is not a moment at or before its own save refuses the entry, as a bad
+  provenance does, because reading around it could restore older words.
+- A check keeps its call time. The window start alone fixes the case the live walk found: none of
+  22 recorded Bash calls had a message from the reader between the call and its result. Using the
+  result time would move layer 1's published timestamps, so it is filed separately.
+- The page reads the window from the reading, and derives it the old way for a reading stored
+  without one. It labels work "from the last turn" only on a Claude Code session waiting at its
+  prompt, between the stored window start and the save, and never on the reader's own messages.
+- The hint says what an analysis reads: "Reads the session up to <cutoff> against your intent.",
+  where the cutoff is now, its end, or its last turn, from the same end kind HOW IT LANDED shows.
+  "Runs in the background." waits for the background job (DRC-4686).
+- The later-direction floor stays at the save time. By construction no message of the reader's lies
+  between the window start and the save, so moving it would change nothing on consistent data and
+  would, on a fetch the server missed, turn a message into a later direction.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
