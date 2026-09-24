@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -558,3 +559,37 @@ class HarnessContractTestCase(unittest.TestCase):
 # The registry as the runtime declares it, for tests that only read keys/labels.
 # Named distinctly from fixtures.HARNESSES, which is (key, builder) pairs.
 REGISTRY = aggregate.default_harnesses()
+
+
+def process_alive(pid: int) -> bool:
+    """Whether a process is still running, a zombie counted as gone.
+
+    For the supervised-runner tests, which kill a CLI's whole tree and then
+    ask whether a grandchild survived. A killed grandchild is reparented and
+    reaped by init, and until then `kill(pid, 0)` still finds it, so `ps`
+    tells a zombie from a survivor.
+    """
+    if sys.platform == "win32":
+        import ctypes  # noqa: PLC0415 (Windows only)
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return bool(code.value == 259)  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    ps = shutil.which("ps") or "/bin/ps"
+    state = subprocess.run(
+        [ps, "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    return bool(state) and not state.startswith("Z")

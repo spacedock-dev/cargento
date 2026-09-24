@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import config as runtime_config
-from cargento_runtime import http_api
+from cargento_runtime import http_api, reading_jobs, supervise
 from cargento_runtime import interaction_prototype as runtime_interaction
 from cargento_runtime import io as runtime_io
 
@@ -907,6 +907,12 @@ def serve(
     # after the fork, so no thread is ever created in a process about to be
     # replaced. The coordinator subsumes the producer's periodic tick, so exactly
     # one of the two runs and they can never both collect.
+    served = getattr(server, "application", None)
+    if served is not None:
+        # In the serving process, after the fork, so the pid a marker is
+        # compared against is a daemon's and never the parent that exits.
+        with contextlib.suppress(Exception):
+            reading_jobs.recover(served, alive=pid_exists)
     producer_stop = threading.Event()
     producer: threading.Thread | None = None
     if observation is not None:
@@ -920,6 +926,11 @@ def serve(
     try:
         server.serve_forever()
     finally:
+        # First, while the jobs can still write what the kill did to them. A
+        # supervised CLI leads its own group, so a foreground Ctrl-C no longer
+        # reaches it, and without this it would outlive the daemon.
+        with contextlib.suppress(Exception):
+            supervise.kill_all()
         producer_stop.set()
         if producer is not None:
             producer.join(timeout=2)

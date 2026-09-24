@@ -292,6 +292,8 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/transcripts.py",
     "skills/cargento/cargento_runtime/turns.py",
     "skills/cargento/cargento_runtime/unasked.py",
+    "skills/cargento/cargento_runtime/supervise.py",
+    "skills/cargento/cargento_runtime/reading_jobs.py",
     "skills/cargento/cargento_runtime/sessions.py",
     "skills/cargento/cargento_runtime/snapshot.py",
     "skills/cargento/cargento_runtime/events.py",

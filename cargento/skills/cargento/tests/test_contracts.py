@@ -1664,7 +1664,22 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.config",
             "cargento_runtime.observer",
             "cargento_runtime.records",
+            "cargento_runtime.supervise",
         },
+        # A reading job's thread (DRC-4686): it writes the outcome through the
+        # store and reads the job registry beside the slot in `reading`. The
+        # application it runs over is a protocol, so it never imports upward.
+        "cargento_runtime.reading_jobs": {
+            "cargento_runtime.annotations",
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.reading",
+            "cargento_runtime.reading_policy",
+            "cargento_runtime.state",
+        },
+        # The supervised runner every model call uses: a leaf on purpose, so
+        # the kill guard it holds depends on nothing in the runtime.
+        "cargento_runtime.supervise": set(),
         # Who reads a session: each provider's gate, then its CLI on PATH. It
         # reaches the model ids in `observer` and never a producer.
         "cargento_runtime.reading_route": {
@@ -1677,6 +1692,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.spacedock",
             "cargento_runtime.state",
+            "cargento_runtime.supervise",
             "cargento_runtime.transcripts",
         },
         # The quota fetch: the whole outbound network surface, kept below the
@@ -1758,12 +1774,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.project_context",
             "cargento_runtime.quota",
             "cargento_runtime.reading",
+            # A press starts a reading job and answers with it (DRC-4686).
+            "cargento_runtime.reading_jobs",
             "cargento_runtime.records",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",
         },
-        # Above aggregate, events and probe, and the only runtime module that
-        # starts a thread. Nothing imports it except the assembly point and the
+        # Above aggregate, events and probe, and the module that starts the
+        # runtime's standing threads (a reading job's thread is `reading_jobs`'). Nothing imports it except the assembly point and the
         # server that carries it.
         "cargento_runtime.observation": {
             "cargento_runtime.irreversible",
@@ -1781,6 +1799,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.http_api",
             "cargento_runtime.interaction_prototype",
             "cargento_runtime.io",
+            # Serving records what a stopped dashboard left spent, and shutdown
+            # kills every supervised group (DRC-4686, Q2 and Q5).
+            "cargento_runtime.reading_jobs",
+            "cargento_runtime.supervise",
         },
         # The read-only terminal substrate uses only the standard library. Its
         # CLI, lifecycle and HTTP integrations stay above it.

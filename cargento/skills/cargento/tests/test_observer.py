@@ -24,6 +24,7 @@ from .support import (
     make_runtime,
     make_server,
     poll_fast,
+    process_alive,
     runtime,
     store_patch,
 )
@@ -2201,3 +2202,91 @@ class ObserverConsentRouteTest(RuntimeTestCase):
             server.shutdown()
             server.server_close()
             thread.join(2)
+
+
+class SupervisedModelCallTest(unittest.TestCase):
+    """Every model call goes through the supervised runner (DRC-4686, Q3).
+
+    The goal lane, the unasked lane and the reading route all reach
+    `codex_exec` or `claude_exec`, so the default runner there is what each of
+    them gets. `on_spawn` is passed only when a caller gives one, which keeps a
+    runner with `subprocess.run`'s signature valid.
+    """
+
+    def _config(self) -> Any:
+        state_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, state_dir, True)
+        return dataclasses.replace(make_config(), state_dir=state_dir)
+
+    def test_every_model_caller_defaults_to_the_supervised_runner(self) -> None:
+        import inspect  # noqa: PLC0415
+
+        from cargento_runtime import reading, supervise  # noqa: PLC0415
+
+        for caller in (
+            observer.codex_exec,
+            observer.claude_exec,
+            observer.CodexGoalModel,
+            reading.CodexReadingModel,
+            reading.ClaudeReadingModel,
+        ):
+            with self.subTest(caller=caller.__qualname__):
+                default = inspect.signature(caller).parameters["runner"].default
+                self.assertIs(supervise.run, default)
+
+    def test_on_spawn_reaches_the_runner_only_when_a_caller_gives_one(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415
+
+        seen: list[dict[str, Any]] = []
+
+        def runner(command: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs)
+            stdout: Any = kwargs.get("stdout")
+            if hasattr(stdout, "write"):
+                stdout.write(b"{}")
+            return subprocess.CompletedProcess(command, 0)
+
+        def spawned(_group: Any) -> None:
+            return None
+
+        config = self._config()
+        found = mock.Mock(side_effect=lambda name: f"/usr/local/bin/{name}")
+        for model in (reading.CodexReadingModel, reading.ClaudeReadingModel):
+            with self.subTest(model=model.__name__):
+                seen.clear()
+                model(config, runner=runner, binary_resolver=found)("p", output_cap_bytes=64)
+                self.assertNotIn("on_spawn", seen[0])
+                model(config, runner=runner, binary_resolver=found, on_spawn=spawned)(
+                    "p", output_cap_bytes=64
+                )
+                self.assertIs(spawned, seen[1]["on_spawn"])
+
+    @unittest.skipIf(os.name == "nt", "a shebang script stands in for the CLI")
+    def test_a_claude_call_past_its_timeout_takes_its_tree_and_its_files_with_it(self) -> None:
+        import sys  # noqa: PLC0415
+        import time  # noqa: PLC0415
+
+        config = self._config()
+        bin_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, bin_dir, True)
+        pid_file = bin_dir / "grandchild.pid"
+        fake = bin_dir / "claude"
+        fake.write_text(
+            f"#!{sys.executable}\n"
+            "import subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
+            "time.sleep(60)\n"
+        )
+        fake.chmod(0o700)
+        with mock.patch.object(observer, "OBSERVER_MODEL_TIMEOUT_SEC", 3):
+            _, status = observer.claude_exec(
+                config, "prompt", output_cap_bytes=64, binary_resolver=lambda _n: str(fake)
+            )
+        self.assertEqual("failed", status)
+        self.assertEqual([], sorted(p.name for p in config.state_dir.iterdir()))
+        grandchild = int(pid_file.read_text())
+        deadline = time.monotonic() + 10
+        while process_alive(grandchild) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(process_alive(grandchild), "the CLI's grandchild outlived the timeout")

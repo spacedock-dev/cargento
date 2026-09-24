@@ -28,7 +28,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Protocol
 
 from . import io as runtime_io
-from . import records, spacedock, transcripts
+from . import records, spacedock, supervise, transcripts
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -159,13 +159,20 @@ class ModelCaller(Protocol):
     def __call__(self, recent_text: str, entity_stage: str) -> str | None: ...
 
 
+def _spawn_hook(on_spawn: Callable[[supervise.Group], None] | None) -> dict[str, Any]:
+    # Only when given, so a runner injected with `subprocess.run`'s signature,
+    # as the argv tests do, is still called with keywords it accepts.
+    return {"on_spawn": on_spawn} if on_spawn is not None else {}
+
+
 def codex_exec(
     config: RuntimeConfig,
     prompt: str,
     *,
     output_cap_bytes: int,
-    runner: Any = subprocess.run,
+    runner: Any = supervise.run,
     binary_resolver: Any = shutil.which,
+    on_spawn: Callable[[supervise.Group], None] | None = None,
 ) -> tuple[str, str]:
     """One bounded, ephemeral Codex call. Returns the output and a status.
 
@@ -233,6 +240,7 @@ def codex_exec(
             encoding="utf-8",
             timeout=OBSERVER_MODEL_TIMEOUT_SEC,
             check=False,
+            **_spawn_hook(on_spawn),
         )
         if result.returncode != 0:
             return "", "failed"
@@ -297,8 +305,9 @@ def claude_exec(
     prompt: str,
     *,
     output_cap_bytes: int,
-    runner: Any = subprocess.run,
+    runner: Any = supervise.run,
     binary_resolver: Any = shutil.which,
+    on_spawn: Callable[[supervise.Group], None] | None = None,
 ) -> tuple[str, str]:
     """One bounded, non-persistent Claude Code call. Returns the output and a status.
 
@@ -371,6 +380,7 @@ def claude_exec(
                 encoding="utf-8",
                 timeout=OBSERVER_MODEL_TIMEOUT_SEC,
                 check=False,
+                **_spawn_hook(on_spawn),
             )
         if result.returncode != 0:
             return "", "failed"
@@ -396,7 +406,7 @@ class CodexGoalModel:
         self,
         config: RuntimeConfig,
         *,
-        runner: Any = subprocess.run,
+        runner: Any = supervise.run,
         binary_resolver: Any = shutil.which,
         child_assignment: bool = False,
         consent: bool = False,

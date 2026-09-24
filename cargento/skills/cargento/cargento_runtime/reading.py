@@ -45,14 +45,14 @@ import json
 import math
 import os
 import re
+import secrets
 import shutil
-import subprocess
 import threading
 import unicodedata
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
-from . import observer, records
+from . import observer, records, supervise
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -357,6 +357,7 @@ WITHHELD_CLAUDE_UNAVAILABLE = "claude-unavailable"
 WITHHELD_MODEL_FAILED = "model-failed"
 WITHHELD_NOTHING_TYPED = "nothing-typed"
 WITHHELD_DISCARDED = "discarded"
+WITHHELD_INTERRUPTED = "interrupted"
 WITHHELD = {
     WITHHELD_TURN_STOP: (
         "A turn stop was observed and no session end was, so there is no end for a "
@@ -410,6 +411,13 @@ WITHHELD = {
     ),
     WITHHELD_MODEL_FAILED: (
         "The reading did not complete. Nothing was produced, and a fresh press is the only retry."
+    ),
+    # Recorded at the next start for a job whose spend was committed when the
+    # dashboard stopped (DRC-4686, Q2). The attempt counts because it was
+    # charged, and a silent loss would leave the count short of the budget.
+    WITHHELD_INTERRUPTED: (
+        "The analysis stopped because Cargento restarted before it finished. Nothing was "
+        "produced, the attempt still counts, and a fresh press is the only retry."
     ),
     WITHHELD_NOTHING_TYPED: (
         "Nothing is typed against this session, so there is nothing to read it against."
@@ -707,6 +715,15 @@ class Assessment(TypedDict):
     criteria: dict[str, Criterion]
 
 
+# The phases a reading job publishes, in the order they happen: background
+# analysis in docs/design-reading-a-session.md names these three.
+# Each starts at a real point in the work rather than on a timer: preparing at
+# the press, waiting when the CLI exists, checking when its reply arrived.
+PHASE_PREPARING = "preparing"
+PHASE_WAITING = "waiting"
+PHASE_CHECKING = "checking"
+PHASES = (PHASE_PREPARING, PHASE_WAITING, PHASE_CHECKING)
+
 _FLIGHT_LOCK = threading.Lock()
 _IN_FLIGHT: set[tuple[str, str]] = set()
 
@@ -730,6 +747,117 @@ def release(config: RuntimeConfig, session_key: str) -> None:
     """Give the reading slot back."""
     with _FLIGHT_LOCK:
         _IN_FLIGHT.discard((str(config.state_dir), session_key))
+
+
+# The words each phase is shown with. The provider's name comes from the route
+# that runs, so "Waiting for" never names a receiver the page did not.
+PHASE_TEXT = {
+    PHASE_PREPARING: "Preparing what is sent",
+    PHASE_WAITING: "Waiting for {label}",
+    PHASE_CHECKING: "Checking the reply",
+}
+
+
+@dataclass
+class Job:
+    """One reader-pressed reading the server is running (DRC-4686)."""
+
+    id: str
+    harness: str
+    sid: str
+    provider: str
+    label: str
+    phase: str
+    started_at: float
+    phase_at: float
+    # The supervised CLI once it exists: DRC-4693's cancel handle. Never
+    # published, because a handle is not a thing a page may be shown.
+    group: Any = None
+
+
+# Beside `_IN_FLIGHT` and under its lock rather than in a registry of its own:
+# the unasked lane takes the same slot through `claim`, so the slot stays the
+# one guard and a job is only ever the reader's half of it.
+_JOBS: dict[tuple[str, str], Job] = {}
+
+
+def start_job(
+    config: RuntimeConfig, session_key: str, *, provider: str, label: str, now: float
+) -> Job | None:
+    """Take the slot and register a job for it, or None when the slot is held."""
+    key = (str(config.state_dir), session_key)
+    harness, _, sid = session_key.partition(":")
+    with _FLIGHT_LOCK:
+        if key in _IN_FLIGHT:
+            return None
+        _IN_FLIGHT.add(key)
+        job = Job(
+            id=secrets.token_hex(8),
+            harness=harness,
+            sid=sid,
+            provider=provider,
+            label=label,
+            phase=PHASE_PREPARING,
+            started_at=now,
+            phase_at=now,
+        )
+        _JOBS[key] = job
+        return job
+
+
+def job(config: RuntimeConfig, session_key: str) -> Job | None:
+    with _FLIGHT_LOCK:
+        return _JOBS.get((str(config.state_dir), session_key))
+
+
+def advance_job(config: RuntimeConfig, session_key: str, phase: str, *, now: float) -> bool:
+    """Move a job to a later phase. False, and nothing changed, for any other move.
+
+    Forward only, so a phase is published once and in order whatever calls
+    this: a repeated or backward move is a caller's mistake, never a state.
+    """
+    with _FLIGHT_LOCK:
+        running = _JOBS.get((str(config.state_dir), session_key))
+        if running is None or phase not in PHASES:
+            return False
+        if PHASES.index(phase) <= PHASES.index(running.phase):
+            return False
+        running.phase = phase
+        running.phase_at = now
+        return True
+
+
+def end_job(config: RuntimeConfig, session_key: str) -> None:
+    """Remove the job, then give the slot back, as one step.
+
+    The caller ends a job only after the CLI is reaped and its files removed,
+    which `supervise.run` guarantees by returning only then.
+    """
+    key = (str(config.state_dir), session_key)
+    with _FLIGHT_LOCK:
+        _JOBS.pop(key, None)
+        _IN_FLIGHT.discard(key)
+
+
+def published_jobs(config: RuntimeConfig) -> dict[str, dict[str, Any]]:
+    """This runtime's running jobs, keyed as the page keys a session."""
+    root = str(config.state_dir)
+    with _FLIGHT_LOCK:
+        running = [(key, found) for (where, key), found in _JOBS.items() if where == root]
+        return {
+            key: {
+                "id": found.id,
+                "phase": found.phase,
+                "phase_at": found.phase_at,
+                "started_at": found.started_at,
+                "provider": found.provider,
+                "steps": [
+                    {"phase": phase, "text": PHASE_TEXT[phase].format(label=found.label)}
+                    for phase in PHASES
+                ],
+            }
+            for key, found in running
+        }
 
 
 def _number(value: Any) -> float | None:
@@ -1748,6 +1876,7 @@ def produce(  # noqa: PLR0913
     tool_output: ToolOutput | None = None,
     read_lines: bool = False,
     admit_turn_stop: bool = False,
+    on_phase: Callable[[str], None] | None = None,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -1770,6 +1899,9 @@ def produce(  # noqa: PLR0913
     `MAX_OUTCOME_LINES` cites), so no outcome line reaches a reading nobody pressed for.
 
     `admit_turn_stop` is the reading route's too, for `eligibility`'s reason.
+
+    `on_phase` is a reading job's, told `PHASE_CHECKING` once a reply arrived
+    and never otherwise, so a published phase is one that really happened.
     """
     goal, lines, scope, withheld = _readable(
         config,
@@ -1818,12 +1950,11 @@ def produce(  # noqa: PLR0913
     # decodes with "replace" and strips, so a cut reply can come back a little
     # under the cap: the slack is a run of indentation, not a second budget.
     cut = len(raw.encode("utf-8", "replace")) >= REPLY_CAP_BYTES - REPLY_CUT_SLACK_BYTES
-    if status == "unavailable":
-        # Named for the CLI the page promised, never the other one: each model
-        # says which sentence its own absence gets.
-        return None, getattr(model, "unavailable_reason", None) or WITHHELD_MODEL_UNAVAILABLE, False
-    if status != "ok":
-        return None, WITHHELD_MODEL_FAILED, True
+    failed = _call_failed(model, status)
+    if failed is not None:
+        return None, *failed
+    if on_phase is not None:
+        on_phase(PHASE_CHECKING)
     criteria = resolve(
         parse_reply(raw, constraints_for(selected.lines), salvage=cut),
         selected,
@@ -1866,6 +1997,17 @@ def produce(  # noqa: PLR0913
         assessment["goal_source"] = str(latest["goal_source"])
         assessment["goal_source_at"] = baseline_at(latest)
     return assessment, "", True
+
+
+def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[str, bool] | None:
+    """Why the model call produced nothing, and whether it spent, or None for a reply."""
+    if status == "unavailable":
+        # Named for the CLI the page promised, never the other one: each model
+        # says which sentence its own absence gets.
+        return getattr(model, "unavailable_reason", None) or WITHHELD_MODEL_UNAVAILABLE, False
+    if status != "ok":
+        return WITHHELD_MODEL_FAILED, True
+    return None
 
 
 def _newest(
@@ -1919,12 +2061,16 @@ class CodexReadingModel:
         self,
         config: RuntimeConfig,
         *,
-        runner: Any = subprocess.run,
+        runner: Any = supervise.run,
         binary_resolver: Any = shutil.which,
+        on_spawn: Callable[[supervise.Group], None] | None = None,
     ) -> None:
         self.config = config
         self.runner = runner
         self.binary_resolver = binary_resolver
+        # A reading job's seam: told the moment the CLI exists, which is when
+        # it starts waiting on the provider and what DRC-4693 cancels.
+        self.on_spawn = on_spawn
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
         """The model's reply and a status of `ok`, `unavailable` or `failed`."""
@@ -1934,6 +2080,7 @@ class CodexReadingModel:
             output_cap_bytes=output_cap_bytes,
             runner=self.runner,
             binary_resolver=self.binary_resolver,
+            on_spawn=self.on_spawn,
         )
 
     def available(self) -> bool:
@@ -1957,12 +2104,16 @@ class ClaudeReadingModel:
         self,
         config: RuntimeConfig,
         *,
-        runner: Any = subprocess.run,
+        runner: Any = supervise.run,
         binary_resolver: Any = shutil.which,
+        on_spawn: Callable[[supervise.Group], None] | None = None,
     ) -> None:
         self.config = config
         self.runner = runner
         self.binary_resolver = binary_resolver
+        # A reading job's seam: told the moment the CLI exists, which is when
+        # it starts waiting on the provider and what DRC-4693 cancels.
+        self.on_spawn = on_spawn
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
         """The model's reply and a status of `ok`, `unavailable` or `failed`."""
@@ -1972,6 +2123,7 @@ class ClaudeReadingModel:
             output_cap_bytes=output_cap_bytes,
             runner=self.runner,
             binary_resolver=self.binary_resolver,
+            on_spawn=self.on_spawn,
         )
 
     def available(self) -> bool:

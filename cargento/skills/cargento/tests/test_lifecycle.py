@@ -1931,3 +1931,70 @@ class ProducerTest(support.RuntimeTestCase):
             thread.join(timeout=2)
         httpd.server_close()
         self.assertTrue(survived, "the loop must survive a failed collection")
+
+
+class ServeOwnsReadingJobsTest(unittest.TestCase):
+    """DRC-4686: what `serve` does for the reading jobs this daemon runs.
+
+    Q5 on the issue: a supervised CLI leads a process group of its own, so a
+    foreground Ctrl-C no longer reaches it and shutdown has to kill it. Q2: a
+    job a stopped dashboard left spent is recorded when the next one starts.
+    """
+
+    def _serve(self, server: Any, events: list[str]) -> Any:
+        from cargento_runtime import reading_jobs, supervise  # noqa: PLC0415
+
+        config = support.make_config()
+
+        def recovered(_application: Any, *, alive: Any) -> int:
+            events.append(f"recover:{alive.__name__}")
+            return 0
+
+        with (
+            mock.patch.object(lifecycle, "write_state"),
+            mock.patch.object(lifecycle, "remove_state"),
+            mock.patch.object(lifecycle, "run_producer"),
+            mock.patch.object(supervise, "kill_all", side_effect=lambda: events.append("kill_all")),
+            mock.patch.object(reading_jobs, "recover", side_effect=recovered) as recover,
+        ):
+            lifecycle.serve(
+                config,
+                server,
+                4553,
+                started=1.0,
+                diagnostic_sink=lambda _message: None,
+            )
+        return recover
+
+    def test_shutdown_kills_every_supervised_group_after_serving(self) -> None:
+        events: list[str] = []
+
+        class FakeServer:
+            application = None
+
+            def serve_forever(self) -> None:
+                events.append("serve")
+
+            def server_close(self) -> None:
+                pass
+
+        self._serve(FakeServer(), events)
+        self.assertEqual(["serve", "kill_all"], events)
+
+    def test_a_serving_application_records_what_a_stopped_one_left_spent_first(self) -> None:
+        events: list[str] = []
+        application = mock.Mock()
+
+        class FakeServer:
+            def __init__(self) -> None:
+                self.application = application
+
+            def serve_forever(self) -> None:
+                events.append("serve")
+
+            def server_close(self) -> None:
+                pass
+
+        recover = self._serve(FakeServer(), events)
+        self.assertEqual(["recover:pid_exists", "serve", "kill_all"], events)
+        self.assertIs(application, recover.call_args.args[0])

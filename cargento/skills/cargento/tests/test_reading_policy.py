@@ -83,6 +83,32 @@ class ReadingPolicyTest(unittest.TestCase):
             guarded("prompt", output_cap_bytes=100)
         self.assertEqual(1, reading_policy.status(self.config, now=100.0)["used"])
 
+    def test_a_committed_reservation_is_announced_and_a_refused_one_is_not(self) -> None:
+        """DRC-4686: a reading job's restart marker is written from this seam.
+
+        Called after the spend is committed and before the model runs, so a
+        marker never says an attempt was spent when it was not.
+        """
+        used_when_told: list[int] = []
+
+        def reserved() -> None:
+            used_when_told.append(reading_policy.status(self.config, now=100.0)["used"])
+
+        model = mock.Mock(return_value=("{}", "ok"))
+        guarded = reading_policy.GuardedModel(
+            self.config, model, lambda: 100.0, on_reserved=reserved
+        )
+        with self.assertRaises(reading_policy.RefusedError):
+            guarded("prompt", output_cap_bytes=100)
+        self.assertEqual([], used_when_told)
+        model.assert_not_called()
+        reading_policy.set_consent(self.config, True, now=100.0)
+        guarded("prompt", output_cap_bytes=100)
+        self.assertEqual([1], used_when_told)
+        model.available = mock.Mock(return_value=False)
+        self.assertEqual(("", "unavailable"), guarded("prompt", output_cap_bytes=100))
+        self.assertEqual([1], used_when_told)
+
     def test_missing_sqlite_refuses_permission_and_launch(self) -> None:
         with mock.patch.object(runtime_io, "sqlite_module", None):
             self.assertEqual(
