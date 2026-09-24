@@ -966,6 +966,26 @@ class CancelAnAnalysisTest(unittest.TestCase):
         self.assertEqual(reading.WITHHELD[reading.WITHHELD_CANCELLED_UNSENT], entry.get("withheld"))
         self.assertEqual([], sorted((self.home / reading_jobs.MARKER_DIR).glob("*.json*")))
 
+    def test_a_cancel_before_the_commit_point_is_not_reported_as_a_failed_job(self) -> None:
+        """Verify N2: the cancel is an outcome, so no "a reading job failed" line is written."""
+        checked, go = threading.Event(), threading.Event()
+        real_cancelled = reading_jobs.Hooks.cancelled
+
+        def cancelled(hooks: reading_jobs.Hooks) -> bool:
+            answer = real_cancelled(hooks)
+            checked.set()
+            go.wait(10)
+            return answer
+
+        with mock.patch.object(reading_jobs.Hooks, "cancelled", cancelled):
+            job, thread = self._start()
+            self.assertTrue(checked.wait(10))
+            self.assertTrue(reading_jobs.cancel(self.application, KEY, job.id))
+            go.set()
+            self._finish(thread)
+        self.assertIn(("withheld", reading.WITHHELD_CANCELLED_UNSENT, False), self.events)
+        self.assertEqual([], self.application.diagnostics)
+
     def test_a_cancel_after_the_commit_point_is_charged_and_its_marker_says_cancelled(
         self,
     ) -> None:

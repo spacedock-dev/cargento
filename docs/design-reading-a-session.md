@@ -1516,7 +1516,10 @@ new strings on the issue; the other calls were made within them.
   being stored. A cancelled job never lights "Checking the reply".
 - Precedence: `unstopped` first, then the stop's own word (`interrupted`, or `stopping` when nothing
   was sent) over a cancel made after the shutdown began, then the cancel over a failed or finished
-  call.
+  call. The stop's word stands only where the stop reached the call first. A shutdown that begins
+  just after the model seam's own `closed()` check, followed by a cancel before the commit point,
+  records `cancelled-unsent`, where with no cancel the job would have reserved and recorded a spent
+  `interrupted`. Nothing was reserved, so the count still equals the charge.
 - `cancelled` is a kept marker reason, so a store that refuses it never recovers as "The analysis
   ran", and the cancel writes that reason into the marker, so a dashboard that dies before the
   write records the cancel at its next start.

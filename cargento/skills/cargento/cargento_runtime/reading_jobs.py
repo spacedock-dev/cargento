@@ -326,8 +326,13 @@ def _cancelled(job: reading.Job, outcome: Outcome, *, spent: bool) -> Outcome:
     """The outcome of a job a Cancel reached before its seal.
 
     "May still be running" outranks the cancel, as it outranks a stop (verify
-    N5). A cancel made after the shutdown began leaves the stop's own word,
-    spent (`interrupted`) or not (`stopping`).
+    N5). A cancel made after the shutdown began leaves the stop's own word
+    where the stop reached the call first: `interrupted` once it was spent,
+    `stopping` when the seam refused it. A shutdown that begins after the
+    seam's `closed()` check does not reach it first, so a cancel accepted
+    before the commit point then records `cancelled-unsent` where, with no
+    cancel, the job would have reserved and recorded `interrupted`: nothing is
+    reserved, so the count still equals the charge.
     Anything else, a reply included, becomes the cancel: spent from the
     reservation on, and unspent before it.
     """
