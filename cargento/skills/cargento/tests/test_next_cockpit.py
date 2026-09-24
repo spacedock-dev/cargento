@@ -13014,8 +13014,9 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
             self.page(scan) + 'console.log(JSON.stringify(texts("next-cockpit-work-checks")));'
         )
         assert isinstance(out, list)
-        self.assertIn("latest runs: 0 failed, 1 with no recorded result, 1 passed", out[0])
-        self.assertIn("2 files written outside the working directory", out[0])
+        # V11: the file counts are their own sentence, never a latest-run result.
+        self.assertIn("latest runs: 0 failed, 1 with no recorded result, 1 passed. ", out[0])
+        self.assertIn("1 file written, 2 files written outside the working directory.", out[0])
 
     def test_a_listed_failure_is_never_hidden_by_the_recent_window(self) -> None:  # R16
         directions = ",".join(

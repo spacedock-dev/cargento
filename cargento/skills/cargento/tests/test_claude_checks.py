@@ -92,7 +92,12 @@ class Transcript:
         )
 
     def bash(self, command: str, output: str = "", *, is_error: Any = False, **extra: Any) -> str:
+        """A call that ran. A failing one opens with `Exit code N`, as Claude Code
+        records a command that exited nonzero; a call that never ran is built
+        with `call` and `result` instead."""
         call_id = self.call("Bash", {"command": command, **extra})
+        if is_error is True and not output.startswith("Exit code "):
+            output = "Exit code 1\n" + output
         self.result(call_id, output, is_error=is_error)
         return call_id
 
@@ -630,11 +635,12 @@ class WhichCheckAShellCallsResultBelongsTo(ClaudeChecksTestCase):
             {"pytest": "passed", "mypy src": "passed"}, results_by_title(self.read()[0])
         )
 
-    def test_a_failing_flag_belongs_only_to_a_check_that_ends_the_call(self) -> None:  # R2, T8
+    def test_a_failing_flag_is_not_given_to_any_check_of_a_longer_call(self) -> None:  # R2, V6
+        # V6 narrowed R2: any stage of a longer call may be the one that failed.
         for command, expected in (
-            ("pytest && mypy src", {"pytest": "not-recorded", "mypy src": "failed"}),
+            ("pytest && mypy src", {"pytest": "not-recorded", "mypy src": "not-recorded"}),
             ("pytest && false", {"pytest": "not-recorded"}),
-            ("ruff check . && pytest", {"ruff check .": "not-recorded", "pytest": "failed"}),
+            ("ruff check . && pytest", {"ruff check .": "not-recorded", "pytest": "not-recorded"}),
         ):
             with self.subTest(command=command):
                 self.setUp()
@@ -671,11 +677,18 @@ class WhichCheckAShellCallsResultBelongsTo(ClaudeChecksTestCase):
         )
 
     def test_a_server_sent_to_the_background_leaves_the_check_after_it_in_front(self) -> None:  # R4
+        # The foreground check is a run that supersedes the earlier pass; V6
+        # and V8 keep a two-segment call's failure and output unattributed.
         self.session.bash("pytest", "5 passed", is_error=False)
         self.session.bash("python3 -m http.server 8000 & pytest", "1 failed", is_error=True)
-        events, scan = self.read()
-        self.assertEqual({"pytest": "failed"}, results_by_title(events))
+        _events, scan = self.read()
+        check = self.only_check()
+        self.assertEqual("not-recorded", check["result"])
+        self.assertNotIn("background", check["source"])
         self.assertEqual(1, scan["background"])
+        self.setUp()
+        self.session.bash("python3 -m http.server 8000 & pytest", "", is_error=False)
+        self.assertEqual("passed", self.only_check()["result"])
 
     def test_a_background_rerun_leaves_the_check_without_a_recorded_result(self) -> None:  # R5
         self.session.bash("pytest", "5 passed", is_error=False)
@@ -692,21 +705,29 @@ class WhatAResultMayRestOn(ClaudeChecksTestCase):
     def test_failure_in_the_output_outranks_a_passing_flag(self) -> None:  # R6
         for command, output, source in (
             ("npm test", "Tests: 1 failed, 4 passed, 5 total", "summary"),
-            ("./run_tests.sh", "FAILED tests/test_a.py::test_x - AssertionError", "marker"),
         ):
             with self.subTest(command=command):
                 self.setUp()
                 self.session.bash(command, output, is_error=False)
                 check = self.only_check()
                 self.assertEqual(("failed", source), (check["result"], check["result_source"]))
+        # V4: a failure marker alone beside a passing flag only withholds it.
+        self.setUp()
+        self.session.bash("./run_tests.sh", "FAILED tests/test_a.py::test_x - AssertionError")
+        self.assertEqual("not-recorded", self.only_check()["result"])
 
     def test_a_node_run_with_a_cancelled_test_failed(self) -> None:  # R7
         output = f"{INFO} tests 1\n{INFO} pass 1\n{INFO} fail 0\n{INFO} cancelled 1"
-        for command, flag in (("node --test 2>&1 | grep pass", False), ("node --test", False)):
+        # A marker records the failure where the flag cannot be read; beside a
+        # passing flag it withholds the pass (V4).
+        for command, expected in (
+            ("node --test 2>&1 | grep pass", "failed"),
+            ("node --test", "not-recorded"),
+        ):
             with self.subTest(command=command):
                 self.setUp()
-                self.session.bash(command, output, is_error=flag)
-                self.assertEqual("failed", self.only_check()["result"])
+                self.session.bash(command, output, is_error=False)
+                self.assertEqual(expected, self.only_check()["result"])
 
     def test_a_go_run_with_no_test_files_ran_nothing(self) -> None:  # R8
         self.session.bash("go test ./...", "?   \texample.com/a\t[no test files]", is_error=False)
@@ -790,7 +811,7 @@ class WhichFormsAreStripped(ClaudeChecksTestCase):
             ("rtk pytest", "", True, "failed"),
             ("rtk proxy pytest", "", False, "passed"),
             ("rtk pytest 2>&1 | tail -2", "5 passed", False, "not-recorded"),
-            ("rtk pytest", "1 failed", False, "passed"),
+            ("rtk pytest", "1 failed", False, "not-recorded"),
         ):
             with self.subTest(command=command, output=output):
                 self.setUp()
@@ -828,7 +849,15 @@ class WhichFormsAreStripped(ClaudeChecksTestCase):
         self.assertIsNone(scan["last_changing_command_at"])
 
     def test_substitution_redirects_and_tree_output_are_not_read_only(self) -> None:  # R15
-        for command in ("echo $(rm -rf build)", "echo `touch x`", "tree -o out.txt", "ls > f.txt"):
+        for command in (
+            "echo $(rm -rf build)",
+            "echo `touch x`",
+            "tree -o out.txt",
+            "ls > f.txt",
+            "find . -fprint0 list.txt",
+            "find . -fprintf list.txt %p",
+            "git show --output=x.patch",
+        ):
             with self.subTest(command=command):
                 self.setUp()
                 self.session.bash(command, "", is_error=False)
@@ -957,6 +986,121 @@ class TheClosedListIsTheDocumentsList(ClaudeChecksTestCase):
             with self.subTest(wrapper=wrapper):
                 words = project_context._strip_runner_prefix([*wrapper.split(), "pytest", "-q"])
                 self.assertEqual(["pytest", "-q"], words)
+
+
+class WhatTheVerifierFoundAfterTheFirstRound(ClaudeChecksTestCase):
+    """The second correction round, V1 to V8. Every rule withholds."""
+
+    def test_a_call_claude_code_moved_to_the_background_has_no_result(self) -> None:  # V1
+        for text in (
+            (
+                "Command did not complete within its 120s timeout and was moved to the"
+                " background with ID: b9."
+            ),
+            "Command running in background with ID: b9.",
+        ):
+            with self.subTest(text=text[:20]):
+                self.setUp()
+                self.session.bash("pytest", "1 failed", is_error=True)
+                self.session.bash("pytest", text, is_error=False)
+                _events, scan = self.read()
+                check = self.only_check()
+                self.assertEqual("not-recorded", check["result"])
+                self.assertIs(True, check["earlier_failed"])
+                self.assertEqual(1, scan["background"])
+
+    def test_an_ampersand_backgrounds_the_whole_chain_before_it(self) -> None:  # V2
+        self.session.bash("pytest", "1 failed", is_error=True)
+        self.session.bash("pytest && echo started &", "", is_error=False)
+        self.assertEqual("not-recorded", self.only_check()["result"])
+        self.setUp()
+        self.session.bash("npm run build && node server.js &", "", is_error=False)
+        self.assertEqual([], self.checks())
+
+    def test_a_call_that_never_ran_is_not_a_run(self) -> None:  # V3
+        for text in (
+            "The user doesn't want to proceed with this tool use.",
+            "<tool_use_error>Cancelled: parallel tool call errored</tool_use_error>",
+            "Sibling tool call errored",
+            "PreToolUse:Bash hook error: blocked",
+        ):
+            with self.subTest(text=text[:20]):
+                self.setUp()
+                self.session.bash("pytest", "5 passed", is_error=False)
+                call_id = self.session.call("Bash", {"command": "pytest"})
+                self.session.result(call_id, text, is_error=True)
+                call_id = self.session.call("Bash", {"command": "mypy src"})
+                self.session.result(call_id, text, is_error=True)
+                events, scan = self.read()
+                self.assertEqual({"pytest": "passed"}, results_by_title(events))
+                self.assertEqual(1, scan["check_runs"])
+
+    def test_a_nonzero_exit_is_a_failure(self) -> None:  # V3
+        call_id = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(call_id, "Exit code 2\nerror: no tests", is_error=True)
+        self.assertEqual("failed", self.only_check()["result"])
+
+    def test_only_a_failure_summary_overrides_a_passing_flag(self) -> None:  # V4
+        for command, output, expected in (
+            ("pytest -q", "1 failed, 4 passed in 1s", "failed"),
+            ("eslint .", "✖ 3 problems (0 errors, 3 warnings)", "not-recorded"),
+            ("pytest -q", "tests/a.py::test_raises_AssertionError PASSED", "not-recorded"),
+            ("ruff check --fix .", "Found 1 error (1 fixed, 0 remaining).", "passed"),
+        ):
+            with self.subTest(command=command, output=output[:12]):
+                self.setUp()
+                self.session.bash(command, output, is_error=False)
+                self.assertEqual(expected, self.only_check()["result"])
+
+    def test_an_rtk_pass_beside_failure_text_is_not_a_pass(self) -> None:  # V5
+        for output in ("Tests: 1 failed, 4 passed, 5 total", "AssertionError: boom"):
+            with self.subTest(output=output[:10]):
+                self.setUp()
+                self.session.bash("rtk npm test", output, is_error=False)
+                self.assertEqual("not-recorded", self.only_check()["result"])
+
+    def test_a_failing_flag_needs_a_call_of_one_segment(self) -> None:  # V6
+        for command, expected in (
+            ("ruff check . && pytest", {"ruff check .": "not-recorded", "pytest": "not-recorded"}),
+            ("pytest && echo done", {"pytest": "not-recorded"}),
+            ("cd api && CI=1 uv run pytest", {"pytest": "failed"}),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=True)
+                self.assertEqual(expected, results_by_title(self.read()[0]))
+
+    def test_formatters_and_fixers_age_a_pass(self) -> None:  # V7
+        for later in ("black .", "ruff format .", "prettier --write .", "eslint --fix ."):
+            with self.subTest(later=later):
+                self.setUp()
+                self.session.bash("pytest", "5 passed", is_error=False)
+                self.session.bash(later, "", is_error=False)
+                check = next(e for e in self.checks() if e["title"] == "pytest")
+                self.assertIs(True, check["before_last_change"])
+
+    def test_a_fixer_later_in_the_same_call_ages_the_pass(self) -> None:  # V7
+        self.session.bash("pytest && ruff check --fix .", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["pytest"]["before_last_change"])
+
+    def test_a_format_check_ages_nothing(self) -> None:  # V7
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("ruff format --check .", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(False, found["pytest"]["before_last_change"])
+
+    def test_output_is_not_attributed_across_other_commands(self) -> None:  # V8
+        for command, output in (
+            ("pytest & npm test; echo done", "12 passed"),
+            ("pytest; npx playwright test", "12 passed"),
+            ("pytest; python3 manage.py test", "Ran 12 tests in 1s\n\nOK"),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, output, is_error=False)
+                for title, result in results_by_title(self.read()[0]).items():
+                    self.assertNotEqual("passed", result, title)
 
 
 if __name__ == "__main__":

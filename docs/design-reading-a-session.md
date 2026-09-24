@@ -1008,8 +1008,12 @@ qualifies the producer against it.
    can never produce "No check was recorded" or a reassuring answer.
 5. Fields read: the check's own segment, its runner form and arguments and never the rest of the
    shell line (the owner narrowed this on review the same day, as part of this ruling), after
-   credential redaction and masking of the forms redaction cannot recognise (`NAME=value`, `-p` and
-   `--password` values, `user:pass@`), clipped to 120 characters; the last 180 characters of
+   credential redaction and masking, word by word, of the forms redaction cannot recognise: a
+   `NAME=value` assignment; the value after `--password`, `--token`, `--api-key`, `--secret`,
+   `--auth`, `-p` or `-P`, joined by `=` or in the next word; an `Authorization:` or `X-Api-Key:`
+   header value; and the password in `user:password@`, up to the last `@`. These forms and no
+   others, as SECURITY.md says. A substituted command is shown as `$(…)` and a trailing comment is
+   dropped. Clipped to 120 characters; the last 180 characters of
    output, the existing ledger cap, with redaction run over the whole read window first; a
    written path relative to the working directory; and, for a segment that is neither a check nor
    on the read-only list, its time only, never its text, used on this machine. No file content is read as a field, and never an
@@ -1070,7 +1074,17 @@ Runners, matched on the first word or words of a stripped segment:
 Read-only commands, matched the same way, for segments that are not checks: `git status`,
 `git log`, `git diff`, `git show`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `wc`, `pwd`,
 `echo`, `which`, `file`, `stat`, `tree` and `less`. Any other segment that is not a check, run after
-any check's latest passing run, is the blocker item 3 names. This list is closed too.
+any check's latest passing run, is the blocker item 3 names. This list is closed too. A segment is
+not read-only, whatever its command, when it holds a command substitution (`$(` or a backtick), a
+process substitution, or a redirect `>` into anything but `/dev/null` or another descriptor, or a
+writing option: `find -delete`, `-exec`, `-execdir`, `-ok`, `-fprint`, `-fprint0`, `-fprintf` or
+`-fls`, `tree -o`, and `git diff`, `git log` or `git show` with `--output`.
+
+Formatters and fixers are changes: `prettier --write`, `black` without `--check`, `ruff format`
+without `--check`, and any run with `--fix` or `--write`, `ruff check --fix` and `eslint --fix`
+among them. A change ages every earlier pass as a recorded write does, and a check that fixes, or a
+fixer later in the same call, ages that check's own pass, so no timestamp tie inside one call hides
+it.
 
 The error flag, source (i), is the status of the whole call, not of one segment. The orchestrator
 clarified how it is attributed on 2026-09-24, in the withholding direction, after review found a
@@ -1084,7 +1098,27 @@ failure credited to a check that never ran and a pass credited to one whose exec
 - summary lines and failure markers attribute only when the call holds exactly one check;
 - anything after `||` has unestablished execution, so the flag says nothing about it and it reads
   "ran, result not recorded";
-- `&` sends only the segment before it to the background.
+- `&` sends the whole `&&`/`||` list before it to the background, back to the previous `;`,
+  newline or `&`, so `pytest && echo started &` runs pytest in the background.
+
+The orchestrator clarified the attribution further on 2026-09-24, in the withholding direction,
+after a verifier reproduced false results against the first clarification:
+
+- a result Claude Code records as moved to the background ("Command running in background with
+  ID", or "Command did not complete within its N s timeout and was moved to the background") makes
+  every check in that call a background run: no result, and it supersedes as unrecorded;
+- a failing flag is a run that exited nonzero only when the result opens `Exit code N` with N above
+  zero; any other failing result is a call that never ran (a rejection, a cancelled parallel call, a
+  sibling error, a hook block or an input error), so it is no run, is not listed and supersedes
+  nothing;
+- a failing flag is attributed only when the call holds exactly one segment after stripping `cd`,
+  assignments and wrappers; otherwise every check in it reads "ran, result not recorded";
+- summary lines and failure markers attribute only when the call holds exactly one check,
+  background ones counted, and no other segment that is not read-only;
+- beside a passing flag, only a failure summary line makes the check failed; a failure marker alone
+  makes it "ran, result not recorded";
+- an `rtk` check with a passing flag and failure text in its output reads "ran, result not
+  recorded", never passed.
 
 Summary lines, source (ii), read from the recorded output tail, may record a pass or a failure:
 pytest's `N passed`, `N failed` and `N error` or `N errors`; unittest's `OK`, only as the whole line, and `FAILED (`; jest's
@@ -1094,11 +1128,14 @@ lines, where `ℹ fail 0` is a pass; cargo's `test result: ok` and `test result:
 A pass needs a pass pattern and nothing in the same tail that records a failure: a failed count
 above zero, a failure summary or a failure marker. So `1 failed, 9 passed` is a failure. go prints
 `ok  <pkg>` once per package, so a later package's `ok` cannot vouch for the run, and it is never
-read as a pass. go's `FAIL` is a failure, and a go pass comes from the error flag alone. A pass whose count
+read as a pass. go's `FAIL` is a failure, and a go pass comes from the error flag alone. ruff's
+`Found N error (N fixed, 0 remaining)` after a fix is not a failure summary, and neither is
+eslint's `(0 errors, N warnings)`. A pass whose count
 is zero (`ℹ pass 0`, `0 passed`, `Ran 0 tests`), or a go run reporting `[no tests to run]`, or
 `[no test files]` with no package reporting `ok`, reads "ran, result not recorded". Failure evidence
-outranks a passing flag: when the flag passes and the tail holds a failure summary or a failure
-marker, the check failed, since a script can swallow its runner's exit status.
+outranks a passing flag: when the flag passes and the tail holds a failure summary, the check
+failed, since a script can swallow its runner's exit status; a failure marker alone withholds the
+pass instead.
 
 Failure markers, source (iii), read from the recorded output tail as evidence of failure only:
 node's `✖` test lines, `failing tests:` and `ℹ cancelled N` above zero (a timed-out test prints
@@ -1301,8 +1338,10 @@ Six sub-questions were ruled the same day, each as recommended.
    measures what else is too little. A write here is a file-write tool call the transcript
    recorded. A file a shell command changes is not seen (DEC-23's capture), so "nothing was written
    after that pass" means no recorded write, not that nothing changed. The shell-command blocker
-   narrows that gap, and a read-only command that changes files, such as `echo` with a redirect or `find` with
-   `-delete` or `-exec`, is still not seen.
+   narrows that gap. A read-only command is not read-only when it carries a command substitution,
+   a redirect into a file, or a writing option the closed lists name (`find -delete`, `-exec` and
+   `-fprint`, `tree -o`, `git diff`/`log`/`show --output`); what is still not seen is a command on
+   the read-only list that changes files through anything else.
 2. Two sources, labelled. "Live estimate" is computed without a model after each turn, from DEC-23's
    evidence and the reader's saved intent: failed checks, passes followed by writes, and the share
    of writes outside the folders the intent names. An unsettled later direction, and a shell command

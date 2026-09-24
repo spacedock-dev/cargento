@@ -1283,21 +1283,20 @@ function nextCockpitCheckScan(scan){
   if(!runs && !background && !written && !other && !outside){
     return "No check ran in the part of the transcript read.";
   }
-  const found = [];
-  if(runs){
-    /* The latest results, always: a failure is never left for the listed
-       rows alone to carry (review, 2026-09-24). */
-    found.push(`${count(runs, "check run", "check runs")} across ` +
+  /* The latest results, always, so a failure is never left for the listed
+     rows alone to carry; the files are a sentence of their own, so they never
+     read as a latest-run result (review and verifier, 2026-09-24). */
+  const checks = runs
+    ? `${count(runs, "check run", "check runs")} across ` +
       `${count(nextNumber(scan.distinct_checks) || 0, "distinct check", "distinct checks")}; ` +
       `latest runs: ${nextNumber(scan.failed) || 0} failed, ` +
       `${nextNumber(scan.not_recorded) || 0} with no recorded result, ` +
-      `${nextNumber(scan.passed) || 0} passed`);
-  } else {
-    found.push("no check in the foreground");
-  }
-  if(written) found.push(count(written, "file written", "files written"));
+      `${nextNumber(scan.passed) || 0} passed`
+    : "no check in the foreground";
+  const files = [];
+  if(written) files.push(count(written, "file written", "files written"));
   if(outside){
-    found.push(`${count(outside, "file", "files")} written outside the working directory`);
+    files.push(`${count(outside, "file", "files")} written outside the working directory`);
   }
   const counted = [];
   if(background){
@@ -1305,7 +1304,8 @@ function nextCockpitCheckScan(scan){
       "because a background run records no result");
   }
   if(other) counted.push(count(other, "other shell command", "other shell commands"));
-  return `From the part of the transcript read: ${found.join(", ")}.` +
+  return `From the part of the transcript read: ${checks}.` +
+    (files.length ? ` ${files.join(", ").replace(/^./, c => c.toUpperCase())}.` : "") +
     (counted.length ? ` Counted and not listed: ${counted.join("; ")}.` : "") +
     (more ? ` Failures are listed first, and ${more} more are counted and not listed.` : "");
 }

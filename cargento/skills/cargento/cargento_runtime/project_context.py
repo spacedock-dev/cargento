@@ -1253,7 +1253,7 @@ _INFO = "\u2139"  # node's summary glyph, written as an escape so review can rea
 # its pass and fail counts on lines of their own.
 _SUMMARY_FAILED = re.compile(
     rf"\b[1-9]\d* failed\b|^FAILED \(|^\s*Tests:.*\b[1-9]\d* failed|^{_INFO} fail [1-9]\d*\s*$"
-    r"|^FAIL\b|test result: FAILED|\b[1-9]\d* errors?\b",
+    r"|^FAIL\b|test result: FAILED|\b[1-9]\d* errors?\b(?! \(\d+ fixed, 0 remaining\))",
     re.MULTILINE,
 )
 # A pass counts only when nothing else in the tail records a failure (owner,
@@ -1284,6 +1284,16 @@ _RAN_NOTHING = re.compile(
 _NO_TEST_FILES = re.compile(r"\[no test files\]")
 _GO_OK = re.compile(r"^ok\s", re.MULTILINE)
 _RESULT_ORDER = {"failed": 0, "not-recorded": 1, "passed": 2}
+# A true error flag is a run that exited nonzero only when Claude Code says so;
+# any other flagged result is a call that never ran: a rejection, a cancelled
+# parallel call, a sibling error, a hook block or an input error (measured:
+# 89% of flagged Bash results open this way; verifier, 2026-09-24).
+_EXITED_RE = re.compile(r"\AExit code [1-9]\d*\b")
+# Claude Code moved the call to the background itself: no result is recorded.
+_MOVED_TO_BACKGROUND_RE = re.compile(
+    r"\A(?:Command running in background with ID: "
+    r"|Command did not complete within its \d+s timeout and was moved to the background)"
+)
 # Owner, 2026-09-24: the closed read-only list. A segment that is neither a
 # check nor on it is timed, never kept as text; DRC-4692's levels compare the
 # time with each check's latest pass. Counted, never listed, never drift.
@@ -1295,10 +1305,13 @@ _READ_ONLY_PAIRS = frozenset({"git status", "git log", "git diff", "git show"})
 # Options that make a read-only command write or run something, per command:
 # `find -o` is an OR and stays read-only, `tree -o` writes a file.
 _WRITING_OPTIONS = {
-    "find": frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fls"}),
+    "find": frozenset(
+        {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+    ),
     "tree": frozenset({"-o"}),
     "git diff": frozenset({"--output"}),
     "git log": frozenset({"--output"}),
+    "git show": frozenset({"--output"}),
 }
 _HARMLESS_REDIRECT_RE = re.compile(r"^(?:\d*>&\d+|\d*>/dev/null|&>/dev/null)$")
 
@@ -1522,17 +1535,19 @@ def _tail_result(tail: str) -> tuple[str, str] | None:
     return None
 
 
-def _flag_result(flag: object, *, last: bool, all_and: bool) -> str:
-    """What the call's error flag says about one check in it (review, 2026-09-24).
+def _flag_result(flag: object, *, last: bool, all_and: bool, alone: bool) -> str:
+    """What the call's error flag says about one check in it (review and
+    verifier, 2026-09-24).
 
     The flag is the whole call's status. A pass through `&&` alone passes every
-    check; a failure belongs only to a check that ends the call; anything else
-    says nothing.
+    check, and a pass otherwise speaks for the last segment. A failure speaks
+    only for a call of one segment, after `cd`, assignments and wrappers are
+    stripped, since any other stage may be the one that failed.
     """
     if not isinstance(flag, bool):
         return ""
     if flag:
-        return "failed" if last else ""
+        return "failed" if alone else ""
     return "passed" if last or all_and else ""
 
 
@@ -1563,18 +1578,44 @@ def _written_path(raw: object, cwd: str) -> str | None:
     return relative.replace(os.sep, "/")
 
 
+def _is_fixer(words: list[str]) -> bool:
+    """A formatter or fixer run: a change that ages every pass (verifier,
+    2026-09-24), whether or not it is also a check."""
+    if not words:
+        return False
+    words = _runner_words(words)
+    flags = {word.split("=", 1)[0] for word in words[1:]}
+    if _FIX_FLAGS & flags:
+        return True
+    if words[0] == "black" or words[:2] == ["ruff", "format"]:
+        return "--check" not in flags
+    return words[0] == "prettier" and "-w" in flags
+
+
 class _ShellCall:
     """One Bash call, split into segments, with the facts every rule reads."""
 
-    def __init__(self, at: float, cwd: str, tool_input: dict[str, Any]) -> None:
+    def __init__(
+        self, at: float, cwd: str, tool_input: dict[str, Any], *, moved: bool = False
+    ) -> None:
         command = tool_input.get("command")
         self.at = at
         self.segments = _command_segments(command if isinstance(command, str) else "")
-        self.all_background = tool_input.get("run_in_background") is True
+        self.all_background = tool_input.get("run_in_background") is True or moved
         self.words: list[tuple[list[str], bool]] = [
             _stripped(_segment_words(text)) for text, _ in self.segments
         ]
         self.directories = self._directories(cwd)
+        self.meaningful = [
+            i for i, (words, _rtk) in enumerate(self.words) if words and words[0] != "cd"
+        ]
+        self.checks = [i for i in self.meaningful if _is_check(self.words[i][0])]
+        self.fixers = [i for i in self.meaningful if _is_fixer(self.words[i][0])]
+        self.changing_others = [
+            i
+            for i in self.meaningful
+            if i not in self.checks and not _reads_only(self.segments[i][0], self.words[i][0])
+        ]
 
     def _directories(self, cwd: str) -> list[str]:
         """The directory each segment runs in, following the call's `cd`s."""
@@ -1586,7 +1627,12 @@ class _ShellCall:
         return found
 
     def background(self, index: int) -> bool:
-        return self.all_background or self.segments[index][1] == "&"
+        """`&` sends the whole and-or list before it to the background, back to
+        the previous `;`, newline or `&` (verifier, 2026-09-24)."""
+        if self.all_background:
+            return True
+        ends = (joiner for _, joiner in self.segments[index:] if joiner in ("", ";", "\n", "&"))
+        return next(ends, "") == "&"
 
     def unestablished(self, index: int) -> bool:
         """Whether a `||` before the segment leaves its execution unknown."""
@@ -1594,16 +1640,11 @@ class _ShellCall:
 
     def changes(self) -> bool:
         """Whether any segment may change files without a recorded write."""
-        for (text, _), (words, _rtk) in zip(self.segments, self.words, strict=True):
-            if not words or words[0] == "cd":
-                continue
-            if _is_check(words):
-                if _FIX_FLAGS & {word.split("=", 1)[0] for word in words}:
-                    return True
-                continue
-            if not _reads_only(text, words):
-                return True
-        return False
+        return bool(self.fixers or self.changing_others)
+
+    def launches(self) -> int:
+        """Background launches: the call, or each `&`-ended list in it."""
+        return 1 if self.all_background else sum(j == "&" for _, j in self.segments)
 
 
 class _ToolReportTally:
@@ -1620,7 +1661,8 @@ class _ToolReportTally:
                 (
                     "shell_calls", "check_runs", "distinct_checks", "other_commands",
                     "read_only_commands", "background", "unknown_flags", "written_paths",
-                    "outside_paths", "write_attempts", "failed", "passed", "not_recorded",
+                    "outside_paths", "write_attempts", "not_run", "failed", "passed",
+                    "not_recorded",
                     "listed", "more",
                 ),
                 0,
@@ -1651,35 +1693,36 @@ class _ToolReportTally:
         self.writes[path] = {"at": at, "record_id": call_id, "tool": name}
 
     def _add_shell(self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any]) -> None:
+        result = self.results.get(call_id)
+        text = _tool_result_text(result) if result is not None else ""
+        if result is not None and result.get("is_error") is True and not _EXITED_RE.match(text):
+            # V3: the call never ran, so it is no run and supersedes nothing.
+            self.scan["not_run"] += 1
+            return
         self.scan["shell_calls"] += 1
-        call = _ShellCall(at, cwd, tool_input)
+        call = _ShellCall(at, cwd, tool_input, moved=bool(_MOVED_TO_BACKGROUND_RE.match(text)))
         if call.changes():
             self.scan["last_changing_command_at"] = at
-            if any(_is_check(w) and _FIX_FLAGS & set(w) for w, _rtk in call.words):
-                self.last_write_at = max(self.last_write_at, at)
-        backgrounded = [i for i in range(len(call.segments)) if call.background(i)]
-        self.scan["background"] += 1 if call.all_background else len(backgrounded)
-        foreground = [i for i in range(len(call.segments)) if i not in backgrounded]
-        checks = [i for i in range(len(call.segments)) if _is_check(call.words[i][0])]
-        if not foreground:
-            self._add_runs(call, call_id, [i for i in checks if i in backgrounded])
-            return
-        if not [i for i in checks if i in foreground]:
+        if call.fixers:
+            self.last_write_at = max(self.last_write_at, at)
+        self.scan["background"] += call.launches()
+        foreground = [i for i in call.meaningful if not call.background(i)]
+        if foreground and not [i for i in call.checks if i in foreground]:
             self.scan["other_commands"] += 1
             self.scan["read_only_commands"] += not call.changes()
-        self._add_runs(call, call_id, checks)
+        self._add_runs(call, call_id, result, text)
 
-    def _add_runs(self, call: _ShellCall, call_id: str, checks: list[int]) -> None:
-        result = self.results.get(call_id)
-        foreground = [i for i in checks if not call.background(i)]
-        single = len(foreground) == 1
+    def _add_runs(
+        self, call: _ShellCall, call_id: str, result: dict[str, Any] | None, text: str
+    ) -> None:
         flag = result.get("is_error") if result is not None else None
         # Redaction runs over the whole read window before the tail is cut (item 5).
-        text = _tool_result_text(result) if result is not None else ""
         tail = records.redact_secrets(text)[-TOOL_REPORT_TAIL_CHARS:]
         all_and = all(joiner == "&&" for _, joiner in call.segments[:-1])
-        failure_in_tail = bool(_SUMMARY_FAILED.search(tail) or _FAILURE_MARKER.search(tail))
-        for index in checks:
+        # V8: output speaks for a check only when it is the call's one check,
+        # background ones counted, and nothing else in the call may print.
+        attributable = len(call.checks) == 1 and not call.changing_others
+        for index in call.checks:
             words, rtk = call.words[index]
             background = call.background(index)
             if background:
@@ -1692,10 +1735,12 @@ class _ToolReportTally:
                     outcome, source = self._outcome(
                         tail,
                         rtk=rtk,
-                        single=single,
-                        failure_in_tail=failure_in_tail,
+                        attributable=attributable,
                         flag_result=_flag_result(
-                            flag, last=index == len(call.segments) - 1, all_and=all_and
+                            flag,
+                            last=index == len(call.segments) - 1,
+                            all_and=all_and,
+                            alone=len(call.meaningful) == 1,
                         ),
                     )
                 self.scan["unknown_flags"] += (
@@ -1710,27 +1755,33 @@ class _ToolReportTally:
                     "result_source": source,
                     "recorded": result is not None,
                     "background": background,
-                    "fixes": bool(_FIX_FLAGS & {w.split("=", 1)[0] for w in words}),
+                    # V7: a fixer at or after this check in the call ages its pass.
+                    "fixes": any(i >= index for i in call.fixers),
                 }
             )
 
     @staticmethod
-    def _outcome(
-        tail: str, *, rtk: bool, single: bool, failure_in_tail: bool, flag_result: str
-    ) -> tuple[str, str]:
-        """By item 2's order, as the review round narrowed it: a result that
+    def _outcome(tail: str, *, rtk: bool, attributable: bool, flag_result: str) -> tuple[str, str]:
+        """By item 2's order, as the review rounds narrowed it: a result that
         cannot be attributed reads "ran, result not recorded"."""
+        failed_summary = bool(_SUMMARY_FAILED.search(tail))
+        failure_text = failed_summary or bool(_FAILURE_MARKER.search(tail))
         if rtk:
-            # rtk may rewrite output, so its runs read the flag alone (owner).
+            # rtk may rewrite output, so its runs read the flag alone (owner),
+            # and failure text beside a passing flag withholds it (V5).
+            if flag_result == "passed" and failure_text:
+                return "not-recorded", ""
             return (flag_result, "flag") if flag_result else ("not-recorded", "")
-        from_tail = _tail_result(tail) if single else None
-        if flag_result == "passed" and (failure_in_tail or _ran_nothing(tail)):
-            # Failure evidence outranks a passing flag, and a run of nothing is
-            # no pass; only a failure the tail can attribute survives.
-            flag_result = ""
-            from_tail = from_tail if from_tail is not None and from_tail[0] == "failed" else None
+        if flag_result == "passed":
+            # V4: only a failure summary overrides a passing flag; a marker, or
+            # a run of nothing, only withholds it.
+            if failed_summary:
+                return ("failed", "summary") if attributable else ("not-recorded", "")
+            if failure_text or _ran_nothing(tail):
+                return "not-recorded", ""
         if flag_result:
             return flag_result, "flag"
+        from_tail = _tail_result(tail) if attributable else None
         return from_tail if from_tail is not None else ("not-recorded", "")
 
     def _check_entry(self, history: list[dict[str, Any]]) -> dict[str, Any]:

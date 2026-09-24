@@ -408,7 +408,7 @@ def redact_clip(text: str, limit: int) -> str:
 
 # The command-line forms `redact_secrets` cannot recognise because the value has
 # no shape: a short password is just a word. Masked by FORM instead, for the
-# check lines item 5 of the ruling `mask_command` cites asks for, widened on
+# check lines item 5 of the ruling `mask_words` cites asks for, widened on
 # review (2026-09-24) to the flags below. These named forms and no others:
 # SECURITY.md says so. Over-masking is the accepted direction: `-p` is also
 # `mkdir -p` and `pytest -p`, and losing that word costs a reader nothing.
@@ -446,6 +446,7 @@ def mask_words(words: list[str]) -> list[str]:
     Per word, before the words are joined and re-quoted, so a quoted value with
     whitespace in it is masked whole (review, 2026-09-24). A named flag masks
     the word after it.
+    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
     """
     masked: list[str] = []
     mask_next = False
@@ -463,21 +464,6 @@ def mask_words(words: list[str]) -> list[str]:
         )
         masked.append(_MASK_USERINFO.sub(lambda m: m.group(1) + _SECRET_MARKER + "@", formed))
     return masked
-
-
-def mask_command(text: str) -> str:
-    """A command line with every value `mask_words` recognises replaced.
-
-    Split on whitespace, keeping it, so a line with nothing to mask reads as it
-    was typed. The check line itself is masked word by word through
-    `mask_words`, after shell splitting. Run before `redact_clip`, never
-    instead of it.
-    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
-    """
-    parts = re.split(r"(\s+)", text)
-    words = mask_words(parts[0::2])
-    parts[0::2] = words
-    return "".join(parts)
 
 
 def safe_text(value: Any, limit: int) -> str:
