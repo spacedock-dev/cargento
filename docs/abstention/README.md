@@ -33,9 +33,9 @@ that ruling.
   `judge` or `abstain` for each of the two constraints.
 - `cases`, per case id: the harness, the marks, the outcome the producer landed in for each
   constraint, whether the case reached the model at all, and `asks_output`: whether the Expected
-  Output question was put to the model. Only a work-evidence harness (Pi today) is asked it. On
-  every other harness the collector fixed that mark to `abstain` and the producer answers
-  `not verifiable` without asking, so the output column there is the ruling's answer and the
+  Output question was put to the model. Only a case whose record shows work (a Pi work result,
+  since the check never grants tool output) is asked it. On every other case the collector fixed
+  that mark to `abstain` and the producer answers `not verifiable` without asking, so the output column there is the ruling's answer and the
   report says so instead of counting it as the model abstaining. `counts.output_not_asked` is how
   many cases that covers.
 - `counts`, `dec17`, `coverage` and `verdict`, which are what the report prints.

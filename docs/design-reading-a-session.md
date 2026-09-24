@@ -442,9 +442,10 @@ producer that never abstains as one that always does, on three exercised session
 counts for neither side. `unparsed` is kept apart from `abstained` because rule 2's fallback renders
 the same sentence and is a different fact.
 
-The output column is mostly the ruling's. Only a work-evidence harness is asked the Expected
-Output question (`asks_output`), the collector fixes the mark to `abstain` everywhere else, and
-`resolve` answers `not verifiable` there without asking. The scorer records `asks_output` per case
+The output column is mostly the ruling's. Only a case whose record shows work is asked the Expected
+Output question (`asks_output`, which reads the entries the prompt carries; the check never grants
+tool output, so that is a Pi case with a work result), the collector fixes the mark to `abstain`
+everywhere else, and `resolve` answers `not verifiable` there without asking. The scorer records `asks_output` per case
 and the report says how many output columns were never asked, so twenty three abstentions on a
 corpus with no Pi session read as the ruling's answer rather than as the model abstaining twenty
 three times.
@@ -959,8 +960,14 @@ matches a correction you copied is never adopted as a goal.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
-Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt;
-DRC-4677 admits it to a reading under item 7. Nothing below was built on the day it was written.
+Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.
+DRC-4677 builds items 7 to 10 for the single Expected Output constraint: the tool-output grant keyed
+by provider and destination, the destination named or refused, the result-bearing prompt row with
+its output tail quoted as data, the reader's words reserved first in the byte bound, and item 8's
+rules in the resolver and on the page, with the window read from the revision's `baseline_at` until
+DRC-4679 stores the words' own time. Per-line outcome lines are DRC-4685's. SECURITY.md's
+[Tool output in a Claude Code reading](../SECURITY.md#tool-output-in-a-claude-code-reading) says
+what is sent and where.
 
 A Claude Code reader who asks whether the session did what they asked gets "not verifiable" every
 time, because the rule 7 amendment found that on Claude and Codex nothing in the record

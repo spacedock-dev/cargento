@@ -126,9 +126,10 @@ than leaving an empty list to read as no work done.
 On Claude Code, the observed record lists the checks a session ran and the files it wrote, with what
 the harness recorded as each check's result
 ([DEC-23](design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)).
-A reading does not read them yet. A recorded pass is what the tool reported, never an inspection of
-the work, a result the record does not carry reads as not recorded rather than as a pass, and tool
-output will reach a model only after a permission that names it and its destination.
+A reading reads them only after you allow tool output for the destination the page names, and
+where Cargento cannot name that destination it sends none and says so. A recorded pass is what the
+tool reported, never an inspection of the work, and a reading labels it that way; a result the
+record does not carry reads as not recorded rather than as a pass.
 
 ### P3. Is anything waiting on me?
 
