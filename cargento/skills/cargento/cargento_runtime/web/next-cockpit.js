@@ -97,7 +97,7 @@ function nextCockpitAnnotation(session){
     "line_1", "line_1_source", "line_1_source_id", "line_2", "line_2_source", "line_2_source_id",
     "line_3", "line_3_source", "line_3_source_id", "line_4", "line_4_source", "line_4_source_id",
     "line_5", "line_5_source", "line_5_source_id", "line_6", "line_6_source", "line_6_source_id",
-    "revision", "revision_count", "at", "goal_source", "goal_source_at", "binding_why", "settled_at", "settled_through",
+    "revision", "revision_count", "at", "goal_source", "goal_source_at", "window_start", "binding_why", "settled_at", "settled_through",
     "settled_revision", "assessment", "reading_count", "reading_withheld",
     "reading_refused", "discarded_at", "discarded_why"];
   const known = fields.some(name => {
@@ -1579,10 +1579,36 @@ function nextCockpitWorkEntries(session, semantic){
    as the whole record. */
 const NEXT_COCKPIT_WORK_ROWS = 20;
 
+/* The observed last turn of a session waiting at its prompt, inside the
+   evidence window (item 13 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)):
+   from the reader's latest message at or before the stop, or the window start
+   if later, up to the stop. Not from the window start to the save: that range
+   is fixed when the words are saved, so the next turn made it name an older
+   one. Null on every other session and where no message opens the turn,
+   because a label nothing measured would be the board authoring a turn. */
+function nextCockpitLastTurn(session, entries){
+  if(!NEXT_READING_TURN_STOP_HARNESSES.includes(String(session && session.harness || ""))) return null;
+  if(nextSessionEndedAt(session) != null) return null;
+  const stop = nextNumber(session.finished_at);
+  if(!(session.state === "idle" && stop > 0)) return null;
+  const opened = nextNumber(session.annotation_window_start);
+  const starts = (entries || []).filter(nextReadingPersonAuthored)
+    .map(entry => nextNumber(entry.at)).filter(at => at != null && at > 0 && at <= stop);
+  if(opened == null || !starts.length) return null;
+  const from = Math.max(opened, ...starts);
+  return from <= stop ? {from, to: stop} : null;
+}
+
 function nextCockpitWorkEvidence(session, source){
   const entries = source.entries;
+  const lastTurn = nextCockpitLastTurn(session, entries);
   const rows = entries.map(entry => {
     const at = nextDurationSince(entry.at);
+    const stamp = nextNumber(entry.at);
+    const turn = lastTurn && stamp != null && stamp >= lastTurn.from && stamp <= lastTurn.to &&
+      !nextReadingPersonAuthored(entry)
+      ? '<span class="next-cockpit-work-turn">from the last turn</span>' : "";
     /* A model's paraphrase takes the third treatment, not the mono of a
        string a source published. It is the same rule the reading block
        follows, and the reason is the same: the reader must be able to tell
@@ -1603,7 +1629,7 @@ function nextCockpitWorkEvidence(session, source){
       `${entry.actorClaim && !entry.source.includes(entry.actorClaim)
         ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
-      `</span>${report}</div>`;
+      `</span>${report}${turn}</div>`;
   }).join("");
   return '<section class="next-cockpit-work" data-next-cockpit-work>' +
     '<header><h2>OBSERVED RECORD</h2></header>' +
@@ -1749,7 +1775,7 @@ const NEXT_READING_BASELINE_OPEN =
    `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
-const NEXT_READING_ASSESSMENT_KEYS = ["goal_source", "goal_source_at", "revision_read", "revision_read_at", "read_at", "stamp", "cutoff",
+const NEXT_READING_ASSESSMENT_KEYS = ["goal_source", "goal_source_at", "revision_read", "revision_read_at", "window_start", "read_at", "stamp", "cutoff",
   "scope", "scope_text", "ended_at_read", "evidence_through", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a
@@ -2209,11 +2235,13 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
      its row and its departure with it, after which the departures block
      rendered "The reading raised no departure from the revision it read" —
      a sentence about a revision whose departure had just been deleted. */
-  /* Where the evidence window opened for the revision this reading read,
-     the producer's `baseline_at`, so a check before the words cannot carry a
-     verdict on either side. */
-  const windowStart = nextNumber(["latest-prompt", "first-prompt"].includes(source.goal_source)
-    ? source.goal_source_at : source.revision_read_at);
+  /* Where the evidence window opened for the revision this reading read, as
+     the reading carries it, so a check before the words cannot carry a
+     verdict on either side. A reading stored before it carried one opened
+     where the producer's `baseline_at` did, and is derived that way. */
+  const windowStart = nextNumber(source.window_start) != null ? nextNumber(source.window_start)
+    : nextNumber(["latest-prompt", "first-prompt"].includes(source.goal_source)
+      ? source.goal_source_at : source.revision_read_at);
   const constraints = nextReadingConstraints(rows, annotation);
   const criteria = constraints
     .map(([key, label]) => nextCockpitReadingCriterion(
@@ -2226,6 +2254,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
     departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
+    windowStart,
     promptSource: ["latest-prompt", "first-prompt"].includes(source.goal_source),
     /* Through the same helper the criterion row uses, and filtered the same
        way. Read raw, the disclosure said "nothing typed in that revision" for
@@ -2739,6 +2768,16 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
      below. */
   const disclosure = provider && route.disclosure
     ? `<p class="next-cockpit-reading-why">${esc(route.disclosure)}</p>` : "";
+  /* What an analysis will read, under the control, and only where a press
+     could read it: a provider, no refusal beside it, saved words, and words
+     given before any observed end, which the server withholds by the same
+     time `nextCockpitConflictCandidates` floors on. */
+  const given = nextNumber(annotation &&
+    (["latest-prompt", "first-prompt"].includes(annotation.goal_source)
+      ? annotation.goal_source_at : annotation.at));
+  const endedAt = nextSessionEndedAt(session);
+  const readHint = provider && !reason && String(annotation && annotation.goal || "").trim() &&
+    !(endedAt != null && given != null && given > endedAt) ? nextObservedReadHint(session) : "";
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
      refused by `nextCockpitAskForReading`, on the reason computed above. */
@@ -2760,6 +2799,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     (nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off">Turn off readings</button>' : "") +
     '</div>' +
+    (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "") +
     (request && request.message && !request.refusal
       ? '<p class="next-cockpit-reading-why" role="status"' +
         `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(request.message))}>` +
@@ -2803,6 +2843,14 @@ function nextCockpitReadingBaseline(shape){
   const typed = shape.revisionReadAt != null
     ? `${shape.promptSource ? "saved" : "typed"} ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
     : (shape.promptSource ? "when it was saved was not recorded" : "when it was typed was not recorded");
+  /* Both times, as item 13 of
+     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+     asks, where they differ: typed words read work from the reader's latest
+     message before the save. Adopted words already name their prompt above. */
+  const opened = !shape.promptSource && shape.windowStart != null && shape.revisionReadAt != null &&
+    shape.windowStart < shape.revisionReadAt
+    ? `; reads work from your message ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.windowStart)))} ago`
+    : "";
   const rows = (shape.readClauses || []).map(([label, clause]) => {
     /* One wording with the criterion row, from one place. This board cannot
        tell "the reader typed nothing" from "the producer did not carry the
@@ -2815,7 +2863,7 @@ function nextCockpitReadingBaseline(shape){
       `<span class="next-cockpit-source">${esc(label)}</span>${body}</div>`;
   }).join("");
   return `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
-    `<summary>What it read: revision ${shape.revisionRead}, ${typed}</summary>` +
+    `<summary>What it read: revision ${shape.revisionRead}, ${typed}${opened}</summary>` +
     rows + "</details>";
 }
 

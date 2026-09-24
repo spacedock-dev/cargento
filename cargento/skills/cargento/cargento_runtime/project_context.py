@@ -2222,6 +2222,21 @@ def _timeline_counts(timeline: list[dict[str, Any]]) -> tuple[int, int, int]:
     )
 
 
+def _in_context(session: Mapping[str, Any]) -> bool:
+    """Whether a row is inside the window the project context reads.
+
+    `active` is the collector's window reading, but a hook's idle overlay
+    overwrites it with False to mean "no turn running" (`events.reduce_overlays`),
+    and the page's pulse and notify logic depend on that. A row the hooks stopped
+    is still in the window: it is exactly the row a reader opens to see what the
+    turn did, and reading it as out of the window dropped every check and file
+    about three seconds after the stop (DRC-4705).
+    """
+    return session.get("active") is True or (
+        session.get("acquisition") == "event" and session.get("state") == "idle"
+    )
+
+
 def _context_sessions(
     sessions: Sequence[Mapping[str, Any]], project: str, focus: tuple[str, str] | None
 ) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]], str, int]:
@@ -2232,7 +2247,7 @@ def _context_sessions(
             str(session.get("project_key") or session.get("project") or "") == project
             or str(session.get("project") or "") == project
         )
-        and session.get("active") is True
+        and _in_context(session)
     ]
     selected.sort(key=lambda item: float(item.get("last_activity") or 0), reverse=True)
     if focus is None:
@@ -2285,7 +2300,7 @@ def _attention_context_sessions(
             str(session.get("project_key") or session.get("project") or "") == project
             or str(session.get("project") or "") == project
         )
-        and session.get("active") is True
+        and _in_context(session)
     ]
     selected.sort(key=lambda item: float(item.get("last_activity") or 0), reverse=True)
     scanned = selected[:MAX_PROJECT_ATTENTION_SESSIONS]
@@ -2479,11 +2494,7 @@ def _project_peer_gate_context(
         harness = str(session.get("harness") or "")
         sid = str(session.get("sid") or "")
         session_project = str(session.get("project_key") or session.get("project") or "")
-        if (
-            session.get("active") is not True
-            or session_project != project
-            or (harness, sid) == focus
-        ):
+        if not _in_context(session) or session_project != project or (harness, sid) == focus:
             continue
         transcript_path = observer.resolve_transcript(config, state, harness, sid)
         if transcript_path is None:

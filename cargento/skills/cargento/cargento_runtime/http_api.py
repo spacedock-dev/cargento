@@ -1464,6 +1464,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 diagnostic_sink=application.diagnostic_sink,
             )
         else:
+            # One clock read for both, so the window start is "at or before"
+            # the very save it is stored beside.
+            now = application.clock()
             outcome = annotation_store.annotate(
                 config,
                 state,
@@ -1474,10 +1477,35 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 lines=payload.get("lines"),
                 expected_revision=payload.get("expected_revision"),
                 origins=payload.get("origins"),
-                now=application.clock(),
+                now=now,
+                window_start=self._typed_window_start(harness, sid, now),
                 diagnostic_sink=application.diagnostic_sink,
             )
         return outcome, withdrew
+
+    def _typed_window_start(self, harness: str, sid: str, saved_at: float) -> float | None:
+        """Where typed words saved now start reading work, or None for the save time.
+
+        Read from the session's record as the reading route reads it. A save
+        is never refused for it: a record that cannot be read opens the window
+        at the save, which is what a build without window starts did. Found in
+        the all-sessions collection, because a reader can save from that view
+        and the default one leaves an aged session out.
+        """
+        application = self.server.application
+        try:
+            _, body = application.collect_json(show_all=True)
+            rows = [
+                row
+                for row in json.loads(body)["sessions"]
+                if row.get("harness") == harness and row.get("sid") == sid
+            ]
+            if len(rows) != 1:
+                return None
+            facts = self._session_facts(rows[0])
+        except Exception:  # noqa: BLE001 (an unreadable record costs the window, never the save)
+            return None
+        return runtime_reading.typed_window_start(facts, harness, sid, saved_at)
 
     def _reading_refusal(self, payload: dict[str, Any]) -> int | None:
         """The status this press must be refused with, or None to proceed.
@@ -1811,6 +1839,26 @@ class _RequestHandler(BaseHTTPRequestHandler):
         launch or fails. A fresh press is the only retry.
         """
         application = self.server.application
+        return runtime_reading.produce(
+            application.config,
+            row,
+            entry["revisions"],
+            self._session_facts(row),
+            # The one caller that reads the outcome lines: the reader pressed
+            # for this reading (item 12 of the ruling
+            # `reading.MAX_OUTCOME_LINES` cites keeps them from
+            # every other).
+            read_lines=True,
+            # And the one that may read a turn stop, on the harnesses the
+            # ruling `reading.TURN_STOP_HARNESSES` cites names; the unasked
+            # lane keeps the closed default.
+            admit_turn_stop=str(row.get("harness")) in runtime_reading.TURN_STOP_HARNESSES,
+            **self._reading_arguments(row, entry, route),
+        )
+
+    def _session_facts(self, row: dict[str, Any]) -> list[Any]:
+        """The observed record for one session, without refreshing anything."""
+        application = self.server.application
         context = runtime_project_context.collect(
             application.config,
             application.state,
@@ -1823,18 +1871,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
         semantic = context.get("semantic") if isinstance(context, dict) else None
         facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
-        return runtime_reading.produce(
-            application.config,
-            row,
-            entry["revisions"],
-            facts,
-            # The one caller that reads the outcome lines: the reader pressed
-            # for this reading (item 12 of the ruling
-            # `reading.MAX_OUTCOME_LINES` cites keeps them from
-            # every other).
-            read_lines=True,
-            **self._reading_arguments(row, entry, route),
-        )
+        return list(facts) if isinstance(facts, list) else []
 
     def _reading_arguments(
         self,
