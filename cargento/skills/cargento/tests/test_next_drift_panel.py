@@ -727,6 +727,30 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
         self.assertIn(">The toggle writes the choice to the settings store</textarea>", html)
         self.assertIn('data-next-cockpit-held-line-count="0">50/240<', html)
 
+    def test_on_a_narrow_screen_a_lines_box_takes_the_full_row(self) -> None:
+        """At 320 the box shared its row with the count, source and remove and showed about 12
+        characters at rest. At the sheet's narrow step the box takes the whole first row and the
+        three follow on a second, in the same order; the wide rule is untouched, so the fold at
+        1440 and 1100 does not move."""
+        grid = media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line")
+        template = re.search(r"grid-template-columns:([^;}]+)", grid)
+        assert template is not None
+        self.assertEqual(3, tracks(template.group(1)))
+        box = media_rule(
+            "max-width:760px",
+            ".next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea",
+        )
+        self.assertIn("grid-column:1/-1", box)
+        # Remove sits beside the source in the second row's last track, not centred in it.
+        self.assertIn(
+            "justify-self:start",
+            media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line>button"),
+        )
+        # Wide: still one row, a track per item.
+        wide = re.search(r"grid-template-columns:([^;}]+)", rule(".next-cockpit-held-line"))
+        assert wide is not None
+        self.assertEqual(4, tracks(wide.group(1)))
+
     def test_the_sentences_in_the_controls_slot_say_analyze_not_check(self) -> None:
         """Review C-6: "check" also names a tool check on this page, so the sentences that stand
         in for the renamed control, or refuse it, use its verb."""

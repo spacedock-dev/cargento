@@ -933,6 +933,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 }
 @media(max-width:760px){
   .next-session-detail{padding:0}
+  /* A line's box takes the whole first row, and its count, source and remove
+     follow on a second in the same order: sharing one row, the box showed
+     about 12 characters at 320 (DRC-4680). */
+  .next-session-panel .next-cockpit-held-line{grid-template-columns:auto auto minmax(0,1fr)}
+  .next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea{grid-column:1/-1}
+  .next-session-panel .next-cockpit-held-line>button{justify-self:start}
   .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}
   .next-session-command-facts{grid-template-columns:1fr}
   .next-session-command-facts>section+section{border-top:1px solid var(--rule);border-left:0}
