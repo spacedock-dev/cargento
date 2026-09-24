@@ -41,9 +41,10 @@ says why and what may show it.
 cadence, and it shows a level in the Drift section and the session header. It uses no model: it
 reads the checks and file paths
 [DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) admits against the
-reader's saved intent. It is off until the reader turns it on, and never reaches a row, a total, a
-notification or the unasked lane. The overlay is still a reading the reader asks for, and a verdict
-on whether the work met the request is still refused.
+reader's saved intent. The switch that shows it is off by default and lives in the browser only, so
+off hides the level and the pill; it does not stop the server computing the level. The level never
+reaches a row, a total, a notification or the unasked lane. The overlay is still a reading the
+reader asks for, and a verdict on whether the work met the request is still refused.
 
 ## DEC-15b: an assessment may be stored
 
@@ -307,15 +308,17 @@ Rule 7 and its 2026-09-10 amendment: on Claude Code a check's recorded result, r
 [DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work), now demonstrates
 work, so "On Claude and Codex nothing does" holds for Codex and for everything else on Claude Code.
 A `consistent` on an outcome line needs the latest run of a relevant check passing inside the
-evidence window with no later write, and says it is as the tool reported, not inspected. A
+evidence window with no later write, and says it is as the tool reported, not inspected. On an
+outcome line the agent's own account still yields `not verifiable`, as rule 7 says. On the Goal, a
 `consistent` resting on the agent's own account says "Consistent with what the session said at #<n>;
 not a check". A message that matches a copied correction is not person-authored evidence (DEC-24
 item 9).
 
 Rule 4: [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)'s "None or low"
 names a level, never `met`. Its floor for an analysis needs every outcome line `consistent` on a
-tool-reported check, and both sources say they read checks and file paths, not what the intent says.
-A result is never "Done" and never a check mark (DEC-24 item 6).
+tool-reported check. The live estimate says it reads checks and file paths, not what the intent
+says, and the analysis says it read each line of the intent against the checks and messages it
+cited. A result is never "Done" and never a check mark (DEC-24 item 6).
 
 ### The two typed fields are one line each, and that is a security decision
 
@@ -367,7 +370,7 @@ suite stays green, because the fixtures bypass the rebuild.
 The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
 recorded case review to enable the control.
 
-The reading is built now. The `Ask for a reading` control (`Check for drift` since DRC-4639) is not enabled until an abstention check
+The reading is built now. The `Ask for a reading` control (`Check for drift` since DRC-4639, `Analyze drift` once DRC-4680 ships) is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
 Codex, with a person other than whoever writes the reading prompt marking each constraint in advance
 with one binary expectation. Should this abstain, or not. No severity, no expected judgement text,
@@ -707,10 +710,13 @@ the state table and the primary-control paragraph.
 Item 2: on the session page, a session with no saved goal shows the reader's first prompt as an
 unsaved draft marked "from your prompt" (DEC-24 item 2). Expected Output becomes a checklist of up
 to six lines, and on Claude Code a line may now be read against a check the session ran (DEC-23).
+The row's goal slot still shows "your latest prompt": DEC-24 rules the session page only (item 14).
 
 Item 3: answers name departures and never say "no drift" (DEC-24 item 1). The word drift may now
 also name a level, in the Drift section and the session header pill only. "None or low" is a level
 with a per-source floor, never a statement that a session has no drift, and it never reaches a row.
+DEC-24 item 4 puts a question about an unsettled later direction in the Drift section. Whether it
+replaces the "Conflict to settle" label for the same state is not ruled.
 
 The state table: the "Not checked" row's control offers "Analyze drift". A level adds no words to a
 row, and the Drift row mark still comes from a stored departure alone.
@@ -782,7 +788,8 @@ amended when DRC-4641 ships the mark, not before, because it describes the shipp
 
 [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn) amends this subsection. The
 live estimate does evaluate after every turn, without a model, in the Drift section and the header
-pill only, and it is off until the reader turns it on. The Drift row mark is still a stored record
+pill only. It is shown only once the reader turns its switch on, and the switch lives in the browser,
+so off does not stop the server computing the level. The Drift row mark is still a stored record
 shown where it applies. The skill body's cadence sentence is amended by DRC-4696 when the live
 estimate ships.
 
@@ -867,7 +874,7 @@ does not cover it.
 
 ### Where the unasked default stands
 
-The unasked check is the only route that finds drift nobody went looking for. DEC-18 gates its
+The unasked check is the only model reading that finds drift nobody went looking for. DEC-18 gates its
 default on four preconditions and on the rubric's acceptance thresholds. Measured 2026-09-23:
 
 | Precondition | State | Settled by |
@@ -981,10 +988,15 @@ qualifies the producer against it.
    only, a failure marker in the recorded output tail, from the closed set below, which may record
    a failure and never a pass. Output text is never read as success any other way.
 3. A check is a shell command whose runner is on the closed list below, matched per `&&`, `;` and
-   `|` segment after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`,
-   `poetry run`, `npx` and `timeout`. The shell's `test` and `[` builtins are never checks. Only
-   checks can support a departure or be cited in a correction (DEC-24 item 7). Other commands and
-   probes, such as a `grep` with no match or an `ls` of a missing path, are counted and not listed.
+   `|` segment after stripping `cd ...`, `NAME=value` assignments and the wrappers the list names.
+   The shell's `test` and `[` builtins are never checks. Among shell commands, only checks can
+   support a departure or be cited in a correction (DEC-24 item 7); a person's or the agent's own
+   words keep what DEC-17 and DEC-24 item 7 let them support. Other commands and probes, such as a
+   `grep` with no match or an `ls` of a missing path, are counted and not listed. A segment that is
+   neither a check nor on the closed read-only list below may change files without the transcript
+   recording a write, so one run after the last passing check blocks the live estimate's "None or
+   low" (DEC-26 item 1). It is never counted as drift. The owner ruled this on review the same day,
+   as part of this ruling.
 4. For each distinct check only its latest run is listed and counts, and it says when an earlier
    run of the same check failed without listing that run. A file write after a passing run marks
    that pass as before the last change. At most 12 entries are listed, chosen in this order: latest
@@ -992,24 +1004,27 @@ qualifies the producer against it.
    written paths, newest first within each. The rest are counted ("and N more"). Every answer about
    checks is derived from the full scan, never from the listed entries alone, so a dropped entry
    can never produce "No check was recorded" or a reassuring answer.
-5. Fields read: the check's runner form and the rest of its line, after credential redaction and
-   masking of the forms redaction cannot recognise (`NAME=value`, `-p` and `--password` values,
-   `user:pass@`), clipped to 120 characters; the last 180 characters of output, the existing ledger
-   cap, with redaction run over the whole read window first; and a written path relative to the
-   working directory. Never file content, and never an Edit or Write result body.
+5. Fields read: the check's own segment, its runner form and arguments and never the rest of the
+   shell line (the owner narrowed this on review the same day, as part of this ruling), after
+   credential redaction and masking of the forms redaction cannot recognise (`NAME=value`, `-p` and
+   `--password` values, `user:pass@`), clipped to 120 characters; the last 180 characters of
+   output, the existing ledger cap, with redaction run over the whole read window first; and a
+   written path relative to the working directory. No file content is read as a field, and never an
+   Edit or Write result body; the output tail is whatever the runner printed.
 6. Where it lives: the observed record only, as a new fact type the reading counts as work. It is
    kept out of the semantic history store and out of every session row field, and it is named in
    `history.PROMPT_DERIVED_CARRIERS`. SECURITY.md adds it to the named reads, moving the count
    `test_documentation` pins, and scopes the irreversible-actions sentence about tool output.
-7. Where it may go: to the reading producer that reads the session, or to a disclosed fallback
-   route, and on either only after a fresh "Allow and analyze" (DEC-21's "Allow and check" as
-   DEC-24 item 5 renames it) whose disclosure names tool output and the receiving vendor. An answer
-   given before tool output was named does not cover it. The disclosure names the destination as
-   configured, including an `ANTHROPIC_BASE_URL`, Bedrock or Vertex setting in the daemon's
-   environment or in managed settings, which still apply under `--restricted`. Where the
-   destination cannot be named, tool output is not sent. The live drift estimate (DEC-26) is a
-   further consumer on the machine: it derives a level from these facts, published on the session
-   payload only, never on a row, in history or in any off-machine payload.
+7. Where it may go: to the reading producer that reads the session, or to the fallback route
+   `reading_route.resolve` selects and discloses before the press, and on either only after a fresh
+   "Allow and analyze" (DEC-21's "Allow and check" as DEC-24 item 5 renames it) whose disclosure
+   names tool output and the receiving vendor. An answer given before tool output was named does not
+   cover it. The disclosure names the destination as configured, including an `ANTHROPIC_BASE_URL`,
+   Bedrock or Vertex setting in the daemon's environment or in managed settings, which still apply
+   under `--restricted`. Where the destination cannot be named, tool output is not sent. Those
+   settings are examples, and SECURITY.md names the Codex route's equivalent. The live drift
+   estimate (DEC-26) is a further consumer on the machine: it derives a level from these facts,
+   published on the session payload only, never on a row, in history or in any off-machine payload.
 8. What a reading may conclude. The latest run of a relevant check failing inside the evidence
    window may support a departure. A `consistent` on Expected Output needs the latest run of a
    relevant check passing inside the window with no later write, and is labelled as reported by the
@@ -1023,18 +1038,57 @@ holds for a Claude Code check; DEC-17 carries the amendment.
 
 ### The closed lists
 
-The ruling names the kinds of runner a check may be: test, build, lint and type-check runners. The
-forms it names are `pytest` and its module form `python -m pytest`, `python3 -m unittest`,
-`node --test`, jest, and a program file whose name contains `test`, such as `run_tests.py`. The
-list is closed. A runner not named here is not a check, and naming one, including the first build,
-lint or type-check runner by name, is an amendment to this section rather than a build decision.
+Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
+runners) and leaves the list to this section. Each segment, split on `&&`, `;` and `|`, is matched
+after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
+`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N` and `time`. The list is closed: a runner not
+named here is not a check.
 
-Summary lines, read from the recorded output tail: pytest's `N failed` and `N passed`, unittest's
-`FAILED (...)` and `OK`, jest's `Tests:` line, and node's `ℹ tests N | ℹ pass N | ℹ fail N` form,
-read as `ℹ pass N` and `ℹ fail N`.
+Runners, matched on the first word or words of a stripped segment:
 
-Failure markers, read from the recorded output tail as evidence of failure only: node's `✖` test
-lines and `failing tests:`, `AssertionError`, `ERR_ASSERTION`, and pytest's `FAILED`.
+- Test: `pytest`, `py.test`, `python -m pytest`, `python3 -m pytest`, `python -m unittest`,
+  `python3 -m unittest`, `nose2`, `tox`, `nox`, `node --test`, `npm test`, `npm run test`,
+  `pnpm test`, `pnpm run test`, `yarn test`, `bun test`, `deno test`, `jest`, `vitest`, `mocha`,
+  `go test`, `cargo test`, `cargo nextest`, `mvn test`, `gradle test`, `./gradlew test`,
+  `dotnet test`, `rspec`, `bundle exec rspec`, `rake test`, `phpunit`, `swift test`, `ctest`,
+  `make test`, `make check`, and a program file whose name holds `test` or `tests` as a word of its
+  own, with the name split on `_`, `-` and `.`: `run_tests.py`, `./test.sh` and
+  `python3 scripts/run_tests.py` count, and `runtests.py` and `fetch_latest_creds.py` do not. Never
+  the shell's `test` or `[` builtins.
+- Build: `npm run build`, `pnpm build`, `pnpm run build`, `yarn build`, `bun run build`,
+  `cargo build`, `go build`, `make build`, `mvn package`, `gradle build`, `./gradlew build`,
+  `dotnet build`, `swift build`, `vite build`, and `tsc` without `--noEmit`.
+- Lint: `ruff check`, `ruff format --check`, `flake8`, `pylint`, `black --check`, `eslint`,
+  `prettier --check`, `stylelint`, `golangci-lint`, `cargo clippy`, `rubocop`, `shellcheck`.
+- Type-check: `mypy`, `pyright`, `tsc --noEmit`, `cargo check`, `go vet`.
+
+Read-only commands, matched the same way, for segments that are not checks: `git status`,
+`git log`, `git diff`, `git show`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `wc`, `pwd`,
+`echo`, `which`, `file`, `stat`, `tree` and `less`. Any other segment that is not a check, run after
+the last passing check, is the blocker item 3 names. This list is closed too.
+
+The error flag, source (i), is read only when the runner is the last stage of its pipe. A
+following `&&` keeps the flag honest, because a failure propagates; a following `;` or `|` does not.
+
+Summary lines, source (ii), read from the recorded output tail, may record a pass or a failure:
+pytest's `N passed` and `N failed`; unittest's `OK`, only as the whole line, and `FAILED (`; jest's
+and vitest's `Tests:` line with its passed and failed counts; node's `ℹ pass N` and `ℹ fail N`
+lines, where `ℹ fail 0` is a pass; cargo's `test result: ok` and `test result: FAILED`; mypy's
+`Success: no issues found` and `Found N errors`; ruff's `All checks passed!` and `Found N errors`.
+A pass needs a pass pattern and nothing in the same tail that records a failure: a failed count
+above zero, a failure summary or a failure marker. So `1 failed, 9 passed` is a failure. go prints
+`ok  <pkg>` once per package, so a later package's `ok` cannot vouch for the run, and it is never
+read as a pass. go's `FAIL` is a failure, and a go pass comes from the error flag alone.
+
+Failure markers, source (iii), read from the recorded output tail as evidence of failure only:
+node's `✖` test lines and `failing tests:`, `AssertionError`, `ERR_ASSERTION`, pytest's `FAILED `,
+go's `--- FAIL:`, cargo's `panicked at`, and tsc's `error TS`. tsc prints nothing on success, so
+its pass comes only from the error flag.
+
+The owner settled these points on review the same day, as part of the ruling rather than as an
+amendment: a program file counts only when `test` or `tests` stands alone as a word in its name; a
+summary-line pass counts only when nothing in the same tail records a failure, a go pass comes only
+from the error flag, and unittest's `OK` counts only as the whole line; and the read-only list above.
 
 ### What was measured before the text was fixed
 
@@ -1054,8 +1108,11 @@ because a marker can only record a failure, it cannot produce a false pass.
 
 The same sessions confirmed item 1. A background launch records only a "will notify" result, and its
 output is read later through a file Read, so it is never a recorded result. The field names these
-readings rely on are in the capture `docs/captures/claude/transcript-tool-shapes-2.1.281-macos.jsonl`,
-which arrives with PR #395.
+readings rely on are in
+[the transcript capture](captures/claude/transcript-tool-shapes-2.1.281-macos.jsonl). It also shows
+the limit on writes: a shell command's result records its command and output and no path, so a
+written path comes only from a file-write tool call, and a file a shell command changes is not a
+recorded write.
 
 ### Amended 2026-09-24: the live estimate reads these facts on the machine
 
@@ -1071,8 +1128,8 @@ intent and drift panel", into the rulings. The panel is built by DRC-4680, the c
 route by DRC-4678, Cancel by DRC-4693, Steer back by DRC-4681 and Update intent instead by
 DRC-4697, among the milestone's other layers.
 
-A reader who opens a session to see whether it drifted met DRIFT, GOAL and EXPECTED OUTPUT, empty
-fields, and a result that said "0 departures" beside "raised nothing and confirmed nothing". This
+A reader who opens a session to see whether it drifted meets DRIFT, GOAL and EXPECTED OUTPUT, empty
+fields, and a result that says "0 departures" beside "raised nothing and confirmed nothing". This
 decides the words, the intent, the answer, when an analysis may run, and what Cargento may hand
 back.
 
@@ -1082,12 +1139,13 @@ Code only: other harnesses show the panel with a stated limit. The drift level i
 [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn).
 
 The ruling is the full shape below. The two alternatives were the words and the checklist with no
-correction, and today's shape unchanged. What it costs: amendments to DEC-15b, DEC-16, DEC-17 rules
-6 and 7, DEC-20 (item 2, its control label and its primary-control paragraph), DEC-21 item 1,
-SECURITY.md's reader-requested section and DEC-22; new stored items (a revision's window start, its
-outcome lines with each line's source, a reading's `evidence_through`, a digest of each copied
-correction) and one new token, a reader's "not accurate" mark; and reader edits inside a copied
-correction are exempt from the later-direction floor (item 9).
+correction, and today's shape unchanged. What it costs: amendments to DEC-15b's eligibility,
+DEC-16, DEC-17 rules 6 and 7, DEC-20 (item 2, its control label and its primary-control paragraph),
+DEC-21 item 1, SECURITY.md's reader-requested section (labels "Analyze drift" / "Allow and
+analyze") and DEC-22; new stored items (a revision's window start, its outcome lines with each
+line's source, a reading's `evidence_through`, a digest of each copied correction) and one new
+token, a reader's "not accurate" mark; and reader edits inside a copied correction are exempt from
+the later-direction floor (item 9).
 
 1. Words. The panel is "Intent and drift": an "Intent" section (Goal, Expected outcome) and a
    "Drift" section. The action is "Analyze drift", replacing DEC-20's "Check for drift". Answers
@@ -1099,9 +1157,10 @@ correction are exempt from the later-direction floor (item 9).
    adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome.
 3. The checklist. The expected outcome is up to six lines the reader types, each at most 240
    characters and one line, each read and shown as its own constraint under DEC-17's rules. Each
-   line records its source: typed, or added from entry #n. Bounds are written for the store, the
-   history copy (flat per-line fields), the prompt's share, the reply cap and the annotation body
-   cap.
+   line records its source: typed, or added from entry #n. The ruling requires bounds for the store
+   (six lines of at most 240 characters), the history copy (flat per-line fields), the prompt's
+   share, the reply cap and the annotation body cap. The last four have no figure yet: the layer
+   that first stores or sends outcome lines fixes each one in this section before it ships.
 4. A later direction before an analysis. When the record holds an unsettled later direction of the
    reader's, the Drift section asks before the press, naming how many are unsettled. For one it
    says "You gave a later direction at #<n>: "<first line>"."; for several, "You gave <N> later
@@ -1111,7 +1170,7 @@ correction are exempt from the later-direction floor (item 9).
    beside it has not been allowed yet. Add opens a new outcome line holding the direction's raw text
    for review. A direction over 240 characters or on several lines is edited by the reader to one
    line before saving, and never saved as a summary. When six lines exist, the reader replaces or
-   merges an existing line, and a seventh line is refused with a sentence saying so. The goal is
+   merges an existing line, and a seventh line is refused with a sentence saying why. The goal is
    kept.
 5. Background analysis. Analyze drift starts a job the server owns: a job id; phases that match
    real work ("Preparing what is sent", "Waiting for <provider>", "Checking the reply"), published
@@ -1125,8 +1184,9 @@ correction are exempt from the later-direction floor (item 9).
 6. The result. Per line: "Departs at #<n>" with its cited evidence, only for a valid departure. A
    consistent line names its source by the cited entry's type: "Consistent with #<n>, as the tool
    reported; not inspected" for a tool outcome, "Consistent with what the session said at #<n>; not
-   a check" for the agent's own account. Never "Done" and never a check mark. Otherwise "Can't tell:
-   nothing recorded shows this yet". A headline and short account render only under a departure,
+   a check" for the agent's own account, on the Goal only: on an outcome line the agent's own
+   account yields `not verifiable` (DEC-17 rule 7). Never "Done" and never a check mark. Otherwise
+   "Can't tell: nothing recorded shows this yet". A headline and short account render only under a departure,
    built from departure detail with its citations. "Where the work went" groups written paths by
    folder without a model. The session's activity flags each entry a departure cites ("Cited") and
    a later direction ("A later direction you gave"). A reading stores `evidence_through`, and it is
@@ -1202,21 +1262,30 @@ Six sub-questions were ruled the same day, each as recommended.
 1. The basis is a separate rule per source. Each level has a written definition over named
    evidence, and DRC-4692 measures it. "None or low" has a floor for each source. For the live
    estimate: the latest run of every check has a recorded result and passed, nothing was written
+   after that pass, no shell command that is neither a check nor on DEC-23's read-only list ran
    after that pass, and, where the saved intent names folders, every write is inside them; it says
    it read checks and file paths, not what the intent says. For an analysis: every outcome line is
    `consistent` on a tool-reported check under DEC-23 item 8, with no departure, and the Goal may
-   rest on the session's own account. For both: no failed check, and no unsettled later direction.
-   A later direction blocks "None or low" but is never counted as drift. A check with no recorded
-   result, and a pass before a later write, never count toward it. With too little evidence the
-   level reads "Not enough recorded yet", never "None or low".
+   rest on the session's own account; it says "From the analysis at <time>: each line of your intent
+   against the checks and messages it cited." For both: no failed check, and no unsettled later
+   direction. A later direction blocks "None or low", and so, for the live estimate, does such a
+   shell command; neither is ever counted as drift. A check with no recorded result, and a pass
+   before a later write, never count toward it. With too little evidence the level reads "Not
+   enough recorded yet", never "None or low". Zero is too little: the live estimate needs at least
+   one check whose latest run passed, and an analysis needs at least one outcome line, so a session
+   with no check, or an intent with no outcome line, reads "Not enough recorded yet". DRC-4692
+   measures what else is too little. A write here is a file-write tool call the transcript
+   recorded. A file a shell command changes is not seen (DEC-23's capture), so "nothing was written
+   after that pass" means no recorded write, not that nothing changed. The shell-command blocker
+   narrows that gap, and a read-only command such as `echo` with a redirect is still not seen.
 2. Two sources, labelled. "Live estimate" is computed without a model after each turn, from DEC-23's
    evidence and the reader's saved intent: failed checks, passes followed by writes, and the share
-   of writes outside the folders the intent names. An unsettled later direction only blocks "None
-   or low". The folder signal is not used when the intent names no folder, so it is never read as
-   0%. Over an unsaved draft there is no live level: the Drift section reads "Save your intent to
-   see a live estimate" and the pill is hidden. "Analysis" derives the level from a reading's
-   per-line results, with no new model output. Each source says what it is and when it was
-   computed.
+   of writes outside the folders the intent names. An unsettled later direction, and a shell command
+   after the last passing check that is neither a check nor read-only, only block "None or low".
+   The folder signal is not used when the intent names no folder, so it is never read as 0%. Over
+   an unsaved draft there is no live level: the Drift section reads "Save your intent to see a live
+   estimate" and the pill is hidden. "Analysis" derives the level from a reading's per-line
+   results, with no new model output. Each source says what it is and when it was computed.
 3. Where it shows: the Drift section and the session header pill. Not a Sessions row, not a total
    and not a sort key. DEC-20's "Drift" row mark, its table, and DEC-23's no-row-field rule stay.
 4. The live monitor switch is off by default, as the design's "Turn on for a quick, low-cost drift
@@ -1226,10 +1295,19 @@ Six sub-questions were ruled the same day, each as recommended.
    the analysis level is unaffected.
 5. No notification, desktop or page, comes from the live estimate (DEC-18, DEC-19). The live
    estimate and the analysis level never make a session eligible for the unasked lane, never
-   trigger, order or gate it, and never feed it.
+   trigger, order or gate it, and never feed it. The live estimate is not DEC-18's unasked reading:
+   it calls no model and raises nothing.
 6. History. Neither level is stored. The analysis level is recomputed from the stored reading, and
-   "Rose from Medium at #33" from recorded evidence within the run. Both sources say the level reads
-   checks and file paths, not what the intent says.
+   "Rose from Medium at #33" from recorded evidence within the run. Each source keeps its own line
+   from item 1: the live estimate says it reads checks and file paths, not what the intent says, and
+   the analysis says it read each line of the intent against the checks and messages it cited.
+
+The owner answered two questions from review the same day, and both answers are part of this ruling
+rather than an amendment. A shell command that is neither a check nor read-only, run after the last
+passing check, blocks the live estimate's "None or low" and is never drift (item 1, and DEC-23 item
+3; the read-only list is in DEC-23's closed lists). The analysis level has its own source line, and
+the line "reads checks and file paths, not what the intent says" is the live estimate's alone (items
+1 and 6).
 
 ### The starting definitions
 
