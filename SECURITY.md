@@ -1011,8 +1011,12 @@ bounds requests through the HTTP route, not a hostile owner editing their own fi
 The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
 not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and check".
 An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
-`--forget` revoke every provider at once. The twelve-attempt cap is shared between providers, so a
-second provider cannot double it.
+`--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
+legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
+tool-output grant whenever that row is written as off, so a rollback and re-upgrade cannot bring a
+Claude Code answer back (DRC-4666). The twelve-attempt cap is shared between providers, so a
+second provider cannot double it, and a spent budget is reported as `daily-cap` ahead of a missing
+answer, whichever provider the status names.
 
 Which provider a press reaches is decided before the press, by `reading_route.resolve`, from the
 session's harness and this machine. The page shows that route's disclosure, naming the receiver,
@@ -1324,11 +1328,35 @@ project, no title, no prompt text and no model prose reach the repository from e
 a test asserts that none of the local half's fields (the session id, the project, the title, the
 opening ask, the cutoff sentence, the model's detail) appears anywhere in the summary.
 
-A scoring run spends the operator's Codex capacity once per case whose ledger holds anything
-citable, through `reading.CodexReadingModel`, the same subprocess and the same sandbox flags as
-`POST /api/reading` above. It sends exactly what that route sends for the same session: the two
-yardstick sentences in place of the reader's typed words, and the bounded, redacted menu of
-ledger entries. A case the producer refuses before the model, an empty ledger or a session the
+A scoring run names its producer with a required `--producer`, and only `claude` may score:
+no Codex spend is authorized for DRC-4666, so `--producer codex` reports and refuses to score. A
+Claude Code run spends the operator's Anthropic capacity through `reading.ClaudeReadingModel`, the
+same subprocess and flags as `POST /api/reading` above, pinned to the CLI the run verified. It
+spends once per case whose ledger holds anything citable and sends exactly what that route sends
+for the same session: a format 5 case's own goal and outcome lines in place of the reader's typed
+words, and the bounded, redacted menu of ledger entries. A Claude Code case also carries its checks,
+frozen from the transcript as it stood at the capture, with their redacted output tails, as a press
+with a tool-output grant would. The owner authorized that sending for this qualification only,
+2026-09-24, and bounded it at twenty calls, one of them the browser walk.
+
+The scorer refuses to start unless the call reaches Anthropic (`reading_route.destination` names
+`Anthropic`) through the native installer's CLI, whose version file and `--version` line agree, and
+unless every case is marked with closed tokens. The committed summary names the producer, the
+model, the argv digest, the destination, the CLI path with the home directory written `~`, and its
+version. Every call is charged before it runs to one ledger at a fixed path,
+`~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
+cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
+own, and scoring refuses while `HOME` names another. The committed result records a hash chain
+over the ledger's charges and their digests, and scoring refuses while the ledger does not begin
+with it, reading the committed result at its fixed path whatever `--out` says. The scorer also
+re-checks each case's provenance against this machine's transcripts, history and ends, and spends
+nothing on a case that claims recorded and is not vouched for. On Windows the home falls back to `USERPROFILE`, so the
+`HOME` protection is POSIX only. The ledger stops at nineteen calls across every
+run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
+freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The
+scorer does not pass through the reader's rolling budget, so that ledger is the bound.
+`--probe-argv` calls a local stub only, and writes and charges nothing. A Claude Code result is its
+own file, `docs/abstention/claude-results.json`, and opens no gate by being written. A case the producer refuses before the model, an empty ledger or a session the
 board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
 the run writes nothing to `cargento-annotations.json` and increments no reading count. Historical
 replay reads the frozen row, facts and clock instead of the live board. Reviewer excerpts and

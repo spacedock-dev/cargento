@@ -1337,15 +1337,19 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
 
     SKILL = Path(__file__).resolve().parents[1]
     RUNTIME = SKILL / "cargento_runtime"
-    # The scorer (`scripts/`, DRC-4666's future `--producer`) and the MCP server
-    # sit outside the runtime package, and either would be a caller that never
-    # passes through the route resolver or the gate.
+    # The MCP server and `scripts/` sit outside the runtime package, and a
+    # caller there never passes through the route resolver or the gate. The
+    # scorer is the one admitted: its `--producer claude` is DRC-4666's
+    # qualification, which must drive the producer before the gate can open,
+    # and its spend ledger bounds it at the owner's twenty calls. Tests are
+    # not callers, so `scripts/tests` is not scanned.
     SCRIPTS = SKILL.parents[2] / "scripts"
+    SCORER = "scripts/score_abstention.py"
 
     def _users(self, name: str) -> set[str]:
         sources = [
             *self.RUNTIME.rglob("*.py"),
-            *self.SCRIPTS.rglob("*.py"),
+            *(p for p in self.SCRIPTS.rglob("*.py") if "tests" not in p.parts),
             *self.SKILL.glob("*.py"),
         ]
         self.assertIn(self.SKILL / "mcp_server.py", sources)
@@ -1361,6 +1365,7 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
             {
                 "cargento/skills/cargento/cargento_runtime/reading.py",
                 "cargento/skills/cargento/cargento_runtime/http_api.py",
+                self.SCORER,
             },
             self._users("ClaudeReadingModel"),
         )
@@ -1370,6 +1375,9 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
             {
                 "cargento/skills/cargento/cargento_runtime/observer.py",
                 "cargento/skills/cargento/cargento_runtime/reading.py",
+                # `argv_digest` only: it hands the exec a runner that raises
+                # before any process starts.
+                self.SCORER,
             },
             self._users("claude_exec"),
         )

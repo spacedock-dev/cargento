@@ -21,6 +21,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import abstention_ledger
 import mark_abstention
 import score_abstention
 from validate_plugins import heading_slugs
@@ -30,6 +31,24 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = ROOT / "cargento" / "skills" / "cargento"
+
+
+_LEDGER_PATCH: Any = None
+
+
+def setUpModule() -> None:
+    """Never the real spend ledger: the marker refuses to write once it holds a call."""
+    global _LEDGER_PATCH  # noqa: PLW0603
+    _LEDGER_PATCH = mock.patch.multiple(
+        abstention_ledger,
+        LEDGER_PATH=str(Path(tempfile.mkdtemp(), "never-real.json")),
+        CLAUDE_SUMMARY_PATH=str(Path(tempfile.mkdtemp(), "never-committed.json")),
+    )
+    _LEDGER_PATCH.start()
+
+
+def tearDownModule() -> None:
+    _LEDGER_PATCH.stop()
 
 
 def _collect(sink: list[str]) -> Callable[..., None]:
@@ -1191,6 +1210,9 @@ class ARubricEntryReachesTheCommittedFileAsClosedTokensOnly(unittest.TestCase):
         "id": "1" * 16,
         "harness": "claude",
         "reached_model": True,
+        # As `score_case` writes it for a Claude case with no work evidence:
+        # the output was never asked, so only the goal needs an expectation.
+        "asks_output": False,
         "criteria": {"goal": {"result": "departure", "cites": ("f1",)}},
     }
 

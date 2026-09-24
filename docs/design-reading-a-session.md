@@ -477,9 +477,9 @@ daily cap, once DRC-4640 ships. The press and the disclosure still apply to each
 Two scripts, both outside the gate and neither in CI. `scripts/mark_abstention.py --build` draws
 cases from the live board into `~/.cargento/abstention-cases.json`, and its marking mode collects
 the captain's `judge` or `abstain` per constraint into `~/.cargento/abstention-marks.json`.
-`scripts/score_abstention.py --score` then hands each case to `reading.produce` with the two
-constant yardstick sentences as a synthetic revision, through `reading.CodexReadingModel`, and
-writes two halves: a local results file beside the cases, and a committable summary under
+`scripts/score_abstention.py --score --producer <name>` then hands each case to `reading.produce`
+with the two constant yardstick sentences as a synthetic revision (or, in format 5, the case's own
+goal and outcome lines), through the named producer's reading model, and writes two halves: a local results file beside the cases, and a committable summary under
 `docs/abstention/`. Where the cases live and what each file may hold is the security ruling, in
 [SECURITY.md](../SECURITY.md#the-abstention-check).
 

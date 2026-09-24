@@ -21,7 +21,25 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import abstention_ledger
 import mark_abstention
+
+_LEDGER_PATCH: Any = None
+
+
+def setUpModule() -> None:
+    """Never the real spend ledger: the marker refuses to write once it holds a call."""
+    global _LEDGER_PATCH  # noqa: PLW0603
+    _LEDGER_PATCH = mock.patch.multiple(
+        abstention_ledger,
+        LEDGER_PATH=str(Path(tempfile.mkdtemp(), "never-real.json")),
+        CLAUDE_SUMMARY_PATH=str(Path(tempfile.mkdtemp(), "never-committed.json")),
+    )
+    _LEDGER_PATCH.start()
+
+
+def tearDownModule() -> None:
+    _LEDGER_PATCH.stop()
 
 
 def _collect(sink: list[str]) -> Callable[..., None]:

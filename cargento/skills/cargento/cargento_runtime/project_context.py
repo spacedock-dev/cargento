@@ -1950,6 +1950,56 @@ def claude_tool_reports(
     return tally.entries(sid), tally.scan
 
 
+def frozen_claude_checks(
+    config: RuntimeConfig, transcript_path: str, sid: str, *, until: float
+) -> tuple[list[dict[str, Any]], PressChecks]:
+    """The check facts and press reads as the transcript stood at `until`.
+
+    For the abstention packet (DRC-4666). The latest run, `earlier_failed` and
+    `before_last_change` are computed over the whole transcript, so filtering
+    today's facts to those dated at or before `until` would keep a pass a later
+    run overturned. The transcript is append-only, so its prefix up to the
+    first record stamped after `until` is what a press at that moment read.
+    """
+    stood: list[bytes] = []
+    with open(transcript_path, "rb") as handle:
+        for raw in handle:
+            try:
+                record = json.loads(raw)
+            except (ValueError, RecursionError):
+                record = None
+            at = _record_timestamp(record) if isinstance(record, dict) else None
+            if at is not None and at > until:
+                break
+            stood.append(raw)
+    # The press's own bound, over the file as it stood rather than as it is:
+    # `_work_records` reads the newest `turn_scan_max_bytes`, and a transcript
+    # that grew since would push the moment's records out of today's window.
+    kept: list[bytes] = []
+    size = 0
+    for raw in reversed(stood):
+        size += len(raw)
+        if size > config.turn_scan_max_bytes:
+            break
+        kept.append(raw)
+    cut: list[dict[str, Any]] = []
+    for raw in reversed(kept):
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        if isinstance(record, dict):
+            cut.append(record)
+    tally = _ToolReportTally(_tool_result_blocks(cut))
+    for call in _claude_tool_uses(cut):
+        tally.add(*call)
+    facts = [
+        _semantic_fact_from_event(row, str(row["kind"]), _SEMANTIC_FACT_TYPES[row["kind"]], "")
+        for row in tally.entries(sid)
+    ]
+    return facts, PressChecks(tally.tails(), tally.changed_after())
+
+
 def _session_work_evidence(
     config: RuntimeConfig,
     transcript_path: str,
