@@ -123,6 +123,12 @@ states the evidence it read and its limits;
 the evidence remains readable beside your words without asking for one.
 Demonstrated work results are read on Pi alone, which the work evidence states under itself rather
 than leaving an empty list to read as no work done.
+On Claude Code, the checks a session ran and the files it wrote, with what the harness recorded as
+each check's result, are ruled readable and not yet shown
+([DEC-23](design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)).
+A recorded pass is what the tool reported, never an inspection of the work, a result the record does
+not carry reads as not recorded rather than as a pass, and tool output reaches a model only after a
+permission that names it and its destination.
 
 ### P3. Is anything waiting on me?
 
