@@ -906,6 +906,16 @@ def hand_over(job: Job, group: Any) -> bool:
         return job.cancelled_at is not None
 
 
+def commit_job(job: Job) -> bool:
+    """The job's commit point, just before the reservation. False when a Cancel came first.
+
+    Under the lock `cancel_job` takes, so a Cancel is accepted wholly before
+    this answer, and spends nothing, or wholly after it, and is charged.
+    """
+    with _FLIGHT_LOCK:
+        return job.cancelled_at is None
+
+
 def job_cancelled(job: Job) -> bool:
     with _FLIGHT_LOCK:
         return job.cancelled_at is not None

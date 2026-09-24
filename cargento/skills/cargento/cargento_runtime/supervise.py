@@ -462,9 +462,12 @@ def _run_windows(
 def _wait_windows(group: Group, data: str | bytes | None, timeout: float | None) -> None:
     """`communicate` in slices, so a Cancel is seen within one. Raises on the limit.
 
-    `communicate` writes stdin from a thread on Windows, where the pipe buffer
-    is smaller than a 16 KiB prompt, and a retry after its timeout loses no
-    output; the input goes with the first call only, as it must.
+    CPython's Windows `communicate` writes stdin in the calling thread, so the
+    first call does not return until the prompt is written; a retry after its
+    timeout loses no output, and the input goes with the first call only, as it
+    must. Once cancelled, the step stays `_CANCEL_POLL_SEC` whatever the call's
+    deadline says: a deadline that ran out inside the reap window made every
+    step zero, and the loop spun on a core until the reap bound.
     """
     process = group._process  # noqa: SLF001
     deadline = None if timeout is None else time.monotonic() + timeout
@@ -472,7 +475,7 @@ def _wait_windows(group: Group, data: str | bytes | None, timeout: float | None)
     reap_by: float | None = None
     while True:
         step = _CANCEL_POLL_SEC
-        if deadline is not None:
+        if deadline is not None and not group.cancelled():
             step = min(step, max(deadline - time.monotonic(), 0.0))
         try:
             process.communicate(pending, timeout=step)

@@ -770,6 +770,12 @@ class Application:
             self.clock(),
         )
         cleared_marks = dismissals.refresh(config, state)
+        # Before the store is read, and never after: a job writes its outcome
+        # and only then leaves the registry, so sampled in that same order a
+        # collection shows either the job or its outcome, never neither.
+        # Sampled after, a job that ended mid-collection was published gone
+        # beside the previous outcome and count (the S6 walk, W1).
+        reading_jobs = reading.published_jobs(config)
         # Alongside the dismissal refresh and for its reason: two dashboards can
         # bind on one machine and the file is the record, so a save made in the
         # other is picked up here rather than at the next restart.
@@ -919,7 +925,7 @@ class Application:
                         # The reader's running analyses, board-wide rather than
                         # per row so a job is never a session field or history
                         # (DRC-4686). A reload reads the job from here.
-                        "reading_jobs": reading.published_jobs(config),
+                        "reading_jobs": reading_jobs,
                         # The discard control's sentences, published for
                         # `reading_routes`' reason and one more: the
                         # success sentence claims something about the

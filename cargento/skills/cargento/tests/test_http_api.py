@@ -4413,6 +4413,87 @@ class ReadingRouteTest(unittest.TestCase):
                     status, _ = self._cancel(port, "0123456789abcdef", **over)
                     self.assertEqual(400, status)
 
+    def test_an_oversized_cancel_is_refused_before_it_is_read(self) -> None:
+        config, state = self._runtime()
+        with self._held_model(), self._serving(self._app(config, state)) as port:
+            status, _ = self._cancel(
+                port, "0123456789abcdef", pad="x" * (config.annotation_body_cap_bytes + 16)
+            )
+        self.assertEqual(413, status)
+
+    def test_the_board_never_shows_the_job_gone_before_its_outcome_is_counted(self) -> None:
+        """The walk's W1: a collection that began before the write must not stand after it.
+
+        A collection holds the collect lock while the job records, ends and
+        publishes. Without the fix it read the store before the write and the
+        job registry after the end, and its body then stood as the fresh
+        snapshot: no box, the previous sentence, the previous count.
+        """
+        config, state = self._runtime()
+        application = self._app(config, state)
+        paused, resume = threading.Event(), threading.Event()
+        real = application._collect_harnesses
+        collector: dict[str, Any] = {}
+
+        def held(*args: Any, **kwargs: Any) -> Any:
+            if threading.current_thread() is collector.get("thread"):
+                paused.set()
+                resume.wait(10)
+            return real(*args, **kwargs)
+
+        def board() -> dict[str, Any]:
+            _revision, body = application.collect_json(show_all=False)
+            answer: dict[str, Any] = json.loads(body)
+            return answer
+
+        with (
+            self._held_model() as (release, entered, _calls),
+            self._serving(application) as port,
+            mock.patch.object(application, "_collect_harnesses", held),
+        ):
+            _status, body = self._post(port, self._press(), settle=False)
+            job_id = json.loads(body)["job"]["id"]
+            self.assertTrue(entered.wait(10))
+
+            def collect() -> None:
+                application.state.snapshot.clear()
+                collector["body"] = json.loads(application.collect_json(show_all=False)[1])
+
+            collector["thread"] = threading.Thread(target=collect, daemon=True)
+            collector["thread"].start()
+            self.assertTrue(paused.wait(10))
+            canceller = threading.Thread(
+                target=runtime_reading_jobs.cancel,
+                args=(application, "pi:s1", job_id),
+                daemon=True,
+            )
+            canceller.start()
+            release.set()
+            self.assertTrue(
+                self._until(lambda: not runtime_reading.published_jobs(config)),
+                "the job never ended",
+            )
+            resume.set()
+            collector["thread"].join(10)
+            canceller.join(10)
+            self._settle()
+            published = board()
+        # The collection that straddled the end shows the job or its outcome,
+        # never neither: it samples the registry before it reads the store.
+        straddled = collector["body"]
+        first = next(r for r in straddled["sessions"] if r.get("sid") == "s1")
+        self.assertTrue(
+            straddled["reading_jobs"] or first["annotation_reading_count"] == 1,
+            "a collection published the job gone beside the previous count",
+        )
+        row = next(r for r in published["sessions"] if r.get("sid") == "s1")
+        self.assertEqual({}, published["reading_jobs"])
+        self.assertEqual(1, row["annotation_reading_count"])
+        self.assertEqual(
+            runtime_reading.WITHHELD[runtime_reading.WITHHELD_CANCELLED],
+            row["annotation_reading_withheld"],
+        )
+
     def test_a_cancel_writes_no_consent_and_reserves_nothing(self) -> None:
         config, state = self._runtime()
         reading_policy.set_consent(config, False, now=1_700_000_100.0)

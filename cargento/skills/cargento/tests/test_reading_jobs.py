@@ -935,6 +935,157 @@ class CancelAnAnalysisTest(unittest.TestCase):
         self._finish(thread)
         self.assertIn(("withheld", reading.WITHHELD_CANCELLED, True), self.events)
 
+    # Correction round (S6 review).
+
+    def test_a_cancel_between_the_seams_check_and_the_reservation_spends_nothing(self) -> None:
+        """Spend F1: the line is the reservation itself, not the seam's first look."""
+        checked, go = threading.Event(), threading.Event()
+        real_cancelled = reading_jobs.Hooks.cancelled
+
+        def cancelled(hooks: reading_jobs.Hooks) -> bool:
+            answer = real_cancelled(hooks)
+            checked.set()
+            go.wait(10)
+            return answer
+
+        with (
+            mock.patch.object(reading_jobs.Hooks, "cancelled", cancelled),
+            mock.patch.object(supervise, "_spawn", wraps=supervise._spawn) as spawn,
+            mock.patch.object(reading_policy, "reserve", wraps=reading_policy.reserve) as reserve,
+        ):
+            job, thread = self._start()
+            self.assertTrue(checked.wait(10))
+            self.assertTrue(reading_jobs.cancel(self.application, KEY, job.id))
+            go.set()
+            self._finish(thread)
+        reserve.assert_not_called()
+        spawn.assert_not_called()
+        self.assertEqual(0, self._used())
+        entry = self._entry()
+        self.assertNotIn("readings", entry)
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_CANCELLED_UNSENT], entry.get("withheld"))
+        self.assertEqual([], sorted((self.home / reading_jobs.MARKER_DIR).glob("*.json*")))
+
+    def test_a_cancel_after_the_commit_point_is_charged_and_its_marker_says_cancelled(
+        self,
+    ) -> None:
+        """The other side of the line: committed, so charged once, and a restart says why."""
+        at_record, go = threading.Event(), threading.Event()
+        record, reserve = reading_jobs._record, reading_policy.reserve
+        holder: dict[str, Any] = {}
+        left: list[str] = []
+
+        def late(*args: Any, **kwargs: Any) -> Any:
+            self.assertTrue(reading_jobs.cancel(self.application, KEY, holder["job"].id))
+            return reserve(*args, **kwargs)
+
+        def held(*args: Any) -> bool:
+            at_record.set()
+            go.wait(10)
+            return record(*args)
+
+        with (
+            mock.patch.object(reading_policy, "reserve", late),
+            mock.patch.object(reading_jobs, "_record", held),
+        ):
+            real_start = reading.start_job
+
+            def start(*args: Any, **kwargs: Any) -> Any:
+                holder["job"] = real_start(*args, **kwargs)
+                return holder["job"]
+
+            with mock.patch.object(reading, "start_job", start):
+                job, thread = self._start()
+            self.assertTrue(at_record.wait(15))
+            left.append((self.home / reading_jobs.MARKER_DIR / f"{job.id}.json").read_text())
+            go.set()
+            self._finish(thread)
+        self.assertEqual(reading.WITHHELD_CANCELLED, json.loads(left[0]).get("reason"))
+        self.assertEqual(1, self._used())
+        self.assertIn(("withheld", reading.WITHHELD_CANCELLED, True), self.events)
+
+    def test_a_cancel_after_the_stop_began_while_preparing_keeps_the_stops_word(self) -> None:
+        """Spend F2: both are unspent, and the stop came first, so its sentence stands."""
+        at_seam, go = threading.Event(), threading.Event()
+
+        class _Held:
+            def __call__(self, _prompt: str, **_kw: Any) -> tuple[str, str]:
+                raise AssertionError("a stopping dashboard reached the model")
+
+            @staticmethod
+            def available() -> bool:
+                at_seam.set()
+                go.wait(10)
+                return True
+
+        job, thread = self._start(lambda hooks: self._compose(hooks, _Held()))
+        self.assertTrue(at_seam.wait(10))
+        supervise._SHUTDOWN.set()
+        self.assertTrue(reading_jobs.cancel(self.application, KEY, job.id))
+        go.set()
+        self._finish(thread)
+        self.assertIn(("withheld", reading.WITHHELD_STOPPING, False), self.events)
+        self.assertNotIn("readings", self._entry())
+
+    def test_a_cancel_after_the_dashboard_began_stopping_keeps_the_stops_own_word(self) -> None:
+        job, thread = self._start()
+        self._spawned()
+        supervise._SHUTDOWN.set()
+        self.assertTrue(reading_jobs.cancel(self.application, KEY, job.id))
+        self._finish(thread)
+        self.assertIn(("withheld", reading.WITHHELD_INTERRUPTED, True), self.events)
+        self.assertNotIn(("withheld", reading.WITHHELD_CANCELLED, True), self.events)
+
+    def test_a_second_cancel_after_the_stop_does_not_rewrite_who_came_first(self) -> None:
+        job, thread = self._start()
+        self._spawned()
+        self.assertTrue(reading_jobs.cancel(self.application, KEY, job.id))
+        supervise._SHUTDOWN.set()
+        reading_jobs.cancel(self.application, KEY, job.id)
+        self._finish(thread)
+        self.assertIn(("withheld", reading.WITHHELD_CANCELLED, True), self.events)
+
+    def test_the_cancel_outcome_counts_exactly_what_was_charged(self) -> None:
+        """Either witness of a charge makes the cancel spent; neither makes it unspent."""
+        job = reading.start_job(self.config, KEY, provider="codex", label="Codex", now=NOW)
+        assert job is not None
+        self.assertEqual(
+            (None, reading.WITHHELD_CANCELLED, True),
+            reading_jobs._cancelled(job, (None, reading.WITHHELD_MODEL_FAILED, True), spent=False),
+        )
+        self.assertEqual(
+            (None, reading.WITHHELD_CANCELLED, True),
+            reading_jobs._cancelled(job, (None, reading.WITHHELD_LEDGER_EMPTY, False), spent=True),
+        )
+        self.assertEqual(
+            (None, reading.WITHHELD_CANCELLED_UNSENT, False),
+            reading_jobs._cancelled(job, (None, reading.WITHHELD_LEDGER_EMPTY, False), spent=False),
+        )
+
+    def test_a_cancel_racing_the_stored_outcome_never_leaves_a_marker_behind(self) -> None:
+        """The marker lock: an unlocked rewrite resurrects a marker the store answered for."""
+        real = runtime_io.atomic_write_owner_only
+        holder: dict[str, Any] = {}
+
+        def write(path: str, text: str) -> Any:
+            if threading.current_thread() is holder.get("canceller") and "reason" in text:
+                holder["job"].group.cancel()
+                holder["thread"].join(3)
+            return real(path, text)
+
+        with mock.patch.object(runtime_io, "atomic_write_owner_only", write):
+            job, thread = self._start()
+            self._spawned()
+            holder.update(job=job, thread=thread)
+            canceller = threading.Thread(
+                target=reading_jobs.cancel, args=(self.application, KEY, job.id)
+            )
+            holder["canceller"] = canceller
+            canceller.start()
+            canceller.join(15)
+            self._finish(thread)
+        self.assertEqual([], sorted((self.home / reading_jobs.MARKER_DIR).glob("*.json*")))
+
     def test_the_cancel_sentences_say_what_the_reader_may_rely_on(self) -> None:
         spent = reading.WITHHELD[reading.WITHHELD_CANCELLED]
         unsent = reading.WITHHELD[reading.WITHHELD_CANCELLED_UNSENT]

@@ -85,6 +85,10 @@ class UnrecordedError(OSError):
     """The restart marker could not be written, so the job may not spend."""
 
 
+class CancelledBeforeReserveError(Exception):
+    """A Cancel was accepted before the job's commit point, so nothing is reserved."""
+
+
 Outcome = tuple["reading.Assessment | None", str, bool]
 
 
@@ -121,6 +125,13 @@ class Hooks:
         the other side of that line: a dashboard that dies between this write
         and the reservation leaves a marker for an attempt the budget never
         charged, and the next start counts it.
+
+        The last step before the reservation is the job's commit point, taken
+        under the lock a Cancel takes, so the spent and unspent sides of a
+        cancel are divided by the reservation itself: a Cancel accepted before
+        it raises `CancelledBeforeReserveError` here, with the marker removed,
+        and one accepted after it is charged. Checking the flag and reserving
+        without that step let a cancel landing between them spend.
         """
         config = self._application.config
         marker: dict[str, Any] = {
@@ -130,17 +141,18 @@ class Hooks:
             "pid": os.getpid(),
             "started_at": self._job.started_at,
         }
-        try:
-            with _MARKER_LOCK:
-                # A Cancel that came after the seam's own check still spends,
-                # and a restart must say it was cancelled.
-                if reading.job_cancelled(self._job):
-                    marker["reason"] = reading.WITHHELD_CANCELLED
-                runtime_io.atomic_write_owner_only(
-                    str(_marker(config, self._job.id)), json.dumps(marker)
-                )
-        except OSError as exc:
-            raise UnrecordedError(str(exc)) from exc
+        path = _marker(config, self._job.id)
+        # Held across the write and the commit, so a Cancel accepted after the
+        # commit rewrites a marker that already exists.
+        with _MARKER_LOCK:
+            try:
+                runtime_io.atomic_write_owner_only(str(path), json.dumps(marker))
+            except OSError as exc:
+                raise UnrecordedError(str(exc)) from exc
+            if not reading.commit_job(self._job):
+                with contextlib.suppress(OSError):
+                    path.unlink(missing_ok=True)
+                raise CancelledBeforeReserveError(self._job.id)
 
     def reserved(self) -> None:
         """The spend is committed."""
@@ -191,7 +203,13 @@ def _publish(application: Application) -> None:
     one alike, through the push they already hold.
     """
     try:
-        application.state.snapshot.clear()
+        # Cleared under the collect lock, so a collection already in flight,
+        # which read the store before this job's write, publishes first and is
+        # then dropped. Cleared without it, that body stood as the fresh
+        # snapshot after the job ended: no box, the previous sentence and the
+        # previous count (the S6 walk, W1).
+        with application.state.collect_memo_lock:
+            application.state.snapshot.clear()
         application.collect_json(show_all=False)
     except Exception as exc:  # noqa: BLE001 (a failed publish must not end the reading)
         runtime_io.diag(
@@ -287,6 +305,8 @@ def _outcome(
         return None
     except UnrecordedError:
         return None, reading.WITHHELD_JOB_UNRECORDED, False
+    except CancelledBeforeReserveError:
+        return None, reading.WITHHELD_CANCELLED_UNSENT, False
     except Exception as exc:  # noqa: BLE001 (a failed job must still free its slot)
         runtime_io.diag(
             f"Cargento: a reading job failed ({exc.__class__.__name__}).",
@@ -306,14 +326,18 @@ def _cancelled(job: reading.Job, outcome: Outcome, *, spent: bool) -> Outcome:
     """The outcome of a job a Cancel reached before its seal.
 
     "May still be running" outranks the cancel, as it outranks a stop (verify
-    N5). A cancel made after the shutdown began leaves the stop's own word.
+    N5). A cancel made after the shutdown began leaves the stop's own word,
+    spent (`interrupted`) or not (`stopping`).
     Anything else, a reply included, becomes the cancel: spent from the
     reservation on, and unspent before it.
     """
     _assessment, why, was_spent = outcome
     if why == reading.WITHHELD_UNSTOPPED:
         return outcome
-    if job.cancelled_after_close and why == reading.WITHHELD_INTERRUPTED:
+    if job.cancelled_after_close and why in (
+        reading.WITHHELD_INTERRUPTED,
+        reading.WITHHELD_STOPPING,
+    ):
         return outcome
     if was_spent or spent:
         return None, reading.WITHHELD_CANCELLED, True

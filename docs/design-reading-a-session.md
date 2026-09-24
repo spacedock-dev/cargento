@@ -1490,7 +1490,9 @@ issue, and the rest were made within them.
 DRC-4693 built Cancel, the rest of item 5. The owner ruled the spend, the unconfirmed kill and the
 new strings on the issue; the other calls were made within them.
 
-- Where the cancel lands decides the spend. Before the reservation it is unspent, and the stored
+- Where the cancel lands decides the spend, and the line is the reservation itself: the job takes a
+  commit point under the lock a cancel takes, immediately before it reserves. A cancel accepted
+  before that point is unspent, reserves nothing and spawns nothing, and the stored
   sentence is "The analysis was cancelled before anything was sent. Nothing was sent or spent." From
   the reservation on it is spent with no refund, whether the call was still to be spawned, running,
   or had already replied: whether the provider billed a killed call is unknowable, and a refund
@@ -1499,7 +1501,8 @@ new strings on the issue; the other calls were made within them.
   only retry." It says "nothing is shown", not "nothing was produced", because a reply may have
   arrived and been discarded, and it never says "you cancelled", because a forged local cancel reads
   the same. Counting every cancel as spent was the simpler alternative, rejected because it records
-  a charge the budget never made.
+  a charge the budget never made. The first build checked the flag and then reserved, so a cancel
+  landing in between was charged (review F1); the commit point closes that gap.
 - The flag and the handle are read under the flight lock, by the cancel and by the spawn's handover
   alike, so a cancel that lands between the spawn and the handover is seen by one of them. Without
   that, a cancel in that gap found no process to kill and the CLI ran to completion.
@@ -1511,15 +1514,25 @@ new strings on the issue; the other calls were made within them.
 - The outcome is decided at a seal just before the write. A cancel before it wins over whatever came
   back; a cancel after it answers `not-running` and changes nothing, because the result is already
   being stored. A cancelled job never lights "Checking the reply".
-- Precedence: `unstopped` first, then a cancel over `interrupted` when the cancel came before the
-  shutdown, then the cancel over a failed or finished call.
+- Precedence: `unstopped` first, then the stop's own word (`interrupted`, or `stopping` when nothing
+  was sent) over a cancel made after the shutdown began, then the cancel over a failed or finished
+  call.
 - `cancelled` is a kept marker reason, so a store that refuses it never recovers as "The analysis
   ran", and the cancel writes that reason into the marker, so a dashboard that dies before the
   write records the cancel at its next start.
 - Its own route, `POST /api/reading/cancel`, naming the job id, rather than a field on the reading
   route. A stale tab cannot cancel a newer press, and no job, another job's id and an unknown
   session answer one `409 not-running` body.
-- On the page, Cancel sits in the box's header row and takes the press button's focus key. While a
+- A job leaves the board only after its outcome is stored, and a collection samples the job
+  registry before it reads the store, so one collection shows the job or its outcome and never
+  neither. The job's final publish clears the snapshot under the collect lock, so a collection that
+  was already running, and read the store before the write, cannot stand as the fresh snapshot
+  afterwards. The live walk measured that stale body for about the snapshot floor: no box, the
+  previous sentence and the previous count.
+- On the page, Cancel sits in the box's header row. The press button's focus key moves to the box's
+  title (`tabindex="-1"`), not to Cancel, because a keyboard press followed by a second Enter on
+  Cancel cancelled the analysis it had just started, a spent attempt. Cancel has its own key and a
+  fallback to the press, so focus lands on the press when the box goes. While a
   cancel finishes it keeps its label and is disabled, driven by the published `cancelling` flag so a
   reload draws the same. A lost answer says "Could not confirm the cancel. The analysis may still be
   running; refresh to check." The design goes straight back to idle with no sentence; the stored
