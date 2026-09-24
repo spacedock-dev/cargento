@@ -69,7 +69,11 @@ def _answer(
         "used": len(dates),
         "limit": DAILY_CAP,
         "retry_at": min(dates) + DAY_SEC if full else None,
-        "reason": reason or ("consent-required" if not consent else "daily-cap" if full else ""),
+        # The cap first: the budget is shared, so a spent day refuses every
+        # provider, and the page reads the Codex answer. Consent first told a
+        # reader with only Claude Code allowed that nothing stood in the way
+        # (DRC-4666).
+        "reason": reason or ("daily-cap" if full else "consent-required" if not consent else ""),
         "providers": dict(providers) if providers else dict.fromkeys(PROVIDERS, False),
         "tool_output": {name: list(where) for name, where in (tool_output or {}).items()},
     }
@@ -142,6 +146,16 @@ def _transaction(
             "destination TEXT NOT NULL, PRIMARY KEY (provider, destination))"
         )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
+        # Schema, so it fires inside a pre-DRC-4650 build's own write: that
+        # build's Turn off and `--forget` touch only the legacy row, and without
+        # this the Claude Code answer survived a rollback (DRC-4666).
+        for event in ("INSERT", "UPDATE"):
+            db.execute(
+                f"CREATE TRIGGER IF NOT EXISTS permission_off_{event.lower()} "  # noqa: S608 - two fixed words
+                f"AFTER {event} ON permission WHEN NEW.allowed = 0 BEGIN "
+                "UPDATE provider_permission SET allowed = 0; "
+                "DELETE FROM tool_output_permission; END"
+            )
         allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
         dates = tuple(float(row[0]) for row in db.execute("SELECT at FROM spends ORDER BY at"))

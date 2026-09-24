@@ -1208,3 +1208,48 @@ class AChangeAfterAPassIsPublishedPerCheck(ClaudeChecksTestCase):
         entry = self.only_check()
         fact = project_context._semantic_fact_from_event(entry, entry["kind"], "tool_report", "")
         self.assertIs(True, fact["changed_after"])
+
+
+class ACheckFrozenAtAMomentIsTheCheckAsItStoodThen(ClaudeChecksTestCase):
+    """DRC-4666: the abstention packet replays a Claude Code case offline.
+
+    The latest run, an earlier failure and a later change are computed over
+    the whole transcript, so filtering today's facts to those before the
+    capture keeps a pass a later run overturned. The freeze re-derives them
+    from the transcript as it stood at the capture instead.
+    """
+
+    def freeze(self, seconds: int) -> tuple[list[dict[str, Any]], project_context.PressChecks]:
+        self.session.save(self.path)
+        until = (START + dt.timedelta(seconds=seconds)).timestamp()
+        return project_context.frozen_claude_checks(self.config, str(self.path), SID, until=until)
+
+    def test_a_later_run_does_not_reach_back_into_the_frozen_moment(self) -> None:
+        passed = self.session.bash("pytest", "5 passed", is_error=False)  # 10 s, result 15 s
+        self.session.bash("touch changed.py", "", is_error=False)  # 20 s, result 25 s
+        failed = self.session.bash("pytest", "1 failed, 4 passed", is_error=True)  # 30 s
+
+        facts, press = self.freeze(27)
+        checks = [fact for fact in facts if fact.get("subject") == "check"]
+        self.assertEqual(1, len(checks))
+        self.assertEqual("tool_report", checks[0]["type"])
+        self.assertEqual("passed", checks[0]["result"])
+        self.assertIs(False, checks[0]["earlier_failed"])
+        self.assertEqual(passed, checks[0]["branch"]["record_id"])
+        self.assertEqual({"harness": "claude", "sid": SID}, checks[0]["source_session"])
+        self.assertEqual({passed: "5 passed"}, press.tails)
+        self.assertEqual(frozenset({(passed, "pytest")}), press.changed_after)
+        self.assertTrue(all(fact["at"] <= START.timestamp() + 27 for fact in facts))
+
+        facts, press = self.freeze(60)
+        checks = [fact for fact in facts if fact.get("subject") == "check"]
+        self.assertEqual("failed", checks[0]["result"])
+        self.assertEqual(failed, checks[0]["branch"]["record_id"])
+        self.assertEqual(frozenset(), press.changed_after)
+
+    def test_a_run_whose_result_came_after_the_moment_had_no_result_then(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)  # call 10 s, result 15 s
+        facts, press = self.freeze(12)
+        checks = [fact for fact in facts if fact.get("subject") == "check"]
+        self.assertEqual("not-recorded", checks[0]["result"])
+        self.assertEqual({}, press.tails)

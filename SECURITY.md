@@ -1011,8 +1011,12 @@ bounds requests through the HTTP route, not a hostile owner editing their own fi
 The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
 not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and check".
 An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
-`--forget` revoke every provider at once. The twelve-attempt cap is shared between providers, so a
-second provider cannot double it.
+`--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
+legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
+tool-output grant whenever that row is written as off, so a rollback and re-upgrade cannot bring a
+Claude Code answer back (DRC-4666). The twelve-attempt cap is shared between providers, so a
+second provider cannot double it, and a spent budget is reported as `daily-cap` ahead of a missing
+answer, whichever provider the status names.
 
 Which provider a press reaches is decided before the press, by `reading_route.resolve`, from the
 session's harness and this machine. The page shows that route's disclosure, naming the receiver,
@@ -1324,11 +1328,22 @@ project, no title, no prompt text and no model prose reach the repository from e
 a test asserts that none of the local half's fields (the session id, the project, the title, the
 opening ask, the cutoff sentence, the model's detail) appears anywhere in the summary.
 
-A scoring run spends the operator's Codex capacity once per case whose ledger holds anything
-citable, through `reading.CodexReadingModel`, the same subprocess and the same sandbox flags as
-`POST /api/reading` above. It sends exactly what that route sends for the same session: the two
-yardstick sentences in place of the reader's typed words, and the bounded, redacted menu of
-ledger entries. A case the producer refuses before the model, an empty ledger or a session the
+A scoring run names its producer with a required `--producer`: `codex` spends the operator's
+Codex capacity through `reading.CodexReadingModel`, and `claude` spends their Anthropic capacity
+through `reading.ClaudeReadingModel`, each the same subprocess and flags as `POST /api/reading`
+above. It spends once per case whose ledger holds anything citable and sends exactly what that
+route sends for the same session: the yardstick sentences, or a format 5 case's own goal and
+outcome lines, in place of the reader's typed words, and the bounded, redacted menu of ledger
+entries. A format 5 Claude Code case also carries its checks, frozen from the transcript as it
+stood at the capture, with their redacted output tails, as a press with a tool-output grant would;
+the run refuses to start when `reading_route.destination` cannot name where they would go. The
+owner authorized that sending for DRC-4666's qualification only, 2026-09-24, and bounded it at
+twenty calls: every call is charged before it runs to a ledger beside the cases
+(`abstention-<producer>-spend.json`, case ids, times and statuses only), which stops the run at the
+cap across every run, and `--resume` re-calls only the cases whose call failed. The scorer does not
+pass through the reader's rolling budget, so that ledger is the bound. The committed summary names
+the producer, its model and a digest of the argv it ran under; a Claude Code result is its own
+file, `docs/abstention/claude-results.json`, and opens no gate by being written. A case the producer refuses before the model, an empty ledger or a session the
 board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
 the run writes nothing to `cargento-annotations.json` and increments no reading count. Historical
 replay reads the frozen row, facts and clock instead of the live board. Reviewer excerpts and

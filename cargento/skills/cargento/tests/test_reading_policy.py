@@ -348,3 +348,74 @@ class AnAllowGivenBeforeToolOutputWasNamedDoesNotCoverIt(unittest.TestCase):
 
 def reading_route_vendor(provider: str) -> str:
     return {"codex": "OpenAI", "claude": "Anthropic"}[provider]
+
+
+class ARollbackCannotResurrectConsentTest(unittest.TestCase):
+    """DRC-4666: a pre-L6 build's Turn off writes only the legacy row.
+
+    That build runs `INSERT OR REPLACE INTO permission VALUES (1, 0)` and knows
+    no other table, so without a trigger in the store's own schema its Turn off
+    and `--forget` left `provider_permission('claude', 1)` standing, and the
+    Claude Code answer came back on the next upgrade.
+    """
+
+    def setUp(self) -> None:
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+
+    def _old_build_writes(self, statement: str) -> None:
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        db.execute(statement)
+        db.commit()
+        db.close()
+
+    def test_an_old_builds_turn_off_revokes_claude_code_and_its_tool_grants(self) -> None:
+        for statement in (
+            "INSERT OR REPLACE INTO permission VALUES (1, 0)",
+            "UPDATE permission SET allowed = 0 WHERE id = 1",
+        ):
+            with self.subTest(statement=statement):
+                reading_policy.set_consent(self.config, True, now=100.0, provider="codex")
+                reading_policy.set_consent(
+                    self.config, True, now=100.0, provider="claude", tool_output="Anthropic"
+                )
+                before = reading_policy.status(self.config, now=100.0, provider="claude")
+                self.assertTrue(before["consent"])
+                self.assertEqual({"claude": ["Anthropic"]}, before["tool_output"])
+                self._old_build_writes(statement)
+                after = reading_policy.status(self.config, now=100.0, provider="claude")
+                self.assertFalse(after["consent"])
+                self.assertEqual({"codex": False, "claude": False}, after["providers"])
+                self.assertEqual({}, after["tool_output"])
+
+    def test_an_old_builds_allow_leaves_claude_code_alone(self) -> None:
+        reading_policy.set_consent(self.config, True, now=100.0, provider="claude")
+        self._old_build_writes("INSERT OR REPLACE INTO permission VALUES (1, 1)")
+        self.assertTrue(reading_policy.status(self.config, now=100.0, provider="claude")["consent"])
+
+
+class TheCapOutranksConsentTest(unittest.TestCase):
+    """DRC-4666: the page reads the Codex status, and the budget is shared.
+
+    With only Claude Code allowed and the day's budget spent, the published
+    answer said `consent-required`, which the page renders as nothing, so
+    Analyze drift stayed enabled and the press answered 429.
+    """
+
+    def test_a_spent_budget_reads_daily_cap_for_a_provider_never_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            config, _ = make_runtime(state_dir=Path(home), state_home=home)
+            reading_policy.set_consent(config, True, now=100.0, provider="claude")
+            for offset in range(reading_policy.DAILY_CAP):
+                self.assertEqual(
+                    "",
+                    reading_policy.reserve(config, now=100.0 + offset, provider="claude")["reason"],
+                )
+            published = reading_policy.status(config, now=200.0)
+            self.assertFalse(published["consent"])
+            self.assertEqual("daily-cap", published["reason"])
+            self.assertEqual(
+                "daily-cap", reading_policy.reserve(config, now=200.0, provider="codex")["reason"]
+            )

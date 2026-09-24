@@ -127,12 +127,13 @@ printing prose.
 
 `scripts/mark_abstention.py` and `scripts/score_abstention.py` are outside the gate too, and are a
 pair. The first draws cases from a running dashboard (`--build`, against `--port`, 4553 by
-default) and collects the answer key for DEC-17's abstention check, one `judge` or `abstain` per
+default), or freezes a format 5 packet from a spec of recorded moments (`--freeze`), and collects the answer key for DEC-17's abstention check, one `judge` or `abstain` per
 constraint, from whoever is not the author of the reading prompt. The second runs the reading
-producer over those cases and reports, per case and per constraint, where each landed. `--build`
-and `--score` need the dashboard running; `--report` and marking read local files only. Scoring
-spends Codex capacity: one `codex exec` per case whose ledger holds anything citable, so run
-`--report` first, which spends nothing, and `--score` on purpose. Neither
+producer over those cases and reports, per case and per constraint, where each landed. `--build`,
+`--freeze` and a live `--score` need the dashboard running; `--report` and marking read local files
+only. Scoring needs `--producer claude` or `--producer codex` and spends that provider's capacity:
+one call per case whose ledger holds anything citable, charged to a spend ledger that stops at
+twenty calls across runs. Run `--report` first, which spends nothing, and `--score` on purpose. Neither
 runs in CI, and neither may: the marks are a person's, and the run costs the operator's own quota.
 What each file may hold and where the committed half lands is in `SECURITY.md` under The abstention
 check, and the committed half's own README is `docs/abstention/README.md`.

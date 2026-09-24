@@ -8,9 +8,17 @@ the same cases and says, per case and per constraint, what it did.
 The captain's accepted case review enables readings separately; this script
 continues to report measured outcomes and never substitutes acceptance for PASS.
 
-    score_abstention.py --report          where the corpus stands; spends nothing
-    score_abstention.py --score           run the producer once per case
-    score_abstention.py --score --rubric  also score the DEC-15 expectation file
+    score_abstention.py --report                       where the corpus stands; spends nothing
+    score_abstention.py --score --producer claude      run the Claude Code producer once per case
+    score_abstention.py --score --producer claude --resume
+                                                       re-call only the cases the model failed
+    score_abstention.py --score --producer codex --rubric F
+
+`--producer` is required to score: a result names the producer, the model and a
+digest of the argv it ran under, and a Claude Code result goes to its own file,
+`docs/abstention/claude-results.json`. Every model call is charged to a spend
+ledger beside the packet before it runs, and the ledger stops at twenty calls
+across runs (DRC-4666, the owner's authorization of 2026-09-24).
 
 ## Two corpora, two files, two questions
 
@@ -46,7 +54,9 @@ The kind tags come from the rubric file's `recorded` entries, never from the
 marks file, which is the captain's and is not altered.
 
 Case format 4 replays the frozen `row_snapshot`, `producer_facts` and
-`captured_at` offline. The marks bind to that packet before scoring; malformed
+`captured_at` offline. Format 5 adds a per-case `intent`, a goal and outcome
+lines scored one constraint each, and a Claude Code case's checks frozen as
+they stood at `captured_at` (`tool_output`). The marks bind to that packet before scoring; malformed
 snapshots never fall back to today's board. Older formats retain live scoring.
 
 The report never prints one figure for all of this and never uses the word
@@ -73,6 +83,7 @@ reader's. The disclosure this rests on is written at
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -81,6 +92,7 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -120,6 +132,14 @@ RUBRIC_PATH = os.path.join(HOME, "abstention-rubric.json")
 # 2026-09-12: every file under captures costs a row in a README table a test
 # reads, and these two files are not hook payloads.
 SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "results.json")
+# The Claude Code producer's result is its own file (DRC-4666): the Codex
+# acceptance of 2026-09-14 does not qualify Claude, and one file per producer
+# keeps the one from being read as the other.
+CLAUDE_SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "claude-results.json")
+PRODUCERS = ("claude", "codex")
+# The owner's authorization of 2026-09-24: at most twenty real readings for
+# this qualification, across every run. `--max-calls` may lower it, never raise it.
+MAX_CALLS = 20
 
 # DEC-15's five kinds, as the rubric file must spell them.
 KIND_SUPPORTED_DEPARTURE = "supported-departure"
@@ -162,6 +182,17 @@ WITHHELD_PREFIX = "withheld:"
 # Our own withheld reason, not the producer's: the board no longer lists the
 # session the case was drawn from.
 WITHHELD_ROW_ABSENT = "row-absent"
+# Ours too: the spend ledger was full, so the case never reached the model.
+WITHHELD_SPEND_CAP = "spend-cap"
+
+# What a judged constraint rests on, from the entries it cites. A Goal
+# `consistent` resting on the agent's own account is DRC-4666's named case and
+# must never be counted as tool-reported, so `tool` needs a cited check or
+# written file, and `account` is anything else the agent wrote.
+BASIS_TOOL = "tool"
+BASIS_ACCOUNT = "account"
+BASIS_PERSON = "person"
+BASIS_DERIVED = "derived"
 
 RUBRIC_CORRECT = "correct"
 RUBRIC_FALSE_REASSURANCE = "false-reassurance"
@@ -235,6 +266,116 @@ class Corpus:
 def _get(url: str, timeout: int = 30) -> Any:
     with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - fixed loopback
         return json.loads(response.read().decode("utf-8"))
+
+
+# ------------------------------------------------------------- spend and argv
+
+BINDING_KEYS = ("producer", "model", "argv_digest")
+
+
+class SpendCapError(Exception):
+    """The ledger is full: no further call may be made under this authorization."""
+
+
+class SpendLedger:
+    """Every model call this check makes, charged before it runs, across runs.
+
+    A file beside the packet, so the bound survives a crash, a rerun and a
+    resume: a count held in memory would reset with each. The charge is
+    written before the call, as `reading_policy.reserve` commits one, because
+    a call that started and then failed has already been spent. It holds case
+    ids, times and statuses, never a sid or anything the model said.
+    """
+
+    def __init__(self, path: str, *, cap: int, producer: str) -> None:
+        self.path = path
+        self.cap = min(cap, MAX_CALLS)
+        self.producer = producer
+
+    def calls(self) -> list[dict[str, Any]]:
+        raw = mark_abstention._load(self.path).get("calls")  # noqa: SLF001
+        return [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
+
+    def used(self) -> int:
+        return len(self.calls())
+
+    def _save(self, calls: list[dict[str, Any]]) -> None:
+        mark_abstention._write(self.path, {"v": 1, "producer": self.producer, "calls": calls})  # noqa: SLF001
+
+    def guard(self, case_id: str, model: Callable[..., tuple[str, str]]) -> _Charged:
+        return _Charged(self, case_id, model)
+
+
+class _Charged:
+    """One case's model, behind the ledger. Raises rather than calling past the cap."""
+
+    def __init__(
+        self, ledger: SpendLedger, case_id: str, model: Callable[..., tuple[str, str]]
+    ) -> None:
+        self.ledger = ledger
+        self.case_id = case_id
+        self.model = model
+        self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
+
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        available = getattr(self.model, "available", None)
+        if available is not None and not available():
+            return "", "unavailable"
+        calls = self.ledger.calls()
+        if len(calls) >= self.ledger.cap:
+            raise SpendCapError
+        calls.append(
+            {"at": time.time(), "case": self.case_id, "producer": self.ledger.producer,
+             "status": "charged"}
+        )  # fmt: skip
+        self.ledger._save(calls)  # noqa: SLF001
+        raw, status = self.model(prompt, output_cap_bytes=output_cap_bytes)
+        calls[-1]["status"] = status if status in ("ok", "failed", "unavailable") else "failed"
+        self.ledger._save(calls)  # noqa: SLF001
+        return raw, status
+
+
+class _ArgvCapturedError(Exception):
+    pass
+
+
+def argv_digest(producer: str, config: Any) -> str:
+    """sha256 of the argv the producer's exec would run, read without running it.
+
+    The exec is handed a runner that records its command and raises, so no
+    process starts and nothing is spent. The binary is named by its basename
+    and anything under the throwaway state directory by a placeholder, so the
+    digest moves with a flag, a model or an effort and with nothing else.
+    """
+    _runtime()
+    from cargento_runtime import observer  # noqa: PLC0415 - see `_runtime`
+
+    seen: list[list[str]] = []
+
+    def runner(command: Sequence[str], *_args: Any, **_kwargs: Any) -> Any:
+        seen.append([str(part) for part in command])
+        raise _ArgvCapturedError
+
+    run = observer.claude_exec if producer == "claude" else observer.codex_exec
+    with tempfile.TemporaryDirectory() as state:
+        scratch = dataclasses.replace(config, state_dir=pathlib.Path(state))
+        with contextlib.suppress(_ArgvCapturedError):
+            run(
+                scratch,
+                "",
+                output_cap_bytes=1,
+                runner=runner,
+                binary_resolver=lambda name: f"/{name}",
+            )
+        root = str(pathlib.Path(state).resolve())
+    if not seen:
+        msg = f"the {producer} exec built no command"
+        raise RuntimeError(msg)
+    argv = [os.path.basename(seen[0][0])] + [
+        "<state>" if str(pathlib.Path(part).resolve()).startswith(root) and part else part
+        for part in seen[0][1:]
+    ]
+    return hashlib.sha256(json.dumps(argv).encode()).hexdigest()
 
 
 # ---------------------------------------------------------------- pure rules
@@ -322,64 +463,112 @@ def yardstick(words: tuple[str, str]) -> list[dict[str, Any]]:
 # ------------------------------------------------------------ one case scored
 
 
-def score_case(
+def _stored_name(name: str) -> str:
+    """The criterion key for a constraint: the legacy `output` came back as `line_1`."""
+    _config, reading, _records = _runtime()
+    return reading.outcome_line(1) if name == "output" else name
+
+
+def basis(criterion: Mapping[str, Any] | None, ledger: Sequence[Mapping[str, Any]]) -> str:
+    """What a judged criterion rests on, as a closed token; empty where nothing was judged."""
+    _config, reading, _records = _runtime()
+    if not criterion or criterion.get("result") not in (_CONSISTENT, _DEPARTURE):
+        return ""
+    wanted = {str(c) for c in criterion.get("cites") or ()}
+    cited = [entry for entry in ledger if str(entry.get("id")) in wanted]
+    if any(reading.demonstrates_work(entry) for entry in cited):
+        return BASIS_TOOL
+    authors = {entry.get("author") for entry in cited}
+    if reading.AUTHOR_AGENT in authors:
+        return BASIS_ACCOUNT
+    if reading.AUTHOR_PERSON in authors:
+        return BASIS_PERSON
+    return BASIS_DERIVED if authors else ""
+
+
+def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
     config: Any,
     case: Mapping[str, Any],
     row: Mapping[str, Any] | None,
     facts: Sequence[Mapping[str, Any]],
     mark: Mapping[str, Any],
     *,
-    words: tuple[str, str],
     model: Callable[..., tuple[str, str]],
     now: float,
+    words: tuple[str, str] = ("", ""),
+    revision: Mapping[str, Any] | None = None,
+    tool_output: Any = None,
 ) -> dict[str, Any]:
-    """One producer call, classified. The only place the model is reached."""
+    """One producer call, classified. The only place the model is reached.
+
+    `revision` is a format 5 case's own intent; without one the yardstick
+    `words` stand in, as they always did. `tool_output` is the frozen checks,
+    handed to `produce` exactly as the reading route hands a press's.
+    """
     _config, reading, _records = _runtime()
-    marks = {name: str(mark.get(name) or "") for name in CONSTRAINTS}
+    revisions = [dict(revision)] if revision is not None else yardstick(words)
+    lines = reading.outcome_lines(revisions[-1])
+    names = CONSTRAINTS if revision is None else tuple(reading.constraints_for(lines))
+    marks = {name: str(mark.get(name) or "") for name in names}
+    harness = str((row or {}).get("harness") or case.get("harness") or "")
     if row is None:
         assessment, why, spent = None, WITHHELD_ROW_ABSENT, False
     else:
-        assessment, why, spent = reading.produce(
-            config,
-            row,
-            yardstick(words),
-            facts,
-            now=now,
-            stamp_text="abstention check",
-            model=model,
-            # The output yardstick is one outcome line, asked as the reading
-            # route asks it, and it comes back as `line_1`.
-            read_lines=True,
-        )
+        try:
+            assessment, why, spent = reading.produce(
+                config,
+                row,
+                revisions,
+                facts,
+                now=now,
+                stamp_text="abstention check",
+                model=model,
+                tool_output=tool_output,
+                # The outcome lines are asked as the reading route asks them;
+                # the yardstick's one output line comes back as `line_1`.
+                read_lines=True,
+                # As the route passes it: a reader's press on a harness that
+                # may be read at a turn stop, and nowhere else.
+                admit_turn_stop=harness in reading.TURN_STOP_HARNESSES,
+            )
+        except SpendCapError:
+            assessment, why, spent = None, WITHHELD_SPEND_CAP, False
     stored = assessment["criteria"] if assessment else {}
-    criteria = {
-        name: stored[reading.outcome_line(1) if name == "output" else name]
-        for name in CONSTRAINTS
-        if (reading.outcome_line(1) if name == "output" else name) in stored
-    }
-    # The producer's own predicate, so the scorer cannot call a column asked
-    # that `resolve` answered without asking. Where the record the producer
-    # reads holds no work evidence, the output is never posed and the producer
-    # returns `not verifiable` unasked, so that column is the ruling's answer
-    # and the report says so rather than counting it as the model abstaining.
-    # This check never grants tool output, so the ledger is the one `produce`
-    # builds without it; the predicate reads the whole ledger where `produce`
-    # reads its selection, which only differs when the byte bound drops work.
-    harness = str((row or {}).get("harness") or case.get("harness") or "")
-    ledger = reading.build_ledger(facts, harness, str((row or {}).get("sid") or ""))
+    criteria = {name: stored[_stored_name(name)] for name in names if _stored_name(name) in stored}
+    # The producer's own predicate over the ledger it read, so the scorer
+    # cannot call a column asked that `resolve` answered without asking. Where
+    # the record holds no work evidence the outcome lines are never posed and
+    # the producer returns `not verifiable` unasked, so those columns are the
+    # ruling's answer. The ledger carries the frozen checks where the case
+    # does; the predicate reads the whole of it where `produce` reads its
+    # selection, which only differs when the byte bound drops work.
+    tails = tool_output.tails if tool_output is not None and tool_output.destination else None
+    ledger = reading.build_ledger(
+        facts,
+        harness,
+        str((row or {}).get("sid") or ""),
+        tool_output=tails,
+        changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
+    )
     return {
         "id": str(case.get("id") or ""),
         "harness": str(case.get("harness") or ""),
+        "constraints": list(names),
         "marks": marks,
-        "outcomes": {name: outcome(criteria.get(name), why) for name in CONSTRAINTS},
+        "outcomes": {name: outcome(criteria.get(name), why) for name in names},
+        "basis": {name: basis(criteria.get(name), ledger) for name in names},
         "reached_model": assessment is not None,
-        "asks_output": row is not None and bool(reading.asks_output(words[1], ledger)),
+        "asks_output": row is not None and bool(reading.asks_output(" ".join(lines), ledger)),
         "spent": spent,
         # Local-half fields. `summarize` copies none of them.
         "withheld": why,
         "cutoff": str(assessment["cutoff"]) if assessment else "",
         "criteria": criteria,
     }
+
+
+def _names(record: Mapping[str, Any] | None) -> tuple[str, ...]:
+    return tuple((record or {}).get("constraints") or CONSTRAINTS)
 
 
 def rubric_refusal(entry: Mapping[str, Any], harness: str) -> str:
@@ -428,7 +617,7 @@ def rubric_case(
     judgement: dict[str, str] = {}
     cites: dict[str, dict[str, int]] = {}
     criteria = record["criteria"] if record and reached else {}
-    for name in CONSTRAINTS:
+    for name in _names(record):
         wanted = expect.get(name) if isinstance(expect.get(name), dict) else None
         if not reached or wanted is None:
             continue
@@ -463,7 +652,7 @@ def _dec17(records: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
     failed: list[str] = []
     held: list[str] = []
     for record in records:
-        for name in CONSTRAINTS:
+        for name in _names(record):
             mark, got = record["marks"].get(name), record["outcomes"][name]
             if mark == MARK_ABSTAIN and got.startswith("judged:"):
                 failed.append(record["id"])
@@ -496,8 +685,16 @@ def _coverage(rubric_records: Sequence[Mapping[str, Any]]) -> dict[str, dict[str
     return out
 
 
-def _verdict(dec17: Mapping[str, list[str]], coverage: Mapping[str, Mapping[str, Any]]) -> str:
-    if dec17["failed"]:
+def _verdict(
+    dec17: Mapping[str, list[str]],
+    coverage: Mapping[str, Mapping[str, Any]],
+    rubric_counts: Mapping[str, int] | None = None,
+) -> str:
+    # A rubric false reassurance fails the run as a judged should-abstain mark
+    # does: it is the failure DEC-17 exists to catch, and DEC-23's surviving
+    # class, a `consistent` on a line a passing check does not cover, is often
+    # visible only to the rubric (decision of 2026-09-24).
+    if dec17["failed"] or (rubric_counts or {}).get(RUBRIC_FALSE_REASSURANCE, 0):
         return VERDICT_FAILED
     if any(coverage[h]["kinds"] < len(KINDS) for h in COVERAGE_HARNESSES):
         return VERDICT_SHORT
@@ -511,15 +708,18 @@ def summarize(
     marks_bytes: bytes,
     now: float,
     rubric_records: Sequence[Mapping[str, Any]] = (),
+    binding: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The committable half. Ids, marks, outcomes, counts, coverage, digest, when.
 
     Nothing readable about a session: no sid, no project, no title, no ask,
-    no cutoff sentence and no model prose. The local half carries those.
+    no intent, no check or its output, no cutoff sentence and no model prose.
+    The local half carries those. `binding` names the producer, its model and
+    the argv digest the run used, closed values the scorer computed.
     """
     outcome_counts: dict[str, int] = {}
     for record in records:
-        for name in CONSTRAINTS:
+        for name in _names(record):
             got = str(record["outcomes"][name])
             key = "withheld" if got.startswith(WITHHELD_PREFIX) else got
             outcome_counts[key] = outcome_counts.get(key, 0) + 1
@@ -529,7 +729,9 @@ def summarize(
             rubric_counts[got] = rubric_counts.get(got, 0) + 1
     dec17 = _dec17(records)
     coverage = _coverage(rubric_records)
+    bound = {key: str((binding or {})[key]) for key in BINDING_KEYS if key in (binding or {})}
     return {
+        **bound,
         "v": 1,
         "scored_at": now,
         "marks_digest": hashlib.sha256(marks_bytes).hexdigest(),
@@ -541,6 +743,11 @@ def summarize(
                 "outcomes": dict(r["outcomes"]),
                 "reached_model": bool(r["reached_model"]),
                 "asks_output": bool(r.get("asks_output", True)),
+                "basis": {
+                    k: v
+                    for k, v in (r.get("basis") or {}).items()
+                    if v in ("", BASIS_TOOL, BASIS_ACCOUNT, BASIS_PERSON, BASIS_DERIVED)
+                },
             }
             for r in records
         },
@@ -549,6 +756,12 @@ def summarize(
             "reached_model": sum(1 for r in records if r["reached_model"]),
             "withheld": sum(1 for r in records if not r["reached_model"]),
             "output_not_asked": sum(1 for r in records if not r.get("asks_output", True)),
+            "goal_consistent_on_account": sum(
+                1
+                for r in records
+                if r["outcomes"].get("goal") == OUTCOME_JUDGED_CONSISTENT
+                and (r.get("basis") or {}).get("goal") == BASIS_ACCOUNT
+            ),
             "outcomes": outcome_counts,
         },
         "dec17": dec17,
@@ -570,7 +783,7 @@ def summarize(
             },
             "counts": rubric_counts,
         },
-        "verdict": _verdict(dec17, coverage),
+        "verdict": _verdict(dec17, coverage, rubric_counts),
     }
 
 
@@ -598,6 +811,9 @@ def local_results(
             r["id"]: {"withheld": r["withheld"], "cutoff": r["cutoff"], "spent": r["spent"]}
             for r in records
         },
+        # Whole, for `--resume`, which re-scores only the model's failures
+        # and carries every other record over as it was.
+        "records": {r["id"]: dict(r) for r in records},
     }
 
 
@@ -612,7 +828,7 @@ def exit_code(summary: Mapping[str, Any]) -> int:
 def _pair_phrase(name: str, mark: str, got: str, *, asks_output: bool) -> str:
     if got.startswith(WITHHELD_PREFIX):
         return "withheld before the model, proves nothing about it"
-    if name == "output" and not asks_output:
+    if name != "goal" and not asks_output:
         return "not asked, nothing it read shows work: the ruling's answer, not a measurement"
     if got == OUTCOME_UNPARSED:
         # Named before the marks are consulted, because it answers neither
@@ -634,7 +850,7 @@ def _pair_phrase(name: str, mark: str, got: str, *, asks_output: bool) -> str:
 def case_line(record: Mapping[str, Any]) -> str:
     asks_output = bool(record.get("asks_output", True))
     parts = []
-    for name in CONSTRAINTS:
+    for name in _names(record):
         mark, got = str(record["marks"].get(name) or ""), str(record["outcomes"][name])
         phrase = _pair_phrase(name, mark, got, asks_output=asks_output)
         parts.append(f"{name} {mark or '?'} -> {got} ({phrase})")
@@ -685,7 +901,17 @@ def render(summary: Mapping[str, Any]) -> list[str]:
             f"{counts['withheld']} withheld before it (counted for neither side)"
         ),
     ]
+    if summary.get("producer"):
+        lines.append(
+            f"  producer {summary['producer']}, model {summary.get('model') or '?'}, "
+            f"argv digest {str(summary.get('argv_digest') or '')[:16]}"
+        )
     lines.extend(f"  {name}: {count}" for name, count in sorted(counts["outcomes"].items()))
+    if counts.get("goal_consistent_on_account"):
+        lines.append(
+            f"  goal judged consistent on the agent's own account, no check cited: "
+            f"{counts['goal_consistent_on_account']} (never counted as tool-reported)"
+        )
     if counts.get("output_not_asked"):
         lines.append(
             f"  output column not asked on {counts['output_not_asked']} of {counts['cases']} "
@@ -719,6 +945,8 @@ def _verdict_sentence(summary: Mapping[str, Any]) -> str:
             "recorded, so PASS is refused. Score again against the marks as they are."
         )
     if verdict == VERDICT_FAILED:
+        if not (summary.get("dec17") or {}).get("failed"):
+            return "FAILED: the rubric records a false reassurance."
         return "FAILED: a case marked should-abstain judged."
     if verdict == VERDICT_SHORT:
         return (
@@ -854,6 +1082,40 @@ def replay_refusal(case: Mapping[str, Any]) -> str:
     return _replay_facts_refusal(case, identity, at)
 
 
+def intent_refusal(case: Mapping[str, Any]) -> str:
+    """A format 5 case's intent and frozen checks, as closed reasons."""
+    _config, reading, _records = _runtime()
+    intent = case.get("intent")
+    if not isinstance(intent, dict) or not isinstance(intent.get("goal"), str):
+        return "replay-bad-intent"
+    raw = intent.get("lines")
+    if (
+        not isinstance(raw, list)
+        or not 1 <= len(raw) <= reading.MAX_OUTCOME_LINES
+        or len(reading.outcome_lines(intent)) != len(raw)
+    ):
+        return "replay-bad-intent"
+    frozen = case.get("tool_output")
+    if frozen is None:
+        return ""
+    if case.get("harness") != "claude" or not isinstance(frozen, dict):
+        return "replay-bad-tool-output"
+    tails, pairs = frozen.get("tails", {}), frozen.get("changed_after", [])
+    tails_ok = isinstance(tails, dict) and all(
+        isinstance(k, str) and isinstance(v, str) for k, v in tails.items()
+    )
+    if (
+        not tails_ok
+        or not isinstance(pairs, list)
+        or not all(
+            isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) for x in p)
+            for p in pairs
+        )
+    ):
+        return "replay-bad-tool-output"
+    return ""
+
+
 def _replay_facts_refusal(case: Mapping[str, Any], identity: tuple[Any, Any], at: float) -> str:
     facts = case.get("producer_facts")
     if not isinstance(facts, list):
@@ -872,16 +1134,31 @@ def _inputs_digest(corpus: Corpus) -> str:
 
 
 def _replay_marks_match(corpus: Corpus) -> bool:
-    if corpus.marks.get("cases_digest") == mark_abstention.cases_digest(dict(corpus.cases)):
-        return True
-    print("Replay marks are missing or belong to different cases. Mark this frozen packet first.")
-    return False
+    if corpus.marks.get("cases_digest") != mark_abstention.cases_digest(dict(corpus.cases)):
+        print(
+            "Replay marks are missing or belong to different cases. Mark this frozen packet first."
+        )
+        return False
+    marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
+    body = dict(corpus.cases)
+    for case in body.get("cases") or ():
+        mark = marks.get(case["id"])
+        if mark is None:
+            continue
+        names = mark_abstention.case_constraints(body, case)
+        if any(mark.get(name) not in (MARK_JUDGE, MARK_ABSTAIN) for name in names):
+            # A line with no mark can neither fail nor hold, so a packet with
+            # one would score a question nobody answered.
+            print(f"Case {case['id']}: marked without every constraint. Mark it again.")
+            return False
+    return True
 
 
 def _replay_preflight(corpus: Corpus) -> bool:
     """Check the whole packet before spending on even its first marked case."""
-    if corpus.cases.get("v") != 4:
-        print("Frozen snapshots require case format v4; refusing a live fallback.")
+    intents = corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
+    if corpus.cases.get("v") not in (4, mark_abstention.FORMAT_INTENT):
+        print("Frozen snapshots require case format v4 or v5; refusing a live fallback.")
         return False
     cases = corpus.cases.get("cases")
     if not isinstance(cases, list) or not cases:
@@ -896,11 +1173,11 @@ def _replay_preflight(corpus: Corpus) -> bool:
             valid = False
             continue
         seen.add(case_id)
-        why = replay_refusal(case)
+        why = replay_refusal(case) or (intent_refusal(case) if intents else "")
         if why:
             print(f"Case {case_id}: {why}")
             valid = False
-    if not all(
+    if not intents and not all(
         isinstance(corpus.cases.get(key), str) and corpus.cases[key].strip() for key in CONSTRAINTS
     ):
         print("Replay needs the goal and output yardstick shown to the marker.")
@@ -909,7 +1186,7 @@ def _replay_preflight(corpus: Corpus) -> bool:
 
 
 def _is_replay(corpus: Corpus) -> bool:
-    return corpus.cases.get("v") == 4 or any(
+    return corpus.cases.get("v") in (4, mark_abstention.FORMAT_INTENT) or any(
         isinstance(case, dict) and {"row_snapshot", "producer_facts", "captured_at"} & case.keys()
         for case in corpus.cases.get("cases") or ()
     )
@@ -932,7 +1209,82 @@ def _print_rubric_skipped(rubric: Mapping[str, Any]) -> None:
         print(f"{skipped} rubric entries skipped: the key is not a case id.")
 
 
-def score(
+def _tool_output(
+    case: Mapping[str, Any], destination: str | None, label: str, body: Mapping[str, Any]
+) -> Any:
+    """The frozen checks as the `ToolOutput` a press would carry, or None.
+
+    None where no destination was asked for (a legacy run) or the harness
+    publishes no checks. An empty destination is refused before this runs.
+    """
+    _config, reading, _records = _runtime()
+    tails, changed = mark_abstention.case_checks(dict(body), dict(case))
+    if destination is None or tails is None:
+        return None
+    return reading.ToolOutput(
+        destination=destination, label=label, tails=tails, changed_after=changed
+    )
+
+
+def _resume_matches(
+    resume: Mapping[str, Any], corpus: Corpus, binding: Mapping[str, str] | None
+) -> bool:
+    """A resume continues the same run or none: same packet, marks and producer."""
+    raw = resume.get("summary")
+    before: Mapping[str, Any] = raw if isinstance(raw, dict) else {}
+    same = (
+        isinstance(resume.get("records"), dict)
+        and before.get("inputs_digest") == _inputs_digest(corpus)
+        and before.get("marks_digest") == hashlib.sha256(corpus.marks_bytes).hexdigest()
+        and all(before.get(k) == (binding or {}).get(k) for k in BINDING_KEYS)
+    )
+    if not same:
+        print("The results to resume belong to other cases, marks or producer. Score afresh.")
+    return same
+
+
+def _write_halves(
+    records: Mapping[str, Mapping[str, Any]],
+    summary: Mapping[str, Any],
+    *,
+    results_path: str,
+    summary_path: str,
+) -> None:
+    mark_abstention._write(results_path, local_results(list(records.values()), summary, home=HOME))  # noqa: SLF001
+    os.makedirs(os.path.dirname(summary_path) or ".", exist_ok=True)
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    print()
+    for line in render(summary):
+        print(line)
+    print(f"\nLocal results: {results_path} (stays on this machine).")
+    print(f"Committable summary: {summary_path}.")
+
+
+def _may_score(
+    corpus: Corpus,
+    tool_destination: str | None,
+    resume: Mapping[str, Any] | None,
+    binding: Mapping[str, str] | None,
+) -> bool:
+    """Every refusal a run makes before its first call, in one place."""
+    if _is_replay(corpus) and not (_replay_preflight(corpus) and _replay_marks_match(corpus)):
+        return False
+    body = dict(corpus.cases)
+    if (
+        body.get("v") == mark_abstention.FORMAT_INTENT
+        and tool_destination == ""
+        and any(
+            mark_abstention.case_checks(body, c)[0] is not None for c in body.get("cases") or ()
+        )
+    ):
+        print("Cargento cannot name where the producer would send these checks. Nothing ran.")
+        return False
+    return resume is None or _resume_matches(resume, corpus, binding)
+
+
+def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     port: int,
     corpus: Corpus,
     *,
@@ -941,11 +1293,25 @@ def score(
     results_path: str,
     summary_path: str,
     now: float,
+    binding: Mapping[str, str] | None = None,
+    tool_destination: str | None = None,
+    ledger: SpendLedger | None = None,
+    resume: Mapping[str, Any] | None = None,
 ) -> int:
-    """Run the producer once per case, write both halves, print the report."""
+    """Run the producer once per case, write both halves, print the report.
+
+    `tool_destination` is where the producer sends a Claude Code case's frozen
+    checks, `reading_route.destination`'s answer; empty refuses the run, as a
+    press withholds checks it cannot name a receiver for. `ledger` charges
+    every call; `resume` is the local half of an earlier run, whose records
+    are kept except where the model failed.
+    """
     replay = _is_replay(corpus)
-    if replay and not (_replay_preflight(corpus) and _replay_marks_match(corpus)):
+    if not _may_score(corpus, tool_destination, resume, binding):
         return 2
+    intents = corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
+    body = dict(corpus.cases)
+    kept = dict((resume or {}).get("records") or {})
     cases = {
         str(c["id"]): c
         for c in corpus.cases.get("cases") or ()
@@ -956,10 +1322,21 @@ def score(
     rows = {} if replay else _board_rows(port)
     if rows is None:
         return 2
+    _config, reading, _records = _runtime()
+    label = reading_label(str((binding or {}).get("producer") or ""))
+
+    def charged(case_id: str) -> Callable[..., tuple[str, str]]:
+        return ledger.guard(case_id, model) if ledger is not None else model
+
     records: dict[str, dict[str, Any]] = {}
     for case_id, mark in marks.items():
         case = cases.get(case_id)
         if case is None:
+            continue
+        prior = kept.get(case_id)
+        if isinstance(prior, dict) and prior.get("withheld") != reading.WITHHELD_MODEL_FAILED:
+            records[case_id] = prior
+            print(case_line(prior))
             continue
         row = case["row_snapshot"] if replay else rows.get((str(case["harness"]), str(case["sid"])))
         facts = (
@@ -976,11 +1353,44 @@ def score(
             facts,
             mark,
             words=words,
-            model=model,
+            revision=mark_abstention.case_revision(case) if intents else None,
+            tool_output=_tool_output(case, tool_destination, label, body) if intents else None,
+            model=charged(case_id),
             now=case["captured_at"] if replay else now,
         )
         print(case_line(records[case_id]))
-    rubric_records = []
+    rubric_records = _score_rubric(
+        corpus, records, config=config, words=words, charged=charged, now=now
+    )
+    summary = summarize(
+        list(records.values()),
+        marks=marks,
+        marks_bytes=corpus.marks_bytes,
+        now=now,
+        rubric_records=rubric_records,
+        binding=binding,
+    )
+    if replay:
+        summary["inputs_digest"] = _inputs_digest(corpus)
+    if ledger is not None:
+        summary["spend"] = {"charged": ledger.used(), "cap": ledger.cap}
+    _write_halves(records, summary, results_path=results_path, summary_path=summary_path)
+    if any(r["withheld"] == WITHHELD_SPEND_CAP for r in records.values()):
+        print(f"STOPPED at the spend ledger's cap of {ledger.cap if ledger else MAX_CALLS} calls.")
+    return exit_code(summary)
+
+
+def _score_rubric(
+    corpus: Corpus,
+    records: Mapping[str, dict[str, Any]],
+    *,
+    config: Any,
+    words: tuple[str, str],
+    charged: Callable[[str], Callable[..., tuple[str, str]]],
+    now: float,
+) -> list[dict[str, Any]]:
+    """Each rubric entry against its record, scoring an admitted synthesised case here."""
+    rubric_records: list[dict[str, Any]] = []
     _print_rubric_skipped(corpus.rubric)
     for case_id, entry in _rubric_entries(corpus.rubric).items():
         record = records.get(case_id)
@@ -995,37 +1405,28 @@ def score(
                 facts,
                 {},
                 words=words,
-                model=model,
+                model=charged(case_id),
                 now=now,
             )
         rubric_records.append(rubric_case(entry, record, case_id))
-    summary = summarize(
-        list(records.values()),
-        marks=marks,
-        marks_bytes=corpus.marks_bytes,
-        now=now,
-        rubric_records=rubric_records,
-    )
-    if replay:
-        summary["inputs_digest"] = _inputs_digest(corpus)
-    mark_abstention._write(results_path, local_results(list(records.values()), summary, home=HOME))  # noqa: SLF001
-    os.makedirs(os.path.dirname(summary_path) or ".", exist_ok=True)
-    with open(summary_path, "w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    print()
-    for line in render(summary):
-        print(line)
-    print(f"\nLocal results: {results_path} (stays on this machine).")
-    print(f"Committable summary: {summary_path}.")
-    return exit_code(summary)
+    return rubric_records
 
 
-def _evidence_bearing(case: Mapping[str, Any], *, replay: bool) -> bool:
+def reading_label(producer: str) -> str:
+    """The name a cutoff sentence gives the producer, as the route names it."""
+    _runtime()
+    from cargento_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
+
+    return str(reading_route.LABELS.get(producer, ""))
+
+
+def _evidence_bearing(
+    case: Mapping[str, Any], *, replay: bool, body: Mapping[str, Any] | None = None
+) -> bool:
     if not replay:
         return int(case.get("citable") or 0) > 0
     _config, reading, _records = _runtime()
-    ledger = reading.build_ledger(case["producer_facts"], case["harness"], case["sid"])
+    ledger = mark_abstention.case_ledger(dict(body or {}), dict(case))
     return any(reading._citable(entry) for entry in ledger)  # noqa: SLF001
 
 
@@ -1050,7 +1451,9 @@ def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
     }
     for harness in COVERAGE_HARNESSES:
         mine = [c for c in cases if c.get("harness") == harness]
-        evidence = sum(1 for c in mine if _evidence_bearing(c, replay=_is_replay(corpus)))
+        evidence = sum(
+            1 for c in mine if _evidence_bearing(c, replay=_is_replay(corpus), body=corpus.cases)
+        )
         kinds = sum(1 for c in mine if str(c.get("id")) in tagged)
         print(f"  {harness}: {evidence} evidence-bearing, {kinds} kind-tagged, of {len(mine)}")
     if summary is None:
@@ -1058,7 +1461,7 @@ def report(corpus: Corpus, summary: Mapping[str, Any] | None) -> int:
         return 0
     print()
     checked = check_marks(summary, corpus.marks_bytes)
-    if (corpus.cases.get("v") == 4 or "inputs_digest" in summary) and summary.get(
+    if (_is_replay(corpus) or "inputs_digest" in summary) and summary.get(
         "inputs_digest"
     ) != _inputs_digest(corpus):
         checked["verdict"] = VERDICT_STALE
@@ -1080,22 +1483,55 @@ def _load_corpus(rubric_path: str) -> Corpus:
     )
 
 
+def results_path_for(producer: str) -> str:
+    """The local half, one per producer, so a resume never picks up the other's run."""
+    if producer == "claude":
+        return os.path.join(HOME, "abstention-claude-results.json")
+    return RESULTS_PATH
+
+
+def spend_path_for(producer: str) -> str:
+    return os.path.join(HOME, f"abstention-{producer}-spend.json")
+
+
+def _argument_refusal(args: argparse.Namespace) -> str:
+    if args.score and not args.producer:
+        return "--score needs --producer claude or --producer codex: a result names what ran."
+    if not 1 <= args.max_calls <= MAX_CALLS:
+        return f"--max-calls must be between 1 and {MAX_CALLS}, the authorized spend."
+    if args.resume and not args.score:
+        return "--resume continues a scoring run; pass --score with it."
+    return ""
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score the reading producer against the marks.")
-    parser.add_argument("--score", action="store_true", help="run the producer; spends Codex")
+    parser.add_argument("--score", action="store_true", help="run the producer; spends")
     parser.add_argument("--report", action="store_true", help="where things stand; spends nothing")
+    parser.add_argument("--producer", choices=PRODUCERS, help="required with --score")
+    parser.add_argument(
+        "--max-calls", type=int, default=MAX_CALLS, help=f"spend ledger cap, at most {MAX_CALLS}"
+    )
+    parser.add_argument("--resume", action="store_true", help="re-call only model failures")
     parser.add_argument("--port", type=int, default=4553, help="the dashboard port to read")
     parser.add_argument("--rubric", default=RUBRIC_PATH, help="the DEC-15 expectation file")
-    parser.add_argument("--out", default=SUMMARY_PATH, help="where the committable summary goes")
+    parser.add_argument("--out", default=None, help="where the committable summary goes")
     args = parser.parse_args(argv)
+    refusal = _argument_refusal(args)
+    if refusal:
+        print(refusal)
+        return 2
+    out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
     corpus = _load_corpus(args.rubric)
     if not corpus.cases.get("cases"):
-        print(f"No cases at {CASES_PATH}. Run mark_abstention.py --build first.")
+        print(f"No cases at {CASES_PATH}. Run mark_abstention.py --build or --freeze first.")
         return 1
     if not args.score:
-        summary = mark_abstention._load(args.out) if os.path.exists(args.out) else None  # noqa: SLF001
+        summary = mark_abstention._load(out) if os.path.exists(out) else None  # noqa: SLF001
         return report(corpus, summary or None)
     config_mod, reading, _records = _runtime()
+    from cargento_runtime import observer, reading_route  # noqa: PLC0415 - see `_runtime`
+
     config = config_mod.build_runtime_config(
         environ=os.environ,
         platform_name=sys.platform,
@@ -1103,14 +1539,36 @@ def main(argv: list[str] | None = None) -> int:
         launcher_path=pathlib.Path(_SKILL, "server.py"),
         observer_model_enabled=True,
     )
+    producer = str(args.producer)
+    model = (
+        reading.ClaudeReadingModel(config)
+        if producer == "claude"
+        else reading.CodexReadingModel(config)
+    )
+    binding = {
+        "producer": producer,
+        "model": observer.CLAUDE_READING_MODEL if producer == "claude" else observer.OBSERVER_MODEL,
+        "argv_digest": argv_digest(producer, config),
+    }
+    results_path = results_path_for(producer)
+    resume = None
+    if args.resume:
+        resume = mark_abstention._load(results_path)  # noqa: SLF001
+        if not resume:
+            print(f"No earlier run at {results_path} to resume.")
+            return 2
     return score(
         args.port,
         corpus,
         config=config,
-        model=reading.CodexReadingModel(config),
-        results_path=RESULTS_PATH,
-        summary_path=args.out,
+        model=model,
+        results_path=results_path,
+        summary_path=out,
         now=time.time(),
+        binding=binding,
+        tool_destination=reading_route.destination(producer),
+        ledger=SpendLedger(spend_path_for(producer), cap=args.max_calls, producer=producer),
+        resume=resume,
     )
 
 

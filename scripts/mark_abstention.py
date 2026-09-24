@@ -9,6 +9,7 @@ as sufficient to enable readings on 2026-09-14; scoring remains a separate act.
     mark_abstention.py --build      assemble cases from the live board
     mark_abstention.py              mark the unmarked ones, one call each
     mark_abstention.py --report     progress, and the spread of what is marked
+    mark_abstention.py --freeze F   freeze a format 5 packet from the spec in F
 
 ## What a case has to put on screen, and why two versions of this failed
 
@@ -71,11 +72,12 @@ import argparse
 import hashlib
 import json
 import os
+import pathlib
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, TypeGuard
 
 _SKILL = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cargento", "skills", "cargento"
@@ -110,6 +112,15 @@ MARKS_PATH = os.path.join(HOME, "abstention-marks.json")
 GOAL = "Finish the work this session was started for."
 OUTPUT = "Something I can check: a diff, a test run, or a file I can open."
 
+# Format 5 (DRC-4666): each case carries its own intent, a goal and the outcome
+# lines a reader would save, and a Claude Code case carries its checks frozen
+# as they stood at the capture. The constant pair above cannot pose a line a
+# passing test does not cover, which is the class DEC-23 left standing.
+FORMAT_INTENT = 5
+# When a case's intent counts as typed, unless it names its own time: before
+# every session end, for the reason `score_abstention.YARDSTICK_AT` gives.
+INTENT_AT = 1.0
+
 # Cases per (harness, end shape), so the corpus spreads instead of filling up
 # with whichever harness ran most today. v2 had this constant and no bucketing,
 # which is how a six case corpus came to be six Claude sessions in one state.
@@ -120,6 +131,89 @@ def cases_digest(body: dict[str, Any]) -> str:
     """Bind replay marks to the evidence and yardstick the marker saw."""
     encoded = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def is_intent_packet(body: dict[str, Any]) -> bool:
+    return body.get("v") == FORMAT_INTENT
+
+
+def _epoch(value: Any) -> TypeGuard[float]:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value == value  # noqa: PLR0124 - NaN is the one value unequal to itself
+        and 0 < value < float("inf")
+    )
+
+
+def case_revision(case: dict[str, Any]) -> dict[str, Any]:
+    """A format 5 case's intent as the one revision `reading.produce` reads.
+
+    Handed in as an argument, never written to the store, as the yardstick is.
+    """
+    raw = case.get("intent")
+    intent: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    revision: dict[str, Any] = {
+        "n": 1,
+        "at": intent["at"] if _epoch(intent.get("at")) else INTENT_AT,
+        "goal": str(intent.get("goal") or ""),
+        "lines": list(intent.get("lines") or []),
+    }
+    for key in ("window_start", "goal_source", "goal_source_at"):
+        if key in intent:
+            revision[key] = intent[key]
+    return revision
+
+
+def case_lines(case: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(_reading().outcome_lines(case_revision(case)))
+
+
+def case_constraints(body: dict[str, Any], case: dict[str, Any]) -> tuple[str, ...]:
+    """What is marked and scored for this case: goal and output, or goal and each line."""
+    if is_intent_packet(body):
+        return tuple(_reading().constraints_for(case_lines(case)))
+    return ("goal", "output")
+
+
+def case_checks(
+    body: dict[str, Any], case: dict[str, Any]
+) -> tuple[dict[str, str] | None, frozenset[tuple[str, str]]]:
+    """The frozen tails and changed-after pairs, or None where no check is read.
+
+    Only a format 5 Claude Code case carries checks, because only that harness
+    publishes them and only this packet froze them at the capture.
+    """
+    if not is_intent_packet(body) or case.get("harness") != "claude":
+        return None, frozenset()
+    raw = case.get("tool_output")
+    frozen: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    tails = frozen.get("tails")
+    pairs = frozen.get("changed_after")
+    return (
+        {str(k): str(v) for k, v in tails.items()} if isinstance(tails, dict) else {},
+        frozenset(
+            (str(pair[0]), str(pair[1]))
+            for pair in pairs or ()
+            if isinstance(pair, (list, tuple)) and len(pair) == 2
+        )
+        if isinstance(pairs, list)
+        else frozenset(),
+    )
+
+
+def case_ledger(body: dict[str, Any], case: dict[str, Any]) -> tuple[Any, ...]:
+    """The frozen ledger the producer will read, checks included where frozen."""
+    tails, changed = case_checks(body, case)
+    return tuple(
+        _reading().build_ledger(
+            case.get("producer_facts") or [],
+            str(case.get("harness") or ""),
+            str(case.get("sid") or ""),
+            tool_output=tails,
+            changed_after=changed,
+        )
+    )
 
 
 def _get(url: str, timeout: int = 30) -> Any:
@@ -412,6 +506,147 @@ def build(port: int, *, force: bool = False) -> int:
     return 0
 
 
+def _runtime_config() -> Any:
+    """The runtime config the dashboard would build here, for the freeze's reads."""
+    _reading()
+    from cargento_runtime import config  # noqa: PLC0415 - see `_reading`
+
+    return config.build_runtime_config(
+        environ=os.environ,
+        platform_name=sys.platform,
+        os_name=os.name,
+        launcher_path=pathlib.Path(_SKILL, "server.py"),
+    )
+
+
+def _session_facts(port: int, project: str, harness: str, sid: str) -> list[dict[str, Any]] | None:
+    query = urllib.parse.urlencode({"project": project, "session": f"{harness}:{sid}"})
+    try:
+        body = _get(f"http://127.0.0.1:{port}/api/project-context?{query}")
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+    facts = ((body or {}).get("semantic") or {}).get("facts") or []
+    return [fact for fact in facts if isinstance(fact, dict)]
+
+
+class FreezeError(ValueError):
+    """Why a spec entry cannot become a recorded case. Closed words, no session text."""
+
+
+def freeze_case(config: Any, entry: dict[str, Any], facts: list[dict[str, Any]]) -> dict[str, Any]:
+    """One recorded case, frozen as the session stood at `captured_at`.
+
+    Facts are kept only where dated at or before the capture. A Claude Code
+    check is never one of them: its latest run, earlier failure and later
+    change are computed over the whole transcript, so it is rebuilt from the
+    transcript as it stood (`project_context.frozen_claude_checks`), with the
+    output tails and changed-after pairs a press at that moment carried.
+
+    A row may be a recorded history `working` observation, which is how a
+    Codex case exists at all: Codex has no session-end hook and is never read
+    at a turn stop (DRC-4666, decisions of 2026-09-24).
+    """
+    harness, sid = str(entry.get("harness") or ""), str(entry.get("sid") or "")
+    at = entry.get("captured_at")
+    if not harness or not sid:
+        raise FreezeError("no-identity")
+    if not _epoch(at):
+        raise FreezeError("bad-captured-at")
+    captured = float(at)
+    raw_row = entry.get("row")
+    row: dict[str, Any] = raw_row if isinstance(raw_row, dict) else {}
+    snapshot = {
+        "harness": harness,
+        "sid": sid,
+        "state": row.get("state"),
+        "finished_at": row.get("finished_at"),
+        "ended_at": row.get("ended_at"),
+    }
+    settle = float(config.reading_settle_sec)
+    for field in ("ended_at", "finished_at"):
+        stamp = snapshot[field]
+        if stamp is not None and (not _epoch(stamp) or captured < float(stamp) + settle):
+            raise FreezeError("captured-before-settled")
+    intent = entry.get("intent")
+    if not isinstance(intent, dict) or not case_lines({"intent": intent}):
+        raise FreezeError("no-outcome-line")
+    kept = [
+        fact
+        for fact in facts
+        if isinstance(fact.get("source_session"), dict)
+        and (fact["source_session"].get("harness"), fact["source_session"].get("sid"))
+        == (harness, sid)
+        and fact.get("type") != _reading().TOOL_REPORT_TYPE
+        and _epoch(fact.get("at"))
+        and fact["at"] <= captured
+    ]
+    case: dict[str, Any] = {
+        "id": _case_id(harness, sid),
+        "harness": harness,
+        "sid": sid,
+        "origin": "recorded",
+        "project": entry.get("project"),
+        "title": entry.get("title"),
+        "captured_at": captured,
+        "row_snapshot": snapshot,
+        "intent": intent,
+    }
+    if harness == "claude":
+        transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
+        if not transcript or not os.path.isfile(transcript):
+            raise FreezeError("no-transcript")
+        from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+        checks, press = project_context.frozen_claude_checks(
+            config, transcript, sid, until=captured
+        )
+        kept.extend(checks)
+        case["tool_output"] = {
+            "tails": dict(press.tails),
+            "changed_after": sorted([list(pair) for pair in press.changed_after]),
+        }
+    case["producer_facts"] = kept
+    return case
+
+
+def freeze(port: int, spec_path: str, *, force: bool = False) -> int:
+    """Write a format 5 packet from a spec of recorded moments. Spends nothing.
+
+    The spec is local and hand-written: per case the harness, sid, project,
+    `captured_at`, the recorded `row` lifecycle, the `intent` and, for Claude
+    Code, optionally the transcript path.
+    """
+    spec = _load(spec_path)
+    entries = spec.get("cases") if isinstance(spec.get("cases"), list) else []
+    if not entries:
+        print(f"No cases in {spec_path}.")
+        return 1
+    if _marks(_load(MARKS_PATH)) and not force:
+        print("Marks already exist here and would belong to a different packet.")
+        print("Use a fresh CARGENTO_HOME, or --force to write the packet anyway.")
+        return 1
+    config = _runtime_config()
+    cases: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries, 1):
+        if not isinstance(entry, dict):
+            print(f"Case {index}: not an object")
+            return 1
+        facts = _session_facts(
+            port, str(entry.get("project") or ""), str(entry.get("harness")), str(entry.get("sid"))
+        )
+        if facts is None:
+            print(f"Case {index}: the board on port {port} did not answer for it")
+            return 1
+        try:
+            cases.append(freeze_case(config, entry, facts))
+        except FreezeError as error:
+            print(f"Case {index}: {error}")
+            return 1
+    _write(CASES_PATH, {"v": FORMAT_INTENT, "cases": cases})
+    print(f"Froze {len(cases)} cases into {CASES_PATH} (stays on this machine).")
+    return 0
+
+
 def _write(path: str, body: dict[str, Any]) -> None:
     """Atomically, because this file is somebody's evening.
 
@@ -450,7 +685,9 @@ def _marks(body: dict[str, Any]) -> dict[str, Any]:
     return {
         k: v
         for k, v in raw.items()
-        if isinstance(v, dict) and isinstance(v.get("goal"), str) and "output" in v
+        if isinstance(v, dict)
+        and isinstance(v.get("goal"), str)
+        and ("output" in v or "line_1" in v)
     }
 
 
@@ -553,7 +790,43 @@ def _question(case: dict[str, Any]) -> str:
     )
 
 
+def _show_intent_case(body: dict[str, Any], case: dict[str, Any], position: str) -> None:
+    """A format 5 screen: the case's own intent, then the frozen record, checks included."""
+    revision = case_revision(case)
+    print("\n" + "=" * 72)
+    print(f"  {position}   {case['harness']} - {case.get('title') or case['id']}")
+    print(f"  Recorded lifecycle: {_reading().end_kind(case.get('row_snapshot') or {})}")
+    print(f"  Captured at: {case.get('captured_at')}")
+    if case.get("asked_for"):
+        print(f"  Opening request (review context): {_short(case['asked_for'], 260)}")
+    print(f"\n  GOAL: {revision['goal']}")
+    for k, line in enumerate(revision["lines"], 1):
+        text = line.get("text") if isinstance(line, dict) else line
+        source = line.get("source") if isinstance(line, dict) else ""
+        print(f"  OUTCOME LINE {k}: {text}" + (f"   ({source})" if source else ""))
+    print("  FROZEN PRODUCER LEDGER (review excerpts are not model evidence)")
+    ledger = case_ledger(body, case)
+    for entry in ledger:
+        flags = [
+            word
+            for word, on in (
+                ("changed after", entry.get("changed_after") is True),
+                ("stale", entry.get("stale") is True),
+            )
+            if on
+        ]
+        more = f"  [{', '.join(flags)}]" if flags else ""
+        print(f"    {entry['id']} | {entry['type']} | {entry['source']} | {entry['summary']}{more}")
+        if entry.get("tail"):
+            print(f"        output tail: {entry['tail']}")
+    if not any(_reading().demonstrates_work(entry) for entry in ledger):
+        print("    no check or written file in this record")
+
+
 def _show_mark_case(body: dict[str, Any], case: dict[str, Any], position: str) -> None:
+    if is_intent_packet(body):
+        _show_intent_case(body, case, position)
+        return
     if body.get("v") != 4:
         _show(case, position)
         return
@@ -572,6 +845,18 @@ def _show_mark_case(body: dict[str, Any], case: dict[str, Any], position: str) -
 
 
 def _mark_question(body: dict[str, Any], case: dict[str, Any], constraint: str) -> str:
+    if is_intent_packet(body):
+        revision = case_revision(case)
+        if constraint == "goal":
+            what = f"this goal: {revision['goal']}"
+        else:
+            k = int(constraint.rsplit("_", 1)[1])
+            what = f"outcome line {k}: {case_lines(case)[k - 1]}"
+        return (
+            f"\n  Against {what}\n"
+            "  Should Cargento answer from the frozen record, or say it cannot tell?\n"
+            "    y = it has enough to answer    n = it must say it cannot tell\n    [y/n/s/q] "
+        )
     if body.get("v") == 4:
         return (
             f"\n  Against this {constraint} yardstick: {body.get(constraint) or ''}\n"
@@ -587,6 +872,14 @@ def _mark_question(body: dict[str, Any], case: dict[str, Any], constraint: str) 
 
 
 def _mark_asks_output(body: dict[str, Any], case: dict[str, Any]) -> bool:
+    """The producer's own predicate, over the ledger it will read.
+
+    A format 5 Claude Code case's ledger carries its frozen checks, as the
+    scorer's press does; every other ledger holds none.
+    """
+    if is_intent_packet(body):
+        text = " ".join(case_lines(case))
+        return bool(_reading().asks_output(text, case_ledger(body, case)))
     if body.get("v") == 4:
         ledger = _reading().build_ledger(
             case.get("producer_facts") or [], case["harness"], case["sid"]
@@ -596,9 +889,35 @@ def _mark_asks_output(body: dict[str, Any], case: dict[str, Any]) -> bool:
 
 
 def _bound_marks(body: dict[str, Any], entries: dict[str, Any]) -> dict[str, Any]:
+    if is_intent_packet(body):
+        return {"v": 4, "marks": entries, "cases_digest": cases_digest(body)}
     if body.get("v") == 4:
         return {"v": 3, "marks": entries, "cases_digest": cases_digest(body)}
     return {"v": 2, "marks": entries}
+
+
+def _mark_one(body: dict[str, Any], case: dict[str, Any]) -> dict[str, str] | None:
+    """One case's answers, {} when skipped, None when the marker stopped."""
+    names = case_constraints(body, case)
+    answers: dict[str, str] = {}
+    goal = _ask(_mark_question(body, case, "goal"))
+    if goal is None or goal == "skip":
+        return None if goal is None else {}
+    answers["goal"] = goal
+    if _mark_asks_output(body, case):
+        for name in names[1:]:
+            got = _ask(_mark_question(body, case, name))
+            if got is None or got == "skip":
+                return None if got is None else {}
+            answers[name] = got
+        return answers
+    # Not asked, and saying so is the point. The constraint is never put to the
+    # model where the record holds no work evidence, so the answer is the
+    # ruling's rather than the marker's.
+    answers.update(dict.fromkeys(names[1:], "abstain"))
+    print("  The outcome question is not asked here: this record shows no check or")
+    print("  demonstrated work result, so the ruling already fixes the answer.")
+    return answers
 
 
 def mark() -> int:
@@ -609,7 +928,7 @@ def mark() -> int:
         return 1
     saved = _load(MARKS_PATH)
     entries = _marks(saved)
-    replay = body.get("v") == 4
+    replay = body.get("v") in (4, FORMAT_INTENT)
     digest = cases_digest(body)
     if replay and entries and saved.get("cases_digest") != digest:
         print("These marks belong to a different or unfrozen case set. Nothing was changed.")
@@ -632,25 +951,12 @@ def mark() -> int:
     done = 0
     for index, case in enumerate(todo, 1):
         _show_mark_case(body, case, f"{index}/{len(todo)}")
-        goal = _ask(_mark_question(body, case, "goal"))
-        if goal is None:
+        answers = _mark_one(body, case)
+        if answers is None:
             break
-        if goal == "skip":
+        if not answers:
             continue
-        if _mark_asks_output(body, case):
-            out = _ask(_mark_question(body, case, "output"))
-            if out is None:
-                break
-            if out == "skip":
-                continue
-        else:
-            # Not asked, and saying so is the point. The constraint is never put
-            # to the model on a harness that publishes no work result, so the
-            # answer is the ruling's rather than the marker's.
-            out = "abstain"
-            print("  The OUTPUT question is not asked here: this harness records no")
-            print("  demonstrated work result, so the ruling already fixes the answer.")
-        entries[case["id"]] = {"goal": goal, "output": out}
+        entries[case["id"]] = answers
         done += 1
 
     _write(MARKS_PATH, _bound_marks(body, entries))
@@ -696,10 +1002,17 @@ def report() -> int:
     print(f"{len(entries) - len(orphans)} of {len(cases)} marked.")
     if orphans:
         print(f"  {len(orphans)} marks name sessions no longer in the case set.")
-    for column in ("goal", "output"):
-        judge = sum(1 for k, v in entries.items() if k in live and v[column] == "judge")
-        held = sum(1 for k in entries if k in live)
-        print(f"  {column:7} {judge} judge, {held - judge} abstain")
+    columns = ("goal", "lines") if is_intent_packet(body) else ("goal", "output")
+    for column in columns:
+        answers = [
+            answer
+            for k, v in entries.items()
+            if k in live
+            for name, answer in v.items()
+            if name == column or (column == "lines" and name.startswith("line_"))
+        ]
+        judge = answers.count("judge")
+        print(f"  {column:7} {judge} judge, {len(answers) - judge} abstain")
     _warn_if_unanimous({k: v for k, v in entries.items() if k in live}, cases)
     return 0
 
@@ -711,7 +1024,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--force", action="store_true", help="rebuild even if it orphans marks")
     parser.add_argument("--report", action="store_true", help="how far through the key you are")
     parser.add_argument("--reset", action="store_true", help="discard the marks and start over")
+    parser.add_argument("--freeze", metavar="SPEC", help="freeze a format 5 packet from a spec")
     args = parser.parse_args(argv)
+    if args.freeze:
+        return freeze(args.port, args.freeze, force=args.force)
     if args.build and args.reset:
         print("--build and --reset together are ambiguous. Run them one at a time.")
         return 2
