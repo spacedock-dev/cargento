@@ -1624,6 +1624,53 @@ the analysis's recommendation.
   inferred. After `session_ended` pops the overlay, the state falls back to the collector's
   `working` or `idle` while the ask stays open, and the chip read "working" beside "ended".
 
+### What the numbering build decided, 2026-09-25
+
+DRC-4694 built item 11 and item 6's flags in the session's activity. The owner ruled the first four
+calls below on the issue; the rest follow the analysis.
+
+- What is numbered. With no saved intent, or with the annotation store off, the whole record is
+  numbered from its first timed entry. With one, #1 is the first entry at the evidence-window start
+  (item 13). Earlier entries are counted ("2 earlier entries") and not listed. An entry with no
+  published time cannot be placed in a window, so it is counted the same way and never numbered.
+- A cited entry from before the window, or with no time, is listed anyway, unnumbered, with its
+  time. Whether a reading should cite a pre-window entry at all is a reading rule for item 13, and it
+  was filed separately rather than changed here.
+- A window that opens at a reader's message should have an entry at that moment. Where none sits
+  there because the record read no longer reaches back that far, the list says so rather than
+  calling a later entry #1. A window at the save time is typed words with no earlier message, and
+  nothing is expected there.
+- Numbers are stable only while entries arrive at the end. Four things renumber every entry after
+  the one that moved: a check re-runs, because the check tracker publishes one entry per check keyed
+  by its latest run; a file is written again, because the latest write is kept; the listing of at
+  most twelve checks and files reshuffles, because failures are kept first and a new one can evict a
+  pass from the middle; and the observer snapshot moves with each snapshot. The list and every
+  citation are recomputed together on each render, so the screen never disagrees with itself, and
+  item 7's correction carries times as well as numbers. A server-published ordinal per fact would
+  fix this and is a Python layer of its own.
+- Order is time, with the fact id breaking a tie, so two checks with one call time number the same
+  whatever order the payload sent.
+- "Cited" comes only from the current stored reading's departures that survived every page rule, and
+  each criterion row now carries the ids it still rests on. A demoted departure, a consistent row, a
+  refused or malformed reading and a replaced one flag nothing. A consistent row's entries are listed
+  and not flagged.
+- "A later direction you gave" is a person's entry after the words' own time, read by the same
+  predicate the conflict block narrows to the unsettled ones, so the two cannot disagree. It stays
+  flagged once settled, because settling says the baseline still applies, not that the direction was
+  never given. It is never called drift (DEC-16).
+- The bound is unchanged: the newest twenty entries that are not checks or files, and every listed
+  check and file. Every entry a departure cites is drawn as well, at its own number, so the gaps in
+  the numbering show and no expand control is needed. A later direction past the bound is counted,
+  not drawn; the conflict block lists the unsettled ones.
+- The list sits right after CURRENT ACTIVITY under the column's "Session activity" heading, and the
+  OBSERVED RECORD heading is retired. The header's second row says "N entries" and omits the count,
+  rather than showing 0, when the record was not read.
+- The design's strings this replaces: "Key turns" is gone; "Drift began", "Off goal" and "Breaks
+  outcome" become "Cited" or "A later direction you gave"; "In progress" is the source's own words;
+  an entry is one fact, so "2 files" and other per-turn counts are not drawn. Your message reads
+  "You · Prompt", the agent's entries "Agent", and Cargento's own summary of the session "Cargento's
+  summary", never the agent.
+
 ## DEC-26: four drift levels, and a live estimate after every turn
 
 Decided 2026-09-24 (DRC-4691). DRC-4692 defines and validates the levels on recorded Claude Code
