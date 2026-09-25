@@ -1560,7 +1560,11 @@ function nextCockpitWorkEntries(session, semantic){
   const key = sessKey(session);
   return (semantic && Array.isArray(semantic.facts) ? semantic.facts : [])
     .filter(fact => fact && nextCockpitFactSessionKey(fact) === key)
-    .sort((left, right) => Number(left.at || 0) - Number(right.at || 0))
+    /* The fact id breaks a tie, so two checks with one call time (`bash -c
+       "pytest && ruff"`) number the same whatever order the payload sent. */
+    .sort((left, right) => (Number(left.at || 0) - Number(right.at || 0)) ||
+      (String(left.fact_id || "") < String(right.fact_id || "") ? -1
+        : String(left.fact_id || "") > String(right.fact_id || "") ? 1 : 0))
     .map(fact => {
       const evidence = fact.evidence && typeof fact.evidence === "object" ? fact.evidence : {};
       /* `actor_claim` is the string `project_context` computes to say who
@@ -1617,12 +1621,97 @@ function nextCockpitLastTurn(session, entries){
   return from <= stop ? {from, to: stop} : null;
 }
 
-function nextCockpitWorkEvidence(session, source){
-  const entries = source.entries;
-  const lastTurn = nextCockpitLastTurn(session, entries);
+/* Where the numbers start: the evidence window of the saved words, and the
+   whole record where nothing is saved or the store is off (owner, DRC-4694).
+   Read from the session's own published start, the one the producer reads
+   from, so the list's #1 and a reading's window are one moment. */
+function nextCockpitEntryWindow(session){
+  if(!(nextData && nextData.annotate === true)) return null;
+  const opened = nextNumber(session && session.annotation_window_start);
+  return opened != null && opened > 0 ? opened : null;
+}
+
+/* The numbers, recomputed from the fact ids on every render and never stored
+   ([DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+   item 11). Over the full set, never the listed rows, for the reason citations
+   resolve against it. An untimed entry cannot be placed in a window, so it is
+   counted and not numbered. Stable only while entries arrive at the end: the
+   four causes that renumber are in
+   [DEC-24](docs/design-reading-a-session.md#what-the-numbering-build-decided-2026-09-25). */
+function nextCockpitEntryNumbering(session, source){
+  const all = (source && (source.all || source.entries)) || [];
+  const opened = nextCockpitEntryWindow(session);
+  const numbers = new Map();
+  const earlier = [];
+  const untimed = [];
+  for(const entry of all){
+    const at = nextNumber(entry && entry.at);
+    if(at == null || at <= 0) untimed.push(entry);
+    else if(opened != null && at < opened) earlier.push(entry);
+    else numbers.set(entry, numbers.size + 1);
+  }
+  return {all, opened, numbers, earlier, untimed};
+}
+
+/* Fact id to its number, for the panel's "#<n>" (DRC-4695, DRC-4681) to read
+   rather than recount. */
+function nextCockpitEntryNumbers(session, source){
+  const {numbers} = nextCockpitEntryNumbering(session, source);
+  return new Map([...numbers].map(([entry, n]) => [String(entry.id || ""), n]));
+}
+
+function nextCockpitEntryActor(entry){
+  const author = nextReadingAuthor(entry);
+  if(author === "person") return "You";
+  /* Cargento's own paraphrase is never credited to the agent, which is the
+     rule `nextReadingAuthor` records for a reading. */
+  return author === "derived" ? "Cargento’s summary" : "Agent";
+}
+
+function nextCockpitEntryCount(n){
+  return `${n} ${n === 1 ? "entry" : "entries"}`;
+}
+
+/* "A, B and C", for the bound sentence's clauses. */
+function nextCockpitJoinClauses(parts){
+  return parts.length < 2 ? parts.join("")
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/* The clause for entries that are counted and not listed, naming the ones a
+   departure cites, which are listed anyway with their time and no number. */
+function nextCockpitUnlistedClause(count, what, cited){
+  const are = count === 1 ? "is" : "are";
+  const except = !cited ? ""
+    : `, except ${cited === 1 ? "the one" : `the ${cited}`} the analysis cites, listed with ` +
+      `${cited === 1 ? "its" : "their"} time and no number`;
+  return `${count} ${what} ${are} counted and not listed${except}.`;
+}
+
+/* The session's activity, numbered (DRC-4694). It sits right after CURRENT
+   ACTIVITY in the activity column, under the column's own "Session activity"
+   heading, so it has none of its own. `cited` is the set of fact ids the
+   current reading's surviving departures rest on. */
+function nextCockpitWorkEvidence(session, source, cited = new Set()){
+  const numbering = nextCockpitEntryNumbering(session, source);
+  const {all, numbers, earlier, untimed, opened} = numbering;
+  const annotation = nextData && nextData.annotate === true ? nextCockpitAnnotation(session) : null;
+  const later = new Set(nextCockpitLaterDirections(annotation, all));
+  /* The readability bound, as before: the newest non-tool rows, every listed
+     check and file, and now every entry a departure cites, each at its own
+     number so the gaps show. A cited entry is always drawn, so it is
+     reachable without an expand control. */
+  const numbered = all.filter(entry => numbers.has(entry));
+  const recent = new Set(numbered.filter(entry => entry.type !== "tool_report")
+    .slice(-NEXT_COCKPIT_WORK_ROWS));
+  const isCited = entry => cited.has(String(entry && entry.id || ""));
+  const entries = all.filter(entry => isCited(entry) ||
+    (numbers.has(entry) && (entry.type === "tool_report" || recent.has(entry))));
+  const lastTurn = nextCockpitLastTurn(session, all);
   const rows = entries.map(entry => {
     const at = nextDurationSince(entry.at);
     const stamp = nextNumber(entry.at);
+    const n = numbers.get(entry);
     const turn = lastTurn && stamp != null && stamp >= lastTurn.from && stamp <= lastTurn.to &&
       !nextReadingPersonAuthored(entry)
       ? '<span class="next-cockpit-work-turn">from the last turn</span>' : "";
@@ -1633,11 +1722,29 @@ function nextCockpitWorkEvidence(session, source){
     const summary = entry.modelDerived
       ? `<em class="next-cockpit-work-derived">${esc(entry.summary)}</em>`
       : `<span class="next-cockpit-work-summary">${esc(entry.summary)}</span>`;
-    const report = entry.type === "tool_report"
+    /* A check's or a written file's line already reads actor · meta. Every
+       other row takes the design's actor and meta: "Prompt" for your message,
+       the fact's own type string otherwise, never a count nothing measured. */
+    const head = entry.type === "tool_report"
       ? `<span class="next-cockpit-work-result">${esc(nextCockpitToolReportLine(entry))}</span>`
-      : "";
-    return `<div class="next-cockpit-work-row" data-next-cockpit-work-type="${esc(entry.type)}">` +
-      `<span class="next-cockpit-work-type">${esc(entry.type)}</span>${summary}` +
+      : `<span class="next-cockpit-work-actor">${esc(nextCockpitEntryActor(entry))}</span>` +
+        `<span class="next-cockpit-work-type">${esc(entry.type === "user_message" ? "Prompt"
+          : entry.type)}</span>`;
+    /* Neutral tags: neither is a finding. "Cited" says a departure rests on
+       the entry, and a later direction is never called drift
+       ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
+    const flags = (later.has(entry)
+      ? '<span class="next-cockpit-work-flag" data-next-entry-flag="later">' +
+        "A later direction you gave</span>" : "") +
+      (isCited(entry)
+        ? '<span class="next-cockpit-work-flag" data-next-entry-flag="cited">Cited</span>' : "");
+    return `<div class="next-cockpit-work-row" role="listitem" ` +
+      `data-next-cockpit-work-type="${esc(entry.type)}"` +
+      `${n == null ? "" : ` data-next-entry="${n}"`} data-next-entry-id="${esc(entry.id)}">` +
+      `<span class="next-cockpit-work-n">${n == null
+        ? '<span class="next-visually-hidden">not numbered</span>' : `#${n}`}</span>` +
+      `<div class="next-cockpit-work-body"><div class="next-cockpit-work-head">${head}${flags}` +
+      `</div>${summary}` +
       `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}` +
       /* Only where it says something the source line does not. On most fact
          types `actor_claim` IS the evidence source, and appending it printed
@@ -1646,21 +1753,51 @@ function nextCockpitWorkEvidence(session, source){
       `${entry.actorClaim && !entry.source.includes(entry.actorClaim)
         ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
-      `</span>${report}${turn}</div>`;
+      `</span>${turn}</div></div>`;
   }).join("");
-  return '<section class="next-cockpit-work" data-next-cockpit-work>' +
-    '<header><h2>OBSERVED RECORD</h2></header>' +
-    (rows || '<p class="next-cockpit-work-absent">' +
-      `${esc(nextCockpitWorkAbsence(source))}</p>`) +
-    (entries.length ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(entries))}</p>`
+  /* Where the words' window opens, a message of the reader's should sit: the
+     latest one at or before the save for typed words, the prompt itself for
+     adopted ones. A window at the save time is typed words with no earlier
+     message, and nothing is expected there. */
+  const promptSource = annotation && ["latest-prompt", "first-prompt"].includes(annotation.goal_source);
+  const saved = nextNumber(annotation && annotation.at);
+  const expected = opened != null && (promptSource || (saved != null && opened < saved));
+  const anchor = expected && numbers.size && !all.some(entry => nextNumber(entry.at) === opened)
+    ? `<p class="next-cockpit-work-anchor">${earlier.length
+      ? "No entry in the record read here sits where your intent’s window opens, so #1 is " +
+        "the first entry after that point."
+      : "The record read here no longer reaches back to where your intent’s window opens, " +
+        "so #1 is the first entry it holds after that point."}</p>` : "";
+  const unlisted = [];
+  if(earlier.length){
+    unlisted.push(nextCockpitUnlistedClause(earlier.length,
+      `earlier ${earlier.length === 1 ? "entry" : "entries"}, from before your intent’s ` +
+      "window opened,", earlier.filter(isCited).length));
+  }
+  if(untimed.length){
+    unlisted.push(nextCockpitUnlistedClause(untimed.length,
+      `${untimed.length === 1 ? "entry" : "entries"} with no published time`,
+      untimed.filter(isCited).length));
+  }
+  /* Every figure from the rows drawn and the numbers given, never authored. */
+  const listed = entries.filter(entry => numbers.has(entry));
+  const bound = listed.length < numbers.size
+    ? `<p class="next-cockpit-work-dropped">Listing ${listed.length} of ` +
+      `${nextCockpitEntryCount(numbers.size)}: ${nextCockpitJoinClauses([
+        `the ${recent.size} most recent`,
+        ...(listed.some(entry => entry.type === "tool_report") ? ["every listed check and file"] : []),
+        ...(listed.some(entry => isCited(entry) && entry.type !== "tool_report" &&
+          !recent.has(entry)) ? ["every entry the analysis cites"] : []),
+      ])}. ${numbers.size - listed.length} ${numbers.size - listed.length === 1 ? "is" : "are"} ` +
+      "counted and not listed.</p>" : "";
+  return '<section class="next-cockpit-work" data-next-cockpit-work>' + anchor +
+    (rows ? `<div class="next-cockpit-work-rows" role="list">${rows}</div>`
+      : '<p class="next-cockpit-work-absent">' + `${esc(nextCockpitWorkAbsence(source))}</p>`) +
+    (numbered.length ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(numbered))}</p>`
       : "") +
+    unlisted.map(said => `<p class="next-cockpit-work-earlier">${esc(said)}</p>`).join("") +
     (source.scan ? `<p class="next-cockpit-work-checks">${esc(nextCockpitCheckScan(source.scan))}` +
-      "</p>" : "") +
-    (source.shown != null && source.shown < source.total
-      ? `<p class="next-cockpit-work-dropped">Showing the ${source.shown} most recent of ` +
-        `${source.total} ${entries.some(row => row.type === "tool_report")
-          ? "other observed entries, and every listed check and file" : "observed entries"}` +
-        ".</p>" : "") +
+      "</p>" : "") + bound +
     '<p class="next-cockpit-work-limit">' +
     `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
 }
@@ -2029,17 +2166,26 @@ function nextReadingCitations(raw, entries){
    rather than answers, and the reader settles it. A block that claimed to
    detect a semantic conflict would be the false claim this whole tab exists to
    avoid. */
-function nextCockpitConflictCandidates(annotation, entries){
+/* Every later direction, settled or not. The activity list flags these and
+   the conflict block below narrows them to the unsettled, so the two read one
+   predicate and cannot disagree about who wrote a row or when. A settled one
+   stays flagged: settling records that the baseline still applies, not that
+   the reader never said it (owner, DRC-4694). */
+function nextCockpitLaterDirections(annotation, entries){
   const typedAt = nextNumber(annotation &&
     (["latest-prompt", "first-prompt"].includes(annotation.goal_source)
       ? annotation.goal_source_at : annotation.at));
   if(typedAt == null) return [];
-  const settled = nextNumber(annotation && annotation.settled_through);
-  const after = settled == null ? typedAt : Math.max(typedAt, settled);
   return (entries || []).filter(entry => {
     const at = nextNumber(entry && entry.at);
-    return at != null && at > after && nextReadingPersonAuthored(entry);
+    return at != null && at > typedAt && nextReadingPersonAuthored(entry);
   });
+}
+
+function nextCockpitConflictCandidates(annotation, entries){
+  const settled = nextNumber(annotation && annotation.settled_through);
+  return nextCockpitLaterDirections(annotation, entries).filter(entry =>
+    settled == null || nextNumber(entry.at) > settled);
 }
 
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled,
@@ -2168,8 +2314,8 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   /* The label item 6 of
      [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
      gives a consistent resting on a check: what the tool reported, never an
-     inspection. Named by the check's own command, because the activity list
-     does not number its entries yet (its item 11). */
+     inspection. Named by the check's own command: the activity list numbers
+     its entries now (item 11), and the "#<n>" wording is DRC-4695's. */
   const reported = result === NEXT_READING_CONSISTENT
     ? citations.find(entry => String(entry.type || "") === "tool_report") : null;
   const restsOn = result !== NEXT_READING_CONSISTENT || fromPerson.length ? ""
@@ -2197,6 +2343,9 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     // evidence or states why it has none.
     evidence: limitText ? [] : citations.map(entry =>
       `${entry.type} · ${entry.source}`),
+    /* The ids behind `evidence`, after every filter above, so the activity
+       list flags exactly what this row still rests on. */
+    citedIds: limitText ? [] : citations.map(entry => String(entry.id || "")),
   };
 }
 
@@ -3011,7 +3160,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     reading: `${header}</header>` +
       (defined ? "" : `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>`) +
       `${body}</section>`,
-    departures: nextCockpitDepartures(shape, source, session)});
+    departures: nextCockpitDepartures(shape, source, session), cited: new Set()});
   /* A press that produced nothing is not the same as no press, and the
      reason it produced nothing is a sentence the producer chose from a
      closed set rather than one this page infers. */
@@ -3077,7 +3226,13 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
       '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
       stale + (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") + nextCockpitReadingBaseline(shape) + scope + why +
       shape.criteria.map(nextCockpitReadingCriterionRow).join("") + '</section>',
-    departures: nextCockpitDepartures(shape, source, session)};
+    departures: nextCockpitDepartures(shape, source, session),
+    /* What the activity list flags "Cited": the entries the surviving
+       departures rest on, from this one stored reading and nothing earlier
+       (item 6 of
+       [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
+       A consistent row's entries are listed, never flagged. */
+    cited: new Set(shape.departures.flatMap(row => row.citedIds || []).filter(Boolean))};
 }
 
 /* HOW IT LANDED: the two axes `nextObservedLanding` derives, drawn where the
@@ -3309,7 +3464,8 @@ function nextCockpitDriftBlock(group, session, primary){
     const check = '<div class="next-session-drift-check">' +
       nextCockpitReadingControl(session, null, null, primary) + '</div>';
     return {panel: open + head + check + nextCockpitDepartures(null, source, session) +
-      '</section></aside>', record: ""};
+      '</section></aside>', list: nextCockpitWorkEvidence(session, source), record: "",
+      count: nextCockpitEntryTotal(session, source)};
   }
   const annotation = nextCockpitAnnotation(session);
   const workSource = nextCockpitWorkSource(group, session);
@@ -3382,12 +3538,19 @@ function nextCockpitDriftBlock(group, session, primary){
   const panel = open + intent + head + reading.control + reading.reading +
     nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
     '</section></aside>';
-  /* In the activity column, after the session's facts: how it landed, the
-     observed record the reading cites, and where a raise is kept. */
-  const record = nextCockpitLanded(observed) +
-    nextCockpitWorkEvidence(session, workSource) +
-    nextCockpitDeparturesKept();
-  return {panel, record};
+  /* In the activity column: the numbered list the reading cites right after
+     CURRENT ACTIVITY, and how it landed and where a raise is kept after the
+     session's facts. */
+  const list = nextCockpitWorkEvidence(session, workSource, reading.cited);
+  const record = nextCockpitLanded(observed) + nextCockpitDeparturesKept();
+  return {panel, list, record, count: nextCockpitEntryTotal(session, workSource)};
+}
+
+/* The header's "N entries": the numbers given, and nothing where the record
+   was not read, because a 0 there would be a default rather than a count. */
+function nextCockpitEntryTotal(session, source){
+  if(source.state !== "read" && source.state !== "empty") return null;
+  return nextCockpitEntryNumbering(session, source).numbers.size;
 }
 
 /* The reader's answer, posted to the same route their words go to. `through`

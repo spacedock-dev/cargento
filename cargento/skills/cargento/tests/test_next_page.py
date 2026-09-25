@@ -1181,6 +1181,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-stale-read",
         ".next-cockpit-why>summary",
         ".next-cockpit-work-absent,.next-cockpit-work-limit",
+        ".next-cockpit-work-anchor,.next-cockpit-work-earlier",
         ".next-cockpit-work-derived",
         ".next-cockpit-work-dropped",
         ".next-cockpit-work-result",
@@ -1361,8 +1362,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # one: the sentence saying why a seventh outcome line is refused.
         # DRC-4686 adds three at the body floor: the analyzing box's title, its
         # steps and the line saying the page stays usable. DRC-4680 adds one: the
-        # harness limit that stands where a level would be.
-        self.assertEqual(114, len(above))
+        # harness limit that stands where a level would be. DRC-4694 adds one: the
+        # activity list's sentences saying where #1 starts and what is counted and not listed.
+        self.assertEqual(115, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

@@ -187,12 +187,15 @@ class IntentAndDriftPanelTest(PanelPage):
         self.assertLess(html.index("<h1"), html.index("<aside"))
         activity = html[main:]
         self.assertIn(">Session activity</h2>", activity)
+        # The numbered list follows CURRENT ACTIVITY under the column's heading, and its old
+        # OBSERVED RECORD heading is retired (DRC-4694).
         order = [
             activity.index(mark)
-            for mark in ("CURRENT ACTIVITY", "HOW IT LANDED", "OBSERVED RECORD")
+            for mark in ("CURRENT ACTIVITY", "data-next-cockpit-work>", "HOW IT LANDED")
         ]
         self.assertEqual(sorted(order), order)
-        for elsewhere in ("CURRENT ACTIVITY", "HOW IT LANDED", "OBSERVED RECORD"):
+        self.assertNotIn("OBSERVED RECORD", html)
+        for elsewhere in ("CURRENT ACTIVITY", "HOW IT LANDED", "data-next-cockpit-work>"):
             with self.subTest(elsewhere=elsewhere):
                 self.assertNotIn(elsewhere, aside)
 

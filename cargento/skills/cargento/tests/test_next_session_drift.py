@@ -119,7 +119,7 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             'class="next-session-facts"',
             "data-next-command-reports",
             "HOW IT LANDED",
-            "OBSERVED RECORD",
+            "data-next-cockpit-work>",
         ):
             with self.subTest(later=later):
                 self.assertLess(drift, html.index(later))
