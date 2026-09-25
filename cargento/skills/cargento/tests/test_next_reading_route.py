@@ -78,14 +78,18 @@ class ReadingRoutePageTest(NextPageJsHarness):
             "await __settle();\nawait __settle();\n" + prelude + checks, self.FIXTURE
         )
 
-    def test_a_claude_code_row_on_this_build_names_codex_and_why_before_the_button(self) -> None:
+    def test_a_claude_code_row_on_this_build_names_codex_and_why_under_the_button(self) -> None:
+        """Idle, the disclosure follows Analyze drift and describes it (owner, DRC-4680): that
+        press sends nothing. The confirming press keeps it first; see the Allow tests below."""
         out = self.render({"claude": GATED_CLAUDE}, "console.log(JSON.stringify(control()));")
         assert isinstance(out, str)
         note = "Claude Code checks are built but not yet qualified, so Codex reads this session."
         self.assertIn(note, out)
         self.assertIn("OpenAI", out)
         self.assertNotIn("Anthropic", out)
-        self.assertLess(out.index(note), out.index('data-next-cockpit-action="reading-ask"'))
+        self.assertLess(out.index('data-next-cockpit-action="reading-ask"'), out.index(note))
+        self.assertIn('aria-describedby="next-cockpit-reading-disclosure"', out)
+        self.assertIn('id="next-cockpit-reading-disclosure">' + note, out)
         self.assertIn("next-action--primary", out)
         self.assertNotIn('aria-disabled="true"', out)
 
@@ -104,8 +108,10 @@ console.log(JSON.stringify({before, after: control(), posts: posts.length}));
         for html in (out["before"], out["after"]):
             self.assertEqual(1, html.count(NO_READER["note"]))
             self.assertNotIn("next-action--primary", html)
-            self.assertIn('aria-disabled="true"', html)
-            self.assertNotIn("Allow and check", html)
+            # The reason stands where the button would be, and no inert button is drawn
+            # (owner, DRC-4680, narrowing NUI-18 for this case).
+            self.assertNotIn('data-next-cockpit-action="reading-ask"', html)
+            self.assertNotIn("Allow and analyze", html)
             self.assertNotIn("A reading sends", html)
         self.assertEqual(0, out["posts"])
 
@@ -142,9 +148,9 @@ console.log(JSON.stringify({asked, posts}));
         assert isinstance(out, dict)
         self.assertEqual(0, out["asked"]["posts"], "a Codex answer sent words to Anthropic")
         html = out["asked"]["html"]
-        self.assertIn("Allow and check", html)
+        self.assertIn("Allow and analyze", html)
         self.assertIn("Anthropic", html)
-        self.assertLess(html.index("Anthropic"), html.index("Allow and check"))
+        self.assertLess(html.index("Anthropic"), html.index("Allow and analyze"))
         self.assertEqual(1, len(out["posts"]))
         self.assertEqual("claude", out["posts"][0]["provider"])
         self.assertIs(True, out["posts"][0]["allow"])
@@ -182,7 +188,7 @@ console.log(JSON.stringify({{changed, firstPosts, posts: posts.length, gets, aga
         self.assertIn("Anthropic", out["changed"])
         # The next press asks for Claude Code's own Allow and sends nothing.
         self.assertEqual(1, out["posts"])
-        self.assertIn("Allow and check", out["again"])
+        self.assertIn("Allow and analyze", out["again"])
 
     def test_two_rows_on_two_harnesses_each_name_their_own_receiver(self) -> None:
         out = self.render(
@@ -211,7 +217,7 @@ console.log(JSON.stringify({html: control(), posts: posts.length}));
         )
         assert isinstance(out, dict)
         self.assertEqual(0, out["posts"])
-        self.assertIn('aria-disabled="true"', out["html"])
+        self.assertNotIn('data-next-cockpit-action="reading-ask"', out["html"])
         self.assertNotIn("A reading sends", out["html"])
         self.assertIn("Who would read this session is not published", out["html"])
 
@@ -301,8 +307,10 @@ console.log(JSON.stringify({asked, posts, policy: nextData.reading}));
         assert isinstance(out, dict)
         self.assertEqual(0, out["asked"]["posts"], "tool output left before a fresh Allow")
         html = out["asked"]["html"]
-        self.assertIn("Allow and check", html)
-        self.assertLess(html.index("to Codex, which reaches OpenAI"), html.index("Allow and check"))
+        self.assertIn("Allow and analyze", html)
+        self.assertLess(
+            html.index("to Codex, which reaches OpenAI"), html.index("Allow and analyze")
+        )
         self.assertEqual(1, len(out["posts"]))
         self.assertIs(True, out["posts"][0]["allow"])
         self.assertEqual("OpenAI", out["posts"][0]["tool_output"])
@@ -366,7 +374,7 @@ console.log(JSON.stringify({posts: posts.length, html: control()}));
         )
         assert isinstance(out, dict)
         self.assertEqual(1, out["posts"])
-        self.assertIn("Allow and check", out["html"])
+        self.assertIn("Allow and analyze", out["html"])
 
     def test_the_limit_lines_say_what_is_sent_and_to_whom(self) -> None:
         for name, route in (("named", GATED_CLAUDE), ("unnamed", UNNAMED_CLAUDE)):

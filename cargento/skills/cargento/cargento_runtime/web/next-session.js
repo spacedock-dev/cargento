@@ -635,8 +635,17 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const blocked = observed.isNeeds ? " next-session-detail--blocked" : "";
   const state = nextSessionDetailState(session.state);
   const stateAttr = state ? ` data-next-session-state="${state.token}"` : "";
-  const stateLabel = state ?
-    `<span class="next-visually-hidden">State: ${state.label}</span>` : "";
+  /* Visible, in the words the Sessions rows use, rather than the design's
+     "Running": renaming a state on one page would rename it for the product. */
+  /* An observed end retires the state word, as it does on the Sessions rows
+     (review C-2): "working" beside "ended 1s ago" contradicts the line under
+     it. A question still waiting says "needs input" whatever the collector
+     inferred, because after `session_ended` pops the overlay the state is the
+     collector's `working` or `idle` while the ask stays open (verifier V-2). */
+  const ended = nextSessionEndedAt(session) != null && !observed.askKnown;
+  const word = ended ? "ended" : observed.askKnown ? "needs input" : state && state.label;
+  const stateLabel = state ? '<span class="next-session-state">' +
+    `<span class="next-visually-hidden">State: </span>${word}</span>` : "";
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
@@ -646,7 +655,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
      No answer option is ever emphasised: a filled first option reads as advice
      to approve, so every option stays a plain control. A session waiting on
      the reader gives the primary to the raise when one is offered; without
-     one nothing is primary, and "Check for drift" renders as an ordinary
+     one nothing is primary, and "Analyze drift" renders as an ordinary
      control. */
   const waiting = observed.isNeeds || observed.askKnown;
   const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
@@ -654,10 +663,16 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const missingReentry = reentryLimit.resume + (nextSessionRaiseControl(session) ? "" : reentryLimit.raise);
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;
-  const identity = `<header class="next-session-detail-header">${stateLabel}` +
+  /* Two rows at most, as C1's one-row header comes out in Cargento's type:
+     the state, name and id, then the measured line with the controls beside
+     it. Stacked one per line it took 205px at 1440x900 and put Analyze drift
+     under the fold (DRC-4680 walk). */
+  const identity = '<header class="next-session-detail-header">' +
+    `<div class="next-session-detail-title">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
     `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
-    `<div class="next-session-controls">${controls}</div>${metaLine}</header>`;
+    '</div><div class="next-session-detail-bar">' +
+    `${metaLine}<div class="next-session-controls">${controls}</div></div></header>`;
   const assignment = nextSessionInstruction(session, "asked")
     ? nextSessionCommandFact("assignment", "ASSIGNMENT",
       nextInstructionLine(session, "", "next-session-command-context")) : "";
@@ -670,14 +685,18 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const label = String(session.project == null ? "" : session.project);
   const group = nextProjectGroups().find(candidate => candidate.label === label) ||
     {label, sessions: [session]};
-  const drift = nextCockpitDriftBlock(group, session,
-    nextSessionCommandSurface(session, observed), !waiting);
-  /* Identity, then what is waiting on the reader, then drift. The answer sits
-     above the check because it outranks it; for every other session the drift
-     block is the first thing after the page's name. */
-  return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
-    `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
-    nextSessionAskBlock(session, asks, observed) + drift.drift +
+  const drift = nextCockpitDriftBlock(group, session, !waiting);
+  /* Identity, then what is waiting on the reader, both full width; then the
+     Intent and drift panel and the session's activity as two columns
+     (DRC-4680). The answer sits above both because it outranks the check.
+     The panel comes first in the markup, so it is the first thing after the
+     page's name in reading and keyboard order and leads the single column on
+     a narrow screen; the stylesheet puts it on the right when both fit. The
+     page scrolls as one document: the panel is not its own scroll container
+     and is not sticky. */
+  const activity = '<div class="next-session-activity" data-next-session-activity>' +
+    '<h2 class="next-session-activity-heading">Session activity</h2>' +
+    nextSessionCommandSurface(session, observed) +
     /* Worker history has no height bound: 31 old workers put the check at
        2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
     nextSessionSubagents(observed) +
@@ -685,6 +704,11 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
     nextCommandReports(session) + nextSessionDelivery(session) + missingReentry + drift.record +
+    "</div>";
+  return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
+    `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
+    nextSessionAskBlock(session, asks, observed) +
+    `<div class="next-session-columns">${drift.panel}${activity}</div>` +
     nextSessionFooter(session) + "</article>";
 }
 

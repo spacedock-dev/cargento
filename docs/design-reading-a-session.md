@@ -425,7 +425,7 @@ suite stays green, because the fixtures bypass the rebuild.
 The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
 recorded case review to enable the control.
 
-The reading is built now. The `Ask for a reading` control (`Check for drift` since DRC-4639, `Analyze drift` once DRC-4680 ships) is not enabled until an abstention check
+The reading is built now. The `Ask for a reading` control (`Check for drift` from DRC-4639, `Analyze drift` since DRC-4680) is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
 Codex, with a person other than whoever writes the reading prompt marking each constraint in advance
 with one binary expectation. Should this abstain, or not. No severity, no expected judgement text,
@@ -1542,6 +1542,87 @@ new strings on the issue; the other calls were made within them.
   sentence is the ruling's addition.
 - "Turn off readings" does not cancel a running job in this layer: a withdrawal after the spawn does
   not stop a call already sent, and that is a separate decision.
+
+### What the panel build decided, 2026-09-24
+
+DRC-4680 built items 1 and 14 on the session page: the Intent and drift panel beside the session's
+activity. The owner ruled the first three calls below on the issue; the orchestrator made the rest on
+the analysis's recommendation.
+
+- The harness limit replaces only the level and meter. "Cargento can't read work from this harness"
+  stands in the level's slot on every harness except Claude Code and Pi, and `Analyze drift` stays
+  wherever the route names a reader, because DEC-21 item 4 still lets Codex read a Codex session.
+  Never on Pi, whose work results are read, so the sentence would be false there. The observed
+  record's old line "Cargento reads those on Pi alone" is retired for the same reason: Claude Code's
+  checks are read too.
+- With no reader on this machine, the route's reason replaces the button. The four no-producer
+  tokens and an unpublished route draw no inert button, which narrows NUI-18 for this one case
+  ([An inert control is present and refusing](design-next-ui.md#an-inert-control-is-present-and-refusing-never-absent)).
+- Idle, the button comes first and the DEC-21 disclosure follows it with the hint, and the button is
+  described by it. Confirming, the disclosure stays before "Allow and analyze", so the press that
+  gives consent still follows the text naming the receiver.
+- No meter, no header pill and no "Not checked yet" before a level exists (DRC-4695, DRC-4696). The
+  design's idle title becomes false the moment a reading is stored, and a grey scale drawn with no
+  level behind it reads the same on every session whether or not anything was read.
+- The header shows the state in Cargento's own words (working, needs input, idle), not the design's
+  "Running", which would rename a state across the product from one page.
+- The panel is not a scroll container and is not sticky; the page scrolls as one document, so the
+  reader-state inventory gains no row. The panel comes first in the markup and the stylesheet places
+  it in the second track, so it leads the single column below 1100px with no reordering trick.
+- CURRENT ACTIVITY leads the activity column rather than sitting in the panel. The ask block stays
+  full width above both columns, because the reader's answer outranks the check.
+- The reading offer said "the observed record below", which was true of the markup and false to the
+  eye once the record moved to the other column. It now names the column.
+- One primary per stage: `Analyze drift` when idle and under a stored reading (DRC-4695 and DRC-4681
+  change that later), "Allow and analyze" while confirming, none while analyzing and none with no
+  reader.
+- No Stop session control (DEC-16).
+- The fold, measured on a live board at 1440x900: the first build stacked the header one element
+  per line (205px) and put Analyze drift's bottom at 1022 on a Claude Code session and 1085 on a
+  Codex one, about 115px lower than the one-column page. Following C1's compact header, the header
+  is now two rows (state, name and id; then the measured line with the copy controls), the
+  revision stamp and "Each save is a revision." share one line, and an outcome line's box shares
+  its row with its count and remove. That put the bottom at 820 and 879 with nothing removed. C1
+  gives the aside no visible heading, only its "Intent and drift" label, so none was added.
+- The fold criterion, reworded by the owner after review: "Analyze drift sits above the fold at
+  1440x900 with a goal and up to three outcome lines (the design's textarea footprint); with more
+  lines the Drift heading stays above the fold." The owner then scoped it to a session with no
+  question waiting (2026-09-24). A waiting question runs full width above both columns, about
+  183px with a one-line question, and while it waits answering it is the primary and Analyze drift
+  is not; measured with one open, a goal and three lines put Analyze drift's bottom at 964 (Claude
+  Code) and 996 (Codex). The owner's fix for the lines themselves: every
+  saved line is one row of about one control height. The line grid had three tracks for four items
+  (box, count, source, remove), so a saved line's source pushed remove onto a second row and each
+  line cost 85px; it now has a track per item. That alone left a goal and three lines at 926 on a
+  Codex session and six lines' Drift heading at 1018, so each field's count and controls moved into
+  its heading row (before the box, in reading order as on screen) and the panel's gaps tightened.
+  Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's bottom at 788
+  (Claude Code) and 820 (Codex); six lines put the Drift heading's bottom at 900 on both, with no
+  margin, because the six-line notice ("An expected outcome holds six lines...") appears only then.
+- The heading-row move is an owner-approved departure from C1's placement (2026-09-24): each
+  field's count and controls sit beside the field's name rather than under its box.
+- One clean row, expand on focus (owner, 2026-09-24). A saved line longer than its box wrapped and
+  showed a half-cut second row, and the goal box a half-cut third. At rest a line box is one
+  unwrapped row ending in an ellipsis, and the goal box exactly two whole rows, with no bottom
+  padding for a third to show through. On focus each grows to its full text (`field-sizing:
+  content`) and returns on blur. It is CSS alone, so the expansion follows focus through a redraw
+  and the reader-state inventory gains no row; resizing is off, because a dragged height is an
+  inline style the redraw would restore over the focus rule. The value and its count stay the
+  whole text. Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's
+  bottom at 781 (Claude Code) and 813 (Codex), and six lines put the Drift heading's bottom at 893.
+  A focused 102-character line grows to its full text at 1440, 375 and 320 with no horizontal
+  overflow. Where an engine lacks `field-sizing` (it ships in Chromium), an `@supports not`
+  fallback gives a focused line four rows and the goal six, and the box scrolls inside them.
+- At 760px and below, the sheet's existing narrow step, a line's box takes the whole first row and
+  its count, source and remove follow on a second in the same order. Sharing one row, the box
+  showed about 12 characters at 320; it is now 292px wide there and 327px at 375. At 1440 and 1100
+  a line is still one row, so the fold numbers above do not move.
+- The goal's heading row is top-aligned, with the label and the count each one control tall, so an
+  open "Use a prompt" menu no longer leaves the count, clear and save floating beside its entries
+  as though they were its controls.
+- The header chip says "needs input" whenever a question is waiting, whatever state the collector
+  inferred. After `session_ended` pops the overlay, the state falls back to the collector's
+  `working` or `idle` while the ask stays open, and the chip read "working" beside "ended".
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

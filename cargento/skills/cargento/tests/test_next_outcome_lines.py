@@ -110,7 +110,8 @@ class TheExpectedOutcomeIsAChecklistTest(_ChecklistPage):
     def test_six_saved_lines_render_as_six_boxes_each_saying_where_it_came_from(self) -> None:
         html = self.page(lines_setup(SIX, ["typed", "typed", "entry", "typed", "typed", "typed"]))
 
-        self.assertIn("EXPECTED OUTCOME", html)
+        # The field's label is the design's "Expected outcome" (DEC-24 item 1, DRC-4680).
+        self.assertIn(">Expected outcome</span>", html)
         boxes = re.findall(
             r'data-next-cockpit-held-line-index="(\d)"[^>]*>([^<]*)</textarea>', html
         )

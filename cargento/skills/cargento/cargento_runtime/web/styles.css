@@ -811,31 +811,77 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   .next-attention-open p{grid-column:2}
 }
 /* ===== SESSION ===== */
-.next-session-detail{max-width:820px;margin:20px auto 0;padding:0 26px 34px;box-shadow:none}
-.next-session-detail-header{padding:20px 0}
+/* Two columns under a full-width header (DRC-4680): the activity, and the
+   Intent and drift panel at the design's 460px. The panel is first in the
+   markup and placed in the second track, so it leads a single column without
+   a reordering trick. The page scrolls as one document: no scroll container
+   and nothing sticky, so docs/design-reader-state.md gains no row. */
+.next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
+.next-session-columns{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:var(--sp-5);align-items:start}
+.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
+.next-session-activity{grid-column:1;grid-row:1;min-width:0}
+.next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-panel .next-cockpit-held{gap:6px;padding:0}
+.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:8px}
+.next-session-panel .next-cockpit-held-list{gap:2px}
+/* One clean row at rest, the whole text on focus (owner, DRC-4680). A line
+   box wrapped and showed a half-cut second row, and the goal box a half-cut
+   third. At rest a line is one unwrapped row with an ellipsis where it runs
+   on; the goal is exactly two whole rows, with no bottom padding for a third
+   to show through. Focus lifts both to the full text. CSS alone, so focus
+   carries it through a redraw and there is no held state
+   (docs/design-reader-state.md gains no row). The at-rest rules take
+   `:not(:focus)` so focus gives the box back its own overflow rather than
+   declaring a scroll container. `resize` is off because a dragged height is
+   an inline style the redraw puts back over the focus rule.
+   The value and its count are the whole text either way. */
+.next-session-panel .next-cockpit-held-field textarea{resize:none}
+.next-session-panel .next-cockpit-held-line textarea:not(:focus){height:calc(var(--fs-body)*1.55 + 16px);min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
+.next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
+.next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
+/* Where `field-sizing` is missing the box cannot size to its text, so focus
+   gives it several rows and it scrolls inside them (verifier V-3). */
+@supports not (field-sizing: content){
+  .next-session-panel .next-cockpit-held-line textarea:focus{height:calc(var(--fs-body)*1.55*4 + 16px)}
+  .next-session-panel .next-cockpit-held-field>textarea:focus{height:calc(var(--fs-body)*1.55*6 + 16px)}
+}
+/* Top-aligned, each item one control tall, so a field's count and controls
+   stay on the heading's first line and never float beside an open "Use a
+   prompt" menu as though they were its controls (verifier V-4). */
+.next-session-panel .next-cockpit-held-heading{align-items:flex-start}
+.next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
+.next-session-panel .next-cockpit-held-heading>.next-cockpit-held-count{display:inline-flex;min-height:44px;align-items:center}
+.next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
+.next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+/* Two rows: state, name and id; then the measured line with the controls on
+   its right. One element per line took 205px and pushed Analyze drift to
+   978-1022px at 1440x900 (DRC-4680 walk). */
+.next-session-detail-header{display:flex;flex-direction:column;gap:6px;padding:8px 0 14px}
+.next-session-detail-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;min-width:0}
+.next-session-detail-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.next-session-detail-bar>.next-session-detail-meta{flex:1 1 16rem}
 .next-session-section>h2,.next-session-ask-callout>span{display:block;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
-.next-session-detail h1{margin:0 0 10px;font-size:var(--fs-value);font-weight:600;letter-spacing:-.015em;overflow-wrap:anywhere}
+.next-session-detail h1{margin:0;font-size:var(--fs-value);font-weight:600;letter-spacing:-.015em;overflow-wrap:anywhere}
 .next-session-detail-instruction{margin:0 0 10px;overflow-wrap:anywhere;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-instruction-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
 .next-session-command-surface{margin-top:0}
-/* The drift block leads the session page (DRC-4639). One card holding what was
-   the Held to tab's first five sections, with the agent's direction card set
-   inside it beside the reader's words rather than as a second card above. */
-.next-session-drift{margin:18px 0 0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
-.next-session-drift-heading{margin:0;padding:14px 16px 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.next-session-drift>.next-session-command-surface{margin:0 16px 14px}
+/* The Drift section: one card holding the control, the reading, any later
+   direction, the caveats and the departures. */
+.next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
+.next-session-drift-head{padding:8px 16px 10px}
+.next-session-drift-heading{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-drift-sub{margin:4px 0 0;color:var(--ink2);font-size:var(--fs-label)}
+.next-session-drift-limit{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-session-drift>.next-cockpit-conflict{margin:0 16px 14px}
-/* The check and its send disclosure, directly under the direction, and the
-   caveats on the reader's words below the reading (DRC-4639). */
+/* The control with its hint and send disclosure, first in the Drift section,
+   and the caveats on the reader's words below the reading (DRC-4639). */
 .next-session-drift-check,.next-session-drift-caveats{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
-.next-cockpit-reading-ask{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;align-items:start}
-.next-cockpit-reading-ask>button{grid-column:1;align-self:start}
-.next-cockpit-reading-ask>p{grid-column:2;grid-row:1}
-@media(max-width:760px){
-  .next-cockpit-reading-ask{grid-template-columns:minmax(0,1fr)}
-  .next-cockpit-reading-ask>button,.next-cockpit-reading-ask>p{grid-column:1;grid-row:auto;justify-self:start}
-}
+/* One narrow column: the buttons share a row, and a disclosure before "Allow
+   and analyze" or a no-reader reason takes the full width above them. */
+.next-cockpit-reading-ask{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.next-cockpit-reading-ask>p{flex:1 1 100%;margin:0}
 .next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
 .next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
 .next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}
@@ -875,7 +921,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-current>strong{font-size:var(--fs-body);font-weight:600}
 .next-session-detail .next-session-absent{color:var(--ink-absence);font-family:var(--sans)}
 .next-session-identity{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
-.next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 10px}
+.next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 0 auto}
 .next-session-controls .next-session-copy,.next-session-controls .next-session-raise{margin:0}
 .next-session-controls .next-session-raise{font-weight:700}
 .next-session-section[data-next-session-section="ask"]{padding:13px 16px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
@@ -893,8 +939,18 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-evidence h2{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-source-coverage summary{min-height:44px;align-content:center}
 .next-session-source-coverage summary:focus-visible,.next-session-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:1100px){
+  .next-session-columns{grid-template-columns:minmax(0,1fr)}
+  .next-session-panel,.next-session-activity{grid-column:1;grid-row:auto}
+}
 @media(max-width:760px){
   .next-session-detail{padding:0}
+  /* A line's box takes the whole first row, and its count, source and remove
+     follow on a second in the same order: sharing one row, the box showed
+     about 12 characters at 320 (DRC-4680). */
+  .next-session-panel .next-cockpit-held-line{grid-template-columns:auto auto minmax(0,1fr)}
+  .next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea{grid-column:1/-1}
+  .next-session-panel .next-cockpit-held-line>button{justify-self:start}
   .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}
   .next-session-command-facts{grid-template-columns:1fr}
   .next-session-command-facts>section+section{border-top:1px solid var(--rule);border-left:0}
@@ -1156,6 +1212,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--rule)}
 .next-cockpit-held-heading{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+/* The field's controls sit at the end of its heading row. */
+.next-cockpit-held-tools{display:flex;align-items:center;gap:4px 8px;margin-left:auto}
+.next-cockpit-held-heading>.next-cockpit-held-count{margin-left:auto}
+.next-cockpit-held-heading>.next-cockpit-held-count+.next-cockpit-held-tools{margin-left:0}
 .next-cockpit-held-adopt,.next-cockpit-prompt-choices{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .next-cockpit-held-adopt>summary,.next-cockpit-prompt-choices>summary{min-height:44px;align-content:center;cursor:pointer}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
@@ -1172,8 +1232,13 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The expected outcome's checklist: one row per line, each its own box,
    counter, source and remove, inside the field's own grid. */
 .next-cockpit-held-list{grid-column:1/-1;display:grid;gap:6px;margin:0;padding:0;list-style:none}
-.next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:2px 8px}
-.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px}
+/* Four tracks for a saved line's four items (box, count, source, remove):
+   with three, the source pushed remove onto a second row and each line cost
+   85px instead of one control height (owner, DRC-4680). */
+.next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:baseline;gap:2px 8px}
+/* A line's box, count and remove share one row, so each line costs one
+   control height rather than two in the panel's narrow column. */
+.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px;grid-column:auto}
 .next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-source[hidden]{display:none}
 .next-cockpit-held-full{grid-column:1/-1;margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}

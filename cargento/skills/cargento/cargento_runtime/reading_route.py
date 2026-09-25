@@ -471,7 +471,7 @@ def resolve(
         lack
         + _sentence(
             [_clause(preferred, first), _clause(other, second)],
-            ", so no check can run for this session.",
+            ", so no analysis can run for this session.",
         ),
         fallback=False,
         where=where,

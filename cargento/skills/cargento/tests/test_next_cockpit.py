@@ -4338,7 +4338,7 @@ for(const focus of [null, "codex:focus-1"]){
   seen[focus || "project"] = {
     tab: html.includes('data-arg="held-to"'),
     drift: html.includes("data-next-session-drift"),
-    asked: html.includes("WHAT YOU ASKED FOR"),
+    asked: html.includes(">Intent</h2>"),
 
     goal: html.includes("Capture every screen with live sessions"),
     revision: html.includes("revision 2 of 2"),
@@ -5297,10 +5297,11 @@ console.log(JSON.stringify({
         # The limit is unconditional on every harness but Pi, and it is the
         # half a reader cannot infer: an absent row reads as "no work" unless
         # the page says the path that would have found it was never taken.
+        # "Cargento reads those on Pi alone" is retired (DRC-4680): Claude
+        # Code's checks are read too.
         self.assertEqual(
-            "Codex publishes no demonstrated work results. Cargento reads those "
-            "on Pi alone, so nothing above is an inspected file, test or "
-            "deliverable.",
+            "Codex publishes no demonstrated work results, so nothing above is an "
+            "inspected file, test or deliverable.",
             out["limit"],
         )
 
@@ -6208,7 +6209,7 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         assert isinstance(out, dict)
         self.assertEqual(
             "Nothing has been typed for this session, so there is nothing to read it against. "
-            "Save a goal above to check for drift.",
+            "Save a goal above to analyze drift.",
             out["empty"]["reason"],
         )
         # The control renders in every reason state now, inert and carrying
@@ -6643,7 +6644,7 @@ console.log(JSON.stringify({
   count: block.split(sentence).length - 1,
   buttonAt,
   afterButton: block.indexOf(sentence) > buttonAt,
-  extended: block.includes(sentence + " Save a goal above to check for drift."),
+  extended: block.includes(sentence + " Save a goal above to analyze drift."),
 }));
 """
         )
@@ -6917,7 +6918,7 @@ console.log(JSON.stringify({before, afterPress, statuses, afterSave, stillRefuse
     # `held-to` kept its one primary, "Ask for a reading", until DRC-4639 merged
     # it into the session page. There the rule is "at most one primary; none
     # while a question is open without a raise" (DEC-20, which amends this
-    # ruling): "Check for drift" holds it on an unblocked session, no answer
+    # ruling): "Analyze drift" holds it on an unblocked session, no answer
     # option is ever emphasised, and a blocked session with no raise on offer
     # has none. The per-tab count below is extended with both session-page
     # states rather than replaced.
@@ -9824,11 +9825,11 @@ console.log(JSON.stringify({
         assert isinstance(control, str)
 
         self.assertIn(
-            "Checking for drift is not enabled in this build, because the abstention check that "
+            "Analyzing drift is not enabled in this build, because the abstention check that "
             "gates it has not been recorded.",
             control,
         )
-        self.assertIn("Check for drift</button>", control)
+        self.assertIn("Analyze drift</button>", control)
         # `aria-disabled`, not the bare attribute: the control keeps its place
         # in the tab order and `nextCockpitAskForReading` refuses the press it
         # now receives (DRC-4588). Both spellings are named, because a
@@ -9836,7 +9837,7 @@ console.log(JSON.stringify({
         self.assertIn('aria-disabled="true"', control)
         self.assertNotIn(" disabled>", control)
         # And the review section itself invites no press of its own.
-        self.assertNotIn("Check for drift", out["block"])
+        self.assertNotIn("Analyze drift", out["block"])
 
     def test_an_unsettled_baseline_leaves_no_departure_in_the_reading_part(self) -> None:
         """AC3, verified rather than rebuilt.
@@ -12488,7 +12489,7 @@ console.log(JSON.stringify({
         for claim in ("watch", "automatic", "checks for you"):
             with self.subTest(claim=claim):
                 self.assertNotIn(claim, lede.lower())
-        self.assertIn("check for drift", lede)
+        self.assertIn("analyze drift", lede)
 
     def test_the_section_order_puts_the_record_last(self) -> None:
         """AC-3. Falsified by moving any section, including re-raising OBSERVED
@@ -12499,8 +12500,10 @@ console.log(JSON.stringify({
         # The check sits directly under the words and the direction, so it is on the first
         # screen; the reading, then the later-direction question it constrains, follow it
         # (DRC-4639).
+        # The panel precedes the activity column in the markup (DRC-4680), so the
+        # record still comes last.
         order = [
-            "WHAT YOU ASKED FOR",
+            ">Intent</h2>",
             'data-next-cockpit-action="reading-ask"',
             "<h2>READING</h2>",
             "CONFLICT TO SETTLE",
@@ -12613,8 +12616,11 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "so the question below still stands as it did": "next-cockpit-conflict-open",
         "already been dropped and the question below still stands": "next-cockpit-conflict-open",
         "so nothing above is an inspected file": "OBSERVED RECORD",
-        "Save a goal above to check for drift": 'class="next-cockpit-held-fields"',
-        "the observed record below and the goal and output you saved": "OBSERVED RECORD",
+        "Save a goal above to analyze drift": 'class="next-cockpit-held-fields"',
+        # "the observed record below" left this table with its positional word
+        # (DRC-4680): the record is in the activity column beside the panel, so
+        # "below" was true of the markup and false to the eye. The offer now
+        # names the column, and a row for it would match nothing.
         "after you saved the words above": 'class="next-cockpit-held-fields"',
     }
 
@@ -12633,6 +12639,19 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         "settle-refused": "",
         "settle-unpersisted": "",
         "model": "",
+        # An Expected Output row in the panel (DRC-4680 review, C-5): on Codex its limit line
+        # names the record, which is in the activity column beside the panel, so it may not
+        # point "above" at it. Without this arm no render drew that row.
+        "reading-row": (
+            '__dashboard.sessions[0].annotation_line_1 = "a CSV export";\n'
+            '__dashboard.sessions[0].annotation_line_1_source = "typed";\n'
+            "__dashboard.sessions[0].annotation_at = 106;\n"
+            "__dashboard.sessions[0].annotation_reading_count = 1;\n"
+            "__dashboard.sessions[0].annotation_assessment = {revision_read:2, criteria:{"
+            'goal:{result:"not verifiable from available evidence", cites:[], detail:""},'
+            'line_1:{result:"not verifiable from available evidence", cites:[], detail:"",'
+            ' clause:"a CSV export"}}};\n'
+        ),
     }
 
     def arm(self, name: str) -> str:
@@ -13586,10 +13605,11 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         self.assertNotIn("publishes no demonstrated work results", out["limit"][0])
         self.assertNotIn("nothing above is an inspected file", out["limit"][0])
         self.assertIn("the checks a session ran", out["limit"][0])
-        # Codex and Pi read exactly what they read before.
+        # Codex no longer claims Pi is the only harness read (DRC-4680); Pi
+        # reads exactly what it read before.
         self.assertEqual(
-            "Codex publishes no demonstrated work results. Cargento reads those on Pi alone,"
-            " so nothing above is an inspected file, test or deliverable.",
+            "Codex publishes no demonstrated work results, so nothing above is an inspected"
+            " file, test or deliverable.",
             out["codex"],
         )
         self.assertEqual(
@@ -13600,7 +13620,15 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         # Output, and the line under the checks says what is sent and to whom.
         self.assertEqual("", out["readingClaude"])
         self.assertIn("to Codex, which reaches OpenAI", out["limit"][0])
-        self.assertEqual(out["codex"], out["readingCodex"])
+        # The reading row has its own sentence since the DRC-4680 review (C-5): it sits in the
+        # panel, beside the record rather than under it, so it names the record instead of
+        # pointing "above" at it.
+        self.assertEqual(
+            "Codex publishes no demonstrated work results, so nothing in this session\u2019s "
+            "observed record is an inspected file, test or deliverable.",
+            out["readingCodex"],
+        )
+        self.assertNotRegex(out["readingCodex"], r"\b(?:above|below)\b")
         self.assertEqual("", out["readingPi"])
 
     def test_the_totals_give_the_latest_results_and_the_writes_outside(self) -> None:  # R16, R10

@@ -647,9 +647,13 @@ arrives the page says so rather than claiming the session is absent. The header'
 beside `COPY ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
-Since DRC-4639 the page leads, after its identity header, with the drift block that was the cockpit's
-Held to tab, and the CURRENT ACTIVITY card sits inside it beside the reader's words. A blocked
-session's question comes between the header and the block.
+Since DRC-4639 the page leads, after its identity header, with what was the cockpit's Held to tab.
+Since DRC-4680 that is the Intent and drift panel, an aside of its own beside a "Session activity"
+column, and the CURRENT ACTIVITY card leads that column rather than sitting inside the panel. The
+panel is first in the markup, so it follows the page's name in reading and keyboard order and leads
+the single column below 1100px; the stylesheet puts it in the right-hand track when both fit. It
+scrolls with the page and is not sticky. A blocked session's question comes between the header and
+both columns.
 [DEC-20](design-reading-a-session.md#what-the-session-page-build-had-to-decide) owns the order and
 the one primary.
 
@@ -1192,7 +1196,7 @@ disclosures, and the legacy project view. `.next-action--primary` is a filled ti
 `#14140f` at 13.66:1, where it was previously an accent border on a transparent box and so still
 left nothing on the board reading as the act to take. It reached exactly one tab, Held to, because
 four of the five have no action to mark at all. Since DRC-4639 merged Held to into the session page,
-the primary lives there instead, as `Check for drift`. A session blocked on the reader gives it to
+the primary lives there instead, as `Analyze drift` (`Check for drift` until DRC-4680). A session blocked on the reader gives it to
 the raise when one is offered and otherwise has none, because no answer option is ever emphasised
 ([DEC-20](design-reading-a-session.md#what-the-session-page-build-had-to-decide)). The four
 cockpit tabs still carry none.
@@ -1276,6 +1280,13 @@ control renders, from one function, rather than computing its own answer. A hand
 opinion can refuse a press the button offered, or take one the button refused. The refusal is
 answered rather than dropped, because a clicked control that goes silent is indistinguishable from a
 dead one.
+
+**One narrowing: no reader on this machine (owner, DRC-4680).** When the route names no provider,
+or has not been published, the route's reason stands where `Analyze drift` would be and no inert
+button is drawn. A machine with no reading producer has no press to refuse, and DRC-4681 puts Steer
+back from the recorded facts in that slot as its primary. Every other refusal (annotations off,
+model calls off, the build gate, the daily cap, no saved words) keeps the inert control with its
+reason, as above.
 
 ## NUI-19: a caveat has three tiers
 
