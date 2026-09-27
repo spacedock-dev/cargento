@@ -314,19 +314,70 @@ _CLAUDE_SESSION_MARKERS = frozenset(
 )
 
 
+READING_FALLBACK_TMP = "/tmp"  # noqa: S108 - an owner-only directory is made inside it
+
+
+def _account() -> tuple[str, str]:
+    """The account's home and name, from the password database rather than `HOME`."""
+    import pwd  # noqa: PLC0415 - POSIX only; the caller never reaches this on Windows
+
+    entry = pwd.getpwuid(os.getuid())
+    return entry.pw_dir, entry.pw_name
+
+
+def _names_the_account(path: str, home: str, name: str) -> bool:
+    """Whether a path sits under the account's home or names the account in a component.
+
+    A component contains the name for names of three characters or more; a
+    shorter name must be a whole component, or every path would match.
+    """
+    real = os.path.realpath(path)
+    for root in {os.path.realpath(home), os.path.realpath(os.path.expanduser("~"))}:
+        if real == root or real.startswith(root.rstrip(os.sep) + os.sep):
+            return True
+    parts = [part for part in real.split(os.sep) if part]
+    if len(name) >= 3:
+        return any(name in part for part in parts)
+    return name in parts
+
+
+def reading_workdir_root() -> str | None:
+    """Where a Claude Code reading's working directory is made, or None to refuse.
+
+    The CLI names its working directory to the model (measured on 2.1.283), so
+    the location must name neither the account's home nor its user name. The
+    system temp directory first, `READING_FALLBACK_TMP` when `TMPDIR` points
+    under home or at a path naming the user (review, Sent F2), and nothing
+    when both do. On Windows the temp directory is inside the profile and no
+    fallback is tried; SECURITY.md says so.
+    """
+    if os.name == "nt":
+        return tempfile.gettempdir()
+    home, name = _account()
+    for candidate in (tempfile.gettempdir(), READING_FALLBACK_TMP):
+        if os.path.isdir(candidate) and not _names_the_account(candidate, home, name):
+            return os.path.realpath(candidate)
+    return None
+
+
 def claude_environment(environ: Mapping[str, str]) -> dict[str, str]:
     """The reading call's environment: the daemon's, minus the opener's session.
 
     Public and pure, as `git_status.probe_environment` is, so a test asserts
     the scrub without spawning anything.
     """
-    return {
+    env = {
         key: value
         for key, value in environ.items()
         if key not in _CLAUDE_SESSION_MARKERS
         and not key.startswith("CLAUDE_CODE_MESSAGING_")
         and not (key.startswith("CLAUDE_CODE_") and "SESSION" in key)
     }
+    # Measured on 2.1.283 under a no-egress sandbox: without it the CLI looked
+    # up six other hosts per call (telemetry, feature flags); with it, none
+    # (review, Sent F3). Forced, so an operator's 0 does not turn it back on.
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    return env
 
 
 def claude_exec(
@@ -367,15 +418,17 @@ def claude_exec(
     binary = binary_resolver("claude")
     if not binary or not os.path.isabs(binary):
         return "", "unavailable"
+    # Outside the state directory, whose path carries the account's home: the
+    # CLI names its working directory to the model even under
+    # `--system-prompt` (measured on 2.1.283). Owner-only and empty either way.
+    root = reading_workdir_root()
+    if root is None:
+        return "", "failed"
     os.makedirs(config.state_dir, mode=0o700, exist_ok=True)
     workdir = ""
     output_path = ""
     try:
-        # The system temp directory, not the state directory: the CLI names
-        # its working directory to the model even under `--system-prompt`
-        # (measured on 2.1.283), and the state directory's path carries the
-        # account's home. Owner-only and empty either way.
-        workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-")
+        workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-", dir=root)
         descriptor, output_path = tempfile.mkstemp(
             prefix="reading-claude-", suffix=".txt", dir=config.state_dir
         )

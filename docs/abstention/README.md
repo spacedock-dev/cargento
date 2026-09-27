@@ -165,15 +165,22 @@ reads (DRC-4711):
   dropped check all land here.
 - `tool-output-differs`: `tool_output`, the tails and changed-after pairs, is not exactly what a
   press at `captured_at` read.
-- `facts-unconfirmed`: a user message in the packet is not one the transcript holds. A message the
-  transcript holds may be absent from the packet, because the board reads a bounded tail. Measured
-  on three recorded sessions, a user message is the only fact a Claude Code case carries besides
-  its checks, so any other fact lands here too.
+- `facts-unconfirmed`: the packet's user messages are not the newest ones the transcript holds up
+  to `captured_at`, in order, with none missing between them and none repeated, or are fewer than
+  the board's bounded tail reads today. An older message may be absent, because the board read a
+  bounded tail when the packet was frozen, and a file no larger than today's. Measured on three
+  recorded sessions, a user message is the only fact a Claude Code case carries besides its
+  checks, so any other fact lands here too.
+- `activity-after-stop`: the transcript holds a record stamped after the recorded stop or end and
+  at or before `captured_at`. Moving the capture later would otherwise carry a later turn into a
+  case vouched for at the stop. The freeze refuses the same capture with the same word.
+- `frozen-on-another-parser`: the case's `parser` stamp, a sha256 over `project_context.py` and
+  `reading.py` written at freeze, does not match the scorer's. Every case would differ, so this is
+  named on its own rather than read as tampering. Freeze again on the tree you score on, with the
+  freeze board started from that same checkout, since the board derives the user messages.
 
-Turns appended after `captured_at` are not a mismatch. The rebuild follows the parser, so freeze
-the packet on the tree you score on: a parser change between the two demotes every case. A Codex
-case has no transcript this check reads, and under the per-producer floor it is a control that
-never covers. A case that fails any of
+Turns appended after `captured_at` are not a mismatch. A Codex case has no transcript this check
+reads, and under the per-producer floor it is a control that never covers. A case that fails any of
 them becomes `synthetic`, is withheld as `not-recorded` without a model call, and never meets the
 floor, whatever the packet or the rubric says. A case the packet itself calls `synthetic` is
 different: it is sent, charged and scored, so it can fail the run, and it never meets the floor. `--report` runs the same check and counts only the
@@ -224,14 +231,19 @@ case the cap stopped is withheld as `spend-cap`.
   ledger recorded as the last run, so a hand-edited outcome is refused.
 
 `--probe-argv` is the one way to watch what the CLI sends without spending. It starts its own stub
-on `127.0.0.1`, runs the verified CLI once with a fixed sentence, every `ANTHROPIC_*`,
-`CLAUDE_CODE_USE_*` and proxy variable removed, the base URL pointed at that stub and a placeholder
-key. It refuses to run when `reading_route.destination` would name anything else, and refuses the
-answer unless it carries a nonce only the stub knew, so a forwarding proxy or an operator's
-`ANTHROPIC_BASE_URL` cannot turn it into a real call (DRC-4710). It prints yes or no for: the argv
-carries `--system-prompt`, the request carries the fixed sentence, and the request names the home
-directory, the user name or the state directory. It exits 0 only when the first two are yes and the
-rest no, and it writes no result and charges nothing.
+on `127.0.0.1` and runs the verified CLI twice with a fixed sentence: once signed in with a
+placeholder API key, and once with a placeholder OAuth token and a placeholder account (a random
+`@example.invalid` email and UUID) it writes into a config directory of its own. Every endpoint,
+provider, credential, config-directory and proxy variable [SECURITY.md](../../SECURITY.md#the-abstention-check)
+lists is removed, and the base URL points at the stub. It refuses to run when
+`reading_route.destination` would name anything else, and refuses the answer unless it carries a
+nonce only the stub knew, so a forwarding proxy or an operator's `ANTHROPIC_BASE_URL` cannot turn
+it into a real call (DRC-4710). Per pass it prints yes or no for: the argv carries
+`--system-prompt`, the request carries the fixed sentence, and the request names the home
+directory, the user name or the state directory. The OAuth pass adds whether the placeholder email
+is in the disclosed block the CLI adds and whether the email or UUID appear anywhere else. It exits
+0 only when the first two are yes and every leak is no, and it writes no result and charges
+nothing. It says only what reached its stub; run it under an OS sandbox to know nothing else left.
 
 The owner's commands, in order. `CARGENTO_HOME` holds the packet; the ledger does not move with it:
 
@@ -306,7 +318,10 @@ Kept beside the cases, never here. Its shape, so a case set can be written again
 ```
 
 `kind` is one of `supported-departure`, `legitimate-change`,
-`matching-intent-incorrect-execution`, `misleading-completion` and `insufficient-evidence`.
+`matching-intent-incorrect-execution`, `misleading-completion` and `insufficient-evidence`. A
+departure the case's own prompt asked for does not count as `supported-departure`: tag it only when
+the agent left the stated scope on its own
+([DEC-17, amended 2026-09-27](../design-reading-a-session.md#amended-2026-09-27-the-floor-is-judged-per-producer)).
 `result` is one of `departure`, `consistent` and `unverifiable`, the producer's own three tokens. A
 `recorded` entry names a case in the cases file by id and carries no body, and against a format 5
 case its `expect` is keyed `goal` and `line_1` onwards. Every asked constraint of a rubric case is

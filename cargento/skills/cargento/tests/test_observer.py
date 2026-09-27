@@ -1917,6 +1917,49 @@ class ClaudeExecTest(unittest.TestCase):
                 self.assertNotIn(root, cwd.parents)
         self.assertFalse(cwd.exists(), "the working directory outlived the call")
 
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_tmpdir_under_home_falls_back_to_tmp(self) -> None:
+        # Sent F2: TMPDIR under home (direnv, Nix shells, ~/tmp) put the home
+        # path and user name in the environment block the CLI sends.
+        fake_home = Path(tempfile.mkdtemp(), "Users", "alicequux")
+        under = fake_home / "tmp"
+        under.mkdir(parents=True)
+        with (
+            mock.patch.object(observer, "_account", return_value=(str(fake_home), "alicequux")),
+            mock.patch.object(tempfile, "tempdir", str(under)),
+        ):
+            seen, _text, status, _config = self._run()
+        self.assertEqual("ok", status)
+        cwd = Path(seen[0][1]["cwd"]).resolve()
+        self.assertEqual(Path("/tmp").resolve(), cwd.parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_temp_path_naming_the_user_falls_back_to_tmp(self) -> None:
+        named = Path(tempfile.mkdtemp(), "scratch-alicequux")
+        named.mkdir()
+        with (
+            mock.patch.object(
+                observer, "_account", return_value=("/nonexistent-home", "alicequux")
+            ),
+            mock.patch.object(tempfile, "tempdir", str(named)),
+        ):
+            seen, _text, _status, _config = self._run()
+        self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_no_temp_location_outside_home_refuses_before_anything_runs(self) -> None:
+        fake_home = Path(tempfile.mkdtemp(), "home", "alicequux")
+        (fake_home / "tmp").mkdir(parents=True)
+        with (
+            mock.patch.object(observer, "_account", return_value=(str(fake_home), "alicequux")),
+            mock.patch.object(tempfile, "tempdir", str(fake_home / "tmp")),
+            mock.patch.object(observer, "READING_FALLBACK_TMP", str(fake_home / "tmp")),
+        ):
+            seen, text, status, config = self._run()
+        self.assertEqual(("", "failed"), (text, status))
+        self.assertEqual([], seen)
+        self.assertEqual([], os.listdir(config.state_dir))
+
     def test_stdout_goes_to_an_owner_only_file_outside_the_working_directory(self) -> None:
         seen: list[tuple[str, int]] = []
 
@@ -2006,6 +2049,16 @@ class ClaudeExecTest(unittest.TestCase):
             with self.subTest(kept=name):
                 self.assertEqual("x", scrubbed.get(name))
         self.assertIn("CLAUDECODE", environ, "the caller's mapping was modified")
+
+    def test_a_reading_turns_off_the_clis_nonessential_traffic(self) -> None:
+        # Sent F3: measured under a no-egress sandbox, the CLI looked up six
+        # other hosts per reading, and none with this variable set.
+        for environ in ({}, {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "0"}):
+            with self.subTest(environ=environ):
+                scrubbed = observer.claude_environment(environ)
+                self.assertEqual("1", scrubbed["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
+        seen, _text, _status, _config = self._run()
+        self.assertEqual("1", seen[0][1]["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
 
     def test_the_call_runs_with_the_scrubbed_environment(self) -> None:
         with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "s"}):

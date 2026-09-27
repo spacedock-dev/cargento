@@ -150,6 +150,10 @@ BINDING = {
     "signature": "Developer ID Q6L2SF6YDW com.anthropic.claude-code",
 }
 
+_VERIFIED = score_abstention.VerifiedClaude(
+    BINDING["binary"], BINDING["cli_version"], "/abs/claude", BINDING["signature"], (0, 0, 0, 0, "")
+)
+
 _LEDGER_PATCH: Any = None
 
 
@@ -266,18 +270,14 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             mock.patch.object(
                 score_abstention,
                 "verify_claude_binary",
-                return_value=(
-                    BINDING["binary"],
-                    BINDING["cli_version"],
-                    "/abs/claude",
-                    BINDING["signature"],
-                ),
+                return_value=_VERIFIED,
             ),
             mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
             mock.patch("builtins.print"),
         ):
             self.assertEqual(0, score_abstention.main(["--score", "--producer", "claude"]))
         self.assertIsInstance(seen["model"], reading.ClaudeReadingModel)
+        self.assertIsInstance(seen["model"].binary_resolver, score_abstention.PinnedClaude)
         self.assertEqual(score_abstention.CLAUDE_SUMMARY_PATH, seen["summary_path"])
         self.assertEqual(
             ("docs", "abstention", "claude-results.json"), Path(seen["summary_path"]).parts[-3:]
@@ -810,7 +810,7 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
             return mock.Mock(return_value=mock.Mock(returncode=0, stdout=f"{version}\n"))
 
         with mock.patch.object(score_abstention, "CLAUDE_VERSIONS_ROOTS", (str(versions),)):
-            path, version, absolute, _signed = score_abstention.verify_claude_binary(
+            path, version, absolute, _signed, _identity = score_abstention.verify_claude_binary(
                 resolver=lambda _name: str(real), runner=run("2.1.281 (Claude Code)")
             )
             self.assertEqual("2.1.281 (Claude Code)", version)
@@ -834,12 +834,7 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
             mock.patch.object(
                 score_abstention,
                 "verify_claude_binary",
-                return_value=(
-                    BINDING["binary"],
-                    BINDING["cli_version"],
-                    "/abs/claude",
-                    BINDING["signature"],
-                ),
+                return_value=_VERIFIED,
             ),
             mock.patch.object(score_abstention, "probe_argv", return_value=0) as probe,
             mock.patch("builtins.print"),
@@ -903,14 +898,30 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
             "ANTHROPIC_BASE_URL": self.proxy.url,
             "HTTPS_PROXY": self.proxy.url,
             "https_proxy": self.proxy.url,
-            "ANTHROPIC_API_KEY": "sk-ant-PLACEHOLDER-operator",
+            "ANTHROPIC_API_KEY": "PLACEHOLDER-operator-key",
             "ANTHROPIC_AUTH_TOKEN": "PLACEHOLDER-token",
             "CLAUDE_CODE_USE_BEDROCK": "1",
+            "CLAUDE_CODE_OAUTH_TOKEN": "PLACEHOLDER-operator-oauth",
+            "CLAUDE_CONFIG_DIR": str(Path(tempfile.mkdtemp(), "operator-config")),
+            "CLAUDE_CODE_HTTPS_PROXY": self.proxy.url,
+            "CLAUDE_CODE_HTTP_PROXY": self.proxy.url,
+            "CLAUDE_CODE_PROXY_URL": self.proxy.url,
+            "ALL_PROXY": self.proxy.url,
         }
         self.seen: list[dict[str, Any]] = []
         self.printed: list[str] = []
 
-    def cli(self, *, obeys: bool = True, adds: str = "") -> Any:
+    @staticmethod
+    def account(env: dict[str, str]) -> dict[str, str]:
+        path = Path(env.get("CLAUDE_CONFIG_DIR", "/nonexistent"), ".claude.json")
+        if not path.is_file():
+            return {}
+        account: dict[str, str] = json.loads(path.read_text()).get("oauthAccount") or {}
+        return account
+
+    def cli(
+        self, *, obeys: bool = True, adds: str = "", leak: str = "", header_leak: bool = False
+    ) -> Any:
         """A fake Claude Code CLI: posts one Messages request and prints the reply text."""
         import urllib.request  # noqa: PLC0415
 
@@ -921,21 +932,39 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
                 env.get("ANTHROPIC_BASE_URL", "") if obeys else self.operator["ANTHROPIC_BASE_URL"]
             )
             system = command[command.index("--system-prompt") + 1] + adds
+            messages: list[dict[str, Any]] = [{"role": "user", "content": kwargs["input"]}]
+            account = self.account(env)
+            headers = {"content-type": "application/json"}
+            user_id = {"device_id": "d" * 64, "account_uuid": "", "session_id": "s"}
+            if account and "ANTHROPIC_API_KEY" not in env:
+                # What 2.1.283 adds under OAuth sign-in, as the review measured.
+                messages[0]["content"] = (
+                    "<system-reminder>\n# userEmail\nThe user's email address is "
+                    f"{account['emailAddress']}. Use it only to identify the user.\n"
+                    f"</system-reminder>\n{kwargs['input']}"
+                )
+                user_id["account_uuid"] = account["accountUuid"]
+                system += leak.replace("EMAIL", account["emailAddress"])
+                if header_leak:
+                    headers["x-probe-account"] = account["accountUuid"]
             body = json.dumps(
                 {
                     "model": observer.CLAUDE_READING_MODEL,
                     "system": [{"type": "text", "text": system}],
-                    "messages": [{"role": "user", "content": kwargs["input"]}],
+                    "messages": messages,
+                    "metadata": {"user_id": json.dumps(user_id)},
                     "stream": False,
                 }
             ).encode()
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             request = urllib.request.Request(  # noqa: S310 - loopback only
-                f"{base}/v1/messages", data=body, headers={"content-type": "application/json"}
+                f"{base}/v1/messages", data=body, headers=headers
             )
             with opener.open(request, timeout=10) as response:
                 reply = json.loads(response.read())
             kwargs["stdout"].write(reply["content"][0]["text"].encode())
+            self.seen[-1]["account"] = account
+            self.seen[-1]["config_left"] = Path(env.get("CLAUDE_CONFIG_DIR", "")).exists()
             return subprocess.CompletedProcess(command, 0)
 
         return run
@@ -955,16 +984,107 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
         for gone in (
             "HTTPS_PROXY",
             "https_proxy",
+            "ALL_PROXY",
             "ANTHROPIC_AUTH_TOKEN",
             "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_HTTPS_PROXY",
+            "CLAUDE_CODE_HTTP_PROXY",
+            "CLAUDE_CODE_PROXY_URL",
         ):
-            with self.subTest(gone=gone):
-                self.assertNotIn(gone, env)
+            for index in (0, 1):
+                with self.subTest(gone=gone, index=index):
+                    self.assertNotIn(gone, self.seen[index]["env"])
         self.assertNotEqual(self.operator["ANTHROPIC_API_KEY"], env["ANTHROPIC_API_KEY"])
         said = "\n".join(self.printed)
         self.assertIn("argv carries --system-prompt: yes", said)
         self.assertIn("request carries the fixed instruction: yes", said)
         self.assertIn("request names the home directory: no", said)
+
+    def test_the_probe_also_runs_signed_in_with_a_placeholder_account(self) -> None:
+        # Owner ruling of 2026-09-27 on Sent F1: under OAuth the CLI adds the
+        # account's email and UUID. Accepted and disclosed, and measured on a
+        # placeholder account the probe makes, never the operator's.
+        self.assertEqual(0, self.probe(self.cli()), self.printed)
+        self.assertEqual(2, len(self.seen))
+        api, oauth = self.seen[0]["env"], self.seen[1]["env"]
+        self.assertIn("ANTHROPIC_API_KEY", api)
+        self.assertNotIn("ANTHROPIC_API_KEY", oauth)
+        self.assertIn("CLAUDE_CODE_OAUTH_TOKEN", oauth)
+        self.assertNotEqual(
+            self.operator["CLAUDE_CODE_OAUTH_TOKEN"], oauth["CLAUDE_CODE_OAUTH_TOKEN"]
+        )
+        self.assertNotEqual(self.operator["CLAUDE_CONFIG_DIR"], oauth["CLAUDE_CONFIG_DIR"])
+        account = self.seen[1]["account"]
+        self.assertTrue(account["emailAddress"].endswith("@example.invalid"))
+        self.assertRegex(account["accountUuid"], r"^[0-9a-f-]{36}$")
+        self.assertFalse(
+            Path(oauth["CLAUDE_CONFIG_DIR"]).exists(), "the placeholder account stayed"
+        )
+        said = "\n".join(self.printed)
+        self.assertIn("api-key sign-in", said)
+        self.assertIn("OAuth sign-in", said)
+        self.assertIn("request carries the account's email in the disclosed block: yes", said)
+        self.assertIn("request names the account's email or UUID anywhere else: no", said)
+        self.assertNotIn(account["emailAddress"], said)
+        self.assertNotIn("none anywhere else", said)
+
+    def test_the_account_email_beyond_the_disclosed_block_fails_the_probe(self) -> None:
+        self.assertEqual(1, self.probe(self.cli(leak=" signed in as EMAIL")))
+        self.assertIn(
+            "request names the account's email or UUID anywhere else: yes", "\n".join(self.printed)
+        )
+
+    def test_the_account_uuid_in_a_header_fails_the_probe(self) -> None:
+        self.assertEqual(1, self.probe(self.cli(header_leak=True)))
+
+    def test_a_reply_from_elsewhere_is_refused_even_when_the_stub_was_also_called(self) -> None:
+        # From the scoring lens's killers (K2): a real model's answer to the
+        # probe's sentence is "ok", so only the nonce tells the two apart.
+        import urllib.request  # noqa: PLC0415
+
+        def run(command: list[str], **kwargs: Any) -> Any:
+            env = kwargs["env"]
+            system = command[command.index("--system-prompt") + 1]
+            body = json.dumps({"model": "m", "system": [{"type": "text", "text": system}],
+                               "messages": [{"role": "user", "content": "x"}],
+                               "stream": False}).encode()  # fmt: skip
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            for base in (env["ANTHROPIC_BASE_URL"], self.proxy.url):
+                request = urllib.request.Request(  # noqa: S310 - loopback only
+                    f"{base}/v1/messages", data=body, headers={"content-type": "application/json"}
+                )
+                with opener.open(request, timeout=10) as response:
+                    reply = json.loads(response.read())
+            kwargs["stdout"].write(reply["content"][0]["text"].encode())
+            return subprocess.CompletedProcess(command, 0)
+
+        self.assertEqual(2, self.probe(run))
+
+    def test_every_route_variable_is_stripped(self) -> None:
+        # From the scoring lens's killers (K4), with the CLI's own proxy names.
+        env = score_abstention.probe_environment(
+            {
+                "CLAUDE_CODE_CUSTOM_OAUTH_URL": "https://x",
+                "ALL_PROXY": "http://p",
+                "all_proxy": "http://p",
+                "CLAUDE_CODE_HTTPS_PROXY": "http://p",
+                "CLAUDE_CODE_OAUTH_TOKEN": "PLACEHOLDER",
+                "CLAUDE_CONFIG_DIR": "/operator",
+                "PATH": "/bin",
+            },
+            "127.0.0.1:1",
+        )
+        for gone in (
+            "CLAUDE_CODE_CUSTOM_OAUTH_URL",
+            "ALL_PROXY",
+            "all_proxy",
+            "CLAUDE_CODE_HTTPS_PROXY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CONFIG_DIR",
+        ):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, env)
+        self.assertEqual("1", env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
 
     def test_a_reply_that_did_not_come_from_the_stub_is_refused(self) -> None:
         # A CLI that reached the operator's proxy anyway: the real model's
@@ -984,8 +1104,8 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
         self.assertIn("request names the home directory: yes", "\n".join(self.printed))
 
 
-class DRC4710TheCliIsBoundByItsSignatureTest(unittest.TestCase):
-    """DRC-4710 V4: a stub saved in the install layout was recorded as Anthropic's CLI."""
+class _InstalledLayout(unittest.TestCase):
+    """A file in a patched versions root, and a fake `codesign` and `--version`."""
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -1008,12 +1128,16 @@ class DRC4710TheCliIsBoundByItsSignatureTest(unittest.TestCase):
 
         return run
 
-    def verify(self, platform: str, *, signed: bool) -> tuple[str, str, str, str]:
+    def verify(self, platform: str, *, signed: bool) -> score_abstention.VerifiedClaude:
         return score_abstention.verify_claude_binary(
             resolver=lambda _name: str(self.binary),
             runner=self.runner(signed=signed),
             platform=platform,
         )
+
+
+class DRC4710TheCliIsBoundByItsSignatureTest(_InstalledLayout):
+    """DRC-4710 V4: a stub saved in the install layout was recorded as Anthropic's CLI."""
 
     def test_on_macos_a_stub_in_the_install_layout_is_refused_before_it_runs(self) -> None:
         with self.assertRaises(score_abstention.BinaryError):
@@ -1021,7 +1145,7 @@ class DRC4710TheCliIsBoundByItsSignatureTest(unittest.TestCase):
         self.assertEqual(["codesign"], [Path(c[0]).name for c in self.ran])
 
     def test_on_macos_the_pinned_team_and_identifier_are_required(self) -> None:
-        *_rest, signature = self.verify("darwin", signed=True)
+        signature = self.verify("darwin", signed=True).signature
         codesign = self.ran[0]
         self.assertEqual("/usr/bin/codesign", codesign[0])
         self.assertIn("--strict", codesign)
@@ -1049,9 +1173,76 @@ class DRC4710TheCliIsBoundByItsSignatureTest(unittest.TestCase):
         for platform in ("linux", "win32"):
             with self.subTest(platform=platform):
                 self.ran.clear()
-                *_rest, signature = self.verify(platform, signed=False)
+                signature = self.verify(platform, signed=False).signature
                 self.assertEqual(f"unchecked sha256:{digest}", signature)
                 self.assertNotIn("codesign", [Path(c[0]).name for c in self.ran])
+
+
+class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
+    """Sent F4 and Codex 1: the pin was checked once on a path, then that path ran 19 times.
+
+    The smaller sound option: the verified file's identity (device, inode,
+    size, mtime and sha256) is recorded at the check and compared before
+    every call, and a call on a changed file is refused.
+    """
+
+    def test_the_identity_is_recorded_at_the_check(self) -> None:
+        verified = self.verify("darwin", signed=True)
+        stat = self.binary.stat()
+        self.assertEqual(
+            (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns,
+             hashlib.sha256(self.binary.read_bytes()).hexdigest()),
+            verified.identity,
+        )  # fmt: skip
+
+    def test_a_file_swapped_after_the_check_is_refused_before_the_call(self) -> None:
+        verified = self.verify("darwin", signed=True)
+        pinned = score_abstention.PinnedClaude(verified.path, verified.identity)
+        with mock.patch("builtins.print"):
+            self.assertEqual(verified.path, pinned("claude"))
+            replacement = self.binary.with_name("swap")
+            replacement.write_bytes(b"#!/bin/sh\necho stub\n")
+            os.replace(replacement, self.binary)
+            self.assertIsNone(pinned("claude"))
+            self.assertIsNone(pinned("claude"), "a refusal is not undone by the next call")
+
+    def test_a_file_rewritten_in_place_is_refused(self) -> None:
+        verified = self.verify("darwin", signed=True)
+        pinned = score_abstention.PinnedClaude(verified.path, verified.identity)
+        original = self.binary.read_bytes()
+        with mock.patch("builtins.print"):
+            with self.binary.open("r+b") as handle:
+                handle.write(b"X")
+            self.assertIsNone(pinned("claude"))
+        fresh = score_abstention.PinnedClaude(verified.path, verified.identity)
+        self.binary.write_bytes(original)
+        stat = self.binary.stat()
+        os.utime(self.binary, ns=(stat.st_atime_ns, verified.identity[3]))
+        self.assertEqual(verified.path, fresh("claude"), "identical bytes and stamp pass")
+
+    def test_a_file_changed_between_the_signature_and_the_version_is_refused(self) -> None:
+        def run(command: list[str], **_kwargs: Any) -> Any:
+            if Path(command[0]).name == "codesign":
+                self.binary.write_bytes(b"#!/bin/sh\necho '9.9.9 (Claude Code)' # swapped\n")
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            return mock.Mock(returncode=0, stdout="9.9.9 (Claude Code)\n", stderr="")
+
+        with self.assertRaises(score_abstention.BinaryError):
+            score_abstention.verify_claude_binary(
+                resolver=lambda _name: str(self.binary), runner=run, platform="darwin"
+            )
+
+
+class TheApprovedWordingIsPinnedTest(unittest.TestCase):
+    """From the scoring lens's killers (K3): the sentence the owner approves is this one."""
+
+    def test_the_system_prompt_is_the_approved_sentence(self) -> None:
+        self.assertEqual(
+            "You assess a record of an agent's work session against goals a reader wrote. "
+            "Use only the text of the user message. Reply with the JSON object it asks for "
+            "and nothing else.",
+            observer.CLAUDE_READING_SYSTEM_PROMPT,
+        )
 
 
 class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
@@ -1180,22 +1371,44 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
         patch.start()
         self.addCleanup(patch.stop)
 
-    def genuine(self, sid: str = CLAUDE_SID) -> dict[str, Any]:
-        rows = [_asked(self.start, sid), *_transcript(self.start, sid)]
+    def write(self, sid: str, asks: tuple[int, ...], extra: tuple[dict[str, Any], ...]) -> Any:
+        rows = sorted(
+            [*(_asked(self.start, sid, at) for at in asks), *_transcript(self.start, sid), *extra],
+            key=lambda row: row["timestamp"],
+        )
         folder = self.root / "-w"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{sid}.jsonl"
         path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
         self.index[sid[:8]] = str(path)
-        self.stops.append(
-            {"harness": "claude", "sid": sid, "state": "idle", "last_activity": self.start + 20}
-        )
+        return rows, path
+
+    def genuine(
+        self,
+        sid: str = CLAUDE_SID,
+        *,
+        asks: tuple[int, ...] = (5,),
+        extra: tuple[dict[str, Any], ...] = (),
+        working: bool = False,
+    ) -> dict[str, Any]:
+        rows, path = self.write(sid, asks, extra)
+        captured = self.start + 30
+        if working:
+            row: dict[str, Any] = {"state": "working"}
+            self.stops.append(
+                {"harness": "claude", "sid": sid, "state": "working", "last_activity": captured}
+            )
+        else:
+            row = {"state": "idle", "finished_at": self.start + 20}
+            self.stops.append(
+                {"harness": "claude", "sid": sid, "state": "idle", "last_activity": self.start + 20}
+            )
         entry = {
             "harness": "claude",
             "sid": sid,
             "project": "p",
-            "captured_at": self.start + 30,
-            "row": {"state": "idle", "finished_at": self.start + 20},
+            "captured_at": captured,
+            "row": row,
             "intent": {"goal": GOAL, "lines": [{"text": LINE_ONE}]},
             "transcript": str(path),
         }
@@ -1262,12 +1475,101 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
                   "input": {"command": "pytest"}}]}},
             {"type": "user", "isSidechain": False, "cwd": "/w", "sessionId": CLAUDE_SID,
              "timestamp": _stamp(self.start, 75), "message": {"role": "user", "content": [
-                 {"type": "tool_result", "tool_use_id": "toolu_5", "content": "1 failed",
-                  "is_error": True}]}},
+                 {"type": "tool_result", "tool_use_id": "toolu_5",
+                  "content": "Exit code 1\n1 failed", "is_error": True}]}},
         ]  # fmt: skip
         with path.open("a") as handle:
             handle.write("\n".join(json.dumps(r) for r in later) + "\n")
         self.assertEqual([], self.vouch()(case))
+
+    def user_messages(self, case: dict[str, Any]) -> list[dict[str, Any]]:
+        return [f for f in case["producer_facts"] if f["type"] == "user_message"]
+
+    def later_turn(self, sid: str = CLAUDE_SID, at: int = 60) -> tuple[dict[str, Any], ...]:
+        return (
+            _asked(self.start, sid, at),
+            {"type": "assistant", "isSidechain": False, "cwd": "/w", "sessionId": sid,
+             "timestamp": _stamp(self.start, at + 10), "message": {"role": "assistant",
+             "content": [{"type": "tool_use", "id": f"toolu_{at}", "name": "Bash",
+                          "input": {"command": "pytest"}}]}},
+            {"type": "user", "isSidechain": False, "cwd": "/w", "sessionId": sid,
+             "timestamp": _stamp(self.start, at + 12), "message": {"role": "user", "content": [
+                 {"type": "tool_result", "tool_use_id": f"toolu_{at}",
+                  "content": "Exit code 1\n1 failed", "is_error": True}]}},
+        )  # fmt: skip
+
+    def test_a_capture_moved_past_a_later_turn_is_demoted(self) -> None:
+        # Scoring F1: a later turn stood inside a capture moved forward, and
+        # its failed run replaced the pass the stop had shown.
+        case = self.genuine()
+        with Path(self.index[CLAUDE_SID[:8]]).open("a") as handle:
+            handle.write("\n".join(json.dumps(r) for r in self.later_turn()) + "\n")
+        case["captured_at"] = self.start + 100
+        self.assertIn("activity-after-stop", self.vouch()(case))
+
+    def test_the_freeze_refuses_a_record_between_the_stop_and_the_capture(self) -> None:
+        with self.assertRaises(mark_abstention.FreezeError) as raised:
+            self.genuine(extra=(_asked(self.start, CLAUDE_SID, 25),))
+        self.assertEqual("activity-after-stop", str(raised.exception))
+
+    def test_a_dropped_newer_message_is_demoted(self) -> None:
+        # Scoring F2 and Codex 2: the redirect is what tells a prompt-directed
+        # change from a departure, and dropping it passed.
+        case = self.genuine(asks=(5, 17))
+        typed = self.user_messages(case)
+        case["producer_facts"].remove(typed[-1])
+        self.assertIn("facts-unconfirmed", self.vouch()(case))
+
+    def test_a_dropped_middle_message_is_demoted(self) -> None:
+        case = self.genuine(asks=(3, 5, 17))
+        case["producer_facts"].remove(self.user_messages(case)[1])
+        self.assertIn("facts-unconfirmed", self.vouch()(case))
+
+    def test_a_duplicated_message_is_demoted(self) -> None:
+        # Scoring F3: the producer read one message twice.
+        case = self.genuine(asks=(5, 17))
+        case["producer_facts"].append(dict(self.user_messages(case)[0]))
+        self.assertIn("facts-unconfirmed", self.vouch()(case))
+
+    def test_an_old_message_the_board_still_reads_may_not_be_dropped(self) -> None:
+        case = self.genuine(asks=(3, 5))
+        case["producer_facts"].remove(self.user_messages(case)[0])
+        self.assertIn("facts-unconfirmed", self.vouch()(case))
+
+    def test_an_old_message_past_the_boards_bounded_tail_may_be_absent(self) -> None:
+        import dataclasses  # noqa: PLC0415
+
+        case = self.genuine(asks=(3, 5))
+        case["producer_facts"].remove(self.user_messages(case)[0])
+        # A tail that holds the newer records but not the oldest message.
+        path = Path(self.index[CLAUDE_SID[:8]])
+        lines = path.read_bytes().split(b"\n")
+        self.config = dataclasses.replace(self.config, tail_bytes=len(b"\n".join(lines[1:])))
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_message_stamped_at_a_working_capture_is_held(self) -> None:
+        # From the scoring lens's killers (K5): the rebuild's bound is inclusive.
+        case = self.genuine(asks=(5, 30), working=True)
+        self.assertEqual(2, len(self.user_messages(case)))
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_later_failing_run_in_the_recorded_shape_is_not_a_mismatch(self) -> None:
+        # From the scoring lens's killers (K1): the rebuild stops at the capture.
+        case = self.genuine()
+        path = Path(self.index[CLAUDE_SID[:8]])
+        with path.open("a") as handle:
+            handle.write("\n".join(json.dumps(r) for r in self.later_turn(at=70)[1:]) + "\n")
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_case_frozen_on_another_parser_says_so(self) -> None:
+        # Scoring F7: a parser change between freeze and score demoted every
+        # case with the words tampering gets.
+        case = self.genuine()
+        self.assertEqual(mark_abstention.parser_digest(), case["parser"])
+        case["parser"] = "0" * 64
+        self.assertEqual(["frozen-on-another-parser"], self.vouch()(case))
+        del case["parser"]
+        self.assertEqual(["frozen-on-another-parser"], self.vouch()(case))
 
     def test_a_run_built_only_from_invented_cases_reads_short(self) -> None:
         sids = [f"{i:x}{i:x}{i:x}{i:x}b2c3-REAL-SID" for i in range(len(score_abstention.KINDS))]
@@ -1743,12 +2045,7 @@ class V2TheScorerReChecksProvenanceTest(_Packet):
             mock.patch.object(
                 score_abstention,
                 "verify_claude_binary",
-                return_value=(
-                    BINDING["binary"],
-                    BINDING["cli_version"],
-                    "/abs/claude",
-                    BINDING["signature"],
-                ),
+                return_value=_VERIFIED,
             ),
             mock.patch.object(mark_abstention, "machine_vouch", return_value="VOUCH") as built,
             mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),

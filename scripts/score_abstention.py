@@ -105,7 +105,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, NamedTuple, Self
 
 import abstention_ledger
 import mark_abstention
@@ -401,13 +401,63 @@ def _signature(real: str, *, platform: str, runner: Callable[..., Any]) -> str:
     return f"unchecked sha256:{digest.hexdigest()}"
 
 
+Identity = tuple[int, int, int, int, str]
+
+
+def file_identity(path: str) -> Identity:
+    """(device, inode, size, mtime in ns, sha256) of a file, read from one open handle."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        stat = os.fstat(handle.fileno())
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, digest.hexdigest()
+
+
+class VerifiedClaude(NamedTuple):
+    shown: str
+    version: str
+    path: str
+    signature: str
+    identity: Identity
+
+
+class PinnedClaude:
+    """A binary resolver that answers only while the file is the one verified (Sent F4).
+
+    Called before every call, as `claude_exec` resolves its binary. A changed
+    device, inode, size, mtime or sha256 refuses that call and every later
+    one: identical bytes mean the signature checked at verification still
+    holds, so the hash stands in for re-running `codesign`. The window left is
+    the spawn itself.
+    """
+
+    def __init__(self, path: str, identity: Identity) -> None:
+        self.path = path
+        self.identity = identity
+        self.refused = False
+
+    def __call__(self, _name: str) -> str | None:
+        if not self.refused:
+            try:
+                self.refused = file_identity(self.path) != self.identity
+            except OSError:
+                self.refused = True
+            if self.refused:
+                print(
+                    f"Refused: {_display_path(self.path)} changed after it was verified. "
+                    "No further call runs."
+                )
+        return None if self.refused else self.path
+
+
 def verify_claude_binary(
     *,
     resolver: Callable[[str], str | None] = shutil.which,
     runner: Callable[..., Any] = subprocess.run,
     platform: str = sys.platform,
-) -> tuple[str, str, str, str]:
-    """(display path, `--version` line, absolute path, signature) of the real Claude Code CLI.
+) -> VerifiedClaude:
+    """The real Claude Code CLI: display path, `--version` line, path, signature and identity.
 
     Real means the native installer's layout: the command resolves into one of
     `CLAUDE_VERSIONS_ROOTS`, to a file named for the version it reports as
@@ -424,6 +474,7 @@ def verify_claude_binary(
     if os.path.dirname(real) not in roots:
         msg = f"`claude` resolves to {_display_path(real)}, outside the installed versions"
         raise BinaryError(msg)
+    identity = file_identity(real)
     signature = _signature(real, platform=platform, runner=runner)
     result = runner([real, "--version"], capture_output=True, text=True, timeout=30, check=False)
     line = str(getattr(result, "stdout", "") or "").strip()
@@ -434,7 +485,10 @@ def verify_claude_binary(
     if match.group(1) != os.path.basename(real):
         msg = "`claude --version` names another version than the file it runs"
         raise BinaryError(msg)
-    return _display_path(real), line, real, signature
+    if file_identity(real) != identity:
+        msg = "`claude` changed while it was being verified"
+        raise BinaryError(msg)
+    return VerifiedClaude(_display_path(real), line, real, signature, identity)
 
 
 class _ArgvCapturedError(Exception):
@@ -1970,12 +2024,35 @@ def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one p
     return ""
 
 
-# Every variable that can move a Claude Code call off the stub: the endpoint
-# and provider switches `reading_route` reads, the credentials, and the proxies
-# (a proxy carries a call wherever it likes). Stripped, never trusted.
-_PROBE_DROPPED_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_USE_", "CLAUDE_CODE_CUSTOM_OAUTH")
-_PROBE_DROPPED = frozenset({"http_proxy", "https_proxy", "all_proxy", "no_proxy"})
+# Every variable that can move a Claude Code call off the stub, or sign it in as
+# the operator: the endpoint and provider switches `reading_route` reads, the
+# credentials and the config directory, and the proxies, lower and upper case,
+# plus the three CLI-specific proxy names the 2.1.283 binary reads (review, Sent
+# F5). Stripped, never trusted.
+_PROBE_DROPPED_PREFIXES = (
+    "ANTHROPIC_",
+    "CLAUDE_CODE_USE_",
+    "CLAUDE_CODE_CUSTOM_OAUTH",
+    "CLAUDE_CODE_OAUTH",
+)
+_PROBE_DROPPED = frozenset(
+    {
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "claude_code_http_proxy",
+        "claude_code_https_proxy",
+        "claude_code_proxy_url",
+        "claude_config_dir",
+    }
+)
 PROBE_PROMPT = "Reply with the word ok."
+# The block 2.1.283 adds under OAuth sign-in, accepted and disclosed (owner
+# ruling, 2026-09-27). Only this sentence and `metadata.user_id` may carry the
+# account; anywhere else is a leak the probe reports.
+_DISCLOSED_EMAIL = re.compile(r"The user's email address is [^\n\\]*")
+_DISCLOSED_UUID = re.compile(r'(\\?"account_uuid\\?"\s*:\s*\\?")[0-9a-fA-F-]{36}')
 
 
 def _probe_events(message: Mapping[str, Any], nonce: str) -> bytes:
@@ -2025,7 +2102,7 @@ class _ProbeHandler(http.server.BaseHTTPRequestHandler):
         except ValueError:
             parsed = {}
         body: Mapping[str, Any] = parsed if isinstance(parsed, dict) else {}
-        stub.saw(text)
+        stub.saw(text, str(self.headers))
         usage = {"input_tokens": 1, "output_tokens": 1}
         message = {"id": "msg_probe", "type": "message", "role": "assistant",
                    "model": str(body.get("model") or ""), "stop_sequence": None,
@@ -2047,22 +2124,37 @@ class _ProbeStub:
     The nonce is in no request the CLI sends, so a reply carrying it came from
     here: a real model reached through anything else cannot produce it. Only
     derived yes-or-no facts about each request are kept, never its text.
+    `needles` are looked for anywhere in the headers and body; `account`
+    needles are looked for inside the disclosed OAuth block and outside it.
     """
 
-    def __init__(self, nonce: str, *, needles: Mapping[str, str]) -> None:
+    def __init__(
+        self, nonce: str, *, needles: Mapping[str, str], account: Mapping[str, str] | None = None
+    ) -> None:
         self.nonce = nonce
         self.needles = dict(needles)
+        self.account = dict(account or {})
         self.requests = 0
         self.found: dict[str, bool] = dict.fromkeys(needles, False)
+        self.disclosed = False
+        self.elsewhere = False
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _ProbeHandler)
         self.server.probe = self  # type: ignore[attr-defined]
         self.host = f"127.0.0.1:{self.server.server_address[1]}"
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
-    def saw(self, text: str) -> None:
+    def saw(self, text: str, headers: str = "") -> None:
         self.requests += 1
+        whole = f"{headers}\n{text}"
         for name, needle in self.needles.items():
-            self.found[name] = self.found[name] or needle in text
+            self.found[name] = self.found[name] or needle in whole
+        email = self.account.get("email", "")
+        if email:
+            self.disclosed = self.disclosed or email in "".join(_DISCLOSED_EMAIL.findall(text))
+            rest = _DISCLOSED_UUID.sub(r"\1", _DISCLOSED_EMAIL.sub("", whole))
+            self.elsewhere = self.elsewhere or any(
+                value and value in rest for value in self.account.values()
+            )
 
     def __enter__(self) -> Self:
         self.thread.start()
@@ -2073,11 +2165,15 @@ class _ProbeStub:
         self.server.server_close()
 
 
-def probe_environment(environ: Mapping[str, str], host: str) -> dict[str, str]:
+def probe_environment(
+    environ: Mapping[str, str], host: str, *, config_dir: str = "", oauth: bool = False
+) -> dict[str, str]:
     """The operator's environment with every route off this machine removed, pointed at `host`.
 
-    The key is a placeholder no real endpoint accepts, so a call that went
-    anywhere else would be refused there as well.
+    Signed in with a placeholder no real endpoint accepts: an API key, or with
+    `oauth` a placeholder OAuth token and `config_dir`, a directory holding the
+    probe's own placeholder account, so the operator's account is never read.
+    Background traffic is turned off, as for every reading.
     """
     import secrets  # noqa: PLC0415
 
@@ -2087,28 +2183,50 @@ def probe_environment(environ: Mapping[str, str], host: str) -> dict[str, str]:
         if not key.startswith(_PROBE_DROPPED_PREFIXES) and key.lower() not in _PROBE_DROPPED
     }
     env["ANTHROPIC_BASE_URL"] = f"http://{host}"
-    env["ANTHROPIC_API_KEY"] = f"cargento-probe-placeholder-{secrets.token_hex(8)}"
+    if oauth:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = f"cargento-probe-placeholder-{secrets.token_hex(8)}"
+    else:
+        env["ANTHROPIC_API_KEY"] = f"cargento-probe-placeholder-{secrets.token_hex(8)}"
+    if config_dir:
+        env["CLAUDE_CONFIG_DIR"] = config_dir
     env["NO_PROXY"] = "127.0.0.1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     return env
 
 
-def probe_argv(
+def _placeholder_account(folder: str) -> dict[str, str]:
+    """A signed-in account that is nobody's, written where the CLI reads its global config."""
+    import secrets  # noqa: PLC0415
+    import uuid  # noqa: PLC0415
+
+    account = {
+        "email": f"probe-{secrets.token_hex(6)}@example.invalid",
+        "uuid": str(uuid.uuid4()),
+    }
+    body = {
+        "hasCompletedOnboarding": True,
+        "oauthAccount": {
+            "emailAddress": account["email"],
+            "accountUuid": account["uuid"],
+            "organizationUuid": str(uuid.uuid4()),
+        },
+    }
+    path = os.path.join(folder, ".claude.json")
+    with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as handle:
+        json.dump(body, handle)
+    return account
+
+
+def _probe_once(
     config: Any,
     binary: str,
     *,
-    runner: Callable[..., Any] | None = None,
-    environ: Mapping[str, str] | None = None,
+    mode: str,
+    runner: Callable[..., Any] | None,
+    environ: Mapping[str, str],
+    pinned: Callable[[str], str | None] | None,
 ) -> int:
-    """One call to a stub this starts itself, to see what the CLI sends. Writes and charges nothing.
-
-    Refused rather than charged (DRC-4710, V5): no operator setting chooses
-    the endpoint. The probe starts its own stub, strips every variable that
-    could move the call (`probe_environment`), confirms `reading_route`
-    names that stub as the destination, and counts the call good only when the
-    reply carries the stub's nonce. It reports, as yes or no, whether the argv
-    and the request carry the fixed system prompt and whether the request
-    names this machine's home or state directory.
-    """
+    """One sign-in mode's call. 2 refused, 1 something leaked, 0 clean."""
     import secrets  # noqa: PLC0415
 
     _runtime()
@@ -2121,32 +2239,37 @@ def probe_argv(
         "user": os.path.basename(abstention_ledger.real_home().rstrip(os.sep)) or "\0",
         "state": str(config.state_dir),
     }
+    oauth = mode == "OAuth"
     argv: list[list[str]] = []
-    with _ProbeStub(nonce, needles=needles) as stub:
-        env = probe_environment(os.environ if environ is None else environ, stub.host)
-        where = reading_route.destination("claude", environ=env)
-        if where != stub.host:
-            print(
-                f"Refused: the CLI would reach {where or 'an unnamed host'}, not the probe's stub."
+    root = observer.reading_workdir_root() or tempfile.gettempdir()
+    with tempfile.TemporaryDirectory(prefix="cargento-probe-config-", dir=root) as folder:
+        account = _placeholder_account(folder) if oauth else {}
+        with _ProbeStub(nonce, needles=needles, account=account) as stub:
+            env = probe_environment(environ, stub.host, config_dir=folder, oauth=oauth)
+            where = reading_route.destination("claude", environ=env)
+            if where != stub.host:
+                print(
+                    f"Refused: the CLI would reach {where or 'an unnamed host'}, "
+                    "not the probe's stub."
+                )
+                return 2
+            spawn = runner if runner is not None else supervise.run
+
+            def run(command: Sequence[str], **kwargs: Any) -> Any:
+                argv.append([str(part) for part in command])
+                return spawn(command, **{**kwargs, "env": observer.claude_environment(env)})
+
+            raw, status = observer.claude_exec(
+                config,
+                PROBE_PROMPT,
+                output_cap_bytes=256,
+                runner=run,
+                binary_resolver=pinned or (lambda _name: binary),
             )
-            return 2
-        spawn = runner if runner is not None else supervise.run
-
-        def run(command: Sequence[str], **kwargs: Any) -> Any:
-            argv.append([str(part) for part in command])
-            return spawn(command, **{**kwargs, "env": observer.claude_environment(env)})
-
-        raw, status = observer.claude_exec(
-            config,
-            PROBE_PROMPT,
-            output_cap_bytes=256,
-            runner=run,
-            binary_resolver=lambda _name: binary,
-        )
     if status != "ok" or nonce not in raw or not stub.requests:
         print(
-            f"Refused: the CLI's answer ({status}) did not come from the probe's own stub, "
-            "so this says nothing about what it sends. Nothing was written."
+            f"Refused ({mode} sign-in): the CLI's answer ({status}) did not come from the probe's "
+            "own stub, so this says nothing about what it sends. Nothing was written."
         )
         return 2
     command = argv[0] if argv else []
@@ -2160,12 +2283,47 @@ def probe_argv(
         "request names the account's user name": stub.found["user"],
         "request names the state directory": stub.found["state"],
     }
-    print(f"Probe: {stub.requests} request(s) reached the probe's own stub, none anywhere else.")
+    if oauth:
+        facts["request carries the account's email in the disclosed block"] = stub.disclosed
+        facts["request names the account's email or UUID anywhere else"] = stub.elsewhere
+    # What the stub saw, not what the CLI did elsewhere: only an OS sandbox
+    # can say no other host was reached (review, Sent F3).
+    print(f"Probe ({mode} sign-in): {stub.requests} request(s) reached the probe's own stub.")
     for name, value in facts.items():
         print(f"  {name}: {'yes' if value else 'no'}")
-    print("Nothing was written and nothing was charged.")
-    leaked = stub.found["home"] or stub.found["user"] or stub.found["state"]
+    leaked = any(stub.found[name] for name in ("home", "user", "state")) or stub.elsewhere
     return 0 if flagged and stub.found["instruction"] and not leaked else 1
+
+
+def probe_argv(
+    config: Any,
+    binary: str,
+    *,
+    runner: Callable[..., Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+    pinned: Callable[[str], str | None] | None = None,
+) -> int:
+    """A call to a stub this starts itself, per sign-in mode. Writes and charges nothing.
+
+    Refused rather than charged (DRC-4710, V5): no operator setting chooses
+    the endpoint or the account. Each pass starts its own stub, strips every
+    variable that could move the call or sign it in as the operator
+    (`probe_environment`), confirms `reading_route` names that stub, and
+    counts the call good only when the reply carries the stub's nonce. The
+    OAuth pass signs in as a placeholder account the probe writes, because
+    the CLI adds the account's email and UUID there (owner ruling of
+    2026-09-27: accepted and disclosed), and reports whether either appears
+    anywhere beyond the disclosed block.
+    """
+    source = os.environ if environ is None else environ
+    worst = 0
+    for mode in ("api-key", "OAuth"):
+        code = _probe_once(config, binary, mode=mode, runner=runner, environ=source, pinned=pinned)
+        if code == 2:
+            return 2
+        worst = max(worst, code)
+    print("Nothing was written and nothing was charged.")
+    return worst
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal per line
@@ -2200,11 +2358,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
     )
     if args.probe_argv:
         try:
-            _shown, _version, binary, _signed = verify_claude_binary()
+            probed = verify_claude_binary()
         except BinaryError as error:
             print(f"Refused: {error}.")
             return 2
-        return probe_argv(config, binary)
+        return probe_argv(config, probed.path, pinned=PinnedClaude(probed.path, probed.identity))
     out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
     corpus = _load_corpus(args.rubric)
     if not corpus.cases.get("cases"):
@@ -2224,7 +2382,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         print(f"Refused: the reading call would reach {where}, not Anthropic.")
         return 2
     try:
-        shown, version, binary, signature = verify_claude_binary()
+        verified = verify_claude_binary()
     except BinaryError as error:
         print(f"Refused: {error}.")
         return 2
@@ -2233,9 +2391,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         "model": observer.CLAUDE_READING_MODEL,
         "argv_digest": argv_digest("claude", config),
         "destination": destination,
-        "binary": shown,
-        "cli_version": version,
-        "signature": signature,
+        "binary": verified.shown,
+        "cli_version": verified.version,
+        "signature": verified.signature,
     }
     results_path = results_path_for("claude")
     resume = None
@@ -2248,8 +2406,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         args.port,
         corpus,
         config=config,
-        # Pinned to the binary the result names, so the call runs what was verified.
-        model=reading.ClaudeReadingModel(config, binary_resolver=lambda _name: binary),
+        # Pinned to the file the result names, re-checked before every call.
+        model=reading.ClaudeReadingModel(
+            config, binary_resolver=PinnedClaude(verified.path, verified.identity)
+        ),
         results_path=results_path,
         summary_path=out,
         now=time.time(),

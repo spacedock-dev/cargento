@@ -12,7 +12,7 @@ import shlex
 import shutil
 import stat
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from . import claude_data, observer, records, semantic_history, spacedock, transcripts
@@ -2823,32 +2823,61 @@ def frozen_claude_checks(
     return facts, PressChecks(tally.tails(), tally.changed_after())
 
 
+def _user_message_facts(
+    config: RuntimeConfig, lines: Iterable[str], sid: str, until: float
+) -> list[dict[str, Any]]:
+    """`instruction_events` over these lines, cut at `until`, as `collect` publishes them."""
+    facts: list[dict[str, Any]] = []
+    seen: set[tuple[float, str]] = set()
+    for raw in lines:
+        if not raw or not raw.lstrip().startswith("{"):
+            continue
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        event = _instruction_event(config, record, "claude", sid)
+        if event is None or float(event["at"]) > until:
+            continue
+        key = (event["at"], event["title"])
+        if key in seen:
+            continue
+        seen.add(key)
+        facts.append(_semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], ""))
+    return facts
+
+
 def frozen_claude_user_messages(
     config: RuntimeConfig, transcript_path: str, sid: str, *, until: float
-) -> list[dict[str, Any]]:
-    """The user-message facts a Claude Code transcript held at `until`, as `collect` derives them.
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The user-message facts a Claude Code transcript held at `until`: all, and the board's tail.
 
     For the abstention scorer's score-time check (DRC-4711), beside
     `frozen_claude_checks`. Measured 2026-09-27 on a scratch board over three
     recorded sessions: a user message is the only non-check fact such a case
-    carries, and this reproduced the board's ledger rows for it. The whole
-    file is read, not the bounded tail, so a turn the board's tail dropped is
-    still found.
+    carries, and this reproduced the board's ledger rows for it. The first
+    list reads the whole file; the second reads the bounded tail `collect`
+    reads today (`io.read_tail`), which a freeze taken earlier, on a file no
+    larger, reached at least as far back as.
     """
-    facts: list[dict[str, Any]] = []
     with open(transcript_path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
+        whole = _user_message_facts(config, handle, sid, until)
+    tail = _user_message_facts(config, runtime_io.read_tail(config, transcript_path), sid, until)
+    return whole, tail
+
+
+def claude_activity_between(transcript_path: str, after: float, until: float) -> bool:
+    """Whether any record in the transcript is stamped after `after` and at or before `until`."""
+    with open(transcript_path, "rb") as handle:
+        for raw in handle:
             try:
-                record = json.loads(line)
+                record = json.loads(raw)
             except (ValueError, RecursionError):
                 continue
-            event = _instruction_event(config, record, "claude", sid)
-            if event is None or float(event["at"]) > until:
-                continue
-            facts.append(
-                _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
-            )
-    return facts
+            at = _record_timestamp(record) if isinstance(record, dict) else None
+            if at is not None and after < at <= until:
+                return True
+    return False
 
 
 def _session_work_evidence(

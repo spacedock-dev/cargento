@@ -611,7 +611,12 @@ def _lifecycle_recorded(
 
 
 def _frozen_checks(
-    config: Any, entry: dict[str, Any], sid: str, captured: float, unconfirmed: list[str]
+    config: Any,
+    entry: dict[str, Any],
+    sid: str,
+    captured: float,
+    unconfirmed: list[str],
+    snapshot: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """A Claude Code case's checks as they stood, noting what the transcript cannot vouch for."""
     transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
@@ -623,6 +628,9 @@ def _frozen_checks(
         unconfirmed.append("transcript-other-session")
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
+    stop = _stop(snapshot)
+    if stop is not None and project_context.claude_activity_between(transcript, stop, captured):
+        raise FreezeError("activity-after-stop")
     checks, press = project_context.frozen_claude_checks(config, transcript, sid, until=captured)
     return checks, {
         "tails": dict(press.tails),
@@ -630,36 +638,69 @@ def _frozen_checks(
     }
 
 
+# The files whose code turns a transcript into the facts and checks a case holds
+# (review, Scoring F7). A packet frozen under other bytes is named as such
+# rather than read as tampered, since every case would then differ.
+_PARSER_FILES = ("project_context.py", "reading.py")
+
+
+def parser_digest() -> str:
+    """sha256 over the runtime files that derive a case's facts, stamped into each case."""
+    digest = hashlib.sha256()
+    for name in _PARSER_FILES:
+        with open(os.path.join(_SKILL, "cargento_runtime", name), "rb") as handle:
+            digest.update(handle.read())
+    return digest.hexdigest()
+
+
+def _stop(snapshot: dict[str, Any]) -> float | None:
+    """The recorded end or turn stop a capture follows, if the row has one."""
+    for field in ("ended_at", "finished_at"):
+        if _epoch(snapshot.get(field)):
+            return float(snapshot[field])
+    return None
+
+
 def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:
     """Why a Claude Code case's contents are not what its transcript holds (DRC-4711).
 
     Rebuilt as the freeze built them, at the case's own `captured_at`, so turns
-    appended since are not a mismatch. Compared as the ledger rows the producer
-    reads, the one thing an invented fact could change. The checks and the
-    press reads must be exactly the transcript's, since dropping a failed
-    check changes a verdict as surely as inventing a pass. A user message must
-    be one the transcript holds, and one it holds may be absent: the board
-    reads a bounded tail, so an old turn is legitimately missing from a long
-    session's facts.
+    appended since are not a mismatch, and compared as the ledger rows the
+    producer reads. A capture with any record between its stop and itself is
+    not the moment the stop recorded (`activity-after-stop`). The checks and
+    the press reads must be exactly the transcript's, since dropping a failed
+    check changes a verdict as surely as inventing a pass. The user messages
+    must be the newest ones up to the capture, in order, none missing between
+    and none twice, and at least as many as the board's bounded tail reads
+    today: a freeze taken earlier read a file no larger, so its tail reached
+    at least that far back. Older ones may be absent.
     """
+    if case.get("parser") != parser_digest():
+        return ["frozen-on-another-parser"]
     reading = _reading()
     sid = str(case.get("sid") or "")
     captured = float(case["captured_at"])
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
+    stop = _stop(case.get("row_snapshot") or {})
     try:
         checks, press = project_context.frozen_claude_checks(
             config, transcript, sid, until=captured
         )
-        typed = project_context.frozen_claude_user_messages(config, transcript, sid, until=captured)
+        held, tail = project_context.frozen_claude_user_messages(
+            config, transcript, sid, until=captured
+        )
+        moved = stop is not None and project_context.claude_activity_between(
+            transcript, stop, captured
+        )
     except OSError:
         return ["transcript-missing"]
+    reasons: list[str] = ["activity-after-stop"] if moved else []
     tails = dict(press.tails)
     frozen = {
         "tails": tails,
         "changed_after": sorted([list(pair) for pair in press.changed_after]),
     }
-    reasons: list[str] = []
     if json.loads(json.dumps(frozen)) != case.get("tool_output"):
         reasons.append("tool-output-differs")
     facts = [f for f in case.get("producer_facts") or () if isinstance(f, dict)]
@@ -668,17 +709,20 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     def rows(these: list[dict[str, Any]], tails: dict[str, str] | None) -> list[Any]:
         return list(
             reading.build_ledger(
-                these, "claude", sid, tool_output=tails, changed_after=press.changed_after
+                json.loads(json.dumps(these)),
+                "claude",
+                sid,
+                tool_output=tails,
+                changed_after=press.changed_after,
             )
         )
 
-    packet_checks = [f for f in facts if f.get("type") == tool]
-    if rows(json.loads(json.dumps(packet_checks)), tails) != rows(
-        json.loads(json.dumps(checks)), tails
-    ):
+    if rows([f for f in facts if f.get("type") == tool], tails) != rows(checks, tails):
         reasons.append("checks-differ")
-    held = rows(typed, None)
-    if any(row not in held for row in rows([f for f in facts if f.get("type") != tool], None)):
+    mine = rows([f for f in facts if f.get("type") != tool], None)
+    whole = rows(held, None)
+    newest = whole[len(whole) - len(mine) :] if mine else []
+    if mine != newest or len(mine) < len(rows(tail, None)):
         reasons.append("facts-unconfirmed")
     return reasons
 
@@ -820,8 +864,11 @@ def freeze_case(
         "intent": intent,
     }
     if harness == "claude":
-        checks, case["tool_output"] = _frozen_checks(config, entry, sid, captured, unconfirmed)
+        checks, case["tool_output"] = _frozen_checks(
+            config, entry, sid, captured, unconfirmed, snapshot
+        )
         kept.extend(checks)
+        case["parser"] = parser_digest()
     case["producer_facts"] = kept
     case["unconfirmed"] = unconfirmed
     if unconfirmed:
