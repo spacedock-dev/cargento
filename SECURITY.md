@@ -73,7 +73,7 @@ The posture rests on two invariants:
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
    which is the delivery completing rather than a change a caller asked for. Five write to disk.
    `POST /api/dismiss` writes the sessions you marked handled,
-   `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected outcome lines you typed against a session, and
+   `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected outcome lines you typed against a session, including a line you added from a later direction you gave and the settlement of those directions, and
    `POST /api/reading` writes a model's reading of that session back into the same annotation
    entry. A press that produces nothing still writes, because the reason and the spend count are
    recorded too. These three routes write Cargento's own state under `~/.cargento` and never a harness
@@ -113,6 +113,10 @@ The posture rests on two invariants:
    `POST /api/reading` writes. One forwarder writes too: `statusline_hook.py`'s deduplication memo under
    the same directory, which holds a normalized state name and a timestamp and nothing about the
    session's content.
+   One `POST` mutates nothing and is named here for what it returns rather than for the count
+   above: `POST /api/direction` hands back the whole text of one later direction you gave, for
+   review before it becomes an outcome line, and [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
+   owns its bounds.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
    annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
@@ -1268,6 +1272,57 @@ that an allow given before the disclosure named tool output does not cover it
 ([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). "Keep my intent
 and analyze" counts as the allow when the disclosure beside it has not been allowed yet.
 
+Keeping your intent and adding a later direction, built with DRC-4682. "Keep my intent and
+analyze" settles every unsettled later direction before anything else in the press, so a press
+that then starts no analysis (another provider, the budget, one already in flight) has still
+settled. Where no analysis can start at all, no reader or readings turned off, the same answer is
+the `settle_through` field of a `POST /api/annotate` body and reads nothing. Over an unsaved draft
+either one adopts the draft and records the settlement in one store write, and a refused adoption
+settles nothing.
+
+"Add it to my intent" is two requests. The first, `POST /api/direction`, names a session and one
+fact id and returns that message's whole text for review, where the published record holds only
+its first sentence, clipped. That is wider than any published field, so it is stated exactly. It
+returns the text of one message, masked by named form as a check line is (a `NAME=value`, the
+word after `--password`, `--token` or `-p`, an `Authorization:` or `X-Api-Key:` value, a
+`user:password@host` quoted or not, and a credential shape wrapped by a line break on both sides
+of the break, with a zero-width space, soft hyphen and the other invisible characters that can
+hide a flag removed first, while the joiners that spell words and emoji are kept), then redacted by
+shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
+it was clipped, and a flag saying whether the store would take it as a line (at most 240
+characters). It returns nothing for a message that is not a person's message in that session's
+own record, one not later than the words it would join, or one older than the tail of the
+transcript Cargento already reads: all of those, an unknown session and an unknown fact alike,
+answer one 200 body with one sentence, so the route says nothing about which sessions exist.
+Prose shapes outside those named forms come back as typed: a password written into a sentence,
+`token: value`, a JSON field and a `?token=` query are not masked, and only a value with a
+credential's own shape is redacted there. The text is read again from the transcript Cargento already tails, found by `observer.resolve_transcript`
+from the session's harness and id, and never from a path a client names. It is served to the same
+callers as `/api/data`: loopback only, same-origin, and refused to a document navigation and to a
+same-site or cross-site fetch, as `POST /api/reading` is, and it answers 503 under
+`--no-annotations`. It writes nothing, stores nothing, reaches no model and sends nothing off the
+machine, and the text never enters session history: no published field carries it and the
+history prompt-text allowlist is unchanged. A local process running as you gains nothing it could
+not read from the transcript file itself. Another account on the machine can reach this route as
+it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole text of
+any later direction in any session's transcript tail, each fact id listed by
+`GET /api/project-context`, where that route gives only the first sentence. A loop over those ids
+reads every one of them, so the ids bound nothing. Why it is no narrower: the reader edits a long direction down to one line of
+their own, so the page must show more than fits, and a summary in its place would be the one thing
+DEC-24 item 4 forbids saving.
+
+The second is the `add_direction` field of a `POST /api/annotate` body, with the reader's edited
+text. The server checks the fact again exactly as the first request did, so the only claim it
+mints is that the line was added from that entry. The text is saved under the typed-line rules: at
+most 240 characters and one line, refused rather than clipped. A full list of six is refused
+unless the body names the line to replace, so a reader's own line is written away only when they
+chose it, and every request names the revision it was drafted against. The line, the settlement
+through that direction's time and, over an unsaved draft, the adopted goal go in one store write.
+Keep names its revision too, on both routes, and a stale one settles nothing; Keep never adopts
+over a saved goal holding other words, and a settlement never moves back over one already given.
+The revision check holds inside one dashboard process. Two dashboards sharing the store have no
+lock between them, and this write shares that gap with every other save (DRC-4661).
+
 The background job, built with DRC-4686. An admitted press answers `202` with a job the server
 owns, before the model is called, and the reading runs on a thread of its own under the
 supervised runner above. The job's id, its phase, the three step names and when it started are
@@ -2348,9 +2403,12 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the fourteen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the fifteen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. There is nothing to authenticate with on twelve of them, for the reason the
+somebody other than you. One of the fifteen only reads: `POST /api/direction` returns the whole text
+of a direction a session's user gave, which `/api/project-context` names by its first sentence. It
+answers only a loopback peer, so a non-default bind does not widen it; its bounds are in Analyze
+drift, Cancel and copied corrections. There is nothing to authenticate with on thirteen of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client

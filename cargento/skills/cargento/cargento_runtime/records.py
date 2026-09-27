@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import math
 import os
 import re
 import string
+import unicodedata
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -467,6 +469,78 @@ def mask_words(words: list[str]) -> list[str]:
         )
         masked.append(_MASK_USERINFO.sub(lambda m: m.group(1) + _SECRET_MARKER + "@", formed))
     return masked
+
+
+# A header name standing as its own word in prose, with the value in the words
+# after it, and the schemes whose next word is the credential itself.
+_MASK_HEADER_WORD: Final = re.compile(
+    r"^['\"]?(?:authorization|x-api-key)\s*:(.*)$", re.IGNORECASE | re.DOTALL
+)
+_MASK_AUTH_SCHEMES: Final = frozenset({"bearer", "basic", "token", "digest", "negotiate"})
+# `'user:password with spaces@host'`, quoted in prose, where whitespace splits
+# the word `_MASK_USERINFO` would otherwise see whole.
+_MASK_QUOTED_USERINFO: Final = re.compile(r"(['\"])([^\s:/@'\"]+:)[^'\"]*@")
+
+
+# Zero-width space, word joiner, invisible operators, BOM, soft hyphen and
+# the Mongolian vowel separator: invisible, and none of them spells a word.
+_MASK_INVISIBLE: Final = frozenset("\u200b\u2060\u2061\u2062\u2063\u2064\ufeff\u00ad\u180e")
+# The control characters `str.splitlines` breaks on, so a key split by any of
+# them is still joined and masked.
+_LINE_BREAKS: Final = frozenset("\n\r\x0b\x0c\x1c\x1d\x1e\x85")
+
+
+def mask_prose(text: str) -> str:
+    """A person's message with every value `mask_words` names masked, as one line.
+
+    For a later direction's whole text (DRC-4682), which reaches further than
+    any published summary: prose splits on whitespace where a check line is
+    lexed, so three forms need a word more than `mask_words` reads. A header
+    name standing alone masks the word after it, and the one after that when
+    it is an auth scheme; a quoted `user:password@host` is masked across its
+    spaces; and a credential shape wrapped by a line break is masked on both
+    sides of the break, because joining the lines is what would publish its
+    tail. Over-masking is the accepted direction, as for `_MASK_FLAGS`.
+    """
+    # Invisible characters first: a zero-width space after a flag hid it from
+    # the match while the page, which strips it, showed the flag bare. Only
+    # the ones that can hide a flag or split a key go; the joiners U+200C and
+    # U+200D stay, because they spell Persian, Urdu and Kurdish words and join
+    # emoji. Other controls become spaces, and every line break stays one.
+    text = "".join(
+        ""
+        if ch in _MASK_INVISIBLE
+        else " "
+        if unicodedata.category(ch) == "Cc" and ch not in _LINE_BREAKS
+        else ch
+        for ch in text
+    )
+    text = _MASK_QUOTED_USERINFO.sub(lambda m: m.group(1) + m.group(2) + _SECRET_MARKER + "@", text)
+    lines = [line.split() for line in text.splitlines()]
+    # Over the lines with words, so a blank line between the halves is no gap.
+    for above, below in itertools.pairwise([line for line in lines if line]):
+        if above and below and redact_secrets(above[-1] + below[0]) != above[-1] + below[0]:
+            above[-1] = below[0] = _SECRET_MARKER
+    words: list[str] = []
+    header = scheme_next = False
+    for word in (word for line in lines for word in line):
+        if header and scheme_next and word.strip("'\"").lower() in _MASK_AUTH_SCHEMES:
+            words.append(word)
+            scheme_next = False
+            continue
+        words.append(_SECRET_MARKER if header else word)
+        named = None if header else _MASK_HEADER_WORD.match(word)
+        # `Authorization:` alone owes the next word, or two when the next is
+        # a scheme; `authorization:Bearer` owes the one after it.
+        header = named is not None
+        scheme_next = named is not None and not named.group(1)
+        if (
+            named is not None
+            and named.group(1)
+            and (named.group(1).strip("'\"").lower() not in _MASK_AUTH_SCHEMES)
+        ):
+            header = False
+    return " ".join(mask_words(words))
 
 
 def masked_values(words: list[str]) -> list[str]:

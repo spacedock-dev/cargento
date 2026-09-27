@@ -1767,6 +1767,51 @@ calls below on the issue; the rest follow the analysis.
   "You · Prompt", the agent's entries "Agent", and Cargento's own summary of the session "Cargento's
   summary", never the agent.
 
+### What the direction-adoption server build decided, 2026-09-27
+
+DRC-4682's server half built item 4's two answers and the store they write. The owner ruled that
+Add over an unsaved draft adopts it in the same write, and that Keep settles even where no analysis
+can start. The page half comes after it.
+
+- The wire. Opening a direction is its own route, `POST /api/direction`, because it answers with
+  text rather than the annotate reply. Saving it is the `add_direction` field of
+  `POST /api/annotate`, beside the settle arm, because it writes the same annotation and answers
+  the same way. SECURITY.md states what the open returns and to whom.
+- What counts as later. A person's message in the session's own record after the words' own time:
+  an adopted goal's source time, the time a typed goal's words were saved, and with no saved goal
+  the draft's time, the first prompt or else the latest. A revision holding lines and no goal still
+  counts as no goal. The typed goal's save time is its own stored field, `goal_saved_at`, published
+  as `annotation_goal_saved_at`: a lines-only save and an added direction mint a revision without
+  moving it, and only new goal words do. Review found that flooring typed words at the latest
+  revision instead meant adding one direction hid a later one the reader never answered, where
+  adopted words kept it open; the two now behave alike. A revision an older build saved has no
+  such field and falls back to its save time.
+- The text. It is read again from the transcript tail by recomputing each message's fact id,
+  because a Claude user message carries no record id. The id was not changed to add one: that
+  would move every stored citation of a Claude message. A message older than the tail is refused
+  with one sentence, never replaced by its clipped summary. The open returns the whole message
+  scrubbed as a save would scrub it, up to 2,000 characters, with a clipped flag and the store's
+  own answer to whether it fits as a line.
+- One refusal body. An unknown session or fact, another session's entry, one that is not a
+  person's message, one not later than the words and one older than the tail all answer the same
+  200 body, so the route says nothing about which sessions exist.
+- The write. The line, the settlement through that direction's time and, over a draft, the adopted
+  goal go in one store write, under the revision the page drafted against. A full list is refused
+  unless the body names the line to replace, counted from 0 as `origins` is. A settlement never
+  moves back over one the reader already gave, so adding an older direction reopens nothing.
+- Keep. The reading press carries `settle_through`, and the settlement, with the adoption over a
+  draft, is written before the route, the permission and the job, so a press that starts nothing
+  has still settled. Every later reply of that press carries the store's token as `settled`, a 503
+  for want of a thread included, and a refused settlement answers 422 and starts nothing. Where no
+  analysis can start at all, the page sends the same answer to `POST /api/annotate`. Both name
+  `expected_revision`, checked under the store lock, so a stale tab settles nothing, and neither
+  adopts over a saved goal that holds other words. A settlement never moves back over one already
+  given, on Keep as on Add.
+- One process. The revision check holds inside one dashboard process; two dashboards sharing the
+  store can still race, and these writes share that gap with every other save (DRC-4661).
+- Not permanent. A line added from an entry becomes a typed line once the reader edits it and
+  saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
+
 ## DEC-26: four drift levels, and a live estimate after every turn
 
 Decided 2026-09-24 (DRC-4691). DRC-4692 defines and validates the levels on recorded Claude Code
