@@ -1234,7 +1234,12 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
 
     def test_the_identity_is_recorded_at_the_check(self) -> None:
         verified = self.verify("darwin", signed=True)
-        stat = self.binary.stat()
+        # From a handle, as `file_identity` reads it, and not by path: CPython
+        # 3.12 on Windows gives `os.stat` the creation time as `st_ctime` and
+        # `os.fstat` the change time, which differ whenever the write lands a
+        # clock tick after the create (DRC-4707, PR #419 run 36359883058).
+        with self.binary.open("rb") as handle:
+            stat = os.fstat(handle.fileno())
         self.assertEqual(
             (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
              hashlib.sha256(self.binary.read_bytes()).hexdigest()),
